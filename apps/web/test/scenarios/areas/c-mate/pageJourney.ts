@@ -1,22 +1,22 @@
-/** A run that publishes a page, in a conversation the scenario opens (the engine's wire). */
-import {
-  AssetCreateUrlInput,
-  AssetCreateUrlResult,
-  ThreadId,
-  WS_METHODS,
-} from "@t3tools/contracts";
+// @effect-diagnostics nodeBuiltinImport:off -- the page file zcp keeps in the Mate's workspace, and the Mate's record of its height.
+/** A run that publishes a page, in a conversation the scenario opens, on the real Mate. */
+import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
+import * as NodeSqlite from "node:sqlite";
+import { RuntimeItemId, WS_METHODS } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
+import type { ScriptedStep } from "../../../../../server/integration/scriptedProviderDriver.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { mateChat } from "./dsl.ts";
-import { installArea } from "./fake.ts";
 
-const decodeCreateUrl = Schema.decodeUnknownSync(AssetCreateUrlInput);
-const encodeCreateUrl = Schema.encodeSync(AssetCreateUrlResult);
 export const TITLE = "Launch plan";
 export const ANSWER = "Week one is the hardest.";
 const EARLIER_TITLE = "Overview";
-
+const EARLIER_ANSWER = "The overview stands above.";
+const LONG_ANSWER = Array.from(
+  { length: 40 },
+  () => "A long line of the Mate's words that fills the conversation.",
+).join(" ");
 /** A page as an agent writes one: it reaches for the network, and it is taller or shorter. */
 const pageOf = (height: number, script = 'fetch("https://example.com/beacon").catch(()=>{});') =>
   `<!doctype html><html><head><title>${TITLE}</title>` +
@@ -43,7 +43,10 @@ const SAMPLER = (title: string, answer: string) => {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) {
       if (!walker.currentNode.textContent?.includes(answer)) continue;
-      const box = walker.currentNode.parentElement?.getBoundingClientRect();
+      // The answer in the conversation, never its preview in the menu.
+      const element = walker.currentNode.parentElement;
+      if (!element?.closest("[data-timeline-row-kind]")) continue;
+      const box = element.getBoundingClientRect();
       if (box && box.height > 0) return box.top;
     }
     return null;
@@ -66,142 +69,152 @@ const SAMPLER = (title: string, answer: string) => {
   requestAnimationFrame(tick);
 };
 
-/** How long the Mate takes to hand the page's bytes over: the page loads that much later. */
-const BYTES_AFTER_MS = 1500;
+/**
+ * A call to zcp's `zerops_publish_page` as OpenCode reports it (an MCP tool is `<server>_<tool>`):
+ * its result names the file zcp wrote in the session's `.zcp/state/pages`.
+ */
+const publishCall = (id: string, file: string, title: string): ScriptedStep[] =>
+  (["item.started", "item.completed"] as const).map((type) =>
+    mcpCall(type, id, "zerops_zerops_publish_page", JSON.stringify({ page: { file, title } })),
+  );
+
+const mcpCall = (
+  type: "item.started" | "item.completed",
+  id: string,
+  tool: string,
+  output: string,
+): ScriptedStep => ({
+  kind: "event",
+  event: {
+    type,
+    itemId: RuntimeItemId.make(id),
+    payload: {
+      itemType: "mcp_tool_call",
+      status: type === "item.completed" ? "completed" : "inProgress",
+      data: {
+        tool,
+        state:
+          type === "item.completed"
+            ? { status: "completed", input: {}, output }
+            : { status: "running", input: {} },
+      },
+    },
+  },
+});
+
+const isPageHeight = (tag: string) => tag === WS_METHODS.engineRecordPageHeight;
 
 export const journey = (
   height: number,
   options: {
-    readonly slowBytes?: boolean;
     readonly script?: string;
     /** An earlier run published a page of its own, and a long exchange followed it. */
     readonly earlierPage?: boolean;
-    /** The area's install: the engine's own wire where the suite runs V1's by default. */
-    readonly install?: typeof installArea;
+    /** The run goes on working after the page landed: another call opens before it answers. */
+    readonly workOn?: boolean;
   } = {},
 ) =>
   Effect.gen(function* () {
-    const s = yield* createScenario([options.install ?? installArea]);
+    const s = yield* createScenario([], { mate: "real" });
     yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-    const html = Buffer.from(pageOf(height, options.script));
-    const digest = "c".repeat(64);
-    s.drivers.onMate.push((mate) => {
-      Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
-      Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
-      const handle = mate.handle;
-      mate.handle = (request) =>
-        request.url.pathname.includes(`/api/assets/objects/${digest}/`)
-          ? new Promise((resolve) =>
-              setTimeout(
-                () =>
-                  resolve({
-                    bytes: html,
-                    headers: {
-                      "content-type": "text/html",
-                      "access-control-allow-headers": "authorization, dpop",
-                    },
-                  }),
-                options.slowBytes ? BYTES_AFTER_MS : 0,
-              ),
-            )
-          : handle(request);
-      mate.rpcHandlers.unshift((request, socket) => {
-        if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
-        const input = decodeCreateUrl(request.payload);
-        if (input.resource._tag !== "media-file") return false;
-        const relativeUrl = `/api/assets/objects/${digest}/original`;
-        mate.reply(
-          socket,
-          request.id,
-          encodeCreateUrl({
-            relativeUrl,
-            expiresAt: 0,
-            representation: { digest, relativeUrl, mimeType: "text/html", sizeBytes: html.length },
-          }),
-        );
-        return true;
-      });
-    });
     yield* s.given.project("Ada", { mate: true });
-    const chat = mateChat(s);
-    const fixture = chat.fixture();
-    const engine = fixture.wire.engine;
-    const page = {
-      asset: {
-        id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-        threadId: ThreadId.make(`${fixture.mate.thread.id}/s/1`),
-        ownerId: "publish-call",
-        name: "page-0123456789abcdef.html",
-        provenance: "capture" as const,
-        original: {
-          status: "ready" as const,
-          digest,
-          mimeType: "text/html",
-          sizeBytes: html.length,
-        },
-      },
-      title: TITLE,
-      bytes: html.length,
-      publishedAt: 1791201600000,
+    const ada = s.drivers.realMates.get("Ada")!;
+    const pages = NodePath.join(ada.server.root, "workspace", ".zcp", "state", "pages");
+    const pageFile = (name: string, html: string) =>
+      Effect.promise(async () => {
+        await NodeFSP.mkdir(pages, { recursive: true });
+        const file = NodePath.join(pages, name);
+        await NodeFSP.writeFile(file, html);
+        return file;
+      });
+    /** The heights the Mate recorded for each page, from its own record. */
+    const recorded = () => {
+      const db = new NodeSqlite.DatabaseSync(ada.server.dbPath, { readOnly: true });
+      try {
+        return db
+          .prepare("SELECT item_id, height FROM engine_page_height ORDER BY at")
+          .all() as Array<{ item_id: string; height: number }>;
+      } finally {
+        db.close();
+      }
     };
-    if (options.earlierPage === true) {
-      const first = engine.personRun("Sketch the overview");
-      engine.item(first, {
-        kind: "call",
-        step: "mcp",
-        words: "MCP tool call",
-        state: "done",
-        endedAt: 1791201500000,
-        tool: { name: "zerops_publish_page", server: "zerops" },
-        result: {
-          toolName: "zerops_publish_page",
-          resultText: '{"page":{}}',
-          page: {
-            ...page,
-            asset: { ...page.asset, id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" },
-            title: EARLIER_TITLE,
-            publishedAt: 1791201500000,
-          },
-        },
-      });
-      engine.note(first, "The overview stands above.", { kind: "completed" });
-      engine.note(
-        engine.personRun("Tell me more"),
-        "A long line of the Mate's words that fills the conversation. ".repeat(40),
-        { kind: "completed" },
-      );
-    }
-    const run = engine.personRun("Plan the launch");
     yield* s.given.signedIn;
-    yield* chat.when.open("Ada", "Plan the launch");
+    yield* s.when.menu.opensMate("Ada");
+    yield* s.then.conversation.appears;
+    if (options.earlierPage === true) {
+      const earlier = yield* pageFile("page-dddddddddddddddd.html", pageOf(height, options.script));
+      yield* ada.provider.turn([
+        ...publishCall("overview", earlier, EARLIER_TITLE),
+        { kind: "say", text: EARLIER_ANSWER },
+      ]);
+      const measured = ada.gate.answered(isPageHeight);
+      yield* s.when.conversation.sends("Sketch the overview");
+      yield* s.then.conversation.showsMessage(EARLIER_ANSWER);
+      yield* Effect.promise(() => measured);
+      yield* ada.provider.turn([{ kind: "say", text: LONG_ANSWER }]);
+      yield* s.when.conversation.sends("Tell me more");
+      yield* s.then.conversation.showsMessage(LONG_ANSWER);
+    }
+    const earlierPages = new Set(recorded().map((row) => row.item_id));
+    const file = yield* pageFile("page-cccccccccccccccc.html", pageOf(height, options.script));
+    const go = {
+      publish: Deferred.makeUnsafe<void>(),
+      work: Deferred.makeUnsafe<void>(),
+      answer: Deferred.makeUnsafe<void>(),
+    };
+    yield* ada.provider.turn([
+      { kind: "wait", until: go.publish },
+      ...publishCall("plan", file, TITLE),
+      ...(options.workOn === true
+        ? [
+            { kind: "wait", until: go.work } as const,
+            mcpCall("item.started", "browse", "zerops_zerops_browser", ""),
+          ]
+        : []),
+      { kind: "wait", until: go.answer },
+      ...(options.workOn === true
+        ? [mcpCall("item.completed", "browse", "zerops_zerops_browser", "{}")]
+        : []),
+      { kind: "say", text: ANSWER },
+    ]);
+    yield* s.when.conversation.sends("Plan the launch");
+    yield* s.then.conversation.showsMessage("Plan the launch");
+    // The run works in its conversation, past the draft it was sent from: a page lands in a
+    // conversation that stands.
+    yield* Effect.promise(() =>
+      s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
+        polling: 100,
+        timeout: 10_000,
+      }),
+    );
+    // Registered before the page can land: its first height may be recorded at once.
+    let pageHeight = ada.gate.answered(isPageHeight);
+    const release = (step: Deferred.Deferred<void>) => () =>
+      void Deferred.doneUnsafe(step, Effect.void);
     /** The call that publishes the page lands while the run still works. */
-    const publishLive = () =>
-      engine.item(run, {
-        kind: "call",
-        step: "mcp",
-        words: "MCP tool call",
-        state: "done",
-        endedAt: 1791201600000,
-        tool: { name: "zerops_publish_page", server: "zerops" },
-        result: { toolName: "zerops_publish_page", resultText: '{"page":{}}', page },
-      });
+    const publishLive = release(go.publish);
     /** The run answers and ends: its card settles and folds. */
-    const answer = () => engine.note(run, ANSWER, { kind: "completed" });
+    const answer = release(go.answer);
     const publish = () => {
       publishLive();
       answer();
     };
     /** The run goes on working: another call opens after the page landed. */
-    const workOn = () =>
-      engine.item(run, {
-        kind: "call",
-        step: "mcp",
-        words: "MCP tool call",
-        state: "running",
-        endedAt: null,
-        tool: { name: "zerops_browser", server: "zerops" },
-      });
-    return { s, chat, engine, publish, publishLive, workOn, answer };
+    const workOn = release(go.work);
+    /** Once the view recorded this page's height: every height the Mate keeps for it. */
+    const measured = Effect.promise(async () => {
+      for (;;) {
+        await pageHeight;
+        pageHeight = ada.gate.answered(isPageHeight);
+        const heights = recorded().filter((row) => !earlierPages.has(row.item_id));
+        if (heights.length > 0) return heights.map((row) => row.height);
+      }
+    });
+    const reload = Effect.gen(function* () {
+      yield* Effect.promise(() => s.page.reload());
+      yield* s.then.conversation.showsMessage(ANSWER);
+    });
+    return { s, ada, publish, publishLive, workOn, answer, measured, reload };
   });
 
 /** Starts the sampler, lets `act` happen, and reads every frame until the page has stood still. */

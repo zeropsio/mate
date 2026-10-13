@@ -88,12 +88,12 @@ describe("C: a page the Mate publishes", () => {
         "a page published during a live run is still open 3 s after its run settles and folds",
         () =>
           Effect.gen(function* () {
-            const { s, engine, publishLive, answer } = yield* journey(180);
-            const pageId = yield* Effect.sync(publishLive);
+            const { s, measured, publishLive, answer } = yield* journey(180);
+            yield* Effect.sync(publishLive);
             yield* Effect.promise(() =>
               s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
             );
-            yield* Effect.promise(() => engine.waitForPageHeight(pageId));
+            yield* measured;
             yield* Effect.sync(answer);
             yield* settled(s);
             // The title promises a three-second observation after the run folded, not a blind
@@ -147,8 +147,9 @@ describe("C: a page the Mate publishes", () => {
         "a page published during a live run loads once as it lands and its run settles",
         () =>
           Effect.gen(function* () {
-            const { s, engine, publishLive, workOn, answer } = yield* journey(180, {
+            const { s, measured, publishLive, workOn, answer } = yield* journey(180, {
               earlierPage: true,
+              workOn: true,
             });
             yield* countLoads(s);
             // The conversation stands placed before the page lands: its rows in the document in
@@ -164,12 +165,12 @@ describe("C: a page the Mate publishes", () => {
                 { polling: 100, timeout: 10_000 },
               ),
             );
-            const pageId = yield* Effect.sync(publishLive);
+            yield* Effect.sync(publishLive);
             yield* Effect.promise(() =>
               s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
             );
             yield* loaded(s, 1);
-            yield* Effect.promise(() => engine.waitForPageHeight(pageId));
+            yield* measured;
             const beforeWork = yield* Effect.promise(() =>
               s.page.evaluate(() =>
                 [...document.querySelectorAll("[data-run-now]")]
@@ -202,15 +203,15 @@ describe("C: a page the Mate publishes", () => {
       );
       it.effect("a page whose frame the conversation moves loads again and stays open", () =>
         Effect.gen(function* () {
-          const { s, engine, publishLive, answer } = yield* journey(180);
+          const { s, measured, publishLive, answer } = yield* journey(180);
           yield* countLoads(s);
-          const pageId = yield* Effect.sync(publishLive);
+          yield* Effect.sync(publishLive);
           yield* Effect.sync(answer);
           yield* Effect.promise(() =>
             s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
           );
           yield* loaded(s, 1);
-          yield* Effect.promise(() => engine.waitForPageHeight(pageId));
+          yield* measured;
           yield* settled(s);
           // A list moving a row (React reordering keyed rows, the list recycling one) takes the
           // frame out of the document and puts it back: the browser loads its document again.
@@ -412,21 +413,13 @@ describe("C: a page the Mate publishes", () => {
         "a page measured once paints at its height on every later view: nothing moves after its first paint on a reload",
         () =>
           Effect.gen(function* () {
-            const { s, chat, engine, publishLive, answer } = yield* journey(600);
-            let pageId = "";
+            const { s, measured, publish, reload } = yield* journey(600);
             yield* sampled(
               s,
-              Effect.sync(() => {
-                pageId = publishLive();
-                answer();
-              }),
+              Effect.sync(() => publish()),
             );
-            yield* Effect.promise(() => engine.waitForPageHeight(pageId));
-            expect(
-              engine.pageHeights.map(([, , height]) => height),
-              "ASSERTION: the view recorded it",
-            ).toEqual([600]);
-            const reloaded = yield* sampled(s, chat.when.reload("Ada", ANSWER), true);
+            expect(yield* measured, "ASSERTION: the view recorded it").toEqual([600]);
+            const reloaded = yield* sampled(s, reload, true);
             expect(
               [...new Set(reloaded.map((sample) => sample.frame))],
               "ASSERTION: the frame stands at the page's height from its first paint",

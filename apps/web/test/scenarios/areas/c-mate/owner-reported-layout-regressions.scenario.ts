@@ -20,7 +20,7 @@ import { installArea, reportContainer } from "./fake.ts";
 import type { EngineChatWire } from "./engine.ts";
 import { TARGET_QUESTION } from "./wire.ts";
 import { menuScenario } from "../b-menu/dsl.ts";
-import { ANSWER, journey, sampled } from "./pageJourney.ts";
+import { journey, sampled } from "./pageJourney.ts";
 import { reportConversation } from "../b-menu/fake.ts";
 
 // Use the actual resize control so every witness has the owner's menu width.
@@ -4208,20 +4208,13 @@ describe("owner-reported layout regressions", () => {
           "a conversation ending in a full-height page, reloaded, is at its end from its first visible frame",
           () =>
             Effect.gen(function* () {
-              const { s, chat, engine, publishLive, answer } = yield* journey(369, {
-                earlierPage: true,
-                install: installArea,
-              });
-              let pageItemId = "";
+              const { s, measured, publish, reload } = yield* journey(369, { earlierPage: true });
               yield* sampled(
                 s,
-                Effect.sync(() => {
-                  pageItemId = publishLive();
-                  answer();
-                }),
+                Effect.sync(() => publish()),
               );
               // An earlier page may stay outside the viewport; only this page must be recorded.
-              yield* Effect.promise(() => engine.waitForPageHeight(pageItemId));
+              yield* measured;
               // Every frame from the reload: how far the view stands from its end, and whether its
               // rows are placed yet.
               yield* Effect.promise(() =>
@@ -4243,7 +4236,7 @@ describe("owner-reported layout regressions", () => {
                   requestAnimationFrame(tick);
                 }),
               );
-              yield* chat.when.reload("Ada", ANSWER);
+              yield* reload;
               yield* Effect.promise(() => waitForStillFrames(s.page));
               const frames = yield* Effect.promise(() =>
                 s.page.evaluate(
