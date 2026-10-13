@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Redacted from "effect/Redacted";
 import * as SqlClient from "effect/sql/SqlClient";
-import { preExpandCore } from "../test/harness/preExpandCore.ts";
+import { writerFloorCore } from "../test/harness/writerFloorCore.ts";
 import { tempDir } from "../test/harness/tempDir.ts";
 import { startCore, untilHealth, sessionFor } from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
@@ -322,7 +322,7 @@ describe("environment identity expansion", () => {
         "A legacy-only write made by old Core shows under its environment identity after new Core takes leadership.",
         () =>
           Effect.gen(function* () {
-            const oldModule = yield* preExpandCore;
+            const oldModule = yield* writerFloorCore;
             const url = yield* (yield* TempPostgres).createDatabase;
             const gitRoot = yield* tempDir("hq-identity-backout-");
             const initial = yield* startCore(true, { url, gitRoot });
@@ -383,7 +383,7 @@ describe("environment identity expansion", () => {
               [],
             );
             assert.deepStrictEqual(yield* old.sql`SELECT id, project_id FROM hq_environment`, [
-              { id: null, project_id: "P_MATE" },
+              { id: "P_MATE", project_id: "P_MATE" },
             ]);
             assert.deepStrictEqual(
               yield* old.sql`SELECT environment_id, project_id FROM hq_deploy_job`,
@@ -399,7 +399,9 @@ describe("environment identity expansion", () => {
             );
             const next = yield* startCore(true, { url, gitRoot });
             yield* untilHealth(next.call, "standby");
-            assert.deepStrictEqual(yield* next.sql`SELECT id FROM hq_environment`, [{ id: null }]);
+            assert.deepStrictEqual(yield* next.sql`SELECT id FROM hq_environment`, [
+              { id: "P_MATE" },
+            ]);
             yield* old.stop;
             yield* untilHealth(next.call, "active");
             const session = yield* sessionFor(next.call, "door-owner-2");
@@ -483,7 +485,7 @@ describe("environment identity expansion", () => {
         "Old and new Core share leadership and ordinary code rollback keeps environment reads and writes working.",
         () =>
           Effect.gen(function* () {
-            const oldModule = yield* preExpandCore;
+            const oldModule = yield* writerFloorCore;
             const url = yield* (yield* TempPostgres).createDatabase;
             const gitRoot = yield* tempDir("hq-identity-shared-");
             const initial = yield* startCore(true, { url, gitRoot });
@@ -517,7 +519,7 @@ describe("environment identity expansion", () => {
               yield* old.sql`SELECT id, project_id, target, name, sources, created_by, created_at FROM hq_environment ORDER BY id`;
             assert.deepStrictEqual(
               saved.map(({ id, project_id, target }) => ({ id, project_id, target })),
-              [{ id: null, project_id: "P_MATE", target: "zerops" }],
+              [{ id: "P_MATE", project_id: "P_MATE", target: "zerops" }],
             );
             const gitTakeover = yield* next.gitHost.nextAttempt.pipe(
               Effect.timeout("5 seconds"),
@@ -605,7 +607,7 @@ describe("environment identity expansion", () => {
               oldView.map(({ projectId, name }) => ({ projectId, name })),
               [{ projectId: "P_MATE", name: "production" }],
             );
-            assert.notProperty(oldView[0], "id");
+            assert.strictEqual(oldView[0]!.id, "P_MATE");
             yield* oldStandby.stop;
             yield* next.stop;
             const rollback = yield* oldModule.startCore(true, { url, gitRoot });
@@ -641,7 +643,7 @@ describe("environment identity expansion", () => {
                 ...jobs,
                 {
                   project_id: "P_MATE",
-                  environment_id: null,
+                  environment_id: "P_MATE",
                   sha: actualSha,
                   state: "refused",
                 },
