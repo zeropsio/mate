@@ -7,6 +7,8 @@ import {
   ConversationId,
   MATE_ENGINE_PROTOCOLS,
   type EngineConversationFrame,
+  type Request,
+  type RunRecord,
   AssetCreateUrlInput,
   AssetCreateUrlResult,
   WS_METHODS,
@@ -844,6 +846,81 @@ describe("C: opening a Mate and chat", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
+
+    // Approval crosses the real browser, Mate engine and provider callback.
+    const respondToCommand = (decision: "accept" | "decline") =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        const { server, provider, gate } = s.drivers.realMates.get("Ada")!;
+        const conversationId = ConversationId.make(route(s).split("/").at(-1)!);
+        const changes = yield* Queue.unbounded<EngineConversationFrame>();
+        yield* server.engine.wire
+          .subscribe(
+            { protocol: MATE_ENGINE_PROTOCOLS[0]!, conversationId },
+            { subject: "scenario-person", environmentId: "scenario", epoch: 1 },
+          )
+          .pipe(
+            Stream.runForEach((frame) => Queue.offer(changes, frame)),
+            Effect.forkScoped,
+          );
+        while ((yield* Queue.take(changes)).type !== "synchronized") {}
+        const result = decision === "accept" ? "Build completed" : "Command declined";
+        yield* provider.turn([
+          { kind: "approval", detail: "vp run build" },
+          ...(decision === "accept"
+            ? [{ kind: "tool" as const, title: "vp run build", detail: "Build exited with code 0" }]
+            : []),
+          { kind: "say", text: result },
+        ]);
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* mateChat(s).when.send("Build the project");
+        expect((yield* provider.received).input.input).toBe("Build the project");
+        let request: Request | undefined;
+        while (!request) {
+          const frame = yield* Queue.take(changes);
+          if (frame.type === "changes")
+            request = frame.requests.find((request) => request.state === "open");
+        }
+        expect(request.ask).toMatchObject({ kind: "approval", detail: "vp run build" });
+        yield* chat.then.text("wants to run this command");
+        expect(
+          yield* Effect.promise(() =>
+            s.page.$eval('[aria-label="Command"]', (element) => element.textContent),
+          ),
+          "ASSERTION: the browser shows the exact command awaiting the person's decision",
+        ).toBe("vp run build");
+        expect(provider.answers).toEqual([]);
+        yield* chat.then.noText(result);
+        const receipt = gate.answered((tag) => tag === "engine.answer");
+        yield* chat.when.press(decision === "accept" ? "Approve" : "Decline");
+        expect(yield* Effect.promise(() => receipt)).toMatchObject({
+          exit: { _tag: "Success", value: { _tag: "Accepted" } },
+        });
+        let answered: Request | undefined;
+        let completed: RunRecord | undefined;
+        while (!answered || !completed) {
+          const frame = yield* Queue.take(changes);
+          if (frame.type !== "changes") continue;
+          answered ??= frame.requests.find(
+            (item) => item.id === request.id && item.state === "answered",
+          );
+          completed ??= frame.runs.find((run) => run.id === request.runId && run.state === "ended");
+        }
+        expect(answered.answer?.summary).toBe(decision === "accept" ? "Approved" : "Declined");
+        expect(provider.answers.map(({ answer }) => answer)).toEqual([decision]);
+        expect(completed.end).toEqual({ kind: "completed" });
+        expect(completed.summary.calls).toEqual(decision === "accept" ? { command: 1 } : {});
+        yield* chat.then.text(result);
+        yield* chat.then.noButton("Approve");
+        yield* chat.then.noButton("Decline");
+        yield* chat.then.control("Stop generation", "button", false);
+        yield* s.then.noExternalNetwork;
+      });
+
+    it.effect("approve an agent command and see it resolve", () => respondToCommand("accept"));
+    it.effect("decline an agent command and see it resolve", () => respondToCommand("decline"));
 
     it.effect("a free answer carries only the picture attached to that question", () =>
       Effect.gen(function* () {

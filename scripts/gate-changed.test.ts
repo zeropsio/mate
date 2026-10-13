@@ -1171,6 +1171,7 @@ const smokeTitles = [
   "cold direct conversation URL opens the named Mate and its history",
   "reload restores history",
   "sending a message puts it in the durable visible conversation",
+  "approve an agent command and see it resolve",
   "a secret the person gives never reaches the Mate's records or its agent",
   "a published page that navigates itself by script sends nothing and is never shown",
 ];
@@ -1207,12 +1208,12 @@ it("L2 runs invariants, touched typechecks, owned units, edited scenarios and fi
     expect(smoke).toContain("chat.scenario.ts");
     expect(smoke).toContain("engine-secret.scenario.ts");
     expect(smoke).toContain("engine-page.scenario.ts");
+    expect(smoke, "ASSERTION: fixed approval smoke clicks the person's browser control").toContain(
+      "(?:approve an agent command and see it resolve)$",
+    );
     expect(smoke).toContain(smokeTitles.map((title) => `(?:${title})$`).join("|"));
     expect(smoke).not.toContain("first open crosses the door and OAuth");
-    const oracle = lines.find((line) => line.startsWith("state-only oracle smoke:"));
-    expect(oracle).toBe(
-      "state-only oracle smoke: vp test run --project engine-oracle test/engine-oracle/chat.oracle.test.ts --testNamePattern (?:approve an agent command and see it resolve)$",
-    );
+    expect(lines.some((line) => line.startsWith("state-only oracle smoke:"))).toBe(false);
     const edited = lines.find((line) => line.startsWith("edited scenario files:"));
     expect(edited).toBe(
       "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/d-change/review.scenario.ts",
