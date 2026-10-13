@@ -25,18 +25,35 @@ env:
   PNPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "30000"
 
 jobs:
-  ci:
-    if: github.event_name == 'push'
-    # The called CI workflow reads action runs and PR changes.
+  verify:
+    name: Verify prior CI verdict
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
     permissions:
       contents: read
-      # The called main-only cache writer declares write; it is skipped for tags.
-      actions: write
-      pull-requests: read
-    uses: ./.github/workflows/ci.yml
+      actions: read
+    steps:
+      - name: Check exact-SHA CI verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&status=success&per_page=100" --paginate --jq '
+            .workflow_runs[]
+            | select(.head_sha == env.GITHUB_SHA)
+            | select(.path == ".github/workflows/ci.yml")
+            | select(.head_branch == "main" or .head_branch == "kh-next")
+            | select(.status == "completed" and .conclusion == "success")
+            | .id')
+          if [[ -z "$verified" ]]; then
+            echo "No completed successful CI run on main/kh-next for ${GITHUB_SHA}; run CI on this commit first." >&2
+            exit 1
+          fi
+          echo "CI verified ${GITHUB_SHA} (run IDs: ${verified//$'\n'/, })."
 
   build:
     name: Build and verify bundle
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -95,7 +112,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
-        # Tags call CI above; a manual rehearsal has no other policy verifier.
+        # Tags reuse the verified SHA's policy check; rehearsals also verify locally.
         env:
           PNPM_CONFIG_TRUST_LOCKFILE: ${{ github.event_name == 'push' }}
         run: vp install --frozen-lockfile
@@ -277,7 +294,7 @@ jobs:
   release:
     name: Publish GitHub release
     if: github.event_name == 'push'
-    needs: [build, ci]
+    needs: [build, verify]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

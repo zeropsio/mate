@@ -2,7 +2,6 @@ name: CI
 run-name: CI · ${{ github.ref_name }}
 
 on:
-  workflow_call:
   pull_request:
   push:
     branches:
