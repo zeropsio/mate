@@ -537,23 +537,33 @@ describe("an engine Mate's run card, from the engine's record", () => {
     expect(said).not.toContain(description);
   });
 
-  // Milo's third stress run: the steer stood above the card and again inside it, live; a reload
-  // drew it once. Engine #158 steers a waiting message into a turn Claude opened on its own: that
-  // turn is the message's run, on the card it goes on in.
+  // The owner, 2026-10-13: a message sent into the work stands above its card, and the working card
+  // marks where it came in, as V1's did. A reload holds none of a closed card's lines, so its mark
+  // shows only where the card's lines are read. Engine #158 steers a waiting message into a turn
+  // Claude opened on its own: that turn is the message's run, on the card it goes on in.
   const steer = "also tell me the page title";
+  // A turn Claude opened on its own after the card's run ended starts with the message: it leads that
+  // turn above the card, and came into no work the card's lines were showing.
   it.each([
-    { into: "the running run", held: "every item", own: false, paged: false },
-    { into: "the running run", held: "what a reload reads", own: false, paged: true },
-    { into: "a turn Claude opened on its own", held: "every item", own: true, paged: false },
+    { into: "the running run", held: "every item", own: false, paged: false, marked: 1 },
+    { into: "the running run", held: "what a reload reads", own: false, paged: true, marked: 0 },
+    {
+      into: "a turn Claude opened on its own",
+      held: "every item",
+      own: true,
+      paged: false,
+      marked: 0,
+    },
     {
       into: "a turn Claude opened on its own",
       held: "what a reload reads",
       own: true,
       paged: true,
+      marked: 0,
     },
   ])(
-    "a message steered into $into is drawn once, above its card, holding $held",
-    ({ own, paged }) => {
+    "a message steered into $into stands once above its card, its card's lines marking it where it came into its work, holding $held",
+    ({ own, paged, marked }) => {
       const into = own ? run2 : run1;
       const runs = [
         stressRun(),
@@ -589,10 +599,71 @@ describe("an engine Mate's run card, from the engine's record", () => {
         (row) =>
           row.kind === "message" && row.message.role === "user" && row.message.text === steer,
       );
-      const marked = rows.flatMap((row) =>
+      const markedLines = rows.flatMap((row) =>
         row.kind === "record" ? row.items.filter((item) => item.kind === "person") : [],
       );
-      expect({ drawn: drawn.length, marked: marked.length }).toEqual({ drawn: 1, marked: 0 });
+      expect({ drawn: drawn.length, marked: markedLines.length }).toEqual({ drawn: 1, marked });
+    },
+  );
+
+  // The owner, 2026-10-13: whatever the agent and whatever the message, what the person sends while
+  // the Mate works stands above the working card and is a line of it; on a driver that cannot take
+  // it mid-turn it waits as the next run, which goes on in that card, never a card of its own under it.
+  const waits = "use pnpm instead";
+  it.each([
+    { when: "while the run works", first: "running", second: "queued" },
+    { when: "once the run it waited behind ended", first: "ended", second: "running" },
+  ] as const)(
+    "a message the agent takes after its turn stands above the working card, marked in its lines, $when",
+    ({ first, second }) => {
+      const runs = [
+        first === "running"
+          ? stressRun({ state: "running", end: null, endedAt: null } as never)
+          : stressRun(),
+        engineRun(key.conversationId, 2, {
+          trigger: { kind: "person", itemId: `${run2}/i/1` },
+          queuedAt: t0 + 40_000,
+          ...(second === "queued"
+            ? { state: "queued", admittedAt: null, startedAt: null, end: null, endedAt: null }
+            : {
+                state: "running",
+                admittedAt: t0 + 77_900,
+                startedAt: t0 + 78_000,
+                end: null,
+                endedAt: null,
+              }),
+        } as never),
+      ];
+      const rows = render({
+        runs,
+        items: [
+          personItem(run1, 1, "Run the stress checks", { at: t0 }),
+          bash(2, 39_000, "node --version", "Check the node version"),
+          personItem(run2, 1, waits, {
+            at: t0 + 40_000,
+            delivery:
+              second === "queued"
+                ? { state: "queued", at: t0 + 40_000 }
+                : { state: "delivered", at: t0 + 78_000 },
+          }),
+        ],
+        isWorking: true,
+      });
+      const cards = rows.filter((row) => row.kind === "record");
+      const message = rows.findIndex(
+        (row) =>
+          row.kind === "message" && row.message.role === "user" && row.message.text === waits,
+      );
+      expect({
+        cards: cards.length,
+        live: cards[0]?.kind === "record" && cards[0].live,
+        above: message !== -1 && message < rows.indexOf(cards[0]!),
+        marked: cards.flatMap((card) =>
+          card.kind === "record"
+            ? card.items.filter((item) => item.kind === "person").map((item) => item.message?.text)
+            : [],
+        ),
+      }).toEqual({ cards: 1, live: true, above: true, marked: [waits] });
     },
   );
 });

@@ -315,11 +315,16 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
 
   // Catches a Stop sent to the card a continuing run draws on: the engine refuses an ended run, and
   // the run that works goes on (a usage-limit resume, an agent's own turn, a restart's continuation).
-  const SESSION = (steer: boolean, active = true) => ({
+  const SESSION = (steer: boolean, active = true, steerAttachments?: boolean) => ({
     activeRunId: active ? RunId.make("thread-ada/r/2") : null,
     latestRunId: RunId.make(active ? "thread-ada/r/2" : "thread-ada/r/1"),
     runStatus: active ? ("running" as const) : ("ready" as const),
-    session: { driver: "claudeAgent", model: "claude-sonnet-4-5", steer },
+    session: {
+      driver: "claudeAgent",
+      model: "claude-sonnet-4-5",
+      steer,
+      ...(steerAttachments === undefined ? {} : { steerAttachments }),
+    },
   });
   const working = (state: "running" | "waiting" | "admitted") =>
     engineRun("thread-ada", 2, { state, end: null, endedAt: null } as never);
@@ -490,8 +495,19 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     // The header carries current eligibility, not merely the session's capability.
     { name: "the run is not started yet", runs: [working("admitted")], steer: false, carries: [] },
     { name: "its session cannot steer", runs: [working("running")], steer: false, carries: [] },
-    { name: "it carries pictures", runs: [working("running")], steer: true, carries: [picture] },
-    { name: "it carries a file", runs: [working("running")], steer: true, carries: [file] },
+    // An engine from before steers carried them: the picture never drops from a words-only steer.
+    {
+      name: "its steer takes words only and it carries pictures",
+      runs: [working("running")],
+      steer: true,
+      carries: [picture],
+    },
+    {
+      name: "its steer takes words only and it carries a file",
+      runs: [working("running")],
+      steer: true,
+      carries: [file],
+    },
   ])(
     "a message sent when $name goes as the conversation's next run",
     ({ runs, steer, active, carries }) =>
@@ -500,6 +516,29 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         r.runs(runs, SESSION(steer, active));
         yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries))));
         expect(r.calls.map((call) => call.kind)).toEqual(["send"]);
+      }),
+  );
+
+  // The owner, 2026-10-13: a picture sent while the Mate worked stood under its card as a run of
+  // its own; it goes into the work, as words do.
+  it.effect.each([
+    { what: "pictures", carries: [picture] },
+    { what: "a file", carries: [file] },
+  ])(
+    "a message with $what sent while the run works steers that run where its steer carries them",
+    ({ carries }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.runs([engineRun("thread-ada", 1), working("running")], SESSION(true, true, true));
+        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries))));
+        expect(r.calls).toEqual([
+          expect.objectContaining({
+            kind: "steer",
+            runId: "thread-ada/r/2",
+            commandId: "message-7",
+            attachments: carries,
+          }),
+        ]);
       }),
   );
 

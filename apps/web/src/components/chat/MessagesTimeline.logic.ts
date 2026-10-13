@@ -2882,10 +2882,17 @@ export function deriveMessagesTimelineRows(input: {
           },
         });
       }
-      // A message sent into the run is drawn once: its own row above the card, never a mark in
-      // its chat as well (Milo's third stress run drew a steer twice; a reload drew it once).
-      if (index > 0 && stretch.lead !== null && stretch.leadIndex !== null)
-        exchanges.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
+      if (index > 0 && stretch.lead !== null && stretch.leadIndex !== null) {
+        const person = personRow(stretch.lead, stretch.leadIndex, stretch.aside);
+        exchanges.push(person);
+        items.push({
+          kind: "person",
+          key: `person:${stretch.lead.id}`,
+          at: stretch.lead.createdAt,
+          message: stretch.lead.message,
+          imageOnly: person.kind === "message" && person.imageOnly,
+        });
+      }
       const recordInput = {
         stretch,
         answer: turn.answer,

@@ -1446,10 +1446,16 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
   if (run === undefined) throw new Rejected("unknown-run");
   if (run.state !== "running" && run.state !== "waiting") throw new Rejected("run-not-running");
   const session = b.state.session;
-  if (session === null || session.id !== run.sessionId || !session.capabilities.steer) {
+  const attachments = command.attachments ?? [];
+  if (
+    session === null ||
+    session.id !== run.sessionId ||
+    !session.capabilities.steer ||
+    (attachments.length > 0 && session.capabilities.steerAttachments !== true)
+  ) {
     throw new Rejected("steer-unsupported");
   }
-  steerInto(b, run, session.id, command.text, [], toldWith(command.text, command.context));
+  steerInto(b, run, session.id, command.text, attachments, toldWith(command.text, command.context));
 };
 
 /**

@@ -162,11 +162,12 @@ export const engineStartTurn =
           ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
           commandId,
         });
-      // Into the run that works, as V1 sends a message into its running turn; files, pictures and a
-      // plan go as the next run, since a steer carries words only (the run keeps the mode it began in).
+      // Into the run that works, as V1 sends a message into its running turn, its pictures and files
+      // with it where the session's steer carries them; else, and for a plan, as the next run (the
+      // run keeps the mode it began in).
       const steered =
-        attachments.length === 0 && input.interactionMode !== "plan"
-          ? engineSteerTarget(readsOfState(host.store.state()), target)
+        input.interactionMode !== "plan"
+          ? engineSteerTarget(readsOfState(host.store.state()), target, attachments.length > 0)
           : null;
       if (steered === null) return yield* send(input.message.messageId);
       return yield* host.operations
@@ -175,6 +176,7 @@ export const engineStartTurn =
           runId: steered,
           text: input.message.text,
           ...context,
+          ...(attachments.length === 0 ? {} : { attachments }),
           commandId: input.message.messageId,
         })
         .pipe(

@@ -212,6 +212,8 @@ export type Command =
       readonly text: string;
       /** What the agent hears with `text` that the person did not type (`toldWith`). */
       readonly context?: ReadonlyArray<string>;
+      /** As `Send`'s: only where the session's steer takes them (`steerAttachments`). */
+      readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
     }
   /** The next model and, when given, its options: they apply from the next run on. */
   | {

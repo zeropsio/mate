@@ -15,6 +15,7 @@ import {
   PAGE_MAX_HEIGHT,
   PAGE_WIDTH_MAX,
   PAGE_WIDTH_MIN,
+  queuedBehind,
   ItemId,
   Request,
   RunRecord,
@@ -353,7 +354,9 @@ export const makeRecords = Effect.gen(function* () {
 
   /**
    * Run groups, the newest first: a run that joins none roots a group (a person's message, a
-   * wake of its own), and every run that joins into it belongs to it.
+   * wake of its own), and every run that joins into it belongs to it. A person's message queued
+   * while a run worked belongs to that run's group (`queuedBehind`), as the client draws it on that
+   * run's card: a reload's window holds the card whole.
    */
   const groups = (conversation: ConversationId) =>
     Effect.gen(function* () {
@@ -361,15 +364,37 @@ export const makeRecords = Effect.gen(function* () {
         readonly run_id: string;
         readonly ordinal: number;
         readonly joins: string | null;
+        readonly trigger_json: string;
+        readonly queued_at: number;
+        readonly started_at: number | null;
+        readonly ended_at: number | null;
       }>`
-        SELECT run_id, ordinal, joins FROM engine_run WHERE conversation_id = ${conversation}
+        SELECT run_id, ordinal, joins, trigger_json, queued_at, started_at, ended_at
+        FROM engine_run WHERE conversation_id = ${conversation}
         ORDER BY ordinal
       `;
+      const timed = rows.map((row) => ({
+        id: row.run_id,
+        ordinal: row.ordinal,
+        queuedAt: row.queued_at,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+      }));
+      const parent = new Map<string, string>();
+      rows.forEach((row, index) => {
+        if (row.joins !== null) parent.set(row.run_id, row.joins);
+        else if ((parse(row.trigger_json) as { readonly kind?: string }).kind === "person") {
+          const behind = queuedBehind(timed, timed[index]!);
+          if (behind !== undefined) parent.set(row.run_id, behind.id);
+        }
+      });
       const byId = new Map(rows.map((row) => [row.run_id, row]));
       const rootOf = (id: string): { readonly run_id: string; readonly ordinal: number } => {
         let row = byId.get(id)!;
-        for (let hops = 0; row.joins !== null && byId.has(row.joins) && hops < 1_000; hops++) {
-          row = byId.get(row.joins)!;
+        for (let hops = 0; parent.has(row.run_id) && hops < 1_000; hops++) {
+          const next = byId.get(parent.get(row.run_id)!);
+          if (next === undefined) break;
+          row = next;
         }
         return row;
       };

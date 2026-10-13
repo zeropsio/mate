@@ -145,7 +145,17 @@ const learnRuns = (world: OracleWorld, model: Model) =>
     for (const run of runs) {
       if (model.cardOfRun.has(run.id)) continue;
       if (run.trigger.kind === "person") {
-        model.cardOfRun.set(run.id, run.id);
+        // A message sent while a run worked is part of that work: its run goes on on that card. The
+        // tree reads each run as it opens: one queued behind a live run waited behind that run.
+        const at = runs.indexOf(run);
+        const behind =
+          run.joins === null && run.state === "queued"
+            ? runs.slice(0, at).findLast((earlier) => LIVE_RUN.has(earlier.state))
+            : undefined;
+        model.cardOfRun.set(
+          run.id,
+          behind === undefined ? run.id : (model.cardOfRun.get(behind.id) ?? behind.id),
+        );
       } else if (run.trigger.kind === "wake" && run.trigger.cause === "self" && model.wakeOf) {
         // The wake hands the Mate what ended: it goes on on that work's card, or under the words
         // the Mate said there, on a card of its own.

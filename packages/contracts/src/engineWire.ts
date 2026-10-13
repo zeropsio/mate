@@ -133,6 +133,8 @@ export const ConversationHeader = Schema.Struct({
       driver: Schema.String,
       model: Schema.NullOr(Schema.String),
       steer: Schema.Boolean,
+      /** The steer carries pictures and files too. Absent (an older engine): words only. */
+      steerAttachments: Schema.optionalKey(Schema.Boolean),
     }),
   ),
   /** A usage limit holds the queue until then (`unknown`: until a probe or the person). */
@@ -486,6 +488,10 @@ export const EngineSteerInput = Schema.Struct({
   runId: RunId,
   text: Schema.String,
   context: Schema.optionalKey(EngineSendContextField),
+  /** Only while the session's steer takes them (`steerAttachments`). */
+  attachments: Schema.optionalKey(
+    Schema.Array(Schema.Union([ChatImageAttachment, ChatFileAttachment])),
+  ),
 });
 export type EngineSteerInput = typeof EngineSteerInput.Type;
 
