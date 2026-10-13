@@ -10,9 +10,13 @@ import {
   personItem,
   noteItem,
   workItem,
+  thoughtItem,
   type EngineRecords,
 } from "@t3tools/client-runtime/data/fixtures";
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
+import { Item } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import captureGapMarkers from "./__fixtures__/capture-gap-marker.json";
 import {
   cardAccount,
   CARD_KEY,
@@ -1146,6 +1150,145 @@ describe("RunChat, as the person uses it", () => {
     globalThis.requestAnimationFrame = saved.frame;
     vi.unstubAllGlobals();
   });
+
+  // Recorded on GG, 2026-10-13: the engine's failed capture precedes Claude's first thought.
+  it.each([
+    ["before provider thinking", true, false],
+    ["during streaming", true, true],
+    ["after completion", false, true],
+    ["after reload", false, true],
+  ] as const)(
+    "Decision: a non-call engine warning keeps its warning meaning all the way to the run card — %s",
+    (_stage, live, hasCalls) => {
+      vi.useFakeTimers();
+      const marker = Schema.decodeUnknownSync(Item)(captureGapMarkers[0]);
+      if (marker.kind !== "marker" || marker.marker.kind !== "capture-gap")
+        throw new Error("recorded capture-gap marker required");
+      const key = { environmentId: "gg", conversationId: marker.conversationId };
+      const run = engineRun(marker.conversationId, 6, {
+        startedAt: marker.at - 127,
+        admittedAt: marker.at - 127,
+        queuedAt: marker.at - 127,
+        endedAt: live ? null : marker.at + 24_000,
+        state: live ? "running" : "ended",
+        end: live ? null : { kind: "completed" },
+      });
+      const calls = [
+        callItem(run.id, 4, {
+          at: marker.at + 8_000,
+          seq: 180,
+          input: "pwd",
+          shows: { toolName: "Bash", command: "pwd" },
+        }),
+        callItem(run.id, 7, {
+          at: marker.at + 12_000,
+          seq: 189,
+          input: "ls",
+          shows: { toolName: "Bash", command: "ls" },
+        }),
+        callItem(run.id, 9, {
+          at: marker.at + 18_000,
+          seq: 196,
+          step: "tool",
+          tool: { name: "Read" },
+          input: "README.md",
+          shows: { toolName: "Read", input: { file_path: "README.md" } },
+        }),
+      ];
+      const replay = (warning: boolean) => {
+        const records: EngineRecords = {
+          runs: [run],
+          items: [
+            personItem(run.id, 1, "Inspect the workspace", { at: marker.at - 127, seq: 165 }),
+            ...(warning ? [marker] : []),
+            ...(hasCalls
+              ? [
+                  thoughtItem(run.id, 3, "Inspecting the workspace", {
+                    at: marker.at + 7_000,
+                    seq: 178,
+                    streaming: live,
+                  }),
+                  ...calls,
+                ]
+              : []),
+          ],
+        };
+        const thread = engineThreadOfRecords(key, records)!;
+        const rows = deriveMessagesTimelineRows({
+          runCards: engineRunCardsOfRecords(key, records)!,
+          timelineEntries: deriveTimelineEntries(
+            thread.messages as ReadonlyArray<ChatMessage>,
+            [],
+            deriveWorkLogEntries(thread.activities),
+          ),
+          latestTurn: thread.latestTurn,
+          runningTurnId: live ? thread.latestTurn!.turnId : null,
+          isWorking: live,
+          activeTurnStartedAt: null,
+          turnDiffSummaries: [],
+          supportsConversationRollback: false,
+        });
+        const items = rows.flatMap((row) => (row.kind === "record" ? row.items : []));
+        const view = (
+          <Rows>
+            {rows
+              .filter((row) => row.kind === "record")
+              .map((row) => (
+                <RunChat key={row.id} row={row} />
+              ))}
+          </Rows>
+        );
+        return { items, view };
+      };
+      const successful = replay(false);
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = mounted(successful.view);
+      });
+      expect(renderer.root.findAllByProps({ "data-chat-kind": "warning" })).toHaveLength(0);
+      const warned = replay(true);
+      // The warning can arrive after first paint; reload mounts the same source history anew.
+      if (_stage === "after reload") {
+        act(() => {
+          renderer.unmount();
+          renderer = mounted(warned.view);
+        });
+      } else
+        act(() => {
+          renderer.update(warned.view);
+        });
+      expect(
+        warned.items.filter((item) => item.key.endsWith(marker.id)).map((item) => item.kind),
+      ).toEqual(["warning"]);
+      expect(
+        warned.items
+          .filter((item) => item.kind === "step" || item.kind === "call")
+          .map((item) => item.key.slice(item.key.indexOf(":") + 1)),
+      ).toEqual(hasCalls ? calls.map((call) => call.id) : []);
+      for (const opener of renderer.root.findAll(
+        (node) => node.type === "button" && node.children.includes("Show work"),
+      ))
+        act(() => opener.props.onClick());
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + SLOT_MIN_SHOW_MS + 100));
+      const warning = renderer.root.findByProps({ "data-chat-kind": "warning" });
+      const disclosure = warning.findByType("button");
+      expect(disclosure.props["aria-label"]).toBe(
+        "The workspace was not captured. Show the whole warning",
+      );
+      act(() => disclosure.props.onClick());
+      const visible = warning
+        .findAll((node) => typeof node.type === "string")
+        .flatMap((node) =>
+          node.children.filter((child): child is string => typeof child === "string"),
+        )
+        .join("\n");
+      expect(visible).toContain("The workspace was not captured");
+      expect(visible).toContain(marker.marker.reason!.trim());
+      expect(visible).not.toContain("Used a tool");
+      expect(visible).not.toContain("Returned");
+      vi.useRealTimers();
+    },
+  );
 
   it("shows a partly loaded card's summary and work opener, then opens the first account page once", async () => {
     const read = vi.fn();

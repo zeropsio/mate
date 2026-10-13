@@ -2595,27 +2595,33 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Something that stopped it — what it couldn't do: its words in red on the
- * tray's outline, its mark red beside it, never a pink flood; the whole error
- * under it.
+ * An engine notice keeps its severity, with its real reason available below its words.
  */
-function ErrorBubble({ entry }: { readonly entry: WorkLogEntry }) {
+function NoticeBubble({
+  entry,
+  kind,
+}: {
+  readonly entry: WorkLogEntry;
+  readonly kind: "error" | "warning";
+}) {
   const disclosure = useDisclosure();
   const { label, detail } = entry;
   const more = detail !== undefined && detail.trim() !== label.trim() ? detail.trim() : null;
   const line = (
     <Headline opens={more !== null}>
-      <span className="text-status-failed-text">{label}</span>
+      <span className={kind === "warning" ? "text-warning-foreground" : "text-status-failed-text"}>
+        {label}
+      </span>
     </Headline>
   );
   return (
-    <Bubble kind="error" tone="tool">
+    <Bubble kind={kind} tone="tool">
       {more === null ? (
         <div className={BUBBLE_PAD}>{line}</div>
       ) : (
         <DisclosureButton
           className={BUBBLE_PAD}
-          label={`${label}. ${disclosure.open ? "Hide" : "Show"} the whole error`}
+          label={`${label}. ${disclosure.open ? "Hide" : "Show"} the whole ${kind}`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
         >
@@ -2980,15 +2986,22 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
         across: true,
       };
     case "error":
+    case "warning":
       return {
         key: item.key,
-        bubble: <ErrorBubble entry={item.entry} />,
-        mark: (
-          <OctagonAlertIcon
-            aria-hidden="true"
-            className="size-4 shrink-0 text-status-failed-text"
-          />
-        ),
+        bubble: <NoticeBubble entry={item.entry} kind={item.kind} />,
+        mark:
+          item.kind === "warning" ? (
+            <TriangleAlertIcon
+              aria-hidden="true"
+              className="size-4 shrink-0 text-warning-foreground"
+            />
+          ) : (
+            <OctagonAlertIcon
+              aria-hidden="true"
+              className="size-4 shrink-0 text-status-failed-text"
+            />
+          ),
       };
   }
 }

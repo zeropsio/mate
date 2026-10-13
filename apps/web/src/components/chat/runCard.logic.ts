@@ -831,6 +831,7 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
     case "event":
     case "crew-seam":
     case "error":
+    case "warning":
     case "call":
       return "Working";
   }

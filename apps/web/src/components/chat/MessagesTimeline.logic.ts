@@ -964,9 +964,9 @@ export type RecordItem =
       readonly seam: CrewSeam;
       readonly words: string;
     }
-  /** Something that stopped it: an error it could not work past. */
+  /** An engine notice, retaining whether it warned or stopped the run. */
   | {
-      readonly kind: "error";
+      readonly kind: "error" | "warning";
       readonly key: string;
       readonly at: string;
       readonly entry: WorkLogEntry;
@@ -1987,6 +1987,8 @@ function stretchRecord(input: {
             at: entry.createdAt,
             event: { type: "compaction", label: work.label },
           });
+        } else if (work.sourceActivityKind === "runtime.warning") {
+          push({ kind: "warning", key: `warning:${entry.id}`, at: entry.createdAt, entry: work });
         } else if (isErrorEntry(entry)) {
           // Pauses and the run's terminal failure already stand outside the log.
           if (!isUsageLimitError(entry) && entry.id !== input.brokeOffEntryId) {

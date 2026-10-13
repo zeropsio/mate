@@ -179,7 +179,8 @@ const said = (item: RecordItem): string => {
     case "crew-seam":
       return `seam ${item.words}`;
     case "error":
-      return `error ${item.entry.label}`;
+    case "warning":
+      return `${item.kind} ${item.entry.label}`;
   }
 };
 
