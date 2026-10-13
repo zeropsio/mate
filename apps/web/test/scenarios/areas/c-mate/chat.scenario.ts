@@ -793,16 +793,28 @@ describe("C: opening a Mate and chat", () => {
     // Catches "Send now" starting a run of its own behind the running one (the engine's did) instead of steering it.
     it.effect("Send now puts a waiting message into the running turn", () =>
       Effect.gen(function* () {
-        const { s, chat } = yield* fakeSetup;
+        const { s, chat } = yield* setup;
+        const ui = mateChat(s);
+        const provider = s.drivers.realMates.get("Ada")!.provider;
+        const finish = yield* Deferred.make<void>();
+        yield* Effect.addFinalizer(() => Deferred.succeed(finish, undefined));
         yield* s.given.signedIn;
         yield* chat.when.open();
-        chat.fixture().run("story-run", "running");
+        yield* provider.turn([
+          { kind: "wait", until: finish },
+          { kind: "say", text: "A short story about a lighthouse cat" },
+        ]);
+        yield* ui.when.send("Write a story about a lighthouse cat");
+        const running = yield* provider.received;
+        expect(running.input.input).toBe("Write a story about a lighthouse cat");
         yield* chat.then.control("Stop generation");
-        yield* chat.when.send("Change of plan: keep it under 120 words");
+        yield* ui.when.send("Change of plan: keep it under 120 words");
         yield* chat.when.press("Send now");
         yield* chat.then.once("Change of plan: keep it under 120 words");
-        chat.fixture().reply("story-run", "A short story about a lighthouse cat");
-        chat.fixture().run("story-run", "completed");
+        const steered = yield* provider.received;
+        expect(steered.turnId).toBe(running.turnId);
+        expect(steered.input.input).toBe("Change of plan: keep it under 120 words");
+        yield* Deferred.succeed(finish, undefined);
         yield* chat.then.text("A short story about a lighthouse cat");
         // The message went into that turn: when it ends, nothing else works.
         yield* chat.then.control("Stop generation", "button", false);
