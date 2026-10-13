@@ -1,12 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Optional frame recording uses Node filesystem tools.
 import { describe, expect, it } from "@effect/vitest";
-import {
-  WS_METHODS,
-  AssetCreateUrlInput,
-  AssetCreateUrlResult,
-  RuntimeItemId,
-} from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
+import { RuntimeItemId, RuntimeRequestId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import type { RealMate } from "../../harness/scenario.ts";
@@ -16,14 +10,11 @@ import type {
 } from "../../../../../server/integration/scriptedProviderDriver.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeHttp from "node:http";
 import * as NodeNet from "node:net";
-const decode = Schema.decodeUnknownSync(AssetCreateUrlInput);
-const encode = Schema.encodeSync(AssetCreateUrlResult);
 const picture = ".message-picture-open img";
 
 // Authored OpenCode tool facts; the real SPI and engine derive the call and image records.
@@ -65,9 +56,12 @@ const pastePng = (page: Parameters<typeof mateChat>[0]["page"], encoded: string,
       encoded,
       name,
     );
-    await page.waitForSelector(`button[aria-label$=", ${name}. Opens it to crop or add notes."]`, {
-      timeout: 8000,
-    });
+    await page.waitForSelector(
+      `button[aria-label$=", ${name}. Opens it to crop or add notes."], button[aria-label="Remove ${name} from this answer"]`,
+      {
+        timeout: 8000,
+      },
+    );
   });
 const assetReads = (mate: RealMate) =>
   mate.gate.requests.filter(
@@ -323,13 +317,12 @@ describe("C: conversation images", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
-    // Fake retained: these arrangements replace previously streamed text; canonical provider text is append-only.
     for (const role of ["assistant", "reasoning"] as const) {
       it.effect(
         `a decoded ${role} image survives markdown restructuring and landing while work continues`,
         () =>
           Effect.gen(function* () {
-            const s = yield* createScenario([installArea]);
+            const s = yield* createScenario([], { mate: "real" });
             const bytes = Buffer.from(
               yield* Effect.promise(() =>
                 s.page.evaluate(() => {
@@ -342,65 +335,33 @@ describe("C: conversation images", () => {
               ),
               "base64",
             );
-            let previewReads = 0;
-            s.drivers.onMate.push((mate) => {
-              Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
-              Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
-              mate.rpcHandlers.unshift((request, socket) => {
-                if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
-                const input = decode(request.payload);
-                mate.reply(
-                  socket,
-                  request.id,
-                  encode({
-                    representation: {
-                      digest: "c".repeat(64),
-                      relativeUrl: `/api/assets/objects/${"c".repeat(64)}/${input.preview ? "preview" : "original"}`,
-                      mimeType: "image/png",
-                      sizeBytes: bytes.length,
-                      width: 160,
-                      height: 80,
-                    },
-                    relativeUrl: `/api/assets/objects/${"c".repeat(64)}/${input.preview ? "preview" : "original"}`,
-                    expiresAt: 0,
-                    imageDimensions: { width: 160, height: 80 },
-                  }),
-                );
-                return true;
-              });
-              const handle = mate.handle;
-              mate.handle = (request) => {
-                if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
-                // Focusing the opener deliberately warms its original, independently of streaming.
-                if (request.url.pathname.endsWith("/preview")) previewReads++;
-                return Promise.resolve({ bytes, headers: { "content-type": "image/png" } });
-              };
-            });
             yield* s.given.project("Ada", { mate: true });
+            const mate = s.drivers.realMates.get("Ada")!;
             const chat = mateChat(s);
-            const wire = chat.fixture();
-            wire.history("Watch the assistant picture", "stream");
-            wire.run("stream", "running");
+            const keepWorking = yield* Deferred.make<void>();
+            const imagePath = NodePath.join(mate.server.root, "workspace", "assistant.png");
+            yield* Effect.promise(() => NodeFSP.writeFile(imagePath, bytes));
+            const itemId = RuntimeItemId.make("illustration");
+            const itemType = role === "assistant" ? "assistant_message" : "reasoning";
+            const streamKind = role === "assistant" ? "assistant_text" : "reasoning_text";
+            const text = `![assistant picture](${imagePath})`;
+            yield* mate.provider.turn([
+              nativeStep({ type: "item.started", itemId, payload: { itemType } }),
+              nativeStep({ type: "content.delta", itemId, payload: { streamKind, delta: text } }),
+              { kind: "wait", until: keepWorking },
+            ]);
             yield* s.given.signedIn;
-            yield* chat.when.open("Ada", "Watch the assistant picture");
-            let text = "![assistant picture](/tmp/assistant.png)\n\n[Docs](#docs)";
-            // The agent writes its words, or thinks them, as one item it keeps rewriting.
-            let illustration: string | undefined;
-            const write = (streaming: boolean) => {
-              if (illustration === undefined)
-                illustration =
-                  role === "assistant"
-                    ? wire.say(text, "stream", streaming)
-                    : wire.thought(text, "stream", streaming);
-              else
-                wire.engine.update(
-                  illustration,
-                  role === "assistant"
-                    ? { text, streaming }
-                    : { preview: text, length: text.length, streaming },
-                );
-            };
-            write(true);
+            yield* s.when.menu.opensMate("Ada");
+            yield* s.then.conversation.appears;
+            yield* chat.when.type("Watch the assistant picture");
+            yield* chat.when.press("Send message");
+            const native = yield* mate.provider.received;
+            const append = (delta: string) =>
+              mate.provider.event(native.threadId, {
+                type: "content.delta",
+                itemId,
+                payload: { streamKind, delta },
+              });
             yield* Effect.promise(() =>
               s.page.waitForFunction(() => {
                 const image = document.querySelector<HTMLImageElement>(
@@ -452,7 +413,22 @@ describe("C: conversation images", () => {
                 };
               }),
             );
-            const initialReads = previewReads;
+            const initialReads = assetReads(mate).filter((request) =>
+              request.includes("/preview "),
+            ).length;
+            // Setext changes the image paragraph into a heading using only a streamed suffix.
+            yield* append("\n---");
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(() =>
+                Boolean(
+                  document.querySelector(
+                    ".run-slot h4 img[data-image-src], .run-slot h2 img[data-image-src]",
+                  ),
+                ),
+              ),
+            );
+            yield* append("\n\n[Docs](#docs)\n\nMore assistant words after the picture");
+            yield* chat.then.text("More assistant words after the picture");
             for (const [index, focus] of (role === "assistant"
               ? ["button", "a[href='#docs']"]
               : []
@@ -465,8 +441,7 @@ describe("C: conversation images", () => {
                 }, focus),
               );
               for (let delta = 0; delta < 4; delta++) {
-                text += `\n\nMore assistant words ${index}-${delta}`;
-                write(true);
+                yield* append(`\n\nMore assistant words ${index}-${delta}`);
                 yield* chat.then.text(`More assistant words ${index}-${delta}`);
                 expect(
                   yield* Effect.promise(() =>
@@ -475,28 +450,23 @@ describe("C: conversation images", () => {
                 ).toBe(true);
               }
             }
-            text = text.replace(
-              "![assistant picture](/tmp/assistant.png)",
-              "![assistant picture](/tmp/assistant.png)\n---",
+            yield* mate.provider.event(native.threadId, {
+              type: "item.completed",
+              itemId,
+              payload: { itemType },
+            });
+            yield* mate.provider.event(
+              native.threadId,
+              nativeCall("item.started", "later", "command_execution", {
+                command: "printf later-0",
+              }),
             );
-            write(true);
-            yield* Effect.promise(() =>
-              s.page.waitForFunction(() =>
-                Boolean(
-                  document.querySelector(
-                    ".run-slot h4 img[data-image-src], .run-slot h2 img[data-image-src]",
-                  ),
-                ),
-              ),
-            );
-            write(false);
-            wire.call("later", "running", { kind: "execute", command: "printf later-0" }, "stream");
             for (let update = 0; update < 24; update++) {
-              wire.call(
-                "later",
-                "running",
-                { kind: "execute", command: `printf later-${update}` },
-                "stream",
+              yield* mate.provider.event(
+                native.threadId,
+                nativeCall("item.updated", "later", "command_execution", {
+                  command: `printf later-${update}`,
+                }),
               );
               yield* chat.then.text(`printf later-${update}`);
             }
@@ -518,15 +488,16 @@ describe("C: conversation images", () => {
                 ),
               ),
             ).toEqual({ sameSrc: true, failures: [] });
-            expect(previewReads).toBe(initialReads);
+            expect(assetReads(mate).filter((request) => request.includes("/preview ")).length).toBe(
+              initialReads,
+            );
             yield* s.then.noExternalNetwork;
           }),
       );
     }
-    // Fake retained: real steering accepts words only; pictures wait for a subsequent run (engineCommands.ts).
     it.effect("a steering picture lands intact while the turn continues", () =>
       Effect.gen(function* () {
-        const s = yield* createScenario([installArea]);
+        const s = yield* createScenario([], { mate: "real" });
         const bytes = Buffer.from(
           yield* Effect.promise(() =>
             s.page.evaluate(() => {
@@ -539,58 +510,51 @@ describe("C: conversation images", () => {
           ),
           "base64",
         );
-        let reads = 0;
-        s.drivers.onMate.push((mate) => {
-          Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
-          Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
-          mate.rpcHandlers.unshift((request, socket) => {
-            if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
-            mate.reply(
-              socket,
-              request.id,
-              encode({
-                representation: {
-                  digest: "d".repeat(64),
-                  relativeUrl: `/api/assets/objects/${"d".repeat(64)}/preview`,
-                  mimeType: "image/png",
-                  sizeBytes: bytes.length,
-                  width: 160,
-                  height: 80,
-                },
-                relativeUrl: `/api/assets/objects/${"d".repeat(64)}/preview`,
-                expiresAt: 0,
-                imageDimensions: { width: 160, height: 80 },
-              }),
-            );
-            return true;
-          });
-          const handle = mate.handle;
-          mate.handle = (request) => {
-            if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
-            reads++;
-            return Promise.resolve({ bytes, headers: { "content-type": "image/png" } });
-          };
-        });
         yield* s.given.project("Ada", { mate: true });
+        const mate = s.drivers.realMates.get("Ada")!;
         const chat = mateChat(s);
-        const wire = chat.fixture();
-        wire.history("Watch the steering picture", "stream");
-        wire.run("stream", "running");
+        const keepWorking = yield* Deferred.make<void>();
+        yield* mate.provider.turn([
+          nativeStep(
+            nativeCall("item.completed", "earlier", "command_execution", {
+              command: "printf earlier-work",
+            }),
+          ),
+          nativeStep({
+            type: "user-input.requested",
+            requestId: RuntimeRequestId.make("picture-answer"),
+            payload: {
+              responseMode: "message",
+              questions: [
+                {
+                  id: "picture",
+                  header: "Picture",
+                  question: "Which picture should I use?",
+                  allowCustomAnswer: true,
+                  multiSelect: false,
+                  options: [],
+                },
+              ],
+            },
+          }),
+          { kind: "wait", until: keepWorking },
+        ]);
         yield* s.given.signedIn;
-        yield* chat.when.open("Ada", "Watch the steering picture");
-        wire.call("earlier", "done", { kind: "execute", command: "printf earlier-work" }, "stream");
+        yield* s.when.menu.opensMate("Ada");
+        yield* s.then.conversation.appears;
+        yield* chat.when.type("Watch the steering picture");
+        yield* chat.when.press("Send message");
+        const native = yield* mate.provider.received;
         yield* chat.then.text("printf earlier-work");
-        // A message steered into the run is drawn once, above its card: its picture there.
-        wire.history("Use this steering picture", "stream", [
-          {
-            type: "image",
-            id: "steering-picture",
-            name: "steering.png",
-            mimeType: "image/png",
-            sizeBytes: bytes.length,
-            width: 160,
-            height: 80,
-          },
+        yield* chat.then.text("Which picture should I use?");
+        yield* chat.when.type("Use this steering picture");
+        yield* pastePng(s.page, bytes.toString("base64"), "steering.png");
+        yield* chat.then.text("Attached to this answer");
+        yield* chat.when.key("Enter");
+        const answer = yield* mate.provider.received;
+        expect(answer.turnId).toBe(native.turnId);
+        expect(answer.input.attachments?.map((attachment) => attachment.name)).toEqual([
+          "steering.png",
         ]);
         yield* Effect.promise(() =>
           s.page.waitForFunction(() => {
@@ -640,14 +604,17 @@ describe("C: conversation images", () => {
             };
           }),
         );
-        const initialReads = reads;
-        wire.call("later", "running", { kind: "execute", command: "printf later-0" }, "stream");
+        const initialReads = assetReads(mate).length;
+        yield* mate.provider.event(
+          native.threadId,
+          nativeCall("item.started", "later", "command_execution", { command: "printf later-0" }),
+        );
         for (let update = 0; update < 24; update++) {
-          wire.call(
-            "later",
-            "running",
-            { kind: "execute", command: `printf later-${update}` },
-            "stream",
+          yield* mate.provider.event(
+            native.threadId,
+            nativeCall("item.updated", "later", "command_execution", {
+              command: `printf later-${update}`,
+            }),
           );
           yield* chat.then.text(`printf later-${update}`);
         }
@@ -670,7 +637,7 @@ describe("C: conversation images", () => {
             ),
           ),
         ).toEqual({ sameSrc: true, failures: [] });
-        expect(reads).toBe(initialReads);
+        expect(assetReads(mate).length).toBe(initialReads);
         const landing = yield* Effect.promise(() =>
           s.page.evaluate(() => {
             const images = document.querySelectorAll<HTMLImageElement>(
