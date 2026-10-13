@@ -33,7 +33,7 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
             (section) => section.querySelector("h2")?.textContent === "Environments",
           );
           const rows = [...(section?.querySelectorAll("ul > li > button") ?? [])].flatMap((row) => {
-            const name = row.querySelector("span")?.textContent?.trim();
+            const name = row.firstChild?.textContent?.trim();
             return name === undefined ? [] : [name];
           });
           return JSON.stringify(rows) === JSON.stringify(expected);
@@ -47,7 +47,7 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
             (section) => section.querySelector("h2")?.textContent === "Environments",
           );
           return [...(section?.querySelectorAll("ul > li > button") ?? [])].flatMap((row) => {
-            const name = row.querySelector("span")?.textContent?.trim();
+            const name = row.firstChild?.textContent?.trim();
             return name === undefined ? [] : [name];
           });
         });
@@ -60,7 +60,7 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
           (section) => section.querySelector("h2")?.textContent === "Environments",
         );
         return [...(section?.querySelectorAll("ul > li > button") ?? [])].flatMap((row) => {
-          const name = row.querySelector("span")?.textContent?.trim();
+          const name = row.firstChild?.textContent?.trim();
           return name === undefined ? [] : [name];
         });
       }),
@@ -76,18 +76,25 @@ export function openEnvironment(page: Page, appId: string, name: string, id: str
           (section) => section.querySelector("h2")?.textContent === "Environments",
         );
         return [...(section?.querySelectorAll("ul > li > button") ?? [])].find(
-          (row) => row.querySelector("span")?.textContent?.trim() === name,
+          (row) => row.firstChild?.textContent?.trim() === name,
         );
       },
       { timeout: 15_000, polling: "raf" },
       name,
     );
     await (button.asElement() as ElementHandle<HTMLElement>).click();
-    await page.waitForFunction(
-      (path) => location.pathname === path,
-      { timeout: 15_000, polling: "raf" },
-      `/group/${appId}/${id}`,
-    );
+    await page
+      .waitForFunction(
+        (path) => location.pathname === path,
+        { timeout: 15_000, polling: "raf" },
+        `/group/${appId}/${id}`,
+      )
+      .catch((cause) => {
+        expect(new URL(page.url()).pathname, `Opening ${name} reaches its environment route.`).toBe(
+          `/group/${appId}/${id}`,
+        );
+        throw cause;
+      });
     expect(new URL(page.url()).pathname).toBe(`/group/${appId}/${id}`);
   });
 }

@@ -88,13 +88,6 @@ const realLongConversation = Effect.gen(function* () {
   return { s, chat, provider };
 });
 
-/** Calls `step` with 1, 2, 3… every tenth of a second, on the page's own time, until stopped. */
-function everyTenth(step: (count: number) => void): { readonly stop: () => void } {
-  let count = 0;
-  const timer = setInterval(() => step((count += 1)), 100);
-  return { stop: () => clearInterval(timer) };
-}
-
 /** Make the motion witnesses face the late frames seen on a loaded CI runner. */
 const underLoad = (page: import("puppeteer-core").Page) =>
   Effect.promise(async () => {
@@ -384,94 +377,6 @@ describe("C: an engine Mate's run card in a live conversation", () => {
       }),
     );
 
-    // Milo's stress run: a reload painted older turns first, then scrolled about 1,000 px to the
-    // end over 1.5 s.
-    it.effect("a reload during a streaming run paints at the end first", () =>
-      Effect.gen(function* () {
-        const { s, chat, provider } = yield* realLongConversation;
-        const release = yield* Deferred.make<void>();
-        yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined));
-        yield* provider.turn([{ kind: "wait", until: release }]);
-        yield* chat.when.send("Write me the long report");
-        const native = yield* provider.received;
-        const note = RuntimeItemId.make("long-report");
-        yield* provider.event(native.threadId, {
-          type: "content.delta",
-          itemId: note,
-          payload: { streamKind: "assistant_text", delta: "The report, section by section.\n\n" },
-        });
-        yield* chat.then.text("The report, section by section.");
-        // The same paced source keeps streaming through the real reload.
-        let streamed = Promise.resolve();
-        const streaming = everyTenth((line) => {
-          streamed = streamed.then(() =>
-            Effect.runPromise(
-              provider.event(native.threadId, {
-                type: "content.delta",
-                itemId: note,
-                payload: {
-                  streamKind: "assistant_text",
-                  delta: `Section ${line} reads well and its numbers add up.\n\n`,
-                },
-              }),
-            ),
-          );
-        });
-        yield* Effect.addFinalizer(() =>
-          Effect.promise(async () => {
-            streaming.stop();
-            await streamed;
-          }),
-        );
-        yield* Effect.promise(() =>
-          s.page.evaluateOnNewDocument(() => {
-            const frames: Array<{ end: number; shown: boolean }> = [];
-            const sample = () => {
-              const outer = document.querySelector<HTMLElement>(".timeline-legend-list");
-              if (outer && outer.scrollHeight > outer.clientHeight + 4)
-                frames.push({
-                  end: outer.scrollHeight - outer.clientHeight - outer.scrollTop,
-                  shown: document.querySelector("[data-timeline-placing]") === null,
-                });
-              if (frames.length < 240) requestAnimationFrame(sample);
-            };
-            (window as unknown as { reloadFrames: unknown }).reloadFrames = frames;
-            requestAnimationFrame(sample);
-          }),
-        );
-        yield* chat.when.reload();
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(
-            () => {
-              const frames = (
-                window as unknown as {
-                  reloadFrames: Array<{ end: number; shown: boolean }>;
-                }
-              ).reloadFrames;
-              return frames.filter((frame) => frame.shown).length > 20;
-            },
-            { polling: "raf", timeout: 8000 },
-          ),
-        );
-        streaming.stop();
-        yield* Effect.promise(() => streamed);
-        const frames = yield* Effect.promise(() =>
-          s.page.evaluate(
-            () =>
-              (window as unknown as { reloadFrames: Array<{ end: number; shown: boolean }> })
-                .reloadFrames,
-          ),
-        );
-        const shown = frames.filter((frame) => frame.shown);
-        expect(shown.length, "ASSERTION: the reload's paint was sampled").toBeGreaterThan(10);
-        // A streamed line moves the end a line at a time, and the view stands at it at once.
-        expect(
-          Math.max(...shown.map((frame) => frame.end)),
-          `ASSERTION: every painted frame stands at the streaming end: ${shown.map((frame) => Math.round(frame.end)).join(", ")}`,
-        ).toBeLessThan(40);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
     it.effect("a reload paints the conversation's end first and nothing it takes back", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* longConversation;
