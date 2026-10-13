@@ -1,4 +1,4 @@
-import type { VaultView } from "@t3tools/client-runtime/data";
+import type { AddressDomain, PlaceAddresses, VaultView } from "@t3tools/client-runtime/data";
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -9,6 +9,8 @@ import {
   chiefAsk,
   chiefMessageTarget,
   decisionFromHq,
+  domainProposalAlso,
+  domainProposalState,
   envProposalWrite,
   furtherDecision,
   hqWriteOf,
@@ -17,6 +19,7 @@ import {
   proposalOutcomeWords,
   proposalRecipient,
   proposalStage,
+  proposalTitle,
   proposalWhere,
   recordDecision,
   type ProposalDecision,
@@ -260,6 +263,174 @@ describe("envProposalWrite", () => {
   });
 });
 
+const domain: Extract<ZeropsProposal, { kind: "domain.add" }> = {
+  id: "p-domain",
+  kind: "domain.add",
+  summary: "Put Contoso - production on contoso.com and www.contoso.com",
+  reason: "The shop is ready for its own name.",
+  projectId: "pProd",
+  projectName: "Contoso - production",
+  serviceId: "sMedusa",
+  serviceName: "medusa",
+  params: { domains: ["contoso.com", "www.contoso.com"], port: 9000 },
+};
+
+describe("proposalTitle", () => {
+  it.each<[string, ZeropsProposal, string]>([
+    [
+      "a domain and its www put the project on both",
+      domain,
+      "Put Contoso - production on contoso.com and www.contoso.com",
+    ],
+    [
+      "the www named first still reads apex first",
+      { ...domain, params: { ...domain.params, domains: ["www.contoso.com", "contoso.com"] } },
+      "Put Contoso - production on contoso.com and www.contoso.com",
+    ],
+    [
+      "one domain is named alone",
+      { ...domain, params: { ...domain.params, domains: ["api.contoso.com"] } },
+      "Put Contoso - production on api.contoso.com",
+    ],
+    [
+      "unrelated domains are listed",
+      { ...domain, params: { ...domain.params, domains: ["a.com", "b.com", "c.com"] } },
+      "Put Contoso - production on a.com, b.com and c.com",
+    ],
+    [
+      "any other proposal titles itself by its summary",
+      {
+        id: "p",
+        kind: "service.restart",
+        summary: "Restart medusa in Contoso",
+        projectId: "p",
+        serviceId: "s",
+      },
+      "Restart medusa in Contoso",
+    ],
+  ])("%s", (_title, proposal, title) => {
+    expect(proposalTitle(proposal)).toBe(title);
+  });
+});
+
+const placed = (
+  over: Partial<AddressDomain> & Pick<AddressDomain, "domainName">,
+): AddressDomain => ({
+  routingId: "r1",
+  routingDomains: [over.domainName],
+  targets: [{ serviceId: "sMedusa", serviceName: "medusa", port: 9000, path: "/" }],
+  sslEnabled: true,
+  face: "live",
+  url: `https://${over.domainName}`,
+  resolvedIps: [],
+  nameServers: [],
+  ...over,
+});
+
+const place = (
+  domains: ReadonlyArray<AddressDomain>,
+  over: Partial<PlaceAddresses> = {},
+): PlaceAddresses => ({
+  state: "ready",
+  domains,
+  zerops: [],
+  ips: { zoneHasSharedV4: false },
+  portsState: "ready",
+  ports: [],
+  webTargets: [],
+  portTargets: [],
+  waitingDomains: [],
+  waitingPorts: [],
+  readsProject: false,
+  ...over,
+});
+
+describe("domainProposalState", () => {
+  const both = (face: AddressDomain["face"], www: AddressDomain["face"] = face) =>
+    place([
+      placed({ domainName: "contoso.com", face }),
+      placed({ domainName: "www.contoso.com", face: www }),
+    ]);
+  it.each<[string, PlaceAddresses, ReturnType<typeof domainProposalState>]>([
+    [
+      "an added domain waits for the person's DNS, and says where to add its records",
+      both("dns"),
+      {
+        tone: "waiting",
+        words: "Waiting for your DNS. Add contoso.com's records at your DNS provider.",
+      },
+    ],
+    [
+      "a domain being put in place says so",
+      both("going-live"),
+      { tone: "working", words: "Putting contoso.com in place…" },
+    ],
+    [
+      "a domain whose DNS points elsewhere says what to change",
+      both("elsewhere"),
+      {
+        tone: "problem",
+        words: "contoso.com points elsewhere. Change its records at your DNS provider.",
+      },
+    ],
+    [
+      "a domain with the right DNS waits for its certificate",
+      both("certificate"),
+      { tone: "working", words: "Your DNS is right. contoso.com's certificate is on its way…" },
+    ],
+    [
+      "a certificate that could not be installed says the platform's words",
+      place([
+        placed({
+          domainName: "contoso.com",
+          face: "certificate-failed",
+          sslError: "CAA record forbids it.",
+        }),
+        placed({ domainName: "www.contoso.com" }),
+      ]),
+      {
+        tone: "problem",
+        words: "contoso.com's certificate could not be installed. CAA record forbids it.",
+      },
+    ],
+    [
+      "the domain furthest from answering speaks for both",
+      both("live", "dns"),
+      {
+        tone: "waiting",
+        words: "Waiting for your DNS. Add www.contoso.com's records at your DNS provider.",
+      },
+    ],
+    [
+      "both answering say they are live",
+      both("live"),
+      { tone: "live", words: "contoso.com and www.contoso.com are live." },
+    ],
+    ["nothing while the addresses are read", place([], { state: "reading" }), undefined],
+    ["nothing while the project holds none of its domains", place([]), undefined],
+  ])("%s", (_title, addresses, state) => {
+    expect(domainProposalState(addresses, domain)).toEqual(state);
+  });
+});
+
+describe("domainProposalAlso", () => {
+  it.each<[string, PlaceAddresses, string | undefined]>([
+    ["no other change waits: approving puts in place only this", place([]), undefined],
+    [
+      "another change waiting goes live with it, named before the person approves",
+      place([], {
+        waitingDomains: [
+          { id: "w1", label: "shop.com → app · port 3000" },
+          { id: "w2", label: "Removing api.shop.com" },
+        ],
+      }),
+      "Approving also puts in place: shop.com → app · port 3000, Removing api.shop.com.",
+    ],
+  ])("%s", (_title, addresses, words) => {
+    expect(domainProposalAlso(addresses)).toBe(words);
+  });
+});
+
 describe("proposalOutcomeWords", () => {
   const restart: ZeropsProposal = {
     id: "p1",
@@ -298,6 +469,8 @@ describe("proposalOutcomeWords", () => {
     [message, "done", "Sent to Rossy."],
     [askChief, "running", "Sending to your Chief…"],
     [askChief, "done", "Sent to your Chief."],
+    [domain, "running", "Adding contoso.com and www.contoso.com…"],
+    [domain, "done", "Added contoso.com and www.contoso.com."],
     [restart, "declined", "Declined. Nothing ran."],
     [restart, "unseen", "Approved before the page reloaded. How it ended was not seen here."],
   ])("%j %s: %s", (proposal, stage, words) => {
@@ -330,6 +503,7 @@ describe("proposalWhere", () => {
       { ...envProposal("service", "A"), projectName: "Contoso", serviceName: "api" },
       "api's own · Contoso",
     ],
+    ["a domain names the service and the web port it points at", domain, "→ medusa · port 9000"],
     [
       "a message names nothing here: its Mate is drawn",
       {
