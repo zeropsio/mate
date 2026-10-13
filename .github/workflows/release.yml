@@ -15,13 +15,23 @@ on:
 permissions:
   contents: read
 
+cache-mode: read
+
+env:
+  PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-metadata
+  PNPM_CONFIG_FETCH_RETRIES: "2"
+  PNPM_CONFIG_FETCH_TIMEOUT: "60000"
+  PNPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
+  PNPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "30000"
+
 jobs:
   ci:
     if: github.event_name == 'push'
     # The called CI workflow reads action runs and PR changes.
     permissions:
       contents: read
-      actions: read
+      # The called main-only cache writer declares write; it is skipped for tags.
+      actions: write
       pull-requests: read
     uses: ./.github/workflows/ci.yml
 
@@ -40,6 +50,15 @@ jobs:
             !/.repos/
           sparse-checkout-cone-mode: false
           fetch-depth: 0
+
+      - name: Restore pnpm metadata
+        uses: actions/cache/restore@v4
+        with:
+          # Cache metadata only; lockfile-verified.jsonl must never skip a later run's check.
+          path: ${{ runner.temp }}/pnpm-metadata/v11
+          key: pnpm-metadata-${{ runner.os }}-pnpm11-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-metadata-${{ runner.os }}-pnpm11-
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
