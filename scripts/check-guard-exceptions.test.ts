@@ -1,5 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -16,6 +16,7 @@ import {
 import {
   checkGuardExceptions,
   GUARD_SCOPE_PATHS,
+  githubRatchetRevision,
   loadRatchetBaseline,
   ratchetAdditions,
   RATCHET_RULES,
@@ -841,4 +842,40 @@ it.layer(NodeServices.layer)("environment identity ratchet", (it) => {
       }),
     ),
   );
+});
+
+describe("githubRatchetRevision", () => {
+  it.each([
+    {
+      run: "a main push",
+      event: { before: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ref: "refs/heads/main" },
+      compares: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    },
+    {
+      run: "a pull request",
+      event: {
+        before: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        pull_request: { base: { sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } },
+      },
+      compares: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    },
+    {
+      run: "a release tag",
+      event: { before: "0000000000000000000000000000000000000000", ref: "refs/tags/v0.15.71" },
+      compares: "origin/main",
+    },
+  ])("a GitHub run's ratchet compares with what came before it: $run", ({ event, compares }) => {
+    assert.strictEqual(githubRatchetRevision(event, "origin/main"), compares);
+  });
+
+  it("refuses a branch push with no previous commit", () => {
+    assert.throws(
+      () =>
+        githubRatchetRevision(
+          { before: "0000000000000000000000000000000000000000", ref: "refs/heads/new" },
+          "origin/main",
+        ),
+      /valid previous main or PR base commit/,
+    );
+  });
 });

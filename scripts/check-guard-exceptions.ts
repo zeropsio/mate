@@ -66,14 +66,24 @@ const OxlintOutputSchema = Schema.Struct({
 });
 const decodeOxlintOutput = Schema.decodeUnknownSync(Schema.fromJsonString(OxlintOutputSchema));
 
-const decodeGitHubEvent = Schema.decodeUnknownSync(
-  Schema.fromJsonString(
-    Schema.Struct({
-      before: Schema.optional(Schema.String),
-      pull_request: Schema.optional(Schema.Struct({ base: Schema.Struct({ sha: Schema.String }) })),
-    }),
-  ),
-);
+const GitHubEvent = Schema.Struct({
+  before: Schema.optional(Schema.String),
+  ref: Schema.optional(Schema.String),
+  pull_request: Schema.optional(Schema.Struct({ base: Schema.Struct({ sha: Schema.String }) })),
+});
+const decodeGitHubEvent = Schema.decodeUnknownSync(Schema.fromJsonString(GitHubEvent));
+
+/**
+ * What a GitHub run's ratchet compares with: a pull request's base, a push's previous head. A
+ * release tag is pushed new, with no previous commit: it compares with `base`, main.
+ */
+export const githubRatchetRevision = (event: typeof GitHubEvent.Type, base: string): string => {
+  const revision = event.pull_request?.base.sha ?? event.before;
+  if (revision !== undefined && /^[a-f0-9]{40}$/u.test(revision) && !/^0+$/u.test(revision))
+    return revision;
+  if (event.ref?.startsWith("refs/tags/") === true) return base;
+  throw new Error("GitHub ratchet needs a valid previous main or PR base commit.");
+};
 
 /** Everything the injectable lint runner needs to execute one isolated rule scan. */
 export interface GuardLintRequest {
@@ -243,12 +253,10 @@ export const loadRatchetBaseline = (
     const eventPath = process.env.GITHUB_EVENT_PATH;
     if (eventPath === undefined)
       throw new Error("GitHub ratchet needs its push or PR event baseline.");
-    const event = decodeGitHubEvent(NodeFS.readFileSync(eventPath, "utf8"));
-    const revision = event.pull_request?.base.sha ?? event.before;
-    if (revision === undefined || !/^[a-f0-9]{40}$/u.test(revision) || /^0+$/u.test(revision)) {
-      throw new Error("GitHub ratchet needs a valid previous main or PR base commit.");
-    }
-    comparison = revision;
+    comparison = githubRatchetRevision(
+      decodeGitHubEvent(NodeFS.readFileSync(eventPath, "utf8")),
+      base,
+    );
     // Checkouts may contain only HEAD. Load both ancestry chains before computing their merge-base.
     if (git(["rev-parse", "--is-shallow-repository"]) === "true") {
       git(["fetch", "--no-tags", "--unshallow", "origin", head, comparison]);
