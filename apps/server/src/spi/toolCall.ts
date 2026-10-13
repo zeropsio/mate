@@ -165,7 +165,7 @@ const readResultImageFields = (
 ): Pick<NonNullable<SpiToolCall["result"]>, "images" | "imagesDropped"> => {
   const { images, dropped } = readContentImages(content);
   return {
-    ...(images.length > 0 ? { images } : {}),
+    ...(images.length > 0 || (Array.isArray(content) && content.length === 0) ? { images } : {}),
     ...(dropped ? { imagesDropped: true } : {}),
   };
 };
@@ -336,15 +336,16 @@ const splitOpenCodeName = (raw: string): { readonly name: string; readonly serve
 const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
 
 /** The pictures an OpenCode result attached, as MCP image blocks read them. */
-const openCodeAttachmentBlocks = (attachments: unknown): ReadonlyArray<unknown> =>
-  Array.isArray(attachments)
-    ? attachments.flatMap((attachment) => {
-        const match = isRecord(attachment)
-          ? DATA_URL_PATTERN.exec(readString(attachment.url) ?? "")
-          : null;
-        return match === null ? [] : [{ type: "image", mimeType: match[1], data: match[2] }];
-      })
-    : [];
+const openCodeAttachmentBlocks = (attachments: unknown): ReadonlyArray<unknown> | undefined => {
+  if (!Array.isArray(attachments)) return undefined;
+  const blocks = attachments.flatMap((attachment) => {
+    const match = isRecord(attachment)
+      ? DATA_URL_PATTERN.exec(readString(attachment.url) ?? "")
+      : null;
+    return match === null ? [] : [{ type: "image", mimeType: match[1], data: match[2] }];
+  });
+  return blocks.length > 0 || attachments.length === 0 ? blocks : undefined;
+};
 
 /**
  * OpenCode: `data = {tool, state}` (`OpenCodeAdapter.ts`, a tool part's
@@ -458,14 +459,13 @@ const acpKindName = (kind: string, rawInput: unknown): string => {
 };
 
 /** ACP's text of a call's own content: `[{type: "content", content: {type: "text", text}}]`. */
-const acpContentBlocks = (content: unknown): ReadonlyArray<unknown> =>
-  Array.isArray(content)
-    ? content.flatMap((entry) =>
-        isRecord(entry) && entry.type === "content" && isRecord(entry.content)
-          ? [entry.content]
-          : [],
-      )
-    : [];
+const acpContentBlocks = (content: unknown): ReadonlyArray<unknown> | undefined => {
+  if (!Array.isArray(content)) return undefined;
+  const blocks = content.flatMap((entry) =>
+    isRecord(entry) && entry.type === "content" && isRecord(entry.content) ? [entry.content] : [],
+  );
+  return blocks.length > 0 || content.length === 0 ? blocks : undefined;
+};
 
 /**
  * What an ACP call returned: the MCP result an agent passes on as

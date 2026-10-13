@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import type { SpiEvent } from "@t3tools/contracts";
+import { RuntimeItemId, TurnId, type SpiEvent } from "@t3tools/contracts";
 
+import { makeBrowserCallFrames } from "../zerops/ZeropsBrowserCallFrames.ts";
 import { applyToolCall, readToolCall, sniffToolCallShape } from "./toolCall.ts";
 
 let idCounter = 0;
@@ -492,6 +493,52 @@ describe("sniffToolCallShape", () => {
 const openCodeData = (tool: string, state: Record<string, unknown>) => ({ tool, state });
 
 describe("readToolCall — OpenCode", () => {
+  it.each([
+    {
+      name: "omitted attachments",
+      attachments: undefined,
+      completeness: "partial",
+      frame: undefined,
+    },
+    {
+      name: "unreadable attachment",
+      attachments: [{ url: "https://store.example/screenshot.png" }],
+      completeness: "partial",
+      frame: undefined,
+    },
+    { name: "explicit empty attachments", attachments: [], completeness: "complete", frame: null },
+    {
+      name: "image attachment",
+      attachments: [{ url: "data:image/png;base64,OWNED" }],
+      completeness: "complete",
+      frame: { data: "OWNED" },
+    },
+  ])(
+    "a browser completion preserves $name through the SPI to its call frame",
+    ({ attachments, completeness, frame }) => {
+      const raw = {
+        ...itemEvent({
+          provider: "opencode",
+          itemType: "mcp_tool_call",
+          data: openCodeData("zerops_zerops_browser", {
+            status: "completed",
+            output: "done",
+            ...(attachments === undefined ? {} : { attachments }),
+          }),
+        }),
+        turnId: TurnId.make("turn"),
+        itemId: RuntimeItemId.make("browser-call"),
+      };
+      const result = makeBrowserCallFrames().ingest(applyToolCall(raw));
+      expect(
+        result?.completeness,
+        "ASSERTION: the native attachment set decides browser evidence completeness",
+      ).toBe(completeness);
+      if (frame === null || frame === undefined) expect(result?.frame).toBe(frame);
+      else expect(result?.frame).toMatchObject(frame);
+    },
+  );
+
   it.each([
     { tool: "zerops_zerops_deploy", name: "zerops_deploy", server: "zerops" },
     { tool: "github_create_issue", name: "create_issue", server: "github" },
