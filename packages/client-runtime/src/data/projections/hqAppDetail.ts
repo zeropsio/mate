@@ -9,6 +9,9 @@
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import type { Release } from "@t3tools/shared/hqRelease";
+import type { HqGitReleasePreflight } from "@t3tools/shared/hqRelease";
+import type { HqGitAdoption, HqRemoteProbe } from "@t3tools/shared/hqChanges";
+import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
 
 import { hqAppDetailScope, type HqAppDetailValue } from "../families/hqAppDetail.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
@@ -24,6 +27,10 @@ export interface HqAppRecipes {
 }
 
 export interface HqAppDetailRead extends Omit<ScopeFreshness, "complete"> {
+  readonly delivery?: HqDeliveryAnswer | undefined;
+  readonly preflight?: Readonly<Record<string, HqGitReleasePreflight>>;
+  readonly probes?: Readonly<Record<string, HqRemoteProbe>>;
+  readonly adoption?: Readonly<Record<string, HqGitAdoption>>;
   readonly releases: ReadonlyArray<Release> | undefined;
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly changes: ReadonlyArray<HqChange> | undefined;
@@ -82,11 +89,25 @@ export const hqAppDetail: Projection<HqAppKey, HqAppDetailRead> = {
     const stream = read.stream(scope);
     const records = recordsOf(read, key);
     const recipes: Record<string, RecipeTierResponse> = {};
+    const preflight: Record<string, HqGitReleasePreflight> = {};
+    const probes: Record<string, HqRemoteProbe> = {};
+    const adoption: Record<string, HqGitAdoption> = {};
+    let delivery: HqDeliveryAnswer | undefined;
+    for (const record of records.values()) {
+      if (record.kind === "preflight") preflight[record.repo] = record.value;
+      if (record.kind === "probe") probes[record.repo] = record.value;
+      if (record.kind === "adoption") adoption[record.repo] = record.value;
+      if (record.kind === "delivery") delivery = record.value;
+    }
     for (const tier of ["mate", "stage", "production"] as const) {
       const value = tierOf(records.get(`recipe:${tier}`));
       if (value !== undefined) recipes[tier] = value;
     }
     return {
+      delivery,
+      preflight,
+      probes,
+      adoption,
       releases: releasesOf(records.get("releases")),
       repos: reposOf(records.get("repos")),
       changes: changesOf(records.get("changes")),

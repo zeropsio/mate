@@ -148,6 +148,8 @@ function flowLine(
       };
     case "empty":
       return { dot: "none", words: ["Not released yet"], trouble: false };
+    case "pushed":
+      return { dot: "none", words: [production.line], trouble: false };
     case "deploying":
       return { dot: "releasing", words: ["Deploying…"], trouble: false };
     case "releasing":

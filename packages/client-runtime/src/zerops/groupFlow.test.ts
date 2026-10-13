@@ -1,3 +1,8 @@
+import * as Schema from "effect/Schema";
+import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { gitEnvironment } from "../data/__fixtures__/hqWire.ts";
+import { gitDeliveryOf } from "./gitDelivery.ts";
+import { canonicalEnvironmentRow } from "./groupRows.ts";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
@@ -1261,4 +1266,52 @@ it("A listed environment replaces its target's creation while another project ke
   expect(flow.creatingStages.map(({ projectId, name }) => [projectId, name])).toEqual([
     ["environment-stage", "Still coming"],
   ]);
+});
+
+const readGitEnvironment = Schema.decodeUnknownSync(HqGitNavigationEnvironment);
+
+it("a Git production's blocker reaches group flow without a runtime read or Release offer", () => {
+  const environment = readGitEnvironment({
+    ...gitEnvironment,
+    jobs: [
+      {
+        ...gitEnvironment.jobs[0],
+        state: "unresolved",
+        evidence: {
+          attempt: gitEnvironment.jobs[0].evidence.attempt,
+          nextActor: "person",
+          nextAction: "Check main",
+        },
+      },
+    ],
+  });
+  const git = gitDeliveryOf(environment, { releases: [], repos: [] });
+  const row = canonicalEnvironmentRow({ ...environment, sources: "release", services: [], git });
+  const flow = groupFlow(
+    group({
+      stops: [
+        {
+          projectId: "",
+          name: "Production",
+          tier: "production",
+          row,
+          deployment: runs(MAIN_SHA),
+          addresses: [{ service: "api", url: "https://example.com" }],
+        },
+      ],
+      release: {
+        gate: { allowed: true },
+        suggestion: "v3.0.0",
+        waiting: 2,
+        waitingAtLeast: false,
+        untold: [],
+      },
+    }),
+  );
+  expect(flow.production).toMatchObject({
+    kind: "checking",
+    line: git!.line,
+    stop: { version: undefined, addresses: [], git },
+  });
+  expect(flow.nextStep.kind).not.toBe("release");
 });

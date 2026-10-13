@@ -1,3 +1,7 @@
+import * as Schema from "effect/Schema";
+import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { gitEnvironment } from "../data/__fixtures__/hqWire.ts";
+import { deriveCanonicalGroups } from "./groups.ts";
 import { MATE_SHAPE_IDS, MATE_TINT_IDS } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -1081,4 +1085,23 @@ describe("projectNameInApp", () => {
   it("keeps the whole name of a project HQ places in no application", () => {
     expect(projectNameInApp(project("SPN - Rune"))).toBe("SPN - Rune");
   });
+});
+
+const readGitEnvironment = Schema.decodeUnknownSync(HqGitNavigationEnvironment);
+
+it("the application tree retains a Git production with no Zerops project join", () => {
+  const environment = readGitEnvironment(gitEnvironment);
+  const tree = deriveCanonicalGroups([], {
+    order: "name",
+    apps: [{ id: "shop", name: "Shop", environments: [environment] }],
+  });
+  expect(tree.groups).toHaveLength(1);
+  expect(tree.groups[0]!.production).toMatchObject({
+    kind: "managed",
+    id: "git-production",
+    project: undefined,
+    target: environment.target,
+    environment,
+  });
+  expect(tree.ungrouped).toEqual([]);
 });

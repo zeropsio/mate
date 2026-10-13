@@ -1,3 +1,6 @@
+import * as Schema from "effect/Schema";
+import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { gitEnvironment } from "../data/__fixtures__/hqWire.ts";
 import type { Deployment } from "./flow/deployment.ts";
 import type { ZeropsRegistry } from "./hq/registry.ts";
 import type { Shown } from "./knowledge/known.ts";
@@ -549,4 +552,40 @@ it("A recorded environment replaces its target's pending and half-made rows with
     ["environment", "environment-stage"],
     ["creating", "environment-stage"],
   ]);
+});
+
+const readGitEnvironment = Schema.decodeUnknownSync(HqGitNavigationEnvironment);
+
+it("A git production takes the production slot, so Add production is no longer offered.", () => {
+  const environment = readGitEnvironment(gitEnvironment);
+  const environments = [{ id: environment.id, tier: environment.tier, target: environment.target }];
+  const held = heldTiers(environments);
+  expect(held).toEqual({ stages: 0, production: true });
+  expect(
+    environmentAddable({
+      tier: "production",
+      recipeRead: true,
+      recipeTiers: ["production"],
+      offered: true,
+      held,
+    }),
+  ).toBe(false);
+  const rows = environmentSlots({
+    environments,
+    devstages: [],
+    pending: [],
+    halfMade: [],
+    recipeTiers: ["production"],
+    recipeRead: true,
+    offered: { stage: true, production: true },
+    productionRuns: "unknown",
+    waiting: { count: 0, atLeast: false },
+    mainHasCode: true,
+    releaseOffered: true,
+    releasing: undefined,
+  });
+  expect(rows.filter((row) => "tier" in row && row.tier === "production")).toMatchObject([
+    { kind: "environment", id: "git-production" },
+  ]);
+  expect(rows.filter((row) => row.kind === "slot" && row.tier === "production")).toEqual([]);
 });

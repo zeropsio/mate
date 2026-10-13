@@ -29,6 +29,7 @@ import { ProjectId } from "@t3tools/contracts";
 import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
 import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
+import type { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 
 import { type GroupEnvironment, type GroupEnvironmentTier } from "./groupEnvironments.ts";
 import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
@@ -41,6 +42,7 @@ import {
   jobsByService,
 } from "./hq/environments.ts";
 import { recipeTierRepositories, recipeTierServices } from "./recipeTier.ts";
+import { gitDeliveryOf, type GitDelivery, type GitDeliveryFacts } from "./gitDelivery.ts";
 
 /** One runtime service of one Zerops project, as an environment's row needs it. */
 export interface GroupEnvironmentService {
@@ -52,6 +54,7 @@ export interface GroupEnvironmentService {
 
 /** What one environment's row is built from, before the row itself. */
 export interface GroupEnvironmentRowInput {
+  readonly git?: GitDelivery | undefined;
   /** @deprecated Zerops-only compatibility address; canonical rows carry id and target. */
   readonly projectId: string;
   readonly name: string;
@@ -156,7 +159,8 @@ export function appRecipeOf(files: {
  * an environment in a project this person may not read is still one the application has.
  */
 export function canonicalEnvironmentRowInputsOf(input: {
-  readonly environments: ReadonlyArray<CanonicalHqEnvironment>;
+  readonly environments: ReadonlyArray<CanonicalHqEnvironment | HqGitNavigationEnvironment>;
+  readonly git?: GitDeliveryFacts;
   /** What each Zerops project is called, by id. */
   readonly projectNames: ReadonlyMap<ProjectId, string>;
   readonly services: ReadonlyArray<
@@ -171,9 +175,27 @@ export function canonicalEnvironmentRowInputsOf(input: {
   /** The services each tier declares (`AppRecipe.declared`); none while the recipe is unread. */
   readonly declared?: AppRecipe["declared"] | undefined;
 }): ReadonlyArray<CanonicalGroupEnvironmentRowInput> {
+  const zerops = (
+    value: CanonicalHqEnvironment | HqGitNavigationEnvironment,
+  ): value is CanonicalHqEnvironment => value.target.kind === "zerops";
   return [...input.environments]
     .sort((left, right) => left.order - right.order)
     .map((environment) => {
+      if (!zerops(environment))
+        return {
+          id: environment.id,
+          target: environment.target,
+          name: environment.name,
+          tier: environment.tier,
+          sources: environment.tier === "production" ? ("release" as const) : environment.sources,
+          environment: environment.name,
+          keyHeld: true,
+          keyInvalid: false,
+          services: [],
+          git: gitDeliveryOf(environment, input.git),
+          ...(environment.release === undefined ? {} : { release: environment.release }),
+        };
+      // The target dispatch precedes all Zerops joins and recipe/service/version reads.
       const deploys = jobsByService(environment);
       const listed = input.services.filter(
         (service) =>
@@ -224,8 +246,8 @@ export function canonicalEnvironmentRowInputsOf(input: {
         tier: environment.tier,
         sources: environment.tier === "production" ? "release" : environment.sources,
         environment: environment.name,
-        keyHeld: environment.target.kind === "git" || environment.keyHeld,
-        keyInvalid: environment.target.kind === "zerops" && environment.keyInvalid,
+        keyHeld: environment.keyHeld,
+        keyInvalid: environment.keyInvalid,
         services: [
           ...listed.map((service) => state(service.hostname, service.serviceId)),
           ...unlisted.map((hostname) => state(hostname)),
@@ -260,7 +282,8 @@ export interface GroupStops {
  * project's role fills — none while the recipe is not read.
  */
 export function canonicalGroupStopsOf(input: {
-  readonly environments: ReadonlyArray<CanonicalHqEnvironment>;
+  readonly environments: Parameters<typeof canonicalEnvironmentRowInputsOf>[0]["environments"];
+  readonly git?: GitDeliveryFacts;
   readonly projects: ReadonlyArray<
     Omit<GroupStopProject, "projectId"> & { readonly projectId: ProjectId }
   >;
@@ -271,6 +294,7 @@ export function canonicalGroupStopsOf(input: {
   readonly recipe: AppRecipe | undefined;
 }): CanonicalGroupStops {
   const { recipe } = input;
+  const hasZerops = input.environments.some((environment) => environment.target.kind === "zerops");
   const declarations = input.environments.map(
     (environment): CanonicalGroupEnvironmentDeclaration => ({
       name: environment.name,
@@ -284,12 +308,17 @@ export function canonicalGroupStopsOf(input: {
     declarations,
     environments: canonicalEnvironmentRowInputsOf({
       environments: input.environments,
-      projectNames: new Map(input.projects.map((project) => [project.projectId, project.name])),
-      services: input.projects.flatMap((project) =>
-        project.services.map((service) => ({ projectId: project.projectId, ...service })),
+      ...(input.git === undefined ? {} : { git: input.git }),
+      projectNames: new Map(
+        hasZerops ? input.projects.map((project) => [project.projectId, project.name]) : [],
       ),
-      versions: input.versions,
-      activeVersions: input.activeVersions,
+      services: hasZerops
+        ? input.projects.flatMap((project) =>
+            project.services.map((service) => ({ projectId: project.projectId, ...service })),
+          )
+        : [],
+      versions: hasZerops ? input.versions : new Map(),
+      activeVersions: hasZerops ? input.activeVersions : undefined,
       repositories: recipe?.repositories,
       declared: recipe?.declared,
     }),
@@ -331,7 +360,7 @@ export interface ReleaseDeploys {
  * hand, and a release listing a guess is a release HQ deploys.
  */
 export function releaseDeploys(
-  environments: ReadonlyArray<GroupEnvironmentRowInput>,
+  environments: ReadonlyArray<Omit<GroupEnvironmentRowInput, "projectId">>,
 ): ReleaseDeploys {
   const production = new Map<string, string>();
   const failed: Array<ReleaseDeployFailure> = [];
@@ -339,6 +368,10 @@ export function releaseDeploys(
   for (const environment of environments) {
     if (environment.tier !== "production") continue;
     rollouts.push(environment.release);
+    if (environment.git !== undefined) {
+      for (const [repo, sha] of environment.git.lastPushed) production.set(repo, sha);
+      continue;
+    }
     failed.push(...(environment.releaseFailures ?? []));
     for (const service of environment.services) {
       const latest = service.deploy?.latest;

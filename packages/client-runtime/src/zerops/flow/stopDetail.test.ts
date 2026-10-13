@@ -1,3 +1,7 @@
+import * as Schema from "effect/Schema";
+import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { gitEnvironment, gitRemote, gitPreflight } from "../../data/__fixtures__/hqWire.ts";
+import { gitDeliveryOf } from "../gitDelivery.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { service } from "../data/__fixtures__/index.ts";
@@ -1470,4 +1474,49 @@ describe("serviceRows — durable deploy log handles", () => {
     });
     expect(row?.deployLog).toEqual({ jobId: "7", processId: "p7", appVersionId: "v7" });
   });
+});
+
+const readGitEnvironment = Schema.decodeUnknownSync(HqGitNavigationEnvironment);
+
+it("Git detail and metadata describe the push destination without a service or platform claim", () => {
+  const environment = readGitEnvironment({
+    ...gitEnvironment,
+    tier: "stage",
+  });
+  const git = gitDeliveryOf(environment, {
+    repos: [
+      { name: "web", mainHead: gitPreflight.sha, updatedAt: gitRemote.keptAt, remote: gitRemote },
+    ],
+  });
+  const verdict = stopVerdict({
+    git,
+    tier: "stage",
+    view: {
+      tone: "good",
+      word: "Live",
+      line: "Live",
+      version: undefined,
+      activatedAt: null,
+      afterMs: 0,
+    },
+    releasing: undefined,
+    failed: undefined,
+    waiting: 0,
+    waitingAtLeast: false,
+    untold: [],
+    release: { offered: true, tag: "v3.0.0", reason: undefined },
+    releasedAge: undefined,
+    since: undefined,
+    atMainHead: true,
+    keyGap: { kind: "invalid", project: "Unrelated project" },
+  });
+  expect(verdict).toEqual({ tone: "off", text: "Pushed main", detail: undefined, verb: null });
+  expect(
+    stopMetaLine({
+      tier: "production",
+      source: "release",
+      services: 3,
+      git: { branch: "main", remote: "github.com/example/shop" },
+    }),
+  ).toBe("Moves on release · pushes to github.com/example/shop main");
 });

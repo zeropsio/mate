@@ -1,3 +1,9 @@
+import * as Schema from "effect/Schema";
+import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { gitEnvironment, gitRemote, gitPreflight } from "../__fixtures__/hqWire.ts";
+import { hqAppDetailFamily } from "../families/hqAppDetail.ts";
+import { canonicalEnvironmentRowInputsOf, releaseDeploys } from "../../zerops/groupDeploys.ts";
+import { canonicalEnvironmentRow } from "../../zerops/groupRows.ts";
 import { describe, expect, it } from "vite-plus/test";
 import { pastGrace } from "../__fixtures__/account.ts";
 
@@ -194,4 +200,51 @@ describe("hqAppDetails", () => {
       ),
     ).toBe(false);
   });
+});
+
+it("exposes accepted Git delivery facts through the application's account projection", () => {
+  const value = { jobs: [], note: "No remote connected" };
+  const state = apply(read, [deliver([row("delivery", { kind: "delivery", value })])]);
+  expect(detail(state)).toMatchObject({ delivery: value, preflight: {}, probes: {}, adoption: {} });
+});
+
+const readGitEnvironment = Schema.decodeUnknownSync(HqGitNavigationEnvironment);
+
+it("late account receipts move the Git row and comparison base without inventing a running service", () => {
+  const environment = readGitEnvironment({
+    ...gitEnvironment,
+    tier: "stage",
+  });
+  const raw = [
+    { name: "web", mainHead: gitPreflight.sha, updatedAt: gitRemote.keptAt, remote: gitRemote },
+  ];
+  const decoded = hqAppDetailFamily.hq!.decode(raw, "repos");
+  expect(decoded).not.toBeNull();
+  const state = apply(read, [
+    deliver([{ ...row("repos", decoded), revision: { ...revision, revision: 2 } }]),
+  ]);
+  const facts = detail(state);
+  const rows = (jobs: typeof environment.jobs) =>
+    canonicalEnvironmentRowInputsOf({
+      environments: [{ ...environment, jobs }],
+      git: facts,
+      projectNames: new Map(),
+      services: [],
+      versions: new Map(),
+    });
+  const before = canonicalEnvironmentRow(rows([])[0]!);
+  expect(before).toMatchObject({ line: "Checking what HQ pushed…", version: { label: undefined } });
+  expect([...before.git!.lastPushed]).toEqual([]);
+  const after = canonicalEnvironmentRow(rows(environment.jobs)[0]!);
+  expect(after).toMatchObject({
+    line: "Pushed main",
+    tone: "neutral",
+    version: { label: undefined },
+  });
+  expect([...after.git!.lastPushed]).toEqual([["web", gitPreflight.sha]]);
+  // The same confirmed tips are the production comparison's base; no release tag is substituted.
+  expect([
+    ...releaseDeploys(rows(environment.jobs).map((row) => ({ ...row, tier: "production" })))
+      .production,
+  ]).toEqual([["web", gitPreflight.sha]]);
 });

@@ -1,3 +1,8 @@
+import * as Schema from "effect/Schema";
+import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { gitEnvironment, gitRemote, gitPreflight } from "../data/__fixtures__/hqWire.ts";
+import { gitDeliveryOf } from "./gitDelivery.ts";
+import { canonicalEnvironmentRow } from "./groupRows.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -356,4 +361,35 @@ describe("environmentRow", () => {
     expect(row.version.label).toBe("hotfix");
     expect(row.commit).toBeUndefined();
   });
+});
+
+const readGitEnvironment = Schema.decodeUnknownSync(HqGitNavigationEnvironment);
+
+it("a Git row reads the shared hand-over verdict without a service version or green live tone", () => {
+  const environment = readGitEnvironment({
+    ...gitEnvironment,
+    tier: "stage",
+  });
+  const git = gitDeliveryOf(environment, {
+    repos: [
+      { name: "web", mainHead: gitPreflight.sha, updatedAt: gitRemote.keptAt, remote: gitRemote },
+    ],
+  });
+  const row = canonicalEnvironmentRow({
+    id: environment.id,
+    target: environment.target,
+    tier: "stage",
+    name: "Git stage",
+    sources: ["main"],
+    services: [service("api", "live", { version: `v1.0.0 ${SHA}` })],
+    git,
+  });
+  expect(row).toMatchObject({
+    line: "Pushed main",
+    tone: "neutral",
+    commit: undefined,
+    version: { label: undefined, sha: undefined },
+    deploys: [],
+  });
+  expect(row.git).toBe(git);
 });

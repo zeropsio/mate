@@ -594,3 +594,12 @@ export {
   SHORT_SHA_LENGTH,
   type ParsedVersionName,
 } from "./versionName.ts";
+
+export {
+  gitDeliveryOf,
+  type GitDelivery,
+  type GitDeliveryEnvironment,
+  type GitDeliveryFacts,
+  type GitRepositoryDelivery,
+  type GitStanding,
+} from "./gitDelivery.ts";

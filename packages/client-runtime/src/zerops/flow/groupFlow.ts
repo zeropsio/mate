@@ -9,6 +9,12 @@
 import type { Freshness, Shown, Stamp } from "../knowledge/known.ts";
 import type { KnowledgeSource } from "../knowledge/presentation.ts";
 import type { Deployment, StopService } from "./deployment.ts";
+import {
+  gitDeliveryOf,
+  type GitDelivery,
+  type GitDeliveryEnvironment,
+  type GitDeliveryFacts,
+} from "../gitDelivery.ts";
 
 /** An input and who answers for it, as a combination names the cause of one that failed. */
 interface Part {
@@ -93,7 +99,17 @@ const isKnown = <T>(shown: Shown<T>): shown is Extract<Shown<T>, { readonly stat
  * running one, else the first that is not known, else none — which only services that each run
  * none prove.
  */
-export function stopDeploymentOf(services: Shown<ReadonlyArray<StopService>>): Shown<Deployment> {
+export function stopDeploymentOf(input: {
+  readonly environment: GitDeliveryEnvironment;
+  readonly facts?: GitDeliveryFacts;
+}): GitDelivery | undefined;
+export function stopDeploymentOf(services: Shown<ReadonlyArray<StopService>>): Shown<Deployment>;
+export function stopDeploymentOf(
+  services:
+    | Shown<ReadonlyArray<StopService>>
+    | { readonly environment: GitDeliveryEnvironment; readonly facts?: GitDeliveryFacts },
+): Shown<Deployment> | GitDelivery | undefined {
+  if ("environment" in services) return gitDeliveryOf(services.environment, services.facts);
   if (!isKnown(services)) return services as Shown<never>;
   const first = (kind: Deployment["kind"]) =>
     services.value.find(

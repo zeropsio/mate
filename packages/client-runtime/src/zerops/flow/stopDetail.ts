@@ -16,6 +16,7 @@ import {
   type FirstDeploy,
 } from "../stopComing.ts";
 import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
+import type { GitDelivery } from "../gitDelivery.ts";
 import {
   deployedVersion,
   environmentRow,
@@ -124,6 +125,7 @@ const FINISH_HELD_STAGE = "Finish setting it up from its project's menu on the P
 
 /** What a stop's page says first: the first state that holds, in the order a person needs them. */
 export function stopVerdict(input: {
+  readonly git?: GitDelivery | undefined;
   readonly tier: GroupEnvironmentTier;
   readonly view: StopView;
   /** The tag in flight; production only. */
@@ -157,6 +159,18 @@ export function stopVerdict(input: {
   readonly firstDeploy?: FirstDeploy | undefined;
 }): StopVerdict {
   const { tier, view } = input;
+  if (input.git !== undefined)
+    return {
+      tone:
+        input.git.standing === "pushing"
+          ? "busy"
+          : input.git.standing === "refused" || input.git.standing === "partly"
+            ? "failed"
+            : "off",
+      text: input.git.line,
+      detail: input.git.release.reason,
+      verb: null,
+    };
   const quiet = { detail: undefined, verb: null } as const;
   if (tier === "production" && input.releasing !== undefined)
     return { tone: "busy", text: releaseInFlightReason(input.releasing), ...quiet };
@@ -269,6 +283,7 @@ export function stopVerdict(input: {
  * `source` is the environment row's (`EnvironmentRow.source`): `release`, `a + b`, or `—` for none.
  */
 export function stopMetaLine(input: {
+  readonly git?: { readonly branch: string; readonly remote: string };
   readonly tier: GroupEnvironmentTier;
   readonly source: string;
   readonly services: number;
@@ -279,6 +294,7 @@ export function stopMetaLine(input: {
       : input.source === "" || input.source === "—"
         ? "Nothing yet"
         : `Follows ${input.source}`;
+  if (input.git !== undefined) return `${from} · pushes to ${input.git.remote} ${input.git.branch}`;
   return input.services > 0 ? `${from} · ${plural(input.services, "service", "services")}` : from;
 }
 

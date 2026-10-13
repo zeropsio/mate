@@ -79,6 +79,7 @@ import type { ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
 import { firstDeploy, stopImport, type FirstDeploy, type PlatformService } from "./stopComing.ts";
+import type { GitDelivery } from "./gitDelivery.ts";
 
 /** A Mate's preview: one pair's stage half, by the pair's name (`app` for `appstage`). */
 export interface GroupFlowPreview {
@@ -196,6 +197,7 @@ export interface GroupFlowMain {
 export type GroupFlowStopState = "checking" | "empty" | "deploying" | "deployed" | "failed";
 
 export interface GroupFlowStop {
+  readonly git?: GitDelivery;
   /** @deprecated Zerops-only compatibility address; canonical rows carry id and target. */
   readonly projectId: string;
   readonly name: string;
@@ -220,6 +222,7 @@ export interface GroupFlowStop {
 }
 
 export type GroupFlowProduction =
+  | { readonly kind: "pushed"; readonly stop: GroupFlowStop; readonly line: string }
   /** No production: nothing is said of it, and nothing waits on it. */
   | { readonly kind: "absent" }
   /** Its creation is under way and the listing does not hold it yet; nothing is offered. */
@@ -318,6 +321,17 @@ function flowPullRequestOf(
 /** What a stop runs and how it went, by the rules `stopView` draws the page with (`runningVersion`, `runningTone`). */
 function stopOf(input: GroupFlowStopInput): GroupFlowStop {
   const { deployment, row } = input;
+  if (row?.target?.kind === "git")
+    return {
+      projectId: input.projectId,
+      name: input.name,
+      state: "checking",
+      version: undefined,
+      source: row.source,
+      addresses: [],
+      readLine: row.git?.line ?? row.line,
+      ...(row.git === undefined ? {} : { git: row.git }),
+    };
   const base = {
     projectId: input.projectId,
     name: input.name,
@@ -369,6 +383,7 @@ const awaitingAccess = (deployment: Shown<Deployment> | undefined): boolean =>
 
 /** A stage known to run nothing, with where its first deploy stands (`stageFirstDeploy`). */
 function withFirstDeploy(stop: GroupFlowStop, input: GroupFlowStopInput): GroupFlowStop {
+  if (input.row?.target?.kind === "git") return stop;
   // Only a stage that runs nothing, or nothing known yet, waits for a first deploy.
   if (deploymentReadFailed(input.deployment)) return stop;
   if (input.tier !== "stage" || (stop.state !== "empty" && stop.state !== "checking")) return stop;
@@ -453,6 +468,12 @@ function productionOf(stop: GroupFlowStop | undefined, input: GroupFlowInput): G
   if (stop === undefined && creation !== undefined)
     return { kind: "creating", line: PRODUCTION_SETTING_UP, creation };
   if (stop === undefined) return { kind: "absent" };
+  if (stop.git !== undefined)
+    return {
+      kind: stop.git.standing === "pushed" ? "pushed" : "checking",
+      stop,
+      line: stop.git.line,
+    };
   const line =
     stop.state === "checking"
       ? (stop.readLine ?? CHECKING_WHAT_RUNS)
@@ -471,8 +492,15 @@ function productionOf(stop: GroupFlowStop | undefined, input: GroupFlowInput): G
 
 /** Release is offered where something is counted, or where what production runs cannot be told. */
 function releaseOffered(input: GroupFlowInput): boolean {
-  const { gate, waiting, untold } = input.release;
-  return gate.allowed && (waiting > 0 || untold.length > 0);
+  const { waiting, untold } = input.release;
+  return releaseAllowed(input) && (waiting > 0 || untold.length > 0);
+}
+
+function releaseAllowed(input: GroupFlowInput): boolean {
+  return (
+    input.release.gate.allowed &&
+    !input.stops.some((stop) => stop.tier === "production" && stop.row?.git?.blocked)
+  );
 }
 
 /** The one step, worst first; `projectAttention` decides every kind it has. */
@@ -501,7 +529,7 @@ function nextStepOf(
     notLive: input.release.waiting,
     notLiveAtLeast: input.release.waitingAtLeast,
     canRelease:
-      production.kind !== "absent" && production.kind !== "creating" && input.release.gate.allowed,
+      production.kind !== "absent" && production.kind !== "creating" && releaseAllowed(input),
     mateNames: new Map(input.mates.map((mate) => [mate.projectId, mate.name])),
   });
   const first = (kind: ProjectAttentionItem["kind"]) =>

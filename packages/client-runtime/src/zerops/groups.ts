@@ -47,6 +47,7 @@ export {
   type ZeropsMateFaceTag,
 } from "@t3tools/shared/mateFaces";
 import type { CanonicalHqEnvironment } from "./hq/environments.ts";
+import type { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsProject } from "./api.ts";
@@ -261,7 +262,7 @@ export type CanonicalGroupEnvironment =
       readonly kind: "managed";
       readonly id: CanonicalHqEnvironment["id"];
       readonly target: CanonicalHqEnvironment["target"];
-      readonly environment: CanonicalHqEnvironment;
+      readonly environment: CanonicalHqEnvironment | HqGitNavigationEnvironment;
       readonly role: "stage" | "prod";
       readonly project: ZeropsProject | undefined;
     };
@@ -413,7 +414,7 @@ export interface CanonicalGroupsOptions extends Omit<DeriveZeropsGroupsOptions, 
     readonly id: string;
     readonly name: string;
     readonly environments?:
-      | ReadonlyArray<CanonicalHqEnvironment>
+      | ReadonlyArray<CanonicalHqEnvironment | HqGitNavigationEnvironment>
       | { readonly refused: string }
       | undefined;
   }>;

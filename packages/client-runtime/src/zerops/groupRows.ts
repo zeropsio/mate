@@ -26,11 +26,13 @@ import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import type { HqJob, ServiceJobs } from "./hq/environments.ts";
 import { isReleaseTag, shortCommit } from "./release.ts";
 import { isWholeSha, parseVersionName } from "./versionName.ts";
+import type { GitDelivery } from "./gitDelivery.ts";
 
 /** What a row's dot says, for the four things a dot can honestly mean. */
 export type GroupRowTone = "neutral" | "pending" | "good" | "bad";
 
 export interface EnvironmentRow {
+  readonly git?: GitDelivery | undefined;
   readonly kind: "environment";
   /** @deprecated Zerops-only compatibility address; canonical rows carry id and target. */
   readonly projectId: string;
@@ -253,8 +255,31 @@ function environmentRowDisplay(input: {
 
 export type CanonicalEnvironmentRow = Omit<EnvironmentRow, "projectId"> & HqEnvironmentIdentity;
 export function canonicalEnvironmentRow(
-  input: Parameters<typeof environmentRowDisplay>[0] & HqEnvironmentIdentity,
+  input: Parameters<typeof environmentRowDisplay>[0] &
+    HqEnvironmentIdentity & { readonly git?: GitDelivery | undefined },
 ): CanonicalEnvironmentRow {
+  if (input.target.kind === "git")
+    return {
+      kind: "environment",
+      id: input.id,
+      target: input.target,
+      name: input.name,
+      tier: input.tier,
+      source: input.target.branch,
+      commit: undefined,
+      version: NO_VERSION,
+      versionRepository: undefined,
+      line: input.git?.line ?? "Checking what HQ pushed…",
+      tone:
+        input.git?.standing === "refused" || input.git?.standing === "partly"
+          ? "bad"
+          : input.git?.standing === "pushing"
+            ? "pending"
+            : "neutral",
+      deploys: [],
+      keyGap: false,
+      ...(input.git === undefined ? {} : { git: input.git }),
+    };
   return { ...environmentRowDisplay(input), id: input.id, target: input.target };
 }
 /** @deprecated Project-carrier DTO for unmigrated surfaces. */

@@ -1,3 +1,7 @@
+import * as Schema from "effect/Schema";
+import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { gitEnvironment, gitRemote, gitPreflight } from "../../data/__fixtures__/hqWire.ts";
+import { gitDeliveryOf } from "../gitDelivery.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { project, service } from "../data/__fixtures__/index.ts";
@@ -77,5 +81,26 @@ describe("stopDeploymentOf", () => {
 
   it("is what the services are while they are not known", () => {
     expect(stopDeploymentOf(READING)).toBe(READING);
+  });
+});
+
+const readGitEnvironment = Schema.decodeUnknownSync(HqGitNavigationEnvironment);
+
+it("a Git stop reads HQ hand-over and never asks which Zerops service runs", () => {
+  const environment = readGitEnvironment({
+    ...gitEnvironment,
+    tier: "stage",
+  });
+  const facts = {
+    repos: [
+      { name: "web", mainHead: gitPreflight.sha, updatedAt: gitRemote.keptAt, remote: gitRemote },
+    ],
+  };
+  expect(stopDeploymentOf({ environment, facts })).toEqual(gitDeliveryOf(environment, facts));
+  expect(stopDeploymentOf({ environment, facts })).toMatchObject({
+    standing: "pushed",
+    pushed: 1,
+    total: 1,
+    lastPushed: new Map([["web", gitPreflight.sha]]),
   });
 });

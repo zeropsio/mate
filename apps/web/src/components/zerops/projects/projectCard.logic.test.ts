@@ -1,13 +1,17 @@
 import {
+  canonicalEnvironmentRow,
+  canonicalEnvironmentRowInputsOf,
   placeAddresses,
   type GroupFlowProduction,
   type GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
+import { HqEnvironmentId } from "@t3tools/contracts";
+import type { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { MateRowView } from "../SidebarMateRow.logic";
-import { pull } from "./flowTestFixtures";
+import { entry, pull, WREN } from "./flowTestFixtures";
 import {
   broughtBy,
   cardChangeRows,
@@ -62,6 +66,117 @@ const words = (flow: Parameters<typeof placeLines>[0]) =>
   }));
 
 describe("production's line at a card's foot", () => {
+  it("A card calls confirmed Git delivery pushed without claiming that production runs it.", () => {
+    const at = "2026-10-13T10:00:00Z";
+    const sha = "a".repeat(40);
+    const target = { kind: "git", branch: "main", delivery: "direct" } as const;
+    const attachment = { environmentId: HqEnvironmentId.make("git-prod"), createdAt: at, target };
+    const remote = {
+      url: "https://github.com/acme/app.git",
+      repositoryId: "1",
+      keptAt: at,
+      keptBy: "custodian",
+      expiresAt: null,
+      invalidSince: null,
+    };
+    const environment: HqGitNavigationEnvironment = {
+      id: attachment.environmentId,
+      target,
+      tier: "production",
+      name: "Production",
+      sources: ["release"],
+      order: 1,
+      keyHeld: false,
+      keyInvalid: false,
+      can: {},
+      birth: null,
+      release: {
+        id: "rollout",
+        target: "git",
+        releaseTarget: attachment,
+        tag: "v2.0.0",
+        planned: true,
+        ended: true,
+        endedAt: at,
+        landed: false,
+        leftOut: [],
+      },
+      jobs: [
+        {
+          id: "push",
+          kind: "push",
+          service: "app",
+          sha,
+          state: "pushed",
+          cause: "release",
+          ref: "v2.0.0",
+          reason: null,
+          appVersionId: null,
+          processId: null,
+          requestedBy: "releaser",
+          at,
+          endedAt: at,
+          supersededBy: null,
+          evidence: {
+            confirmed: {
+              remote,
+              ref: "refs/heads/main",
+              before: null,
+              after: sha,
+              at,
+              via: "answer",
+            },
+            nextActor: "none",
+            nextAction: "",
+          },
+        },
+      ],
+    };
+    const [input] = canonicalEnvironmentRowInputsOf({
+      environments: [environment],
+      projectNames: new Map(),
+      services: [],
+      versions: new Map(),
+      git: {
+        releases: [
+          {
+            tag: "v2.0.0",
+            sha,
+            entries: [{ service: "app", sha }],
+            target: "git",
+            releaseTarget: attachment,
+            by: "releaser",
+            at,
+            state: "approved",
+            reason: null,
+            rollbackOf: null,
+          },
+        ],
+      },
+    });
+    const { flow } = entry([WREN], {
+      stops: [
+        {
+          projectId: "",
+          name: "Production",
+          tier: "production",
+          row: canonicalEnvironmentRow(input!),
+          deployment: undefined,
+          addresses: [],
+        },
+      ],
+    });
+    expect(placeLines({ flow, nowMs: NOW })).toMatchObject([
+      {
+        dot: "none",
+        words: ["Pushed v2.0.0"],
+        name: "prod",
+        trouble: false,
+        addresses: [],
+      },
+    ]);
+  });
+
   const since = sinceWords("2026-10-09T08:00:00Z", NOW);
   it.each([
     {
