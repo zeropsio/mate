@@ -154,20 +154,26 @@ async function supervise() {
      * still shows for a moment; a connection held open is still there once the wait ends.
      */
     const drained = async (name: string) => {
-      const deadline = Date.now() + 2_000;
-      for (;;) {
-        const { stdout } = await execFile(NodePath.join(pgBinDir, "psql"), [
-          urlOf(port, "postgres"),
-          "-X",
-          "-v",
-          "ON_ERROR_STOP=1",
-          "-Atc",
-          `SELECT count(*) FROM pg_stat_activity WHERE datname = '${name}'`,
-        ]);
-        if (stdout.trim() === "0") return true;
-        if (Date.now() >= deadline) return false;
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
+      // Sample and decide on the server: a psql completion delayed on the host must not
+      // turn a pre-exit activity snapshot into a rejection after the deadline.
+      await execFile(NodePath.join(pgBinDir, "psql"), [
+        urlOf(port, "postgres"),
+        "-X",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-Atc",
+        `DO $$ DECLARE deadline timestamptz := clock_timestamp() + interval '2 seconds';
+        BEGIN LOOP
+          PERFORM pg_stat_clear_snapshot();
+          IF NOT EXISTS (SELECT FROM pg_stat_activity WHERE datname = '${name}') THEN
+            RETURN;
+          END IF;
+          IF clock_timestamp() >= deadline THEN
+            RAISE EXCEPTION 'Close database connections before freezing a template';
+          END IF;
+          PERFORM pg_sleep(0.025);
+        END LOOP; END $$`,
+      ]);
     };
     // A prior supervisor's leases cannot survive its loss. Reclaim its managed databases on start.
     for (const name of sql("SELECT datname FROM pg_database WHERE datname LIKE 'mate_test_%'")
@@ -249,9 +255,11 @@ async function supervise() {
             const name = ownedDatabase(command.slice("freeze ".length));
             // Publication requires a closed migration pool; no writer survives the freeze.
             sql(`ALTER DATABASE ${name} ALLOW_CONNECTIONS false`);
-            if (!(await drained(name))) {
+            try {
+              await drained(name);
+            } catch (error) {
               sql(`ALTER DATABASE ${name} ALLOW_CONNECTIONS true`);
-              throw new Error("Close database connections before freezing a template");
+              throw error;
             }
             templates.add(name);
             socket.write(`${JSON.stringify({ url: "" })}\n`);

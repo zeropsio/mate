@@ -73,18 +73,21 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
       }
       await new Promise<void>((resolve, reject) => {
         daemon!.once("error", reject);
-        daemon!.once("message", (message) =>
-          message === "ready"
-            ? resolve()
-            : reject(new Error(`PostgreSQL supervisor: ${String(message)}`)),
-        );
-        daemon!.once("exit", (code, signal) =>
+        daemon!.once("message", (message) => {
+          if (message !== "ready") {
+            reject(new Error(`PostgreSQL supervisor: ${String(message)}`));
+            return;
+          }
+          daemon!.off("exit", startupFailed);
+          resolve();
+        });
+        const startupFailed = (code: number | null, signal: NodeJS.Signals | null) =>
           reject(
             new Error(
               `PostgreSQL supervisor exited: ${code ?? signal}\n${NodeFS.readFileSync(diagnosticsPath, "utf8")}`,
             ),
-          ),
-        );
+          );
+        daemon!.once("exit", startupFailed);
       });
       const started = await connect();
       if (!started) throw new Error("PostgreSQL supervisor vanished after startup");
