@@ -29,6 +29,7 @@ import * as ServerConfig from "../src/config.ts";
 import { makeServerLayer } from "../src/server.ts";
 import { ServerRuntimeStartup } from "../src/serverRuntimeStartup.ts";
 import { MateEngine, type MateEngineService } from "../src/engine/MateEngine.ts";
+import { ZeropsBrowserStream } from "../src/zerops/ZeropsBrowserStream.ts";
 import {
   ProviderInstances,
   layer as ProviderInstancesLayer,
@@ -60,6 +61,7 @@ export interface ScenarioMate {
   readonly origin: string;
   /** The real engine and client wire, for seeding and projection witnesses. */
   readonly engine: MateEngineService;
+  readonly browser: ZeropsBrowserStream["Service"];
   readonly providers: ProviderInstances["Service"];
   readonly root: string;
   readonly homeDir: string;
@@ -138,11 +140,12 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
       if (!("port" in address))
         return yield* Effect.die(new Error("Scenario Mate has no TCP port"));
       const engine = yield* MateEngine.pipe(Effect.provide(context));
+      const browser = yield* ZeropsBrowserStream.pipe(Effect.provide(context));
       const providers = yield* ProviderInstances.pipe(
         Effect.provide(ProviderInstancesLayer),
         Effect.provide(context),
       );
-      return { port: address.port, engine, providers };
+      return { port: address.port, engine, browser, providers };
     }).pipe(
       Effect.updateService(ServerConfig.ServerConfig, (config) => ({
         ...config,
@@ -193,6 +196,10 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
   };
   return {
     origin: `http://127.0.0.1:${port}`,
+    get browser() {
+      if (!running) throw new Error("Scenario Mate is stopped");
+      return running.browser;
+    },
     get providers() {
       if (!running) throw new Error("Scenario Mate is stopped");
       return running.providers;
