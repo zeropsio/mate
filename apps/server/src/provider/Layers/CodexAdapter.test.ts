@@ -19,6 +19,7 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import { DRIVER_CAPABILITIES } from "../../engine/bridge/capabilities.ts";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, vi } from "@effect/vitest";
@@ -2659,5 +2660,69 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
       NodeAssert.equal(first.value.payload.message, "Codex is temporarily unavailable.");
       NodeAssert.equal(first.value.payload.class, "provider_error");
     }),
+  );
+});
+
+const contextRuntimeFactory = makeRuntimeFactory();
+it.layer(
+  Layer.effect(
+    CodexAdapter,
+    Effect.gen(function* () {
+      return yield* makeCodexAdapter(decodeCodexSettings({}), {
+        makeRuntime: contextRuntimeFactory.factory,
+        models: Effect.succeed([
+          {
+            slug: "gpt-6-luna",
+            name: "GPT-6-Luna",
+            isCustom: false,
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "contextWindow",
+                  label: "Context Window",
+                  type: "select",
+                  currentValue: "272000",
+                  options: [
+                    { id: "272000", label: "272k", isDefault: true },
+                    { id: "872000", label: "872k" },
+                  ],
+                },
+              ],
+            },
+          },
+        ]),
+      });
+    }),
+  ).pipe(
+    Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+    Layer.provideMerge(ServerSettingsService.layerTest()),
+    Layer.provideMerge(providerSessionDirectoryTestLayer),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+)("Codex context window", (it) => {
+  it.effect.each([
+    { selected: "872000", expected: 872000 },
+    { selected: "272000", expected: 272000 },
+    { selected: "999999999", expected: 272000 },
+  ])(
+    "opens the Codex session with its supported selected window ($selected)",
+    ({ selected, expected }) =>
+      Effect.gen(function* () {
+        const adapter = yield* CodexAdapter;
+        yield* adapter.startSession({
+          threadId: asThreadId("context-" + selected),
+          runtimeMode: "full-access",
+          modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-6-luna", [
+            { id: "contextWindow", value: selected },
+          ]),
+        });
+        NodeAssert.equal(contextRuntimeFactory.lastRuntime?.options.contextWindow, expected);
+        NodeAssert.equal(DRIVER_CAPABILITIES.codex.modelOptions, "adapter");
+        NodeAssert.deepStrictEqual(adapter.capabilities?.inSessionModelOptions, [
+          "reasoningEffort",
+          "serviceTier",
+          "fastMode",
+        ]);
+      }),
   );
 });

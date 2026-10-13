@@ -44,7 +44,10 @@ import * as CodexErrors from "effect-codex-app-server/errors";
 import * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
-import { getCodexServiceTierOptionValue } from "../../codexModelOptions.ts";
+import {
+  getCodexContextWindowOptionValue,
+  getCodexServiceTierOptionValue,
+} from "../../codexModelOptions.ts";
 
 import {
   ProviderAdapterRequestError,
@@ -1845,6 +1848,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined,
         );
         const serviceTier = getCodexServiceTierOptionValue(thread.modelSelection);
+        const contextWindow = getCodexContextWindowOptionValue(
+          thread.modelSelection,
+          options?.models ? yield* options.models : [],
+        );
         const runtimeInput: CodexSessionRuntimeOptions = {
           threadId: input.threadId,
           providerInstanceId: boundInstanceId,
@@ -1860,6 +1867,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           runtimeMode: input.runtimeMode,
           ...(thread.modelSelection ? { model: thread.modelSelection.model } : {}),
           ...(serviceTier ? { serviceTier } : {}),
+          ...(contextWindow ? { contextWindow } : {}),
           ...(thread.setup ? { threadSetup: thread.setup } : {}),
         };
         const sessionScope = yield* Scope.make("sequential");
@@ -2266,6 +2274,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      inSessionModelOptions: ["reasoningEffort", "serviceTier", "fastMode"],
       threadProfile: { tools: false, reportsSpend: false },
     },
     startSession,

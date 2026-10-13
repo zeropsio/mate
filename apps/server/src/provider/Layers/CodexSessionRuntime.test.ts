@@ -1158,3 +1158,50 @@ describe("openCodexThread", () => {
     }),
   );
 });
+
+it.effect.each([undefined, "saved-thread"])(
+  "passes the selected context window to Codex thread configuration (%s)",
+  (resumeThreadId) =>
+    Effect.gen(function* () {
+      const calls: Array<{ method: string; payload: unknown }> = [];
+      yield* openCodexThread({
+        client: {
+          request: () => Effect.die("Unexpected typed request"),
+          raw: {
+            request: (method, payload) =>
+              Effect.sync(() => {
+                calls.push({ method, payload });
+                return {
+                  cwd: "/tmp/project",
+                  model: "gpt-6-luna",
+                  thread: { id: resumeThreadId ?? "native-thread" },
+                };
+              }),
+          },
+        },
+        threadId: ThreadId.make("app-thread"),
+        runtimeMode: "auto",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-6-luna",
+        serviceTier: undefined,
+        resumeThreadId,
+        contextWindow: 872000,
+      });
+      NodeAssert.deepStrictEqual(calls, [
+        {
+          method: resumeThreadId ? "thread/resume" : "thread/start",
+          payload: {
+            cwd: "/tmp/project",
+            model: "gpt-6-luna",
+            approvalPolicy: "on-request",
+            sandbox: "workspace-write",
+            approvalsReviewer: "auto_review",
+            config: { model_context_window: 872000 },
+            ...(resumeThreadId
+              ? { threadId: resumeThreadId, excludeTurns: true }
+              : { experimentalRawEvents: true }),
+          },
+        },
+      ]);
+    }),
+);

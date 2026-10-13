@@ -159,6 +159,7 @@ export interface CodexSessionRuntimeOptions {
   readonly runtimeMode: RuntimeMode;
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier | undefined;
+  readonly contextWindow?: number;
   readonly resumeCursor?: CodexResumeCursor;
   readonly appServerArgs?: ReadonlyArray<string>;
   /** The provider's model list; supplies the display name for runtime info. */
@@ -538,6 +539,7 @@ function buildThreadStartParams(input: {
   readonly runtimeMode: RuntimeMode;
   readonly model: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
+  readonly contextWindow?: number;
   readonly overrides?: CodexThreadSetup["thread"];
 }): EffectCodexSchema.V2ThreadStartParams {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
@@ -549,6 +551,14 @@ function buildThreadStartParams(input: {
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
     ...input.overrides,
+    ...(input.contextWindow
+      ? {
+          config: {
+            ...input.overrides?.config,
+            model_context_window: input.contextWindow,
+          },
+        }
+      : {}),
   };
 }
 
@@ -731,6 +741,7 @@ export const openCodexThread = (input: {
   readonly cwd: string;
   readonly requestedModel: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
+  readonly contextWindow?: number;
   readonly resumeThreadId: string | undefined;
   readonly overrides?: CodexThreadSetup["thread"];
 }): Effect.Effect<
@@ -743,6 +754,7 @@ export const openCodexThread = (input: {
     runtimeMode: input.runtimeMode,
     model: input.requestedModel,
     serviceTier: input.serviceTier,
+    ...(input.contextWindow ? { contextWindow: input.contextWindow } : {}),
     ...(input.overrides ? { overrides: input.overrides } : {}),
   });
 
@@ -2633,6 +2645,7 @@ export const makeCodexSessionRuntime = (
         cwd: options.cwd,
         requestedModel,
         serviceTier: options.serviceTier,
+        ...(options.contextWindow ? { contextWindow: options.contextWindow } : {}),
         resumeThreadId: readResumeCursorThreadId(options.resumeCursor),
         ...(options.threadSetup ? { overrides: options.threadSetup.thread } : {}),
       });

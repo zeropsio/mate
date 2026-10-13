@@ -1,6 +1,9 @@
+import * as NodeOS from "node:os";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
@@ -149,8 +152,20 @@ function codexAccountEmail(account: CodexSchema.V2GetAccountResponse["account"])
   return account.email;
 }
 
+// Codex model/list omits window limits. The native CLI catalog is refreshed by
+// that same app-server and keeps them in its provider home's models_cache.json.
+const CodexCatalogModelWindow = Schema.Struct({
+  slug: Schema.String,
+  context_window: Schema.Int.check(Schema.isGreaterThan(0)),
+  max_context_window: Schema.optionalKey(Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0)))),
+});
+const decodeCodexCatalogWindows = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Struct({ models: Schema.Array(CodexCatalogModelWindow) })),
+);
+
 export function mapCodexModelCapabilities(
   model: CodexSchema.V2ModelListResponse__Model,
+  window?: Pick<typeof CodexCatalogModelWindow.Type, "context_window" | "max_context_window">,
 ): ModelCapabilities {
   const reasoningOptions = model.supportedReasoningEfforts.map(({ reasoningEffort }) =>
     reasoningEffort ===
@@ -216,9 +231,23 @@ export function mapCodexModelCapabilities(
     });
   }
 
-  return createModelCapabilities({
-    optionDescriptors,
-  });
+  if (window?.max_context_window && window.max_context_window > window.context_window) {
+    optionDescriptors.push({
+      id: "contextWindow",
+      label: "Context Window",
+      type: "select",
+      currentValue: String(window.context_window),
+      options: [
+        {
+          id: String(window.context_window),
+          label: `${window.context_window / 1000}k`,
+          isDefault: true,
+        },
+        { id: String(window.max_context_window), label: `${window.max_context_window / 1000}k` },
+      ],
+    });
+  }
+  return createModelCapabilities({ optionDescriptors });
 }
 
 const toDisplayName = (model: CodexSchema.V2ModelListResponse__Model): string => {
@@ -230,13 +259,17 @@ const toDisplayName = (model: CodexSchema.V2ModelListResponse__Model): string =>
 
 function parseCodexModelListResponse(
   response: CodexSchema.V2ModelListResponse,
+  windows: ReadonlyArray<typeof CodexCatalogModelWindow.Type>,
 ): ReadonlyArray<ServerProviderModel> {
   return response.data.map((model) => ({
     slug: model.model,
     name: toDisplayName(model),
     isCustom: false,
     ...(model.isDefault ? { isDefault: true } : {}),
-    capabilities: mapCodexModelCapabilities(model),
+    capabilities: mapCodexModelCapabilities(
+      model,
+      windows.find((window) => window.slug === model.model),
+    ),
   }));
 }
 
@@ -267,10 +300,10 @@ export function applyPreferredCodexDefaultModel(
 
 /**
  * Codex has no static default capability set, so a bare custom slug borrows
- * the first built-in's descriptors; an entry with its own capabilities keeps
- * them.
+ * the first built-in's generic descriptors. Context limits belong to the exact
+ * native model; an entry with its own capabilities keeps them.
  */
-function appendCustomCodexModels(
+export function appendCustomCodexModels(
   models: ReadonlyArray<ServerProviderModel>,
   customModels: ReadonlyArray<CustomModelSetting>,
 ): ReadonlyArray<ServerProviderModel> {
@@ -279,7 +312,15 @@ function appendCustomCodexModels(
   }
 
   const seen = new Set(models.map((model) => model.slug));
-  const fallbackCapabilities = models.find((model) => model.capabilities)?.capabilities ?? null;
+  const builtInCapabilities = models.find((model) => model.capabilities)?.capabilities;
+  const fallbackCapabilities = builtInCapabilities
+    ? {
+        ...builtInCapabilities,
+        optionDescriptors: builtInCapabilities.optionDescriptors?.filter(
+          (option) => option.id !== "contextWindow",
+        ),
+      }
+    : null;
   const customEntries: ServerProviderModel[] = [];
   for (const entry of readCustomModelEntries(customModels)) {
     if (seen.has(entry.slug)) {
@@ -334,8 +375,11 @@ function parseCodexSkillsListResponse(
 
 const requestAllCodexModels = Effect.fn("requestAllCodexModels")(function* (
   client: CodexClient.CodexAppServerClient["Service"],
+  homePath: string,
 ) {
-  const models: ServerProviderModel[] = [];
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const nativeModels: CodexSchema.V2ModelListResponse__Model[] = [];
   let cursor: string | null | undefined = undefined;
 
   do {
@@ -343,11 +387,17 @@ const requestAllCodexModels = Effect.fn("requestAllCodexModels")(function* (
       "model/list",
       cursor ? { cursor } : {},
     );
-    models.push(...parseCodexModelListResponse(response));
+    nativeModels.push(...response.data);
     cursor = response.nextCursor;
   } while (cursor);
 
-  return models;
+  const catalog = yield* fs
+    .readFileString(path.join(homePath, "models_cache.json"))
+    .pipe(Effect.flatMap(decodeCodexCatalogWindows), Effect.option);
+  return parseCodexModelListResponse(
+    { data: nativeModels, nextCursor: null },
+    Option.isSome(catalog) ? catalog.value.models : [],
+  );
 });
 
 export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
@@ -448,7 +498,12 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       client.request("skills/list", {
         cwds: [input.cwd],
       }),
-      requestAllCodexModels(client),
+      requestAllCodexModels(
+        client,
+        expandHomePath(
+          input.homePath || input.environment?.CODEX_HOME || NodeOS.homedir() + "/.codex",
+        ),
+      ),
       // Usage is an enrichment: a failure or a slow answer degrades to "no
       // usage this probe" rather than costing the account and models.
       client.request("account/rateLimits/read", null).pipe(
@@ -580,13 +635,13 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   }) => Effect.Effect<
     CodexAppServerProviderSnapshot,
     CodexErrors.CodexAppServerError,
-    ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
+    ChildProcessSpawner.ChildProcessSpawner | Scope.Scope | FileSystem.FileSystem | Path.Path
   > = probeCodexAppServerProvider,
   environment?: NodeJS.ProcessEnv,
 ): Effect.fn.Return<
   ServerProviderDraft,
   ServerSettingsError,
-  ChildProcessSpawner.ChildProcessSpawner
+  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
 > {
   const resolvedEnvironment = environment ?? process.env;
   const checkedAt = DateTime.formatIso(yield* DateTime.now);

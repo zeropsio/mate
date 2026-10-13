@@ -60,8 +60,8 @@ export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabiliti
     resume: "thread-resume",
     // Resume keeps an interrupted turn's state, so an empty native turn can go on.
     continuation: "native",
-    // reasoningEffort goes with each turn/start.
-    modelOptions: "per-turn",
+    // Reasoning and routing go per turn; contextWindow needs thread configuration.
+    modelOptions: "adapter",
   },
   cursor: {
     ...ACP_HOLDS_THE_TURN,
