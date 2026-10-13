@@ -9,10 +9,12 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 const source = vi.hoisted(() => ({
   person: undefined as HqProjectPeople | undefined,
   record: vi.fn(async () => null),
+  askMate: vi.fn(),
+  navigate: vi.fn(),
   listeners: new Set<() => void>(),
 }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => NOT_READ_VAULT }));
-vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => source.navigate }));
 vi.mock("~/zerops/ZeropsAccountData", async () => {
   const { useSyncExternalStore } = await import("react");
   return {
@@ -38,7 +40,7 @@ vi.mock("~/zerops/useZeropsMates", () => ({
   useKnownMate: () => ({ name: "Skye" }),
   useZeropsMateDirectory: () => new Map(),
 }));
-vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => vi.fn() }));
+vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => source.askMate }));
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => vi.fn() }));
 vi.mock("../vault/VaultPanelContainer", () => ({ useVaultWriter: () => ({}) }));
 import { ProposalCardContainer } from "./ProposalCardContainer";
@@ -50,6 +52,8 @@ afterEach(async () => {
   document.body.innerHTML = "";
   source.person = undefined;
   source.record.mockClear();
+  source.askMate.mockClear();
+  source.navigate.mockClear();
   vi.unstubAllGlobals();
 });
 const operation = {
@@ -109,5 +113,55 @@ describe("a Chief proposal's real card", () => {
     expect(decisions().map((button) => button.textContent)).toEqual(["Approve", "Decline"]);
     await act(async () => decisions()[1]!.click());
     expect(source.record).toHaveBeenCalledWith(expect.objectContaining({ state: "declined" }));
+  });
+});
+
+describe("a Mate can ask its Chief only when one exists", () => {
+  it.each([false, true])(
+    "with no Chief, the card offers no send and promises no recipient (arrives later: %s)",
+    async (later) => {
+      if (!later) source.person = person(null, true);
+      await draw();
+      if (later) await identify(person(null, true));
+      expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
+        "This Mate has no Chief to ask.",
+      );
+      expect(document.querySelector("[data-proposal-recipient]")).toBeNull();
+      expect(decisions().map((button) => button.textContent)).toEqual(["Decline"]);
+      const setup = [...document.querySelectorAll("button")].find(
+        (button) => button.textContent === "Set up your Chief",
+      );
+      expect(setup).toBeDefined();
+      await act(async () => setup!.click());
+      expect(source.navigate).toHaveBeenCalledWith({ to: "/chief" });
+      expect(source.askMate).not.toHaveBeenCalled();
+      expect(source.record).not.toHaveBeenCalled();
+    },
+  );
+  it("does not claim the reader has no Chief when the source Mate's person has none", async () => {
+    source.person = person(null, false);
+    await draw();
+    expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
+      "This Mate has no Chief to ask.",
+    );
+    expect(decisions()).toHaveLength(0);
+    expect(source.askMate).not.toHaveBeenCalled();
+  });
+  it("withholds the promised recipient until HQ identifies a Chief, then withdraws it if none exists", async () => {
+    await draw();
+    expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
+      "Finding this Mate's Chief…",
+    );
+    await identify(person("owners-chief", true));
+    expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
+      "Ask your Chief who owns orders",
+    );
+    expect(decisions().map((button) => button.textContent)).toEqual(["Approve", "Decline"]);
+    await identify(person(null, true));
+    expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
+      "This Mate has no Chief to ask.",
+    );
+    expect(decisions().map((button) => button.textContent)).toEqual(["Decline"]);
+    expect(source.askMate).not.toHaveBeenCalled();
   });
 });

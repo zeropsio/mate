@@ -24,7 +24,12 @@ import { MateMark } from "../../MateMark";
 import { Button } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { FlatCard, MateFace } from "../primitives";
-import { proposalOutcomeWords, proposalWhere, type ProposalStage } from "./proposal.logic";
+import {
+  chiefMessageTarget,
+  proposalOutcomeWords,
+  proposalWhere,
+  type ProposalStage,
+} from "./proposal.logic";
 
 /** The Mate a message goes to, as the menu draws it; absent while the menu does not know it. */
 export interface ProposalRecipient {
@@ -42,6 +47,8 @@ export interface ProposalCardProps {
   readonly mateName: string;
   /** `mate.message` only: the Mate it goes to, when the menu knows it. */
   readonly recipient?: ProposalRecipient | undefined;
+  /** The source Mate person’s Chief, as the account projection resolved it. */
+  readonly chiefTarget?: ReturnType<typeof chiefMessageTarget> | undefined;
   /** Why Approve cannot be pressed yet ("Reading the vault…"); absent when it can. */
   readonly approveBlocked?: string | undefined;
   /** Chief ownership is read from the source Mate, before offering any decision. */
@@ -71,6 +78,10 @@ const HIDDEN_VALUE = "••••••••";
 export function ProposalCard(props: ProposalCardProps) {
   const { proposal, stage } = props;
   const Icon = KIND_ICON[proposal.kind];
+  const chiefTarget =
+    proposal.kind === "chief.message"
+      ? (props.chiefTarget ?? { kind: "unknown" as const })
+      : undefined;
   const where = proposalWhere(proposal);
   return (
     <FlatCard
@@ -83,7 +94,13 @@ export function ProposalCard(props: ProposalCardProps) {
       <div className="grid min-w-0 flex-1 gap-2.5">
         <div className="grid min-w-0 gap-0.5">
           <p className="text-sm font-medium text-foreground" data-proposal-summary>
-            {proposal.summary}
+            {stage === "open" && proposal.kind === "chief.message" && chiefTarget?.kind === "none"
+              ? "This Mate has no Chief to ask."
+              : stage === "open" &&
+                  proposal.kind === "chief.message" &&
+                  chiefTarget?.kind === "unknown"
+                ? "Finding this Mate's Chief…"
+                : proposal.summary}
           </p>
           {where === null ? null : (
             <p className="text-xs text-muted-foreground" data-proposal-where>
@@ -96,8 +113,12 @@ export function ProposalCard(props: ProposalCardProps) {
             </p>
           )}
         </div>
-        <ProposalBody proposal={proposal} recipient={props.recipient} />
-        <ProposalFoot {...props} />
+        <ProposalBody
+          proposal={proposal}
+          recipient={props.recipient}
+          chiefTarget={stage === "open" ? chiefTarget : undefined}
+        />
+        <ProposalFoot {...props} chiefTarget={chiefTarget} />
       </div>
     </FlatCard>
   );
@@ -106,9 +127,11 @@ export function ProposalCard(props: ProposalCardProps) {
 function ProposalBody({
   proposal,
   recipient,
+  chiefTarget,
 }: {
   readonly proposal: ZeropsProposal;
   readonly recipient: ProposalRecipient | undefined;
+  readonly chiefTarget: ProposalCardProps["chiefTarget"];
 }) {
   if (proposal.kind === "env.set") {
     const { key, value, secret } = proposal.params;
@@ -133,10 +156,12 @@ function ProposalBody({
     const { words, attachment } = proposal.params;
     return (
       <div className="grid min-w-0 gap-2">
-        <div className="flex min-w-0 items-center gap-2 text-xs" data-proposal-recipient>
-          <MateMark className="h-4 w-3.5 shrink-0" />
-          <span className="min-w-0 truncate font-medium text-foreground">Ask your Chief</span>
-        </div>
+        {chiefTarget !== undefined && chiefTarget.kind !== "chief" ? null : (
+          <div className="flex min-w-0 items-center gap-2 text-xs" data-proposal-recipient>
+            <MateMark className="h-4 w-3.5 shrink-0" />
+            <span className="min-w-0 truncate font-medium text-foreground">Ask your Chief</span>
+          </div>
+        )}
         <Words words={words} />
         {attachment === undefined ? null : <Attachment {...attachment} />}
       </div>
@@ -215,13 +240,15 @@ function ProposalFoot(props: ProposalCardProps) {
       <div className="grid gap-1.5">
         <div className="flex flex-wrap items-center gap-2" data-proposal-decide>
           {props.onSetUpChief === undefined ? (
-            <Button
-              disabled={props.approveBlocked !== undefined}
-              onClick={props.onApprove}
-              size="xs"
-            >
-              Approve
-            </Button>
+            props.chiefTarget !== undefined && props.chiefTarget.kind !== "chief" ? null : (
+              <Button
+                disabled={props.approveBlocked !== undefined}
+                onClick={props.onApprove}
+                size="xs"
+              >
+                Approve
+              </Button>
+            )
           ) : (
             <Button onClick={props.onSetUpChief} size="xs">
               Set up your Chief

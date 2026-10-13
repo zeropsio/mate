@@ -71,6 +71,11 @@ async function mount(over: Partial<ProposalCardProps> & { readonly proposal: Zer
       <MateFaceAsMark value>
         <ProposalCard
           mateName="Fen"
+          chiefTarget={
+            over.proposal.kind === "chief.message"
+              ? { kind: "chief", projectId: "chief-project" }
+              : undefined
+          }
           onApprove={() => pressed.push("approve")}
           onDecline={() => pressed.push("decline")}
           stage="open"
@@ -180,6 +185,7 @@ describe("ProposalCard", () => {
     const setUp: string[] = [];
     const { container } = await mount({
       proposal: askChief,
+      chiefTarget: { kind: "none" },
       onSetUpChief: () => setUp.push("set up"),
     });
     expect(buttons(container)).toEqual(["schema diff", "Set up your Chief", "Decline"]);

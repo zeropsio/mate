@@ -15,7 +15,11 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { MateFaceAsMark } from "~/components/zerops/primitives";
-import { ProposalCard, type ProposalRecipient } from "~/components/zerops/proposal/ProposalCard";
+import {
+  ProposalCard,
+  type ProposalCardProps,
+  type ProposalRecipient,
+} from "~/components/zerops/proposal/ProposalCard";
 import type { ProposalStage } from "~/components/zerops/proposal/proposal.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -115,7 +119,7 @@ const CARDS: ReadonlyArray<{
   readonly stage: ProposalStage;
   readonly failure?: string;
   /** `chief.message`: the person has no Chief, so setting one up stands in for Approve. */
-  readonly noChief?: boolean;
+  readonly chiefTarget?: ProposalCardProps["chiefTarget"];
   /** HQ did not keep the person's last decision. */
   readonly refusal?: string;
   readonly readOnlyReason?: string;
@@ -134,23 +138,25 @@ const CARDS: ReadonlyArray<{
   },
   { proposal: { ...SECRET, id: "s2" }, stage: "declined" },
   { proposal: { ...RESTART, id: "r3" }, stage: "unseen" },
-  { proposal: ASK_CHIEF, stage: "open" },
+  { proposal: ASK_CHIEF, stage: "open", chiefTarget: { kind: "chief", projectId: "p-chief" } },
   {
     proposal: { ...ASK_CHIEF, id: "ask-reader" },
     stage: "open",
     readOnlyReason: "Only this Mate's person can ask their Chief.",
+    chiefTarget: { kind: "chief", projectId: "p-chief" },
   },
   {
     proposal: { ...ASK_CHIEF, id: "ask-reading" },
     stage: "open",
     readOnlyReason: "Finding this Mate's Chief…",
   },
-  { proposal: { ...ASK_CHIEF, id: "ask-none" }, stage: "open", noChief: true },
+  { proposal: { ...ASK_CHIEF, id: "ask-none" }, stage: "open", chiefTarget: { kind: "none" } },
   { proposal: { ...ASK_CHIEF, id: "ask-sent" }, stage: "done" },
   {
     proposal: { ...ASK_CHIEF, id: "ask-refused" },
     stage: "open",
     refusal: "HQ could not keep your decision, so nothing ran. Try again.",
+    chiefTarget: { kind: "chief", projectId: "p-chief" },
   },
 ];
 
@@ -159,6 +165,7 @@ function Card(card: (typeof CARDS)[number]) {
   const [failure, setFailure] = useState(card.failure);
   return (
     <ProposalCard
+      chiefTarget={card.chiefTarget}
       failure={failure}
       readOnlyReason={card.readOnlyReason}
       mateName="Fen"
@@ -173,7 +180,7 @@ function Card(card: (typeof CARDS)[number]) {
       }}
       onDecline={() => setStage("declined")}
       onOpenRecipient={() => undefined}
-      onSetUpChief={card.noChief === true ? () => undefined : undefined}
+      onSetUpChief={card.chiefTarget?.kind === "none" ? () => undefined : undefined}
       proposal={card.proposal}
       recipient={card.proposal.kind === "mate.message" ? ROSSY : undefined}
       refusal={card.refusal}

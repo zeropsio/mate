@@ -179,6 +179,7 @@ function Proposal({
   const approve = async () => {
     if (
       readOnlyChief ||
+      (proposal.kind === "chief.message" && chief.kind !== "chief") ||
       busy ||
       stage !== "open" ||
       home === undefined ||
@@ -253,6 +254,7 @@ function Proposal({
   return (
     <ProposalCard
       approveBlocked={approveBlocked}
+      chiefTarget={proposal.kind === "chief.message" ? chief : undefined}
       readOnlyReason={readOnlyReason}
       failure={decision?.state === "failed" ? decision.message : undefined}
       mateName={proposer?.name ?? "Your Mate"}
