@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   formatWorkingTime,
   isQuietMate,
+  addressesPlace,
   projectHeadingMenu,
   QUIET_AFTER_MS,
   sidebarMateKey,
@@ -120,6 +121,29 @@ describe("sidebarMateKey — the list's own keys on a Mate's row", () => {
   });
 });
 
+describe("addressesPlace — the place a project's Addresses opens", () => {
+  it.each([
+    {
+      case: "its production",
+      input: { production: "prod", stages: ["stage"], mates: ["nell"] },
+      place: "prod",
+    },
+    {
+      case: "its first stage where it has no production",
+      input: { production: undefined, stages: [undefined, "stage", "beta"], mates: ["nell"] },
+      place: "stage",
+    },
+    {
+      case: "its first Mate's own project where it has no production or stage",
+      input: { production: undefined, stages: [], mates: ["nell", "odo"] },
+      place: "nell",
+    },
+    { case: "none where it has no place", input: { production: undefined, stages: [], mates: [] } },
+  ])("$case", ({ input, place }) => {
+    expect(addressesPlace(input)).toBe(place);
+  });
+});
+
 describe("projectHeadingMenu — a project heading's ···", () => {
   const menu = (over: Partial<Parameters<typeof projectHeadingMenu>[0]> = {}) =>
     projectHeadingMenu({
@@ -168,6 +192,11 @@ describe("projectHeadingMenu — a project heading's ···", () => {
       ],
     },
     {
+      case: "a project with a place has its Addresses after Open project",
+      over: { onAddresses: () => {} },
+      items: ["Fold", "Add a project Mate", "Open project", "Addresses", "—", "All projects"],
+    },
+    {
       case: "a missing stage or production to add",
       over: { setUp: [{ label: "Add stage", act: () => {} }] },
       items: ["Fold", "Add a project Mate", "Open project", "—", "Add stage", "All projects"],
@@ -183,11 +212,12 @@ describe("projectHeadingMenu — a project heading's ···", () => {
       onToggle: () => did.push("fold"),
       onAddMate: () => did.push("add"),
       onOpen: () => did.push("open"),
+      onAddresses: () => did.push("addresses"),
       reorder: { canMoveUp: true, canMoveDown: true, onMove: (to) => did.push(to) },
       setUp: [],
       onBrowseProjects: () => did.push("browse"),
     });
     for (const entry of entries) if (entry.kind === "item") entry.act();
-    expect(did).toEqual(["fold", "add", "open", "up", "down", "browse"]);
+    expect(did).toEqual(["fold", "add", "open", "addresses", "up", "down", "browse"]);
   });
 });
