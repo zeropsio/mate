@@ -223,12 +223,18 @@ it("hosted web CI omits desktop and mobile jobs and work", () => {
   const steps = workflow.jobs.check.steps as { name: string; run?: string }[];
   expect(steps.some((step) => /Electron|mobile/u.test(step.name))).toBe(false);
   const typecheck = steps.find((step) => step.name === "Typecheck")!.run!;
-  for (const client of ["desktop", "mobile"])
-    expect(typecheck).toContain(`--filter '!@t3tools/${client}'`);
-  expect(typecheck, "ASSERTION: Vite+ cannot combine recursive mode with filters").not.toContain(
-    " -r ",
+  expect(typecheck, "ASSERTION: CI and local Check delegate the owned hosted-web task").toBe(
+    "vpr typecheck",
   );
-  expect(typecheck).toContain("--filter '!@t3tools/monorepo'");
+  const rootTypecheck = JSON.parse(NodeFS.readFileSync(NodePath.join(root, "package.json"), "utf8"))
+    .scripts.typecheck as string;
+  for (const client of ["desktop", "mobile"])
+    expect(rootTypecheck).toContain(`--filter '!@t3tools/${client}'`);
+  expect(
+    rootTypecheck,
+    "ASSERTION: Vite+ cannot combine recursive mode with filters",
+  ).not.toContain(" -r ");
+  expect(rootTypecheck).toContain("--filter '!@t3tools/monorepo'");
   const check = steps.find((step) => step.name === "Check")!.run!;
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-web-only-"));
   try {

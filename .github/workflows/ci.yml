@@ -84,7 +84,7 @@ jobs:
         run: git ls-files -z -- . ':!:apps/desktop/**' ':!:apps/mobile/**' | xargs -0 vp check --no-error-on-unmatched-pattern
 
       - name: Typecheck
-        run: vp run --concurrency-limit 2 --filter '*' --filter '!@t3tools/monorepo' --filter '!@t3tools/desktop' --filter '!@t3tools/mobile' typecheck
+        run: vpr typecheck
 
       - name: Typecheck scenarios
         run: vp exec tsc --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json
