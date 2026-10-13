@@ -15,6 +15,7 @@ export default defineConfig({
           name: "scenarios",
           include: ["test/scenarios/areas/**/*.scenario.ts"],
           environment: "node",
+          setupFiles: ["../../packages/shared/src/testing/longTempDir.ts"],
           globalSetup: [
             "test/scenarios/harness/build.ts",
             "test/scenarios/harness/browserProcess.ts",
