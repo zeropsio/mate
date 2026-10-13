@@ -1,12 +1,22 @@
 // @vitest-environment happy-dom
+import { RegistryContext } from "@effect/atom-react";
+import {
+  addresses,
+  makeAccountStore,
+  type AddressDomain,
+  type PlaceAddresses,
+} from "@t3tools/client-runtime/data";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
-import { act } from "react";
+import { Atom, AtomRegistry } from "effect/reactivity";
+import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { useAddressesSheet } from "~/zerops/addressesSheet";
 import type { FixProblem } from "~/zerops/fixRequest";
+import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
 
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
 import type { ChipMenuModel, ChipMenuStop, ProductionChip } from "./SidebarProductionChip.logic";
@@ -110,9 +120,58 @@ afterEach(() => {
   for (const unmount of unmounts.splice(0)) unmount();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  useAddressesSheet.getState().close();
 });
 
-async function mount(over: Partial<ProjectSitesInput> = {}) {
+/** A place's addresses as read: ready with these domains, or still reading. */
+const place = (domains: ReadonlyArray<string> | "reading"): PlaceAddresses => ({
+  state: domains === "reading" ? "reading" : "ready",
+  domains:
+    domains === "reading"
+      ? []
+      : domains.map((domainName) => ({ domainName }) as unknown as AddressDomain),
+  zerops: [],
+  ips: { zoneHasSharedV4: false },
+  portsState: "ready",
+  ports: [],
+  webTargets: [],
+  portTargets: [],
+  waitingDomains: [],
+  waitingPorts: [],
+  readsProject: false,
+});
+
+/** Inside the account `org`, each project's addresses as given; the rest as the store reads them. */
+function inAccount(places: Readonly<Record<string, PlaceAddresses>>) {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const held = new Map<string, Atom.Atom<PlaceAddresses>>();
+  const project: AccountData["data"]["project"] = (projection, key) => {
+    const projectId = (key as { readonly projectId?: string }).projectId;
+    if (projection.name !== addresses.name || projectId === undefined) {
+      return store.data.project(projection, key);
+    }
+    const atom = held.get(projectId) ?? Atom.make(places[projectId] ?? place("reading"));
+    held.set(projectId, atom);
+    return atom as never;
+  };
+  const account = {
+    data: { ...store.data, project },
+    orgId: "org",
+    demandDetail: () => () => {},
+    retry: () => {},
+  } as Pick<AccountData, "data" | "orgId" | "demandDetail" | "retry"> as AccountData;
+  return (children: ReactNode) => (
+    <RegistryContext.Provider value={registry}>
+      <AccountDataContext.Provider value={account}>{children}</AccountDataContext.Provider>
+    </RegistryContext.Provider>
+  );
+}
+
+async function mount(
+  over: Partial<ProjectSitesInput> = {},
+  wrap: (children: ReactNode) => ReactNode = (children) => children,
+) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
   document.body.append(container);
@@ -132,14 +191,16 @@ async function mount(over: Partial<ProjectSitesInput> = {}) {
   };
   await act(async () => {
     root.render(
-      <ProjectSites {...props}>
-        {({ tag, globe }) => (
-          <div data-row="">
-            {tag}
-            {globe}
-          </div>
-        )}
-      </ProjectSites>,
+      wrap(
+        <ProjectSites {...props}>
+          {({ tag, globe }) => (
+            <div data-row="">
+              {tag}
+              {globe}
+            </div>
+          )}
+        </ProjectSites>,
+      ),
     );
   });
   unmounts.push(() => {
@@ -353,5 +414,66 @@ describe("the environment tag", () => {
       "stage:stage",
     );
     expect(tag?.hasAttribute("data-popup-open")).toBe(true);
+  });
+});
+
+describe("the addresses sheet's doors", () => {
+  const sectionOf = (title: string) =>
+    [...document.querySelectorAll<HTMLElement>("[data-sites-section]")].find(
+      (section) => section.getAttribute("aria-label") === title,
+    );
+  const manageIn = (title: string) =>
+    sectionOf(title)?.querySelector<HTMLElement>(
+      '[data-zerops-surface="sidebar-project-sites-manage"]',
+    ) ?? null;
+  const addDomain = () => surface("sidebar-project-sites-add-domain");
+
+  it.each([
+    ["Production", "quill-production"],
+    ["stage", "quill-stage"],
+    ["Nell", "quill-nell"],
+  ])(
+    "Manage on %s's head opens the addresses sheet for its project and closes the popover",
+    async (title, projectId) => {
+      await mount({}, inAccount({}));
+      await press(surface("sidebar-project-sites"));
+      await press(manageIn(title));
+      expect(useAddressesSheet.getState().target).toEqual({
+        orgId: "org",
+        projectId,
+        groupId: "quill",
+      });
+      expect(surface("sidebar-project-sites-popover")).toBeNull();
+    },
+  );
+
+  it("offers no Manage outside an account, where no sheet can read a place", async () => {
+    await mount();
+    await press(surface("sidebar-project-sites"));
+    expect(surfaces("sidebar-project-sites-manage")).toEqual([]);
+  });
+
+  it("Add your domain shows in production's section only while production has no domain of its own, and opens the sheet to add one", async () => {
+    await mount({}, inAccount({ "quill-production": place([]), "quill-stage": place([]) }));
+    await press(surface("sidebar-project-sites"));
+    expect(surfaces("sidebar-project-sites-add-domain")).toHaveLength(1);
+    expect(sectionOf("Production")?.contains(addDomain())).toBe(true);
+    await press(addDomain());
+    expect(useAddressesSheet.getState().target).toEqual({
+      orgId: "org",
+      projectId: "quill-production",
+      groupId: "quill",
+      intent: "add-domain",
+    });
+    expect(surface("sidebar-project-sites-popover")).toBeNull();
+  });
+
+  it.each([
+    ["has a domain of its own", place(["quill.example.com"])],
+    ["is still being read", place("reading")],
+  ])("Add your domain does not show while production %s", async (_case, production) => {
+    await mount({}, inAccount({ "quill-production": production }));
+    await press(surface("sidebar-project-sites"));
+    expect(addDomain()).toBeNull();
   });
 });

@@ -146,6 +146,7 @@ function panel(
       line={undefined}
       mates={[ORSA]}
       onAskToFix={() => {}}
+      onClose={() => {}}
       onOpenStop={() => undefined}
       onQuery={() => {}}
       production={modelOf(places.production) as ProjectSitesInput["production"]}

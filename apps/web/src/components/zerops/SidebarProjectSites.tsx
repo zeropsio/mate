@@ -16,7 +16,14 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
-import { ArrowUpRightIcon, CheckIcon, CopyIcon, GlobeIcon, SearchIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  CheckIcon,
+  CopyIcon,
+  GlobeIcon,
+  PlusIcon,
+  SearchIcon,
+} from "lucide-react";
 import {
   useEffect,
   useId,
@@ -30,9 +37,14 @@ import {
 } from "react";
 
 import { isMacPlatform } from "~/lib/utils";
+import { useAddressesSheet } from "~/zerops/addressesSheet";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import { useLacksOwnDomain } from "~/zerops/ownDomain";
+import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
+
+import { Button, InlineButton } from "../ui/button";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
@@ -305,6 +317,7 @@ export function ProjectSites(
                       opens();
                     };
               }}
+              onClose={close}
               onQuery={setQuery}
               production={production}
               projectName={projectName}
@@ -334,6 +347,7 @@ export function SitesPanel({
   focusSection,
   onAskToFix,
   onOpenStop,
+  onClose,
 }: {
   readonly production: ProjectSitesInput["production"];
   readonly stages: ProjectSitesInput["stages"];
@@ -347,8 +361,21 @@ export function SitesPanel({
   readonly focusSection: string | undefined;
   readonly onAskToFix: ProjectSitesInput["onAskToFix"];
   readonly onOpenStop: ProjectSitesInput["onOpenStop"];
+  /** Closes the popover, as a door to elsewhere opens. */
+  readonly onClose: () => void;
 }) {
   const [openedAt] = useState(Date.now);
+  // A place's addresses sheet, opened from its head (or to add a domain) as the popover closes.
+  const orgId = useAccountOrgId();
+  const manage: ManageDoor | undefined =
+    orgId === null
+      ? undefined
+      : (projectId, intent) => {
+          onClose();
+          useAddressesSheet
+            .getState()
+            .open({ orgId, projectId, groupId, ...(intent === undefined ? {} : { intent }) });
+        };
   const prod = production?.(openedAt);
   const stg = stages?.(openedAt);
   // Each place's public access as read, over what its listing holds (`PlaceAccess`).
@@ -510,6 +537,8 @@ export function SitesPanel({
                 <PlaceSection
                   filtering={filtering}
                   groupId={groupId}
+                  manage={manage}
+                  place={section.place}
                   mates={mates}
                   onAskToFix={onAskToFix}
                   onOpenStop={onOpenStop}
@@ -524,6 +553,7 @@ export function SitesPanel({
               ) : (
                 <>
                   <MateHead
+                    manage={manage}
                     mate={faces.get(section.projectId)}
                     owner={section.owner}
                     projectId={section.projectId}
@@ -562,10 +592,18 @@ function withRoutes(
   return after;
 }
 
-/** A place's section: its head, what went wrong and the fix, its public access, its links. */
+/** Opens the addresses sheet for a place's project, to add a domain where `intent` says so. */
+type ManageDoor = (projectId: string, intent?: "add-domain") => void;
+
+/**
+ * A place's section: its head, what went wrong and the fix, its public access, its links — and
+ * production's offer of a domain of its own while it has none.
+ */
 function PlaceSection({
   stop,
   title,
+  place,
+  manage,
   groupId,
   mates,
   filtering,
@@ -576,6 +614,9 @@ function PlaceSection({
 }: {
   readonly stop: ChipMenuStop | undefined;
   readonly title: string;
+  readonly place: "production" | "stage";
+  /** `undefined` outside an account, where no sheet reads a place. */
+  readonly manage: ManageDoor | undefined;
   readonly groupId: string;
   readonly mates: ReadonlyArray<ChipMate>;
   readonly filtering: boolean;
@@ -622,6 +663,9 @@ function PlaceSection({
             {row}
           </button>
         )}
+        {projectId === undefined || manage === undefined ? null : (
+          <ManageButton manage={manage} name={title} projectId={projectId} />
+        )}
         {projectId === undefined ? null : <ZeropsDoor name={title} projectId={projectId} />}
       </div>
       {filtering || projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
@@ -646,7 +690,65 @@ function PlaceSection({
         <PlaceAccess filtering={filtering} onRoutes={onRoutes} projectId={projectId} />
       )}
       {stop?.git === undefined ? children : null}
+      {filtering ||
+      place !== "production" ||
+      projectId === undefined ||
+      manage === undefined ? null : (
+        <AddYourDomain manage={manage} projectId={projectId} />
+      )}
     </>
+  );
+}
+
+/** A place's own addresses sheet, from its head. */
+function ManageButton({
+  manage,
+  projectId,
+  name,
+}: {
+  readonly manage: ManageDoor;
+  readonly projectId: string;
+  readonly name: string;
+}) {
+  return (
+    <InlineButton
+      aria-label={`Manage the addresses of ${name}`}
+      data-sites-nav=""
+      data-zerops-surface="sidebar-project-sites-manage"
+      onClick={() => {
+        manage(projectId);
+      }}
+      tone="muted"
+    >
+      Manage
+    </InlineButton>
+  );
+}
+
+/** Production's offer of a domain of its own, only once it is read and has none. */
+function AddYourDomain({
+  manage,
+  projectId,
+}: {
+  readonly manage: ManageDoor;
+  readonly projectId: string;
+}) {
+  if (!useLacksOwnDomain(projectId)) return null;
+  return (
+    <div className="px-1 pt-0.5">
+      <Button
+        data-sites-nav=""
+        data-zerops-surface="sidebar-project-sites-add-domain"
+        onClick={() => {
+          manage(projectId, "add-domain");
+        }}
+        size="xs"
+        variant="ghost-muted"
+      >
+        <PlusIcon aria-hidden="true" />
+        Add your domain
+      </Button>
+    </div>
   );
 }
 
@@ -682,7 +784,9 @@ function MateHead({
   title,
   owner,
   projectId,
+  manage,
 }: {
+  readonly manage: ManageDoor | undefined;
   readonly mate: SitesMate | undefined;
   readonly title: string;
   readonly owner: string | undefined;
@@ -717,6 +821,9 @@ function MateHead({
           )}
         </span>
       </div>
+      {manage === undefined ? null : (
+        <ManageButton manage={manage} name={title} projectId={projectId} />
+      )}
       <ZeropsDoor name={title} projectId={projectId} />
     </div>
   );
@@ -892,6 +999,7 @@ export function HeaderSites({
                       opens();
                     };
               }}
+              onClose={close}
               onQuery={setQuery}
               production={sites.production}
               projectName={sites.projectName}
