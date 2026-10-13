@@ -513,7 +513,7 @@ it.each([
           ? [
               "--scenarios",
               "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
-              "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts",
+              "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts",
               "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
             ]
           : []),
@@ -552,7 +552,7 @@ it.each([
     const edited = lines.find((line) => line.startsWith("edited scenario files:"));
     if (stages.includes("C")) {
       expect(edited).toBe(
-        "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/admission.scenario.ts test/scenarios/areas/c-mate/chat.scenario.ts test/scenarios/areas/c-mate/opening.scenario.ts",
+        "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/admission.scenario.ts test/scenarios/areas/c-mate/chat.scenario.ts test/scenarios/areas/c-mate/projects-opening.scenario.ts",
       );
     } else expect(edited).toBeUndefined();
     if (stages.includes("A")) {
@@ -937,7 +937,7 @@ it("lane scenarios follow their own imports without the bundled app entry", () =
 });
 
 it("builders name rendering scenarios without expanding their siblings", () => {
-  const named = "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts";
+  const named = "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts";
   const result = NodeChildProcess.spawnSync(
     process.execPath,
     ["scripts/gate-changed.ts", "--base", "HEAD", "--scenarios", named, "--list"],
@@ -967,7 +967,7 @@ it.each([
 
 it("named rendering scenarios join changed scenarios once and keep their owning stages", () => {
   const changed = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
-  const named = "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts";
+  const named = "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts";
   const file = NodePath.join(repositoryFixture, changed);
   const original = NodeFS.readFileSync(file, "utf8");
   try {
@@ -986,7 +986,7 @@ it("named rendering scenarios join changed scenarios once and keep their owning 
     expect(result.stdout).toContain("typecheck @t3tools/web:");
     expect(result.stdout).toContain("typecheck scenarios:");
     expect(result.stdout).toContain(
-      "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/opening.scenario.ts test/scenarios/areas/d-change/review.scenario.ts",
+      "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/projects-opening.scenario.ts test/scenarios/areas/d-change/review.scenario.ts",
     );
   } finally {
     NodeFS.writeFileSync(file, original);

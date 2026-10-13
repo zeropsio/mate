@@ -1173,7 +1173,6 @@ describe("a run imported from V1 keeps its result pictures", () => {
 
   it.each([
     { name: "kept", imagePath: `mate-asset:${OCCURRENCE}` },
-    // Its tile says the picture is no longer available, once (`images.scenario.ts`).
     { name: "found gone, to say so", imagePath: `mate-asset:${OCCURRENCE}:source-missing` },
   ])("draws each picture by the reference the import gave it: $name", ({ imagePath }) => {
     expect(picturesOf(imagePath)).toEqual([
