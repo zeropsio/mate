@@ -80,23 +80,17 @@ jobs:
       - name: Check generated theme tokens
         run: node scripts/generate-theme-tokens.ts --check
 
-      - name: Check generated mobile themes
-        run: vp run --filter @t3tools/mobile generate -- --check
-
-      - name: Ensure Electron runtime is installed
-        run: vp run --filter @t3tools/desktop ensure:electron
-
       - name: Check
-        run: vp check
+        run: git ls-files -z -- . ':!:apps/desktop/**' ':!:apps/mobile/**' | xargs -0 vp check --no-error-on-unmatched-pattern
 
       - name: Typecheck
-        run: vpr typecheck
+        run: vp run --concurrency-limit 2 --filter '*' --filter '!@t3tools/monorepo' --filter '!@t3tools/desktop' --filter '!@t3tools/mobile' typecheck
 
       - name: Typecheck scenarios
         run: vp exec tsc --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json
 
       # `t3#build` depends on `@t3tools/web#build`: the production web and server
-      # bundles, built on every run. The desktop half builds in Desktop Smoke.
+      # bundles, built on every run.
       - name: Build server bundle
         run: vp run --filter t3 build
 
@@ -104,69 +98,6 @@ jobs:
   # an explicit "false": a gate that failed leaves the output empty, and that
   # must run the job rather than silently skip it. `!cancelled()` keeps a
   # failed gate from skipping its dependents outright.
-  desktop_smoke:
-    name: Desktop Smoke
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.desktop != 'false' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: true
-
-      - name: Ensure Electron runtime is installed
-        run: vp run --filter @t3tools/desktop ensure:electron
-
-      - name: Build desktop pipeline
-        env:
-          VITE_HTTP_URL: ""
-          VITE_WS_URL: ""
-        run: |
-          VITE_HOSTED_APP_CHANNEL="$(node --input-type=module -e 'import { resolveDesktopUpdateChannel } from "./scripts/stage-desktop-web.ts"; import pkg from "./apps/server/package.json" with { type: "json" }; process.stdout.write(resolveDesktopUpdateChannel(pkg.version));')"
-          export VITE_HOSTED_APP_CHANNEL
-          vp run build:desktop
-
-      - name: Verify preload bundle output
-        run: node apps/desktop/scripts/verify-preload-bundle.mjs
-
-      - name: Stage desktop web bundle
-        run: node scripts/stage-desktop-web.ts --skip-build
-
-      - name: Diagnose Linux Electron runtime
-        continue-on-error: true
-        run: |
-          electron_binary="$(cd apps/desktop && node -e 'process.stdout.write(require("electron"))')"
-          ldd "$electron_binary" | grep "not found" || true
-          xvfb-run -a -s "-screen 0 1440x900x24" "$electron_binary" --version
-
-      - name: Smoke test desktop
-        run: |
-          xvfb-run -a -s "-screen 0 1440x900x24" vp run --filter @t3tools/desktop smoke-test 2>&1 |
-            tee "${{ runner.temp }}/desktop-smoke-log.txt"
-
-      - name: Upload desktop smoke capture
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-smoke-capture
-          path: |
-            ${{ runner.temp }}/desktop-smoke-*/smoke.png
-            ${{ runner.temp }}/desktop-smoke-log.txt
-          if-no-files-found: warn
-          retention-days: 7
-
   chat_bundle:
     name: Chat Contract bundle
     needs: changes
@@ -295,11 +226,8 @@ jobs:
           cache: true
           run-install: true
 
-      - name: Ensure Electron runtime is installed
-        run: vp run --filter @t3tools/desktop ensure:electron
-
       - name: Test
-        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/monorepo' --filter '!@t3tools/scripts' --filter '!@t3tools/hq' test
+        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/desktop' --filter '!@t3tools/monorepo' --filter '!@t3tools/scripts' --filter '!@t3tools/hq' test
 
       - name: Test scenario drivers
         run: |
@@ -363,31 +291,6 @@ jobs:
       - name: Test
         run: vp run --filter @t3tools/hq test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
 
-  test_mobile:
-    name: Test Mobile
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.mobile != 'false' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: true
-
-      - name: Test
-        run: vp run --filter @t3tools/mobile test
-
   # apps/web alone ran ~8.5 min inside Test and set the length of every CI run.
   # Its 669 files run in parallel workers, so two runners halve it.
   test_web:
@@ -447,9 +350,6 @@ jobs:
           cache: true
           run-install: true
 
-      # No Electron setup here: `t3` (apps/server) has no Electron dependency
-      # and none of its tests touch the runtime. Only the non-server `test`
-      # job, which covers @t3tools/desktop, needs the download.
       - name: Test
         env:
           T3CODE_TRANSFER_BUDGET_REPORT_PATH: ${{ runner.temp }}/t3code-transfer-budget.md
@@ -517,12 +417,8 @@ jobs:
       - name: Test resource monitor
         run: cargo test --locked --manifest-path native/resource-monitor/Cargo.toml
 
-  # Desktop, mobile and the resource monitor are clients the container bundle
-  # does not ship, so a pull request pays for their jobs only when it touches
-  # them or what they build on. A push to main runs them all. The mobile native
-  # lint needs a macOS runner, which bills ~6.7x a Linux minute, so it stays
-  # gated on its own sources on main too. Diff detection is API-only
-  # and fails open: if the diff cannot be resolved, every gated job runs.
+  # PRs select the scenario bundle and resource monitor by their inputs. Main
+  # runs both; an unresolved diff fails open to keep their coverage complete.
   changes:
     name: Changes
     runs-on: ubuntu-latest
@@ -532,10 +428,7 @@ jobs:
       pull-requests: read
     outputs:
       chat: ${{ steps.detect.outputs.chat }}
-      desktop: ${{ steps.detect.outputs.desktop }}
-      mobile: ${{ steps.detect.outputs.mobile }}
       resource_monitor: ${{ steps.detect.outputs.resource_monitor }}
-      mobile_native: ${{ steps.detect.outputs.mobile_native }}
     steps:
       - name: Checkout workspace manifest
         uses: actions/checkout@v6
@@ -558,7 +451,7 @@ jobs:
         run: |
           set -uo pipefail
 
-          areas=(chat desktop mobile resource_monitor mobile_native)
+          areas=(chat resource_monitor)
 
           fail_open() {
             echo "$* Running every gated job."
@@ -622,49 +515,11 @@ jobs:
           gate chat "${shared}|^apps/(hq|server|web)/|^packages/(effect-codex-app-server|effect-acp)/|^scripts/(chat-gate|gate-changed|test-postgres)"
 
           if [[ -n "${PR_NUMBER}" ]]; then
-            # Desktop Smoke stages the hosted web bundle through scripts/.
-            gate desktop "${shared}|^apps/(desktop|web)/|^scripts/"
-            gate mobile "${shared}|^apps/mobile/|^native/libghostty-vt/"
             gate resource_monitor '^native/resource-monitor/|^\.github/workflows/ci\.yml$'
           else
-            echo "Push to main: desktop, mobile and resource monitor run in full."
-            for area in desktop mobile resource_monitor; do echo "${area}=true" >> "$GITHUB_OUTPUT"; done
+            echo "Push to main: resource monitor runs in full."
+            echo "resource_monitor=true" >> "$GITHUB_OUTPUT"
           fi
-
-          # Sources scripts/mobile-native-static-check.ts lints, plus the tool
-          # and rule configuration that decides how it lints them, plus the
-          # root package.json that defines the lint:mobile command.
-          gate mobile_native '^apps/mobile/.*\.(swift|kt|kts)$|^apps/mobile/(\.swiftlint\.yml|detekt\.yml|\.editorconfig|Brewfile)$|^scripts/mobile-native-static-check\.ts$|^package\.json$|^\.github/workflows/ci\.yml$'
-
-  mobile_native_static_analysis:
-    name: Mobile Native Static Analysis
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.mobile_native != 'false' }}
-    runs-on: macos-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: |
-            args:
-              - --filter=@t3tools/scripts...
-
-      - name: Install mobile native static analysis tools
-        run: brew bundle install --file apps/mobile/Brewfile
-
-      - name: Lint mobile native sources
-        run: vp run lint:mobile
 
   release_smoke:
     name: Release Smoke

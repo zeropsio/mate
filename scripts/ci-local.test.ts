@@ -70,9 +70,12 @@ describe("checkSteps", () => {
       new URL("../.github/workflows/ci.yml", import.meta.url),
       "utf8",
     );
-    const runs = checkSteps(workflow).map((step) => step.run);
-    expect(runs.indexOf("vp check")).toBeGreaterThan(-1);
-    expect(runs.indexOf("vp check")).toBeLessThan(runs.indexOf("vpr typecheck"));
+    const steps = checkSteps(workflow);
+    const check = steps.findIndex((step) => step.name === "Check");
+    const typecheck = steps.findIndex((step) => step.name === "Typecheck");
+    expect(check).toBeGreaterThan(-1);
+    expect(steps[check]?.run).toContain("vp check");
+    expect(check).toBeLessThan(typecheck);
   });
 });
 

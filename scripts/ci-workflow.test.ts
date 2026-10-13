@@ -202,3 +202,56 @@ it("the Test verdict includes every scripts and HQ shard", () => {
   expect(command).toContain("--filter '!@t3tools/scripts'");
   expect(command).toContain("--filter '!@t3tools/hq'");
 });
+
+it("hosted web CI omits desktop and mobile jobs and work", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  for (const job of ["desktop_smoke", "test_mobile", "mobile_native_static_analysis"])
+    expect(
+      workflow.jobs[job],
+      "ASSERTION: unused clients must not consume CI runners",
+    ).toBeUndefined();
+  expect(Object.keys(workflow.jobs.changes.outputs).sort()).toEqual(["chat", "resource_monitor"]);
+  expect(workflow.jobs.rust).toBeDefined();
+  expect(workflow.jobs.release_smoke).toBeDefined();
+  const steps = workflow.jobs.check.steps as { name: string; run?: string }[];
+  expect(steps.some((step) => /Electron|mobile/u.test(step.name))).toBe(false);
+  const typecheck = steps.find((step) => step.name === "Typecheck")!.run!;
+  for (const client of ["desktop", "mobile"])
+    expect(typecheck).toContain(`--filter '!@t3tools/${client}'`);
+  expect(typecheck, "ASSERTION: Vite+ cannot combine recursive mode with filters").not.toContain(
+    " -r ",
+  );
+  expect(typecheck).toContain("--filter '!@t3tools/monorepo'");
+  const check = steps.find((step) => step.name === "Check")!.run!;
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-web-only-"));
+  try {
+    const executable = NodePath.join(directory, "vp");
+    const output = NodePath.join(directory, "selected");
+    NodeFS.writeFileSync(executable, '#!/bin/sh\nprintf "%s\\n" "$@" >> "$SELECTED"\n', {
+      mode: 0o755,
+    });
+    const result = NodeChildProcess.spawnSync("bash", ["-c", check], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, SELECTED: output },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const selected = NodeFS.readFileSync(output, "utf8").split("\n");
+    expect(selected, "ASSERTION: hosted web source remains checked").toContain(
+      "apps/web/package.json",
+    );
+    expect(
+      selected.some((path) => /^apps\/(desktop|mobile)\//u.test(path)),
+      "ASSERTION: Check must exclude unused client files",
+    ).toBe(false);
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+  const test = workflow.jobs.test.steps.find((step: { name: string }) => step.name === "Test").run;
+  expect(test).toContain("--filter '!@t3tools/desktop'");
+  expect(
+    workflow.jobs.test.steps.some((step: { name: string }) => step.name.includes("Electron")),
+  ).toBe(false);
+});
