@@ -1,10 +1,16 @@
 /**
  * A proposal on its card: what the person decided of it, as HQ keeps it (`hq/chief.ts`), how an
- * approved one is carried out, and the words a message to another Mate — or to the person's own
- * Chief — is sent in. Nothing here acts; the card's container carries out an approval as the
+ * approved one is carried out, the words a message to another Mate — or to the person's own
+ * Chief — is sent in, and how far an approved domain is from answering. Nothing here acts; the card's container carries out an approval as the
  * person.
  */
-import type { VaultScopeRef, VaultView, VaultWrite } from "@t3tools/client-runtime/data";
+import type {
+  DomainFace,
+  PlaceAddresses,
+  VaultScopeRef,
+  VaultView,
+  VaultWrite,
+} from "@t3tools/client-runtime/data";
 import type {
   HqProposalDecision,
   HqProposalDecisionWrite,
@@ -233,7 +239,104 @@ export function proposalOutcomeWords(
         : `Sent to ${proposal.params.to.mateName}.`;
     case "chief.message":
       return running ? "Sending to your Chief…" : "Sent to your Chief.";
+    case "domain.add": {
+      const names = domainNames(proposal.params.domains);
+      return running ? `Adding ${names}…` : `Added ${names}.`;
+    }
   }
+}
+
+type DomainProposal = Extract<ZeropsProposal, { kind: "domain.add" }>;
+
+/** The domains in a sentence, a name before its www.: "a.com and www.a.com", "a, b and c". */
+function domainNames(domains: ReadonlyArray<string>): string {
+  const ordered = domains.toSorted(
+    (left, right) => Number(left === `www.${right}`) - Number(right === `www.${left}`),
+  );
+  if (ordered.length <= 1) return ordered.join("");
+  return `${ordered.slice(0, -1).join(", ")} and ${ordered.at(-1)}`;
+}
+
+/** The card's title: a domain's names the project it puts on them; any other its summary. */
+export function proposalTitle(proposal: ZeropsProposal): string {
+  if (proposal.kind !== "domain.add") return proposal.summary;
+  return `Put ${proposal.projectName ?? "the project"} on ${domainNames(proposal.params.domains)}`;
+}
+
+/** How far each face is from answering: the furthest behind speaks for the proposal's domains. */
+const FACE_ORDER: ReadonlyArray<DomainFace> = [
+  "removing",
+  "going-live",
+  "changing",
+  "dns",
+  "elsewhere",
+  "certificate-failed",
+  "certificate",
+  "live",
+];
+
+/** An approved domain's state in words, and whether it waits on the person, works or answers. */
+export interface DomainProposalState {
+  readonly tone: "working" | "waiting" | "problem" | "live";
+  readonly words: string;
+}
+
+/**
+ * How far an approved domain is from answering, as the project's addresses show it: the one of its
+ * domains furthest behind speaks for them. Undefined while the addresses are read, or where the
+ * project holds none of them.
+ */
+export function domainProposalState(
+  place: PlaceAddresses,
+  proposal: DomainProposal,
+): DomainProposalState | undefined {
+  if (place.state !== "ready") return undefined;
+  const held = place.domains
+    .filter((each) => proposal.params.domains.includes(each.domainName))
+    .toSorted((left, right) => FACE_ORDER.indexOf(left.face) - FACE_ORDER.indexOf(right.face));
+  const behind = held[0];
+  if (behind === undefined) return undefined;
+  const name = behind.domainName;
+  switch (behind.face) {
+    case "removing":
+      return { tone: "waiting", words: `${name} is being removed.` };
+    case "going-live":
+    case "changing":
+      return { tone: "working", words: `Putting ${name} in place…` };
+    case "dns":
+      return {
+        tone: "waiting",
+        words: `Waiting for your DNS. Add ${name}'s records at your DNS provider.`,
+      };
+    case "elsewhere":
+      return {
+        tone: "problem",
+        words: `${name} points elsewhere. Change its records at your DNS provider.`,
+      };
+    case "certificate":
+      return { tone: "working", words: `Your DNS is right. ${name}'s certificate is on its way…` };
+    case "certificate-failed":
+      return {
+        tone: "problem",
+        words: `${name}'s certificate could not be installed.${behind.sslError === undefined ? "" : ` ${behind.sslError}`}`,
+      };
+    case "live": {
+      const names = held.map((each) => each.domainName);
+      return {
+        tone: "live",
+        words: `${domainNames(names)} ${names.length > 1 ? "are" : "is"} live.`,
+      };
+    }
+  }
+}
+
+/**
+ * What approving a domain puts in place besides it: putting the project's domains in place puts
+ * every waiting change there too, anybody's. Undefined where none waits.
+ */
+export function domainProposalAlso(place: PlaceAddresses): string | undefined {
+  if (place.waitingDomains.length === 0) return undefined;
+  return `Approving also puts in place: ${place.waitingDomains.map((each) => each.label).join(", ")}.`;
 }
 
 /** Where a proposal acts, in the vault's and the menu's words; a message's Mate is drawn instead. */
@@ -249,6 +352,8 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
       return proposal.params.scope === "project"
         ? `Every app${project === undefined ? "" : ` in ${project}`}`
         : within(`${proposal.serviceName ?? "The service"}'s own`);
+    case "domain.add":
+      return `→ ${proposal.serviceName ?? "its service"} · port ${proposal.params.port}`;
     case "mate.message":
     case "chief.message":
       return null;
