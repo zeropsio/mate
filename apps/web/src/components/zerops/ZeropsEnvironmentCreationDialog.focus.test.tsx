@@ -3,7 +3,11 @@ import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
+import { Dialog } from "../ui/dialog";
+import {
+  ZeropsEnvironmentCreationDialog,
+  ZeropsEnvironmentCreationForm,
+} from "./ZeropsEnvironmentCreationDialog";
 
 /** Where the dialog would hand the focus once it closes: its popup's `finalFocus`. */
 const popup = vi.hoisted(() => ({ finalFocus: undefined as undefined | (() => boolean) }));
@@ -65,4 +69,49 @@ describe("where the focus goes once the dialog closes", () => {
     addStage(true);
     expect(popup.finalFocus?.()).toBe(false);
   });
+});
+
+it("A chosen Git target survives the recipe arriving after first paint", () => {
+  const props = {
+    defaultName: "Shop - production",
+    defaultTintFor: () => "violet" as const,
+    defaultWithAgent: false,
+    groupName: "Shop",
+    onCancel: () => {},
+    onCreate: vi.fn(),
+    role: "prod" as const,
+    takenBotNames: { names: [], complete: true },
+    tier: undefined,
+    recipe: "reading" as const,
+    tierServices: [],
+    git: {
+      repos: undefined,
+      offered: { add: true, connect: true, replace: true },
+      setup: { connect: vi.fn(), preview: vi.fn(), add: vi.fn() },
+      onAdded: vi.fn(),
+    },
+  };
+  const draw = (next: Parameters<typeof ZeropsEnvironmentCreationForm>[0]) =>
+    h(Dialog, {}, h(ZeropsEnvironmentCreationForm, next));
+  act(() => {
+    tree = create(draw(props));
+  });
+  const choose = tree!.root.find(
+    (node) =>
+      node.props["aria-label"] === "Where does it go?" &&
+      typeof node.props.onValueChange === "function",
+  );
+  act(() => choose.props.onValueChange("git"));
+  expect(tree!.root.findByProps({ "data-zerops-surface": "git-environment-form" })).toBeDefined();
+  act(() =>
+    tree!.update(
+      draw({
+        ...props,
+        recipe: "present",
+        tier: { kind: "tier", tier: "production", yaml: "services: []" },
+      }),
+    ),
+  );
+  expect(tree!.root.findByProps({ "data-zerops-surface": "git-environment-form" })).toBeDefined();
+  expect(props.onCreate).not.toHaveBeenCalled();
 });

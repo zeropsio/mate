@@ -1,3 +1,8 @@
+import { tiersAddable } from "./projects/projectsView.logic";
+import { hqOffer } from "@t3tools/shared/hqOffers";
+import { hqProjectIdOf } from "~/zerops/hqWrites";
+import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
+import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { isChief } from "~/zerops/chief";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useProjectsPageRows } from "~/zerops/projectsPageRows";
@@ -179,12 +184,7 @@ import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 
 import { ZeropsReleaseVerb } from "./ZeropsReleaseVerb";
 
-import {
-  creatableRoles,
-  environmentRoleLabel,
-  environmentRoleTag,
-  groupNameUnread,
-} from "./ZeropsGroupTree.logic";
+import { environmentRoleLabel, environmentRoleTag, groupNameUnread } from "./ZeropsGroupTree.logic";
 import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
 import {
   overviewKeeps,
@@ -1513,6 +1513,19 @@ function ZeropsProjectsContent({
     readonly groupId: string;
     readonly role: ZeropsEnvironmentRole;
   } | null>(null);
+  const gitSetupDetail = useHqAppDetail(creationRequest?.groupId ?? null);
+  const gitSetupHq =
+    activeOrganization === null || activeOrganization === undefined
+      ? null
+      : hqProjectIdOf(activeOrganization.id);
+  const gitSetupCan = hqStructure.structure?.apps.find(
+    (app) => app.id === creationRequest?.groupId,
+  )?.can;
+  const gitSetupOffered = (verb: string) =>
+    hqOffer(gitSetupCan, verb, {
+      current: hqStructure.live,
+      unavailableSince: hqStructure.live ? null : 0,
+    }).kind === "allowed";
   const requestedGroup = useMemo(
     () =>
       creationRequest === null
@@ -2220,6 +2233,19 @@ function ZeropsProjectsContent({
     );
   };
 
+  const addableTiers = ({ groupId }: Pick<ZeropsGroup, "groupId">) => {
+    const group = groupTree.groups.find((entry) => entry.group.groupId === groupId)?.group;
+    if (group === undefined) return [];
+    const flow = projectFlow.flows.get(groupId);
+    if (flow === undefined) return [];
+    return tiersAddable({
+      offered: environmentOffers(groupId),
+      group,
+      hq: [...flow.environments.values()].map((row) => ({ id: row.id, tier: row.tier })),
+      recipe: { read: flow.recipeRead, tiers: flow.recipeTiers },
+    });
+  };
+
   /**
    * A project's own quiet actions: its name, and the environments a person
    * adds to it — another Mate, and a stage and a production as equals: neither
@@ -2272,9 +2298,7 @@ function ZeropsProjectsContent({
                 },
               ]
             : []),
-          ...(environmentOffers(group.groupId)?.stage === true &&
-          !groupIsEmpty(group) &&
-          creatableRoles(group).includes("stage")
+          ...(addableTiers(group).includes("stage") && !groupIsEmpty(group)
             ? [
                 {
                   id: "add-stage",
@@ -2286,9 +2310,7 @@ function ZeropsProjectsContent({
                 },
               ]
             : []),
-          ...(environmentOffers(group.groupId)?.production === true &&
-          !groupIsEmpty(group) &&
-          creatableRoles(group).includes("prod")
+          ...(addableTiers(group).includes("production") && !groupIsEmpty(group)
             ? [
                 {
                   id: "add-production",
@@ -2442,10 +2464,7 @@ function ZeropsProjectsContent({
         renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
         setUpProduction={({ group }) =>
-          environmentOffers(group.groupId)?.production === true &&
-          !groupIsEmpty(group) &&
-          creatableRoles(group).includes("prod") &&
-          !creationRunning
+          addableTiers(group).includes("production") && !groupIsEmpty(group) && !creationRunning
             ? () => {
                 requestEnvironment(group.groupId, "prod");
               }
@@ -2511,6 +2530,27 @@ function ZeropsProjectsContent({
       ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (
         <ZeropsEnvironmentCreationDialog
+          git={
+            activeOrganization === null || activeOrganization === undefined || gitSetupHq === null
+              ? undefined
+              : {
+                  repos: gitSetupDetail.live ? gitSetupDetail.repos : undefined,
+                  offered: {
+                    add: gitSetupOffered("add_git_environment"),
+                    connect: gitSetupOffered("connect_remote"),
+                    replace: gitSetupOffered("replace_remote_token"),
+                  },
+                  setup: gitEnvironmentSetup({
+                    orgId: activeOrganization.id,
+                    appId: creationRequest.groupId,
+                    hqProjectId: gitSetupHq,
+                    operations,
+                  }),
+                  onAdded: () => {
+                    setCreationRequest(null);
+                  },
+                }
+          }
           tier={groupRecipe.tier}
           tierServices={groupRecipe.services}
           recipe={creationRecipe(groupRecipe)}

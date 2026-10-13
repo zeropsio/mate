@@ -99,7 +99,7 @@ export function useEnvironmentQuestionFacts(
   return useMemo(
     () =>
       questionFactsOf({
-        offered: { stage, production },
+        offered: offered ?? { stage, production },
         recipeRead: flow?.recipeRead === true,
         recipeTiers: flow?.recipeTiers ?? [],
         held: [
@@ -118,7 +118,7 @@ export function useEnvironmentQuestionFacts(
           ...pending,
         ],
       }),
-    [flow, pending, production, projects, stage],
+    [flow, pending, production, projects, stage, offered],
   );
 }
 

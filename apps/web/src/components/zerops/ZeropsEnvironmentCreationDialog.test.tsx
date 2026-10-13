@@ -107,3 +107,25 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(render({ defaultName: "" })).not.toContain("Give the environment a name.");
   });
 });
+
+it("offers Git without a recipe when HQ authorizes while Zerops stays the default", () => {
+  const html = render({
+    recipe: "absent",
+    tier: undefined,
+    tierServices: [],
+    git: {
+      repos: [],
+      offered: { add: true, connect: true, replace: true },
+      setup: {
+        connect: async () => ({ ok: false, reason: "refused" }),
+        preview: async () => [],
+        add: async () => {},
+      },
+      onAdded: () => {},
+    },
+  });
+  expect(html).toContain("Where does it go?");
+  expect(html).toContain("Git branch");
+  expect(html).toContain("A new Zerops project");
+  expect(html).not.toContain('data-zerops-surface="git-environment-form"');
+});

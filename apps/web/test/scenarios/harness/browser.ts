@@ -544,3 +544,30 @@ export async function clickText(page: Page, surface: string, text: string) {
     .setTimeout(10_000)
     .click();
 }
+
+/** Resize the menu through its drag rail, then wait for the exact drawn width. */
+export async function resizeMenu(page: Page, width: number) {
+  const rail = await page.waitForSelector('[data-sidebar="rail"]', {
+    visible: true,
+    timeout: 5_000,
+  });
+  const box = await rail!.boundingBox();
+  if (box === null) throw new Error("The menu drag rail has no geometry");
+  const current = await page.$eval(
+    '[data-sidebar="sidebar"]',
+    (element) => element.getBoundingClientRect().width,
+  );
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + width - current, box.y + box.height / 2, {
+    steps: 5,
+  });
+  await page.mouse.up();
+  await page.waitForFunction(
+    (expected) =>
+      document.querySelector('[data-sidebar="sidebar"]')?.getBoundingClientRect().width ===
+      expected,
+    { timeout: 5_000, polling: "raf" },
+    width,
+  );
+}

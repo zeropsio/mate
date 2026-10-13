@@ -26,6 +26,7 @@ declare module "../model.ts" {
     readonly "connect-git-remote": Repo & { readonly url: string };
     readonly "replace-git-remote-token": Repo;
     readonly "disconnect-git-remote": Repo;
+    readonly "update-git-remote-address": Repo & { readonly url: string };
     readonly "preview-git-environment": App & { readonly request: PreviewGitEnvironmentRequest };
     readonly "add-git-environment": App & { readonly request: AddGitEnvironmentRequest };
     readonly "remove-git-environment": App & { readonly environmentId: HqEnvironmentId };
@@ -54,6 +55,7 @@ export const HQ_GIT_OPERATION_VERBS = {
   "connect-git-remote": "connect_remote",
   "replace-git-remote-token": "replace_remote_token",
   "disconnect-git-remote": "disconnect_remote",
+  "update-git-remote-address": "update_remote_address",
   "preview-git-environment": "add_git_environment",
   "add-git-environment": "add_git_environment",
   "remove-git-environment": "remove_git_environment",
@@ -87,6 +89,7 @@ export const HQ_GIT_TARGET_KINDS = [
   kind("connect-git-remote"),
   kind("replace-git-remote-token"),
   kind("disconnect-git-remote"),
+  kind("update-git-remote-address"),
   kind("preview-git-environment"),
   kind("add-git-environment"),
   kind("remove-git-environment"),

@@ -32,14 +32,18 @@ const repoRoot = NodePath.resolve(import.meta.dirname, "../../../..");
 // fixture independent of git history, promisor remotes and network access in shallow CI checkouts.
 const ARCHIVE_DIGEST = "b220da78d8a1ef462da6919c86ed6e5f493b140956cdb9857698d6f6bdfc1e04";
 
-export const makePreExpandCore = (installedRoot = repoRoot) =>
+export const makeArchivedCore = (
+  archiveName: string,
+  archiveDigest: string,
+  installedRoot = repoRoot,
+) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner;
-    const fixtureRoot = yield* tempDir("hq-pre-expand-");
-    const archive = NodePath.join(installedRoot, PRE_EXPAND_ARCHIVE);
+    const fixtureRoot = yield* tempDir("hq-archived-core-");
+    const archive = NodePath.join(installedRoot, archiveName);
     assert.strictEqual(
       NodeCrypto.createHash("sha256").update(NodeFS.readFileSync(archive)).digest("hex"),
-      ARCHIVE_DIGEST,
+      archiveDigest,
     );
     assert.strictEqual(
       yield* spawner.exitCode(ChildProcess.make("tar", ["-xf", archive, "-C", fixtureRoot])),
@@ -93,11 +97,19 @@ export const makePreExpandCore = (installedRoot = repoRoot) =>
           /* @vite-ignore */ NodePath.join(fixtureRoot, "apps/hq/src/migrationFiles.ts")
         ) as Promise<typeof import("../../src/migrationFiles.ts")>,
     );
-    assert.notInclude(
-      oldMigrations.treeMigrations().map((file) => file.name),
-      "0052_environment_identity.sql",
-    );
     return { ...oldModule, oldNavigation, oldMigrations, fixtureRoot };
   });
+
+export const makePreExpandCore = (installedRoot = repoRoot) =>
+  makeArchivedCore(PRE_EXPAND_ARCHIVE, ARCHIVE_DIGEST, installedRoot).pipe(
+    Effect.tap((core) =>
+      Effect.sync(() =>
+        assert.notInclude(
+          core.oldMigrations.treeMigrations().map((file) => file.name),
+          "0052_environment_identity.sql",
+        ),
+      ),
+    ),
+  );
 
 export const preExpandCore = makePreExpandCore();
