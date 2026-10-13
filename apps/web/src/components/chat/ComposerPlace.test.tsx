@@ -87,3 +87,34 @@ describe("what stops you writing", () => {
     expect(document.querySelector("button")).toBeNull();
   });
 });
+
+it("an archived conversation reads as archived and offers Restore", async () => {
+  let restored = false;
+  const notice = composerPlaceNotice(
+    { archived: { restoring: false }, crewRetired: null },
+    {
+      restore: () => {
+        restored = true;
+      },
+      openCurrent() {},
+    },
+  );
+  await act(() => root!.render(<ComposerPlaceLine notice={notice!} />));
+  expect(document.querySelector('[role="status"]')?.textContent).toBe(
+    "This conversation is archived. Restore it to carry on here.Restore",
+  );
+  const restore = document.querySelector("button")!;
+  expect(restore.textContent).toBe("Restore");
+  expect(restore.disabled).toBe(false);
+  expect(document.querySelector('[role="textbox"]')).toBeNull();
+  await act(() => restore.click());
+  expect(restored).toBe(true);
+  // The owner's reflected record, rather than the click, clears the archived notice.
+  const live = composerPlaceNotice(
+    { archived: null, crewRetired: null },
+    { restore() {}, openCurrent() {} },
+  );
+  expect(live).toBeNull();
+  await act(() => root!.render(live === null ? null : <ComposerPlaceLine notice={live} />));
+  expect(document.body.textContent).toBe("");
+});

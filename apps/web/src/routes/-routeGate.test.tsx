@@ -71,6 +71,7 @@ function gateFor(
     conversation,
     voice,
     stage: null,
+    projectId: null,
   };
 }
 
@@ -287,4 +288,25 @@ describe("RouteGateView", () => {
     expect(readableText(container)).toContain("conversationmenu");
     expect(container.textContent).toContain("conversationmenu");
   });
+});
+
+it("project revocation withdraws the open Mate while its receiver still pongs", () => {
+  act(() =>
+    root.render(
+      <RouteGateView {...gateFor(READY, "live")}>
+        The existing conversation is still here
+      </RouteGateView>,
+    ),
+  );
+  expect(readableText(container)).toContain("The existing conversation is still here");
+  // A connected receiver cannot overrule the route's authoritative project denial.
+  act(() =>
+    root.render(
+      <RouteGateView {...gateFor(READY, "live", { kind: "suppressed", reason: "access-denied" })}>
+        The existing conversation is still here
+      </RouteGateView>,
+    ),
+  );
+  expect(readableText(container)).not.toContain("The existing conversation is still here");
+  expect(readableText(container)).toContain("access");
 });

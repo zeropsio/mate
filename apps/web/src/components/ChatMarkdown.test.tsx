@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import * as settingsModule from "../hooks/useSettings";
 import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
 import { Button } from "./ui/button";
+import { TooltipPopup } from "./ui/tooltip";
 import { AppLinkContext, ServiceBrowserScope } from "./ServiceBrowserLink";
 import { setMarkdownTaskChecked } from "./files/filePreviewMode";
 
@@ -476,6 +477,29 @@ describe("ChatMarkdown file link labels", () => {
     renderToStaticMarkup(
       <ChatMarkdown cwd="/repo" environmentId={environmentId} text={text} lineBreaks />,
     );
+
+  it("file path tooltips show the source path in the code font role", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(
+        <ChatMarkdown
+          cwd="/workspace"
+          environmentId={environmentId}
+          text="[summary.ts](/workspace/src/summary.ts)"
+        />,
+      );
+    });
+    const tooltip = renderer.root.findByType(TooltipPopup);
+    expect(tooltip.props.variant, "ASSERTION: file path tooltip uses the code font role").toBe(
+      "code",
+    );
+    expect(
+      markupDom(renderToStaticMarkup(tooltip.props.children)).body.textContent,
+      "ASSERTION: file tooltip shows the source path",
+    ).toBe("/workspace/src/summary.ts");
+    act(() => renderer.unmount());
+  });
 
   it("keeps an agent's prose label beside the file chip, and copies the link as written", () => {
     const html = render("See [validates the input](/repo/src/example.ts:12) first.");

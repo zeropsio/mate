@@ -341,9 +341,17 @@ describe("C: panel to report rooms", () => {
                       step < 40 && left > 0;
                       step++
                     ) {
+                      const beforeWheel = await s.page.evaluate(
+                        () =>
+                          document.querySelector<HTMLElement>(".timeline-legend-list")!.scrollTop,
+                      );
                       await s.page.mouse.wheel({ deltaY: Math.min(100, left + 4) });
-                      await s.page.evaluate(
-                        () => new Promise((resolve) => setTimeout(resolve, 50)),
+                      await s.page.waitForFunction(
+                        (before) =>
+                          document.querySelector<HTMLElement>(".timeline-legend-list")!.scrollTop >
+                          before,
+                        { timeout: 8000, polling: "raf" },
+                        beforeWheel,
                       );
                       left = (await cardTop()) - inView;
                     }

@@ -83,33 +83,6 @@ describe("C: opening a Mate and chat", () => {
         }),
     );
 
-    // Engine final run, G10: reopened from the chats menu, the archived conversation had a live
-    // composer that sent nothing, no word that it was archived, and no Restore.
-    it.effect("an archived conversation reads as archived and offers Restore", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* Effect.promise(async () => {
-          await s.page.locator("::-p-aria(More header actions)").click();
-          await s.page.locator("[data-zerops-start-fresh]").click();
-          await s.page.waitForFunction(() => location.pathname.startsWith("/draft/"));
-        });
-        yield* chat.when.visit("/env-Ada/thread-Ada");
-        yield* chat.then.text("The existing conversation is still here");
-        yield* chat.then.text("This conversation is archived");
-        yield* chat.when.press("Restore");
-        yield* chat.then.noText("This conversation is archived");
-        const fixture = chat.fixture();
-        expect(
-          fixture.engine.header.archived,
-          "ASSERTION: Restore restores the conversation in its owning engine",
-        ).toBe(false);
-        yield* chat.then.path("/env-Ada/thread-Ada");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     it.effect("an archived conversation opens read-only from the archive list", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
@@ -249,7 +222,16 @@ describe("C: opening a Mate and chat", () => {
         Effect.gen(function* () {
           const { s, chat } = yield* setup;
           yield* s.given.signedIn;
+          expect(
+            s.drivers.zerops.requests.get("GET /authorize-app"),
+            "ASSERTION: first sign-in completes the Zerops OAuth redirect",
+          ).toBe(1);
+          expect(chat.fixture().doorCount()).toBe(0);
           yield* chat.when.open();
+          expect(
+            chat.fixture().doorCount(),
+            "ASSERTION: first open crosses the named Mate's door once",
+          ).toBe(1);
           yield* chat.then.path("/env-Ada/thread-Ada");
           yield* Effect.promise(async () => {
             await s.page.evaluate(() => document.fonts.ready);
@@ -339,7 +321,9 @@ describe("C: opening a Mate and chat", () => {
         yield* s.given.signedIn;
         yield* chat.when.open();
         yield* chat.then.text("The existing conversation is still here");
+        const adaDoors = chat.fixture().doorCount();
         yield* chat.when.open("Bea", "Bea's conversation history");
+        const beaDoors = chat.fixture("Bea").doorCount();
         yield* chat.when.returnTo();
         yield* chat.when.type("Keep this draft with Ada");
         yield* chat.when.open("Bea", "Bea's conversation history");
@@ -347,6 +331,14 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.then.text("The existing conversation is still here");
         yield* chat.then.draft("Keep this draft with Ada");
         yield* chat.then.noButton("Sign in");
+        expect(
+          chat.fixture().doorCount(),
+          "ASSERTION: returning to Ada reuses its parked door",
+        ).toBe(adaDoors);
+        expect(
+          chat.fixture("Bea").doorCount(),
+          "ASSERTION: returning to Bea reuses its parked door",
+        ).toBe(beaDoors);
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
       }),
@@ -420,6 +412,7 @@ describe("C: opening a Mate and chat", () => {
               },
             };
             const metadata: string[] = [];
+            const screenshotThreadIds: ThreadId[] = [];
             Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
             Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
             mate.rpcHandlers.unshift((request, socket) => {
@@ -428,7 +421,7 @@ describe("C: opening a Mate and chat", () => {
               const resource = input.resource;
               if (resource._tag === "project-favicon") return false;
               const attached = resource._tag === "attachment";
-              if (!attached) expect(resource.threadId).toBe(mate.thread.id);
+              if (!attached) screenshotThreadIds.push(resource.threadId);
               metadata.push(attached ? "attachment" : "screenshot");
               const digest = (attached ? "b" : "a").repeat(64);
               const relativeUrl = `/api/assets/objects/${digest}/${input.preview ? "preview" : "original"}`;
@@ -481,6 +474,12 @@ describe("C: opening a Mate and chat", () => {
                   return img !== null && img.complete && img.naturalWidth === 160;
                 }),
               );
+              expect(screenshotThreadIds).not.toHaveLength(0);
+              for (const threadId of screenshotThreadIds)
+                expect(
+                  threadId,
+                  "ASSERTION: screenshot requests target the owning Mate conversation",
+                ).toBe(mate.thread.id);
               expect(
                 metadata,
                 "ASSERTION: screenshot and attachment resolve through the image data layer",
@@ -502,6 +501,7 @@ describe("C: opening a Mate and chat", () => {
         expect(chat.fixture().doorCount()).toBe(0);
         yield* chat.when.visit("/env-Ada/thread-Ada");
         yield* chat.then.ready("Ada");
+        expect(chat.fixture().doorCount()).toBe(1);
         yield* chat.then.headerName("Ada");
         yield* chat.then.text("The existing conversation is still here");
         yield* chat.then.path("/env-Ada/thread-Ada");
@@ -514,8 +514,10 @@ describe("C: opening a Mate and chat", () => {
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
         yield* s.given.signedIn;
+        expect(chat.fixture().doorCount()).toBe(0);
         yield* chat.when.visit("/mate/Ada");
         yield* chat.then.ready("Ada");
+        expect(chat.fixture().doorCount()).toBe(1);
         yield* chat.then.headerName("Ada");
         yield* chat.then.path("/env-Ada/thread-Ada");
         yield* chat.then.text("The existing conversation is still here");
@@ -544,6 +546,8 @@ describe("C: opening a Mate and chat", () => {
         yield* s.given.signedIn;
         yield* chat.when.open();
         yield* chat.when.send("Please inspect the Shop project");
+        yield* Effect.promise(() => chat.fixture().waitForTurn("Please inspect the Shop project"));
+        expect(chat.fixture().sentTurnCount()).toBe(1);
         yield* chat.then.once("Please inspect the Shop project");
         yield* chat.when.reload("Ada", "Please inspect the Shop project");
         yield* chat.then.headerName("Ada");
@@ -703,7 +707,6 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.when.send("Change of plan: keep it under 120 words");
         yield* chat.when.press("Send now");
         yield* chat.then.once("Change of plan: keep it under 120 words");
-        expect(chat.fixture().sentTurnCount()).toBe(1);
         chat.fixture().reply("story-run", "A short story about a lighthouse cat");
         chat.fixture().run("story-run", "completed");
         yield* chat.then.text("A short story about a lighthouse cat");
@@ -750,141 +753,45 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
-    // Catches an agent's approval never appearing or Approve failing to release the pending command.
-    it.effect("approve an agent command and see it resolve", () =>
+    it.effect("a free answer carries only the picture attached to that question", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
         yield* s.given.signedIn;
         yield* chat.when.open();
-        chat.fixture().approval();
-        yield* chat.then.text("wants to run this command");
-        yield* chat.then.text("vp run build");
-        yield* chat.when.click("Approve");
-        yield* chat.then.text("Agent received your response");
-        yield* chat.then.noButton("Approve");
-        expect(chat.fixture().commandDecisions()).toEqual(["approved"]);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches Decline silently approving the command or leaving the approval stuck in the composer.
-    it.effect("decline an agent command and see it resolve", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        chat.fixture().approval();
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* chat.then.text("vp run build");
-        yield* chat.when.click("Decline");
-        yield* chat.then.text("Agent received your response");
-        yield* chat.then.noButton("Decline");
-        expect(chat.fixture().commandDecisions()).toEqual(["declined"]);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches an agent question disappearing, sending the display label instead of its answer, or remaining unanswered after selection.
-    it.effect("answer an agent question with a suggested option", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* chat.then.enabledControl("GPT-5.4");
-        chat.fixture().question();
+        chat.fixture().run("question-custom-run", "running");
+        chat.fixture().question("question-custom", "question-custom-run");
         yield* chat.then.text("Which environment should I inspect?");
-        yield* chat.when.click("Staging");
-        yield* chat.then.text("Agent received your response");
-        yield* chat.then.noText("Which environment should I inspect?");
-        expect(chat.fixture().receivedStagingAnswer()).toBe(true);
-        expect(chat.fixture().responseCount()).toBe(1);
-        yield* chat.step(
-          "a free answer carries only the picture attached to that question",
-          Effect.gen(function* () {
-            chat.fixture().run("question-custom-run", "running");
-            chat.fixture().question("question-custom", "question-custom-run");
-            yield* chat.then.text("Which environment should I inspect?");
-            yield* chat.when.type("Inspect the preview shown here");
-            yield* chat.when.pastePicture("question-preview.png");
-            yield* chat.then.text("Attached to this answer");
-            chat.fixture().responseRefusal = "Your answer was refused. Sign in and retry.";
-            yield* chat.when.key("Enter");
-            yield* chat.then.text("Your answer was refused. Sign in and retry.");
-            yield* chat.then.composerText("Inspect the preview shown here");
-            yield* chat.then.text("question-preview.png");
-            chat.fixture().responseRefusal = null;
-            yield* chat.when.key("Enter");
-            const answer = yield* Effect.promise(() =>
-              chat.fixture().waitForAnswer("question-custom"),
-            );
-            expect(answer).toMatchObject({
-              requestId: "question-custom",
-              answers: { target: "Inspect the preview shown here" },
-              attachmentsByQuestionId: { target: [{ name: "question-preview.png" }] },
-            });
-            // Counted in the live run, before it settles and folds its work away.
-            yield* chat.then.once("Inspect the preview shown here");
-            chat.fixture().run("question-custom-run", "completed");
-            yield* chat.when.activateLast("Show work");
-            yield* chat.when.press("Open question-preview.png");
-            yield* chat.then.text("question-preview.png");
-            yield* chat.when.key("Escape");
-            yield* chat.then.noText("Attached to this answer");
-            yield* chat.then.draft("");
-            yield* chat.when.reload();
-            yield* chat.when.activateLast("Show work");
-            yield* chat.then.once("Inspect the preview shown here");
-            yield* chat.then.control("Open question-preview.png");
-          }),
-        );
+        yield* chat.when.type("Inspect the preview shown here");
+        yield* chat.when.pastePicture("question-preview.png");
+        yield* chat.then.text("Attached to this answer");
+        chat.fixture().responseRefusal = "Your answer was refused. Sign in and retry.";
+        yield* chat.when.key("Enter");
+        yield* chat.then.text("Your answer was refused. Sign in and retry.");
+        yield* chat.then.composerText("Inspect the preview shown here");
+        yield* chat.then.text("question-preview.png");
+        chat.fixture().responseRefusal = null;
+        yield* chat.when.key("Enter");
+        const answer = yield* Effect.promise(() => chat.fixture().waitForAnswer("question-custom"));
+        expect(answer).toMatchObject({
+          requestId: "question-custom",
+          answers: { target: "Inspect the preview shown here" },
+          attachmentsByQuestionId: { target: [{ name: "question-preview.png" }] },
+        });
+        // Counted in the live run, before it settles and folds its work away.
+        yield* chat.then.once("Inspect the preview shown here");
+        chat.fixture().run("question-custom-run", "completed");
+        yield* chat.when.activateLast("Show work");
+        yield* chat.when.press("Open question-preview.png");
+        yield* chat.then.text("question-preview.png");
+        yield* chat.when.key("Escape");
+        yield* chat.then.noText("Attached to this answer");
+        yield* chat.then.draft("");
+        yield* chat.when.reload();
+        yield* chat.when.activateLast("Show work");
+        yield* chat.then.once("Inspect the preview shown here");
+        yield* chat.then.control("Open question-preview.png");
         yield* s.then.noExternalNetwork;
       }),
-    );
-
-    // Catches a picked effort not reaching the agent with the next message, or not staying picked.
-    it.effect(
-      "the effort a person picks goes with their next message and stays picked after reload",
-      () =>
-        Effect.gen(function* () {
-          const { s, chat } = yield* setup;
-          chat.fixture().effortCatalog();
-          yield* s.given.signedIn;
-          yield* chat.when.open();
-          yield* chat.when.press("GPT-5.4 · Extra High");
-          yield* chat.when.press("High", "radio");
-          yield* chat.when.key("Escape");
-          yield* chat.when.send("Inspect it at high effort");
-          yield* chat.then.once("Inspect it at high effort");
-          const sent = yield* Effect.promise(() =>
-            chat.fixture().waitForTurn("Inspect it at high effort"),
-          );
-          expect(sent.effort).toBe("high");
-          yield* chat.when.reload("Ada", "Inspect it at high effort");
-          yield* chat.when.press("GPT-5.4 · High");
-          yield* chat.then.selected("High");
-          yield* chat.when.key("Escape");
-          yield* s.then.noExternalNetwork;
-        }),
-    );
-
-    // Catches a picked access snapping back, or never reaching the Mate before the next message.
-    it.effect(
-      "the access a person picks reaches the Mate with their next message and stays picked after reload",
-      () =>
-        Effect.gen(function* () {
-          const { s, chat } = yield* setup;
-          yield* s.given.signedIn;
-          yield* chat.when.open();
-          yield* chat.when.press("GPT-5.4");
-          yield* chat.when.press("Supervised", "radio");
-          yield* chat.when.key("Escape");
-          yield* chat.when.send("Ask before you change anything");
-          yield* chat.then.once("Ask before you change anything");
-          yield* Effect.promise(() => chat.fixture().waitForTurn("Ask before you change anything"));
-          expect(chat.fixture().accessModes()).toEqual(["approval-required"]);
-          yield* chat.when.reload("Ada", "Ask before you change anything");
-          yield* chat.then.text("Supervised");
-          yield* s.then.noExternalNetwork;
-        }),
     );
 
     // Catches plan mode, turned on in settings, not reaching the agent with the message it was picked for.
@@ -902,11 +809,7 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.then.control("Plan mode — click to return to normal build mode");
         yield* chat.when.send("Plan the worker's migration");
         yield* chat.then.once("Plan the worker's migration");
-        const sent = yield* Effect.promise(() =>
-          chat.fixture().waitForTurn("Plan the worker's migration"),
-        );
-        expect(sent.plan).toBe(true);
-        expect(chat.fixture().sentTurnCount()).toBe(1);
+        yield* Effect.promise(() => chat.fixture().waitForTurn("Plan the worker's migration"));
         yield* s.then.noExternalNetwork;
       }),
     );

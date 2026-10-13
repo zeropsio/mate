@@ -672,6 +672,30 @@ describe("C: conversation images", () => {
           ),
         ).toEqual({ sameSrc: true, failures: [] });
         expect(reads).toBe(initialReads);
+        const landing = yield* Effect.promise(() =>
+          s.page.evaluate(() => {
+            const images = document.querySelectorAll<HTMLImageElement>(
+              '[data-message-role="user"] img[data-image-src]',
+            );
+            const image = images[0]!;
+            const row = image.closest('[data-message-role="user"]')!;
+            const card = document.querySelector("[data-run-chat][data-run-live]")!;
+            return {
+              count: images.length,
+              insideCard: card.contains(image),
+              overlap: row.getBoundingClientRect().bottom - card.getBoundingClientRect().top,
+            };
+          }),
+        );
+        expect(landing.count, "ASSERTION: the steering picture is drawn once").toBe(1);
+        expect(
+          landing.insideCard,
+          "ASSERTION: the steering picture lands outside the work card",
+        ).toBe(false);
+        expect(
+          landing.overlap,
+          "ASSERTION: the steering picture lands above its active work card",
+        ).toBeLessThanOrEqual(0.5);
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -772,7 +796,6 @@ describe("C: conversation images", () => {
               height: 320,
             },
           ]);
-          chat.fixture().say("[summary.ts](/workspace/src/summary.ts)");
           yield* s.given.signedIn;
           yield* chat.when.open("Ada", "Words below the picture are readable");
           const pending = yield* Effect.promise(async () => {
@@ -851,32 +874,6 @@ describe("C: conversation images", () => {
               height: image.getBoundingClientRect().height,
             })),
           );
-          yield* Effect.promise(async () => {
-            const link = await s.page.waitForSelector('[data-markdown-copy*="summary.ts"]', {
-              timeout: 8000,
-            });
-            await link!.hover();
-            await s.page.waitForSelector('[data-slot="tooltip-popup"]');
-            const font = await s.page.$eval('[data-slot="tooltip-popup"]', (tooltip) => {
-              const probe = document.createElement("span");
-              probe.style.fontFamily = "var(--font-mono)";
-              tooltip.appendChild(probe);
-              const expected = getComputedStyle(probe).fontFamily;
-              probe.remove();
-              return {
-                actual: getComputedStyle(tooltip).fontFamily,
-                expected,
-                text: tooltip.textContent,
-              };
-            });
-            expect(font.text, "ASSERTION: file tooltip shows the source path").toContain(
-              "summary.ts",
-            );
-            expect(font.actual, "ASSERTION: file path tooltip uses the code font role").toBe(
-              font.expected,
-            );
-            await s.page.mouse.move(0, 0);
-          });
           const first = { requests: requests.length, bytes: transferred };
           yield* chat.when.open("Bea", "Bea history");
           yield* chat.when.open("Ada", "Words below the picture are readable");
@@ -1106,6 +1103,7 @@ describe("C: conversation images", () => {
               surfaceHeight: pending.height,
             },
           );
+          yield* s.then.noExternalNetwork;
         }),
     );
   });
