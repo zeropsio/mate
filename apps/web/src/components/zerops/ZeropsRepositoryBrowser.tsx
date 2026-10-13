@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
 import { FlatCard } from "./primitives";
 import { ZeropsGitChangeRow } from "./ZeropsGitChangeRow";
+import { GitTokenGuide } from "./GitTokenGuide";
 import { ZeropsGitCredentials } from "./ZeropsGitCredentials";
 import type { RepositorySource, RepositoryQuery } from "@t3tools/shared/hqGit";
 import { Button } from "~/components/ui/button";
@@ -204,6 +205,7 @@ export function ZeropsRepositoryBrowser({
           </div>
         </details>
       </FlatCard>
+      {repo === "group" ? null : <GitTokenGuide key={`${appId}:${repo}`} project={project} />}
       <section aria-label="Source" className="flex min-w-0 flex-col gap-3">
         <div>
           <h2 className="text-base font-medium text-foreground">Source</h2>

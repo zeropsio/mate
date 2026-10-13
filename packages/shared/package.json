@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./gitTokenGuide": {
+      "types": "./src/gitTokenGuide.ts",
+      "import": "./src/gitTokenGuide.ts"
+    },
     "./releaseSource": {
       "types": "./src/releaseSource.ts",
       "import": "./src/releaseSource.ts"
