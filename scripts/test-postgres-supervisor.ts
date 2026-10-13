@@ -225,7 +225,10 @@ async function supervise() {
       };
       const lines = NodeReadline.createInterface({ input: socket });
       lines.on("line", (command) => {
-        queue = queue.then(() => answer(command));
+        // Acquirers hold lifecycle.lock until admission replies; idle shutdown needs that lock.
+        // Keep admission outside the database queue so a last release cannot block its next owner.
+        if (command === "own" || command === "capabilities") void answer(command);
+        else queue = queue.then(() => answer(command));
       });
       const answer = async (command: string) => {
         try {

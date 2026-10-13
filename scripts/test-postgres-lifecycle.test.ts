@@ -1,0 +1,123 @@
+// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalTimers:off -- deterministic kernel-lock interleaving with real worktree clients.
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeNet from "node:net";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeReadline from "node:readline";
+import { expect, it } from "vite-plus/test";
+
+it("admits another worktree's lease while the last release waits for its lifecycle lock", async () => {
+  // Short socket paths also fit macOS's Unix-domain limit in deeply nested worktrees.
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-cycle-"));
+  const fixture = NodePath.join(import.meta.dirname, "fixtures/test-postgres-lifecycle.ts");
+  const bin = NodePath.join(home, "bin");
+  NodeFS.mkdirSync(bin);
+  NodeFS.writeFileSync(
+    NodePath.join(bin, "flock"),
+    '#!/bin/sh\nexec "$MATE_TEST_NODE" "$MATE_TEST_LIFECYCLE_FIXTURE" lock "$@"\n',
+    { mode: 0o700 },
+  );
+  const realFlock = NodeChildProcess.execFileSync("which", ["flock"], { encoding: "utf8" }).trim();
+  type Receipt = {
+    event: string;
+    role?: string;
+    parent?: number;
+    url?: string;
+    socket?: NodeNet.Socket;
+  };
+  const receipts: Receipt[] = [];
+  const waiting: { matches: (receipt: Receipt) => boolean; resolve: (receipt: Receipt) => void }[] =
+    [];
+  const record = (receipt: Receipt) => {
+    const index = waiting.findIndex(({ matches }) => matches(receipt));
+    if (index < 0) receipts.push(receipt);
+    else waiting.splice(index, 1)[0]!.resolve(receipt);
+  };
+  const next = (matches: (receipt: Receipt) => boolean) => {
+    const index = receipts.findIndex(matches);
+    return index < 0
+      ? new Promise<Receipt>((resolve) => waiting.push({ matches, resolve }))
+      : Promise.resolve(receipts.splice(index, 1)[0]!);
+  };
+  const controls = new Set<NodeNet.Socket>();
+  const server = NodeNet.createServer((socket) => {
+    controls.add(socket);
+    NodeReadline.createInterface({ input: socket }).on("line", (line) =>
+      record({ ...(JSON.parse(line) as Receipt), socket }),
+    );
+    socket.on("close", () => controls.delete(socket));
+  });
+  await new Promise<void>((resolve) => server.listen(NodePath.join(home, "control.sock"), resolve));
+  const children: NodeChildProcess.ChildProcess[] = [];
+  const exits: Promise<void>[] = [];
+  const start = (role: string) => {
+    const cwd = NodePath.join(home, role);
+    NodeFS.mkdirSync(cwd);
+    const child = NodeChildProcess.spawn(process.execPath, [fixture], {
+      cwd,
+      env: {
+        ...process.env,
+        PATH: `${bin}${NodePath.delimiter}${process.env.PATH}`,
+        MATE_TEST_PG_HOME: home,
+        MATE_TEST_REAL_FLOCK: realFlock,
+        MATE_TEST_NODE: process.execPath,
+        MATE_TEST_LIFECYCLE_FIXTURE: fixture,
+        MATE_TEST_LIFECYCLE_CONTROL: NodePath.join(home, "control.sock"),
+        MATE_TEST_CLIENT_ROLE: role,
+      },
+      stdio: ["ignore", "ignore", "inherit", "ipc"],
+    });
+    children.push(child);
+    exits.push(new Promise<void>((resolve) => child.once("exit", () => resolve())));
+    child.on("message", (receipt) => record({ ...(receipt as Receipt), role }));
+    return child;
+  };
+  let firstReleased = false;
+  let stopped: Promise<void> | undefined;
+  let watcher: NodeFS.FSWatcher | undefined;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const first = start("first");
+    const original = await next((r) => r.role === "first" && r.event === "created");
+    stopped = new Promise<void>((resolve) => {
+      watcher = NodeFS.watch(home, (_, filename) => {
+        if (filename === "supervisor.sock" && !NodeFS.existsSync(NodePath.join(home, filename)))
+          resolve();
+      });
+    });
+    const second = start("second");
+    const held = await next((r) => r.role === "second" && r.event === "locked");
+    // The second acquirer owns the kernel lock but has not connected yet. The last release
+    // now reaches idle shutdown, which requests that same lock inside the database queue.
+    first.send("release");
+    await next((r) => r.role === "first" && r.event === "locking" && r.parent !== first.pid);
+    held.socket!.write("continue");
+    const admitted = await Promise.race([
+      next((r) => r.role === "second" && r.event === "admitted").then(() => "admitted"),
+      new Promise<string>((resolve) => {
+        deadline = setTimeout(() => resolve("blocked"), 5_000);
+      }),
+    ]);
+    expect(admitted).toBe("admitted");
+    const replacement = await next((r) => r.role === "second" && r.event === "created");
+    expect(new URL(replacement.url!).origin).toBe(new URL(original.url!).origin);
+    await next((r) => r.role === "first" && r.event === "released");
+    firstReleased = true;
+    second.send("release");
+    await next((r) => r.role === "second" && r.event === "released");
+  } finally {
+    clearTimeout(deadline);
+    for (const socket of controls) socket.end("continue");
+    // Captured children own their lock pipes; ending them releases a failed interleaving too.
+    children[1]?.kill("SIGTERM");
+    if (!firstReleased && children.length === 2)
+      await next((r) => r.role === "first" && r.event === "released");
+    for (const child of children) if (child.exitCode === null) child.kill("SIGTERM");
+    await Promise.all(exits);
+    await stopped;
+    watcher?.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
