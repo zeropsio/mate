@@ -354,6 +354,64 @@ it.live(
     }),
 );
 
+it.live("a pipe-detached helper is stopped before its captured Git group is recorded drained", () =>
+  Effect.gen(function* () {
+    const f = yield* Effect.promise(() => fixture());
+    const helperFile = NodePath.join(f.root, "helper-pid");
+    const quotedFile = "'" + helperFile.replaceAll("'", "'\"'\"'") + "'";
+    yield* Effect.promise(() =>
+      NodeFSP.writeFile(
+        NodePath.join(f.remote, "hooks/pre-receive"),
+        `#!/bin/sh\nsleep 30 </dev/null >/dev/null 2>&1 &\nprintf '%s\\n' "$!" > ${quotedFile}\nexit 1\n`,
+        { mode: 0o700 },
+      ),
+    );
+    const answer = yield* credentialed((credential) =>
+      Effect.promise(
+        () =>
+          startGitChild({
+            mode: "push",
+            directory: f.directory,
+            url: f.remote,
+            ref: f.input.ref,
+            sha: f.second,
+            before: f.first,
+            credential,
+            witness: NodePath.join(f.directory, "helper.json"),
+            deadlineMs: 5000,
+          }).done,
+      ),
+    );
+    const helperPid = Number(yield* Effect.promise(() => NodeFSP.readFile(helperFile, "utf8")));
+    expect(helperPid).toBeGreaterThan(0);
+    try {
+      expect(answer?.drained).toBe(true);
+      expect(answer?.timedOut).toBe(true);
+      expect(alive(answer!.pid)).toBe(false);
+      if (alive(helperPid)) {
+        // Independent kernel witness: an unreaped child has exited and cannot resume writing.
+        const { stdout } = yield* Effect.promise(() =>
+          exec("/bin/ps", ["-A", "-o", "pid=", "-o", "stat="], { timeout: 5000 }),
+        );
+        const state = stdout
+          .split("\n")
+          .map((row) => row.trim().split(/\s+/u))
+          .find(([pid]) => Number(pid) === helperPid)?.[1];
+        expect(state === undefined || state.startsWith("Z")).toBe(true);
+      }
+      expect(yield* Effect.promise(() => git(f.remote, ["rev-parse", f.input.ref]))).toBe(f.first);
+    } finally {
+      if (alive(helperPid)) {
+        try {
+          process.kill(helperPid, "SIGKILL");
+        } catch {
+          /* Captured helper already exited. */
+        }
+      }
+    }
+  }),
+);
+
 it.live("a controlled parent loss leaves a bounded writer receipt that takeover must drain", () =>
   Effect.gen(function* () {
     const f = yield* Effect.promise(() => fixture());

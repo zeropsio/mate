@@ -56,6 +56,49 @@ async function supervise() {
       return (error as NodeJS.ErrnoException).code !== "ESRCH";
     }
   };
+  // Linux can retain exited group members until their new parent reaps them. A signal probe
+  // detects those PID records too; only a live member can still write to the remote.
+  const stopped = async (pid: number) => {
+    if (!exists(pid)) return true;
+    try {
+      for (const entry of await fs.readdir("/proc")) {
+        if (!/^[0-9]+$/u.test(entry)) continue;
+        let stat: string;
+        try {
+          stat = await fs.readFile(`/proc/${entry}/stat`, "utf8");
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+          return false;
+        }
+        const fields = stat
+          .slice(stat.lastIndexOf(")") + 2)
+          .trim()
+          .split(/\s+/u);
+        if (fields.length < 3 || !/^[0-9]+$/u.test(fields[2]!)) return false;
+        if (Number(fields[2]) === pid && fields[0] !== "Z" && fields[0] !== "X") return false;
+      }
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
+      // Hosts without procfs expose the same kernel group/state proof through ps.
+      try {
+        const states = cp.execFileSync("/bin/ps", ["-A", "-o", "pgid=", "-o", "stat="], {
+          encoding: "utf8",
+          timeout: Math.max(1, Math.min(request.deadlineMs, 60_000)),
+          maxBuffer: 64 * 1024,
+          stdio: ["ignore", "pipe", "ignore"],
+        });
+        return states.split("\n").every((row) => {
+          if (row.trim() === "") return true;
+          const [group, state] = row.trim().split(/\s+/u);
+          if (group === undefined || !/^[0-9]+$/u.test(group) || state === undefined) return false;
+          return Number(group) !== pid || /^[ZX]/u.test(state);
+        });
+      } catch {
+        return false;
+      }
+    }
+  };
   let secret = "";
   const safe = (value: string) =>
     (secret ? value.split(secret).join("[redacted]") : value)
@@ -133,12 +176,10 @@ async function supervise() {
       { mode: 0o600 },
     );
     const code = await completion;
-    drained = lastPid === null || !exists(lastPid);
-    // A helper that detached its output is still a writer. Stop only this captured group.
-    if (!drained) {
-      kill();
-      drained = !exists(lastPid!);
-    }
+    // A helper that detached its output is still a writer. Stop only this captured group
+    // before proving there are no live members, including on kernels retaining exited PIDs.
+    if (lastPid !== null && exists(lastPid)) kill();
+    drained = lastPid === null || (await stopped(lastPid));
     active = undefined;
     return {
       code,
