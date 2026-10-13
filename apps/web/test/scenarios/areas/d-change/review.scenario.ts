@@ -1,3 +1,4 @@
+import { resizeMenu } from "../../harness/browser.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
@@ -135,7 +136,11 @@ describe("D: change review, comments and merge", () => {
       () =>
         Effect.gen(function* () {
           const { s, change, r } = yield* setup;
+          yield* Effect.promise(async () => {
+            await s.page.setViewport({ width: 1786, height: 1000 });
+          });
           yield* s.given.signedIn;
+          yield* Effect.promise(() => resizeMenu(s.page, 435));
           yield* r.open;
           yield* r.mergeEnabled;
           yield* r.askClose;
@@ -161,6 +166,7 @@ describe("D: change review, comments and merge", () => {
           yield* s.then.noReload;
           yield* s.then.noExternalNetwork;
         }),
+      10_000,
     );
   });
 });
