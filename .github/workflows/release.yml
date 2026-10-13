@@ -15,10 +15,7 @@ on:
 permissions:
   contents: read
 
-cache-mode: read
-
 env:
-  PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-metadata
   PNPM_CONFIG_FETCH_RETRIES: "2"
   PNPM_CONFIG_FETCH_TIMEOUT: "60000"
   PNPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
@@ -64,8 +61,23 @@ jobs:
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
-          cache: true
+          cache: false
           run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: |
+          echo "store=$(vp pm cache dir)" >> "$GITHUB_OUTPUT"
+          echo "arch=$(node -p 'process.arch')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.paths.outputs.store }}
+          key: vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-
 
       - name: Resolve bundle version
         id: version
@@ -97,6 +109,7 @@ jobs:
       - name: Install dependencies
         # Tags call CI above; a manual rehearsal has no other policy verifier.
         env:
+          PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-metadata
           PNPM_CONFIG_TRUST_LOCKFILE: ${{ github.event_name == 'push' }}
         run: vp install --frozen-lockfile
 
