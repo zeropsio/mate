@@ -290,10 +290,17 @@ describe("owner-reported layout regressions", () => {
         yield* Effect.promise(() => ownerMenu(s.page));
         yield* s.when.menu.opensMate("Ada");
         yield* s.then.conversation.appears;
-        const exchange = Effect.fn(function* (question: string, answer: string) {
+        const exchange = Effect.fn(function* (
+          question: string,
+          answer: string,
+          providerInput = question,
+        ) {
           yield* ada.provider.turn([{ kind: "say", text: answer }]);
           yield* s.when.conversation.sends(question);
-          expect((yield* ada.provider.received).input.input).toBe(question);
+          expect(
+            (yield* ada.provider.received).input.input,
+            "ASSERTION: the provider receives the person's words with the observed landing context",
+          ).toBe(providerInput);
           yield* s.then.conversation.showsMessage(answer.trim().split("\n\n").at(-1)!);
           yield* Effect.promise(() =>
             s.page.waitForFunction(
@@ -309,8 +316,17 @@ describe("owner-reported layout regressions", () => {
             ),
         );
         yield* change.colleagueMerges;
+        // Core's merge receipt precedes the browser's app-detail reflection. Observe that fact
+        // before sending: the agent hears it as context, while the person's transcript stays bare.
+        yield* Effect.promise(() =>
+          s.page.waitForSelector('[data-timeline-row-id="event:zerops:change-landed:appdev#1"]'),
+        );
         const answer = "The final contact line stays where it was read.";
-        yield* exchange("And the contact line?", answer);
+        yield* exchange(
+          "And the contact line?",
+          answer,
+          `<zerops-update>\nappdev #1 landed: ${change.title}\n</zerops-update>\n\nAnd the contact line?`,
+        );
         const frames = hqFramesFor(s.drivers);
         frames.hold((frame) => {
           const input = JSON.parse(frame);
@@ -318,6 +334,27 @@ describe("owner-reported layout regressions", () => {
         });
         yield* Effect.promise(() => s.page.reload());
         yield* s.then.conversation.showsMessage(answer);
+        expect(
+          yield* Effect.promise(() =>
+            s.page.evaluate((answer) => {
+              const timeline = document.querySelector(".timeline-legend-list")!;
+              const person = [...timeline.querySelectorAll("[data-user-message-body]")].at(-1)!;
+              const words = document.createTreeWalker(timeline, NodeFilter.SHOW_TEXT);
+              let reply: Node | null = null;
+              while (words.nextNode()) {
+                if (words.currentNode.textContent === answer) reply = words.currentNode;
+              }
+              return {
+                person: person.textContent,
+                contextVisible: timeline.textContent?.includes("<zerops-update>"),
+                answerFollows:
+                  reply !== null &&
+                  (person.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+              };
+            }, answer),
+          ),
+          "ASSERTION: the reloaded conversation paints the person's exact words before the answer without agent context",
+        ).toEqual({ person: "And the contact line?", contextVisible: false, answerFollows: true });
         yield* Effect.promise(() => frames.received());
         yield* Effect.promise(() => waitForStillFrames(s.page));
         const trace = yield* Effect.promise(async () => {
