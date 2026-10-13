@@ -41,8 +41,16 @@ import {
 import { makeManualOnlyProviderMaintenanceCapabilities } from "../src/provider/providerMaintenance.ts";
 import type { ProviderAdapterShape } from "../src/provider/Services/ProviderAdapter.ts";
 
+/** Authored canonical adapter evidence; ids are provider ids, never engine ids. */
+export type ScriptedEvent = ProviderRuntimeEvent extends infer E
+  ? E extends ProviderRuntimeEvent
+    ? Omit<E, "eventId" | "provider" | "providerInstanceId" | "threadId" | "createdAt">
+    : never
+  : never;
+
 /** One thing the agent does in its turn, in order. */
 export type ScriptedStep =
+  | { readonly kind: "event"; readonly event: ScriptedEvent }
   | { readonly kind: "say"; readonly text: string }
   | { readonly kind: "tool"; readonly title: string; readonly detail?: string }
   | { readonly kind: "ask"; readonly question: string; readonly options?: ReadonlyArray<string> }
@@ -69,7 +77,7 @@ export interface ScriptedAnswer {
 
 // An agent Mate signs nobody in to, as the fake Mate reports (`runsWithoutSignIn`): a case about
 // sign-in scripts the login itself.
-const DRIVER_KIND = ProviderDriverKind.make("opencode");
+
 const MODEL = "gpt-5.4";
 
 interface Session {
@@ -77,8 +85,9 @@ interface Session {
   turns: number;
 }
 
-export const makeScriptedProvider = () =>
+export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDriverKind } = {}) =>
   Effect.gen(function* () {
+    const DRIVER_KIND = options.driverKind ?? ProviderDriverKind.make("opencode");
     const turns: Array<ReadonlyArray<ScriptedStep>> = [];
     const sends: Array<ScriptedSend> = [];
     const received = yield* Queue.unbounded<ScriptedSend>();
@@ -146,6 +155,11 @@ export const makeScriptedProvider = () =>
               for (const step of steps) {
                 const itemId = `${turnId}-item-${++item}`;
                 switch (step.kind) {
+                  case "event":
+                    yield* emit(step.event.type, threadId, { turnId, ...step.event });
+                    if (step.event.type === "turn.completed" || step.event.type === "turn.aborted")
+                      return;
+                    break;
                   case "say":
                     yield* emit("item.started", threadId, {
                       turnId,

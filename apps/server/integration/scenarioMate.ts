@@ -28,6 +28,7 @@ import { FetchHttpClient, HttpServer } from "effect/http";
 import * as ServerConfig from "../src/config.ts";
 import { makeServerLayer } from "../src/server.ts";
 import { ServerRuntimeStartup } from "../src/serverRuntimeStartup.ts";
+import { MateEngine, type MateEngineService } from "../src/engine/MateEngine.ts";
 import type { AnyProviderDriver } from "../src/provider/ProviderDriver.ts";
 
 export interface ScenarioMateOptions {
@@ -53,6 +54,8 @@ export interface ScenarioMateOptions {
 export interface ScenarioMate {
   /** Loopback origin the server listens on. */
   readonly origin: string;
+  /** The real engine and client wire, for seeding and projection witnesses. */
+  readonly engine: MateEngineService;
   readonly root: string;
   readonly homeDir: string;
   readonly stateDir: string;
@@ -129,7 +132,8 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
       const address = http.address;
       if (!("port" in address))
         return yield* Effect.die(new Error("Scenario Mate has no TCP port"));
-      return address.port;
+      const engine = yield* MateEngine.pipe(Effect.provide(context));
+      return { port: address.port, engine };
     }).pipe(
       Effect.updateService(ServerConfig.ServerConfig, (config) => ({
         ...config,
@@ -168,10 +172,11 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
       await Effect.runPromise(Scope.close(scope, Exit.void));
       throw error;
     });
-    return { scope, port: bound };
+    return { scope, ...bound };
   };
 
-  let running: { scope: Scope.Closeable; port: number } | undefined = await boot(0);
+  let running: { scope: Scope.Closeable; port: number; engine: MateEngineService } | undefined =
+    await boot(0);
   const port = running.port;
   const stop = async () => {
     const closing = running;
@@ -180,6 +185,10 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
   };
   return {
     origin: `http://127.0.0.1:${port}`,
+    get engine() {
+      if (!running) throw new Error("Scenario Mate is stopped");
+      return running.engine;
+    },
     root,
     homeDir,
     stateDir: NodePath.join(baseDir, "userdata"),

@@ -119,3 +119,72 @@ describe("scripted provider", () => {
     }),
   );
 });
+
+describe("scripted canonical vocabulary", () => {
+  it.effect("canonical item events retain correlated ids and overlapping call facts", () =>
+    Effect.gen(function* () {
+      const { scripted, adapter } = yield* started;
+      yield* scripted.turn([
+        {
+          kind: "event",
+          event: {
+            type: "item.started",
+            itemId: "call-a" as never,
+            payload: {
+              itemType: "command_execution",
+              data: { toolName: "Bash", input: { command: "printf first-proof" } },
+            },
+          },
+        },
+        {
+          kind: "event",
+          event: {
+            type: "item.started",
+            itemId: "call-b" as never,
+            payload: {
+              itemType: "command_execution",
+              data: { toolName: "Bash", input: { command: "printf second-proof" } },
+            },
+          },
+        },
+        {
+          kind: "event",
+          event: {
+            type: "item.completed",
+            itemId: "call-b" as never,
+            payload: {
+              itemType: "command_execution",
+              status: "completed",
+              data: { toolName: "Bash", result: "Second result" },
+            },
+          },
+        },
+        {
+          kind: "event",
+          event: {
+            type: "item.completed",
+            itemId: "call-a" as never,
+            payload: {
+              itemType: "command_execution",
+              status: "completed",
+              data: { toolName: "Bash", result: "First result" },
+            },
+          },
+        },
+      ]);
+      yield* adapter.sendTurn({ threadId, input: "Inspect both" });
+      const events = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((e) => e.type === "turn.completed"),
+        Stream.runCollect,
+      );
+      expect(
+        [...events].filter((e) => e.type.startsWith("item.")).map((e) => [e.type, e.itemId]),
+      ).toEqual([
+        ["item.started", "call-a"],
+        ["item.started", "call-b"],
+        ["item.completed", "call-b"],
+        ["item.completed", "call-a"],
+      ]);
+    }),
+  );
+});
