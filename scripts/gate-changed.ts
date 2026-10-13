@@ -30,13 +30,15 @@ export const stateOnlySmoke = {
     "cold direct conversation URL opens the named Mate and its history",
     "reload restores history",
     "sending a message puts it in the durable visible conversation",
-    "approve an agent command and see it resolve",
   ],
   "apps/web/test/scenarios/areas/c-mate/engine-secret.scenario.ts": [
     "a secret the person gives never reaches the Mate's records or its agent",
   ],
   "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts": [
     "a published page that navigates itself by script sends nothing and is never shown",
+  ],
+  "apps/web/test/engine-oracle/chat.oracle.test.ts": [
+    "approve an agent command and see it resolve",
   ],
 } as const;
 
@@ -735,6 +737,7 @@ function selectionHash(root: string, inventory: ReadonlyArray<string>): string {
   const inputs = [
     "scripts/gate-changed.ts",
     "scripts/gate-timing-reporter.ts",
+    "scripts/gate-smoke-reporter.ts",
     ...repositoryInvariants,
     "scripts/gate-log.ts",
     "pnpm-lock.yaml",
@@ -1028,24 +1031,36 @@ if (import.meta.main) {
     });
   // Edited smoke files already ran in full, so do not run their cases a second time.
   const smoke = smokeFiles.filter((file) => !inventory.includes(file));
-  if (smoke.length)
+  for (const [name, configArgs, files] of [
+    [
+      "state-only smoke",
+      ["--config", "test/scenarios/vitest.config.ts"],
+      smoke.filter((file) => file.endsWith(".scenario.ts")),
+    ],
+    [
+      "state-only oracle smoke",
+      ["--project", "engine-oracle"],
+      smoke.filter((file) => file.startsWith("apps/web/test/engine-oracle/")),
+    ],
+  ] as const) {
+    if (!files.length) continue;
     steps.push({
-      name: "state-only smoke",
+      name,
       cwd: "apps/web",
       command: "vp",
       args: [
         "test",
         "run",
-        "--config",
-        "test/scenarios/vitest.config.ts",
-        ...smoke.map((file) => NodePath.posix.relative("apps/web", file)),
+        ...configArgs,
+        ...files.map((file) => NodePath.posix.relative("apps/web", file)),
         "--testNamePattern",
-        smoke
+        files
           .flatMap((file) => stateOnlySmoke[file as keyof typeof stateOnlySmoke])
           .map((title) => `(?:${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")})$`)
           .join("|"),
       ],
     });
+  }
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
@@ -1092,12 +1107,37 @@ if (import.meta.main) {
         MATE_GATE_TIMINGS: timingPath,
         PATH,
       };
+      const selectedSmoke = smokeFiles.filter(
+        (file) =>
+          step.cwd === "apps/web" && step.args.includes(NodePath.posix.relative("apps/web", file)),
+      );
+      if (selectedSmoke.length)
+        env.MATE_GATE_SMOKE_CASES = JSON.stringify(
+          Object.fromEntries(
+            selectedSmoke.map((file) => [
+              file,
+              stateOnlySmoke[file as keyof typeof stateOnlySmoke],
+            ]),
+          ),
+        );
       // Keep the scenarios' configured serial PostgreSQL fixtures when unit workers are bounded.
       if (step.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts")))
         delete env.VITEST_MAX_WORKERS;
       const status = runLogged(
         step.command,
-        step.args.map((arg) =>
+        [
+          ...step.args,
+          ...(selectedSmoke.length
+            ? [
+                "--reporter",
+                "default",
+                "--reporter",
+                NodePath.join(root, "scripts/gate-timing-reporter.ts"),
+                "--reporter",
+                NodePath.join(root, "scripts/gate-smoke-reporter.ts"),
+              ]
+            : []),
+        ].map((arg) =>
           arg.startsWith("test/scenarios/areas/") || arg.startsWith("test/scenarios/fakes/")
             ? NodePath.resolve(root, step.cwd ?? ".", arg)
             : arg,
