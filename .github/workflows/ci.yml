@@ -13,6 +13,12 @@ on:
 permissions:
   contents: read
 
+env:
+  PNPM_CONFIG_FETCH_RETRIES: "2"
+  PNPM_CONFIG_FETCH_TIMEOUT: "60000"
+  PNPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
+  PNPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "30000"
+
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -45,6 +51,134 @@ jobs:
           fi
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
           echo "Already verified on kh-next: ${skip}"
+
+  # Promotion can skip verification jobs, but must publish the stores for its new lockfile.
+  cache:
+    name: Check cache (${{ matrix.os }})
+    needs: prepare
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: &store_path |
+          echo "store=$(vp pm cache dir)" >> "$GITHUB_OUTPUT"
+          echo "arch=$(node -p 'process.arch')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        id: store
+        uses: actions/cache/restore@v4
+        with: &pnpm_store
+          path: ${{ steps.paths.outputs.store }}
+          key: vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-
+
+      - name: Restore pnpm metadata
+        if: runner.os == 'Linux'
+        id: metadata
+        uses: actions/cache/restore@v4
+        with:
+          # Cache metadata only; lockfile-verified.jsonl must never skip a later run's check.
+          path: ${{ runner.temp }}/pnpm-metadata/v11
+          key: pnpm-metadata-${{ runner.os }}-pnpm11-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-metadata-${{ runner.os }}-pnpm11-
+
+      - name: Install dependencies
+        # The Linux cache Check owns main's policy verification; macOS reuses that verdict.
+        env:
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-metadata
+          PNPM_CONFIG_TRUST_LOCKFILE: ${{ runner.os != 'Linux' }}
+        run: &full_dependencies vp install --frozen-lockfile
+
+      - name: Save pnpm store
+        if: steps.store.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.paths.outputs.store }}
+          key: ${{ steps.store.outputs.cache-primary-key }}
+
+      - name: Save pnpm metadata
+        if: runner.os == 'Linux' && steps.metadata.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          # Cache metadata only; lockfile-verified.jsonl must never skip a later run's check.
+          path: ${{ runner.temp }}/pnpm-metadata/v11
+          key: ${{ steps.metadata.outputs.cache-primary-key }}
+
+      - name: Restore the scenarios' Chrome for Testing
+        if: runner.os == 'Linux'
+        id: browser
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/mate-test-browser
+          key: mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
+
+      - name: Provision the scenarios' Chrome for Testing
+        if: runner.os == 'Linux'
+        run: vp run test:browser
+
+      - name: Save the scenarios' Chrome for Testing
+        if: runner.os == 'Linux' && steps.browser.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/mate-test-browser
+          key: ${{ steps.browser.outputs.cache-primary-key }}
+
+      - name: Prune superseded main caches
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_KEYS: |
+            ${{ steps.store.outputs.cache-primary-key }}
+            ${{ steps.metadata.outputs.cache-primary-key }}
+            ${{ steps.browser.outputs.cache-primary-key }}
+        run: |
+          set -euo pipefail
+          caches=$(gh api "repos/${GITHUB_REPOSITORY}/actions/caches?per_page=100" --paginate --slurp)
+          while IFS= read -r key; do
+            [[ -n "$key" ]] || continue
+            prefix="${key%-*}-"
+            # Legacy ref-scoped copies would win a ref's fallback before main's newest store.
+            # Cache save can fail softly. Never prune before its key exists on main.
+            ids=$(jq -r --arg key "$key" --arg prefix "$prefix" '
+              [.[] .actions_caches[] | select(.key | startswith($prefix))]
+              | if any(.ref == "refs/heads/main" and .key == $key) then
+                  (map(select(.ref == "refs/heads/main")) | sort_by(.created_at, .id) | last | .id) as $keep
+                  | .[] | select(.id != $keep) | .id
+                else empty end
+            ' <<< "$caches")
+            while IFS= read -r id; do
+              [[ -n "$id" ]] || continue
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/caches/${id}"
+            done <<< "$ids"
+          done <<< "$CACHE_KEYS"
 
   check:
     name: Check
@@ -85,17 +219,49 @@ jobs:
             exit 1
           fi
 
+      - name: Restore pnpm metadata
+        if: needs.prepare.outputs.skip != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          # Cache metadata only; lockfile-verified.jsonl must never skip a later run's check.
+          path: ${{ runner.temp }}/pnpm-metadata/v11
+          key: pnpm-metadata-${{ runner.os }}-pnpm11-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-metadata-${{ runner.os }}-pnpm11-
+
       - name: Setup Vite+
         if: needs.prepare.outputs.skip != 'true'
         uses: voidzero-dev/setup-vp@v1
-        # Check owns the registry-backed policy verification for this run.
-        env:
-          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
-          PNPM_CONFIG_TRUST_LOCKFILE: "false"
         with:
           node-version-file: package.json
-          cache: true
-          run-install: true
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        if: needs.prepare.outputs.skip != 'true'
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        if: needs.prepare.outputs.skip != 'true'
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        if: needs.prepare.outputs.skip != 'true'
+        env:
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-metadata
+          PNPM_CONFIG_TRUST_LOCKFILE: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+        run: *full_dependencies
+
+      - name: Check workflow schema
+        if: needs.prepare.outputs.skip != 'true'
+        working-directory: scripts
+        env:
+          ACTIONLINT_RELEASE: "1.7.12"
+        run: vp exec github-actionlint -shellcheck= -pyflakes= ../.github/workflows/*.yml
 
       - name: Check imported.lock
         if: needs.prepare.outputs.skip != 'true'
@@ -194,18 +360,28 @@ jobs:
       - name: Setup Vite+
         if: needs.prepare.outputs.skip != 'true'
         uses: voidzero-dev/setup-vp@v1
-        # Consumers trust Check's frozen lockfile only during installation.
-        # https://pnpm.io/settings/dependency-resolution#trustlockfile
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        if: needs.prepare.outputs.skip != 'true'
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        if: needs.prepare.outputs.skip != 'true'
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        if: needs.prepare.outputs.skip != 'true'
         env: &verified_lockfile
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_TRUST_LOCKFILE: "true"
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: &hosted_dependencies |
-            args:
-              - --filter=!@t3tools/mobile
-              - --filter=!@t3tools/desktop
+        run: &hosted_dependencies vp install --frozen-lockfile --filter='!@t3tools/mobile' --filter='!@t3tools/desktop'
 
       - name: Build the shared scenario bundle
         if: needs.prepare.outputs.skip != 'true'
@@ -276,15 +452,30 @@ jobs:
       - name: Setup Vite+
         if: needs.prepare.outputs.skip != 'true'
         uses: voidzero-dev/setup-vp@v1
-        env: *verified_lockfile
         with:
           node-version-file: package.json
-          cache: true
-          run-install: *hosted_dependencies
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        if: needs.prepare.outputs.skip != 'true'
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        if: needs.prepare.outputs.skip != 'true'
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        if: needs.prepare.outputs.skip != 'true'
+        env: *verified_lockfile
+        run: *hosted_dependencies
 
       - name: Cache the scenarios' Chrome for Testing
         if: needs.prepare.outputs.skip != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/mate-test-browser
           key: mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
@@ -336,11 +527,23 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
-        env: *verified_lockfile
         with:
           node-version-file: package.json
-          cache: true
-          run-install: true
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        env: *verified_lockfile
+        run: *full_dependencies
 
       - name: Ensure Electron runtime is installed
         run: vp run --filter @t3tools/desktop ensure:electron
@@ -413,13 +616,23 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
-        env: *verified_lockfile
         with:
           node-version-file: package.json
-          cache: true
-          run-install: &cross_client_dependencies |
-            args:
-              - --filter=!@t3tools/desktop
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        env: *verified_lockfile
+        run: &cross_client_dependencies vp install --frozen-lockfile --filter='!@t3tools/desktop'
 
       - name: Test
         run: vp run --filter @t3tools/scripts test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
@@ -440,11 +653,23 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
-        env: *verified_lockfile
         with:
           node-version-file: package.json
-          cache: true
-          run-install: *hosted_dependencies
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        env: *verified_lockfile
+        run: *hosted_dependencies
 
       - name: Test
         run: vp run --filter @t3tools/hq test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
@@ -478,11 +703,26 @@ jobs:
       - name: Setup Vite+
         if: needs.prepare.outputs.skip != 'true'
         uses: voidzero-dev/setup-vp@v1
-        env: *verified_lockfile
         with:
           node-version-file: package.json
-          cache: true
-          run-install: *hosted_dependencies
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        if: needs.prepare.outputs.skip != 'true'
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        if: needs.prepare.outputs.skip != 'true'
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        if: needs.prepare.outputs.skip != 'true'
+        env: *verified_lockfile
+        run: *hosted_dependencies
 
       - name: Test
         if: needs.prepare.outputs.skip != 'true'
@@ -520,11 +760,26 @@ jobs:
       - name: Setup Vite+
         if: needs.prepare.outputs.skip != 'true'
         uses: voidzero-dev/setup-vp@v1
-        env: *verified_lockfile
         with:
           node-version-file: package.json
-          cache: true
-          run-install: *cross_client_dependencies
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        if: needs.prepare.outputs.skip != 'true'
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        if: needs.prepare.outputs.skip != 'true'
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        if: needs.prepare.outputs.skip != 'true'
+        env: *verified_lockfile
+        run: *cross_client_dependencies
 
       - name: Test
         if: needs.prepare.outputs.skip != 'true'
@@ -705,11 +960,23 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
-        env: *verified_lockfile
         with:
           node-version-file: package.json
-          cache: true
-          run-install: true
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        env: *verified_lockfile
+        run: *full_dependencies
 
       - name: Test
         run: vp run --filter @t3tools/mobile test
@@ -731,13 +998,23 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
-        env: *verified_lockfile
         with:
           node-version-file: package.json
-          cache: true
-          run-install: |
-            args:
-              - --filter=@t3tools/scripts...
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        env: *verified_lockfile
+        run: vp install --frozen-lockfile --filter=@t3tools/scripts...
 
       - name: Install mobile native static analysis tools
         run: brew bundle install --file apps/mobile/Brewfile
