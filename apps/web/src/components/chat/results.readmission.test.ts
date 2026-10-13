@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "@effect/vitest";
 import {
   callItem,
   engineRun,
@@ -199,94 +199,102 @@ describe("C: calls, results and crew actions", () => {
   );
 });
 
-it.each(["before Codex's first turn", "after Codex answers"])(
+it.effect.each(["before Codex's first turn", "after Codex answers"])(
   "a fresh Codex session on the same Mate can send while Claude's refusal remains in history",
-  async (stage) => {
-    const refused = engineRun(key.conversationId, 1, {
-      end: {
-        kind: "usage-limit",
-        driver: "claudeAgent",
-        resetsAt: 4_070_908_800_000,
-        window: "7-day",
-      },
-    });
-    const history = conversation({
-      runs: [refused],
-      items: [
-        noteItem(refused.id, 2, "The existing conversation is still here", { answer: false }),
-      ],
-      header: {
-        archived: true,
-        agent: {
-          instanceId: "claudeAgent",
+  (stage) =>
+    Effect.gen(function* () {
+      const refused = engineRun(key.conversationId, 1, {
+        end: {
+          kind: "usage-limit",
           driver: "claudeAgent",
-          model: "sonnet",
+          resetsAt: 4_070_908_800_000,
+          window: "7-day",
+        },
+      });
+      const history = conversation({
+        runs: [refused],
+        items: [
+          noteItem(refused.id, 2, "The existing conversation is still here", { answer: false }),
+        ],
+        header: {
+          archived: true,
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "sonnet",
+            profile: { kind: "mate" },
+          },
+        },
+      });
+      const fresh = "fresh-codex";
+      const row = engineRow(key.environmentId, fresh, {
+        agent: {
+          instanceId: "codex",
+          driver: "codex",
+          model: "gpt-5.4",
           profile: { kind: "mate" },
         },
-      },
-    });
-    const fresh = "fresh-codex";
-    const row = engineRow(key.environmentId, fresh, {
-      agent: { instanceId: "codex", driver: "codex", model: "gpt-5.4", profile: { kind: "mate" } },
-    });
-    const thread = engineThreadOfRecords(
-      { ...key, conversationId: fresh },
-      {
-        row,
-        header: { agent: row.agent, model: "gpt-5.4" },
-        runs: stage === "before Codex's first turn" ? [] : [engineRun(fresh, 1)],
-        items:
-          stage === "before Codex's first turn"
-            ? []
-            : [noteItem(`${fresh}/r/1`, 2, "Codex is ready")],
-      },
-    )!;
-    expect(thread.id).toBe(fresh);
-    expect(thread.session).toMatchObject({ providerName: "codex" });
-    expect(thread.modelSelection).toMatchObject({ instanceId: "codex", model: "gpt-5.4" });
-    expect(projectMateLimit({ ...thread, engineRow: row }, refused.startedAt!)).toEqual({
-      kind: "none",
-    });
-    expect(history.thread.archivedAt).not.toBeNull();
-    expect(history.rows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "pause", provider: "Claude", window: "7-day" }),
-      ]),
-    );
-    expect(history.thread.messages.map(({ text }) => text)).toContain(
-      "The existing conversation is still here",
-    );
-    const atoms = AtomRegistry.make();
-    const store = makeAccountStore(atoms);
-    const commands: EngineCommand[] = [];
-    const operations = makeMateEngineOperations({
-      store,
-      makeId: () => "fresh-send",
-      wire: {
-        call: (_environmentId, command) => {
-          commands.push(command);
-          return Effect.succeed({ _tag: "Accepted", seq: 1 });
-        },
-        receipt: () => Effect.succeed({ _tag: "None" }),
-      },
-    });
-    try {
-      await Effect.runPromise(
-        operations.send({ ...key, conversationId: fresh, text: "Use Codex while Claude waits" }),
-      );
-      expect(commands).toEqual([
+      });
+      const thread = engineThreadOfRecords(
+        { ...key, conversationId: fresh },
         {
-          kind: "send",
-          conversationId: fresh,
-          commandId: "fresh-send",
-          text: "Use Codex while Claude waits",
-          attachments: [],
+          row,
+          header: { agent: row.agent, model: "gpt-5.4" },
+          runs: stage === "before Codex's first turn" ? [] : [engineRun(fresh, 1)],
+          items:
+            stage === "before Codex's first turn"
+              ? []
+              : [noteItem(`${fresh}/r/1`, 2, "Codex is ready")],
         },
-      ]);
-    } finally {
-      operations.close();
-      store.close();
-      atoms.dispose();
-    }
-  },
+      )!;
+      expect(thread.id).toBe(fresh);
+      expect(thread.session).toMatchObject({ providerName: "codex" });
+      expect(thread.modelSelection).toMatchObject({ instanceId: "codex", model: "gpt-5.4" });
+      expect(projectMateLimit({ ...thread, engineRow: row }, refused.startedAt!)).toEqual({
+        kind: "none",
+      });
+      expect(history.thread.archivedAt).not.toBeNull();
+      expect(history.rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "pause", provider: "Claude", window: "7-day" }),
+        ]),
+      );
+      expect(history.thread.messages.map(({ text }) => text)).toContain(
+        "The existing conversation is still here",
+      );
+      const atoms = AtomRegistry.make();
+      const store = makeAccountStore(atoms);
+      const commands: EngineCommand[] = [];
+      const operations = makeMateEngineOperations({
+        store,
+        makeId: () => "fresh-send",
+        wire: {
+          call: (_environmentId, command) => {
+            commands.push(command);
+            return Effect.succeed({ _tag: "Accepted", seq: 1 });
+          },
+          receipt: () => Effect.succeed({ _tag: "None" }),
+        },
+      });
+      try {
+        yield* operations.send({
+          ...key,
+          conversationId: fresh,
+          text: "Use Codex while Claude waits",
+        });
+        expect(commands).toEqual([
+          {
+            kind: "send",
+            conversationId: fresh,
+            commandId: "fresh-send",
+            text: "Use Codex while Claude waits",
+            attachments: [],
+          },
+        ]);
+      } finally {
+        operations.close();
+        store.close();
+        atoms.dispose();
+      }
+    }),
 );
