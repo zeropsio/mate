@@ -1,0 +1,318 @@
+/**
+ * One place's addresses (board "Mate Addresses Sheet", layout (a) "By kind", the owner,
+ * 2026-10-14): every way the internet reaches one Zerops project — production, a stage or a
+ * Mate's own — in three sections, *Web addresses*, *IP addresses* and *Direct access*, each change
+ * asked or filled in inline. The switch at its top moves between the application's places.
+ *
+ * Presentational: the place as the `addresses` projection reads it, with our writes in flight
+ * already shown on it (`withOwnWrites`), and one callback that writes. The container holds the
+ * reads and the operations (`AddressesSheetContainer`).
+ */
+import type { PlaceAddresses, WaitingChange } from "@t3tools/client-runtime/data";
+import { ChevronDownIcon, CreditCardIcon, XIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+
+import { Button } from "../../ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
+import { Spinner } from "../../ui/spinner";
+import { ZeropsMark } from "../../ZeropsMark";
+import { priceWords, type AddressWrite, type PlaceChoice } from "./addresses.logic";
+import { AddressesDirect, type DirectMode } from "./AddressesDirect";
+import {
+  Confirm,
+  CopyButton,
+  Face,
+  SheetRow,
+  SheetSection,
+  Trouble,
+  type SheetContext,
+} from "./AddressesSheetBits";
+import { AddressesWeb, type WebMode } from "./AddressesWeb";
+
+/** The project's own IPv4 as billing offers it. */
+export type OwnIpv4Offer =
+  | { readonly state: "reading" }
+  /** Billing refuses the viewer, or names no price for the project. */
+  | { readonly state: "unavailable" }
+  | {
+      readonly state: "known";
+      /** Its price for 30 days. */
+      readonly price: number;
+      /** When the period it is paid for ends. */
+      readonly validTill?: string;
+    };
+
+export interface AddressesSheetBodyProps {
+  /** The application's name, or the place's own outside one: "Shop". */
+  readonly projectName: string;
+  readonly placeName: string;
+  readonly projectId: string;
+  /** The application's places; one or none, and there is no switch. */
+  readonly places: ReadonlyArray<PlaceChoice>;
+  readonly onPlace: (projectId: string) => void;
+  readonly place: PlaceAddresses;
+  /** Changes waiting to go live that are not ours, by kind. */
+  readonly othersWaiting: {
+    readonly domains: ReadonlyArray<WaitingChange>;
+    readonly ports: ReadonlyArray<WaitingChange>;
+  };
+  readonly ipv4: OwnIpv4Offer;
+  readonly busy: ReadonlySet<string>;
+  readonly trouble: ReadonlyMap<string, string>;
+  /** Opened to add a domain: the sheet starts in its field. */
+  readonly startAdding: boolean;
+  /** The place in Zerops, where what Mate cannot do here is done. */
+  readonly zeropsUrl: string;
+  readonly onWrite: (write: AddressWrite) => Promise<boolean>;
+  readonly onClose: () => void;
+  readonly nowMs: number;
+}
+
+type IpMode = { readonly kind: "list" } | { readonly kind: "ipv4" };
+
+/** One change asked or filled in at a time, wherever in the sheet it is. */
+type Mode = WebMode | DirectMode | IpMode;
+
+export function AddressesSheetBody(props: AddressesSheetBodyProps) {
+  const [mode, setMode] = useState<Mode>(
+    props.startAdding ? { kind: "add-domain" } : { kind: "list" },
+  );
+  const ctx: SheetContext = {
+    projectId: props.projectId,
+    placeName: props.placeName,
+    projectName: props.projectName,
+    busy: props.busy,
+    trouble: props.trouble,
+    onWrite: props.onWrite,
+    nowMs: props.nowMs,
+  };
+  const web = isWeb(mode) ? mode : LIST;
+  const direct = isDirect(mode) ? mode : LIST;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-addresses-sheet={props.projectId}>
+      <SheetHeader {...props} />
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-1.5 pb-10">
+        {props.place.state === "failed" ? (
+          <p className="py-6 text-muted-foreground text-sm">
+            You can't see {props.placeName}'s addresses.
+          </p>
+        ) : props.place.state === "reading" && props.place.domains.length === 0 ? (
+          <p className="flex items-center gap-2 py-6 text-muted-foreground text-sm">
+            <Spinner aria-hidden="true" size="sm" tone="muted" />
+            Reading {props.placeName}'s addresses…
+          </p>
+        ) : (
+          <div className="grid gap-7">
+            <AddressesWeb
+              ctx={ctx}
+              mode={web}
+              onOwnIpv4={
+                props.place.ips.ownV4 === undefined ? () => setMode({ kind: "ipv4" }) : undefined
+              }
+              othersWaiting={props.othersWaiting.domains}
+              place={props.place}
+              setMode={setMode}
+            />
+            <IpSection
+              asking={mode.kind === "ipv4"}
+              ctx={ctx}
+              ipv4={props.ipv4}
+              place={props.place}
+              setMode={setMode}
+              zeropsUrl={props.zeropsUrl}
+            />
+            <AddressesDirect
+              ctx={ctx}
+              mode={direct}
+              othersWaiting={props.othersWaiting.ports}
+              place={props.place}
+              setMode={setMode}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const LIST = { kind: "list" } as const;
+
+const isWeb = (mode: Mode): mode is WebMode =>
+  mode.kind === "add-domain" || mode.kind === "remove" || mode.kind === "close-zerops";
+
+const isDirect = (mode: Mode): mode is DirectMode =>
+  mode.kind === "open-port" || mode.kind === "change-port" || mode.kind === "close-port";
+
+function SheetHeader({
+  projectName,
+  placeName,
+  projectId,
+  places,
+  onPlace,
+  onClose,
+}: AddressesSheetBodyProps) {
+  const current = places.find((place) => place.projectId === projectId)?.label ?? placeName;
+  return (
+    <div className="flex shrink-0 items-center gap-2.5 py-4 ps-6 pe-4">
+      <h2 className="truncate font-semibold text-lg">{projectName}'s addresses</h2>
+      {places.length > 1 ? (
+        <Menu>
+          <MenuTrigger
+            render={<Button aria-label={`Place: ${current}`} size="sm" variant="outline" />}
+          >
+            {current}
+            <ChevronDownIcon />
+          </MenuTrigger>
+          <MenuPopup align="start">
+            {places.map((place) => (
+              <MenuItem
+                disabled={place.projectId === projectId}
+                key={place.projectId}
+                onClick={() => onPlace(place.projectId)}
+              >
+                {place.label}
+                {place.owner === undefined ? null : (
+                  <span className="text-muted-foreground text-xs">· {place.owner}'s</span>
+                )}
+              </MenuItem>
+            ))}
+          </MenuPopup>
+        </Menu>
+      ) : null}
+      <span className="grow" />
+      <Button aria-label="Close" onClick={onClose} size="icon-sm" variant="ghost">
+        <XIcon />
+      </Button>
+    </div>
+  );
+}
+
+function IpSection({
+  ctx,
+  place,
+  ipv4,
+  asking,
+  setMode,
+  zeropsUrl,
+}: {
+  readonly ctx: SheetContext;
+  readonly place: PlaceAddresses;
+  readonly ipv4: OwnIpv4Offer;
+  readonly asking: boolean;
+  readonly setMode: (mode: Mode) => void;
+  readonly zeropsUrl: string;
+}) {
+  const { ips } = place;
+  const price = ipv4.state === "known" ? priceWords(ipv4.price) : undefined;
+  const every = price === undefined ? "" : ` · ${price} every 30 days`;
+  const assigning = ctx.busy.has("request-ipv4") && ips.ownV4 === undefined;
+  return (
+    <SheetSection
+      part="ip"
+      title="IP addresses"
+      words={`${ctx.placeName}'s own addresses on the internet`}
+    >
+      {ips.v6 === undefined ? null : (
+        <SheetRow
+          data="ipv6"
+          end={<CopyButton value={ips.v6} />}
+          name={<span className="truncate font-mono">{ips.v6}</span>}
+          sub={`IPv6 · ${ctx.placeName}'s own · free`}
+        />
+      )}
+      {ips.ownV4 === undefined ? null : (
+        <>
+          <SheetRow
+            data="own-ipv4"
+            end={<CopyButton value={ips.ownV4} />}
+            name={<span className="truncate font-mono">{ips.ownV4}</span>}
+            sub={`IPv4 · ${ctx.placeName}'s own${every}${paidUntil(ipv4.state === "known" ? ipv4.validTill : undefined)}`}
+          />
+          <p className="flex flex-wrap items-center gap-x-2 pb-2 text-muted-foreground text-xs">
+            It renews on its own. To stop renewing it, turn it off in Zerops.
+            <OpenInZerops url={zeropsUrl} />
+          </p>
+        </>
+      )}
+      {ips.sharedV4 === undefined ? null : (
+        <SheetRow
+          data="shared-ipv4"
+          end={<CopyButton value={ips.sharedV4} />}
+          name={<span className="truncate font-mono">{ips.sharedV4}</span>}
+          sub="IPv4 · shared with other projects · free, for web traffic only"
+        />
+      )}
+      {ips.ownV4 !== undefined ? null : (
+        <SheetRow
+          data="get-ipv4"
+          end={
+            assigning ? (
+              <Face tone="busy" word="Assigning" />
+            ) : asking ? (
+              <Face tone="warn" word="Confirm below" />
+            ) : (
+              <Button onClick={() => setMode({ kind: "ipv4" })} size="sm" variant="outline">
+                Get one
+              </Button>
+            )
+          }
+          name="Your own IPv4"
+          sub={
+            assigning
+              ? `Being assigned${every}`
+              : `For direct access over IPv4, or past the shared address's limits${every}`
+          }
+        />
+      )}
+      <Trouble text={ctx.trouble.get("request-ipv4")} />
+      {asking && ips.ownV4 === undefined && !assigning ? (
+        <Confirm
+          busy={ctx.busy.has("request-ipv4")}
+          cancel="Cancel"
+          confirm={price === undefined ? "Get it" : `Get it for ${price}`}
+          disabled={price === undefined}
+          icon={<CreditCardIcon />}
+          onCancel={() => setMode({ kind: "list" })}
+          onConfirm={() => {
+            void ctx.onWrite({ kind: "request-ipv4", projectId: ctx.projectId }).then((taken) => {
+              if (taken) setMode({ kind: "list" });
+            });
+          }}
+          title={`Get your own IPv4 for ${ctx.placeName}${every}`}
+          tone="default"
+        >
+          {ipv4.state === "reading" ? (
+            <p>Reading its price…</p>
+          ) : price === undefined ? (
+            <p>
+              Its price can't be read here. Check it in Zerops before you buy.{" "}
+              <OpenInZerops url={zeropsUrl} />
+            </p>
+          ) : (
+            <p>
+              It renews on its own every 30 days and can't be refunded. It's paid from purchased
+              credit; promo credit doesn't count. To stop renewing it, turn it off in Zerops.
+            </p>
+          )}
+          <p className="text-xs">Only admins can buy it.</p>
+        </Confirm>
+      ) : null}
+    </SheetSection>
+  );
+}
+
+const paidUntil = (validTill: string | undefined) => {
+  if (validTill === undefined) return "";
+  const at = new Date(validTill);
+  if (Number.isNaN(at.getTime())) return "";
+  return ` · paid until ${at.toLocaleDateString("en", { month: "short", day: "numeric" })}`;
+};
+
+function OpenInZerops({ url }: { readonly url: string }): ReactNode {
+  return (
+    <Button render={<a href={url} rel="noreferrer" target="_blank" />} size="xs" variant="link">
+      <ZeropsMark className="size-3.25" />
+      Open in Zerops
+    </Button>
+  );
+}

@@ -429,3 +429,65 @@ export function removeWrite(domain: AddressDomain, projectId: string): AddressWr
     sslEnabled: domain.sslEnabled,
   };
 }
+
+/** One of the application's places the sheet's switch offers. */
+export interface PlaceChoice {
+  readonly projectId: string;
+  /** In the switch: "Production", a stage's name, "Fen's own project". */
+  readonly label: string;
+  /** In sentences: "Production", a stage's name, "Fen". */
+  readonly name: string;
+  /** Whose it is, where it is a colleague's Mate's: their first name. */
+  readonly owner?: string;
+}
+
+/** A place's row as the menu's globe reads it (`ProjectSitesInput`). */
+interface MenuPlaces {
+  readonly stops: ReadonlyArray<{ readonly projectId: string | undefined; readonly name: string }>;
+}
+
+/**
+ * The application's places, as the menu's globe lists them: production, each stage, then each
+ * Mate's own project in the menu's order. A place still being set up has no project yet and is
+ * left out; a Mate with no address yet stays, since its addresses are what the sheet adds.
+ */
+export function addressPlaces(
+  input: {
+    readonly production: ((nowMs: number) => MenuPlaces) | undefined;
+    readonly stages: ((nowMs: number) => MenuPlaces) | undefined;
+    readonly mates: ReadonlyArray<{
+      readonly candidate: { readonly project: { readonly id: string } };
+      readonly name: string;
+      readonly owner: { readonly name: string; readonly isViewer: boolean } | undefined;
+    }>;
+  },
+  nowMs: number,
+): ReadonlyArray<PlaceChoice> {
+  const stops = (menu: MenuPlaces | undefined, production: boolean) =>
+    (menu?.stops ?? []).flatMap((stop): ReadonlyArray<PlaceChoice> => {
+      if (stop.projectId === undefined) return [];
+      const name = production ? "Production" : stop.name;
+      return [{ projectId: stop.projectId, label: name, name }];
+    });
+  const seen = new Set<string>();
+  return [
+    ...stops(input.production?.(nowMs), true),
+    ...stops(input.stages?.(nowMs), false),
+    ...input.mates.map((mate) => {
+      const owner =
+        mate.owner === undefined || mate.owner.isViewer
+          ? undefined
+          : mate.owner.name.trim().split(/\s+/u)[0];
+      return {
+        projectId: mate.candidate.project.id,
+        label: `${mate.name}'s own project`,
+        name: mate.name,
+        ...(owner === undefined ? {} : { owner }),
+      };
+    }),
+  ].filter((place) => {
+    if (seen.has(place.projectId)) return false;
+    seen.add(place.projectId);
+    return true;
+  });
+}

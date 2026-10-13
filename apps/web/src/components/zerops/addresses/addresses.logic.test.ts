@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  addressPlaces,
   addressTrouble,
   checkedWords,
   domainFaceWords,
@@ -319,5 +320,44 @@ describe("removing a domain", () => {
       locations: [{ path: "/", port: 3000, serviceStackId: "svc-app" }],
       sslEnabled: true,
     });
+  });
+});
+
+describe("the project's places", () => {
+  it("lists production, each stage, then each Mate's own project, a colleague's with its owner", () => {
+    const menu = (stops: ReadonlyArray<{ projectId: string | undefined; name: string }>) => () => ({
+      stops,
+    });
+    expect(
+      addressPlaces(
+        {
+          production: menu([{ projectId: "prod", name: "production" }]),
+          stages: menu([
+            { projectId: "stage", name: "Stage" },
+            { projectId: undefined, name: "Coming" },
+          ]),
+          mates: [
+            { candidate: { project: { id: "fen" } }, name: "Fen", owner: undefined },
+            {
+              candidate: { project: { id: "rhea" } },
+              name: "Rhea",
+              owner: { name: "Karlos Novak", isViewer: false },
+            },
+            {
+              candidate: { project: { id: "juno" } },
+              name: "Juno",
+              owner: { name: "Ales R", isViewer: true },
+            },
+          ],
+        },
+        0,
+      ),
+    ).toEqual([
+      { projectId: "prod", label: "Production", name: "Production" },
+      { projectId: "stage", label: "Stage", name: "Stage" },
+      { projectId: "fen", label: "Fen's own project", name: "Fen" },
+      { projectId: "rhea", label: "Rhea's own project", name: "Rhea", owner: "Karlos" },
+      { projectId: "juno", label: "Juno's own project", name: "Juno" },
+    ]);
   });
 });
