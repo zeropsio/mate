@@ -111,6 +111,23 @@ export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope, type ServiceValue } from "./families/service.ts";
 export { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
 export { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
+export {
+  addresses,
+  dnsAdvice,
+  SHARED_IPV4,
+  type AddressDomain,
+  type AddressTarget,
+  type DirectPort,
+  type DnsRecord,
+  type DomainFace,
+  type PlaceAddresses,
+  type PlaceIps,
+  type ServicePortChoice,
+  type WaitingChange,
+  type ZeropsAddress,
+} from "./projections/addresses.ts";
+export { addonsScope, type ProjectIpv4Addon } from "./families/projectAddons.ts";
+export type { PortRoutingWrite } from "./operations/addressWrites.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 export { mateVariables, type MateVariables } from "./projections/mateVariables.ts";
 export type {

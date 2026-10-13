@@ -61,6 +61,8 @@ const Row = Schema.Struct({
   ),
   lastUpdate: Optional(Schema.String),
   publicIpV4Shared: Optional(Schema.Boolean),
+  publicIpV4: Optional(Schema.String),
+  publicIpV6: Optional(Schema.String),
   maxCreditLimit: Optional(Schema.Finite),
   _version: Optional(Schema.Finite),
 });
