@@ -1,7 +1,101 @@
-// @effect-diagnostics nodeBuiltinImport:off - reads the installed native JS bundle for synchronous VM tests.
+// @effect-diagnostics nodeBuiltinImport:off - reads the installed JS bundles for synchronous VM tests.
 import * as NodeFS from "node:fs";
 import * as NodeVM from "node:vm";
 import { describe, expect, it, vi } from "vite-plus/test";
+
+// The web viewport's native range, including the room keeping the first message on its line.
+function createAnchoredWebList(bundle: string) {
+  const source = NodeFS.readFileSync(
+    new URL(`../apps/web/node_modules/@legendapp/list/${bundle}`, import.meta.url),
+    "utf8",
+  );
+  const anchoredSpace = source.slice(
+    source.indexOf("function maybeUpdateAnchoredEndSpace("),
+    source.indexOf("// src/core/updateItemSizes.ts"),
+  );
+  type Row = { id: string; height?: number };
+  const onReady = vi.fn();
+  const values = new Map<string, number>([["footerSize", 16]]);
+  const state = {
+    props: {
+      data: [
+        { id: "day", height: 16 },
+        { id: "person", height: 66.75 },
+        { id: "run", height: 119 },
+        { id: "working", height: 0 },
+        { id: "run-end", height: 16 },
+      ] as Row[],
+      anchoredEndSpace: { anchorIndex: 1, anchorOffset: 16, onReady },
+    },
+    scrollLength: 935,
+  };
+  const ctx = { state, values, scrollAxisGap: 0 };
+  const api = NodeVM.runInNewContext(
+    `${anchoredSpace}\n({ update: maybeUpdateAnchoredEndSpace })`,
+    {
+      getId: (_state: unknown, index: number) => state.props.data[index]!.id,
+      getKnownOrFixedItemSize: (_ctx: unknown, index: number) => state.props.data[index]!.height,
+      getItemSizeAtIndex: (_ctx: unknown, index: number) => state.props.data[index]!.height ?? 90,
+      getStylePaddingEnd: () => 0,
+      peek$: (_ctx: unknown, key: string) => values.get(key),
+      set$: (_ctx: unknown, key: string, value: number) => values.set(key, value),
+      updateContentMetricsState: vi.fn(),
+      updateScroll: vi.fn(),
+    },
+  ) as { update: (context: typeof ctx) => void };
+  let nativeTop = 48;
+  const draw = () => {
+    api.update(ctx);
+    // The browser clamps against its actual rendered range, independently of the logical target.
+    const rowsHeight = state.props.data.reduce((sum, row) => sum + (row.height ?? 90), 0);
+    const end = Math.max(0, 48 + rowsHeight + 16 + (values.get("anchoredEndSpaceSize") ?? 0) - 935);
+    nativeTop = Math.min(nativeTop, end);
+    return nativeTop;
+  };
+  draw();
+  onReady.mockClear();
+  return {
+    onReady,
+    room: () => values.get("anchoredEndSpaceSize"),
+    replace: (tail: Row[]) => {
+      state.props.data = [...state.props.data.slice(0, 2), ...tail];
+      return draw();
+    },
+  };
+}
+
+describe.each(["react.js", "react.mjs"])("web anchor room (%s)", (bundle) => {
+  it("the first message stays on its line while unmeasured rows replace the run", () => {
+    const list = createAnchoredWebList(bundle);
+    for (const tail of [
+      [{ id: "work" }],
+      [{ id: "work", height: 44 }],
+      [{ id: "work", height: 44 }, { id: "answer" }],
+      [
+        { id: "work", height: 44 },
+        { id: "answer", height: 71.75 },
+      ],
+    ]) {
+      expect(
+        list.replace(tail),
+        "ASSERTION: replacement rows never clamp away the first message's 48 px offset",
+      ).toBe(48);
+      if (tail.some((row) => row.height === undefined))
+        expect(
+          list.onReady,
+          "ASSERTION: estimated room never proves measured readiness",
+        ).not.toHaveBeenCalled();
+      list.onReady.mockClear();
+    }
+  });
+
+  it("reserved room yields to work taller than the conversation viewport", () => {
+    const list = createAnchoredWebList(bundle);
+    list.replace([{ id: "work", height: 1050 }]);
+    expect(list.room(), "ASSERTION: tall work consumes the reserved room").toBe(0);
+    expect(list.onReady, "ASSERTION: measured work is ready").toHaveBeenCalledOnce();
+  });
+});
 
 // Exercise the shipped patch without loading React Native in the Node runner.
 // Native scroll delivery and animation frames advance independently here.

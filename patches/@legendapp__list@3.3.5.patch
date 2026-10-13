@@ -1413,24 +1413,40 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..c29bb180ad4d2b57a5eec822c6a4b0b3
        scrollTo(ctx, {
          forceScroll: true,
 diff --git a/react.js b/react.js
-index 914d2dafaafa001c9ab6791a0a0581659295e333..edc9776603b3f8120b83c3bf0410190160922067 100644
+index 914d2dafaafa001c9ab6791a0a0581659295e333..1982442192664ca71762178598562f024f05c1bc 100644
 --- a/react.js
 +++ b/react.js
-@@ -4702,7 +4702,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4690,9 +4690,13 @@
+       let contentBelowAnchor = 0;
+       let hasUnknownTailSize = false;
+       for (let index = anchorIndex; index < data.length; index++) {
+-        const size = getKnownOrFixedItemSize(ctx, index);
++        const knownSize = getKnownOrFixedItemSize(ctx, index);
++        // Use the same projected height as the list while a replacement row measures.
++        // Keeping old padding beside new estimated rows can shrink the native range
++        // before measurement, clamping away the already painted anchor.
++        const size = knownSize === void 0 ? getItemSizeAtIndex(ctx, index) : knownSize;
+         const effectiveSize = index === anchorIndex && anchorMaxSize !== void 0 ? Math.min(size || 0, Math.max(0, anchorMaxSize)) : size;
+-        if (size === void 0) {
++        if (knownSize === void 0) {
+           hasUnknownTailSize = true;
+         }
+         if (effectiveSize !== null && effectiveSize !== void 0 && effectiveSize > 0) {
+@@ -4702,7 +4706,8 @@
        contentBelowAnchor = Math.max(0, contentBelowAnchor - ctx.scrollAxisGap);
        contentBelowAnchor += (ctx.values.get("footerSize") || 0) + getStylePaddingEnd(state.props);
        isReady = !hasUnknownTailSize;
 -      nextSize = hasUnknownTailSize ? previousSize || 0 : Math.max(0, state.scrollLength - contentBelowAnchor - anchorOffset);
-+      const knownSizeBound = Math.max(0, state.scrollLength - contentBelowAnchor - anchorOffset);
-+      nextSize = hasUnknownTailSize ? Math.min(previousSize || 0, knownSizeBound) : knownSizeBound;
++      const projectedSizeBound = Math.max(0, state.scrollLength - contentBelowAnchor - anchorOffset);
++      nextSize = projectedSizeBound;
      } else if (anchorIndex >= 0) {
        isReady = false;
      }
-@@ -4722,6 +4723,12 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4722,6 +4727,12 @@
        updateScroll(ctx, state.scroll, true, { markHasScrolled: false });
      }
      (_b = anchoredEndSpace == null ? void 0 : anchoredEndSpace.onReady) == null ? void 0 : _b.call(anchoredEndSpace, { anchorIndex: nextAnchorIndex, anchorKey: nextAnchorKey, size: nextSize });
-+  } else if (!isReady && didSizeChange && nextSize < (previousSize || 0)) {
++  } else if (!isReady && didSizeChange) {
 +    set$(ctx, "anchoredEndSpaceSize", nextSize);
 +    (_a3 = anchoredEndSpace == null ? void 0 : anchoredEndSpace.onSizeChanged) == null ? void 0 : _a3.call(anchoredEndSpace, nextSize);
 +    if (anchoredEndSpace == null ? void 0 : anchoredEndSpace.includeInEndInset) {
@@ -1439,7 +1455,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..edc9776603b3f8120b83c3bf04101901
    }
    return nextSize;
  }
-@@ -4922,7 +4929,9 @@ function updateOneItemSize(ctx, itemKey, sizeObj, resolvedMeasurementItem) {
+@@ -4922,7 +4933,9 @@
    const prevSize = getItemSize(ctx, itemKey, index, itemData, void 0, void 0, void 0, resolvedItemSize);
    const rawSize = horizontal ? sizeObj.width : sizeObj.height;
    const prevSizeKnown = sizesKnown.get(itemKey);
@@ -1450,7 +1466,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..edc9776603b3f8120b83c3bf04101901
    sizesKnown.set(itemKey, size);
    if (fixedItemSize === void 0 && size > 0) {
      itemType != null ? itemType : itemType = getItemType ? (_b = getItemType(itemData, index)) != null ? _b : "" : "";
-@@ -6446,8 +6455,8 @@ function ScrollAdjust() {
+@@ -6446,8 +6459,8 @@
                window.getComputedStyle(contentNode)[axis.paddingEndProp]
              );
              const temporaryPaddingEnd = `${(currentPaddingEnd || 0) + pad}px`;
@@ -1460,7 +1476,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..edc9776603b3f8120b83c3bf04101901
              void contentNode.offsetHeight;
              scrollBy();
              if (resetPaddingRafRef.current !== void 0) {
-@@ -7011,7 +7020,12 @@ function onScroll(ctx, event) {
+@@ -7011,7 +7024,12 @@
    state.lastNativeScrollTime = Date.now();
    if (state.scrollingTo && state.scrollingTo.offset >= newScroll) {
      const maxOffset = clampScrollOffset(ctx, newScroll, state.scrollingTo);
@@ -1475,24 +1491,40 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..edc9776603b3f8120b83c3bf04101901
        scrollTo(ctx, {
          forceScroll: true,
 diff --git a/react.mjs b/react.mjs
-index 95465f2ab89ce41a10553f58af83618f7310e83c..7a60412189119953ab8fabbcbb13c9b08927ecc9 100644
+index 95465f2ab89ce41a10553f58af83618f7310e83c..8d6de9ad3d81632d855bc0234c846a09d54cc962 100644
 --- a/react.mjs
 +++ b/react.mjs
-@@ -4681,7 +4681,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4669,9 +4669,13 @@
+       let contentBelowAnchor = 0;
+       let hasUnknownTailSize = false;
+       for (let index = anchorIndex; index < data.length; index++) {
+-        const size = getKnownOrFixedItemSize(ctx, index);
++        const knownSize = getKnownOrFixedItemSize(ctx, index);
++        // Use the same projected height as the list while a replacement row measures.
++        // Keeping old padding beside new estimated rows can shrink the native range
++        // before measurement, clamping away the already painted anchor.
++        const size = knownSize === void 0 ? getItemSizeAtIndex(ctx, index) : knownSize;
+         const effectiveSize = index === anchorIndex && anchorMaxSize !== void 0 ? Math.min(size || 0, Math.max(0, anchorMaxSize)) : size;
+-        if (size === void 0) {
++        if (knownSize === void 0) {
+           hasUnknownTailSize = true;
+         }
+         if (effectiveSize !== null && effectiveSize !== void 0 && effectiveSize > 0) {
+@@ -4681,7 +4685,8 @@
        contentBelowAnchor = Math.max(0, contentBelowAnchor - ctx.scrollAxisGap);
        contentBelowAnchor += (ctx.values.get("footerSize") || 0) + getStylePaddingEnd(state.props);
        isReady = !hasUnknownTailSize;
 -      nextSize = hasUnknownTailSize ? previousSize || 0 : Math.max(0, state.scrollLength - contentBelowAnchor - anchorOffset);
-+      const knownSizeBound = Math.max(0, state.scrollLength - contentBelowAnchor - anchorOffset);
-+      nextSize = hasUnknownTailSize ? Math.min(previousSize || 0, knownSizeBound) : knownSizeBound;
++      const projectedSizeBound = Math.max(0, state.scrollLength - contentBelowAnchor - anchorOffset);
++      nextSize = projectedSizeBound;
      } else if (anchorIndex >= 0) {
        isReady = false;
      }
-@@ -4701,6 +4702,12 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4701,6 +4706,12 @@
        updateScroll(ctx, state.scroll, true, { markHasScrolled: false });
      }
      (_b = anchoredEndSpace == null ? void 0 : anchoredEndSpace.onReady) == null ? void 0 : _b.call(anchoredEndSpace, { anchorIndex: nextAnchorIndex, anchorKey: nextAnchorKey, size: nextSize });
-+  } else if (!isReady && didSizeChange && nextSize < (previousSize || 0)) {
++  } else if (!isReady && didSizeChange) {
 +    set$(ctx, "anchoredEndSpaceSize", nextSize);
 +    (_a3 = anchoredEndSpace == null ? void 0 : anchoredEndSpace.onSizeChanged) == null ? void 0 : _a3.call(anchoredEndSpace, nextSize);
 +    if (anchoredEndSpace == null ? void 0 : anchoredEndSpace.includeInEndInset) {
@@ -1501,7 +1533,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..7a60412189119953ab8fabbcbb13c9b0
    }
    return nextSize;
  }
-@@ -4901,7 +4908,9 @@ function updateOneItemSize(ctx, itemKey, sizeObj, resolvedMeasurementItem) {
+@@ -4901,7 +4912,9 @@
    const prevSize = getItemSize(ctx, itemKey, index, itemData, void 0, void 0, void 0, resolvedItemSize);
    const rawSize = horizontal ? sizeObj.width : sizeObj.height;
    const prevSizeKnown = sizesKnown.get(itemKey);
@@ -1512,7 +1544,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..7a60412189119953ab8fabbcbb13c9b0
    sizesKnown.set(itemKey, size);
    if (fixedItemSize === void 0 && size > 0) {
      itemType != null ? itemType : itemType = getItemType ? (_b = getItemType(itemData, index)) != null ? _b : "" : "";
-@@ -6425,8 +6434,8 @@ function ScrollAdjust() {
+@@ -6425,8 +6438,8 @@
                window.getComputedStyle(contentNode)[axis.paddingEndProp]
              );
              const temporaryPaddingEnd = `${(currentPaddingEnd || 0) + pad}px`;
@@ -1522,7 +1554,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..7a60412189119953ab8fabbcbb13c9b0
              void contentNode.offsetHeight;
              scrollBy();
              if (resetPaddingRafRef.current !== void 0) {
-@@ -6990,7 +6999,12 @@ function onScroll(ctx, event) {
+@@ -6990,7 +7003,12 @@
    state.lastNativeScrollTime = Date.now();
    if (state.scrollingTo && state.scrollingTo.offset >= newScroll) {
      const maxOffset = clampScrollOffset(ctx, newScroll, state.scrollingTo);
