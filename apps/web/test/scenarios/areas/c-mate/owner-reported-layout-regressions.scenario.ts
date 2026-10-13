@@ -8,13 +8,17 @@ import {
   WS_METHODS,
   ConversationRow,
   TurnId,
+  ProviderDriverKind,
+  RuntimeTaskId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
+import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea, reportContainer } from "./fake.ts";
 import type { EngineChatWire } from "./engine.ts";
@@ -196,6 +200,76 @@ async function settledEnd(page: Page) {
   await waitForStillFrames(page);
   return page.evaluate(readEnd);
 }
+
+// Real sends and native Claude events create Milo's history; reload reads the durable consumer.
+const realMiloAtWork = Effect.gen(function* () {
+  const s = yield* createScenario([], { mate: "real" });
+  yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+  yield* Effect.promise(() =>
+    s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
+  );
+  yield* s.given.project("Ada", {
+    mate: true,
+    provider: { driverKind: ProviderDriverKind.make("claudeAgent") },
+    claudeSignIn: true,
+  });
+  const chat = mateChat(s);
+  const { provider } = s.drivers.realMates.get("Ada")!;
+  yield* s.given.signedIn;
+  yield* Effect.promise(() => ownerMenu(s.page));
+  yield* s.when.menu.opensMate("Ada");
+  yield* Effect.promise(() => s.page.waitForSelector('[role="textbox"]', { timeout: 8000 }));
+  expect(yield* Effect.promise(() => s.page.evaluate(() => document.body.innerText))).toContain(
+    "No owner yet. Whoever signs in its coding agent owns it.",
+  );
+  yield* Effect.promise(() =>
+    s.page.locator('button[data-agent-id="claude-code"]').setTimeout(8000).click(),
+  );
+  yield* Effect.promise(async () => {
+    const field = "[data-sign-in-code]";
+    await s.page.waitForSelector(
+      '[data-sign-in-open="claude-code"][href^="https://claude.scenario.invalid/oauth/authorize"]',
+      { visible: true, timeout: 8000 },
+    );
+    await s.page.waitForSelector(field, { visible: true, timeout: 8000 });
+    await s.page.type(field, CLAUDE_SCENARIO_CODE);
+    await s.page.keyboard.press("Enter");
+    await s.page.waitForSelector('[role="textbox"]:not([inert] *)', {
+      visible: true,
+      timeout: 8000,
+    });
+  });
+  expect(
+    yield* Effect.promise(async () => (await s.page.$('[role="textbox"]:not([inert] *)')) !== null),
+    "ASSERTION: native Claude sign-in enables Milo's composer before its first send",
+  ).toBe(true);
+  for (const [question, answer] of [
+    ["How did the deploy go?", "It built and the storefront answers."],
+    ["And now?", "The existing conversation is still here"],
+  ] as const) {
+    yield* provider.turn([{ kind: "say", text: answer }]);
+    yield* chat.when.send(question);
+    yield* chat.then.text(answer);
+    expect((yield* provider.received).input.input).toBe(question);
+    yield* chat.then.control("Stop generation", "button", false);
+  }
+  yield* Effect.promise(() => s.page.reload());
+  yield* chat.then.text("The existing conversation is still here");
+  yield* Effect.promise(() => waitForStillFrames(s.page));
+  const finish = yield* Deferred.make<void>();
+  yield* provider.turn([
+    { kind: "tool", title: "Bash", detail: "sleep 25 && echo helper-job-done" },
+    {
+      kind: "say",
+      text: "Helper B's job ended first: exit code 4, as it was told to fail. Helper A's is still sleeping. Reacting with the first second-wave helper: it reads what B printed and checks the exit code against the plan.",
+    },
+    { kind: "wait", until: finish },
+  ]);
+  yield* chat.when.send("Live stress test 4A: start two helpers");
+  const turn = yield* provider.received;
+  yield* chat.then.text("Helper B's job ended first: exit code 4");
+  return { s, provider, turn, finish };
+});
 
 describe("owner-reported layout regressions", () => {
   describe("Decision: geometry relations only; no style pins.", () => {
@@ -2535,13 +2609,7 @@ describe("owner-reported layout regressions", () => {
         // the composer's.
         it.effect("a live card spends no line on controls", () =>
           Effect.gen(function* () {
-            const { s, engine, run } = yield* miloAtWork();
-            engine.item(run, {
-              kind: "note",
-              text: "Helper B's job ended first: exit code 4, as it was told to fail. Helper A's is still sleeping. Reacting with the first second-wave helper: it reads what B printed and checks the exit code against the plan.",
-              streaming: false,
-              answer: false,
-            });
+            const { s, provider, turn, finish } = yield* realMiloAtWork;
             const controlsOnTheHead = (what: string) =>
               Effect.gen(function* () {
                 const read = yield* Effect.promise(() =>
@@ -2584,15 +2652,15 @@ describe("owner-reported layout regressions", () => {
             yield* Effect.promise(() => settledFoot(s.page, ["Hide work"]));
             yield* controlsOnTheHead("the Mate's words");
             // Its turn over, the helper it launched works on: its Stop is the composer's.
-            engine.item(run, {
-              kind: "work",
-              work: "work-helper-a",
-              workKind: "helper",
-              status: "running",
-              title: "Sleep 25 seconds, then report",
+            yield* provider.event(turn.threadId, {
+              type: "task.started",
+              payload: {
+                taskId: RuntimeTaskId.make("helper-a"),
+                taskType: "subagent",
+                description: "Sleep 25 seconds, then report",
+              },
             });
-            engine.end(run);
-            engine.waitOnHelpers();
+            yield* Deferred.succeed(finish, undefined);
             yield* Effect.promise(() =>
               s.page.waitForFunction(
                 () =>
@@ -2605,6 +2673,19 @@ describe("owner-reported layout regressions", () => {
             yield* Effect.promise(() => settledFoot(s.page, ["Hide work"]));
             const waiting = yield* controlsOnTheHead("waiting for its helpers");
             expect(waiting.composerStop, "ASSERTION: the composer offers the Stop").toBe(true);
+            if (process.env.MATE_LAYOUT_EVIDENCE) {
+              yield* Effect.promise(() =>
+                s.page.screenshot({
+                  path: `${process.env.MATE_LAYOUT_EVIDENCE}/milo-native-full.png`,
+                }),
+              );
+              yield* Effect.promise(async () => {
+                const card = await s.page.$("[data-run-chat][data-run-live]");
+                await card!.screenshot({
+                  path: `${process.env.MATE_LAYOUT_EVIDENCE}/milo-native.png`,
+                });
+              });
+            }
             yield* s.then.noExternalNetwork;
           }),
         );

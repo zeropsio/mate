@@ -152,22 +152,55 @@ export class ZeropsWrites {
       const row = this.row("app-version", versionRead[1]!);
       return row ? { body: row } : this.platform.error(400, "appVersionNotFound");
     }
+    const userData = path.match(/^\/service-stack\/([^/]+)\/user-data$/u);
+    const deleteUserData =
+      request.method === "DELETE" ? path.match(/^\/user-data\/([^/]+)$/u) : null;
+    const userDataRow = deleteUserData ? this.row("user-data", deleteUserData[1]!) : undefined;
     const importMatch = path.match(/^\/project\/([^/]+)\/service-stack\/import$/u);
     const createVersion = path.match(/^\/service-stack\/([^/]+)\/app-version$/u);
     const subdomain = path.match(/^\/service-stack\/([^/]+)\/enable-subdomain-access$/u);
     const versionWrite = path.match(/^\/app-version\/([^/]+)\/(upload|build-and-deploy|deploy)$/u);
-    if (!importMatch && !createVersion && !subdomain && !versionWrite) return undefined;
+    if (
+      !importMatch &&
+      !createVersion &&
+      !subdomain &&
+      !versionWrite &&
+      !userData &&
+      !deleteUserData
+    )
+      return undefined;
     const service =
-      createVersion || subdomain
-        ? this.service((createVersion ?? subdomain)![1]!)
-        : versionWrite
-          ? this.service(this.platform.world.appVersions.get(versionWrite[1]!)?.serviceId ?? "")
-          : undefined;
+      createVersion || subdomain || userData
+        ? this.service((createVersion ?? subdomain ?? userData)![1]!)
+        : deleteUserData
+          ? this.service(String(userDataRow?.serviceStackId ?? ""))
+          : versionWrite
+            ? this.service(this.platform.world.appVersions.get(versionWrite[1]!)?.serviceId ?? "")
+            : undefined;
     const projectId = importMatch?.[1] ?? String(service?.projectId ?? "");
     if (!this.row("project", projectId))
       return this.platform.error(400, "projectNotFound", "Project not found.");
     if (!this.allowed(credential, projectId))
       return this.platform.error(403, "insufficientPermissions", "Insufficient permissions");
+    if (userData && request.method === "POST") {
+      const { key, content, sensitive } = request.body;
+      if (typeof key !== "string" || typeof content !== "string" || typeof sensitive !== "boolean")
+        return this.platform.error(400, "invalidUserData");
+      this.platform.put("user-data", {
+        id: this.id("user-data"),
+        clientId: service!.clientId,
+        serviceStackId: service!.id,
+        key,
+        content,
+        sensitive,
+        type: "SERVICE",
+      });
+      return { body: { id: this.start(projectId, "stack.updateUserData", [service!.id]) } };
+    }
+    if (deleteUserData && request.method === "DELETE") {
+      this.platform.remove("user-data", deleteUserData[1]!);
+      return { body: {} };
+    }
     if (createVersion && request.method === "POST") {
       const id = this.id("version");
       const name = String(request.body.name);

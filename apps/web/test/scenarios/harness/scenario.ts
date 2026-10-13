@@ -225,7 +225,13 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   // enrollment file and reached by the browser through the container's proxy.
   const realMate = Effect.fn("scenarios.given.realMate")(function* (
     name: string,
-    options: { app?: string; registered?: boolean; launchEnvironment?: NodeJS.ProcessEnv },
+    options: {
+      app?: string;
+      registered?: boolean;
+      launchEnvironment?: NodeJS.ProcessEnv;
+      provider?: Parameters<typeof makeScriptedProvider>[0];
+      claudeSignIn?: boolean;
+    },
   ) {
     const key = `mate-key-${name}`;
     zerops.world.tokens.set(key, {
@@ -242,7 +248,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     });
     putMateService(name);
     const credential = options.registered === false ? undefined : yield* enroll(name, options.app);
-    const provider = yield* makeScriptedProvider();
+    const provider = yield* makeScriptedProvider(options.provider);
     const publicOrigin = `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`;
     const server = yield* Effect.promise(() =>
       startScenarioMate({
@@ -255,6 +261,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         ...(credential ? { hq: { origin: core.origin, credential } } : {}),
         now: () => zerops.clock.currentTimeMillis(),
         drivers: [provider.driver],
+        ...(options.claudeSignIn ? { claudeSignIn: true } : {}),
         ...(options.launchEnvironment === undefined
           ? {}
           : { launchEnvironment: options.launchEnvironment }),
@@ -290,6 +297,8 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       environmentName?: string;
       registered?: boolean;
       launchEnvironment?: NodeJS.ProcessEnv;
+      provider?: Parameters<typeof makeScriptedProvider>[0];
+      claudeSignIn?: boolean;
     } = {},
   ) {
     const kind = options.kind ?? (options.mate ? "mate" : undefined);

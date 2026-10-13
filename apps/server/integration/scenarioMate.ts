@@ -28,6 +28,7 @@ import { FetchHttpClient, HttpServer } from "effect/http";
 
 import * as ServerConfig from "../src/config.ts";
 import { makeServerLayer } from "../src/server.ts";
+import { scriptedClaudeSignIn } from "./scriptedClaudeSignIn.ts";
 import { ServerRuntimeStartup } from "../src/serverRuntimeStartup.ts";
 import { MateEngine, type MateEngineService } from "../src/engine/MateEngine.ts";
 import { ZeropsMateAttention } from "../src/zerops/ZeropsMateAttention.ts";
@@ -54,6 +55,8 @@ export interface ScenarioMateOptions {
   /** The scenario's wall clock, in epoch milliseconds. */
   readonly now: () => number;
   readonly drivers: ReadonlyArray<AnyProviderDriver<never>>;
+  /** The external native Claude login CLI, with scenario-only credentials. */
+  readonly claudeSignIn?: boolean;
   /** A state directory to start from (a copied history); a fresh one when absent. */
   readonly stateFrom?: string;
   /** Per-boot environment input; never mutates the worker process environment. */
@@ -123,6 +126,10 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
     );
   }
 
+  const nativeServices = options.claudeSignIn
+    ? await scriptedClaudeSignIn({ root, homeDir, cwd })
+    : undefined;
+
   const refused: Array<string> = [];
   const loopbackFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
@@ -137,7 +144,10 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
     const scope = Scope.makeUnsafe();
     const server = Effect.gen(function* () {
       const context = yield* Layer.buildWithScope(
-        makeServerLayer({ drivers: options.drivers }),
+        makeServerLayer({
+          drivers: options.drivers,
+          ...(nativeServices ? { nativeServices } : {}),
+        }),
         scope,
       );
       const ready = yield* ServerRuntimeStartup.pipe(Effect.provide(context));

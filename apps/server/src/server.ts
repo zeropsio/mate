@@ -8,6 +8,9 @@ import {
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as PtyAdapter from "./terminal/PtyAdapter.ts";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
@@ -392,8 +395,6 @@ const CheckpointingLayerLive = Layer.empty.pipe(
   Layer.provideMerge(CheckpointStore.layer.pipe(Layer.provide(VcsDriverRegistryLayerLive))),
 );
 
-const TerminalLayerLive = TerminalManager.layer.pipe(Layer.provide(PtyAdapterLive));
-
 const WorkspaceEntriesLayerLive = WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer));
 
 const WorkspaceFileSystemLayerLive = WorkspaceFileSystem.layer.pipe(
@@ -462,6 +463,12 @@ const AntigravityInstallationRefreshLive = Layer.effectDiscard(
 /** What a server is built from: production boots `BUILT_IN_DRIVERS`, a scenario Mate its scripted driver. */
 export interface ServerLayerOptions {
   readonly drivers: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv>>;
+  /** External native sources for integration tests; product services stay real. */
+  readonly nativeServices?: Layer.Layer<
+    FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner | PtyAdapter.PtyAdapter,
+    never,
+    FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner | PtyAdapter.PtyAdapter
+  >;
 }
 
 const makeRuntimeCoreDependencies = (options: ServerLayerOptions) =>
@@ -476,7 +483,7 @@ const makeRuntimeCoreDependencies = (options: ServerLayerOptions) =>
     Layer.provideMerge(GitLayerLive),
     Layer.provideMerge(VcsLayerLive),
     Layer.provideMerge(ProviderRuntimeLayerLive),
-    Layer.provideMerge(TerminalLayerLive),
+    Layer.provideMerge(TerminalManager.layer),
     Layer.provideMerge(PersistenceLayerLive),
     // Both read a user-owned file out of the state directory and stream changes
     // to clients; neither depends on the other.
@@ -755,7 +762,6 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
         Layer.provideMerge(runtimeServicesLive),
         Layer.provide(activationLayer),
         Layer.provideMerge(serverRelayBrokerTracingLayer),
-        Layer.provideMerge(HttpServerLive),
         Layer.provide(ApplicationObservabilityLive),
         Layer.provideMerge(FetchHttpClient.layer),
         Layer.provideMerge(VcsProcess.layer),
@@ -781,6 +787,10 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
         Layer.provideMerge(ZeropsWorkspaceObserver.layer),
         Layer.provideMerge(ZeropsRepositorySource.layer),
         Layer.provideMerge(ChildHome.layer),
+        Layer.provideMerge(options.nativeServices ?? Layer.empty),
+        // The HTTP layer also exports platform services; keep it below native sources.
+        Layer.provideMerge(HttpServerLive),
+        Layer.provideMerge(PtyAdapterLive),
         Layer.provideMerge(PlatformServicesLive),
       );
     }),

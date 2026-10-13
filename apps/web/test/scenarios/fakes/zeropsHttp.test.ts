@@ -12,7 +12,7 @@ import {
   makeZeropsObservationHttp,
 } from "../../../../hq/src/zerops/http.ts";
 import { seedCoreWorld } from "../../../../hq/test/harness/runningCore.ts";
-import { ZeropsFake } from "./zerops.ts";
+import { ZeropsFake, type EntityRow } from "./zerops.ts";
 import { serve, deadline } from "../harness/http.ts";
 
 const rig = Effect.fn("zeropsHttp.rig")(function* () {
@@ -27,6 +27,78 @@ const rig = Effect.fn("zeropsHttp.rig")(function* () {
 });
 
 it.layer(NodeHttpClient.layerNodeHttp, { excludeTestServices: true })((it) => {
+  it.effect("native sign-in flags are held in the service environment and can be revoked", () =>
+    Effect.gen(function* () {
+      const { fake, base } = yield* rig();
+      fake.put("service-stack", {
+        id: "runtime",
+        name: "runtime",
+        projectId: "P_MATE",
+        clientId: "ORG",
+        status: "ACTIVE",
+      });
+      const headers = { authorization: "Bearer door-owner", "content-type": "application/json" };
+      const created = yield* Effect.promise(() =>
+        fetch(`${base}/service-stack/runtime/user-data`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+            content: "true",
+            sensitive: false,
+          }),
+        }),
+      );
+      expect(created.status, "ASSERTION: native sign-in admits the service's platform flag").toBe(
+        200,
+      );
+      const process = (yield* Effect.promise(() => created.json())) as { id: string };
+      const receipt = yield* Effect.promise(async () =>
+        (await fetch(`${base}/process/${process.id}`, { headers })).json(),
+      );
+      expect(receipt).toMatchObject({
+        actionName: "stack.updateUserData",
+        status: "FINISHED",
+        serviceStackId: "runtime",
+      });
+      const env = (yield* Effect.promise(async () =>
+        (await fetch(`${base}/service-stack/runtime/env`, { headers })).json(),
+      )) as { items: EntityRow[] };
+      expect(env.items).toEqual([
+        expect.objectContaining({
+          key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+          content: "true",
+          sensitive: false,
+          type: "SERVICE",
+        }),
+      ]);
+      expect(fake.rows("user-data").filter((row) => row.serviceStackId === "runtime")).toEqual(
+        env.items,
+      );
+      const searched = yield* Effect.promise(() =>
+        fetch(`${base}/user-data/search`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            search: [{ name: "serviceStackId", operator: "eq", value: "runtime" }],
+          }),
+        }),
+      );
+      expect(
+        searched.status,
+        "ASSERTION: native flag writes leave the realtime source's search readable",
+      ).toBe(200);
+      const revoked = yield* Effect.promise(() =>
+        fetch(`${base}/user-data/${env.items[0]!.id}`, { method: "DELETE", headers }),
+      );
+      expect(revoked.status).toBe(200);
+      const after = yield* Effect.promise(async () =>
+        (await fetch(`${base}/service-stack/runtime/env`, { headers })).json(),
+      );
+      expect(after.items).toEqual([]);
+    }),
+  );
+
   it.effect("real HTTP deploy/import/observation adapters write the shared realtime world", () =>
     Effect.gen(function* () {
       const { fake, server, base } = yield* rig();

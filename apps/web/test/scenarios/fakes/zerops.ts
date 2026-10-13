@@ -640,8 +640,16 @@ export class ZeropsFake {
         .slice(0, 100);
       return { body: { list, count: list.length, limit: 100, offset: 0, total: list.length } };
     }
-    if (/^\/service-stack\/[^/]+\/env$/u.test(path))
-      return { body: { items: [{ id: "enabled", key: "ZCP_MATE_ENABLED", content: "1" }] } };
+    const serviceEnv = path.match(/^\/service-stack\/([^/]+)\/env$/u);
+    if (serviceEnv && request.method === "GET") {
+      const service = this.rows("service-stack").find((row) => row.id === serviceEnv[1]);
+      if (!service) return this.error(400, "serviceStackNotFound");
+      if (!this.canReadRow(bearer, "service-stack", service))
+        return this.error(403, "insufficientPermissions", "Insufficient permissions");
+      return {
+        body: { items: this.rows("user-data").filter((row) => row.serviceStackId === service.id) },
+      };
+    }
     const single = path.match(/^\/(project|service-stack|app-version)\/([^/]+)$/u);
     if (single) {
       const row = this.rows(single[1]!).find((r) => r.id === single[2]);
