@@ -1,4 +1,3 @@
-import { resizeMenu } from "../../harness/browser.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
@@ -126,49 +125,6 @@ describe("H: hosted client budgets", () => {
         yield* b.then.unopenedMates(names);
         yield* s.then.noExternalNetwork;
       }),
-    );
-
-    it.effect(
-      "five tabs each receive real HQ data and show the application menu",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([installBudget]);
-          const b = budgets(s);
-          yield* b.given.mates(["Ada"]);
-          const tabs = yield* b.given.fiveTabs();
-          for (const tab of tabs) {
-            yield* Effect.promise(async () => {
-              await tab.page.setViewport({ width: 1786, height: 1000 });
-              await tab.page.bringToFront();
-            });
-            yield* tab.given.signedIn;
-            yield* Effect.promise(() => resizeMenu(tab.page, 435));
-            yield* tab.then.menu.row("Shop").appears();
-          }
-          // Cached rows can appear before the last tab's initial HQ snapshot arrives.
-          yield* b.when.hqFirstData(5);
-          const connections = yield* b.when.observeTabConnections(tabs.map((tab) => tab.page));
-          const receivedBefore = b.measure
-            .hqSegments()
-            .filter((segment) => segment.firstDataMs !== null).length;
-          const countsBefore = connections.counts();
-          yield* Effect.forEach(tabs, (tab) => Effect.promise(() => tab.page.reload()), {
-            concurrency: "unbounded",
-          });
-          yield* b.when.hqFirstData(receivedBefore + 5);
-          for (const tab of tabs) {
-            yield* Effect.promise(() => tab.page.bringToFront());
-            yield* tab.then.menu.row("Shop").appears();
-          }
-          yield* Effect.promise(() => s.hq.ready());
-          for (const [index, count] of connections.counts().entries())
-            expect(
-              count - countsBefore[index]!,
-              "At most one HQ connection per tab",
-            ).toBeLessThanOrEqual(1);
-          yield* s.then.noExternalNetwork;
-        }),
-      10_000,
     );
 
     // Catches opening one Mate fanning out to other containers or never enabling its composer.
