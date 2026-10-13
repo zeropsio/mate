@@ -2273,7 +2273,7 @@ describe("owner-reported layout regressions", () => {
           "a notice arriving at the conversation's end moves nothing above it, and the composer holds no band for it",
           () =>
             Effect.gen(function* () {
-              const { s, chat } = yield* composerLayout("before-notice");
+              const { s, chat, noticeArrives } = yield* composerLayout("before-notice");
               yield* Effect.promise(() => ownerMenu(s.page));
               const read = () =>
                 s.page.evaluate(() => {
@@ -2306,14 +2306,7 @@ describe("owner-reported layout regressions", () => {
                   };
                 });
               const before = yield* Effect.promise(read);
-              const wire = chat.fixture();
-              wire.claudeLoginFacts("ready");
-              wire.engine.assign({
-                instanceId: "claudeAgent",
-                model: "sonnet",
-                driver: "claudeAgent",
-              });
-              wire.engine.context({ usedTokens: 180_000 });
+              yield* noticeArrives;
               yield* chat.then.text("Resume with less context");
               yield* Effect.promise(() =>
                 s.page.waitForFunction(

@@ -12,7 +12,6 @@ import * as Effect from "effect/Effect";
 import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 
 // "notice": an older session's compaction is offered — a row at the conversation's end since S6.
@@ -22,9 +21,8 @@ export const composerStates = ["plain", "notice", "review"] as const;
 export const composerLayout = Effect.fn("composerLayout")(function* (
   state: (typeof composerStates)[number] | "before-notice",
 ) {
-  const claude = state === "notice";
-  const real = state !== "before-notice";
-  const s = yield* createScenario(real ? [] : [installArea], { mate: real ? "real" : "fake" });
+  const claude = state === "notice" || state === "before-notice";
+  const s = yield* createScenario([], { mate: "real" });
   yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
   if (state === "review") yield* changeFixture(s);
   else
@@ -46,93 +44,87 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
     ),
     ["Finish here", "The last answer is above the composer."] as const,
   ];
-  if (real) {
-    const mate = s.drivers.realMates.get("Ada")!;
-    yield* s.given.signedIn;
-    yield* chat.when.openReadOnly();
-    if (claude)
-      yield* Effect.promise(async () => {
-        await s.page.locator('button[data-agent-id="claude-code"]').setTimeout(8000).click();
-        await s.page.waitForSelector(
-          '[data-sign-in-open="claude-code"][href^="https://claude.scenario.invalid/oauth/authorize"]',
-          { visible: true, timeout: 8000 },
-        );
-        await s.page.waitForSelector("[data-sign-in-code]", { visible: true, timeout: 8000 });
-        await s.page.type("[data-sign-in-code]", CLAUDE_SCENARIO_CODE);
-        await s.page.keyboard.press("Enter");
-        await s.page.waitForSelector('[role="textbox"]:not([inert] *)', {
-          visible: true,
-          timeout: 8000,
-        });
-      });
-    yield* mate.provider.turn([{ kind: "say", text: exchanges[0]![1] }]);
-    yield* chat.when.send(exchanges[0]![0]);
-    yield* mate.provider.received;
-    yield* Effect.promise(() =>
-      s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
-        polling: "raf",
-        timeout: 8000,
-      }),
-    );
-    const conversationId = ConversationId.make(new URL(s.page.url()).pathname.split("/").at(-1)!);
-    const protocol = MATE_ENGINE_PROTOCOLS[0]!;
-    const caller = {
-      subject: claude ? "zerops-user:owner" : "scenario-person",
-      environmentId: "scenario",
-      epoch: 1,
-    };
-    const frames = yield* Queue.unbounded<EngineConversationFrame>();
-    yield* mate.server.engine.wire.subscribe({ protocol, conversationId }, caller).pipe(
-      Stream.runForEach((frame) => Queue.offer(frames, frame)),
-      Effect.forkScoped,
-    );
-    const ended = (ordinal: number) =>
-      Effect.gen(function* () {
-        while (true) {
-          const frame = yield* Queue.take(frames);
-          if (
-            (frame.type === "snapshot" || frame.type === "changes") &&
-            frame.runs.some((run) => run.ordinal === ordinal && run.state === "ended")
-          )
-            return;
-        }
-      }).pipe(Effect.timeout("8 seconds"));
-    yield* ended(1);
-    for (const [index, [question, answer]] of exchanges.entries()) {
-      if (index === 0) continue;
-      yield* mate.provider.turn([{ kind: "say", text: answer }]);
-      const receipt = yield* mate.server.engine.wire.send(
-        {
-          protocol,
-          conversationId,
-          commandId: CommandId.make(`composer-history-${index}`),
-          text: question,
-        },
-        caller,
+  const mate = s.drivers.realMates.get("Ada")!;
+  yield* s.given.signedIn;
+  yield* chat.when.openReadOnly();
+  if (claude)
+    yield* Effect.promise(async () => {
+      await s.page.locator('button[data-agent-id="claude-code"]').setTimeout(8000).click();
+      await s.page.waitForSelector(
+        '[data-sign-in-open="claude-code"][href^="https://claude.scenario.invalid/oauth/authorize"]',
+        { visible: true, timeout: 8000 },
       );
-      expect(receipt._tag).toBe("Accepted");
-      expect((yield* mate.provider.received).input.input).toBe(question);
-      yield* ended(index + 1);
-    }
-    if (claude) yield* Effect.promise(() => s.clock.install());
-    yield* Effect.promise(() => s.page.reload());
-  } else {
-    // Retained: the real pre-notice setup times out before its baseline placement settles.
-    const wire = chat.fixture();
-    wire.history("Read this long conversation");
-    for (const [question, answer] of exchanges) wire.exchange(question, answer);
-    yield* s.given.signedIn;
-    yield* chat.when.open("Ada", "Finish here");
+      await s.page.waitForSelector("[data-sign-in-code]", { visible: true, timeout: 8000 });
+      await s.page.type("[data-sign-in-code]", CLAUDE_SCENARIO_CODE);
+      await s.page.keyboard.press("Enter");
+      await s.page.waitForSelector('[role="textbox"]:not([inert] *)', {
+        visible: true,
+        timeout: 8000,
+      });
+    });
+  yield* mate.provider.turn([{ kind: "say", text: exchanges[0]![1] }]);
+  yield* chat.when.send(exchanges[0]![0]);
+  yield* mate.provider.received;
+  yield* Effect.promise(() =>
+    s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
+      polling: "raf",
+      timeout: 8000,
+    }),
+  );
+  const conversationId = ConversationId.make(new URL(s.page.url()).pathname.split("/").at(-1)!);
+  const protocol = MATE_ENGINE_PROTOCOLS[0]!;
+  const caller = {
+    subject: claude ? "zerops-user:owner" : "scenario-person",
+    environmentId: "scenario",
+    epoch: 1,
+  };
+  const frames = yield* Queue.unbounded<EngineConversationFrame>();
+  yield* mate.server.engine.wire.subscribe({ protocol, conversationId }, caller).pipe(
+    Stream.runForEach((frame) => Queue.offer(frames, frame)),
+    Effect.forkScoped,
+  );
+  const ended = (ordinal: number) =>
+    Effect.gen(function* () {
+      while (true) {
+        const frame = yield* Queue.take(frames);
+        if (
+          (frame.type === "snapshot" || frame.type === "changes") &&
+          frame.runs.some((run) => run.ordinal === ordinal && run.state === "ended")
+        )
+          return;
+      }
+    }).pipe(Effect.timeout("8 seconds"));
+  yield* ended(1);
+  for (const [index, [question, answer]] of exchanges.entries()) {
+    if (index === 0) continue;
+    yield* mate.provider.turn([{ kind: "say", text: answer }]);
+    const receipt = yield* mate.server.engine.wire.send(
+      {
+        protocol,
+        conversationId,
+        commandId: CommandId.make(`composer-history-${index}`),
+        text: question,
+      },
+      caller,
+    );
+    expect(receipt._tag).toBe("Accepted");
+    expect((yield* mate.provider.received).input.input).toBe(question);
+    yield* ended(index + 1);
   }
+  if (claude) yield* Effect.promise(() => s.clock.install());
+  yield* Effect.promise(() => s.page.reload());
   yield* chat.then.text("The last answer is above the composer.");
-  if (claude) {
+  // Reload measurement uses positive-delay callbacks; settle them before reading the baseline.
+  if (state === "before-notice") yield* Effect.promise(() => s.clock.advanceStepped(1000));
+  const noticeArrives = Effect.gen(function* () {
     const mate = s.drivers.realMates.get("Ada")!;
     yield* mate.provider.event(mate.provider.sends.at(-1)!.threadId, {
       type: "thread.token-usage.updated",
       payload: { usage: { usedTokens: 180_000 } },
     });
     yield* Effect.promise(() => s.clock.advance(71 * 60_000, true));
-  }
+  });
+  if (state === "notice") yield* noticeArrives;
   yield* Effect.promise(() =>
     s.page.waitForFunction(
       () => {
@@ -153,5 +145,5 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
   // What waits for review stands in the conversation's header (2026-10-13), not on the composer.
   if (state === "review") yield* chat.then.text("Review work");
 
-  return { s, chat };
+  return { s, chat, noticeArrives };
 });
