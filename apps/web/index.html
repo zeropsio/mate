@@ -564,11 +564,11 @@
         }
 
         /* The menu's loading rows, where and as SidebarZeropsTree's MenuSkeleton draws them
-           right under the 65 px top row (the Chief's), until the app draws the menu (or its
-           preview, its rows). */
+           right under the top row (the Chief's: a Mate card's 66 px under the 13 px inset), until
+           the app draws the menu (or its preview, its rows). */
         html[data-boot-frame="app"] #boot-shell-menu-loading {
           position: absolute;
-          top: 65px;
+          top: 79px;
           right: var(--sidebar-content-inset, 12px);
           left: calc(var(--sidebar-content-inset, 12px) + 1px);
           display: flex;
