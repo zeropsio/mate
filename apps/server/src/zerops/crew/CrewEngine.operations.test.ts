@@ -240,7 +240,8 @@ it.live("a graceful shutdown during a check leaves it for the next boot to carry
         const home = NodePath.join(world.workspace, ".mate/crew/main/crew.yaml");
         const config = NodeFS.readFileSync(home, "utf8").replace(
           "test -f ok.txt",
-          () => `"if [ ! -f ${marker} ]; then touch ${marker}; sleep 30; fi; test -f ok.txt"`,
+          () =>
+            `"if [ ! -f ${marker} ]; then mkfifo ${marker}-wait; touch ${marker}; read released < ${marker}-wait; touch ${marker}-finished; fi; test -f ok.txt"`,
         );
         world.writeHome({ "crew.yaml": config });
         yield* world.press({ _tag: "apply" });
@@ -251,12 +252,16 @@ it.live("a graceful shutdown during a check leaves it for the next boot to carry
         yield* reportDone(world, thread);
         yield* world.turnEnds(thread);
         yield* eventually(Effect.sync(() => NodeFS.existsSync(marker)));
-        // The phase ends here: the engine's scope closes with the check still sleeping.
+        // Nobody opens the FIFO for writing: only shutdown can stop this real shell child.
       }),
     (world) =>
       Effect.gen(function* () {
         yield* world.serverReady;
         yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+        assert.isFalse(
+          NodeFS.existsSync(NodePath.join(world.workspace, "first-check-finished")),
+          "shutdown cancels the first shell child before its blocking command finishes",
+        );
         assert.strictEqual((yield* turnsSent(world)).length, 1);
         const [task] = yield* world.tasks;
         const [attempt] = yield* world.attempts(task!.id);

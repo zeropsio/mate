@@ -347,6 +347,7 @@ export const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray
           yield* Deferred.succeed(hold.reached, undefined);
           yield* Deferred.await(hold.release);
         });
+      // The worker masks handler interruption; the local child must still die with this life.
       return ProcessRunner.ProcessRunner.of({
         run: (input) =>
           (input.command === "ssh"
@@ -354,7 +355,7 @@ export const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray
                 Effect.andThen(held(input.args.at(-1) ?? "")),
               )
             : Effect.void
-          ).pipe(Effect.andThen(runner.run(input))),
+          ).pipe(Effect.andThen(runner.run(input)), Effect.interruptible),
       });
     }),
   ).pipe(Layer.provide(localSshProcessRunnerLayer(TEST_IDENTITY)));

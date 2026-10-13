@@ -70,7 +70,7 @@ it("release smoke can regenerate its fixture lockfile without inheriting frozen 
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
-  const job = workflow.jobs.release_smoke;
+  const job = workflow.jobs.check;
   const step = job.steps.find(
     (step: { name: string }) => step.name === "Exercise release-only workflow steps",
   );
@@ -333,21 +333,24 @@ it("hosted suites install their working set while native jobs retain their depen
       "ASSERTION: cross-client suites must install the mobile dependencies their consumers read",
     ).toEqual({ args: ["--filter=!@t3tools/desktop"] });
   }
-  for (const name of ["check", "test_packages", "desktop_smoke", "test_mobile"])
-    expect(install(name)).toBe(true);
+  for (const name of ["check", "test_packages", "test_mobile"]) expect(install(name)).toBe(true);
 });
 
 it("hosted web CI retains native compilation and dedicated native jobs", () => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
-  for (const job of ["desktop_smoke", "test_mobile", "mobile_native_static_analysis"])
+  for (const job of ["test_packages", "test_mobile", "mobile_native_static_analysis"])
     expect(
       workflow.jobs[job],
       "ASSERTION: native CI jobs remain covered during the hosted web test phase",
     ).toBeDefined();
   expect(Object.keys(workflow.jobs.changes.outputs).sort()).toEqual(["chat", "resource_monitor"]);
-  expect(workflow.jobs.rust).toBeDefined();
+  expect(
+    workflow.jobs.check.steps.find(
+      (step: { name: string }) => step.name === "Test resource monitor",
+    ),
+  ).toBeDefined();
   expect(workflow.jobs.release_smoke).toBeDefined();
   const steps = workflow.jobs.check.steps as { name: string; run?: string }[];
   expect(steps.some((step) => /Electron|mobile/u.test(step.name))).toBe(false);
@@ -427,7 +430,11 @@ it("CI runs full verification on integration pushes and preserves PR change sele
     ).if,
   ).toBeUndefined();
   expect(workflow.jobs.chat_bundle.if).toContain("needs.changes.outputs.chat != 'false'");
-  expect(workflow.jobs.rust.if).toContain("needs.changes.outputs.resource_monitor != 'false'");
+  expect(
+    workflow.jobs.check.steps.find(
+      (step: { name: string }) => step.name === "Test resource monitor",
+    ).if,
+  ).toContain("needs.changes.outputs.resource_monitor != 'false'");
   expect(workflow.jobs.prepare.permissions.actions).toBe("read");
 });
 
@@ -596,4 +603,81 @@ it("tag release CI retains final verification with the preparation job's read pe
     "pull-requests": "read",
   });
   expect(release.jobs.release.needs).toEqual(["build", "ci"]);
+});
+
+it("short Ubuntu checks share installed jobs without losing their commands or failure verdicts", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const check = workflow.jobs.check;
+  const packages = workflow.jobs.test_packages;
+  for (const job of [check, packages]) expect(job["runs-on"]).toBe("ubuntu-latest");
+  expect(check.needs).toContain("changes");
+  expect(check.if).toContain("!cancelled()");
+  expect(check.if).not.toContain("needs.changes.result");
+  expect(packages["timeout-minutes"]).toBeGreaterThanOrEqual(20);
+  const diagnostic = packages.steps.find(
+    (step: { name: string }) => step.name === "Diagnose Linux Electron runtime",
+  );
+  expect(diagnostic["continue-on-error"]).toBe(true);
+  const capture = packages.steps.find(
+    (step: { name: string }) => step.name === "Upload desktop smoke capture",
+  );
+  expect(capture.if).toBe("always()");
+  expect(capture.with.name).toBe("desktop-smoke-capture");
+  expect(capture.with.path).toContain("desktop-smoke-log.txt");
+  expect(
+    packages.steps.filter(
+      (step: { name: string }) => step.name === "Ensure Electron runtime is installed",
+    ),
+  ).toHaveLength(1);
+
+  for (const command of [
+    "cargo fmt --manifest-path native/resource-monitor/Cargo.toml -- --check",
+    "cargo test --locked --manifest-path native/resource-monitor/Cargo.toml",
+    "node scripts/release-smoke.ts",
+  ]) {
+    const steps = check.steps.filter((step: { run?: string }) => step.run === command);
+    expect(steps, `ASSERTION: Check retains ${command} once`).toHaveLength(1);
+    expect(steps[0]["continue-on-error"]).toBeUndefined();
+    expect(steps[0].if).toContain("needs.prepare.outputs.skip != 'true'");
+    if (command.startsWith("cargo"))
+      expect(steps[0].if).toContain("needs.changes.outputs.resource_monitor != 'false'");
+  }
+  expect(check.steps.find((step: { name: string }) => step.name === "Setup Rust").uses).toBe(
+    "dtolnay/rust-toolchain@stable",
+  );
+  for (const name of [
+    "Build desktop pipeline",
+    "Verify preload bundle output",
+    "Stage desktop web bundle",
+    "Smoke test desktop",
+    "Upload desktop smoke capture",
+  ]) {
+    const steps = packages.steps.filter((step: { name: string }) => step.name === name);
+    expect(steps, `ASSERTION: Packages retains the named ${name} receipt`).toHaveLength(1);
+    expect(steps[0]["continue-on-error"]).toBeUndefined();
+  }
+  expect(workflow.jobs.rust).toBeUndefined();
+  expect(workflow.jobs.desktop_smoke).toBeUndefined();
+  expect(workflow.jobs.release_smoke.needs).toContain("check");
+  const verdict = workflow.jobs.release_smoke.steps.find(
+    (step: { name: string }) => step.name === "Require release smoke to pass",
+  );
+  for (const result of ["success", "failure", "cancelled", "skipped"]) {
+    const run = verdict.run.replace("${{ needs.check.result }}", result);
+    expect(NodeChildProcess.spawnSync("bash", ["-e", "-c", run]).status).toBe(
+      result === "success" ? 0 : 1,
+    );
+  }
+  expect(
+    check.steps.some(
+      (step: { run?: string }) => step.run === "vp test run scripts/mate-zone-architecture.test.ts",
+    ),
+  ).toBe(false);
+  expect(
+    workflow.jobs.test_scripts.steps.some((step: { run?: string }) =>
+      step.run?.includes("--filter @t3tools/scripts test"),
+    ),
+  ).toBe(true);
 });
