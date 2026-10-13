@@ -4,11 +4,8 @@
  * `ZeropsEnvironment.apiToken` is a boot snapshot: `cli/config.ts` reads
  * `ZCP_API_KEY` once, at process start. The client's hardening step moves that
  * key from a project variable onto the `zcp` service (spec-mate.md §2 root
- * cause 4) and the platform's live env store,
- * `/etc/zerops-zembed/env.json` (confirmed format:
- * `../zcp/internal/mate/mate.go:113-125`, a root-owned, world-readable flat
- * JSON object of string → string the platform rewrites ~2s after a service
- * env change, no restart — `LoadLiveEnvStorePath`), reflects the move within
+ * cause 4) and the platform's live env store
+ * (`ZeropsEnvironment.envStorePath`, `LoadLiveEnvStorePath` in zcp), reflects the move within
  * seconds. A Mate that only ever reads its boot snapshot keeps answering with
  * the value that was true when it started, which is why today the only fix is
  * a container restart (root cause 4, B-5).
@@ -41,9 +38,6 @@ import * as ServerConfig from "../config.ts";
 
 /** Which of the two sources a resolved key most recently came from. */
 export type ZeropsMateKeySource = "store" | "snapshot";
-
-/** The container's live service-environment snapshot (`mate.go:125`). */
-export const MATE_LIVE_ENV_STORE_PATH = "/etc/zerops-zembed/env.json";
 
 /** The env store key this Mate's own key is published under. */
 const MATE_KEY_STORE_FIELD = "ZCP_API_KEY";
@@ -136,17 +130,17 @@ interface CacheEntry {
 
 /**
  * Builds a reader over a real (or test) filesystem. `snapshot` is the boot
- * value (`ZeropsEnvironment.apiToken`) to fall back to; `storePath` defaults
- * to {@link MATE_LIVE_ENV_STORE_PATH}.
+ * value (`ZeropsEnvironment.apiToken`) to fall back to; `storePath` is
+ * `ZeropsEnvironment.envStorePath`.
  */
 export const make = (input: {
   readonly fs: FileSystem.FileSystem;
   readonly snapshot: string | undefined;
-  readonly storePath?: string;
+  readonly storePath: string;
   readonly ttl?: Duration.Duration;
 }): Effect.Effect<ZeropsMateKeyReader> =>
   Effect.gen(function* () {
-    const storePath = input.storePath ?? MATE_LIVE_ENV_STORE_PATH;
+    const { storePath } = input;
     const ttlMs = Duration.toMillis(input.ttl ?? MATE_KEY_CACHE_TTL);
     const cache = yield* Ref.make<CacheEntry | undefined>(undefined);
     const lastGoodStoreKey = yield* Ref.make<string | undefined>(undefined);
@@ -251,6 +245,10 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
     const fs = yield* FileSystem.FileSystem;
-    return ZeropsMateKey.of(yield* make({ fs, snapshot: config.zerops?.apiToken }));
+    // Outside a Zerops container there is no platform store to read.
+    if (config.zerops === undefined) return ZeropsMateKey.of(snapshotOnlyReader(undefined));
+    return ZeropsMateKey.of(
+      yield* make({ fs, snapshot: config.zerops.apiToken, storePath: config.zerops.envStorePath }),
+    );
   }),
 );

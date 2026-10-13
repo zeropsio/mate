@@ -109,6 +109,8 @@ export interface ZeropsEnvironment {
   readonly statusFile: string | undefined;
   /** zcp's Mate update state (`ZCP_MATE_UPDATE_STATE_FILE`), written before it switches versions. */
   readonly mateUpdateStateFile: string | undefined;
+  /** The platform's live service-environment store; see {@link ZEMBED_ENV_STORE_PATH}. */
+  readonly envStorePath: string;
 }
 
 /** Raw environment values, before the rule is applied. */
@@ -125,6 +127,13 @@ export interface ZeropsEnvironmentInput {
   readonly statusFile?: string | undefined;
   readonly mateUpdateStateFile?: string | undefined;
 }
+
+/**
+ * The container's live service-environment snapshot (`../zcp/internal/mate/mate.go:113-125`):
+ * a root-owned, world-readable flat JSON object of string → string the platform rewrites ~2s
+ * after a service env change, no restart.
+ */
+export const ZEMBED_ENV_STORE_PATH = "/etc/zerops-zembed/env.json";
 
 /**
  * Turns a host - the same shape zcp's `ZCP_API_HOST` carries - into the REST
@@ -181,6 +190,7 @@ export const resolveZeropsEnvironment = (
     hostname: present(input.hostname),
     statusFile: present(input.statusFile),
     mateUpdateStateFile: present(input.mateUpdateStateFile),
+    envStorePath: ZEMBED_ENV_STORE_PATH,
   };
 };
 

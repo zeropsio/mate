@@ -9,8 +9,8 @@
  *   never a TestClock): records carry the time the browser sees, and waits still pass in real time.
  * - **Outbound:** every `fetch` the server makes reaches only loopback; anything else is refused
  *   and kept in `refused` for the case to assert.
- * - **Home:** `homeDir` is a directory of its own, so nothing the Mate resolves under "home"
- *   lands in the developer's.
+ * - **Home:** `homeDir` is a directory of its own and the platform's env store a file under
+ *   `root`, so nothing the Mate reads or writes lands in the developer's home or `/etc`.
  */
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
@@ -153,6 +153,7 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
           hostname: options.hostname,
           statusFile: NodePath.join(root, "zcp", "status.json"),
           mateUpdateStateFile: NodePath.join(root, "zcp", "update.json"),
+          envStorePath: NodePath.join(root, "zembed", "env.json"),
         },
       })),
       Effect.provide(ServerConfig.layerTest(cwd, baseDir).pipe(Layer.provide(NodeServices.layer))),

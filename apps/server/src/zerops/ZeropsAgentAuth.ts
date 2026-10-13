@@ -5,7 +5,7 @@
  *
  * Two independent inputs compose a five-value matrix, never a boolean union
  * (§3): the platform flag (`ZCP_AGENT_OAUTH_<SUFFIX>` / `ZCP_AGENT_TOKEN_<SUFFIX>`
- * in the zembed env store, `/etc/zerops-zembed/env.json`) and the local
+ * in the zembed env store, `ZeropsEnvironment.envStorePath`) and the local
  * credential artifact (`~/.claude/.credentials.json`, `~/.codex/auth.json`) —
  * presence only, never read for content. `computeAgentAuthState` mirrors
  * `vscode-bootstrap-welcome.js`'s `computeAgentState` verbatim.
@@ -198,14 +198,6 @@ const CRED_PROBE_SEGMENTS: Readonly<Record<ZeropsAgentId, ReadonlyArray<string>>
   "claude-code": [".claude", ".credentials.json"],
   codex: [".codex", "auth.json"],
 };
-
-/**
- * The zembed env store zcp's sidecar writes (duplicated deliberately from
- * `internal/content/templates/vscode-bootstrap-welcome.js`'s own
- * `ZEMBED_DIR`/`ZEMBED_ENV_FILE` — the Go/JS/TS runtimes share no module
- * boundary to hang a single constant off).
- */
-const ZEMBED_ENV_FILE = "/etc/zerops-zembed/env.json";
 
 /** Shared debounce for every watcher below — a single write can emit more than one fs event (welcome.js's own STATE_PUSH_DEBOUNCE_MS). */
 const STATE_PUSH_DEBOUNCE_MS = 400;
@@ -867,7 +859,8 @@ export const layer = Layer.effect(
       reconcileProviderAuth: providerInstances.reconcileAgentAuth,
       refreshProviderSnapshot: providerInstances.refreshAgent,
       homeDir: config.homeDir,
-      envStorePath: ZEMBED_ENV_FILE,
+      // Outside a Zerops container the feed is off and reads no store.
+      envStorePath: config.zerops?.envStorePath ?? "",
       readSigners: projectSigners.signers,
       turnAuthFailures: bus.events.pipe(
         Stream.map(turnAuthFailureAgent),

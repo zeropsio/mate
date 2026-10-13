@@ -910,7 +910,7 @@ export const zcpProcessGone = (fs: FileSystem.FileSystem, zcp: ZcpProcess) =>
 /**
  * The live reads: who asked for the stand-up, from the link to HQ; who signed
  * each login in, as this server saw it; the zcp service's variables from the
- * platform's live env store (`/etc/zerops-zembed/env.json`, rewritten seconds
+ * platform's live env store (`ZeropsEnvironment.envStorePath`, rewritten seconds
  * after a change, no restart) and this process's own environment; zcp's
  * status file from where `ZCP_STATUS_FILE` names it, and whether a process it
  * names is gone.
@@ -923,11 +923,12 @@ export const liveReadsLayer = Layer.effect(
     const projectSigners = yield* ZeropsProjectSigners;
     const instances = yield* ProviderInstances;
     const agentAuth = yield* ZeropsAgentAuth;
-    const statusFilePath = (yield* ServerConfig.ServerConfig).zerops?.statusFile;
+    const zerops = (yield* ServerConfig.ServerConfig).zerops;
+    const statusFilePath = zerops?.statusFile;
     return ZeropsSetupReads.of({
       hq: link.standing,
       signers: projectSigners.signers,
-      serviceVariables: readServiceVariableKeys.pipe(
+      serviceVariables: readServiceVariableKeys(zerops?.envStorePath).pipe(
         Effect.provideService(FileSystem.FileSystem, fs),
       ),
       statusFile:

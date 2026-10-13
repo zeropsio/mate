@@ -667,6 +667,7 @@ describe("makeCloudLinkProof — Zerops project binding", () => {
           hostname: undefined,
           statusFile: undefined,
           mateUpdateStateFile: undefined,
+          envStorePath: "/etc/zerops-zembed/env.json",
         }),
         proofRequest,
         "http://127.0.0.1:7331",

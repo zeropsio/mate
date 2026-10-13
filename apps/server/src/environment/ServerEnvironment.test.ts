@@ -242,6 +242,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
                   hostname: undefined,
                   statusFile: undefined,
                   mateUpdateStateFile: undefined,
+                  envStorePath: "/etc/zerops-zembed/env.json",
                 },
               }),
             ),
@@ -268,6 +269,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           hostname: undefined,
           statusFile: undefined,
           mateUpdateStateFile: undefined,
+          envStorePath: "/etc/zerops-zembed/env.json",
         },
       } satisfies ServerConfig.ServerConfig["Service"];
     });
@@ -396,6 +398,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           hostname: undefined,
           statusFile: undefined,
           mateUpdateStateFile: undefined,
+          envStorePath: "/etc/zerops-zembed/env.json",
         },
       };
 
