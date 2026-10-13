@@ -34,6 +34,10 @@ const readline = require("node:readline");
 const args = process.argv.slice(2);
 const home = process.env.CLAUDE_CONFIG_DIR || path.join(process.env.HOME, ".claude");
 const credential = path.join(home, ".credentials.json");
+if (args.join(" ") === "auth logout") {
+  fs.rmSync(credential, { force: true });
+  process.exit(0);
+}
 if (args.join(" ") === "auth status") {
   const loggedIn = fs.existsSync(credential) && JSON.parse(fs.readFileSync(credential, "utf8")).scenario === "claude";
   console.log(JSON.stringify({ loggedIn, authMethod: "oauth" }));

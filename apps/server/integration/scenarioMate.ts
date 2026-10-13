@@ -33,6 +33,7 @@ import { scriptedClaudeSignIn } from "./scriptedClaudeSignIn.ts";
 import { ServerRuntimeStartup } from "../src/serverRuntimeStartup.ts";
 import { MateEngine, type MateEngineService } from "../src/engine/MateEngine.ts";
 import { ZeropsMateAttention } from "../src/zerops/ZeropsMateAttention.ts";
+import { ZeropsOffboarding } from "../src/zerops/ZeropsOffboarding.ts";
 import { ZeropsBrowserStream } from "../src/zerops/ZeropsBrowserStream.ts";
 import {
   ProviderInstances,
@@ -76,6 +77,8 @@ export interface ScenarioMate {
   readonly attention: ZeropsMateAttention["Service"];
   readonly browser: ZeropsBrowserStream["Service"];
   readonly providers: ProviderInstances["Service"];
+  /** Runs the production signer check after a platform membership input. */
+  readonly offboarding: ZeropsOffboarding["Service"];
   readonly root: string;
   readonly homeDir: string;
   readonly stateDir: string;
@@ -160,13 +163,19 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
       if (!("port" in address))
         return yield* Effect.die(new Error("Scenario Mate has no TCP port"));
       const engine = yield* MateEngine.pipe(Effect.provide(context));
+      const clock = yield* Clock.Clock;
+      const offboardingService = yield* ZeropsOffboarding.pipe(Effect.provide(context));
+      // A direct worker receipt keeps this Mate's clock, including its platform answer's age.
+      const offboarding = {
+        checkNow: offboardingService.checkNow.pipe(Effect.provideService(Clock.Clock, clock)),
+      };
       const attention = yield* ZeropsMateAttention.pipe(Effect.provide(context));
       const browser = yield* ZeropsBrowserStream.pipe(Effect.provide(context));
       const providers = yield* ProviderInstances.pipe(
         Effect.provide(ProviderInstancesLayer),
         Effect.provide(context),
       );
-      return { port: address.port, engine, attention, browser, providers };
+      return { port: address.port, engine, attention, browser, providers, offboarding };
     }).pipe(
       Effect.updateService(ServerConfig.ServerConfig, (config) => ({
         ...config,
@@ -225,6 +234,10 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
   };
   return {
     origin: `http://127.0.0.1:${port}`,
+    get offboarding() {
+      if (!running) throw new Error("Scenario Mate is stopped");
+      return running.offboarding;
+    },
     get attention() {
       if (!running) throw new Error("Scenario Mate is stopped");
       return running.attention;

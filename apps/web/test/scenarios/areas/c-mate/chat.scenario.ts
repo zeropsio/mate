@@ -13,6 +13,7 @@ import {
   AssetCreateUrlResult,
   WS_METHODS,
   ThreadId,
+  ProviderDriverKind,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
@@ -22,7 +23,7 @@ import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario, type ScenarioOptions } from "../../harness/scenario.ts";
-import { installArea } from "./fake.ts";
+import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
 import { mateChat, projectAccessRevoked } from "./dsl.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -129,13 +130,6 @@ const openArea = (options: ScenarioOptions) =>
     return { s, chat: realChat(s) };
   });
 const setup = openArea({});
-const fakeSetup = Effect.gen(function* () {
-  const s = yield* createScenario([installArea]);
-  yield* s.given.project("Ada", { mate: true });
-  const chat = mateChat(s);
-  chat.fixture().history();
-  return { s, chat };
-});
 
 describe("C: opening a Mate and chat", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -1075,19 +1069,64 @@ describe("C: opening a Mate and chat", () => {
     // Catches a removed signer's login leaving Send enabled in an open chat.
     it.effect("offboarding the signer blocks new turns without losing history", () =>
       Effect.gen(function* () {
-        const { s, chat } = yield* fakeSetup;
-        chat.fixture().ownership = "owner";
+        const s = yield* createScenario([], { mate: "real" });
+        yield* s.given.project("Ada", {
+          mate: true,
+          provider: { driverKind: ProviderDriverKind.make("claudeAgent") },
+          claudeSignIn: true,
+        });
+        s.given.person("observer", { role: "ADMIN" });
+        const chat = mateChat(s);
         yield* s.given.signedIn;
-        yield* chat.when.open();
-        const sent = chat.fixture().sentTurnCount();
-        chat.fixture().offboardSigner();
-        yield* chat.then.signInRequired;
-        yield* chat.then.text("The existing conversation is still here");
-        yield* chat.when.attemptSend("Do not start a turn on the removed login");
-        yield* chat.then.noText("Do not start a turn on the removed login");
-        expect(chat.fixture().sentTurnCount()).toBe(sent);
-        expect(chat.fixture().responseCount()).toBe(0);
-        yield* s.then.noReload;
+        yield* chat.when.openReadOnly();
+        yield* Effect.promise(async () => {
+          await s.page.locator('button[data-agent-id="claude-code"]').setTimeout(8000).click();
+          await s.page.waitForSelector(
+            '[data-sign-in-open="claude-code"][href^="https://claude.scenario.invalid/oauth/authorize"]',
+            { visible: true, timeout: 8000 },
+          );
+          await s.page.waitForSelector("[data-sign-in-code]", { visible: true, timeout: 8000 });
+          await s.page.type("[data-sign-in-code]", CLAUDE_SCENARIO_CODE);
+          await s.page.keyboard.press("Enter");
+          await s.page.waitForSelector('[role="textbox"]:not([inert] *)', {
+            visible: true,
+            timeout: 8000,
+          });
+        });
+        const { provider, server } = s.drivers.realMates.get("Ada")!;
+        yield* provider.turn([{ kind: "say", text: history }]);
+        yield* chat.when.send("Earlier question");
+        expect((yield* provider.received).input.input).toBe("Earlier question");
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(
+            (answer) =>
+              document.body.innerText.includes(answer) &&
+              !location.pathname.startsWith("/draft/") &&
+              !document.querySelector('button[aria-label="Stop generation"]'),
+            { timeout: 8000 },
+            history,
+          ),
+        );
+        const earlierRoute = new URL(s.page.url()).pathname;
+        const member = yield* s.given.browserActor({ person: "observer" });
+        const memberChat = mateChat({ ...s, ...member, given: { ...s.given, ...member.given } });
+        yield* member.given.signedIn;
+        yield* memberChat.when.openReadOnly();
+        yield* memberChat.then.path(earlierRoute);
+        yield* memberChat.then.text("Earlier question");
+        yield* memberChat.then.text(history);
+        const sent = provider.sends.length;
+        s.given.person("owner", { role: "NO_ACCESS", grants: {} });
+        // Expire the kept platform answer; checkNow reads the changed API membership.
+        s.drivers.zerops.clock.advance(300_001);
+        expect(yield* server.offboarding.checkNow).toBe(1);
+        yield* memberChat.then.text("Earlier question");
+        yield* memberChat.then.text(history);
+        yield* memberChat.when.press("Toggle right panel");
+        yield* memberChat.when.click("Zerops");
+        yield* memberChat.then.control("Sign in to Claude");
+        expect(provider.sends.length).toBe(sent);
+        yield* member.then.noReload;
         yield* s.then.noExternalNetwork;
       }),
     );
