@@ -357,6 +357,33 @@ describe("GET /health", () => {
         }),
     );
 
+    it.effect(
+      "HQ readiness records the real handler and SQL stages only for the observed request",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* startCore(true);
+          const steps: Array<string> = [];
+          const response = yield* core.call("GET", "/health", {
+            onReadinessStep: (step) => steps.push(step),
+          });
+          assert.deepEqual(steps, [
+            "connect",
+            "request written",
+            "handler",
+            "SQL",
+            "SQL complete",
+            "handler complete",
+            "response headers",
+            "body",
+          ]);
+          assert.isObject(response.body);
+          assert.equal((response.body as { db: string }).db, "up");
+          steps.length = 0;
+          yield* core.call("GET", "/health");
+          assert.deepEqual(steps, []);
+        }),
+    );
+
     it.effect("counts a structure socket's views in a running Core, beside its loop's watch", () =>
       Effect.gen(function* () {
         const { call, socket } = yield* startCore(true);

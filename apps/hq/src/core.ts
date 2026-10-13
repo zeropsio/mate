@@ -35,7 +35,7 @@ import { deployKeysLayer, keySecretOf, sealPlainTokens } from "./deployKeys.ts";
 import { deploysLayer } from "./deploys.ts";
 import { doorLayer } from "./door.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
-import { healthRoute } from "./health.ts";
+import { type HealthObserver, healthRoute } from "./health.ts";
 import { Leader, leaderLayer } from "./leader.ts";
 import { loopWatchLayer } from "./loopWatch.ts";
 import { personGitCredentialsLayer } from "./personGitCredentials.ts";
@@ -74,6 +74,8 @@ export interface CoreOptions {
   /** `HQ_KEY_SECRET`, the key HQ seals its environments' deploy tokens with (`deployKeys.ts`). */
   readonly keySecret: Option.Option<Redacted.Redacted>;
   readonly build: string;
+  /** In-process health stage receipts for test readiness diagnostics. */
+  readonly observeHealth?: HealthObserver;
   /** How long the server still answers after the lead is given up on shutdown; 10 s. */
   readonly drainFor?: Duration.Duration;
   /** Shorter intervals, for tests. */
@@ -88,7 +90,7 @@ export interface CoreOptions {
 
 const routes = (options: CoreOptions) =>
   Layer.mergeAll(
-    healthRoute(options.build),
+    healthRoute(options.build, options.observeHealth),
     chiefRoutes,
     apiRoutes({
       build: options.build,

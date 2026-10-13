@@ -8,12 +8,10 @@
  * @module test/harness/runningCore
  */
 import * as NodeHttp from "node:http";
-import * as NodeStreamConsumers from "node:stream/consumers";
 
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { assert } from "@effect/vitest";
-import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -35,6 +33,7 @@ import { Changes } from "../../src/changes.ts";
 import { Deploys } from "../../src/deploys.ts";
 import { ChiefUpstream, makeChiefUpstreamHttp } from "../../src/chiefProxy.ts";
 import { coreApp } from "../../src/core.ts";
+import type { HealthObserver } from "../../src/health.ts";
 import { OperationObserver, makeOperationWatch } from "../../src/operationWatch.ts";
 import { makeOperationWire } from "../../src/operationWire.ts";
 import { fakeOperationWatch } from "./operationWatch.ts";
@@ -53,6 +52,7 @@ import {
   makeZeropsDeployHttp,
   makeZeropsObservationHttp,
 } from "../../src/zerops/http.ts";
+import { makeHttpCall, READINESS_HEADER, type ReadinessStep, type Call } from "./httpCall.ts";
 import { TEST_KEY_SECRET } from "./deployKeys.ts";
 import { tempDir } from "./tempDir.ts";
 import { TempPostgres } from "./tempPostgres.ts";
@@ -63,6 +63,8 @@ import {
   fakeZeropsDeploy,
   fakeZeropsObservation,
 } from "./zeropsFake.ts";
+
+export { type Call, untilHealth } from "./httpCall.ts";
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -216,6 +218,7 @@ export const startCore = (
     const fake =
       given.zeropsHttp?.world ??
       seedCoreWorld(yield* Clock.currentTimeMillis, anchored, given.orgId ?? "ORG");
+    const readinessObservers = new Map<string, (step: ReadinessStep) => void>();
     const options = {
       databaseUrl: Redacted.make(url),
       gitRoot,
@@ -236,6 +239,9 @@ export const startCore = (
           ? Option.none()
           : Option.some(Redacted.make(given.keySecret ?? TEST_KEY_SECRET)),
       build: given.build ?? "test",
+      observeHealth: ((request, stage) => {
+        readinessObservers.get(request.headers[READINESS_HEADER] ?? "")?.(stage);
+      }) satisfies HealthObserver,
       drainFor: given.drainFor ?? Duration.millis(0),
       heartbeat: Duration.millis(100),
       retryAfter: Duration.millis(100),
@@ -296,64 +302,7 @@ export const startCore = (
       Effect.ensuring(Effect.sync(() => agent.destroy())),
     );
     yield* Effect.addFinalizer(() => stop);
-    const call = (
-      method: string,
-      path: string,
-      options: {
-        /** JSON, or bytes sent as they are (their `content-type` among the headers). */
-        readonly body?: unknown;
-        readonly session?: string;
-        readonly headers?: Record<string, string>;
-        /** Ends the call from the client's side, as a browser that gave up does. */
-        readonly signal?: AbortSignal;
-      } = {},
-    ) =>
-      Effect.promise(async () => {
-        const raw = options.body instanceof Uint8Array;
-        // Node's HTTP client returns each redirect as an answer, without following it.
-        const response = await new Promise<NodeHttp.IncomingMessage>((resolve, reject) => {
-          const request = NodeHttp.request(
-            `http://${base}${path}`,
-            {
-              method,
-              agent,
-              ...(options.signal === undefined ? {} : { signal: options.signal }),
-              headers: {
-                ...(options.body === undefined || raw
-                  ? {}
-                  : { "content-type": "application/json" }),
-                ...(options.session === undefined
-                  ? {}
-                  : { authorization: `Bearer ${options.session}` }),
-                ...options.headers,
-              },
-            },
-            resolve,
-          );
-          request.once("error", reject);
-          request.end(
-            options.body === undefined
-              ? undefined
-              : options.body instanceof Uint8Array
-                ? options.body
-                : encodeJson(options.body),
-          );
-        });
-        if (response.statusCode === undefined) throw new Error("Core's HTTP answer has no status");
-        const headers = new Headers();
-        for (let index = 0; index < response.rawHeaders.length; index += 2) {
-          headers.append(response.rawHeaders[index]!, response.rawHeaders[index + 1]!);
-        }
-        const bytes = new Uint8Array(await NodeStreamConsumers.arrayBuffer(response));
-        const text = new TextDecoder().decode(bytes);
-        const isJson = headers.get("content-type")?.includes("json") ?? false;
-        return {
-          status: response.statusCode,
-          body: text === "" ? null : isJson ? decodeJson(text) : text,
-          bytes,
-          headers,
-        };
-      });
+    const call = makeHttpCall(base, agent, readinessObservers);
     /** A WebSocket to `path`: its messages one by one, its close, a pong for every ping while `answering`. */
     const socket = (path: string) =>
       Effect.gen(function* () {
@@ -443,32 +392,6 @@ export const startCore = (
       stagingDir,
     };
   });
-
-export type Call = Effect.Success<ReturnType<typeof startCore>>["call"];
-
-export const untilHealth = (call: Call, state: string) =>
-  call("GET", "/health").pipe(
-    Effect.catchDefect((defect) =>
-      typeof defect === "object" &&
-      defect !== null &&
-      "code" in defect &&
-      (defect.code === "ECONNRESET" || defect.code === "ECONNREFUSED")
-        ? Effect.fail(defect)
-        : Effect.die(defect),
-    ),
-    Effect.filterOrFail(
-      (response) =>
-        response.body !== null &&
-        typeof response.body === "object" &&
-        "state" in response.body &&
-        response.body.state === state,
-    ),
-    Effect.retry(Schedule.spaced(Duration.millis(50))),
-    Effect.timeoutOrElse({
-      duration: Duration.seconds(10),
-      orElse: () => Effect.fail(new Cause.TimeoutError("HQ setup readiness timed out after 10s")),
-    }),
-  );
 
 /** A one-use ticket for `session`'s socket. */
 export const ticketFor = (call: Call, session: string) =>

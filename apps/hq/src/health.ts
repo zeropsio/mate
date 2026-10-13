@@ -19,6 +19,7 @@
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as HttpRouter from "effect/http/HttpRouter";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -55,40 +56,60 @@ export const healthParts = Effect.gen(function* () {
   };
 });
 
-export const healthRoute = (build: string) =>
+export type HealthStage = "handler" | "SQL" | "SQL complete" | "handler complete";
+/** An in-process readiness observer used by the harness; absent in production. */
+export type HealthObserver = (
+  request: HttpServerRequest.HttpServerRequest,
+  stage: HealthStage,
+) => void;
+
+export const healthRoute = (build: string, observe?: HealthObserver) =>
   HttpRouter.add(
     "GET",
     "/health",
     Effect.gen(function* () {
+      const request =
+        observe === undefined ? undefined : yield* HttpServerRequest.HttpServerRequest;
+      const trace =
+        request === undefined ? undefined : (stage: HealthStage) => observe?.(request, stage);
+      trace?.("handler");
       const leader = yield* Leader;
       const { state, epoch } = yield* leader.status;
       const held = yield* leader.held;
       const { official, allowed } = yield* (yield* Official).status;
       const sql = yield* SqlClient.SqlClient;
+      trace?.("SQL");
       const db = yield* sql`SELECT 1`.pipe(
         Effect.timeout(PROBE_TIMEOUT),
         Effect.as("up"),
         Effect.orElseSucceed(() => "down"),
       );
+      trace?.("SQL complete");
       const { git: gitState, ...parts } = yield* healthParts;
       const loop = yield* (yield* LoopWatch).status;
       const recomputes = yield* (yield* Recomputes).lastMinute;
       // Another Core holds the lock: the one a deploy would retire. Not known counts as held.
-      const lockHeld = sql<{ readonly held: boolean }>`
+      const lockHeld = Effect.gen(function* () {
+        trace?.("SQL");
+        const held = yield* sql<{ readonly held: boolean }>`
         SELECT EXISTS (
           SELECT 1 FROM pg_locks
           WHERE database = (SELECT oid FROM pg_database WHERE datname = current_database())
             AND locktype = 'advisory' AND classid = 0 AND objid::bigint = ${LOCK_KEY}
             AND objsubid = 1 AND granted
         ) AS held`.pipe(
-        Effect.timeout(PROBE_TIMEOUT),
-        Effect.map((rows) => rows[0]?.held !== false),
-        Effect.orElseSucceed(() => true),
-      );
+          Effect.timeout(PROBE_TIMEOUT),
+          Effect.map((rows) => rows[0]?.held !== false),
+          Effect.orElseSucceed(() => true),
+        );
+        trace?.("SQL complete");
+        return held;
+      });
       const ready =
         state === "active"
           ? gitState === "open"
           : state === "standby" && db === "up" && (allowed || !(yield* lockHeld));
+      trace?.("handler complete");
       return HttpServerResponse.jsonUnsafe(
         {
           state,
