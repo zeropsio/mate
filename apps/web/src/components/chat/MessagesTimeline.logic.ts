@@ -2818,6 +2818,8 @@ export function deriveMessagesTimelineRows(input: {
     // moments (`WOKE_LAG_MS`) — a word that reached the thread late.
     let woke: WorkLogEntry[] = [];
     let helper: HelperFinish | null = null;
+    /** Where the line of what woke a run nobody wrote to stands (`woke:`). */
+    let opener: number | null = null;
     if (lead === null) {
       woke = wokeBy(turn, false);
       if (woke.length === 0) helper = helperWoke(first.startedAt, false);
@@ -3020,6 +3022,7 @@ export function deriveMessagesTimelineRows(input: {
         return;
       }
       seamBefore(first.startedAt, first.key);
+      opener = rows.length;
       if (woke.length > 0) {
         rows.push({
           kind: "background",
@@ -3040,8 +3043,11 @@ export function deriveMessagesTimelineRows(input: {
           helpers: true,
           title: helper.title,
         });
-      }
+      } else opener = null;
     }
+    // What woke it opens its card, inside it, where nothing was sent into the run before its card
+    // (the owner, 2026-10-14: a helper's finish read as a line "floating in space" over it).
+    const openedBy = opener !== null && exchanges.length === 0 ? opener : null;
     rows.push(...exchanges);
     const { personMs, ...waited } = waitedOn(turn);
     const engineWorked =
@@ -3113,7 +3119,7 @@ export function deriveMessagesTimelineRows(input: {
     // end once it is over. A run with no chat keeps it as a line of its own.
     const chatted = hasRecord || working || turn.interruption !== undefined;
     if (carded && (!pausedHere || chatted || extras.length > 0)) {
-      const cardStart = rows.length;
+      const cardStart = openedBy ?? rows.length;
       if (!chatted && !pausedHere) {
         rows.push({
           kind: "work-line",
@@ -3451,14 +3457,18 @@ export function deriveMessagesTimelineRows(input: {
     emitTurn(turn);
   }
 
-  // Work that outlived its run is that run's card's to say, waiting on it;
-  // only work no run waits on stands at the bottom on its own.
-  if (!input.isWorking && input.afterTurnWork && !structure.turns.some((turn) => turn.waiting)) {
+  // Work that outlived its run is that run's card's to say, waiting on it; only work no run waits
+  // on stands at the bottom on its own. An engine Mate's cards are done once their runs are: what
+  // they left running stands at the bottom, under the last answer, until the turn it is due opens
+  // (`waitsAtEnd`; the owner, 2026-10-14: "the working card at bottom still goes on").
+  const afterTurnWork =
+    input.afterTurnWork ?? (structure.waitsAtEnd === null ? undefined : ("working" as const));
+  if (!input.isWorking && afterTurnWork && !structure.turns.some((turn) => turn.waiting)) {
     rows.push({
       kind: "after-work",
       id: "after-work",
       createdAt: rows.at(-1)?.createdAt ?? "",
-      state: input.afterTurnWork,
+      state: afterTurnWork,
     });
   }
   if (input.endNotice != null) {

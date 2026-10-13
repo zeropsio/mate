@@ -20,7 +20,7 @@ const key = { environmentId: "env", conversationId: "conversation" };
 const first = "conversation/r/1";
 const decode = Schema.decodeUnknownSync(RunRecord);
 
-function render(
+function renderRows(
   end: RunEnd,
   tail: "tool" | "answer" | "unheld" | "not-started",
   historical = true,
@@ -85,11 +85,20 @@ function render(
     supportsConversationRollback: false,
     ...(tail === "unheld" ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
   });
+  return { rows, first };
+}
+
+function render(...args: Parameters<typeof renderRows>) {
+  const { rows, first } = renderRows(...args);
   const card = rows.find(
     (row) => (row.kind === "record" || row.kind === "work-line") && row.turnId === first,
   );
   return card?.kind === "record" ? card.status : card?.kind === "work-line" ? card : null;
 }
+
+/** Whether the conversation's bottom waits on what still runs after every run is over (`waitsAtEnd`). */
+const waitsAtBottom = (...args: Parameters<typeof renderRows>) =>
+  renderRows(...args).rows.at(-1)?.kind === "after-work";
 
 describe("the engine's run verdict on a conversation card", () => {
   // Decision: one derivation per state; consumers never recompute it; no new domain concepts; mobile stays out (later).
@@ -160,13 +169,13 @@ describe("the engine's run verdict on a conversation card", () => {
 
   it("background work waits only while the server row says the card waits on helpers", () => {
     expect(
-      render({ kind: "completed" }, "unheld", false, false, {
+      waitsAtBottom({ kind: "completed" }, "unheld", false, false, {
         kind: "working",
         since: 1,
         waitsOnHelpers: true,
-      })?.live,
+      }),
     ).toBe(true);
-    expect(render({ kind: "completed" }, "unheld", false, false, { kind: "idle" })?.live).toBe(
+    expect(waitsAtBottom({ kind: "completed" }, "unheld", false, false, { kind: "idle" })).toBe(
       false,
     );
   });
