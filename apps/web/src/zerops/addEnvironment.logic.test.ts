@@ -113,3 +113,28 @@ describe("finishOffered", () => {
     expect(finishOffered(can, hq)).toBe(want);
   });
 });
+
+it("HQ's Git target verb reaches the shared Add gate without a recipe", () => {
+  const offers = environmentOffersOf(
+    { add_git_environment: { allow: true } },
+    { current: true, unavailableSince: null },
+  );
+  expect(offers).toEqual({
+    stage: true,
+    production: true,
+    git: true,
+    zerops: { stage: false, production: false },
+  });
+  expect(
+    questionFactsOf({ offered: offers!, recipeRead: false, recipeTiers: [], held: [] }).addable,
+  ).toEqual({ stage: true, production: true });
+});
+
+it("An old HQ still offers its Zerops doors and no Git target authority", () => {
+  expect(
+    environmentOffersOf(
+      { add_stage: { allow: true }, add_production: { allow: true } },
+      { current: true, unavailableSince: null },
+    ),
+  ).toEqual({ stage: true, production: true });
+});

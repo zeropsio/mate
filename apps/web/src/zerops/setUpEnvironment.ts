@@ -34,3 +34,65 @@ export const useSetUpEnvironment = create<SetUpEnvironmentState>((set, get) => (
     return asked;
   },
 }));
+
+/** The setup form submits to the mounted account's one coordinator, never directly to HQ. */
+export interface GitEnvironmentSetup {
+  readonly connect: (
+    repo: string,
+    url: string,
+    token: string,
+    replace: boolean,
+  ) => Promise<import("@t3tools/shared/hqChanges").HqRemoteProbe>;
+  readonly preview: (
+    branch: string,
+  ) => Promise<ReadonlyArray<import("@t3tools/shared/hqChanges").HqGitAdoption>>;
+  readonly add: (
+    request: import("@t3tools/shared/hqChanges").AddGitEnvironmentRequest,
+  ) => Promise<void>;
+}
+
+export function gitEnvironmentSetup(input: {
+  readonly orgId: string;
+  readonly appId: string;
+  readonly hqProjectId: string;
+  readonly operations: Pick<
+    import("./accountOperations").AccountOperations,
+    "run" | "runGitCandidate"
+  >;
+}): GitEnvironmentSetup {
+  const { operations, ...scope } = input;
+  return {
+    connect: (repo, url, token, replace) => {
+      if (operations.runGitCandidate === undefined)
+        return Promise.reject(new Error("Update the client to connect a Git remote."));
+      return operations.runGitCandidate(
+        replace
+          ? { kind: "replace-git-remote-token", ...scope, repo }
+          : { kind: "connect-git-remote", ...scope, repo, url },
+        token,
+      );
+    },
+    preview: (branch) =>
+      operations.run(
+        {
+          kind: "preview-git-environment",
+          ...scope,
+          request: { target: { kind: "git", branch, delivery: "direct" } },
+        },
+        {
+          orgId: scope.orgId,
+          unobserved: "HQ isn't answering. Review the branch again when it returns.",
+        },
+      ),
+    add: async (request) => {
+      await operations.run(
+        { kind: "add-git-environment", ...scope, request },
+        {
+          orgId: scope.orgId,
+          unobserved:
+            "HQ isn't answering. It may have added the environment; check its record before trying again.",
+        },
+      );
+    },
+  };
+}

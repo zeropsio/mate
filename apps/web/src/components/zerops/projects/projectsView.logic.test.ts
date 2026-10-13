@@ -1071,3 +1071,21 @@ it("unknown placement is not claimed to be outside a project", () => {
     "Placement not read — HQ is unavailable · 1 ready",
   );
 });
+
+it("Every Add door accepts HQ Git authority without a recipe and still holds occupied tiers", () => {
+  const input = {
+    offered: {
+      stage: true,
+      production: true,
+      git: true,
+      zerops: { stage: false, production: false },
+    },
+    group: { environments: [], pending: [] },
+    hq: [],
+    recipe: { read: false, tiers: [] },
+  };
+  expect(tiersAddable(input)).toEqual(["stage", "production"]);
+  expect(tiersAddable({ ...input, hq: [{ id: "git-prod", tier: "production" }] })).toEqual([
+    "stage",
+  ]);
+});

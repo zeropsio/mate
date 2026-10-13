@@ -16,7 +16,8 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { GitEnvironmentForm, type GitEnvironmentFormProps } from "./GitEnvironmentForm";
 
 import { Button } from "../ui/button";
 import {
@@ -93,6 +94,9 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly onDoorAction?: ((action: NewMateDoorAction) => void) | undefined;
   readonly onCancel: () => void;
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
+  readonly git?:
+    | Omit<GitEnvironmentFormProps, "groupName" | "tier" | "defaultName" | "where" | "onCancel">
+    | undefined;
 }
 
 const PRESS_STEP_STATES: Readonly<
@@ -131,7 +135,7 @@ export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFo
 }
 
 function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
-  if (props.role !== "dev") return <EnvironmentForm {...props} />;
+  if (props.role !== "dev") return <EnvironmentDestinationForm {...props} />;
   const { groupName, defaultName, takenBotNames, tier, recipe } = props;
   const { defaultTintFor, defaultShapeFor, closed, onDoorAction, onCancel, onCreate } = props;
   return (
@@ -154,6 +158,38 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
   );
 }
 
+function EnvironmentDestinationForm(props: ZeropsEnvironmentCreationFormProps) {
+  const [target, setTarget] = useState("zerops");
+  const where =
+    props.git === undefined ? undefined : (
+      <div className="space-y-2">
+        <span className="text-sm">Where does it go?</span>
+        <RadioGroup aria-label="Where does it go?" value={target} onValueChange={setTarget}>
+          <label className="flex items-center gap-2 text-sm">
+            <Radio value="zerops" />
+            Zerops project
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <Radio value="git" disabled={!props.git.offered.add} />
+            Git branch
+          </label>
+        </RadioGroup>
+      </div>
+    );
+  return target === "git" && props.git !== undefined ? (
+    <GitEnvironmentForm
+      {...props.git}
+      groupName={props.groupName}
+      defaultName={props.defaultName}
+      tier={props.role === "prod" ? "production" : "stage"}
+      where={where}
+      onCancel={props.onCancel}
+    />
+  ) : (
+    <EnvironmentForm {...props} where={where} />
+  );
+}
+
 /** A stage's or a production's form: its name, its agent, its application. */
 function EnvironmentForm({
   groupName,
@@ -167,7 +203,8 @@ function EnvironmentForm({
   onRecipeRetry,
   onCancel,
   onCreate,
-}: ZeropsEnvironmentCreationFormProps) {
+  where,
+}: ZeropsEnvironmentCreationFormProps & { readonly where?: ReactNode }) {
   const id = useId();
   const what = environmentWord(role);
   const options = useMemo(
@@ -212,6 +249,7 @@ function EnvironmentForm({
         </DialogDescription>
       </DialogHeader>
       <DialogPanel className="flex flex-col gap-5 space-y-0">
+        {where}
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-name`}>Environment</Label>
           <Input

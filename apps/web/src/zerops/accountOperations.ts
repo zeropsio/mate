@@ -1,3 +1,4 @@
+import type { HqRemoteProbe } from "@t3tools/shared/hqChanges";
 import { captureAccountLifetime } from "./accountLifetime";
 import { zeropsClientsFromUser } from "@t3tools/client-runtime/zerops";
 /**
@@ -26,6 +27,7 @@ import {
   type OperationEnd,
   type OperationProgress,
   type Operations,
+  type HqGitCandidateIntent,
 } from "@t3tools/client-runtime/data";
 import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/reactivity";
@@ -61,6 +63,11 @@ export interface AccountOperations {
   readonly untilEnd: (requestId: string, orgId: string) => Promise<NonNullable<OperationEnd>>;
   /** Runs one intent to its end: its owner's result, or what stopped it (`runToEnd`). */
   readonly run: RunToEnd;
+  /** Candidate plaintext goes directly to the executor, never the recorded intent. */
+  readonly runGitCandidate?: (
+    intent: HqGitCandidateIntent,
+    token: string,
+  ) => Promise<HqRemoteProbe>;
   readonly readProgress: (requestId: string) => OperationProgress;
   readonly untilMoveRemainder: (
     key: Parameters<typeof recordedMoveRemainder.derive>[1],
@@ -103,16 +110,18 @@ export function accountOperations(
   if (held !== undefined) return held;
   // A browser without Web Locks has its project record writes serialized within the page only.
   const locks: LockManager | undefined = globalThis.navigator?.locks;
+  const hqExecutor = makeHqExecutor({
+    apiOf: hqWritesOf,
+    zerops: client,
+    active: captureAccountLifetime(),
+    hqProjectIdOf,
+    chiefAccess: handChiefAccess,
+    gitStore: store,
+  });
   const operations = makeOperations({
     store,
     executors: {
-      hq: makeHqExecutor({
-        apiOf: hqWritesOf,
-        zerops: client,
-        active: captureAccountLifetime(),
-        hqProjectIdOf,
-        chiefAccess: handChiefAccess,
-      }),
+      hq: hqExecutor,
       zerops: makeZeropsExecutor({
         client,
         viewerOf: (orgId) => {
@@ -220,6 +229,23 @@ export function accountOperations(
     readCreation: (orgId, creationId) =>
       registry.get(store.data.project(creationSteps, { orgId, creationId })),
     run,
+    runGitCandidate: async (intent, token) => {
+      const requestId = randomUUID();
+      const submitted = Effect.runPromise(
+        hqExecutor.submitGitCandidate(operations, requestId, intent, token),
+      );
+      token = "";
+      await submitted;
+      // The same request is already recorded: runToEnd follows it without resending.
+      if (intent.kind === "probe-git-remote")
+        return runStep(intent, { orgId: intent.orgId, requestId, unobserved: HQ_UNFOLLOWED });
+      const result = await runStep(intent, {
+        orgId: intent.orgId,
+        requestId,
+        unobserved: HQ_UNFOLLOWED,
+      });
+      return result.probe;
+    },
     askAgain: (requestId) => Effect.runPromise(operations.retry(requestId)),
     submit: async (intent, named) => {
       const requestId = await Effect.runPromise(operations.submit(intent, named));

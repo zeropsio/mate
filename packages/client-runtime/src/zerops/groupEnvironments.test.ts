@@ -589,3 +589,32 @@ it("A git production takes the production slot, so Add production is no longer o
   ]);
   expect(rows.filter((row) => row.kind === "slot" && row.tier === "production")).toEqual([]);
 });
+
+it.each(["stage", "production"] as const)(
+  "Git authority offers %s without a recipe through the shared Add gate",
+  (tier) => {
+    expect(
+      environmentAddable({
+        tier,
+        recipeRead: false,
+        recipeTiers: [],
+        offered: false,
+        gitOffered: true,
+        held: { stages: 0, production: false },
+      }),
+    ).toBe(true);
+  },
+);
+
+it("Git authority cannot offer a second production while its slot is held", () => {
+  expect(
+    environmentAddable({
+      tier: "production",
+      recipeRead: false,
+      recipeTiers: [],
+      offered: false,
+      gitOffered: true,
+      held: { stages: 0, production: true },
+    }),
+  ).toBe(false);
+});

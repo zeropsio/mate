@@ -219,9 +219,12 @@ export function environmentAddable(input: {
   readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
   /** HQ offers this person the tier (`add_stage` / `add_production`). */
   readonly offered: boolean;
+  /** HQ offers direct Git setup; it needs no Zerops recipe. */
+  readonly gitOffered?: boolean;
   readonly held: ReturnType<typeof heldTiers>;
 }): boolean {
-  if (!input.offered || !input.recipeRead || !input.recipeTiers.includes(input.tier)) return false;
+  const zerops = input.offered && input.recipeRead && input.recipeTiers.includes(input.tier);
+  if (!zerops && input.gitOffered !== true) return false;
   return input.tier === "production" ? !input.held.production : input.held.stages === 0;
 }
 
@@ -304,7 +307,12 @@ export function environmentSlots(input: {
   /** Whether the recipe is read: until it is, no slot is offered or said to wait for it. */
   readonly recipeRead: boolean;
   /** The tiers HQ offers this person to add (`add_stage` / `add_production`). */
-  readonly offered: { readonly stage: boolean; readonly production: boolean };
+  readonly offered: {
+    readonly stage: boolean;
+    readonly production: boolean;
+    readonly git?: boolean;
+    readonly zerops?: { readonly stage: boolean; readonly production: boolean };
+  };
   /** What production runs: nothing (`empty`), a deploy under way, a release, or not known. */
   readonly productionRuns: ProductionRuns;
   /** The changes merged and waiting for production, as the release counts them. */
@@ -341,14 +349,15 @@ export function environmentSlots(input: {
     tier,
     name: tier === "stage" ? "Stage" : "Production",
     line:
-      input.recipeRead && !input.recipeTiers.includes(tier)
+      !input.offered.git && input.recipeRead && !input.recipeTiers.includes(tier)
         ? ENVIRONMENT_AWAITS_RECIPE
         : ENVIRONMENT_NOT_ADDED,
     add: environmentAddable({
       tier,
       recipeRead: input.recipeRead,
       recipeTiers: input.recipeTiers,
-      offered: input.offered[tier],
+      offered: input.offered.zerops?.[tier] ?? input.offered[tier],
+      gitOffered: input.offered.git === true,
       held,
     }),
   });

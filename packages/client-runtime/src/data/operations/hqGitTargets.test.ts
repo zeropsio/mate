@@ -493,3 +493,30 @@ it("the public data entry exposes the single delivery answer and environment rea
   );
   expect(data.deliveryEnvironmentsOf([gitEnvironment])?.[0]?.id).toBe("git-production");
 });
+
+it.effect(
+  "A reviewed remote address update is one authority-gated operation with a stable id and no token",
+  () =>
+    Effect.gen(function* () {
+      const f = setup({ can: { update_remote_address: { allow: true } } });
+      const update = {
+        kind: "update-git-remote-address",
+        orgId: ORG,
+        appId: "shop",
+        hqProjectId: "hq",
+        repo: "web",
+        url: "https://github.com/renamed/web",
+      } as const;
+      yield* f.operations.submit(update, "address-1");
+      expect(f.transcript).toEqual([
+        {
+          method: "POST",
+          operationId: "address-1",
+          kind: "update-git-remote-address",
+          repo: "web",
+        },
+      ]);
+      expect(serialized(f.store)).not.toContain(TOKEN);
+      expect(f.store.state().operations.get("address-1")?.receipt?.operationId).toBe("address-1");
+    }),
+);
