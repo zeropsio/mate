@@ -4,6 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
+import * as NodeUtil from "node:util";
 import { parse } from "yaml";
 import { expect, it } from "vite-plus/test";
 import { checkSteps } from "./ci-local.ts";
@@ -126,7 +127,7 @@ it("CI's stdin selector considers every changed path, including the old side of 
     },
   );
   expect(result.status).toBe(0);
-  expect(result.stdout.trim()).toBe("true");
+  expect(NodeUtil.stripVTControlCharacters(result.stdout).trim()).toBe("true");
 });
 
 it.each([
@@ -206,7 +207,7 @@ it.each(["startup failure", "empty collection"])(
         ],
         { cwd: fixture, encoding: "utf8" },
       );
-      const output = result.stdout + result.stderr;
+      const output = NodeUtil.stripVTControlCharacters(result.stdout + result.stderr);
       expect(result.error).toBeUndefined();
       expect(result.status, output).toBe(1);
       if (kind === "startup failure") {
