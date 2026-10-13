@@ -893,6 +893,201 @@ describe("owner-reported layout regressions", () => {
     });
     describe("Decision: recovery results float as toasts; the docked footer is clear above the card.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect(
+          "a real Mate's recovery action stays fully inside its toast and the viewport",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* createScenario([], { mate: "real" });
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Wren", { mate: true });
+              yield* s.given.project("Sage", { mate: true });
+              const chat = mateChat(s);
+              yield* s.given.signedIn;
+              yield* s.when.menu.opensMate("Wren");
+              yield* s.then.conversation.appears;
+              yield* s.drivers.realMates
+                .get("Wren")!
+                .provider.turn([{ kind: "say", text: "Keep Wren's history" }]);
+              yield* s.when.conversation.sends("Keep this conversation");
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () =>
+                    document
+                      .querySelector(
+                        `[data-timeline-thread="${location.pathname.slice(1).replace("/", ":")}"]`,
+                      )
+                      ?.textContent?.includes("Keep Wren's history"),
+                  { polling: "raf", timeout: 8000 },
+                ),
+              );
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
+                  polling: "raf",
+                  timeout: 8000,
+                }),
+              );
+              const wrenPath = new URL(s.page.url()).pathname;
+              yield* s.when.menu.opensMate("Sage");
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  (path) => location.pathname !== path,
+                  { polling: "raf", timeout: 8000 },
+                  wrenPath,
+                ),
+              );
+              yield* s.then.conversation.appears;
+              yield* s.drivers.realMates
+                .get("Sage")!
+                .provider.turn([{ kind: "say", text: "Keep Sage's history" }]);
+              yield* s.when.conversation.sends("Keep Sage's conversation");
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () =>
+                    document
+                      .querySelector(
+                        `[data-timeline-thread="${location.pathname.slice(1).replace("/", ":")}"]`,
+                      )
+                      ?.textContent?.includes("Keep Sage's history"),
+                  { polling: "raf", timeout: 8000 },
+                ),
+              );
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
+                  polling: "raf",
+                  timeout: 8000,
+                }),
+              );
+              const sagePath = new URL(s.page.url()).pathname;
+              yield* s.when.menu.opensMate("Wren");
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  (path) => location.pathname === path,
+                  { polling: "raf", timeout: 8000 },
+                  wrenPath,
+                ),
+              );
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () =>
+                    document
+                      .querySelector(
+                        `[data-timeline-thread="${location.pathname.slice(1).replace("/", ":")}"]`,
+                      )
+                      ?.textContent?.includes("Keep Wren's history"),
+                  { polling: "raf", timeout: 8000 },
+                ),
+              );
+              yield* Effect.promise(() => ownerMenu(s.page));
+              s.drivers.zerops.writes.autoComplete = false;
+              let processId: string | undefined;
+              s.drivers.zerops.handlers.unshift(async (request) => {
+                if (
+                  request.method !== "PUT" ||
+                  !request.url.pathname.endsWith("/service-stack/service-Wren/start")
+                )
+                  return undefined;
+                processId = s.drivers.zerops.writes.start("Wren", "stack.start", ["service-Wren"]);
+                return { body: { id: processId } };
+              });
+              reportContainer(s.drivers, "Wren", "STOPPED");
+              yield* Effect.promise(() => s.drivers.realMates.get("Wren")!.server.stop());
+              yield* chat.then.control("Start");
+              yield* chat.when.press("Start");
+              yield* chat.then.text("Zerops accepted the start. Its outcome is not confirmed yet.");
+              // Stretch the existing finite animation so the first arrival is a reproducible witness,
+              // rather than measuring only after an offscreen entry has finished.
+              const motion = yield* Effect.promise(() => slowAnimations(s.page, 0.05));
+              let restored = false;
+              yield* Effect.addFinalizer(() =>
+                restored ? Effect.void : Effect.promise(() => motion.restore()),
+              );
+              yield* s.when.menu.opensMate("Sage");
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  (path) => location.pathname === path,
+                  { polling: "raf", timeout: 8000 },
+                  sagePath,
+                ),
+              );
+              const arrives = (text: string) =>
+                Effect.promise(() =>
+                  s.page.waitForFunction(
+                    (text) =>
+                      document
+                        .querySelector('[data-slot="toast-viewport"]')
+                        ?.textContent?.includes(text),
+                    { polling: "raf", timeout: 8000 },
+                    text,
+                  ),
+                );
+              const actionFits = () =>
+                Effect.promise(async () => {
+                  const geometry = await s.page.evaluate(() => {
+                    const action = document.querySelector(
+                      '[data-slot="toast-action"][data-recovery-request]',
+                    )!;
+                    const box = (element: Element) => {
+                      const { top, bottom, left, right, width, height } =
+                        element.getBoundingClientRect();
+                      return { top, bottom, left, right, width, height };
+                    };
+                    return {
+                      action: box(action),
+                      toast: box(action.closest("[data-position]")!),
+                      viewport: { top: 0, left: 0, right: innerWidth, bottom: innerHeight },
+                    };
+                  });
+                  expect(geometry.action.width).toBeGreaterThan(0);
+                  expect(geometry.action.height).toBeGreaterThan(0);
+                  for (const [name, container] of Object.entries({
+                    toast: geometry.toast,
+                    viewport: geometry.viewport,
+                  })) {
+                    for (const edge of ["top", "left"] as const)
+                      expect(
+                        geometry.action[edge],
+                        `ASSERTION: the recovery action's ${edge} is inside the ${name}`,
+                      ).toBeGreaterThanOrEqual(container[edge]);
+                    for (const edge of ["bottom", "right"] as const)
+                      expect(
+                        geometry.action[edge],
+                        `ASSERTION: the recovery action's ${edge} is inside the ${name}`,
+                      ).toBeLessThanOrEqual(container[edge]);
+                  }
+                });
+              yield* arrives("Wren: Zerops accepted the start.");
+              yield* actionFits();
+              expect(processId).toBeDefined();
+              s.drivers.zerops.writes.transition(
+                processId!,
+                "FAILED",
+                "The start was refused by the container.",
+              );
+              yield* arrives("Wren: Start failed.");
+              yield* actionFits();
+              yield* Effect.promise(() => motion.restore());
+              restored = true;
+              for (const width of [1786, 1280, 435]) {
+                yield* Effect.promise(() => s.page.setViewport({ width, height: 1000 }));
+                yield* Effect.promise(() =>
+                  waitForStillFrames(s.page, { selector: '[data-slot="toast-viewport"]' }),
+                );
+                yield* actionFits();
+                const evidence = process.env.MATE_RECOVERY_EVIDENCE;
+                if (evidence && width === 1786) {
+                  yield* Effect.promise(() => s.page.screenshot({ path: `${evidence}-full.png` }));
+                  yield* Effect.promise(() =>
+                    s.page.screenshot({
+                      path: `${evidence}-toast.png`,
+                      clip: { x: 1380, y: 85, width: 400, height: 130 },
+                    }),
+                  );
+                }
+              }
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
         const frame = (page: Page) =>
           page.evaluate(() => {
             const box = (selector: string) => {
