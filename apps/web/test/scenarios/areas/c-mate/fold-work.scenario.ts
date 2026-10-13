@@ -14,7 +14,6 @@ import {
 import type { ScriptedStep } from "../../../../../server/integration/scriptedProviderDriver.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { mateChat } from "./dsl.ts";
 
 // Native OpenCode tool facts; the production SPI and engine derive their visible work.
 const tool = (
@@ -93,7 +92,6 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
           const s = yield* createScenario([], { mate: "real" });
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
           yield* s.given.project("Ada", { mate: true });
-          const chat = mateChat(s);
           const { server, provider } = s.drivers.realMates.get("Ada")!;
           const conversationId = ConversationId.make("thread-Ada");
           const protocol = MATE_ENGINE_PROTOCOLS[0]!;
@@ -323,7 +321,15 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
           );
           // Slot landing and panel/report shrink share this settlement; native clamps are sampled.
           yield* Deferred.succeed(settlement, undefined);
-          yield* chat.then.text("The fold is complete");
+          // A held reader can leave the reply outside the virtualized window.
+          while (true) {
+            const frame = yield* Queue.take(changes);
+            if (
+              frame.type === "changes" &&
+              frame.runs.some((run) => run.ordinal === historyLength + 2 && run.state === "ended")
+            )
+              break;
+          }
           yield* Effect.promise(() =>
             s.page.waitForFunction(
               (mode) => {
