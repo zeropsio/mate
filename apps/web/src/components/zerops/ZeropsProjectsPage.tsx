@@ -2048,7 +2048,7 @@ function ZeropsProjectsContent({
         }
         busy={busy}
         // A group's stage or production: its name opens the stop's page.
-        link={declared === undefined ? undefined : stopLinkOf(tags.groupId, declared.id, role)}
+        link={stopLinkOf(tags.groupId, declared?.id ?? candidate.project.id, role)}
         menu={renderEnvironmentMenu(candidate, tags, false)}
         // By its own name under its application (`projectNameInApp`).
         name={projectNameInApp(candidate.project)}

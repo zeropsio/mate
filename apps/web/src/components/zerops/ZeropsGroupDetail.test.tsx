@@ -1,3 +1,4 @@
+import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { canonicalProjectFlow } from "@t3tools/client-runtime/data";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
@@ -1807,7 +1808,9 @@ describe("environment route target dispatch", () => {
           mounted = create(
             <RegistryContext.Provider value={registry}>
               <AccountDataContext.Provider value={data as AccountData}>
-                <ZeropsStopDetailPage groupId="shop" environmentId={id} />
+                <InventoryContext.Provider value={EMPTY_ROUTE_INVENTORY}>
+                  <ZeropsStopDetailPage groupId="shop" environmentId={id} />
+                </InventoryContext.Provider>
               </AccountDataContext.Provider>
             </RegistryContext.Provider>,
           );
@@ -2016,7 +2019,9 @@ it("An environment page explains HQ's refusal in words without opening project r
         <AccountDataContext.Provider
           value={{ data: store.data, orgId: "org", demandDetail: () => () => {} } as AccountData}
         >
-          <ZeropsStopDetailPage groupId="shop" environmentId="stage" />
+          <InventoryContext.Provider value={EMPTY_ROUTE_INVENTORY}>
+            <ZeropsStopDetailPage groupId="shop" environmentId="stage" />
+          </InventoryContext.Provider>
         </AccountDataContext.Provider>
       </RegistryContext.Provider>,
     );
@@ -2030,3 +2035,66 @@ it("An environment page explains HQ's refusal in words without opening project r
     registry.dispose();
   }
 });
+
+const EMPTY_ROUTE_INVENTORY: Inventory = {
+  projects: [],
+  projectRefs: new Map(),
+  authority: new Map(),
+  lost: new Set(),
+  isLoading: false,
+  error: undefined,
+};
+
+it.each(["empty", "refused"] as const)(
+  "A placed stage keeps its runtime page while HQ has no environment row (%s).",
+  (standing) => {
+    const registry = AtomRegistry.make();
+    const { store } = mountHqNavigation(registry, "org", {
+      structure: {
+        apps: [
+          {
+            id: "shop",
+            name: "Shop",
+            projects: [{ projectId: "placed-stage", name: "Stage", kind: "stage", mate: null }],
+            environments: standing === "refused" ? { refused: "changes_not_seen" } : [],
+          },
+        ],
+        ungrouped: [],
+      },
+    });
+    const inventory: Inventory = {
+      ...EMPTY_ROUTE_INVENTORY,
+      projects: [
+        {
+          id: "placed-stage",
+          name: "Shop - Stage",
+          status: "ACTIVE",
+          hq: { appId: "shop", appName: "Shop", kind: "stage", mate: null },
+        },
+      ],
+    };
+    platform.routeWitness = true;
+    platform.projectReads = [];
+    try {
+      const markup = renderToStaticMarkup(
+        <RegistryContext.Provider value={registry}>
+          <AccountDataContext.Provider
+            value={{ data: store.data, orgId: "org", demandDetail: () => () => {} } as AccountData}
+          >
+            <InventoryContext.Provider value={inventory}>
+              <ZeropsStopDetailPage groupId="shop" environmentId="placed-stage" />
+            </InventoryContext.Provider>
+          </AccountDataContext.Provider>
+        </RegistryContext.Provider>,
+      );
+      expect(markup).toContain(">Stage</h1>");
+      expect(markup).toContain("Environments");
+      expect(markup).toContain("Checking what runs here");
+      expect(markup).not.toContain("changes_not_seen");
+      expect(platform.projectReads).toEqual([]);
+    } finally {
+      platform.routeWitness = false;
+      registry.dispose();
+    }
+  },
+);

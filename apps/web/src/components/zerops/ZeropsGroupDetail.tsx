@@ -1239,15 +1239,51 @@ export function ZeropsStopDetailPage({
       <ZeropsProjectStopDetailPage groupId={groupId} projectId={environment.target.projectId} />
     );
   }
+  const note =
+    read.refused !== null ? hqRefusalWords({ code: "forbidden", reason: read.refused }) : unread;
+  if (environment === undefined) {
+    return (
+      <ZeropsUnresolvedStopDetailPage
+        groupId={groupId}
+        environmentId={environmentId}
+        crumbs={crumbs}
+        note={note}
+      />
+    );
+  }
   return (
     <DetailShell crumbs={crumbs} title={environment?.name}>
-      {read.refused !== null ? (
-        <Note>{hqRefusalWords({ code: "forbidden", reason: read.refused })}</Note>
-      ) : unread !== null ? (
-        <Note>{unread}</Note>
-      ) : environment === undefined ? (
+      {note !== null ? <Note>{note}</Note> : null}
+    </DetailShell>
+  );
+}
+
+/** Legacy bookmarks still show placed runtime facts while HQ has no environment identity. */
+function ZeropsUnresolvedStopDetailPage({
+  groupId,
+  environmentId,
+  crumbs,
+  note,
+}: {
+  readonly groupId: string;
+  readonly environmentId: string;
+  readonly crumbs: ReadonlyArray<Crumb>;
+  readonly note: string | null;
+}) {
+  const inventory = useZeropsInventory();
+  const held = useContext(HeldInventoryContext);
+  const stops = runtimeStopsOf(groupId, held?.projects ?? inventory.projects, undefined).filter(
+    (stop) => stop.projectId === environmentId,
+  );
+  const deployments = useStopDeploymentsShown(stops.map((stop) => stop.projectId));
+  return (
+    <DetailShell crumbs={crumbs} title={stops[0]?.name}>
+      <ZeropsRuntimeStops stops={stops} deployments={deployments} />
+      {note !== null ? (
+        <Note>{note}</Note>
+      ) : (
         <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
-      ) : null}
+      )}
     </DetailShell>
   );
 }
