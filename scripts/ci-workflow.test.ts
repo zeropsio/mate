@@ -233,14 +233,7 @@ it("hosted suites install their working set while native jobs retain their depen
     workflow.jobs[name].steps.find((step: { name: string }) => step.name === "Setup Vite+").with[
       "run-install"
     ];
-  for (const name of [
-    "chat_bundle",
-    "chat_scenarios",
-    "test_scripts",
-    "test_hq",
-    "test_web",
-    "test_server",
-  ]) {
+  for (const name of ["chat_bundle", "chat_scenarios", "test_hq", "test_web"]) {
     expect(
       typeof install(name),
       "ASSERTION: hosted-only test runners must not install unused native workspaces",
@@ -248,6 +241,14 @@ it("hosted suites install their working set while native jobs retain their depen
     expect(parse(install(name))).toEqual({
       args: ["--filter=!@t3tools/mobile", "--filter=!@t3tools/desktop"],
     });
+  }
+  // Scripts executes the shipped mobile Legend List patch; server projection tests
+  // consume the mobile feed, whose transform requires Expo's tsconfig.
+  for (const name of ["test_scripts", "test_server"]) {
+    expect(
+      parse(install(name)),
+      "ASSERTION: cross-client suites must install the mobile dependencies their consumers read",
+    ).toEqual({ args: ["--filter=!@t3tools/desktop"] });
   }
   for (const name of ["check", "test_packages", "desktop_smoke", "test_mobile"])
     expect(install(name)).toBe(true);

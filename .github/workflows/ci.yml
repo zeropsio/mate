@@ -270,7 +270,9 @@ jobs:
         with:
           node-version-file: package.json
           cache: true
-          run-install: *hosted_dependencies
+          run-install: &cross_client_dependencies |
+            args:
+              - --filter=!@t3tools/desktop
 
       - name: Test
         run: vp run --filter @t3tools/scripts test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
@@ -354,7 +356,7 @@ jobs:
         with:
           node-version-file: package.json
           cache: true
-          run-install: *hosted_dependencies
+          run-install: *cross_client_dependencies
 
       - name: Test
         env:
