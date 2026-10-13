@@ -367,7 +367,7 @@ it("extra spaces in a Drops-test title do not approve a different sentence", () 
   });
 });
 
-it.each(["kh-try", "kh-final"])(
+it.each(["kh-next", "kh-bisect"])(
   "new %s CI branches retain every test sentence since main",
   (branch) => {
     fixture(({ root, write, commit }) => {
@@ -377,7 +377,10 @@ it.each(["kh-try", "kh-final"])(
       const event = NodePath.join(root, "event.json");
       NodeFS.writeFileSync(
         event,
-        JSON.stringify({ before: "0".repeat(40), ref: `refs/heads/${branch}/candidate` }),
+        JSON.stringify({
+          before: "0".repeat(40),
+          ref: `refs/heads/${branch}${branch === "kh-next" ? "" : "/candidate"}`,
+        }),
       );
       const result = NodeChildProcess.spawnSync(
         process.execPath,
