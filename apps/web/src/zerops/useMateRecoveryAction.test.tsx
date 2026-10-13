@@ -360,3 +360,47 @@ it("closing and reopening the restart confirmation retains uncertainty and check
   await f.confirm();
   expect(f.calls).toEqual([`send:mate-restart:${f.requestIds[0]}`, `ask:${f.requestIds[0]}`]);
 });
+
+it("recovery keeps its owner result in the shell after opening another Mate", async () => {
+  vi.useFakeTimers();
+  const page = Object.assign(new EventTarget(), {
+    visibilityState: "visible",
+    activeElement: null as { closest: (selector: string) => object | null } | null,
+  });
+  vi.stubGlobal("document", page);
+  const f = fixture("accepted");
+  try {
+    f.show(true);
+    await f.press("start");
+    f.show(false);
+    expect(f.shell()).toContain("Wren: Zerops accepted the start.");
+    const id = f.requestIds[0]!;
+    await act(async () => f.receipt(id, { kind: "succeeded", evidence: "Start confirmed." }));
+    expect(f.shell()).toContain("Start completed.");
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
+    page.activeElement = {
+      closest: (selector) => (selector === `[data-recovery-request="${id}"]` ? {} : null),
+    };
+    page.dispatchEvent(new Event("focusin"));
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(f.shell()).toContain("Start completed.");
+    page.visibilityState = "hidden";
+    page.dispatchEvent(new Event("visibilitychange"));
+    page.activeElement = null;
+    page.dispatchEvent(new Event("focusout"));
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(f.shell()).toContain("Start completed.");
+    page.visibilityState = "visible";
+    page.dispatchEvent(new Event("visibilitychange"));
+    await act(() => vi.advanceTimersByTimeAsync(2_999));
+    expect(f.shell()).toContain("Start completed.");
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(f.shell()).toBe("[]");
+    expect(f.store.state().operations.get(id)).toBeDefined();
+  } finally {
+    act(() => mounted?.unmount());
+    mounted = undefined;
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  }
+});

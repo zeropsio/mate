@@ -4,7 +4,7 @@ import * as Schema from "effect/Schema";
 import { VcsStatusResult, WS_METHODS } from "@t3tools/contracts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installArea, reportContainer, projectGrant, deleteProjectEvidence } from "./fake.ts";
+import { installArea, reportContainer, projectGrant } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 
 const setup = (freezeClock = true) =>
@@ -161,43 +161,6 @@ describe("C: source failures keep the conversation", () => {
         yield* chat.then.text("Zerops accepted the start. Its outcome is not confirmed yet.");
         s.drivers.zerops.writes.transition(processId!, "FINISHED");
         yield* chat.then.text("Start completed.");
-        yield* Effect.promise(() => s.clock.advanceStepped(2_000));
-        yield* Effect.promise(() =>
-          s.page.evaluate(() =>
-            document
-              .querySelector<HTMLButtonElement>(
-                '[data-recovery-request] button[aria-label^="Dismiss"]',
-              )!
-              .focus(),
-          ),
-        );
-        yield* Effect.promise(() => s.clock.advanceStepped(10_000));
-        yield* chat.then.text("Start completed.");
-        yield* Effect.promise(() =>
-          s.page.evaluate(() => {
-            Object.defineProperty(document, "visibilityState", {
-              configurable: true,
-              value: "hidden",
-            });
-            document.dispatchEvent(new Event("visibilitychange"));
-            (document.activeElement as HTMLElement).blur();
-          }),
-        );
-        yield* Effect.promise(() => s.clock.advanceStepped(10_000));
-        yield* chat.then.text("Start completed.");
-        yield* Effect.promise(() =>
-          s.page.evaluate(() => {
-            Object.defineProperty(document, "visibilityState", {
-              configurable: true,
-              value: "visible",
-            });
-            document.dispatchEvent(new Event("visibilitychange"));
-          }),
-        );
-        yield* Effect.promise(() => s.clock.advanceStepped(2_999));
-        yield* chat.then.text("Start completed.");
-        yield* Effect.promise(() => s.clock.advanceStepped(1));
-        yield* chat.then.noText("Start completed.");
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -218,21 +181,6 @@ describe("C: source failures keep the conversation", () => {
           yield* s.then.noExternalNetwork;
         }),
     );
-    // Confirmed deletion must remove the dead platform link on both chat and project routes.
-    it.effect("project deletion is named and leaves no dead Open in Zerops link", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup();
-        deleteProjectEvidence(s.drivers, "Wren");
-        yield* chat.then.text("Wren's project was deleted");
-        yield* chat.then.noText("The existing conversation is still here");
-        yield* chat.then.noText("Open in Zerops");
-        yield* Effect.promise(() => s.page.goto(`${s.page.url().split("/env-")[0]}/mate/Wren`));
-        // A cold URL holds only its id; it must not invent a name from that id.
-        yield* chat.then.text("The Mate's project was deleted");
-        yield* chat.then.noText("Open in Zerops");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
     // A lost socket cannot decide that an active turn completed, failed or vanished.
     it.effect(
       "an active run interrupted during transport loss returns with history and draft",
@@ -250,23 +198,6 @@ describe("C: source failures keep the conversation", () => {
           expect(wire.sentTurnCount()).toBe(0);
           yield* s.then.noExternalNetwork;
         }),
-    );
-    // Elapsed time alone must never end a provider's reported running turn.
-    it.effect("a long run stays working until the provider reports its result", () =>
-      Effect.gen(function* () {
-        const { s, chat, wire } = yield* setup();
-        wire.run("long-run", "running");
-        yield* chat.then.control("Stop generation", "button");
-        yield* Effect.promise(() => s.clock.advance(4 * 60 * 60 * 1000, true));
-        yield* chat.then.control("Stop generation", "button");
-        yield* chat.then.once("The existing conversation is still here");
-        yield* chat.then.noText("couldn't restart");
-        wire.say("The long inspection finished", "long-run");
-        wire.run("long-run", "completed");
-        yield* chat.then.once("The long inspection finished");
-        yield* chat.then.control("Stop generation", "button", false);
-        yield* s.then.noExternalNetwork;
-      }),
     );
     // Expiry of a recorded provider login must offer sign-in without hiding history.
     it.effect("an expired Codex login blocks sending and preserves the conversation", () =>

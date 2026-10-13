@@ -270,3 +270,36 @@ it("a lost browser socket supplies the since-time while HQ still sees the Mate o
   expect(changes).toBe(1);
   stop();
 });
+
+it("an unreachable Mate keeps the provider and reset as HQ last-known evidence", () => {
+  const main = {
+    ...VERA.main!,
+    session: { status: "error" as const, lastError: "Claude usage limit reached." },
+    refusal: { turnId: null, provider: "Claude", resetsAt: "2099-10-10T00:00:00.000Z" },
+    usagePause: { resetsAt: "2099-10-10T00:00:00.000Z" },
+  };
+  const live = { ...VERA, main };
+  const offline = { ...live, presence: { online: false, since: AT, overview: "stored" as const } };
+  const warm = AtomRegistry.make();
+  const cold = AtomRegistry.make();
+  const first = mountHqNavigation(warm, "org-acme", { mates: { "p-vera": live } });
+  const second = mountHqNavigation(cold, "org-acme", { mates: { "p-vera": offline } });
+  try {
+    act(() => first.seed({ mates: { "p-vera": offline } }));
+    for (const registry of [warm, cold]) {
+      const words = mountedOver(registry, () => useLastKnownMateWords("p-vera", "Ada"));
+      expect(words).toContain("Last known");
+      expect(words).toContain("Ada hit the Claude limit");
+      expect(words).toContain("Oct 10, 2099");
+      expect(words).not.toContain("coding agent's limit");
+    }
+  } finally {
+    act(() => {
+      for (const renderer of mounted.splice(0)) renderer.unmount();
+    });
+    first.store.close();
+    second.store.close();
+    warm.dispose();
+    cold.dispose();
+  }
+});

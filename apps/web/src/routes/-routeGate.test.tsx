@@ -310,3 +310,46 @@ it("project revocation withdraws the open Mate while its receiver still pongs", 
   expect(readableText(container)).not.toContain("The existing conversation is still here");
   expect(readableText(container)).toContain("access");
 });
+
+it("project deletion is named and leaves no dead Open in Zerops link", () => {
+  const registry = AtomRegistry.make();
+  const store = mountRoster(registry, "org", [{ id: "p1", name: "Wren", status: "ACTIVE" }]);
+  try {
+    store.dispatch({
+      kind: "proven-deletion",
+      family: "project",
+      id: "p1",
+      evidence: "projectNotFound",
+    });
+    const recovery = mateRecovery.derive(readsOfState(store.state()), {
+      orgId: "org",
+      projectId: "p1",
+      serviceId: undefined,
+    });
+    for (const known of [true, false]) {
+      const standing = known ? recovery.standing : { kind: "deleted" as const };
+      act(() =>
+        root.render(
+          <RouteGateView
+            key={known ? "live" : "cold"}
+            {...gateFor({ kind: "refused-role" }, "live")}
+            gate={{ kind: "unavailable", reachability: { kind: "refused-role" } }}
+            projectId={known ? "p1" : null}
+            projectUnavailable={mateProjectUnavailable(standing)}
+            recoveryPhrase={recoveryNotice({ ...recovery, standing }, known ? "Wren" : "The Mate")}
+          >
+            The existing conversation is still here
+          </RouteGateView>,
+        ),
+      );
+      const text = readableText(container);
+      expect(text).toContain(
+        known ? "Wren's project was deleted" : "The Mate's project was deleted",
+      );
+      expect(text).not.toContain("The existing conversation is still here");
+      expect(text).not.toContain("Open in Zerops");
+    }
+  } finally {
+    registry.dispose();
+  }
+});

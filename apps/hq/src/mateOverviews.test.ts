@@ -650,3 +650,45 @@ it.effect("an older reconnect cannot replace newer retained health before attent
     }),
   ),
 );
+
+it.effect("an unreachable Mate keeps the provider and reset as HQ last-known evidence", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { rows, store } = memoryStore();
+      const saved = yield* Deferred.make<void>();
+      const overviews = yield* makeMateOverviews({
+        ...store,
+        save: (id, overview) =>
+          store.save(id, overview).pipe(Effect.tap(() => Deferred.succeed(saved, undefined))),
+      });
+      const linkScope = yield* Scope.make();
+      const link = yield* Scope.provide(linkScope)(overviews.connect("Ada"));
+      const refusal = { turnId: null, provider: "Claude", resetsAt: "2099-10-10T00:00:00.000Z" };
+      yield* overviews.report("Ada", link, {
+        type: "overview",
+        full: true,
+        overview: overviewOf({
+          main: {
+            ...mainAt(""),
+            session: { status: "error", lastError: "Claude usage limit reached." },
+            usagePause: { resetsAt: refusal.resetsAt },
+            refusal,
+          },
+        }),
+      });
+      yield* Deferred.await(saved);
+      assert.deepStrictEqual((yield* overviews.all).get("Ada")?.overview?.main?.refusal, refusal);
+      yield* Scope.close(linkScope, Exit.void);
+      const retained = (yield* overviews.all).get("Ada");
+      assert.strictEqual(retained?.presence.online, false);
+      assert.strictEqual(retained?.presence.overview, "stored");
+      assert.deepStrictEqual(retained?.overview?.main?.refusal, refusal);
+      const cold = yield* makeMateOverviews(memoryStore([...rows.values()]).store);
+      yield* cold.restore;
+      const restored = (yield* cold.all).get("Ada");
+      assert.strictEqual(restored?.presence.online, false);
+      assert.strictEqual(restored?.presence.overview, "stored");
+      assert.deepStrictEqual(restored?.overview?.main?.refusal, refusal);
+    }),
+  ),
+);

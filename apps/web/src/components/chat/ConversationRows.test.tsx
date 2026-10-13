@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { ApprovalRequestId } from "@t3tools/contracts";
+import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { projectMateLimit } from "@t3tools/client-runtime/data";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -443,4 +445,85 @@ describe("a notice's row", () => {
       expect(dismiss).toHaveBeenCalledOnce();
     },
   );
+});
+
+it("a parked refusal cannot queue Continue behind an unanswered question", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW_MS);
+  const onContinue = vi.fn();
+  const resetsAt = new Date(NOW_MS + 1_000).toISOString();
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const answer = vi.fn();
+  const show = (blockedByAnswer: boolean) =>
+    root.render(
+      <>
+        {blockedByAnswer ? (
+          <ComposerPendingUserInputPanel
+            pendingUserInputs={[
+              {
+                requestId: ApprovalRequestId.make("question-target"),
+                createdAt: new Date(NOW_MS).toISOString(),
+                questions: [
+                  {
+                    id: "environment",
+                    header: "Environment",
+                    question: "Which environment should I inspect?",
+                    options: [{ label: "Staging", description: "Inspect staging" }],
+                    multiSelect: false,
+                  },
+                ],
+                dismissible: false,
+              },
+            ]}
+            respondingRequestIds={[]}
+            answers={{}}
+            questionIndex={0}
+            onToggleOption={answer}
+            onAdvance={() => show(false)}
+            onDismiss={() => {}}
+          />
+        ) : null}
+        <LimitContinue
+          pause={{ resetsAt, provider: "Claude" }}
+          speaker={{ name: "Ada", tint: "sky" }}
+          limit={limitAt(resetsAt)}
+          triesBeforeReset
+          blockedByAnswer={blockedByAnswer}
+          onContinue={onContinue}
+          timestampFormat="24-hour"
+        />
+      </>,
+    );
+  try {
+    await act(() => show(true));
+    expect(document.body.textContent).toContain("Which environment should I inspect?");
+    expect(document.body.textContent).toContain("Answer the pending question to continue.");
+    expect(
+      [...document.querySelectorAll("button")].filter((node) => node.textContent === "Continue"),
+    ).toHaveLength(0);
+    // Observe the provider's reset, when a queued continuation would have become eligible.
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    expect(document.body.textContent).toContain("Answer the pending question to continue.");
+    expect(onContinue).not.toHaveBeenCalled();
+    const option = [...document.querySelectorAll<HTMLButtonElement>("button")].find((node) =>
+      node.textContent?.includes("Staging"),
+    );
+    expect(option).toBeDefined();
+    await act(() => option!.click());
+    expect(answer).toHaveBeenCalledExactlyOnceWith("environment", "Staging");
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    expect(document.body.textContent).not.toContain("Answer the pending question to continue.");
+    const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+      (node) => node.textContent === "Continue",
+    );
+    expect(button).toBeDefined();
+    await act(() => button!.click());
+    expect(onContinue).toHaveBeenCalledExactlyOnceWith();
+  } finally {
+    await act(() => root.unmount());
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  }
 });

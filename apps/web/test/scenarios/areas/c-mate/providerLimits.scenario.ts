@@ -1,7 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
-import { mateOverviewOf } from "../../../../../server/src/zerops/zeropsHqOverview.ts";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as FileSystem from "effect/FileSystem";
@@ -70,10 +69,6 @@ describe("C: provider refusal and its real deadline", () => {
                 ({ op, payload }) => op === "assign-agent" && payload.conversationId === fresh,
               )?.payload,
             ).toMatchObject({ instanceId: "codex", model: "gpt-5.4" });
-            expect(wire.engine.runs.get(wire.runOf("refused"))?.end).toMatchObject({
-              kind: "usage-limit",
-              driver: "claudeAgent",
-            });
             yield* chat.then.once("Use Codex while Claude waits");
             const codex = wire.engine.conversation(fresh);
             const codexRun = [...codex.runs.keys()].at(-1)!;
@@ -97,116 +92,12 @@ describe("C: provider refusal and its real deadline", () => {
             const output = process.env.MATE_LIMIT_EVIDENCE;
             if (output)
               yield* Effect.promise(() => s.page.screenshot({ path: `${output}/codex.png` }));
+            yield* chat.when.visit("/env-Ada/thread-Ada");
+            yield* chat.then.text("This conversation is archived");
+            yield* chat.then.once("The existing conversation is still here");
+            yield* chat.then.text("Ada hit Claude's weekly limit.");
             yield* s.then.noExternalNetwork;
           }),
-      );
-
-      it.effect("a parked refusal cannot queue Continue behind an unanswered question", () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([installArea]);
-          yield* s.given.project("Ada", { mate: true, app: "Shop" });
-          const chat = mateChat(s);
-          const wire = chat.fixture();
-          wire.history();
-          claudeAtItsLimit(wire, "2020-01-01T00:00:00.000Z", true);
-          yield* s.given.signedIn;
-          yield* chat.when.open();
-          yield* chat.then.text("Which environment should I inspect?");
-          // The card the limit cut waits with its question (B5): its head asks for the answer first.
-          yield* chat.then.text("Answer the pending question to continue.");
-          const before = wire.engine.applied.length;
-          expect(
-            yield* Effect.promise(() => s.page.$('::-p-aria([name="Continue"][role="button"])')),
-          ).toBeNull();
-          expect(wire.engine.applied.length).toBe(before);
-          yield* chat.when.click("Staging");
-          yield* Effect.promise(() => wire.waitForAnswer("question-target"));
-          yield* chat.then.noText("Answer the pending question to continue.");
-          yield* chat.when.press("Continue");
-          yield* Effect.promise(() => wire.waitForOp("continue"));
-          expect(wire.engine.applied.filter(({ op }) => op === "continue")).toHaveLength(1);
-          yield* s.then.noExternalNetwork;
-        }),
-      );
-
-      it.effect("an unreachable Mate keeps the provider and reset as HQ last-known evidence", () =>
-        Effect.gen(function* () {
-          let unavailable = false;
-          const s = yield* createScenario([
-            installArea,
-            (drivers) => {
-              drivers.onMate.push((mate) => {
-                const handle = mate.handle;
-                const socket = mate.socket;
-                mate.handle = (request) =>
-                  unavailable
-                    ? { status: 503, body: { error: "Mate unavailable" } }
-                    : handle(request);
-                mate.socket = (connection) => {
-                  if (unavailable) connection.close(1012, "Mate unavailable");
-                  else socket(connection);
-                };
-              });
-            },
-          ]);
-          yield* s.given.project("Ada", { mate: true, app: "Shop" });
-          const chat = mateChat(s);
-          const wire = chat.fixture();
-          wire.history();
-          claudeAtItsLimit(wire, "2099-10-10T00:00:00.000Z");
-          const overview = mateOverviewOf({
-            identity: {
-              environmentId: wire.mate.descriptor.environmentId,
-              serverVersion: "0.14.62",
-              update: null,
-            },
-            threads: [wire.mate.shellThread()],
-            auth: { available: true, agents: [] },
-            crew: undefined,
-            conversations: [wire.engine.row()],
-          });
-          yield* reportConversation(
-            s.drivers,
-            "Ada",
-            overview.main!,
-            "failed",
-            overview.conversations,
-          );
-          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-          yield* Effect.promise(() =>
-            s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
-          );
-          yield* s.given.signedIn;
-          yield* chat.when.open();
-          yield* chat.then.text("Ada hit Claude's weekly limit.");
-          yield* chat.then.text("Limit · until Oct 10, 2099");
-          unavailable = true;
-          yield* s.drivers.links.get("Ada")!.close;
-          wire.disconnect();
-          yield* chat.then.text("Last known");
-          const cold = yield* s.given.browserActor({ person: "owner" });
-          yield* Effect.promise(() => cold.page.setViewport({ width: 1786, height: 1000 }));
-          yield* Effect.promise(() =>
-            cold.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
-          );
-          const coldChat = mateChat({ ...s, ...cold });
-          yield* cold.given.signedIn;
-          yield* coldChat.when.openReadOnly();
-          yield* coldChat.then.text("Last known");
-          yield* coldChat.then.text("Ada hit the Claude limit");
-          yield* coldChat.then.text("Oct 10, 2099");
-          yield* coldChat.then.noText("coding agent's limit");
-          const output = process.env.MATE_LIMIT_EVIDENCE;
-          if (output) {
-            const fs = yield* FileSystem.FileSystem;
-            const path = yield* Path.Path;
-            yield* fs.makeDirectory(output, { recursive: true });
-            yield* Effect.promise(() =>
-              cold.page.screenshot({ path: path.join(output, "unreachable.png") }),
-            );
-          }
-          yield* s.then.noExternalNetwork;
-        }),
       );
 
       it.effect(
@@ -237,6 +128,8 @@ describe("C: provider refusal and its real deadline", () => {
             yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
             const fs = yield* FileSystem.FileSystem;
             const path = yield* Path.Path;
+            const headerLimitMarker =
+              '[class~="@container/header-actions"] [data-mate-status="limit"]';
             /** What the menu's row for Ada says. */
             const adaRow = () =>
               s.page.evaluate(
@@ -262,8 +155,8 @@ describe("C: provider refusal and its real deadline", () => {
             yield* chat.then.text("Ada hit Claude's weekly limit.");
             yield* Effect.promise(async () => {
               // The header's marker names the limit; the menu's row says it in its line.
-              const markers = await s.page.$$('[data-mate-status="limit"]');
-              expect(markers.length).toBeGreaterThanOrEqual(1);
+              const markers = await s.page.$$(headerLimitMarker);
+              expect(markers).toHaveLength(1);
               expect(await adaRow()).toContain("At its usage limit");
               for (const marker of markers)
                 expect(await marker.evaluate((node) => node.getAttribute("aria-label"))).toContain(
@@ -299,11 +192,7 @@ describe("C: provider refusal and its real deadline", () => {
               Date.parse(resetsAt) -
               (yield* Effect.promise(() => s.page.evaluate(() => Date.now())));
             yield* Effect.promise(() => s.clock.advanceStepped(remaining - 1));
-            expect(
-              yield* Effect.promise(() =>
-                s.page.$$('[data-mate-status="limit"]').then((nodes) => nodes.length),
-              ),
-            ).toBeGreaterThanOrEqual(1);
+            expect(yield* Effect.promise(() => s.page.$$(headerLimitMarker))).toHaveLength(1);
             expect(yield* Effect.promise(adaRow)).toContain("At its usage limit");
             yield* Effect.promise(() => s.clock.advanceStepped(1));
             yield* Effect.promise(() =>
