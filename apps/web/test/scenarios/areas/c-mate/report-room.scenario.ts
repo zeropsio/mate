@@ -27,6 +27,7 @@ type Reading = {
 /** `arrivedAt`: the first reading after a reader away from the end scrolled to the report's card. */
 type Trace = { active: boolean; readings: Reading[]; arrivedAt?: number; grownAt?: number };
 
+// Retains the fake: these decode witnesses expect 640 px originals, while real report tiles request 154 px previews.
 describe("C: panel to report rooms", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     describe("Decision: one derivation per state; consumers never recompute it; no new domain concepts; mobile stays out (later).", () => {

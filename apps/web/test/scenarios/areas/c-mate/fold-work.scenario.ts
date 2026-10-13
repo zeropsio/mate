@@ -1,9 +1,71 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
+import {
+  CommandId,
+  ConversationId,
+  MATE_ENGINE_PROTOCOLS,
+  RuntimeItemId,
+  RuntimeTaskId,
+  type EngineConversationFrame,
+} from "@t3tools/contracts";
+import type { ScriptedStep } from "../../../../../server/integration/scriptedProviderDriver.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
+
+// Native OpenCode tool facts; the production SPI and engine derive their visible work.
+const tool = (
+  phase: "item.started" | "item.completed",
+  id: string,
+  command: string,
+  description: string,
+  output?: string,
+): ScriptedStep => ({
+  kind: "event",
+  event: {
+    type: phase,
+    itemId: RuntimeItemId.make(id),
+    payload: {
+      itemType: "command_execution",
+      status: phase === "item.completed" ? "completed" : "inProgress",
+      detail: command,
+      data: {
+        tool: "Bash",
+        state: {
+          status: phase === "item.completed" ? "completed" : "running",
+          input: { command, description },
+          output,
+        },
+        toolName: "Bash",
+        input: { command, description },
+        result: output,
+      },
+    },
+  },
+});
+const helper = (i: number, completed = false): ScriptedStep => ({
+  kind: "event",
+  event: completed
+    ? {
+        type: "task.completed",
+        payload: {
+          taskId: RuntimeTaskId.make(`fold-helper-${i}`),
+          taskType: "subagent",
+          status: "completed",
+        },
+      }
+    : {
+        type: "task.started",
+        payload: {
+          taskId: RuntimeTaskId.make(`fold-helper-${i}`),
+          taskType: "subagent",
+          title: `Helper ${i}`,
+        },
+      },
+});
 
 type Frame = {
   fold: string | null;
@@ -28,44 +90,114 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
     ] as const) {
       it.effect(`settlement preserves the assembled outer and inner reader (${mode})`, () =>
         Effect.gen(function* () {
-          const s = yield* createScenario([installArea]);
+          const s = yield* createScenario([], { mate: "real" });
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
           yield* s.given.project("Ada", { mate: true });
           const chat = mateChat(s);
-          const wire = chat.fixture();
-          wire.history("Watch this work settle");
-          const historyLength = mode === "following" ? 200 : 10;
-          for (let i = 0; i < historyLength; i++)
-            wire.exchange(
-              `Earlier ask ${i}`,
-              "Earlier conversation stays readable.\n\n".repeat(8) +
-                (mode === "focus/find" ? `[Earlier answer ${i}](#history-${i})\n\n` : ""),
-            );
-          wire.history("Fold this run", "fold-run");
-          wire.run("fold-run", "running");
-          wire.say(
-            Array.from({ length: 24 }, (_, i) => `Inspecting line ${i}.`).join("\n\n"),
-            "fold-run",
+          const { server, provider } = s.drivers.realMates.get("Ada")!;
+          const conversationId = ConversationId.make("thread-Ada");
+          const protocol = MATE_ENGINE_PROTOCOLS[0]!;
+          const caller = { subject: "scenario-person", environmentId: "scenario", epoch: 1 };
+          yield* server.engine.assignAgent(conversationId, {
+            instanceId: "opencode",
+            driver: "opencode",
+            model: "gpt-5.4",
+            profile: { kind: "mate" },
+          });
+          const changes = yield* Queue.unbounded<EngineConversationFrame>();
+          yield* server.engine.wire.subscribe({ protocol, conversationId }, caller).pipe(
+            Stream.runForEach((f) => Queue.offer(changes, f)),
+            Effect.forkScoped,
           );
-          const command = {
-            toolName: "Bash",
-            command: "printf build-log",
-            input: { command: "printf build-log", description: "Read the build log" },
-            rawOutput: {
-              content: Array.from({ length: 40 }, (_, i) => `Build log line ${i}`).join("\n"),
+          while ((yield* Queue.take(changes)).type !== "synchronized") {}
+          const send = (text: string, id: string) =>
+            server.engine.wire.send(
+              { protocol, conversationId, commandId: CommandId.make(id), text },
+              caller,
+            );
+          yield* provider.turn([]);
+          expect((yield* send("Watch this work settle", "history-intro"))._tag).toBe("Accepted");
+          while (true) {
+            const frame = yield* Queue.take(changes);
+            if (
+              frame.type === "changes" &&
+              frame.runs.some((run) => run.ordinal === 1 && run.state === "ended")
+            )
+              break;
+          }
+          const historyLength = mode === "following" ? 200 : 10;
+          for (let i = 0; i < historyLength; i++) {
+            yield* provider.turn([
+              {
+                kind: "say",
+                text:
+                  "Earlier conversation stays readable.\n\n".repeat(8) +
+                  (mode === "focus/find" ? `[Earlier answer ${i}](#history-${i})\n\n` : ""),
+              },
+            ]);
+            expect((yield* send(`Earlier ask ${i}`, `history-${i}`))._tag).toBe("Accepted");
+            while (true) {
+              const frame = yield* Queue.take(changes);
+              if (
+                frame.type === "changes" &&
+                frame.runs.some((r) => r.ordinal === i + 2 && r.state === "ended")
+              )
+                break;
+            }
+          }
+          const settlement = yield* Deferred.make<void>();
+          const commandOutput = Array.from({ length: 40 }, (_, i) => `Build log line ${i}`).join(
+            "\n",
+          );
+          yield* provider.turn([
+            {
+              kind: "say",
+              text: Array.from({ length: 24 }, (_, i) => `Inspecting line ${i}.`).join("\n\n"),
             },
-          };
-          wire.call("read-command", "done", command, "fold-run");
-          const landing = {
-            toolName: "Bash",
-            command: "echo landing",
-            input: { command: "echo landing", description: "Check the build" },
-          };
-          wire.call("landing-command", "running", landing, "fold-run");
-          for (let i = 0; i < 6; i++)
-            wire.work(`fold-helper-${i}`, "running", { title: `Helper ${i}` }, "fold-run");
+            tool(
+              "item.completed",
+              "read-command",
+              "printf build-log",
+              "Read the build log",
+              commandOutput,
+            ),
+            tool("item.started", "landing-command", "echo landing", "Check the build"),
+            ...Array.from({ length: 6 }, (_, i) => helper(i)),
+            { kind: "wait", until: settlement },
+            tool("item.completed", "landing-command", "echo landing", "Check the build", "landing"),
+            {
+              kind: "event",
+              event: {
+                type: "item.completed",
+                itemId: RuntimeItemId.make("checked-page"),
+                payload: {
+                  itemType: "mcp_tool_call",
+                  status: "completed",
+                  data: {
+                    tool: "zerops_zerops_browser",
+                    state: {
+                      status: "completed",
+                      input: { commands: [["open", "https://store.example/orders"]] },
+                      output: '{"url":"https://store.example/orders","steps":[]}',
+                    },
+                    toolName: "mcp__zerops__zerops_browser",
+                    input: { commands: [["open", "https://store.example/orders"]] },
+                    result: {
+                      content: [
+                        { type: "text", text: '{"url":"https://store.example/orders","steps":[]}' },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+            ...Array.from({ length: 6 }, (_, i) => helper(i, true)),
+            { kind: "say", text: "The fold is complete" },
+          ]);
+          expect((yield* send("Fold this run", "fold-run"))._tag).toBe("Accepted");
           yield* s.given.signedIn;
-          yield* chat.when.open("Ada", "Fold this run");
+          yield* s.when.menu.opensMate("Ada");
+          yield* s.then.conversation.showsMessage("Fold this run");
           yield* Effect.promise(() =>
             s.page.waitForFunction(
               () => {
@@ -190,26 +322,7 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
             }),
           );
           // Slot landing and panel/report shrink share this settlement; native clamps are sampled.
-          wire.call("landing-command", "done", { ...landing, output: "landing" }, "fold-run");
-          wire.call(
-            "checked-page",
-            "done",
-            {
-              toolName: "mcp__zerops__zerops_browser",
-              input: { commands: [["open", "https://store.example/orders"]] },
-            },
-            "fold-run",
-            {
-              step: "mcp",
-              result: {
-                toolName: "zerops_browser",
-                resultText: '{"url":"https://store.example/orders","steps":[]}',
-              },
-            },
-          );
-          for (let i = 0; i < 6; i++) wire.work(`fold-helper-${i}`, "completed");
-          wire.say("The fold is complete", "fold-run");
-          wire.run("fold-run", "completed");
+          yield* Deferred.succeed(settlement, undefined);
           yield* chat.then.text("The fold is complete");
           yield* Effect.promise(() =>
             s.page.waitForFunction(

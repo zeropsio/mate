@@ -1,16 +1,63 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
+import type { ScriptedStep } from "../../../../../server/integration/scriptedProviderDriver.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import * as Schema from "effect/Schema";
-import { OrchestrationThread, ZeropsLifecycle } from "@t3tools/contracts";
+import {
+  CommandId,
+  ConversationId,
+  MATE_ENGINE_PROTOCOLS,
+  RuntimeItemId,
+  type EngineConversationFrame,
+  OrchestrationThread,
+  ZeropsLifecycle,
+} from "@t3tools/contracts";
 import { reportAttention, reportConversation, startStageBuild } from "../b-menu/fake.ts";
 import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 
+// OpenCode's external tool result; canonical readers derive the failed dev-server card.
+const resultTool = (
+  id: string,
+  toolName: string,
+  input: Record<string, unknown>,
+  result: string,
+  failed = false,
+): ScriptedStep => ({
+  kind: "event",
+  event: {
+    type: "item.completed",
+    itemId: RuntimeItemId.make(id),
+    payload: {
+      itemType: toolName === "Bash" ? "command_execution" : "mcp_tool_call",
+      status: failed ? "failed" : "completed",
+      detail: typeof input.command === "string" ? input.command : undefined,
+      data: {
+        tool: toolName.startsWith("mcp__zerops__")
+          ? `zerops_${toolName.slice("mcp__zerops__".length)}`
+          : toolName,
+        state: {
+          status: failed ? "error" : "completed",
+          input,
+          ...(failed ? { error: result } : { output: result }),
+        },
+        toolName,
+        input,
+        result,
+      },
+    },
+  },
+});
+
 // These are reported provider facts; the fake never executes commands or git.
 describe("C: calls, results and crew actions", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // Retains the fake until the native browser source can emit evidence-only and explicit-null call results.
     // J06 · Z12/Z13/Z16–Z19/Z21/Z25/Z29/Z33: distinct calls retain their recorded outputs.
     it.effect("J06: concurrent calls stay readable through settlement and reload", () =>
       Effect.gen(function* () {
@@ -338,57 +385,77 @@ describe("C: calls, results and crew actions", () => {
     // J07 · Z14/Z18/Z22/Z27/Z28: partial work survives failure and Stop has its own meaning.
     it.effect("J07: failure preserves partial work and the next prompt can recover", () =>
       Effect.gen(function* () {
-        const s = yield* createScenario([installArea]);
+        const s = yield* createScenario([], { mate: "real" });
         yield* s.given.project("Ada", { mate: true });
         const chat = mateChat(s);
-        const wire = chat.fixture();
-        wire.history("Inspect the failing command", "run-one");
-        wire.lifecycle = yield* Schema.decodeEffect(ZeropsLifecycle)({
-          threadId: "thread-Ada",
-          envelope: {
-            phase: "develop-active",
-            environment: "development",
-            project: { id: "Ada", name: "Ada" },
-            services: [],
-            generated: wire.at(),
-          },
-          recentTools: [],
+        const { server, provider, gate } = s.drivers.realMates.get("Ada")!;
+        const conversationId = ConversationId.make("thread-Ada");
+        const protocol = MATE_ENGINE_PROTOCOLS[0]!;
+        const caller = { subject: "scenario-person", environmentId: "scenario", epoch: 1 };
+        yield* server.engine.assignAgent(conversationId, {
+          instanceId: "opencode",
+          driver: "opencode",
+          model: "gpt-5.4",
+          profile: { kind: "mate" },
         });
-        wire.run("run-one", "running");
-        wire.call("kept", "done", {
-          toolName: "Bash",
-          command: "printf partial-proof",
-          rawOutput: { content: "The successful partial result remains" },
-        });
-        wire.call(
-          "broken-dev",
-          "failed",
-          {
-            toolName: "mcp__zerops__zerops_dev_server",
-            input: { action: "start", hostname: "appdev" },
-          },
-          "run-one",
-          {
-            step: "mcp",
-            result: {
-              toolName: "zerops_dev_server",
-              resultText:
-                '{"action":"start","hostname":"appdev","running":false,"reason":"The dev server could not start","logTail":"Missing start script"}',
+        const changes = yield* Queue.unbounded<EngineConversationFrame>();
+        yield* server.engine.wire.subscribe({ protocol, conversationId }, caller).pipe(
+          Stream.runForEach((frame) => Queue.offer(changes, frame)),
+          Effect.forkScoped,
+        );
+        while ((yield* Queue.take(changes)).type !== "synchronized") {}
+        yield* provider.turn([
+          resultTool(
+            "kept",
+            "Bash",
+            { command: "printf partial-proof" },
+            "The successful partial result remains",
+          ),
+          resultTool(
+            "state",
+            "mcp__zerops__zerops_status",
+            {},
+            yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+              envelope: {
+                phase: "develop-active",
+                environment: "development",
+                project: { id: "Ada", name: "Ada" },
+                services: [],
+                generated: DateTime.formatIso(yield* DateTime.now),
+              },
+            }),
+          ),
+          resultTool(
+            "broken-dev",
+            "mcp__zerops__zerops_dev_server",
+            { action: "start", hostname: "appdev" },
+            '{"action":"start","hostname":"appdev","running":false,"reason":"The dev server could not start","logTail":"Missing start script"}',
+            true,
+          ),
+          { kind: "fail", message: "The agent process failed" },
+        ]);
+        expect(
+          (yield* server.engine.wire.send(
+            {
+              protocol,
+              conversationId,
+              commandId: CommandId.make("run-one"),
+              text: "Inspect the failing command",
             },
-          },
-        );
-        wire.run("run-one", "error", "The agent process failed");
-        yield* reportConversation(
-          s.drivers,
-          "Ada",
-          {
-            latestTurn: wire.latestTurn(),
-            session: { status: "error", lastError: "The agent process failed" },
-          },
-          "failed",
-        );
+            caller,
+          ))._tag,
+        ).toBe("Accepted");
+        while (true) {
+          const frame = yield* Queue.take(changes);
+          if (
+            frame.type === "changes" &&
+            frame.runs.some((run) => run.ordinal === 1 && run.state === "ended")
+          )
+            break;
+        }
         yield* s.given.signedIn;
-        yield* chat.when.open("Ada", "Inspect the failing command");
+        yield* s.when.menu.opensMate("Ada");
+        yield* s.then.conversation.showsMessage("Inspect the failing command");
         yield* chat.step(
           "one failure retains the successful partial work",
           chat.then.once("The agent process failed"),
@@ -403,32 +470,49 @@ describe("C: calls, results and crew actions", () => {
             yield* chat.when.press("Ask Ada to fix it");
             yield* chat.then.composerText("appdev");
             yield* chat.then.composerText("Missing start script");
-            expect(wire.sentTurnCount()).toBe(0);
+            expect(provider.sends).toHaveLength(1);
           }),
         );
         yield* chat.when.press("printf partial-proof. Show what it returned");
         yield* chat.then.text("The successful partial result remains");
+        yield* provider.turn([{ kind: "say", text: "The follow-up check succeeded" }]);
         yield* chat.when.send("Continue from the successful check");
         yield* chat.then.sent("Continue from the successful check");
-        yield* Effect.promise(() => wire.waitForTurn("Continue from the successful check"));
-        wire.run("recovery", "running");
-        wire.say("The follow-up check succeeded", "recovery");
-        wire.run("recovery", "completed");
+        const initial = yield* provider.received;
+        expect(initial.input.input).toBe("Inspect the failing command");
+        expect((yield* provider.received).input.input).toBe("Continue from the successful check");
         yield* chat.then.once("The follow-up check succeeded");
-        wire.history("Stop this inspection", "stop-run");
-        wire.run("stop-run", "running");
+        const running = yield* Deferred.make<void>();
+        yield* provider.turn([{ kind: "wait", until: running }]);
+        yield* chat.when.send("Stop this inspection");
+        expect((yield* provider.received).input.input).toBe("Stop this inspection");
+        yield* chat.then.control("Stop generation");
+        const stopReceipt = gate.answered((tag) => tag === "engine.stop");
         yield* chat.step(
           "Stop has a stopped outcome, separate from a crash",
           chat.when.press("Stop generation"),
         );
-        const stopped = yield* Effect.promise(() => wire.waitForOp("stop"));
-        expect(stopped.payload).toMatchObject({ conversationId: "thread-Ada" });
+        const stopped = yield* Effect.promise(() => stopReceipt);
+        expect(stopped).toMatchObject({ exit: { _tag: "Success", value: { _tag: "Accepted" } } });
+        while (true) {
+          const frame = yield* Queue.take(changes);
+          const run =
+            frame.type === "changes"
+              ? frame.runs.find((run) => run.ordinal === 3 && run.state === "ended")
+              : undefined;
+          if (run) {
+            expect(provider.sends.at(-1)?.threadId).toBe(initial.threadId);
+            expect(run.end?.kind).toBe("stopped");
+            break;
+          }
+        }
         yield* chat.then.text("Ada stopped");
         yield* chat.then.noButton("Create worktree");
         yield* chat.then.noButton("Pair");
         yield* s.then.noExternalNetwork;
       }),
     );
+    // Retains the fake until crew task/review/refusal facts have an external source arrangement.
     // J10 · Z10/Z11/Z28/Z30/Z31: crew actions address the chosen crewmate, ordinary chat stays reachable.
     it.effect("J10: a crewmate keeps its own conversation, routing and runs-on identity", () =>
       Effect.gen(function* () {
