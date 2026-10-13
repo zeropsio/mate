@@ -171,6 +171,54 @@ it.each([
   },
 );
 
+it.each(["startup failure", "empty collection"])(
+  "the strict gate preserves %s diagnostics and fails even when no tests are allowed",
+  (kind) => {
+    const root = NodeURL.fileURLToPath(new URL("../", import.meta.url));
+    const cache = NodePath.join(root, "node_modules/.cache");
+    NodeFS.mkdirSync(cache, { recursive: true });
+    const fixture = NodeFS.mkdtempSync(NodePath.join(cache, "chat-gate-startup-"));
+    const startupError = "The scenario bundle artifact is missing or does not match this checkout";
+    try {
+      NodeFS.writeFileSync(
+        NodePath.join(fixture, "vitest.config.ts"),
+        `export default { test: { passWithNoTests: true, include: ["${kind === "startup failure" ? "proof" : "missing"}.test.ts"], ${kind === "startup failure" ? 'globalSetup: ["./setup.ts"],' : ""} } };`,
+      );
+      NodeFS.writeFileSync(
+        NodePath.join(fixture, "setup.ts"),
+        `export default () => { throw new Error(${JSON.stringify(startupError)}); };`,
+      );
+      NodeFS.writeFileSync(
+        NodePath.join(fixture, "proof.test.ts"),
+        'import { it } from "vite-plus/test"; it("boundary behavior", () => {});',
+      );
+      const result = NodeChildProcess.spawnSync(
+        NodePath.join(root, "node_modules/.bin/vp"),
+        [
+          "test",
+          "run",
+          "--config",
+          "vitest.config.ts",
+          "--allowOnly=false",
+          "--reporter=default",
+          "--reporter",
+          NodePath.join(root, "scripts/chat-gate-reporter.ts"),
+        ],
+        { cwd: fixture, encoding: "utf8" },
+      );
+      const output = result.stdout + result.stderr;
+      expect(result.error).toBeUndefined();
+      expect(result.status, output).toBe(1);
+      if (kind === "startup failure") {
+        expect(output).toContain(`Error: ${startupError}`);
+        expect(output).not.toContain("Error: Chat contract gate requires passing cases");
+      }
+    } finally {
+      NodeFS.rmSync(fixture, { recursive: true, force: true });
+    }
+  },
+);
+
 it.each([
   { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", ids: ["A"] },
   { path: "apps/server/src/spi/replay/goldens.test.ts", ids: ["A"] },
