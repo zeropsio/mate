@@ -1,3 +1,4 @@
+import type { MessageId } from "@t3tools/contracts";
 import { onAccountLifetimeClose } from "../../zerops/accountLifetime";
 
 export type TimelineScrollMode = "following-end" | "anchoring-new-turn" | "free-scrolling";
@@ -98,21 +99,46 @@ export interface RememberedTimelinePosition {
   readonly atEnd: boolean;
 }
 
+interface RememberedTimelineView {
+  readonly position?: RememberedTimelinePosition;
+  readonly draftAnchorMessageId?: MessageId | null;
+}
 // Scoped thread keys keep separate environments independent. Bound the session cache.
-const rememberedTimelinePositions = new Map<string, RememberedTimelinePosition>();
+const rememberedTimelineViews = new Map<string, RememberedTimelineView>();
 // A reading position is account state: it goes with the account.
-onAccountLifetimeClose(() => rememberedTimelinePositions.clear());
+onAccountLifetimeClose(() => rememberedTimelineViews.clear());
 
 export function readTimelinePosition(threadKey: string) {
-  return rememberedTimelinePositions.get(threadKey);
+  return rememberedTimelineViews.get(threadKey)?.position;
 }
 
 export function rememberTimelinePosition(threadKey: string, position: RememberedTimelinePosition) {
-  rememberedTimelinePositions.delete(threadKey);
-  rememberedTimelinePositions.set(threadKey, position);
-  if (rememberedTimelinePositions.size > 100) {
-    const oldest = rememberedTimelinePositions.keys().next().value;
-    if (oldest !== undefined) rememberedTimelinePositions.delete(oldest);
+  rememberTimelineView(threadKey, { ...rememberedTimelineViews.get(threadKey), position });
+}
+
+// The draft and saved routes render the same conversation in different mounts. Carry the
+// send-time framing through that handover; the saved view clears the transfer after reading it.
+export function readDraftTimelineAnchor(threadKey: string | null): MessageId | null {
+  return threadKey === null
+    ? null
+    : (rememberedTimelineViews.get(threadKey)?.draftAnchorMessageId ?? null);
+}
+
+export function rememberDraftTimelineAnchor(threadKey: string, messageId: MessageId | null) {
+  const current = rememberedTimelineViews.get(threadKey);
+  if ((current?.draftAnchorMessageId ?? null) === messageId) return;
+  rememberTimelineView(threadKey, {
+    ...current,
+    draftAnchorMessageId: messageId,
+  });
+}
+
+function rememberTimelineView(threadKey: string, view: RememberedTimelineView) {
+  rememberedTimelineViews.delete(threadKey);
+  rememberedTimelineViews.set(threadKey, view);
+  if (rememberedTimelineViews.size > 100) {
+    const oldest = rememberedTimelineViews.keys().next().value;
+    if (oldest !== undefined) rememberedTimelineViews.delete(oldest);
   }
 }
 

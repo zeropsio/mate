@@ -166,6 +166,8 @@ import { type LegendListRef } from "@legendapp/list/react";
 import {
   getAnchoredTurnMetrics,
   readTimelinePosition,
+  readDraftTimelineAnchor,
+  rememberDraftTimelineAnchor,
   type TimelineScrollMode,
 } from "./chat/timelineScrollAnchoring";
 import {
@@ -1926,7 +1928,7 @@ function ConversationView(props: ChatViewProps) {
   const [timelineAnchor, setTimelineAnchor] = useState<{
     readonly threadKey: string | null;
     readonly messageId: MessageId | null;
-  }>({ threadKey: activeThreadKey, messageId: null });
+  }>(() => ({ threadKey: activeThreadKey, messageId: readDraftTimelineAnchor(activeThreadKey) }));
   if (timelineAnchor.threadKey !== activeThreadKey) {
     setTimelineAnchor({ threadKey: activeThreadKey, messageId: null });
   }
@@ -4444,7 +4446,9 @@ function ConversationView(props: ChatViewProps) {
   const showScrollDebouncer = useRef(
     new Debouncer(() => setShowScrollToBottom(true), { wait: 150 }),
   );
-  const timelineScrollModeRef = useRef<TimelineScrollMode>("following-end");
+  const timelineScrollModeRef = useRef<TimelineScrollMode>(
+    timelineAnchorMessageId === null ? "following-end" : "anchoring-new-turn",
+  );
   // State mirror of the follow mode refs. LegendList's maintainScrollAtEnd
   // re-pins on its own (independent of the refs), so the timeline needs a
   // render-visible flag to switch it off once the user scrolls away.
@@ -4812,7 +4816,11 @@ function ConversationView(props: ChatViewProps) {
       { type: "opened", atEnd: readTimelinePosition(routeThreadKey)?.atEnd !== false },
     );
     isAtEndRef.current = followEnd;
-    timelineScrollModeRef.current = followEnd ? "following-end" : "free-scrolling";
+    timelineScrollModeRef.current = followEnd
+      ? readDraftTimelineAnchor(routeThreadKey) !== null
+        ? "anchoring-new-turn"
+        : "following-end"
+      : "free-scrolling";
     liveFollowUserScrollGenerationRef.current = followEnd
       ? anchorUserScrollGenerationRef.current
       : null;
@@ -4825,6 +4833,15 @@ function ConversationView(props: ChatViewProps) {
     setShowScrollToBottom(!followEnd);
     // activeThreadRef resets transitively with the active thread.
   }, [activeThread?.id, routeThreadKey]);
+
+  useEffect(() => {
+    if (activeThreadKey !== null) {
+      rememberDraftTimelineAnchor(
+        activeThreadKey,
+        routeKind === "draft" ? timelineAnchorMessageId : null,
+      );
+    }
+  }, [activeThreadKey, routeKind, timelineAnchorMessageId]);
 
   useEffect(() => {
     setIsRevertingCheckpoint(false);

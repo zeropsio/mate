@@ -1,3 +1,4 @@
+import { MessageId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
   cssLengthToPx,
@@ -6,6 +7,8 @@ import {
   getRowBottom,
   judgeTimelinePlacing,
   readTimelinePosition,
+  readDraftTimelineAnchor,
+  rememberDraftTimelineAnchor,
   rememberTimelinePosition,
   resolveTimelineRestoreTarget,
   resolveTimelineScrollAnchor,
@@ -176,6 +179,19 @@ describe("remembered timeline positions", () => {
     expect(readTimelinePosition("scroll-test-a:unvisited")).toBeUndefined();
     rememberTimelinePosition("scroll-test-a:thread-1", following);
     expect(readTimelinePosition("scroll-test-a:thread-1")).toEqual(following);
+  });
+
+  it("a promoted draft carries its message framing without losing the reader's place", () => {
+    const key = "promotion:thread";
+    const messageId = MessageId.make("first-ask");
+    rememberDraftTimelineAnchor(key, messageId);
+    rememberTimelinePosition(key, reading);
+    expect(readDraftTimelineAnchor(key)).toBe(messageId);
+    expect(readDraftTimelineAnchor("other:thread")).toBeNull();
+    expect(readTimelinePosition(key)).toEqual(reading);
+    rememberDraftTimelineAnchor(key, null);
+    expect(readDraftTimelineAnchor(key)).toBeNull();
+    expect(readTimelinePosition(key)).toEqual(reading);
   });
 
   it("anchors on the row at the scroll offset", () => {
