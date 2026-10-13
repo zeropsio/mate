@@ -252,7 +252,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -279,7 +279,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1]
     steps:
       - name: Checkout
         uses: actions/checkout@v6

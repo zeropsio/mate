@@ -191,7 +191,10 @@ it("the Test verdict includes every scripts and HQ shard", () => {
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'failure')");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'skipped')");
   for (const name of ["test_scripts", "test_hq"]) {
-    expect(workflow.jobs[name].strategy.matrix.shard).toEqual([1, 2]);
+    expect(
+      workflow.jobs[name].strategy.matrix.shard,
+      "ASSERTION: short suites must not pay duplicate checkout and installation",
+    ).toEqual([1]);
     expect(workflow.jobs[name].strategy["fail-fast"]).toBe(false);
     expect(workflow.jobs[name].steps.at(-1).run).toContain(
       "--shard ${{ matrix.shard }}/${{ strategy.job-total }}",
