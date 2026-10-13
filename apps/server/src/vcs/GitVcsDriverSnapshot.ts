@@ -39,7 +39,7 @@ git check-ref-format "$ref" || fail 'invalid checkpoint ref'
 [ -z "$(git rev-parse --show-prefix)" ] || fail 'snapshot requires repository root'
 if git config --get extensions.partialClone >/dev/null 2>&1 || git config --get-regexp 'remote\..*\.promisor' >/dev/null 2>&1; then fail 'unsupported partial clone'; fi
 scratch=$(mktemp -d .git/mate-snapshot-XXXXXXXX)
-trap 'rm -rf -- "$scratch"' EXIT
+trap 'rm -rf -- "$scratch"' 0
 trap 'exit 1' HUP INT TERM
 check_objects() {
   [ "$(git show -s --format=%P "$1")" = '' ] || fail 'checkpoint is not a parentless snapshot'
@@ -59,30 +59,29 @@ if [ -n "$existing" ]; then
 fi
 if [ "$mode" = resolve ]; then printf 'absent\n'; return; fi
 if git show-ref --verify --quiet "$ref"; then fail 'existing checkpoint ref is not a commit'; fi
-dependency_pattern='(^|/)(node_modules|\.venv|venv|__pycache__|\.next|\.nuxt|\.svelte-kit|\.turbo|\.cache)/'
 # Dependencies leave every list before it counts against the budget: on a tree
-# without a .gitignore their names alone pass it. The filter's own status is
-# kept (grep: 0 kept some, 1 kept none, more is a failure), so a filter that
-# fails mid-pipeline refuses the snapshot rather than recording a short one.
+# without a .gitignore their names alone pass it. Git applies the exclusions
+# and succeeds for both nonempty and empty selections; any enumeration or
+# filtering failure refuses the snapshot rather than recording a short one.
 bounded_list() {
-  (set +e; "$@"; printf '%s\n' "$?" > "$scratch/status") | (set +e; grep -zvE "$dependency_pattern"; printf '%s\n' "$?" > "$scratch/filter") | head -c "$((max_names + 1))" > "$scratch/part"
+  (set +e; "$@" -- ':(top,glob,exclude)**/node_modules/**' ':(top,glob,exclude)**/.venv/**' ':(top,glob,exclude)**/venv/**' ':(top,glob,exclude)**/__pycache__/**' ':(top,glob,exclude)**/.next/**' ':(top,glob,exclude)**/.nuxt/**' ':(top,glob,exclude)**/.svelte-kit/**' ':(top,glob,exclude)**/.turbo/**' ':(top,glob,exclude)**/.cache/**'; printf '%s\n' "$?" > "$scratch/status") | head -c "$((max_names + 1))" > "$scratch/part"
   [ "$(wc -c < "$scratch/part")" -le "$max_names" ] || fail 'candidate path byte limit exceeded'
-  [ "$(cat "$scratch/status")" = 0 ] || fail 'candidate enumeration failed'
-  [ "$(cat "$scratch/filter")" -le 1 ] || fail 'candidate filtering failed'
+  [ "$(cat "$scratch/status")" = 0 ] || fail 'candidate enumeration or filtering failed'
 }
 # Untracked dependency and build directories are not walked at all — those of
 # the other ecosystems too (vendor/, target/), which stay recorded where tracked.
-bounded_list git ls-files -z --cached --others --exclude-standard --exclude=node_modules/ --exclude=.venv/ --exclude=venv/ --exclude=__pycache__/ --exclude=.next/ --exclude=.nuxt/ --exclude=.svelte-kit/ --exclude=.turbo/ --exclude=.cache/ --exclude=vendor/ --exclude=target/
-cat "$scratch/part" > "$scratch/all"
+set -- git ls-files -z --cached --others --deduplicate --exclude-standard --exclude=node_modules/ --exclude=.venv/ --exclude=venv/ --exclude=__pycache__/ --exclude=.next/ --exclude=.nuxt/ --exclude=.svelte-kit/ --exclude=.turbo/ --exclude=.cache/ --exclude=vendor/ --exclude=target/
 if git rev-parse --verify --quiet HEAD >/dev/null; then
-  bounded_list git ls-tree -r -z --name-only HEAD
-  cat "$scratch/part" >> "$scratch/all"
+  set -- "$@" --with-tree=HEAD
 fi
-sort -zu "$scratch/all" > "$scratch/paths"
-[ "$(wc -c < "$scratch/paths")" -le "$max_names" ] || fail 'candidate path byte limit exceeded'
+bounded_list "$@"
+cat "$scratch/part" > "$scratch/paths"
 [ "$(tr -cd '\000' < "$scratch/paths" | wc -c)" -le "$max_paths" ] || fail 'candidate file limit exceeded'
 if [ -n "$baseline" ]; then
-  bounded_list git ls-tree -r -z --name-only "$baseline"
+  export GIT_INDEX_FILE="$PWD/$scratch/baseline-index"
+  git read-tree "$baseline" || fail 'cannot inspect baseline tree'
+  bounded_list git ls-files -z --cached --deduplicate
+  unset GIT_INDEX_FILE
   set +e
   git check-ignore -z --stdin < "$scratch/part" > "$scratch/ignored"
   ignore_status=$?

@@ -558,15 +558,15 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
         const tmp = yield* makeTmpDir();
         yield* initRepoWithCommit(tmp);
         yield* writeTextFile(NodePath.join(tmp, "app.js"), "source");
-        const realGrep = NodeChildProcess.execFileSync("sh", ["-c", "command -v grep"])
+        const realGit = NodeChildProcess.execFileSync("sh", ["-c", "command -v git"])
           .toString()
           .trim();
         const bin = yield* makeTmpDir();
         yield* writeTextFile(
-          NodePath.join(bin, "grep"),
-          `#!/bin/sh\ncase "$1" in -zvE) cat >/dev/null; exit 2;; esac\nexec ${realGrep} "$@"\n`,
+          NodePath.join(bin, "git"),
+          `#!/bin/sh\ncase "$1" in ls-files) exit 2;; esac\nexport GIT_EXEC_PATH="$(dirname "$0")"\nexec ${realGit} "$@"\n`,
         );
-        NodeFS.chmodSync(NodePath.join(bin, "grep"), 0o755);
+        NodeFS.chmodSync(NodePath.join(bin, "git"), 0o755);
         const path = process.env.PATH;
         process.env.PATH = `${bin}:${path ?? ""}`;
         const store = yield* CheckpointStore.CheckpointStore;
@@ -576,7 +576,7 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
             checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/filter/before"),
           }),
         ).pipe(Effect.ensuring(Effect.sync(() => (process.env.PATH = path))));
-        expect(String(result)).toContain("candidate filtering failed");
+        expect(String(result)).toContain("candidate enumeration or filtering failed");
       }),
     );
   });
