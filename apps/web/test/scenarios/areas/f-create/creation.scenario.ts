@@ -19,7 +19,15 @@ describe("F: creation through the hosted client", () => {
         yield* c.newProject;
         yield* c.submitProject;
         yield* c.text("Nova");
-        yield* s.then.conversation.appears;
+        yield* Effect.promise(async () => {
+          const composer = await s.page
+            .waitForSelector('[role="textbox"]', { visible: true, timeout: 15_000 })
+            .catch(() => null);
+          expect(
+            composer,
+            "ASSERTION: a new Mate's known HQ ownership admits its composer before HQ's overview",
+          ).not.toBeNull();
+        });
         yield* c.acceptedOnce("Garden - Nova");
         yield* s.then.menu.row("Garden").appears();
         yield* s.then.noExternalNetwork;

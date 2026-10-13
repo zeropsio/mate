@@ -241,7 +241,11 @@ import { openCrewView } from "../zerops/crew/crewTab";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveComposerPlaceholders } from "../composerPlaceholder";
-import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
+import {
+  useEnvironmentProjectRef,
+  useZeropsAgentAuth,
+  useZeropsLifecycle,
+} from "../zerops/useZeropsFeeds";
 import { useDeployBuilds, useRunningBuildDemand } from "../zerops/activity/useDeployBuilds";
 import {
   useZeropsChangeLandedEvents,
@@ -3196,9 +3200,9 @@ function ConversationView(props: ChatViewProps) {
   });
   // Whose Mate it is, as HQ records it: a colleague's is read along, never written to.
   const admissionMate = zeropsMateAt(zeropsMates, environmentId);
-  const admissionPeople = useHqProjectPerson(
-    admissionMate.kind === "mate" ? (admissionMate.mate.projectId ?? "") : "",
-  );
+  // Its descriptor places a new Mate before HQ's overview can name its environment.
+  const admissionProject = useEnvironmentProjectRef(environmentId);
+  const admissionPeople = useHqProjectPerson(admissionProject?.projectId ?? "");
   const admissionOwner =
     zeropsViewerSubject === undefined
       ? undefined
