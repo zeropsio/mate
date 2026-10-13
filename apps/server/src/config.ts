@@ -99,7 +99,8 @@ export class ServerConfig extends Context.Service<
     readonly baseDir: string;
     /**
      * The account's home directory, where provider CLIs, zcp and agent logins keep their files.
-     * The one source for it in the server graph: nothing below reads `os.homedir()` or `HOME`.
+     * The one source for it in the server graph: nothing below reads `os.homedir()` or `HOME`, and
+     * every child the server starts sees it as its `HOME` (`process/childHome.ts`).
      */
     readonly homeDir: string;
     readonly staticDir: string | undefined;

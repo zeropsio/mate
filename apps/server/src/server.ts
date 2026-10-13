@@ -103,6 +103,7 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import { authHttpApiLayer, environmentAuthenticatedAuthLayer } from "./auth/http.ts";
 import * as ZeropsGitSpawner from "./zerops/ZeropsGitSpawner.ts";
+import * as ChildHome from "./process/childHome.ts";
 import * as ZeropsRepositorySource from "./zerops/ZeropsRepositorySource.ts";
 import { zeropsHttpApiLayer, zeropsSetupRouteLayer } from "./zerops/http.ts";
 import * as ReplayMarkers from "./auth/replayMarkers.ts";
@@ -779,6 +780,7 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
         Layer.provideMerge(ZeropsGitSpawner.layer),
         Layer.provideMerge(ZeropsWorkspaceObserver.layer),
         Layer.provideMerge(ZeropsRepositorySource.layer),
+        Layer.provideMerge(ChildHome.layer),
         Layer.provideMerge(PlatformServicesLive),
       );
     }),
