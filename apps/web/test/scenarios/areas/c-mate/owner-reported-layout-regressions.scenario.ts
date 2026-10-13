@@ -529,7 +529,7 @@ describe("owner-reported layout regressions", () => {
     describe("Decision: restore the expected end of the list; no other menu changes.", () => {
       describe("B: list end spacing", () => {
         it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-          it.effect("the last project ends one regular row gap above the New project divider", () =>
+          it.effect("the last project keeps one regular row gap above the list's foot", () =>
             Effect.gen(function* () {
               const s = yield* menuScenario();
               yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
