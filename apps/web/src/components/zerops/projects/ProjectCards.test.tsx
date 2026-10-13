@@ -34,6 +34,7 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 import { CardMate, ProjectCards } from "./ProjectCards";
+import { overviewKeeps } from "./projectsView.logic";
 import { cardMateReading } from "./projectCard.logic";
 import { entry, FLOW_PROPS, item, placed } from "./flowTestFixtures";
 
@@ -127,5 +128,69 @@ it("an unrelated Mate attention update leaves the other Projects row unchanged",
   } finally {
     await act(async () => root.unmount());
     container.remove();
+  }
+});
+
+it.each([
+  ["waiting", undefined],
+  ["mine", undefined],
+  ["waiting", "mine", undefined],
+  ["mine", "waiting", "mine", "waiting", undefined],
+  ["waiting", undefined, "mine", undefined],
+] as const)("after any sequence of filter switches, All lists every item", async (...sequence) => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  // A fixed viewport does not resize when filtering replaces the row's children.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const groups = ["Ada", "Bea", "Cara", "Dana"].map((name) =>
+    entry([item(name, placed(name.toLowerCase(), name))]),
+  );
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const render = (show: "waiting" | "mine" | undefined) => {
+    const kept = groups.filter((_, index) =>
+      overviewKeeps({ show, waits: index === 1, mine: index === 2 }),
+    );
+    root.render(<ProjectCards focusGroup={undefined} groups={kept} props={FLOW_PROPS} />);
+  };
+  const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(800);
+  const total = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return Math.max(800, this.querySelectorAll("[data-zerops-group]").length * 396);
+  });
+  try {
+    await act(async () => render(undefined));
+    for (const show of sequence) {
+      await act(async () => render(show));
+      if (show !== undefined) {
+        // Chrome's scroll snap can retain this card when the full set returns.
+        container.querySelector<HTMLElement>("[data-zerops-surface=project-cards]")!.scrollLeft =
+          396;
+      } else {
+        expect(
+          [...container.querySelectorAll("[data-zerops-group]")].map((card) =>
+            card.getAttribute("data-zerops-group"),
+          ),
+        ).toEqual(["ada", "bea", "cara", "dana"]);
+        const row = container.querySelector<HTMLElement>("[data-zerops-surface=project-cards]")!;
+        expect(row.scrollLeft, "All starts with its first item").toBe(0);
+        expect(
+          container.querySelector(".ov-rail")!.hasAttribute("data-can-right"),
+          "All keeps every offscreen item reachable",
+        ).toBe(true);
+      }
+    }
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    width.mockRestore();
+    total.mockRestore();
   }
 });

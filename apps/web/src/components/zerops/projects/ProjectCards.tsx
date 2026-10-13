@@ -62,7 +62,13 @@ const CARD_STEP = 380 + 16;
  * The row of cards: one width each, side by side; past the window's edge the row scrolls sideways
  * under a fade, with a round back and forward button on the side there is more.
  */
-function CardRow({ children }: { readonly children: ReactNode }) {
+function CardRow({
+  children,
+  contentsKey,
+}: {
+  readonly children: ReactNode;
+  readonly contentsKey: string;
+}) {
   const row = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ left: false, right: false });
   const measure = useCallback(() => {
@@ -76,7 +82,9 @@ function CardRow({ children }: { readonly children: ReactNode }) {
   }, []);
   useLayoutEffect(() => {
     const element = row.current;
+    // A different set starts at its first card; scroll snap must not retain a filtered card.
     if (element === null) return;
+    element.scrollLeft = 0;
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(element);
@@ -85,7 +93,7 @@ function CardRow({ children }: { readonly children: ReactNode }) {
       observer?.disconnect();
       element.removeEventListener("scroll", measure);
     };
-  }, [measure]);
+  }, [measure, contentsKey]);
   const step = (direction: -1 | 1) => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     row.current?.scrollBy({ left: direction * CARD_STEP, behavior: reduced ? "auto" : "smooth" });
@@ -536,7 +544,7 @@ export function ProjectCards<T>({
   }, [focusGroup, shown, orderKey]);
   if (groups.length === 0) return null;
   return (
-    <CardRow>
+    <CardRow contentsKey={orderKey}>
       {groups.map((entry) => (
         <ProjectCard
           entry={entry}
