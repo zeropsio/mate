@@ -11,7 +11,7 @@ import {
   type PlaceAddresses,
 } from "@t3tools/client-runtime/data";
 import { Atom, AtomRegistry } from "effect/reactivity";
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 
 import { AccountDataContext, type AccountData } from "../ZeropsAccountData";
 
@@ -57,9 +57,10 @@ export function withPlaceAddresses(
     demandDetail: () => () => {},
     retry: () => {},
   } as Pick<AccountData, "data" | "orgId" | "demandDetail" | "retry"> as AccountData;
-  return (children) => (
-    <RegistryContext.Provider value={registry}>
-      <AccountDataContext.Provider value={account}>{children}</AccountDataContext.Provider>
-    </RegistryContext.Provider>
-  );
+  return (children) =>
+    createElement(
+      RegistryContext.Provider,
+      { value: registry },
+      createElement(AccountDataContext.Provider, { value: account }, children),
+    );
 }
