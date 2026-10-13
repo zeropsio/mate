@@ -25,6 +25,8 @@ export interface HqMateOwner {
 export interface HqProjectPeople {
   /** HQ names an owner of it (`ownerUserId`), whether or not it sends their person record. */
   readonly owned: boolean | undefined;
+  /** The Chief of this Mate's person and whether the reader is that person. */
+  readonly chief?: { readonly projectId: string | null; readonly mine: boolean | undefined };
   readonly owner: HqMateOwner | null;
   /** Its Mate waits on the reader, as HQ says (`waitsOnViewer`). */
   readonly waitsOnViewer: boolean | undefined;
@@ -59,6 +61,11 @@ export const hqProjectPeople: Projection<string, Readonly<Record<string, HqProje
           [
             projectId,
             {
+              ...(person?.chiefProjectId === undefined
+                ? {}
+                : {
+                    chief: { projectId: person.chiefProjectId, mine: person.mine },
+                  }),
               owned: person?.ownerUserId === undefined ? undefined : person.ownerUserId !== null,
               owner: ownerOf(read, orgId, person?.ownerUserId),
               waitsOnViewer: person?.waitsOnViewer,
@@ -82,6 +89,11 @@ export const hqProjectPerson: Projection<MateProjectKey, HqProjectPeople | undef
     if (placement.kind !== "known") return undefined;
     const { person, signedInNow, everSignedIn } = placement.value;
     return {
+      ...(person?.chiefProjectId === undefined
+        ? {}
+        : {
+            chief: { projectId: person.chiefProjectId, mine: person.mine },
+          }),
       owned: person?.ownerUserId === undefined ? undefined : person.ownerUserId !== null,
       owner: ownerOf(read, orgId, person?.ownerUserId),
       waitsOnViewer: person?.waitsOnViewer,

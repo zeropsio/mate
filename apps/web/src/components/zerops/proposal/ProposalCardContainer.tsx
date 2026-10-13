@@ -6,7 +6,12 @@
  * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
  * Approve twice; an approval is carried out only once HQ kept it.
  */
-import { NOT_READ_VAULT, vaultAtom } from "@t3tools/client-runtime/data";
+import {
+  NOT_READ_VAULT,
+  vaultAtom,
+  hqProjectPerson,
+  type HqProjectPeople,
+} from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
@@ -18,11 +23,10 @@ import { sendOutcomeOf } from "~/hooks/useComposerSendRequests";
 import { newCommandId, newMessageId } from "~/lib/utils";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useOpenMate } from "~/zerops/useOpenMate";
-import { useDetailDemand } from "~/zerops/ZeropsAccountData";
+import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 import { useKnownMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { recordVaultWrite } from "~/zerops/vaultTurnNotes";
-import { useOwnChief } from "~/zerops/ownChief";
 import { useProposalDecision } from "~/zerops/proposalRecord";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
@@ -37,6 +41,8 @@ import {
   proposalStage,
   type ProposalDecision,
 } from "./proposal.logic";
+
+const UNKNOWN_PERSON = Atom.make<HqProjectPeople | undefined>(undefined);
 
 const UNREAD = Atom.make(NOT_READ_VAULT);
 
@@ -72,10 +78,18 @@ function Proposal({
   const { decision, known, runningHere, unreachable, record } = useProposalDecision(
     proposal.id,
     home?.projectId,
+    proposal.kind,
   );
   const stage = proposalStage(decision, runningHere);
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
-  const chief = chiefMessageTarget(useOwnChief());
+  const person = useProjection(hqProjectPerson, home === undefined ? null : home, UNKNOWN_PERSON);
+  const chief = chiefMessageTarget(person?.chief?.projectId);
+  const readOnlyChief = proposal.kind === "chief.message" && person?.chief?.mine !== true;
+  const readOnlyReason = readOnlyChief
+    ? person?.chief === undefined
+      ? "Finding this Mate's Chief…"
+      : "Only this Mate's person can ask their Chief."
+    : undefined;
   const proposer = useKnownMate(environmentId);
   const directory = useZeropsMateDirectory();
   const recipient = useMemo(
@@ -116,7 +130,7 @@ function Proposal({
         : !known
           ? "Reading what was decided…"
           : proposal.kind === "chief.message" && chief.kind === "unknown"
-            ? "Finding your Chief…"
+            ? "Finding this Mate's Chief…"
             : envWrite !== null && "refused" in envWrite
               ? envWrite.refused
               : undefined;
@@ -163,7 +177,14 @@ function Proposal({
   };
 
   const approve = async () => {
-    if (busy || stage !== "open" || home === undefined || approveBlocked !== undefined) return;
+    if (
+      readOnlyChief ||
+      busy ||
+      stage !== "open" ||
+      home === undefined ||
+      approveBlocked !== undefined
+    )
+      return;
     setBusy(true);
     try {
       // Nothing runs before HQ kept the approval: no card anywhere offers it twice.
@@ -232,6 +253,7 @@ function Proposal({
   return (
     <ProposalCard
       approveBlocked={approveBlocked}
+      readOnlyReason={readOnlyReason}
       failure={decision?.state === "failed" ? decision.message : undefined}
       mateName={proposer?.name ?? "Your Mate"}
       onApprove={() => void approve()}
@@ -244,7 +266,7 @@ function Proposal({
             : undefined
       }
       onSetUpChief={
-        proposal.kind === "chief.message" && chief.kind === "none"
+        proposal.kind === "chief.message" && chief.kind === "none" && !readOnlyChief
           ? () => void navigate({ to: "/chief" })
           : undefined
       }

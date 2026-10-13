@@ -190,6 +190,15 @@ describe("ProposalCard", () => {
     expect(setUp).toEqual(["set up"]);
   });
 
+  it("a reader who is not the Chief's person sees no Approve or Decline", async () => {
+    const { container } = await mount({
+      proposal: askChief,
+      readOnlyReason: "Only this Mate's person can ask their Chief.",
+    });
+    expect(buttons(container)).toEqual(["schema diff"]);
+    expect(container.textContent).toContain("Only this Mate's person can ask their Chief.");
+  });
+
   it("an ask sent to the Chief opens it", async () => {
     const opened: string[] = [];
     const { container } = await mount({

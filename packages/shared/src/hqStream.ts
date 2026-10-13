@@ -282,6 +282,8 @@ export const HqPersonFacts = Schema.Struct({
   mayWrite: Schema.Boolean,
   mine: Schema.Boolean,
   ownerUserId: Schema.NullOr(Schema.String),
+  /** This Mate's person's registered Chief; absent from an older HQ. */
+  chiefProjectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   waitsOnViewer: Schema.Boolean,
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),

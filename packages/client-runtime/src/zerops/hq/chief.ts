@@ -45,6 +45,7 @@ const DecisionsAnswer = Schema.Struct({ decisions: Schema.Array(HqProposalDecisi
 export interface HqProposalDecisionWrite {
   /** The project of the conversation the card is in. */
   readonly projectId: string;
+  readonly kind?: string;
   readonly decision: "approved" | "declined";
   readonly outcome?: "done" | "failed";
   /** A failed approval's reason, in the platform's words. */

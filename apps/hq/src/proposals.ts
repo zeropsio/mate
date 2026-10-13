@@ -14,6 +14,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
+import { Chiefs } from "./chief.ts";
 import { ChiefRefused, confirmingChiefRefusal } from "./chiefRefused.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
@@ -29,6 +30,7 @@ const Words = Schema.String.check(Schema.isMaxLength(4000));
 /** A decision as a person's client asks HQ to record it. */
 export const ProposalAsk = Schema.Struct({
   projectId: Schema.String,
+  kind: Schema.optionalKey(Schema.String),
   decision: Schema.Literals(["approved", "declined"]),
   outcome: Schema.optionalKey(Schema.Literals(["done", "failed"])),
   words: Schema.optionalKey(Words),
@@ -133,6 +135,7 @@ export const proposalDecisionsLayer = Layer.effect(
     const sql = yield* SqlClient.SqlClient;
     const leader = yield* Leader;
     const roles = yield* Roles;
+    const chiefs = yield* Chiefs;
     const columns = sql.literal(`id, project_id, decision, outcome, words, decided_by,
       to_char(decided_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS decided_at`);
     const one = (id: string) =>
@@ -167,6 +170,12 @@ export const proposalDecisionsLayer = Layer.effect(
             if (!decision.allow) {
               return yield* new ChiefRefused({ code: "forbidden", reason: decision.reason });
             }
+            yield* chiefs.authorizeProposal(
+              userId,
+              id,
+              ask.projectId,
+              ask.kind === "chief.message",
+            );
             return yield* leader.write(
               Effect.gen(function* () {
                 // Two answers to one card are decided one after the other, each on what the one

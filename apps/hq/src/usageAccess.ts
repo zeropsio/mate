@@ -38,3 +38,45 @@ export const usageOwner = (input: {
         input.everSignedIn.codex ??
         (input.runsWithoutSignIn ? (input.madeBy ?? input.standupRequestedBy) : null));
 };
+
+/** One owner derivation for navigation and a Mate's Chief authority. */
+export function mateOwner(input: {
+  readonly facts: OrgView;
+  readonly projectId: string;
+  readonly mate?:
+    | {
+        readonly signers?: Readonly<Record<string, string>>;
+        readonly madeBy: string | null;
+        readonly standupRequestedBy: string | null;
+      }
+    | null
+    | undefined;
+  readonly overview?: import("./mateOverviews.ts").MateOverviewEntry["overview"] | undefined;
+}) {
+  const everSignedIn: Record<string, string> = {};
+  for (const key of new Set([
+    ...Object.keys(input.mate?.signers ?? {}),
+    ...Object.keys(input.overview?.logins ?? {}),
+  ])) {
+    const login = input.overview?.logins[key];
+    const user =
+      (login?.token ? undefined : login?.signedInBy) ??
+      login?.lastSignedInBy ??
+      input.mate?.signers?.[key];
+    if (
+      typeof user === "string" &&
+      user.length > 0 &&
+      !input.facts.members.some((member) => member.kind === "token" && member.userId === user)
+    ) {
+      everSignedIn[key] = user;
+    }
+  }
+  return usageOwner({
+    facts: input.facts,
+    projectId: input.projectId,
+    everSignedIn,
+    runsWithoutSignIn: input.overview?.identity.runsWithoutSignIn === true,
+    madeBy: input.mate?.madeBy ?? null,
+    standupRequestedBy: input.mate?.standupRequestedBy ?? null,
+  });
+}

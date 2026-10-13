@@ -11,7 +11,12 @@ const ORG = "org";
 const SCOPES: ReadonlyArray<ScopeKey> = [placementsScope(ORG), hqPeopleScope(ORG)];
 const revision = { kind: "hq", incarnation: "i", revision: 1 } as const;
 
-const person = (fields: { ownerUserId: string | null; waitsOnViewer: boolean }) => ({
+const person = (fields: {
+  ownerUserId: string | null;
+  waitsOnViewer: boolean;
+  chiefProjectId?: string | null;
+  mine?: boolean;
+}) => ({
   role: "DEVELOPER",
   mayWrite: true,
   mine: false,
@@ -98,6 +103,55 @@ const removed = apply(read, [
 const people = (state: AccountState) => hqProjectPeople.derive(readsOfState(state), ORG);
 
 describe("hqProjectPeople", () => {
+  it("a Mate's Chief identity arrives from HQ after first paint and never from its reader", () => {
+    expect(people(read).ada?.chief).toBeUndefined();
+    const next = apply(read, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: generations,
+        reset: false,
+        rows: [
+          {
+            ...placement(
+              "ada",
+              {
+                ownerUserId: "u-jan",
+                waitsOnViewer: false,
+                chiefProjectId: "jans-chief",
+                mine: false,
+              },
+              {},
+            ),
+            revision: { ...revision, revision: 2 },
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(people(next).ada?.chief).toEqual({ projectId: "jans-chief", mine: false });
+    const none = apply(next, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: generations,
+        reset: false,
+        rows: [
+          {
+            ...placement(
+              "ada",
+              { ownerUserId: "u-jan", waitsOnViewer: false, chiefProjectId: null, mine: false },
+              {},
+            ),
+            revision: { ...revision, revision: 3 },
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(people(none).ada?.chief).toEqual({ projectId: null, mine: false });
+  });
+
   it("retains an owner's identity and picture with an unknown name", () => {
     const person = hqPersonFamily.hq!.decode(
       { name: 42, avatarUrl: "avatar", clientUserId: "member" },

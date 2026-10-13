@@ -7,7 +7,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 
-import { rowsWhere } from "../test/harness/mates.ts";
+import { mateInApp, rowsWhere } from "../test/harness/mates.ts";
 import { sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { FakeWorld } from "../test/harness/zeropsFake.ts";
@@ -381,6 +381,117 @@ describe("the Chief", () => {
         );
         assert.strictEqual(statuses[0], 200);
         assert.strictEqual(statuses.at(-1), 429);
+      }),
+    );
+
+    it.effect(
+      "a Mate's Chief offer binds its person and recipient, and is rechecked on approval",
+      () =>
+        Effect.gen(function* () {
+          const { call, core, dev, owner } = yield* running;
+          const plain = core.fake.projects.find((project) => project.id === "P_PLAIN")!;
+          core.fake.projects.splice(core.fake.projects.indexOf(plain), 1, {
+            ...plain,
+            userRoles: [{ clientUserId: "C-dev", roleCode: "OWNER" }],
+          });
+          const { credential } = yield* mateInApp(
+            call,
+            core.fake,
+            owner,
+            "P_PLAIN",
+            "Chief identity",
+          );
+          const auth = { headers: { authorization: `Mate ${credential}` } };
+          assert.deepStrictEqual((yield* call("GET", "/api/mate/chief", auth)).body, {
+            chief: null,
+          });
+          assert.strictEqual((yield* call("POST", "/api/mate/chief/proposals", auth)).status, 403);
+          assert.strictEqual(
+            (yield* call("POST", "/api/chief", {
+              session: dev,
+              body: { projectId: "P_CHIEF" },
+            })).status,
+            200,
+          );
+          assert.deepStrictEqual((yield* call("GET", "/api/mate/chief", auth)).body, {
+            chief: { projectId: "P_CHIEF", ownerUserId: "dev" },
+          });
+          const offered = yield* call("POST", "/api/mate/chief/proposals", auth);
+          assert.strictEqual(offered.status, 200);
+          const { id } = offered.body as { readonly id: string };
+          const body = { projectId: "P_PLAIN", kind: "chief.message", decision: "approved" };
+          // Even relabeling a registered offer cannot make the reader its person.
+          assert.strictEqual(
+            (yield* call("PUT", `/api/proposals/${id}`, {
+              session: owner,
+              body: { ...body, kind: "mate.message" },
+            })).status,
+            403,
+          );
+          assert.strictEqual(
+            (yield* call("PUT", `/api/proposals/${id}`, {
+              session: dev,
+              body,
+            })).status,
+            200,
+          );
+          const pending = yield* call("POST", "/api/mate/chief/proposals", auth);
+          assert.strictEqual(pending.status, 200);
+          assert.strictEqual(
+            (yield* call("POST", "/api/chief", {
+              session: dev,
+              body: { projectId: "P_CHIEF_2" },
+            })).status,
+            200,
+          );
+          assert.strictEqual(
+            (yield* call("PUT", `/api/proposals/${(pending.body as { id: string }).id}`, {
+              session: dev,
+              body,
+            })).status,
+            403,
+          );
+        }),
+    );
+
+    it.effect("a Mate whose person has no Chief never offers to ask one", () =>
+      Effect.gen(function* () {
+        const { call, dev, owner } = yield* running;
+        // The reader has a Chief; the conversation's person does not.
+        assert.strictEqual(
+          (yield* call("POST", "/api/chief", {
+            session: owner,
+            body: { projectId: "P_CHIEF" },
+          })).status,
+          200,
+        );
+        const answer = yield* call("PUT", "/api/proposals/no-chief", {
+          session: dev,
+          body: { projectId: "P_PLAIN", kind: "chief.message", decision: "approved" },
+        });
+        assert.strictEqual(
+          answer.status,
+          403,
+          "a reader's Chief cannot authorize this Mate's offer",
+        );
+      }),
+    );
+
+    it.effect("only the Chief's person approves a Mate's request to that Chief", () =>
+      Effect.gen(function* () {
+        const { call, dev, owner } = yield* running;
+        assert.strictEqual(
+          (yield* call("POST", "/api/chief", {
+            session: dev,
+            body: { projectId: "P_CHIEF" },
+          })).status,
+          200,
+        );
+        const answer = yield* call("PUT", "/api/proposals/another-person", {
+          session: owner,
+          body: { projectId: "P_PLAIN", kind: "chief.message", decision: "approved" },
+        });
+        assert.strictEqual(answer.status, 403, "reading the conversation is not Chief ownership");
       }),
     );
 

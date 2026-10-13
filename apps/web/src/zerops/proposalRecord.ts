@@ -151,6 +151,7 @@ export function makeProposalRecord() {
       id: string,
       projectId: string,
       next: ProposalDecision,
+      kind?: string,
     ): Promise<string | null> {
       const before = decisions[id];
       const after = recordDecision(decisions, id, next);
@@ -161,7 +162,12 @@ export function makeProposalRecord() {
       changed();
       const deciding = before === undefined;
       try {
-        adopt([await at.decide(id, hqWriteOf(next, projectId))]);
+        adopt([
+          await at.decide(id, {
+            ...hqWriteOf(next, projectId),
+            ...(kind === undefined ? {} : { kind }),
+          }),
+        ]);
         changed();
         return null;
       } catch (cause) {
@@ -245,6 +251,7 @@ export interface ProposalDecisionHandle extends ProposalRecordEntry {
 export function useProposalDecision(
   id: string,
   projectId: string | undefined,
+  kind?: string,
 ): ProposalDecisionHandle {
   const at = useDecisionsAt();
   const drawn = useSyncExternalStore(record.subscribe, record.drawing, record.drawing);
@@ -256,8 +263,8 @@ export function useProposalDecision(
     async (next: ProposalDecision) =>
       at === null || projectId === undefined
         ? HQ_DID_NOT_KEEP
-        : record.record(at, id, projectId, next),
-    [at, id, projectId],
+        : record.record(at, id, projectId, next, kind),
+    [at, id, projectId, kind],
   );
   return {
     ...drawn.entry(id),

@@ -44,6 +44,8 @@ export interface ProposalCardProps {
   readonly recipient?: ProposalRecipient | undefined;
   /** Why Approve cannot be pressed yet ("Reading the vault…"); absent when it can. */
   readonly approveBlocked?: string | undefined;
+  /** Chief ownership is read from the source Mate, before offering any decision. */
+  readonly readOnlyReason?: string | undefined;
   readonly onApprove: () => void;
   readonly onDecline: () => void;
   /** `mate.message` and `chief.message`: opens the Mate it went to. */
@@ -205,6 +207,9 @@ function Attachment({ title, text }: { readonly title: string; readonly text: st
 
 function ProposalFoot(props: ProposalCardProps) {
   const { proposal, stage } = props;
+  if (stage === "open" && props.readOnlyReason !== undefined) {
+    return <p className="text-xs text-muted-foreground">{props.readOnlyReason}</p>;
+  }
   if (stage === "open") {
     return (
       <div className="grid gap-1.5">

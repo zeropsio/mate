@@ -31,7 +31,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import { HqUsageReader, USAGE_REPORT_LIMITS } from "./usageReport.ts";
-import { usageOwner } from "./usageAccess.ts";
+import { mateOwner } from "./usageAccess.ts";
 import { ZeropsRefused, type ZeropsError } from "./zerops/api.ts";
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { AutoUpdatePolicy } from "./autoUpdate.ts";
@@ -52,7 +52,7 @@ import { Roles, type OrgView } from "./roles.ts";
 import { makeSourceFence } from "./sourceFence.ts";
 import { makeScopeJournal } from "./scopeJournal.ts";
 import { Structure, type StructureSource, type StructureRead } from "./structure.ts";
-import { CHIEF_TAG } from "./chief.ts";
+import { CHIEF_TAG, chiefOfPerson } from "./chief.ts";
 
 const isZeropsRefused = Schema.is(ZeropsRefused);
 
@@ -440,23 +440,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           (project) => project.projectId === projectId,
         )?.mate;
         const overview = all.get(projectId)?.overview;
-        const everSignedIn = {
-          ...mate?.signers,
-          ...Object.fromEntries(
-            Object.entries(overview?.logins ?? {}).flatMap(([login, digest]) => {
-              const user = digest.lastSignedInBy ?? digest.signedInBy;
-              return user === null ? [] : [[login, user]];
-            }),
-          ),
-        };
-        return usageOwner({
-          facts: current.facts,
-          projectId,
-          everSignedIn,
-          runsWithoutSignIn: overview?.identity.runsWithoutSignIn === true,
-          madeBy: mate?.madeBy ?? null,
-          standupRequestedBy: mate?.standupRequestedBy ?? null,
-        });
+        return mateOwner({ facts: current.facts, projectId, mate, overview });
       };
       const policyMember = (current: StructureSource, userId: string) =>
         current.facts.members.some(
@@ -561,19 +545,23 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               const attention = observable.some((project) => project.projectId === projectId)
                 ? all.get(projectId)?.attention
                 : null;
-              const { signedInNow, everSignedIn } = signersFor(projectId);
+              const { signedInNow } = signersFor(projectId);
               const runsWithoutSignIn =
                 observable.some((project) => project.projectId === projectId) &&
                 all.get(projectId)?.overview?.identity.runsWithoutSignIn === true;
               const mate = listed.find((project) => project.projectId === projectId)?.mate;
-              const ownerUserId = usageOwner({
+              const ownerUserId = mateOwner({
                 facts: current.facts,
                 projectId,
-                everSignedIn,
-                runsWithoutSignIn,
-                madeBy: mate?.madeBy ?? null,
-                standupRequestedBy: mate?.standupRequestedBy ?? null,
+                mate: observable.some((project) => project.projectId === projectId)
+                  ? mate
+                  : undefined,
+                overview: observable.some((project) => project.projectId === projectId)
+                  ? all.get(projectId)?.overview
+                  : undefined,
               });
+              const chiefProjectId =
+                chiefOfPerson(current.facts, ownerUserId, chiefOwners)?.projectId ?? null;
               const waitsOn =
                 signedInNow["claude-code"] ??
                 signedInNow.codex ??
@@ -581,6 +569,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               return {
                 role,
                 ownerUserId,
+                chiefProjectId,
                 waitsOnViewer: waitsOn === entry.userId,
                 mayWrite: observable.some((project) => project.projectId === projectId),
                 mine: ownerUserId === entry.userId,

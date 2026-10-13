@@ -47,11 +47,39 @@ import { lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
 import { CHIEF_LIMIT, DOOR_LIMIT, DoorRateLimit, TooManyRequests } from "./rateLimit.ts";
-import { Roles } from "./roles.ts";
+import { Roles, type OrgView } from "./roles.ts";
+import { MateOverviews } from "./mateOverviews.ts";
+import { mateOwner } from "./usageAccess.ts";
 import { ZeropsApi, type ZeropsError, ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
 
 /** The tag a Chief's project carries. */
 export const CHIEF_TAG = "chief";
+
+/** A registered Chief is usable only while its person and project still have access. */
+export const chiefOfPerson = (
+  facts: OrgView,
+  ownerUserId: string | null,
+  chiefs: ReadonlyMap<string, string>,
+) => {
+  if (
+    ownerUserId === null ||
+    !facts.members.some(
+      (member) =>
+        member.kind === "person" &&
+        member.userId === ownerUserId &&
+        member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
+    )
+  )
+    return null;
+  const projectId = [...chiefs].find(([, userId]) => userId === ownerUserId)?.[0];
+  return projectId !== undefined &&
+    facts.projects.some(
+      (project) => project.id === projectId && project.tags.includes(CHIEF_TAG),
+    ) &&
+    can({ kind: "person", userId: ownerUserId }, "observe_mate", { projectId }, facts).allow
+    ? { ownerUserId, projectId }
+    : null;
+};
 
 /** Where HQ serves the proxy, under its own address. */
 export const CHIEF_PROXY_PATH = "/api/chief/zerops";
@@ -96,6 +124,25 @@ export class Chiefs extends Context.Service<
       { readonly chief: ChiefRecord; readonly credential: string; readonly proxyUrl: string },
       ChiefRefused | NotLeader | SqlError | ZeropsError
     >;
+    /** The source Mate's person and registered Chief, never a reader's. */
+    readonly forMate: (projectId: string) => Effect.Effect<
+      {
+        readonly ownerUserId: string;
+        readonly projectId: string;
+      } | null,
+      SqlError | ZeropsError
+    >;
+    /** Binds an offer to its authenticated source Mate and current Chief. Sends nothing. */
+    readonly propose: (
+      projectId: string,
+    ) => Effect.Effect<{ readonly id: string }, ChiefRefused | NotLeader | SqlError | ZeropsError>;
+    /** Verifies an original Chief offer against current ownership before accepting a decision. */
+    readonly authorizeProposal: (
+      userId: string,
+      id: string,
+      sourceProjectId: string,
+      chiefKind: boolean,
+    ) => Effect.Effect<void, ChiefRefused | SqlError | ZeropsError>;
     /** One read through the proxy. */
     readonly proxy: (
       request: ProxyRequest,
@@ -119,7 +166,7 @@ export const chiefsLayer = (options: {
 }): Layer.Layer<
   Chiefs,
   never,
-  ChiefUpstream | DoorRateLimit | Leader | Roles | SqlClient.SqlClient | ZeropsApi
+  ChiefUpstream | DoorRateLimit | Leader | Roles | MateOverviews | SqlClient.SqlClient | ZeropsApi
 > =>
   Layer.effect(
     Chiefs,
@@ -128,6 +175,7 @@ export const chiefsLayer = (options: {
       const leader = yield* Leader;
       const roles = yield* Roles;
       const api = yield* ZeropsApi;
+      const overviews = yield* MateOverviews;
       const upstream = yield* ChiefUpstream;
       const limits = yield* DoorRateLimit;
       const since = sql.literal(ISO("since"));
@@ -165,7 +213,66 @@ export const chiefsLayer = (options: {
             );
       };
 
+      const forMate = (projectId: string) =>
+        Effect.gen(function* () {
+          const facts = yield* roles.forWrite;
+          const [mate] = yield* sql<{
+            readonly signers: Readonly<Record<string, string>>;
+            readonly madeBy: string | null;
+            readonly standupRequestedBy: string | null;
+          }>`SELECT signers, made_by AS "madeBy", standup_requested_by AS "standupRequestedBy"
+          FROM hq_mate WHERE project_id = ${projectId}`;
+          const ownerUserId = mateOwner({
+            facts,
+            projectId,
+            mate,
+            overview: (yield* overviews.all).get(projectId)?.overview,
+          });
+          if (ownerUserId === null) return null;
+          const [chief] = yield* sql<{ readonly project_id: string }>`
+          SELECT project_id FROM hq_chief WHERE org_id = ${facts.orgId}
+          AND user_id = ${ownerUserId} AND revoked_at IS NULL`;
+          return chiefOfPerson(
+            facts,
+            ownerUserId,
+            new Map(chief === undefined ? [] : [[chief.project_id, ownerUserId]]),
+          );
+        });
+
       return Chiefs.of({
+        forMate,
+        propose: (projectId) =>
+          Effect.gen(function* () {
+            const chief = yield* forMate(projectId);
+            if (chief === null) return yield* refused("forbidden", "no_chief");
+            const id = NodeCrypto.randomUUID();
+            yield* leader.write(sql`INSERT INTO hq_chief_proposal (id, project_id, user_id, chief_project_id)
+            VALUES (${id}, ${projectId}, ${chief.ownerUserId}, ${chief.projectId})`);
+            return { id };
+          }),
+        authorizeProposal: (userId, id, projectId, chiefKind) =>
+          Effect.gen(function* () {
+            const [offer] = yield* sql<{
+              readonly project_id: string;
+              readonly user_id: string;
+              readonly chief_project_id: string;
+            }>`
+            SELECT project_id, user_id, chief_project_id FROM hq_chief_proposal WHERE id = ${id}`;
+            if (offer === undefined) {
+              if (chiefKind) return yield* refused("forbidden", "unregistered_chief_proposal");
+              return;
+            }
+            const chief = yield* forMate(projectId);
+            if (
+              offer.project_id !== projectId ||
+              offer.user_id !== userId ||
+              chief === null ||
+              chief.ownerUserId !== userId ||
+              chief.projectId !== offer.chief_project_id
+            ) {
+              return yield* refused("forbidden", "not_chiefs_person");
+            }
+          }),
         mine: (userId) =>
           Effect.gen(function* () {
             const { orgId } = yield* roles.view;

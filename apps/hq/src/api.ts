@@ -1,3 +1,4 @@
+import { Chiefs } from "./chief.ts";
 import { HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { Observation } from "./observation.ts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
@@ -1070,6 +1071,26 @@ const routes = (
           const { projectId } = yield* mate;
           const target = (yield* HttpRouter.params)["projectId"] ?? "";
           return json(yield* (yield* Observation).status(projectId, target), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/mate/chief",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          return json({ chief: yield* (yield* Chiefs).forMate(projectId) }, 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/chief/proposals",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          return json(yield* (yield* Chiefs).propose(projectId), 200);
         }),
       ),
     ),

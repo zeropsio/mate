@@ -920,9 +920,10 @@ describe("revisioned HQ values", () => {
           const delivery = resetOf(yield* client.take);
           yield* client.take;
           const project = delivery.values.find((value) => value.key === "project:P")!.value as {
-            person: { chief?: string };
+            person: { chief?: string; chiefProjectId?: string | null };
           };
           assert.strictEqual(project.person.chief, chief);
+          assert.strictEqual(project.person.chiefProjectId, "P");
         }
       }),
     ),

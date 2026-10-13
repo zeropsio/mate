@@ -118,6 +118,7 @@ const CARDS: ReadonlyArray<{
   readonly noChief?: boolean;
   /** HQ did not keep the person's last decision. */
   readonly refusal?: string;
+  readonly readOnlyReason?: string;
 }> = [
   { proposal: RESTART, stage: "open" },
   { proposal: SECRET, stage: "open" },
@@ -134,6 +135,16 @@ const CARDS: ReadonlyArray<{
   { proposal: { ...SECRET, id: "s2" }, stage: "declined" },
   { proposal: { ...RESTART, id: "r3" }, stage: "unseen" },
   { proposal: ASK_CHIEF, stage: "open" },
+  {
+    proposal: { ...ASK_CHIEF, id: "ask-reader" },
+    stage: "open",
+    readOnlyReason: "Only this Mate's person can ask their Chief.",
+  },
+  {
+    proposal: { ...ASK_CHIEF, id: "ask-reading" },
+    stage: "open",
+    readOnlyReason: "Finding this Mate's Chief…",
+  },
   { proposal: { ...ASK_CHIEF, id: "ask-none" }, stage: "open", noChief: true },
   { proposal: { ...ASK_CHIEF, id: "ask-sent" }, stage: "done" },
   {
@@ -149,6 +160,7 @@ function Card(card: (typeof CARDS)[number]) {
   return (
     <ProposalCard
       failure={failure}
+      readOnlyReason={card.readOnlyReason}
       mateName="Fen"
       onApprove={() => {
         setStage("running");

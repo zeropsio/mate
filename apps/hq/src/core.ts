@@ -134,8 +134,11 @@ const services = (options: CoreOptions) => {
     }),
     doorLayer({ hqProjectId: options.hqProjectId }),
     mateCredentialsLayer({ credential: options.credential }),
-    chiefsLayer({ hqProjectId: options.hqProjectId, credential: options.credential }),
-    proposalDecisionsLayer,
+    proposalDecisionsLayer.pipe(
+      Layer.provideMerge(
+        chiefsLayer({ hqProjectId: options.hqProjectId, credential: options.credential }),
+      ),
+    ),
     streamTicketsLayer,
     mateLinkTicketsLayer,
     writesLayer,

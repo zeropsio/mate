@@ -187,7 +187,7 @@ export function chiefAsk(
   return `From ${from.mateName} in ${from.projectName}:\n\n${proposalMessage(params)}`;
 }
 
-/** Where an ask of the Chief goes: the viewer's own Chief, none to set up, or not known yet. */
+/** Where an ask goes: the source Mate's person's Chief, none, or not known yet. */
 export function chiefMessageTarget(
   own: string | null | undefined,
 ):
