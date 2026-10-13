@@ -555,19 +555,20 @@ export class MateEngineFake {
     }
   }
 
-  /** The client recorded its measured pages before the scenario reloads them. */
-  async waitForPageHeights(count: number) {
-    if (this.pageHeights.length >= count) return;
+  /** This page's client measurement reached the engine before the scenario reloads it. */
+  async waitForPageHeight(itemId: string) {
+    const recorded = () => this.pageHeights.some(([id]) => id === itemId);
+    if (recorded()) return;
     let listener = () => {};
     try {
       await deadline(
         new Promise<void>((resolve) => {
           listener = () => {
-            if (this.pageHeights.length >= count) resolve();
+            if (recorded()) resolve();
           };
           this.receipts.on("page-height", listener);
         }),
-        `Mate's engine recorded ${count} page heights`,
+        `Mate's engine recorded page ${itemId}`,
         8000,
       );
     } finally {

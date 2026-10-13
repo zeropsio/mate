@@ -3743,15 +3743,20 @@ describe("owner-reported layout regressions", () => {
           "a conversation ending in a full-height page, reloaded, is at its end from its first visible frame",
           () =>
             Effect.gen(function* () {
-              const { s, chat, engine, publish } = yield* journey(369, {
+              const { s, chat, engine, publishLive, answer } = yield* journey(369, {
                 earlierPage: true,
                 install: installArea,
               });
+              let pageItemId = "";
               yield* sampled(
                 s,
-                Effect.sync(() => publish()),
+                Effect.sync(() => {
+                  pageItemId = publishLive();
+                  answer();
+                }),
               );
-              yield* Effect.promise(() => engine.waitForPageHeights(2));
+              // An earlier page may stay outside the viewport; only this page must be recorded.
+              yield* Effect.promise(() => engine.waitForPageHeight(pageItemId));
               // Every frame from the reload: how far the view stands from its end, and whether its
               // rows are placed yet.
               yield* Effect.promise(() =>

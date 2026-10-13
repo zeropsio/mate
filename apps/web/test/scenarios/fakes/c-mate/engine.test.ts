@@ -90,7 +90,7 @@ it("page-height waits resolve on the client's recording receipt, including heigh
   try {
     const engine = r.wire.engine;
     const run = engine.personRun("Publish a page");
-    const itemId = engine.item(run, {
+    const pageCall = {
       kind: "call",
       step: "mcp",
       words: "MCP tool call",
@@ -119,8 +119,24 @@ it("page-height waits resolve on the client's recording receipt, including heigh
           publishedAt: 1791201600000,
         },
       },
+    };
+    const itemId = engine.item(run, pageCall);
+    const other = engine.item(run, pageCall);
+    let finished = false;
+    const recorded = engine.waitForPageHeight(itemId).then(() => {
+      finished = true;
     });
-    const recorded = engine.waitForPageHeights(1);
+    for (const request of ["other-height-1", "other-height-2"])
+      await r.call(request, WS_METHODS.engineRecordPageHeight, {
+        ...conversation,
+        itemId: other,
+        width: 435,
+        height: 369,
+      });
+    expect(
+      finished,
+      "ASSERTION: another page's recordings cannot finish the target page's wait",
+    ).toBe(false);
     await r.call("height", WS_METHODS.engineRecordPageHeight, {
       ...conversation,
       itemId,
@@ -128,8 +144,8 @@ it("page-height waits resolve on the client's recording receipt, including heigh
       height: 369,
     });
     await recorded;
-    expect(engine.pageHeights).toEqual([[itemId, 435, 369]]);
-    await engine.waitForPageHeights(1);
+    expect(engine.pageHeights.filter(([id]) => id === itemId)).toEqual([[itemId, 435, 369]]);
+    await engine.waitForPageHeight(itemId);
   } finally {
     await r.close();
   }
