@@ -531,6 +531,42 @@ describe("structure", () => {
         ),
     );
 
+    it.effect("proven deletion frees the production slot without losing the surviving Mate", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const shop = yield* structure.createApp("owner", "Shop");
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_MATE",
+            kind: "mate",
+            mate: { face: "face-1" },
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_PROD",
+            kind: "production",
+          });
+          const before = (yield* structure.read("owner")).apps.find((app) => app.id === shop.id)!;
+          assert.strictEqual(before.can.add_production.allow, false);
+          assert.deepStrictEqual(before.projects.map((row) => row.projectId).sort(), [
+            "P_MATE",
+            "P_PROD",
+          ]);
+          yield* Ref.update(view, (org) => ({
+            ...org,
+            projects: org.projects.filter((project) => project.id !== "P_PROD"),
+          }));
+          assert.strictEqual(yield* structure.reconcile, 1);
+          const after = (yield* structure.read("owner")).apps.find((app) => app.id === shop.id)!;
+          assert.strictEqual(after.can.add_production.allow, true);
+          assert.deepStrictEqual(
+            after.projects.map((row) => row.projectId),
+            ["P_MATE"],
+          );
+          assert.ok(after.projects[0]!.mate !== null);
+        }),
+      ),
+    );
+
     it.effect("a devstage holds the stage's place; a project Zerops no longer has holds none", () =>
       withStructure((view) =>
         Effect.gen(function* () {

@@ -303,6 +303,18 @@ describe("the box", () => {
     await box.unmount();
   });
 
+  it("an unfinished comment survives closing and reopening", async () => {
+    const say = vi.fn(async () => null);
+    const discussion = comments({ kind: "read", comments: [] }, { say });
+    const first = await mount(discussion, async () => {}, "appdev#unfinished");
+    await first.type("Can we also show tax?");
+    await first.unmount();
+    const reopened = await mount(discussion, async () => {}, "appdev#unfinished");
+    expect(reopened.value()).toBe("Can we also show tax?");
+    expect(say).not.toHaveBeenCalled();
+    await reopened.unmount();
+  });
+
   it("keeps no draft of words HQ took, so a review opened again cannot post them twice", async () => {
     const read = comments({ kind: "read", comments: [] });
     const first = await mount(read, async () => {}, "appdev#taken");

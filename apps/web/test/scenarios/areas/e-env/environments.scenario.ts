@@ -29,7 +29,13 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.click("Close");
           yield* a.when.open("production");
           yield* a.then.rowShows("v0.1.0", "Live");
-          if (stage === "building") yield* a.then.running("stage");
+          if (stage === "building") {
+            yield* a.when.open("stage");
+            yield* a.then.text(
+              "Building",
+              '[data-zerops-surface="stop-service-job"][data-zerops-job-state="building"]',
+            );
+          }
           yield* f.s.then.noExternalNetwork;
         }),
     );
@@ -68,7 +74,10 @@ describe("E: stage, production, release and rollback", () => {
         yield* a.when.open("stage");
         yield* a.when.click("Add web");
         yield* a.when.finishImport("stage");
-        yield* a.then.text(`Building ${sha.slice(0, 7)}`);
+        yield* a.then.text(
+          `Building ${sha.slice(0, 7)}`,
+          '[data-zerops-surface="stop-service-job"][data-zerops-job-state="building"]',
+        );
         yield* a.when.finish("stage");
         yield* a.then.text("Deployed");
         yield* a.then.text(sha.slice(0, 7));
@@ -99,21 +108,6 @@ describe("E: stage, production, release and rollback", () => {
       }),
     );
 
-    // Catches a merged storefront change whose stage deployment is never shown to the user.
-    it.effect("merge starts a visible stage deployment", () =>
-      Effect.gen(function* () {
-        const f = yield* environmentFixture;
-        const { s, merge } = f;
-        const a = environmentActions(f);
-        const sha = yield* merge();
-        yield* s.given.signedIn;
-        yield* a.when.open("stage");
-        yield* a.then.text(`Building ${sha.slice(0, 7)}`);
-        yield* a.then.running("stage");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     // Catches a stage deployment that keeps building after Zerops reports success.
     it.effect("stage deployment ends with the deployed commit", () =>
       Effect.gen(function* () {
@@ -122,7 +116,10 @@ describe("E: stage, production, release and rollback", () => {
         const sha = yield* f.merge();
         yield* f.s.given.signedIn;
         yield* a.when.open("stage");
-        yield* a.then.text(`Building ${sha.slice(0, 7)}`);
+        yield* a.then.text(
+          `Building ${sha.slice(0, 7)}`,
+          '[data-zerops-surface="stop-service-job"][data-zerops-job-state="building"]',
+        );
         yield* a.when.finish("stage");
         yield* a.then.text("Deployed");
         yield* a.then.text(sha.slice(0, 7));
@@ -147,43 +144,6 @@ describe("E: stage, production, release and rollback", () => {
       }),
     );
 
-    // Catches a stage someone rolled back in Zerops, without a build, still naming the newer commit:
-    // its push names the restored version only by id.
-    it.effect(
-      "a rollback without a build shows the restored version's commit on the stage",
-      () =>
-        Effect.gen(function* () {
-          const f = yield* environmentFixture;
-          const a = environmentActions(f);
-          const earlier = yield* f.merge();
-          yield* a.when.finish("stage");
-          const later = yield* f.merge("Improve the storefront");
-          yield* a.when.finish("stage");
-          yield* f.s.given.signedIn;
-          yield* a.when.open("stage");
-          yield* a.then.text(`web\n${later.slice(0, 7)}`);
-          yield* a.when.rollBackOnZerops("stage");
-          yield* a.then.text(`web\n${earlier.slice(0, 7)}`);
-          yield* f.s.then.noExternalNetwork;
-        }),
-      90_000,
-    );
-
-    // Catches a failed stage build being presented as successful with no way to retry.
-    it.effect("failed stage build says why and offers Run again", () =>
-      Effect.gen(function* () {
-        const f = yield* environmentFixture;
-        const a = environmentActions(f);
-        yield* f.merge();
-        yield* a.when.finish("stage", "FAILED");
-        yield* f.s.given.signedIn;
-        yield* a.when.open("stage");
-        yield* a.then.text("Storefront build failed");
-        yield* a.then.text("Run again");
-        yield* f.s.then.noExternalNetwork;
-      }),
-    );
-
     // Catches Review release failing to send the chosen version to production.
     it.effect("release review deploys its version to production", () =>
       Effect.gen(function* () {
@@ -202,25 +162,6 @@ describe("E: stage, production, release and rollback", () => {
       }),
     );
 
-    // Catches a release started by a colleague remaining invisible until reload.
-    it.effect("colleague release appears while production is still building", () =>
-      Effect.gen(function* () {
-        const f = yield* environmentFixture;
-        const a = environmentActions(f);
-        yield* f.merge();
-        yield* a.when.finish("stage");
-        yield* f.s.given.signedIn;
-        yield* a.when.open("production");
-        yield* a.then.text("Review release");
-        const sameDocument = yield* a.then.keepsDocument;
-        yield* f.release("v0.1.0");
-        yield* a.then.rowShows("v0.1.0", "Approved");
-        yield* a.then.running("production");
-        yield* sameDocument;
-        yield* f.s.then.noExternalNetwork;
-      }),
-    );
-
     // Catches production forgetting which release is live after a page reload.
     it.effect("production release result survives reload", () =>
       Effect.gen(function* () {
@@ -235,23 +176,6 @@ describe("E: stage, production, release and rollback", () => {
         yield* a.then.rowShows("v0.1.0", "Live");
         yield* a.when.reload;
         yield* a.then.rowShows("v0.1.0", "Live");
-        yield* f.s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches an invalid release version leaving the production action enabled.
-    it.effect("invalid version prevents releasing production", () =>
-      Effect.gen(function* () {
-        const f = yield* environmentFixture;
-        const a = environmentActions(f);
-        yield* f.merge();
-        yield* a.when.finish("stage");
-        yield* f.s.given.signedIn;
-        yield* a.when.open("production");
-        yield* a.when.click("Review release");
-        yield* a.when.editVersion("not-a-version");
-        yield* a.then.text("Use major.minor.patch, for example 1.0.0.");
-        yield* a.then.releaseDisabled;
         yield* f.s.then.noExternalNetwork;
       }),
     );

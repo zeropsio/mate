@@ -1,7 +1,6 @@
 // @effect-diagnostics preferSchemaOverJson:off -- controlled report inputs on the existing scenario wire.
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { UsageReport } from "@t3tools/contracts";
 import type { HqStreamMessage } from "@t3tools/shared/hqStream";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -86,12 +85,12 @@ describe("B: Usage read states", () => {
                   };
                 });
               const pending = await geometry();
-              await s.page.screenshot({ path: `/tmp/usage-fix-slice3-loading-${width}.png` });
+
               reading = false;
               await s.page.locator('::-p-aria(Refresh usage[role="button"])').click();
               await s.page.waitForFunction(() => document.body.innerText.includes("1 turn"));
               const loaded = await geometry();
-              await s.page.screenshot({ path: `/tmp/usage-fix-slice3-loaded-${width}.png` });
+
               expect(
                 pending.labels.map((row) => row.text),
                 "ASSERTION: loading has the same current totals in order",
@@ -138,137 +137,10 @@ describe("B: Usage read states", () => {
                   "ASSERTION: the open account footer ends inside the narrow viewport",
                 ).toBeLessThanOrEqual(width);
                 expect(await s.page.evaluate(() => document.body.innerText)).not.toContain("Back");
-                await s.page.screenshot({ path: `/tmp/usage-fix-slice3-footer-${width}.png` });
               }
             });
             yield* s.then.noExternalNetwork;
           }),
       );
-
-    it.effect("Usage distinguishes coverage from failed reads and recovers the named section", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario();
-        yield* s.given.project("Fern", { mate: true, app: "Shop" });
-        let failed = false;
-        let recordedMateId: string | undefined;
-        const periods = new Map<
-          string,
-          Extract<HqStreamMessage, { type: "scope-error" }>["scope"]
-        >();
-        const mateScopes: string[] = [];
-        s.drivers.hq.mapFrames((frame) => {
-          const message = JSON.parse(frame) as HqStreamMessage;
-          if (
-            (message.type !== "scope-reset" && message.type !== "scope-values") ||
-            message.scope.kind !== "agentUsage"
-          )
-            return frame;
-          const sourceReport = message.values.find((entry) => entry.key === "report")?.value as
-            | UsageReport
-            | undefined;
-          recordedMateId ??= sourceReport?.coverage.find(
-            (entry) => entry.projectId === "Fern",
-          )?.mateId;
-          if (recordedMateId === undefined) return frame;
-          const query = message.scope.query;
-          if (query.mateId != null) mateScopes.push(query.mateId);
-          if (query.groupBy === "day") {
-            periods.set(JSON.stringify(message.scope), message.scope);
-            if (failed)
-              return JSON.stringify({
-                type: "scope-error",
-                scope: message.scope,
-                code: "fixture-outage",
-                reason: "fixture outage",
-                disposition: "transient",
-              });
-          }
-          const earlier = query.provenance === "legacy-scanner";
-          const report = recordedReport({
-            query,
-            provenance: query.provenance ?? "live-responses",
-            recordedSince: earlier ? null : "2026-10-01T00:00:00.000Z",
-            totals: statistics(earlier ? "0" : "1000", earlier ? "0" : "1"),
-            state: "partial",
-            coverage: [
-              {
-                mateId: recordedMateId,
-                label: "Fern",
-                deleted: false,
-                value: { state: "unknown", since: null, through: null, gaps: [] },
-              },
-            ],
-            groups: earlier
-              ? []
-              : [
-                  {
-                    key: recordedMateId,
-                    provider: "claude",
-                    model: "recorded-model",
-                    period: (query.since ?? "2026-10-01").slice(0, 10),
-                    totals: statistics(),
-                    costUsdNanos: "7830000000",
-                  },
-                ],
-          });
-          return JSON.stringify({ ...message, values: [{ key: "report", value: report }] });
-        });
-        yield* s.given.signedIn;
-        yield* Effect.promise(async () => {
-          await s.page.setViewport({ width: 1786, height: 1000 });
-          await s.page.goto(`${s.web.origin}/usage`);
-          await s.page.locator('::-p-aria(Cost[role="button"])').click();
-          await s.page.waitForFunction(
-            () =>
-              document.body.innerText.includes("1 turn") &&
-              document.querySelector(
-                'svg[aria-label="Daily cost by coding agent"] g[role="button"]',
-              ) !== null,
-          );
-          await s.page.locator("::-p-text(Coverage by Mate)").click();
-          const text = await s.page.evaluate(() => document.body.innerText);
-          expect(text).toContain("No usage from this Mate is recorded in this report.");
-          expect(text).toContain("Totals include only recorded activity.");
-          expect(text).not.toContain("could not be read");
-          await s.page.screenshot({ path: "/tmp/usage-fix-slice3-coverage.png" });
-          await s.page.locator('::-p-aria(Show usage for Fern[role="button"])').click();
-          await s.page.waitForFunction(() => document.body.innerText.includes("1 turn"));
-          expect(mateScopes).toContain(recordedMateId);
-          failed = true;
-          for (const scope of periods.values())
-            for (const [client] of s.drivers.hq.links)
-              client.send(
-                JSON.stringify({
-                  type: "scope-error",
-                  scope,
-                  code: "fixture-outage",
-                  reason: "fixture outage",
-                  disposition: "transient",
-                }),
-              );
-          await s.page.waitForFunction(() =>
-            document.body.innerText.includes("Showing last known daily usage."),
-          );
-          expect(await s.page.evaluate(() => document.body.innerText)).toContain("$7.83");
-          await s.page.screenshot({ path: "/tmp/usage-fix-slice3-stale-detail.png" });
-          failed = false;
-          await s.page.locator('::-p-aria(Try again[role="button"])').click();
-          await s.page.waitForFunction(
-            () =>
-              !document.body.innerText.includes("Showing last known") &&
-              document.querySelector('svg[aria-label="Daily cost by coding agent"]') !== null,
-          );
-          await s.page.locator('::-p-aria(Earlier history[role="button"])').click();
-          await s.page.waitForFunction(() =>
-            document.body.innerText.includes("No earlier history is recorded for this period."),
-          );
-          expect(await s.page.evaluate(() => document.body.innerText)).not.toContain(
-            "agents and subagents running in Mate",
-          );
-          await s.page.screenshot({ path: "/tmp/usage-fix-slice3-earlier-empty.png" });
-        });
-        yield* s.then.noExternalNetwork;
-      }),
-    );
   });
 });

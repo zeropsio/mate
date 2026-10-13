@@ -198,6 +198,45 @@ describe("create-project", () => {
   };
   const OTHER = { id: "p1", name: "shop-stage" };
 
+  it.effect("an uncertain creation goes on with its one new project, never a duplicate", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations, calls } = operationsOf(store, lost, [
+        [OTHER],
+        [OTHER, { id: "p9", name: "shop-stage" }],
+      ]);
+      yield* operations.submit(CREATE);
+      expect(calls.filter((call) => call !== "list")).toEqual([
+        { clientId: ORG, name: "shop-stage", tagList: ["app"] },
+      ]);
+      expect(operationResult(store.state().operations.get("r1"), "create-project")).toEqual({
+        projectId: "p9",
+      });
+      expect(progress(store)).toEqual({ stage: "accepted", operationId: "p9" });
+      projectAppears(store, "p9", "shop-stage");
+      expect(progress(store)).toEqual({ stage: "reflected", operationId: "p9" });
+      creationRow(store, "FINISHED");
+      expect(progress(store)).toEqual({ stage: "done", operationId: "p9", outcome: "succeeded" });
+      expect(calls.filter((call) => call !== "list")).toHaveLength(1);
+    }),
+  );
+
+  it.effect("an uncertain creation with two new projects of its name offers projects", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations, calls } = operationsOf(store, lost, [
+        [OTHER],
+        [OTHER, { id: "p8", name: "shop-stage" }, { id: "p9", name: "shop-stage" }],
+      ]);
+      yield* operations.submit(CREATE);
+      expect(calls.filter((call) => call !== "list")).toEqual([
+        { clientId: ORG, name: "shop-stage", tagList: ["app"] },
+      ]);
+      expect(operationResult(store.state().operations.get("r1"), "create-project")).toBeUndefined();
+      expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+    }),
+  );
+
   it.effect(
     "a lost answer adopts the one project of its name Zerops lists now and did not before",
     () =>

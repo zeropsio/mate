@@ -101,15 +101,30 @@ describe("F: creation through the hosted client", () => {
         yield* c.submitProject;
         yield* bound;
         yield* c.noSetupYet;
+        const address = s.page.url();
+        const context = s.page.browserContext();
         expect(
-          yield* c.reload,
-          "ASSERTION: leaving a running setup confirms the browser's unload warning",
+          yield* Effect.promise(async () => {
+            const confirmations: string[] = [];
+            const closed = new Promise<void>((resolve) => s.page.once("close", () => resolve()));
+            s.page.on("dialog", async (dialog) => {
+              confirmations.push(dialog.type());
+              await dialog.accept();
+            });
+            await s.page.close({ runBeforeUnload: true });
+            await closed;
+            return confirmations;
+          }),
+          "ASSERTION: closing a running setup confirms the browser's unload warning",
         ).toEqual(["beforeunload"]);
+        const reopened = yield* s.given.browserActor({ context });
+        yield* Effect.promise(() => reopened.page.goto(address));
+        const resumed = creation({ ...s, ...reopened });
         yield* c.completeProjectCreation;
-        yield* c.finishSetup;
-        yield* s.then.conversation.appears;
-        yield* c.originalSetupOnly;
-        yield* s.then.menu.row("Ada").appears();
+        yield* resumed.finishSetup;
+        yield* reopened.then.conversation.appears;
+        yield* resumed.originalSetupOnly;
+        yield* reopened.then.menu.row("Ada").appears();
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -162,93 +177,6 @@ describe("F: creation through the hosted client", () => {
         yield* c.settled;
         yield* c.failedProjectRemoved;
         yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches allowing a second Mate to take an existing Mate's case-insensitive account name.
-    it.effect("a taken Mate name is refused before creating anything", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installCreation]);
-        yield* Effect.promise(() => s.clock.install());
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        const c = creation(s);
-        yield* c.newProject;
-        yield* c.fill("Its first Mate", "ada");
-        yield* c.click("Create Garden with ada");
-        yield* c.text("already");
-        yield* c.pastRetryWindow;
-        expect(c.writes()).toBe(0);
-        yield* c.click("Cancel");
-        yield* s.then.menu.row("Ada").appears();
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // These two leave the page's clock running: with it frozen, the create's request was not sent
-    // in 165 s (harness finding, reported). Settled requests show nothing is sent again.
-    // Catches replaying a creation whose accepted response was lost. Its one new project of its
-    // name, which a wholly read listing did not hold at the send, is its own: the creation goes on
-    // with it, never making a second.
-    it.effect("an uncertain creation goes on with its one new project, never a duplicate", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installCreation]);
-        // An organization with a Mate: New project is the menu's offered path (D11).
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        const c = creation(s);
-        c.loseCreationReply();
-        yield* c.newProject;
-        yield* c.submitProject;
-        yield* c.text("Nova");
-        yield* c.createAsked;
-        yield* c.settled;
-        yield* c.acceptedOnce("Garden - Nova");
-        yield* s.then.menu.row("Garden").appears();
-        expect(c.writes()).toBe(1);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-    // Catches adopting a project that may be somebody else's. Two new projects of its name: neither
-    // is known to be its own, so it offers the projects and makes no duplicate.
-    it.effect("an uncertain creation with two new projects of its name offers projects", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installCreation]);
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        const c = creation(s);
-        c.loseCreationReply();
-        c.twinCreation();
-        yield* c.newProject;
-        yield* c.submitProject;
-        yield* c.text("Go to projects");
-        yield* c.settled;
-        yield* c.acceptedOnce("Garden - Nova");
-        expect(c.writes()).toBe(1);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-    // Catches retrying a definitive 403 tied to GET /project/<id> while checking the new project's
-    // setup. The owner is judged on their membership: the new project's own row is never read, so
-    // nothing refused is asked, then or five seconds later.
-    it.effect("a refused creation read is not repeated after five seconds", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installCreation]);
-        yield* Effect.promise(() => s.clock.install());
-        // New project is offered once the account has a Mate; an empty account offers setup.
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        const c = creation(s);
-        c.refuseCreatedProjectAccess();
-        yield* c.newProject;
-        yield* c.submitProject;
-        yield* c.matePage("Nova");
-        yield* c.settled;
-        expect(c.refusedReads(), "The owner read the new project's own row").toBe(0);
-        yield* Effect.promise(() => s.clock.advanceStepped(5_000));
-        yield* c.pastRetryWindow;
-        yield* s.then.noExternalNetwork;
-        expect(c.refusedReads(), "Definitive 403 on the new project was asked").toBe(0);
       }),
     );
   });

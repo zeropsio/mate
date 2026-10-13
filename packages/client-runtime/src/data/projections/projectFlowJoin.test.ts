@@ -458,6 +458,15 @@ describe("joinProjectFlows", () => {
     }).get("g1");
   }
 
+  it("colleague release appears while production is still building", () => {
+    const flow = flowWithProductionDeploy(record(MERGED, "building", "2026-09-24T10:01:00Z"));
+    expect(flow?.releases.map(({ tag, word }) => ({ tag, word }))).toEqual([
+      { tag: "v0.1.1", word: "Approved" },
+      { tag: "v0.1.0", word: "Live" },
+    ]);
+    expect(flow?.environmentInputs[0]?.services[0]?.deploy?.latest?.state).toBe("building");
+  });
+
   const rowsOf = (flow: ReturnType<typeof flowWithProductionDeploy>) =>
     flow?.releases.map(({ tag, standing, word, rollBack }) => ({ tag, standing, word, rollBack }));
 

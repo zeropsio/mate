@@ -2,13 +2,13 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installArea, mergeFor, hqFramesFor } from "./fake.ts";
-import { changeFixture, anotherOrganization, review } from "./dsl.ts";
+import { installArea, mergeFor } from "./fake.ts";
+import { changeFixture, review } from "./dsl.ts";
 import { changeFixture as sourceChange } from "../../fakes/d-change/changes.ts";
 
 const setup = Effect.gen(function* () {
   const s = yield* createScenario([installArea]);
-  const area = { merge: mergeFor(s.drivers), hqFrames: hqFramesFor(s.drivers) };
+  const area = { merge: mergeFor(s.drivers) };
   const change = yield* changeFixture(s);
   return { s, change, area, r: review(s) };
 });
@@ -109,22 +109,6 @@ describe("D: change review, comments and merge", () => {
       }),
     );
 
-    // Catches closing a review discarding an unfinished comment in the same tab.
-    it.effect("an unfinished comment survives closing and reopening", () =>
-      Effect.gen(function* () {
-        const { s, r } = yield* setup;
-        yield* s.given.signedIn;
-        yield* r.open;
-        yield* r.mergeEnabled;
-        yield* r.writeDraft("Can we also show tax?");
-        yield* r.close;
-        yield* r.open;
-        yield* r.draftIs("Can we also show tax?");
-        yield* r.mergeEnabled;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     // Catches Merge hiding progress or continuing to offer the completed change for merging.
     it.effect("merge shows progress and the real result", () =>
       Effect.gen(function* () {
@@ -145,41 +129,6 @@ describe("D: change review, comments and merge", () => {
       }),
     );
 
-    // Catches a colleague's merge leaving an already-open review offering a duplicate merge.
-    it.effect("a colleague merges while the review is open", () =>
-      Effect.gen(function* () {
-        const { s, change, r } = yield* setup;
-        yield* s.given.signedIn;
-        yield* r.open;
-        yield* r.mergeEnabled;
-        yield* change.colleagueMerges;
-        yield* r.text("Merged into main");
-        yield* r.cannotMerge;
-        yield* s.then.noReload;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // A confirmation is overtaken by a colleague's merge: its authoritative result must win.
-    it.effect(
-      "a colleague merge ends an open Close confirmation without claiming a local close",
-      () =>
-        Effect.gen(function* () {
-          const { s, change, r } = yield* setup;
-          yield* s.given.signedIn;
-          yield* r.open;
-          yield* r.mergeEnabled;
-          yield* r.askClose;
-          yield* r.text("Close #1 without merging?");
-          yield* change.colleagueMerges;
-          yield* r.text("Merged into main");
-          yield* r.cannotClose;
-          yield* r.cannotMerge;
-          yield* s.then.noReload;
-          yield* s.then.noExternalNetwork;
-        }),
-    );
-
     // New work pushed after the question needs a new confirmation before it may be closed.
     it.effect(
       "a newer push cancels Close confirmation; closing the reviewed head keeps its branch",
@@ -194,6 +143,14 @@ describe("D: change review, comments and merge", () => {
           yield* change.pushAgain;
           yield* r.file("tax.txt");
           yield* r.text("Draft");
+          expect(
+            yield* Effect.promise(() =>
+              s.page.evaluate(
+                () => document.querySelector('[data-zerops-surface="review"]')?.textContent ?? "",
+              ),
+            ),
+            "ASSERTION: the newer reviewed head cancels the previous Close confirmation",
+          ).not.toContain("Close #1 without merging?");
           yield* r.askClose;
           yield* r.text("Close #1 without merging?");
           yield* r.confirmClose;
@@ -204,50 +161,6 @@ describe("D: change review, comments and merge", () => {
           yield* s.then.noReload;
           yield* s.then.noExternalNetwork;
         }),
-    );
-
-    // Catches a read-only colleague being offered Merge despite HQ denying development rights.
-    it.effect("a reader can review but cannot merge", () =>
-      Effect.gen(function* () {
-        const { s, change, r } = yield* setup;
-        s.given.asPerson("reader");
-        yield* s.given.signedIn;
-        yield* r.direct(change.direct);
-        yield* r.file("summary.txt");
-        yield* r.text("You need at least Basic user access");
-        yield* r.cannotMerge;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches switching organizations and back erasing an offered Merge ('HQ has not said yet').
-    it.effect("a same-tab organization round trip preserves the known Merge offer", () =>
-      Effect.gen(function* () {
-        const { s, change, r, area } = yield* setup;
-        const organizations = anotherOrganization(s);
-        yield* Effect.all([s.given.signedIn, r.chooseInitialOrganization(organizations.original)], {
-          concurrency: "unbounded",
-        });
-        // Freeze the review document after the initial organization choice has settled.
-        yield* Effect.promise(() => s.clock.install());
-        yield* r.direct(change.direct);
-        yield* r.mergeEnabled;
-        yield* Effect.promise(() =>
-          s.clock.advanceStepped(1000, { settle: r.waitUntilMergeEnabled }),
-        );
-        yield* r.rememberUnknownPermission;
-        area.hqFrames.hold();
-        yield* r.switchOrganization(organizations.other);
-        yield* r.switchOrganization(organizations.original);
-        yield* r.file("summary.txt");
-        yield* Effect.promise(() => area.hqFrames.received());
-        area.hqFrames.resume();
-        yield* r.mergeEnabled;
-        yield* r.sameDocument;
-        yield* s.then.noExternalNetwork;
-        const guard = yield* r.unknownPermissionHistory;
-        expect(guard).toEqual([]);
-      }),
     );
   });
 });

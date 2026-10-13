@@ -14,6 +14,7 @@ import {
 import {
   serviceRows,
   stopKeyGap,
+  stopFailedDeploy,
   stopVerdict,
   stopView,
   type Deployment,
@@ -361,6 +362,23 @@ describe("ZeropsGroupPane", () => {
       });
       expect(markup).not.toContain("Add stage");
       expect(markup).toContain("Waiting for the Mate&#x27;s recipe");
+    });
+
+    describe("B: authoritative placement", () => {
+      it("a Mate used as stage occupies the stage slot and explains who deploys it", () => {
+        const devstages = devstagesOf("shop", [
+          {
+            id: "Ada",
+            name: "Ada",
+            status: "ACTIVE",
+            hq: { appId: "shop", appName: "Shop", kind: "devstage", mate: { face: "" } },
+          },
+        ]);
+        const markup = render(undefined, { environments: [], slots: slots({ devstages }) });
+        expect(markup).toContain("Ada — deployed by its agent");
+        expect(markup).not.toContain("Add stage");
+        expect(markup).toContain("Add production");
+      });
     });
 
     it("says a Mate that is the stage is the stage, and asks no second one of the person", () => {
@@ -789,6 +807,11 @@ function renderStop(input: StopCase): string {
     <ZeropsStopPane
       vault={input.vault}
       readAgain={input.readAgain}
+      runAgain={
+        input.failed?.mayRunAgain === true
+          ? { running: false, refused: null, onRunAgain: () => {} }
+          : undefined
+      }
       carried={input.carried}
       crumbs={[{ label: "Projects", onClick: () => {} }]}
       deployAgain={
@@ -974,6 +997,78 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
     });
     expect(jobOf(markup)).toBe("failed");
     expect(count(markup, reason)).toBe(1);
+  });
+
+  it("failed stage build says why and offers Run again", () => {
+    const services = [
+      {
+        hostname: "web",
+        repository: "web",
+        deploy: {
+          latest: deployRecord(fullSha("b2"), "failed", {
+            service: "web",
+            reason: "Storefront build failed",
+          }),
+          live: null,
+        },
+      },
+    ];
+    const rows = serviceRows({
+      environment: "stage",
+      services,
+      platform: UNREAD,
+      mainHead: undefined,
+      routes: [],
+      offers: [],
+      nowMs: NOW,
+      age: () => "1h ago",
+    });
+    const failed = stopFailedDeploy({ tier: "stage", rows, releases: [] });
+    const document = new Window().document;
+    document.body.innerHTML = renderStop({
+      tier: "stage",
+      services,
+      ...(failed === undefined ? {} : { failed: { ...failed, mayRunAgain: true } }),
+      mayDeployAgain: true,
+    });
+    const job = document.querySelector(
+      '[data-zerops-surface="stop-service-job"][data-zerops-job-state="failed"]',
+    );
+    expect(job).not.toBeNull();
+    expect(document.body.textContent).toContain("Storefront build failed");
+    const retry = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Run again",
+    );
+    expect(retry).toBeDefined();
+    expect(retry?.disabled).toBe(false);
+  });
+
+  it("an unresolved deploy stays on the service row without a deploy answer panel", () => {
+    const document = new Window().document;
+    document.body.innerHTML = renderStop({
+      tier: "stage",
+      services: [
+        {
+          hostname: "web",
+          repository: "web",
+          deploy: {
+            latest: deployRecord(fullSha("b2"), "unresolved", {
+              service: "web",
+              reason: "HQ lost track of this deploy.",
+            }),
+            live: null,
+          },
+        },
+      ],
+      mayDeployAgain: true,
+    });
+    const job = document.querySelector(
+      '[data-zerops-surface="stop-service-job"][data-zerops-job-state="unresolved"]',
+    );
+    expect(job?.textContent).toContain("HQ lost track of this deploy.");
+    expect(job?.textContent).toContain("Check it in Zerops, or run it again.");
+    expect(job?.textContent).toContain("Run again");
+    expect(document.querySelector(".rv-where")).toBeNull();
   });
 
   it("says nothing of a job that went live", () => {

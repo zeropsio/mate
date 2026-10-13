@@ -59,27 +59,5 @@ describe("B: navigation protocol", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
-    it.effect("a reader sees the protocol notice without an update action", () =>
-      Effect.gen(function* () {
-        const s = yield* menuScenario([installOlderNavigation]);
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        s.given.asPerson("reader");
-        yield* s.given.signedIn;
-        yield* s.menu.grouped("Ada", "Shop");
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(
-            () =>
-              document.body.innerText.includes(
-                "HQ needs an update to show all navigation facts.",
-              ) &&
-              ![...document.querySelectorAll("button")].some(
-                (button) => button.textContent?.trim() === "Update HQ",
-              ),
-            { timeout: 15_000, polling: "raf" },
-          ),
-        );
-        yield* s.then.noExternalNetwork;
-      }),
-    );
   });
 });

@@ -1,8 +1,8 @@
 import { act, cloneElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { EnvironmentId } from "@t3tools/contracts";
-import { recordedReport } from "./usageTestFixtures";
+import { EnvironmentId, type UsageReport } from "@t3tools/contracts";
+import { recordedReport, statistics } from "./usageTestFixtures";
 
 const state = vi.hoisted(() => ({
   baseline: "resolving" as "resolving" | "resolved" | "unavailable",
@@ -13,6 +13,9 @@ const state = vi.hoisted(() => ({
   now: 0,
   retry: vi.fn(),
   retryRoster: vi.fn(),
+  report: null as UsageReport | null,
+  periodsStale: false,
+  usageScopes: [] as Array<string | undefined>,
 }));
 vi.mock("@effect/atom-react", async (original) => ({
   ...(await original<object>()),
@@ -33,8 +36,18 @@ vi.mock("../../state/usage", async (original) => {
   const actual = await original<typeof import("../../state/usage")>();
   return {
     ...actual,
-    useAgentUsage: () => {
-      const report = state.answered ? recordedReport() : null;
+    useAgentUsage: (...args: Parameters<typeof actual.useAgentUsage>) => {
+      state.usageScopes.push(args[1]?.mate);
+      const report =
+        state.report && args[3] === "legacy-scanner"
+          ? recordedReport({
+              provenance: "legacy-scanner",
+              recordedSince: null,
+              totals: statistics("0", "0"),
+              coverage: [],
+              groups: [],
+            })
+          : (state.report ?? (state.answered ? recordedReport() : null));
       const read = state.failedNeighbor
         ? { kind: "unavailable", reason: "HQ usage unavailable. Reconnect or retry HQ access." }
         : state.pending || state.baseline !== "resolved" || !state.answered
@@ -45,7 +58,11 @@ vi.mock("../../state/usage", async (original) => {
         overall: actual.usageReportView(report),
         report,
         overallReport: report,
-        sections: { models: read, providers: read, periods: read },
+        sections: {
+          models: read,
+          providers: read,
+          periods: state.periodsStale ? { kind: "read", report, stale: true } : read,
+        },
         detailPending: false,
         detailUnavailable: false,
         read,
@@ -108,7 +125,14 @@ vi.mock("../WorkspaceBreadcrumb", () => ({
 }));
 vi.mock("../WorkspacePageContainer", () => ({ WorkspacePageContainer: "main" }));
 vi.mock("../WorkspacePageHeader", () => ({ WorkspacePageHeader: "header" }));
-vi.mock("./UsageProviderChart", () => ({ UsageProviderChart: () => null }));
+vi.mock("./UsageProviderChart", async (original) => {
+  const actual = await original<typeof import("./UsageProviderChart")>();
+  return {
+    ...actual,
+    UsageProviderChart: (props: Parameters<typeof actual.UsageProviderChart>[0]) =>
+      state.report ? <actual.UsageProviderChart {...props} /> : null,
+  };
+});
 vi.mock("./usagePagePreferences", () => ({
   readUsagePagePreferences: () => ({ metric: "cost", windowDays: 30 }),
   saveUsagePagePreferences: vi.fn(),
@@ -145,6 +169,9 @@ beforeEach(() => {
   state.pending = false;
   state.failedNeighbor = false;
   state.presentations = new Map();
+  state.report = null;
+  state.periodsStale = false;
+  state.usageScopes = [];
 });
 
 describe("Usage source transitions", () => {
@@ -405,5 +432,70 @@ it("An unread Limits roster retries its roster owner instead of the Usage report
   act(() => retry!.props.onClick());
   expect(state.retryRoster).toHaveBeenCalledTimes(1);
   expect(state.retry).not.toHaveBeenCalled();
+  act(() => tree.unmount());
+});
+
+it("Usage distinguishes coverage from failed reads and recovers the named section", () => {
+  state.baseline = "resolved";
+  state.answered = true;
+  state.report = recordedReport({
+    state: "partial",
+    coverage: [
+      {
+        mateId: "mate-a",
+        label: "Fern",
+        deleted: false,
+        value: { state: "unknown", since: null, through: null, gaps: [] },
+      },
+    ],
+    groups: [
+      {
+        key: "mate-a",
+        provider: "claude",
+        model: "recorded-model",
+        period: "2026-10-01",
+        totals: statistics(),
+        costUsdNanos: "7830000000",
+      },
+    ],
+  });
+  const onScopeChange = vi.fn();
+  const page = (mate?: EnvironmentId) => (
+    <UsagePage scope={mate ? { mate } : {}} onScopeChange={onScopeChange} />
+  );
+  const tree = mount(page());
+  expect(text(tree)).toContain("No usage from this Mate is recorded in this report.");
+  expect(text(tree)).toContain("Totals include only recorded activity.");
+  expect(text(tree)).not.toContain("could not be read");
+  act(() => tree.root.findByProps({ "aria-label": "Show usage for Fern" }).props.onClick());
+  expect(onScopeChange).toHaveBeenCalledWith({ mate: "mate-a" });
+  act(() => tree.update(page(EnvironmentId.make("mate-a"))));
+  expect(state.usageScopes.at(-1)).toBe("mate-a");
+  state.periodsStale = true;
+  act(() => tree.update(page(EnvironmentId.make("mate-a"))));
+  expect(text(tree)).toContain("Showing last known daily usage.");
+  expect(text(tree)).toContain("$7.83");
+  const retry = tree.root
+    .findAllByType("button")
+    .find((button) => button.children.includes("Try again"));
+  expect(retry).toBeDefined();
+  state.retry.mockClear();
+  state.retry.mockImplementationOnce(() => {
+    state.periodsStale = false;
+  });
+  act(() => {
+    retry!.props.onClick();
+    tree.update(page(EnvironmentId.make("mate-a")));
+  });
+  expect(state.retry).toHaveBeenCalledTimes(1);
+  expect(text(tree)).not.toContain("Showing last known");
+  expect(tree.root.findAllByProps({ "aria-label": "Daily cost by coding agent" })).toHaveLength(1);
+  const history = tree.root
+    .findAllByType("button")
+    .find((button) => button.children.includes("Earlier history"));
+  expect(history).toBeDefined();
+  act(() => history!.parent!.props.onValueChange(["legacy-scanner"]));
+  expect(text(tree)).toContain("No earlier history is recorded for this period.");
+  expect(text(tree)).not.toContain("agents and subagents running in Mate");
   act(() => tree.unmount());
 });

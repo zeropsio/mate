@@ -10,7 +10,7 @@ import { rendered } from "../../harness/completedHttp.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 
-export function creation(s: Scenario) {
+export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">) {
   const { page, drivers } = s;
   const control = creationOf(drivers);
   const network = creationNetwork(page);

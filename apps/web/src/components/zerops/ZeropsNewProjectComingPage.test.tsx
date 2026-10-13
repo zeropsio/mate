@@ -242,6 +242,33 @@ describe("a New project's first Mate, before its project exists", () => {
     expect(verbs.tryAgain).toHaveBeenCalledWith(stopped);
   });
 
+  it("an uncertain creation goes on with its one new project, never a duplicate", () => {
+    hold({ ...ACME, step: "create", failed: { reason: "The answer was lost.", uncertain: true } });
+    openView();
+    expect(app.navigate).not.toHaveBeenCalled();
+    hold({ ...ACME, step: "created", projectId: "p-vera" });
+    expect(app.navigate).toHaveBeenCalledTimes(1);
+    expect(app.navigate).toHaveBeenCalledWith({
+      to: "/mate/$projectId",
+      params: { projectId: "p-vera" },
+      replace: true,
+    });
+    expect(verbs.tryAgain).not.toHaveBeenCalled();
+  });
+
+  it("an uncertain creation with two new projects of its name offers projects", () => {
+    hold({
+      ...ACME,
+      step: "create",
+      failed: { reason: "The project may already exist.", uncertain: true },
+    });
+    openView();
+    expect(button("Go to projects")).toBeDefined();
+    expect(button("Try again")).toBeUndefined();
+    expect(button("Go to projects")!.parent!.props.render.props.to).toBe("/zerops");
+    expect(verbs.tryAgain).not.toHaveBeenCalled();
+  });
+
   it("never offers to make again what the platform may have made, only the way to the projects", () => {
     hold({
       ...ACME,

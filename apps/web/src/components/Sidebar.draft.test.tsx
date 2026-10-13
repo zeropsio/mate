@@ -52,3 +52,57 @@ it.each([
   expect(html).toContain("Liu opened Zerops Mate.");
   expect(html).not.toMatch(/<img|asset-image-frame|asset-image-unavailable/);
 });
+
+it("a restored draft previews text without displaying its loaded or missing pictures", () => {
+  const draftId = DraftId.make("restored-menu");
+  const restored = useComposerDraftStore.persist.getOptions().merge!(
+    {
+      draftsByThreadKey: {
+        [draftId]: {
+          prompt: "Liu opened Zerops Mate on this project.\n![missing](missing.png)",
+          attachments: [
+            {
+              id: "loaded",
+              name: "loaded.png",
+              mimeType: "image/png",
+              sizeBytes: 1,
+              dataUrl:
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH1cAAAAASUVORK5CYII=",
+            },
+            {
+              id: "missing",
+              name: "missing.png",
+              mimeType: "image/png",
+              sizeBytes: 1,
+              dataUrl: "data:image/png;base64,invalid",
+            },
+          ],
+        },
+      },
+      draftThreadsByThreadKey: {},
+      logicalProjectDraftThreadKeyByLogicalProjectKey: {},
+    },
+    useComposerDraftStore.getInitialState(),
+  );
+  const composer = restored.draftsByThreadKey[draftId]!;
+  expect(composer.persistedAttachments.map((image) => image.name)).toEqual([
+    "loaded.png",
+    "missing.png",
+  ]);
+  const html = renderToStaticMarkup(
+    <TooltipProvider>
+      <SidebarDraftRow
+        draftId={draftId}
+        composer={composer}
+        projectTitle="Imperial Titan"
+        isActive={false}
+        onNavigate={() => {}}
+        onDiscard={() => {}}
+      />
+    </TooltipProvider>,
+  );
+  expect(html).toContain("Liu opened Zerops Mate on this project.");
+  expect(html).not.toMatch(/<img|<video|<canvas|asset-image-frame|asset-image-unavailable/);
+  expect(html).not.toContain("Image unavailable");
+  expect(html).not.toContain("Try again");
+});

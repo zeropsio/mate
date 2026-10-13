@@ -110,11 +110,8 @@ describe("B: Usage report presentation", () => {
                   await s.page.$eval('[aria-label="Usage breakdown"]', (node) =>
                     node.closest("section")!.scrollIntoView({ block: "center" }),
                   );
-                  await s.page.screenshot({ path: `/tmp/usage-fix-slice2-geometry-${width}.png` });
                 }
               }
-              if (check === "filters")
-                await s.page.screenshot({ path: "/tmp/usage-fix-slice2-filters-320.png" });
             });
             yield* s.then.noExternalNetwork;
           }),

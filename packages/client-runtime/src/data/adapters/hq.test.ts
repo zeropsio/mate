@@ -131,6 +131,91 @@ const navigationRequests = (fixture: HqFixtureWire, segment: number) =>
     .map(({ request }) => request);
 
 describe("hqNavigationLink", () => {
+  it.effect("colleague enrollment adds a Mate beneath its application", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      expect(
+        hqNavigation
+          .derive(readsOfState(store.state()), ORG)
+          .structure?.apps[0]?.projects.map((row) => row.name),
+      ).toEqual(["ada"]);
+      yield* fixture.send(
+        navigation("scope-values", 4, [
+          { key: "app:shop", value: app("shop", "Shop", ["ada", "bea"]) },
+          { key: "project:bea", value: project("bea", "shop") },
+        ]),
+      );
+      yield* settle;
+      expect(
+        hqNavigation.derive(readsOfState(store.state()), ORG).structure?.apps[0],
+      ).toMatchObject({ name: "Shop", projects: [{ name: "ada" }, { name: "bea" }] });
+      expect(fixture.opens()).toBe(1);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+  it.effect("application rename updates its heading without reload", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      yield* fixture.send(
+        navigation("scope-values", 4, [{ key: "app:shop", value: app("shop", "Bakery", ["ada"]) }]),
+      );
+      yield* settle;
+      const view = hqNavigation.derive(readsOfState(store.state()), ORG);
+      expect(view.structure?.apps.map((row) => row.name)).toEqual(["Bakery"]);
+      expect(view.structure?.apps[0]?.projects.map((row) => row.name)).toEqual(["ada"]);
+      expect(fixture.opens()).toBe(1);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+  it.effect("detaching a Mate keeps its row outside the application", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      yield* fixture.send(
+        navigation("scope-values", 4, [
+          { key: "app:shop", value: app("shop", "Shop", ["ada", "bea"]) },
+          { key: "project:bea", value: project("bea", "shop") },
+        ]),
+      );
+      yield* settle;
+      yield* fixture.send(
+        navigation("scope-values", 5, [
+          { key: "app:shop", value: app("shop", "Shop", ["bea"]) },
+          { key: "project:ada", value: project("ada", null) },
+        ]),
+      );
+      yield* settle;
+      const view = hqNavigation.derive(readsOfState(store.state()), ORG);
+      expect(view.structure?.apps[0]?.projects.map((row) => row.name)).toEqual(["bea"]);
+      expect(view.structure?.ungrouped.map((row) => row.name)).toEqual(["ada"]);
+      expect(fixture.opens()).toBe(1);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+  it.effect("application menu rows arrive before HQ application detail", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      const view = hqNavigation.derive(readsOfState(store.state()), ORG);
+      expect(view.structure?.apps[0]).toMatchObject({ name: "Shop", projects: [{ name: "ada" }] });
+      // The navigation projection is consumed before any application-detail scope is requested.
+      expect(
+        fixture.sent.flatMap(({ request }) =>
+          request.type === "subscribe" ? request.scopes.map(({ scope }) => scope.kind) : [],
+        ),
+      ).not.toContain("app-detail");
+      expect([...store.state().streams.keys()].some((key) => key.includes("hq-app-detail"))).toBe(
+        false,
+      );
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
   it.effect.each(
     Array.from(
       [

@@ -19,13 +19,22 @@ import { create, type ReactTestInstance, type ReactTestRenderer } from "react-te
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ProjectId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ThreadId,
+  type CrewSnapshot,
+  type MateAttention,
+} from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { CrewDigest } from "@t3tools/shared/mateLink";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
+import * as accountHq from "~/zerops/accountHq";
+import * as hqUpdate from "./ZeropsHqUpdate";
 import {
   restingActivity,
   threadAgentActivity,
@@ -106,12 +115,20 @@ vi.mock("~/zerops/accountForge", async (original) => {
   };
 });
 // Who is looking: nobody signed in to Zerops unless a test says whom.
-const session = vi.hoisted(() => ({ viewer: undefined as string | undefined }));
+const session = vi.hoisted(() => ({
+  viewer: undefined as string | undefined,
+  role: undefined as string | undefined,
+}));
 vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
   ...(await original<typeof import("~/zerops/ZeropsSessionProvider")>()),
   useZeropsSession: () => ({ status: "signed-in", activeOrganization: { id: "org-1" } }),
   useZeropsSessionOptional: () =>
-    session.viewer === undefined ? null : { user: { id: session.viewer } },
+    session.viewer === undefined
+      ? null
+      : {
+          user: { id: session.viewer },
+          activeOrganization: { id: "org", roleCode: session.role, status: "ACTIVE" },
+        },
 }));
 // Whom each Mate waits on, as HQ says it (`waitsOnViewer`): the viewer who signed its agent in.
 const signerOf = vi.hoisted(() => new Map<string, string>());
@@ -150,6 +167,7 @@ afterEach(() => {
   stored.written = undefined;
   stored.writtenOpened = undefined;
   session.viewer = undefined;
+  session.role = undefined;
   signerOf.clear();
   hqSigners.said = true;
   ownedBy.clear();
@@ -4412,4 +4430,336 @@ describe("one project order, the person's", () => {
     press(tree, "sidebar-show-everyone");
     expect(everyone).toBe(1);
   });
+});
+
+describe("menu liveness through HQ records", () => {
+  const at = "2026-10-06T12:00:00.000Z";
+  const overview = (patch: Partial<NonNullable<MateLiveView["main"]>> = {}): MateLiveView => ({
+    presence: { online: true, since: at, overview: "live" },
+    identity: {
+      environmentId: EnvironmentId.make("env-Ada"),
+      serverVersion: "0.14.35",
+      update: null,
+    },
+    main: {
+      id: ThreadId.make("chat-Ada"),
+      title: "Inspect the checkout",
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+      interactionMode: "default",
+      backgroundLiveness: null,
+      session: null,
+      latestTurn: null,
+      latestUserMessageAt: at,
+      updatedAt: at,
+      latestMessagePreview: null,
+      latestUserMessagePreview: { text: "Inspect the checkout" },
+      planProgress: null,
+      pendingQuestion: null,
+      usagePause: null,
+      liveStep: null,
+      ...patch,
+    },
+  });
+  const working = () =>
+    overview({
+      session: { status: "running", lastError: null },
+      liveStep: { kind: "thinking", since: at },
+      planProgress: { step: "Inspecting the checkout" },
+    });
+  const attention = (patch: Partial<MateAttention> = {}): MateAttention => ({
+    source: {
+      environmentId: EnvironmentId.make("env-Ada"),
+      epoch: 1,
+      incarnation: "before",
+      revision: 1,
+    },
+    mainThreadId: ThreadId.make("chat-Ada"),
+    lastThreadId: ThreadId.make("chat-Ada"),
+    working: 1,
+    waiting: 0,
+    results: [],
+    questions: [],
+    truncated: false,
+    ...patch,
+  });
+  function menu() {
+    session.viewer = SIGNER;
+    signerOf.set("Ada", SIGNER);
+    const registry = AtomRegistry.make();
+    const hq = mountHqNavigation(registry, "org", { mates: { Ada: overview() } });
+    function Menu() {
+      const activity = useMatesActivity(true);
+      const getActivity = useMateRowActivity(activity);
+      return (
+        <SidebarZeropsTree
+          candidates={[
+            candidate("Ada", {
+              tags: ["mate"],
+              hq: { appId: null, appName: null, kind: "mate", mate: { face: "" } },
+            }),
+          ]}
+          complete
+          keyedReadings
+          getActivity={getActivity}
+          onSelect={() => {}}
+          onBrowseProjects={() => {}}
+        />
+      );
+    }
+    const tree = mount(
+      <RegistryContext.Provider value={registry}>
+        <Menu />
+      </RegistryContext.Provider>,
+    );
+    const deliver = (record: MateLiveView, word?: MateAttention) =>
+      act(() =>
+        hq.seed({
+          mates: { Ada: record },
+          ...(word === undefined ? {} : { attention: { Ada: word } }),
+        }),
+      );
+    const line = (name: string) => text(surface(tree, name));
+    const lacks = (name: string) =>
+      expect(
+        tree.root.findAll(
+          (node) => typeof node.type === "string" && node.props["data-zerops-surface"] === name,
+        ),
+      ).toHaveLength(0);
+    return { registry, tree, deliver, line, lacks };
+  }
+
+  it("an agent starts working and its row shows the live step", () => {
+    const s = menu();
+    try {
+      s.lacks("sidebar-mate-live-step");
+      s.deliver(working());
+      expect(s.line("sidebar-mate-live-step")).toContain("Thinking");
+    } finally {
+      s.registry.dispose();
+    }
+  });
+  it("an agent waiting for input shows its question in the row", () => {
+    const s = menu();
+    try {
+      s.deliver(working());
+      expect(s.line("sidebar-mate-live-step")).toContain("Thinking");
+      s.deliver(
+        overview({ hasPendingUserInput: true, pendingQuestion: "Which branch should I use?" }),
+      );
+      expect(s.line("sidebar-mate-snippet")).toBe("Which branch should I use?");
+      s.lacks("sidebar-mate-live-step");
+    } finally {
+      s.registry.dispose();
+    }
+  });
+  it("an agent finishes and its row shows the answer", () => {
+    const s = menu();
+    try {
+      s.deliver(working());
+      expect(s.line("sidebar-mate-live-step")).toContain("Thinking");
+      s.deliver(
+        overview({ latestMessagePreview: { role: "assistant", text: "Checkout is ready" } }),
+      );
+      expect(s.line("sidebar-mate-snippet")).toBe("Checkout is ready");
+      s.lacks("sidebar-mate-live-step");
+    } finally {
+      s.registry.dispose();
+    }
+  });
+  it("a new chat replaces the old request in the row", () => {
+    const s = menu();
+    try {
+      expect(s.line("sidebar-mate-subject")).toBe("Inspect the checkout");
+      s.deliver(
+        overview({
+          id: ThreadId.make("new-chat"),
+          title: "Fresh task",
+          latestUserMessagePreview: { text: "Review the new API" },
+        }),
+      );
+      expect(s.line("sidebar-mate-subject")).toBe("Review the new API");
+      expect(text(surface(s.tree, "sidebar-mate"))).not.toContain("Inspect the checkout");
+    } finally {
+      s.registry.dispose();
+    }
+  });
+  it("a Mate's attention that it stopped clears its working row within two seconds", () => {
+    const s = menu();
+    try {
+      const word = attention();
+      s.deliver(working(), word);
+      expect(s.line("sidebar-mate-live-step")).toContain("Thinking");
+      const start = performance.now();
+      s.deliver(working(), { ...word, source: { ...word.source, revision: 2 }, working: 0 });
+      s.lacks("sidebar-mate-live-step");
+      expect(performance.now() - start).toBeLessThanOrEqual(2_000);
+    } finally {
+      s.registry.dispose();
+    }
+  });
+  it("a restarted Mate's attention, HQ relaying it alone, replaces its run before within two seconds, and the run before's late word never wins", () => {
+    vi.useFakeTimers();
+    const s = menu();
+    try {
+      const old = attention();
+      s.deliver(working(), old);
+      expect(s.line("sidebar-mate-live-step")).toContain("Thinking");
+      const start = performance.now();
+      s.deliver(working(), {
+        ...old,
+        source: { ...old.source, epoch: 2, incarnation: "after", revision: 0 },
+        working: 0,
+      });
+      s.lacks("sidebar-mate-live-step");
+      expect(performance.now() - start).toBeLessThanOrEqual(2_000);
+      // Observe after the stale report has actually entered the reducer, through the original window.
+      s.deliver(working(), { ...old, source: { ...old.source, revision: 99 } });
+      s.lacks("sidebar-mate-live-step");
+      act(() => vi.advanceTimersByTime(2_000));
+      s.lacks("sidebar-mate-live-step");
+    } finally {
+      s.registry.dispose();
+      vi.useRealTimers();
+    }
+  });
+  it("a new chat HQ relays the attention of alone reaches its row within two seconds", () => {
+    const s = menu();
+    try {
+      expect(s.line("sidebar-mate-subject")).toBe("Inspect the checkout");
+      const word = attention();
+      const start = performance.now();
+      s.deliver(overview(), {
+        ...word,
+        mainThreadId: ThreadId.make("new-chat"),
+        lastThreadId: ThreadId.make("new-chat"),
+        working: 0,
+        waiting: 1,
+        questions: [{ threadId: ThreadId.make("new-chat"), kind: "approval", turnId: null }],
+      });
+      expect(surface(s.tree, "sidebar-mate").props["aria-label"]).toBe("Ada, Waiting for you");
+      s.lacks("sidebar-mate-subject");
+      expect(performance.now() - start).toBeLessThanOrEqual(2_000);
+    } finally {
+      s.registry.dispose();
+    }
+  });
+  it("folding and expanding restores the application's Mate rows", () => {
+    stored.opened = new Set(["aaa"]);
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={[
+          candidate("Ada", { tags: ["mate"], hq: AAA() }),
+          candidate("Bea", { tags: ["mate"], hq: AAA() }),
+        ]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const names = () =>
+      tree.root
+        .findAll(
+          (node) =>
+            typeof node.type === "string" &&
+            node.props["data-zerops-surface"] === "sidebar-mate-name",
+        )
+        .map(text);
+    expect(names()).toEqual(["Ada", "Bea"]);
+    press(tree, "sidebar-project");
+    expect(names()).toEqual([]);
+    press(tree, "sidebar-project");
+    expect(names()).toEqual(["Ada", "Bea"]);
+  });
+});
+
+it("a reader sees the protocol notice without an update action", () => {
+  session.viewer = "reader";
+  session.role = "READ_ONLY";
+  const official = vi.spyOn(accountHq, "useAccountHq").mockReturnValue({
+    status: "ready",
+    hq: { kind: "official", projectId: "hq", address: "https://hq.invalid" },
+    admins: [],
+    reread: () => {},
+  });
+  const carried = vi.spyOn(accountHq, "useCarriedCoreBuild").mockReturnValue("current");
+  // This case owns the menu permission gate; the update dialog has its own render suite.
+  const update = vi
+    .spyOn(hqUpdate, "ZeropsHqUpdate")
+    .mockImplementation(({ trigger }) => <button>{trigger}</button>);
+  const registry = AtomRegistry.make();
+  const { store } = mountHqNavigation(registry, "org", {
+    structure: { apps: [], ungrouped: [{ projectId: "Ada", name: "Ada", mate: { face: "" } }] },
+    person: {
+      role: "READER",
+      mayWrite: false,
+      mine: false,
+      ownerUserId: null,
+      waitsOnViewer: false,
+      unseen: null,
+    },
+  });
+  store.dispatch({
+    kind: "delivery",
+    via: "hq-stream",
+    reset: true,
+    scopes: [{ scope: "hq:org:hq-protocol", generation: 0 }],
+    rows: [
+      {
+        family: "hqProtocol",
+        id: "org",
+        revision: { kind: "hq", incarnation: "core", revision: 1 },
+        value: { build: "old" },
+      },
+    ],
+    removals: [],
+  });
+  try {
+    const tree = mount(
+      <RegistryContext.Provider value={registry}>
+        <SidebarZeropsTree
+          candidates={[
+            candidate("Ada", {
+              tags: ["mate"],
+              hq: { appId: null, appName: null, kind: "mate", mate: { face: "" } },
+            }),
+          ]}
+          complete
+          onSelect={() => {}}
+          onBrowseProjects={() => {}}
+        />
+      </RegistryContext.Provider>,
+    );
+    expect(text(surface(tree, "sidebar-environments"))).toContain(
+      "HQ needs an update to show all navigation facts.",
+    );
+    expect(text(surface(tree, "sidebar-mate-name"))).toContain("Ada");
+    expect(text(surface(tree, "sidebar-environments"))).not.toContain("Update HQ");
+    // The same notice offers its action to an admin: the reader role alone suppresses it.
+    session.role = "ADMIN";
+    act(() =>
+      tree.update(
+        <RegistryContext.Provider value={registry}>
+          <SidebarZeropsTree
+            candidates={[
+              candidate("Ada", {
+                tags: ["mate"],
+                hq: { appId: null, appName: null, kind: "mate", mate: { face: "" } },
+              }),
+            ]}
+            complete
+            onSelect={() => {}}
+            onBrowseProjects={() => {}}
+          />
+        </RegistryContext.Provider>,
+      ),
+    );
+    expect(text(surface(tree, "sidebar-environments"))).toContain("Update HQ");
+  } finally {
+    official.mockRestore();
+    carried.mockRestore();
+    update.mockRestore();
+    registry.dispose();
+  }
 });

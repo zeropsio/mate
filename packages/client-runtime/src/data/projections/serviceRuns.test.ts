@@ -6,6 +6,7 @@ import { emptyAccount, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import { serviceRuns, type ServiceRuns } from "./serviceRuns.ts";
+import { environmentRow } from "../../zerops/groupRows.ts";
 
 const apply = (inputs: ReadonlyArray<AccountInput>): AccountState =>
   inputs.reduce((current, input) => reduceAccount(current, input).state, emptyAccount);
@@ -143,4 +144,60 @@ it("a push that names only part of a service's row keeps what it runs", () => {
     source: "GIT",
     name: "main 6aeae99",
   });
+});
+
+it("a rollback without a build shows the restored version's commit on the stage", () => {
+  const running = apply(
+    liveZerops({
+      services: [
+        {
+          id: "app",
+          projectId: "p1",
+          activeAppVersion: { id: "later", source: "GIT" },
+          userData: named("later", "main bbbbbbb"),
+        },
+      ],
+      running: [
+        {
+          id: "earlier-build",
+          projectId: "p1",
+          status: "FINISHED",
+          serviceStackIds: ["app"],
+          appVersion: { id: "earlier", name: "main aaaaaaa" },
+        },
+        {
+          id: "later-build",
+          projectId: "p1",
+          status: "FINISHED",
+          serviceStackIds: ["app"],
+          appVersion: { id: "later", name: "main bbbbbbb" },
+        },
+      ],
+    }),
+  );
+  const before = serviceRuns.derive(readsOfState(running), { orgId: ORG, serviceId: "app" });
+  expect(before).toMatchObject({ activeId: "later", name: "main bbbbbbb" });
+  const restored = reduceAccount(
+    running,
+    pushed({
+      id: "app",
+      name: "app",
+      status: "ACTIVE",
+      projectId: "p1",
+      activeAppVersion: { id: "earlier", source: "GIT" },
+      _version: 2,
+    }),
+  ).state;
+  const runs = serviceRuns.derive(readsOfState(restored), { orgId: ORG, serviceId: "app" });
+  expect(runs).toMatchObject({ activeId: "earlier", name: "main aaaaaaa" });
+  if (typeof runs === "string") throw new Error("The restored service must name its version");
+  expect(
+    environmentRow({
+      projectId: "p1",
+      name: "stage",
+      tier: "stage",
+      sources: ["main"],
+      services: [{ hostname: "app", appVersionName: runs.name ?? undefined }],
+    }).commit,
+  ).toBe("aaaaaaa");
 });

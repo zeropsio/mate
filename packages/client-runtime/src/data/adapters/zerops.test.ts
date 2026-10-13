@@ -24,6 +24,13 @@ import { detailScopeOf } from "../demand.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 import { projectRoutingsScope, routingsScope } from "../families/publicRouting.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
+import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { hqNavigation } from "../projections/hqNavigation.ts";
+import { placedMenuRows, placedNames, placementsOf } from "../../zerops/hq/placement.ts";
+import { deriveZeropsCandidates } from "../../zerops/candidates.ts";
+import { selectMateEnvironments } from "../../zerops/mateEnvironments.ts";
+import { projectServices } from "../projections/services.ts";
+import { projectGone } from "../projections/projects.ts";
 import { ownRowWanted, listedProject } from "../projections/projects.ts";
 import { platformInventory } from "../projections/platformInventory.ts";
 import { readsOfState } from "../store.ts";
@@ -885,6 +892,41 @@ describe("a demanded detail", () => {
       yield* settle;
       expect(reads()).toBe(2);
       yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a refused creation read is not repeated after five seconds", () =>
+    Effect.gen(function* () {
+      for (const role of ["OWNER", "NO_ACCESS"] as const) {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire((request) =>
+          request.path === `/project/${PROBE_PROJECT_ID}`
+            ? Effect.succeed({ status: 403, body: {} })
+            : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        const project = () =>
+          listedProject.derive(readsOfState(store.state()), {
+            orgId: ORG,
+            projectId: PROBE_PROJECT_ID,
+          });
+        const wanted = ownRowWanted(role, project());
+        expect(wanted).toBe(role === "NO_ACCESS");
+        if (wanted)
+          link.demandDetail({ family: "project", listing: "project", ownerId: PROBE_PROJECT_ID });
+        yield* settle;
+        const reads = () =>
+          fixture.requests.filter(({ path }) => path === `/project/${PROBE_PROJECT_ID}`).length;
+        expect(reads()).toBe(role === "OWNER" ? 0 : 1);
+        if (role === "NO_ACCESS")
+          expect(
+            store.state().streams.get(`zerops:${ORG}:project:${PROBE_PROJECT_ID}`)?.phase,
+          ).toBe("refused");
+        yield* TestClock.adjust(5_000);
+        yield* settle;
+        expect(reads()).toBe(role === "OWNER" ? 0 : 1);
+        yield* Fiber.interrupt(fiber);
+      }
     }),
   );
 
@@ -1836,5 +1878,129 @@ describe("routing fallback refresh races", () => {
         ).toBe("member");
         yield* Fiber.interrupt(fiber);
       }),
+  );
+});
+
+describe("menu rows from Zerops owner evidence", () => {
+  const projects = ["Ada", "Bea"].map((id) => ({
+    id,
+    clientId: ORG,
+    name: id,
+    status: "ACTIVE",
+    _version: 1,
+  }));
+  const menuRows = (store: ReturnType<typeof makeAccountStore>) => {
+    const read = readsOfState(store.state());
+    const structure = hqNavigation.derive(read, ORG).structure!;
+    const gone = new Set(
+      ["Ada", "Bea"].filter((projectId) => projectGone.derive(read, { orgId: ORG, projectId })),
+    );
+    return placedMenuRows({
+      organizationId: ORG,
+      placements: placementsOf(structure),
+      names: placedNames(structure),
+      projects: ["Ada", "Bea"].flatMap(
+        (projectId) => listedProject.derive(read, { orgId: ORG, projectId }) ?? [],
+      ),
+      candidates: [],
+      gone,
+    });
+  };
+  it.effect("a 403 project read keeps the HQ-enrolled Mate row", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      seedHqNavigation(store, ORG, {
+        structure: {
+          apps: [],
+          ungrouped: projects.map(({ id }) => ({ projectId: id, name: id, mate: { face: "" } })),
+        },
+      });
+      let listed = projects;
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status: request.path === "/project/Ada" ? 403 : 404, body: {} })
+          : answers(
+              () => [],
+              () => listed,
+            )(request),
+      );
+      const { fiber } = yield* runLink(store, fixture);
+      expect(menuRows(store).map((row) => row.project.name)).toEqual(["Ada", "Bea"]);
+      const observed: string[][] = [];
+      const stop = store.subscribe(() =>
+        observed.push(menuRows(store).map((row) => row.project.name)),
+      );
+      listed = projects.filter(({ id }) => id !== "Ada");
+      yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), { delete: ["Ada"] });
+      yield* settle;
+      expect(fixture.requests.filter(({ path }) => path === "/project/Ada")).toHaveLength(1);
+      expect(readsOfState(store.state()).fact("project", "Ada")).toMatchObject({
+        kind: "withheld",
+        reason: "denied",
+      });
+      // Access changed: register the current list again before delivering its next deletion.
+      const recovering = store.state().streams.get(linkKeys.zerops(ORG));
+      yield* TestClock.adjust(recovering?.next.kind === "retry" ? recovering.next.at : 0);
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      listed = [];
+      yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), { delete: ["Bea"] });
+      yield* settle;
+      expect(menuRows(store).map((row) => row.project.name)).toEqual(["Ada"]);
+      expect(observed.length).toBeGreaterThan(0);
+      expect(observed.every((rows) => rows.includes("Ada"))).toBe(true);
+      stop();
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+  it.effect("a Mate whose container is deleted leaves the menu without reload", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const services = projects.map(({ id }) => ({
+        id: `service-${id}`,
+        clientId: ORG,
+        projectId: id,
+        name: "zcp",
+        status: "ACTIVE",
+        serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+        _version: 1,
+      }));
+      const fixture = fixtureWire((request) =>
+        request.path === "/service-stack/service-Bea"
+          ? Effect.succeed({ status: 404, body: { code: "serviceStackNotFound" } })
+          : request.path === "/service-stack/search" && request.body?.wsOutputType === "listStream"
+            ? Effect.succeed({ items: services })
+            : answers(
+                () => [],
+                () => projects,
+              )(request),
+      );
+      const { fiber } = yield* runLink(store, fixture);
+      const rows = () =>
+        selectMateEnvironments(
+          projects.flatMap((project) =>
+            deriveZeropsCandidates(
+              project,
+              projectServices.derive(readsOfState(store.state()), {
+                orgId: ORG,
+                projectId: project.id,
+              }).services ?? null,
+              new Map(),
+            ),
+          ),
+        ).map((row) => row.project.name);
+      expect(rows()).toEqual(["Ada", "Bea"]);
+      yield* fixture.push(fixture.subscription("/service-stack/search", "listStream"), {
+        delete: ["service-Bea"],
+      });
+      yield* settle;
+      expect(
+        fixture.requests.filter(({ path }) => path === "/service-stack/service-Bea"),
+      ).toHaveLength(1);
+      expect(readsOfState(store.state()).fact("service", "service-Bea").kind).toBe("deleted");
+      expect(rows()).toEqual(["Ada"]);
+      expect(fixture.opens()).toBe(1);
+      yield* Fiber.interrupt(fiber);
+    }),
   );
 });

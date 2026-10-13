@@ -178,6 +178,23 @@ async function mount(
 }
 
 describe("the release dialog's press", () => {
+  it("invalid version prevents releasing production", async () => {
+    const release = vi.fn(async (): Promise<FlowVerbOutcome> => ({ ok: true, tag: "v0.1.5" }));
+    const { container } = await mount(release);
+    const input = container.querySelector<TestInput>('input[aria-label="Version"]')!;
+    const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"));
+    const props = Reflect.get(input, key!) as {
+      onChange: (event: { target: { value: string } }) => void;
+    };
+    expect(props.onChange).toBeTypeOf("function");
+    await act(async () => props.onChange({ target: { value: "not-a-version" } }));
+    expect(container.textContent).toContain("Use major.minor.patch, for example 1.0.0.");
+    const submit = container.querySelector<TestButton>("[data-review-primary]")!;
+    expect(submit.disabled).toBe(true);
+    await act(async () => submit.click());
+    expect(release).not.toHaveBeenCalled();
+  });
+
   it("holds the offered #6 and v0.1.4 even when HQ and production update before React draws the press", async () => {
     const { container, render } = await mount(async () => {
       const before = state.value.flows.get("xyz")!;

@@ -11,13 +11,17 @@ type Fixture = Effect.Success<typeof environmentFixture>;
 
 export function environmentActions(f: Fixture, page: Page = f.s.page) {
   const { s, appId } = f;
-  const text = (wanted: string) =>
+  const text = (wanted: string, selector = "body") =>
     Effect.promise(async () => {
       try {
         await page.waitForFunction(
-          (wanted) => document.body.innerText.includes(wanted),
+          (wanted, selector) =>
+            [...document.querySelectorAll<HTMLElement>(selector)].some((element) =>
+              element.innerText.includes(wanted),
+            ),
           { timeout: 30_000, polling: "raf" },
           wanted,
+          selector,
         );
       } catch (cause) {
         throw new Error(
@@ -243,70 +247,17 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
   const running = (tier: "stage" | "production") =>
     Effect.gen(function* () {
       const process = yield* deployment(tier);
-      expect(
-        s.drivers.zerops.rows("process").find((row) => row.id === process.id)?.finished,
-      ).toBeNull();
+      const jobs = yield* s.drivers.core.sql<{
+        state: string;
+        process_id: string;
+      }>`SELECT state, process_id FROM hq_deploy_job WHERE project_id = ${`Shop-${tier}`} AND process_id = ${process.id}`;
+      expect(jobs).toEqual([{ state: "building", process_id: process.id }]);
     });
-  const longRunningGap = Effect.gen(function* () {
-    const process = yield* deployment("stage");
-    // Age the durable operation beyond the former 75-minute limit, then lose its socket.
-    // The reconnect registration must still report the owner's RUNNING state.
-    yield* s.drivers.core
-      .sql`UPDATE hq_deploy_job SET submitted_at = now() - interval '80 minutes' WHERE process_id = ${process.id}`;
-    const zerops = s.drivers.zerops;
-    const follow = [...zerops.subscriptions.values()].find(
-      (r) =>
-        r.apiToken === "hq" &&
-        r.kind === "app-version" &&
-        r.search.some((filter) => filter.name === "id"),
-    );
-    expect(follow, "HQ registered the accepted operation through realtime").toBeDefined();
-    const registrations = zerops.requests.get("POST /process/search") ?? 0;
-    zerops.sockets.get(follow!.receiver)!.close();
-    yield* Effect.promise(() => zerops.waitForRequest("POST /process/search", registrations + 2));
-  });
-  const keepsStageRunning = Effect.promise(async () => {
-    const guard = await page.evaluateHandle(() => {
-      const state = {
-        failures: [] as string[],
-        observer: undefined as MutationObserver | undefined,
-      };
-      const check = () => {
-        for (const row of document.querySelectorAll<HTMLElement>(
-          '[data-zerops-surface="stop-service-job"]',
-        )) {
-          const text = row.innerText;
-          if (/failed|refused/i.test(text) && !state.failures.includes(text))
-            state.failures.push(text);
-        }
-      };
-      check();
-      state.observer = new MutationObserver(check);
-      state.observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
-      return state;
-    });
-    s.drivers.cleanup.push(() => guard.dispose());
-    return Effect.promise(async () => {
-      const failures = await guard.evaluate((state) => {
-        state.observer?.disconnect();
-        return state.failures;
-      });
-      expect(
-        failures,
-        "A RUNNING Zerops build must not be reported failed or refused by HQ's clock",
-      ).toEqual([]);
-    });
-  });
   return {
     when: {
       open,
       openFromNavigation,
       reviewFromReleaseTag,
-      longRunningGap,
       finish,
       finishImport,
       rollBackOnZerops,
@@ -324,7 +275,6 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       releaseDisabled,
       keepsDocument,
       keepsWord,
-      keepsStageRunning,
       releaseEntriesShow,
       productionBuildCount,
     },

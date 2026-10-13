@@ -710,6 +710,77 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     });
   });
 
+  it("a colleague merges while the review is open", async () => {
+    account.flowPull = merged({
+      repository: "apidev",
+      number: 1,
+      merged: false,
+      state: "open",
+      headSha: API_CHANGE.head ?? undefined,
+    });
+    detail.readout = READ_DETAIL;
+    await reviewed(async (host, rerender) => {
+      expect(buttonsOf(host, "Merge")).toHaveLength(1);
+      account.flowPull = {
+        ...account.flowPull!,
+        merged: true,
+        state: "merged",
+        mergedAt: new Date(NOW).toISOString(),
+      };
+      await rerender();
+      expect(host.textContent).toContain("Merged into main");
+      expect(buttonsOf(host, "Merge")).toHaveLength(0);
+      expect(account.verbs).toEqual([]);
+    });
+  });
+
+  it("a colleague merge ends an open Close confirmation without claiming a local close", async () => {
+    account.flowPull = merged({
+      repository: "apidev",
+      number: 1,
+      merged: false,
+      state: "open",
+      headSha: API_CHANGE.head ?? undefined,
+    });
+    detail.readout = READ_DETAIL;
+    await reviewed(async (host, rerender) => {
+      await pressed(host, "Close without merging…");
+      expect(host.textContent).toContain("Close #1 without merging?");
+      account.flowPull = {
+        ...account.flowPull!,
+        merged: true,
+        state: "merged",
+        mergedAt: new Date(NOW).toISOString(),
+      };
+      await rerender();
+      expect(host.textContent).toContain("Merged into main");
+      expect(host.textContent).not.toContain("Close #1 without merging?");
+      expect(host.textContent).not.toContain("Closed without merging");
+      expect(buttonsOf(host, "Merge")).toHaveLength(0);
+      expect(buttonsOf(host, "Close without merging…")).toHaveLength(0);
+      expect(account.verbs).toEqual([]);
+    });
+  });
+
+  it("a reader can review but cannot merge", async () => {
+    detail.readout = READ_DETAIL;
+    offers.held.current = {
+      ...DEVELOPS,
+      merge: false,
+      close: false,
+      why: {
+        merge:
+          "You need at least Basic user access to one of this project's Zerops projects to do this.",
+      },
+    };
+    await reviewed((host) => {
+      expect(host.textContent).toContain("src/api.ts");
+      expect(host.textContent).toContain("You need at least Basic user access");
+      expect(buttonsOf(host, "Merge")).toHaveLength(0);
+      expect(account.verbs).toEqual([]);
+    });
+  });
+
   it("requires another Close confirmation after a newer head is shown", async () => {
     account.flowPull = merged({
       repository: "apidev",

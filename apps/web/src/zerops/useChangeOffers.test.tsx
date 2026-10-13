@@ -3,6 +3,7 @@
  * decided it, refused in HQ's words, unavailable since HQ stopped answering, and nothing said
  * while HQ has not said it.
  */
+import { accountReadsAtom } from "@t3tools/client-runtime/data";
 import { RegistryContext } from "@effect/atom-react";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { AtomRegistry } from "effect/reactivity";
@@ -136,6 +137,81 @@ const STREAMED: Hq = {
 };
 
 describe("useChangeOffers", () => {
+  it("a same-tab organization round trip preserves the known Merge offer", () => {
+    const registry = AtomRegistry.make();
+    const { store } = mountHqNavigation(registry, "org-acme", {
+      structure: STREAMED.structure!,
+      live: true,
+    });
+    mountHqNavigation(
+      registry,
+      "org-beta",
+      { structure: { apps: [], ungrouped: [] }, live: true },
+      store,
+    );
+    const session = (organizationId: string) =>
+      ({
+        status: "signed-in",
+        organizationStatus: "selected",
+        activeOrganization: { organizationId },
+      }) as never;
+    registry.set(zeropsSessionAtom, session("org-acme"));
+    function OffersProbe() {
+      seen.push(useChangeOffers()("app-shop"));
+      return null;
+    }
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    act(() =>
+      mounted.push(
+        create(
+          <RegistryContext.Provider value={registry}>
+            <OffersProbe />
+          </RegistryContext.Provider>,
+        ),
+      ),
+    );
+    expect(seen.at(-1)).toMatchObject({ merge: true });
+    const switchOrganization = (orgId: string) =>
+      act(() => {
+        registry.set(zeropsSessionAtom, session(orgId));
+        registry.set(accountReadsAtom, { ...registry.get(accountReadsAtom)!, orgId });
+      });
+    switchOrganization("org-beta");
+    expect(seen.at(-1)).toBeUndefined();
+    const beforeReturn = seen.length;
+    switchOrganization("org-acme");
+    expect(seen.slice(beforeReturn)).not.toHaveLength(0);
+    for (const offer of seen.slice(beforeReturn))
+      expect(offer).toMatchObject({ merge: true, why: {} });
+  });
+
+  it("a reader can review but cannot merge", () => {
+    const offers = answerOf(
+      {
+        structure: {
+          apps: [
+            {
+              ...SHOP,
+              can: {
+                ...SHOP.can,
+                merge_change: refused("not_app_developer"),
+                close_change: refused("not_app_developer"),
+              },
+            },
+          ],
+          ungrouped: [],
+        },
+      },
+      useChangeOffers,
+    )("app-shop");
+    expect(offers?.read).toBe(true);
+    expect(offers?.merge).toBe(false);
+    expect(offers?.close).toBe(false);
+    expect(offers?.why.merge).toBe(
+      "You need at least Basic user access to one of this project's Zerops projects to do this.",
+    );
+  });
+
   it("draws what HQ offers, and says HQ's refusal", () => {
     const offers = answerOf(STREAMED, useChangeOffers);
     expect(offers("app-shop")).toEqual({

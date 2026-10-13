@@ -15,7 +15,7 @@ const encodeAsset = Schema.encodeSync(AssetCreateUrlResult);
 describe("B: text-only drafts", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
-      "a restored draft previews text without displaying its loaded or missing pictures",
+      "a resized menu preserves its Mate rows and footer room through account failure and recovery",
       () =>
         Effect.gen(function* () {
           const s = yield* menuScenario();

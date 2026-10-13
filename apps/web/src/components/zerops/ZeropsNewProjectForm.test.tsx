@@ -243,6 +243,19 @@ describe("ZeropsNewProjectForm — the project and its first Mate", () => {
     expect(field(tree, MATE_FIELD).props["aria-invalid"]).toBe(true);
   });
 
+  it("a taken Mate name is refused before creating anything", () => {
+    const onCreate = vi.fn();
+    const tree = mount(
+      projectForm({ takenBotNames: { names: ["Ada"], complete: true }, onCreate }),
+    );
+    type(tree, PROJECT_FIELD, "Garden");
+    type(tree, MATE_FIELD, "ada");
+    press(tree);
+    expect(line(tree).children).toEqual(["Another Mate already has that name."]);
+    expect(field(tree, MATE_FIELD).props["aria-invalid"]).toBe(true);
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
   it("waits for every Mate's name to be read before it can create, and says so", () => {
     const tree = mount(projectForm({ takenBotNames: { names: [], complete: false } }));
     type(tree, PROJECT_FIELD, "Acme CRM");

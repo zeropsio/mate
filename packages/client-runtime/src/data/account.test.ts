@@ -2,6 +2,10 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 
+import { seedHqNavigation } from "./__fixtures__/hqNavigation.ts";
+import { placedMenuRows, placedNames, placementsOf } from "../zerops/hq/placement.ts";
+import { hqNavigation } from "./projections/hqNavigation.ts";
+import { listedProject, projectGone } from "./projections/projects.ts";
 import { hqFixtureWire } from "./__fixtures__/hqWire.ts";
 import { fixtureWire } from "./__fixtures__/zeropsWire.ts";
 import { observeAccount, startZeropsNavigation } from "./account.ts";
@@ -569,3 +573,82 @@ describe("readDetail", () => {
     }),
   );
 });
+
+it.live("a deleted project disappears after access renewal", () =>
+  Effect.gen(function* () {
+    const store = makeAccountStore(AtomRegistry.make());
+    let deleted = false;
+    const projects = ["Ada", "Bea"].map((id) => ({
+      id,
+      clientId: "org",
+      name: id,
+      status: "ACTIVE",
+      lastUpdate: "2026-10-06T12:00:00Z",
+    }));
+    seedHqNavigation(store, "org", {
+      structure: {
+        apps: [],
+        ungrouped: projects.map(({ id }) => ({ projectId: id, name: id, mate: { face: "" } })),
+      },
+    });
+    const fixture = fixtureWire((request) =>
+      Effect.succeed(
+        request.method === "GET"
+          ? {
+              status: deleted && request.path === "/project/Ada" ? 404 : 200,
+              body: projects.find(({ id }) => request.path === `/project/${id}`),
+            }
+          : request.body?.wsOutputType === "listStream"
+            ? { items: [] }
+            : {},
+      ),
+    );
+    const account = observeAccount({ store, wire: fixture.wire, repairSession: Effect.void });
+    account.show("org");
+    account.demandDetail({ family: "project", listing: "project", ownerId: "Ada" });
+    account.demandDetail({ family: "project", listing: "project", ownerId: "Bea" });
+    const menu = () => {
+      const read = readsOfState(store.state());
+      const structure = hqNavigation.derive(read, "org").structure!;
+      return placedMenuRows({
+        organizationId: "org",
+        placements: placementsOf(structure),
+        names: placedNames(structure),
+        projects: projects.flatMap(
+          ({ id }) => listedProject.derive(read, { orgId: "org", projectId: id }) ?? [],
+        ),
+        candidates: [],
+        gone: new Set(
+          projects
+            .filter(({ id }) => projectGone.derive(read, { orgId: "org", projectId: id }))
+            .map(({ id }) => id),
+        ),
+      }).map((row) => row.project.name);
+    };
+    try {
+      yield* until(
+        store,
+        () =>
+          ["Ada", "Bea"].every(
+            (projectId) =>
+              listedProject.derive(readsOfState(store.state()), { orgId: "org", projectId }) !==
+              null,
+          ),
+        "both Mate records",
+      );
+      expect(menu()).toEqual(["Ada", "Bea"]);
+      deleted = true;
+      account.renewHeld();
+      yield* until(
+        store,
+        () => projectGone.derive(readsOfState(store.state()), { orgId: "org", projectId: "Ada" }),
+        "Ada's deletion after renewal",
+      );
+      expect(menu()).toEqual(["Bea"]);
+      expect(fixture.requests.filter(({ path }) => path === "/project/Ada")).toHaveLength(2);
+      expect(fixture.opens()).toBe(1);
+    } finally {
+      account.show(null);
+    }
+  }),
+);

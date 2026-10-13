@@ -1587,6 +1587,36 @@ describe("deploys", () => {
       ),
     );
 
+    describe("E: deployment clocks", () => {
+      it.effect("HQ does not declare refused from a clock", () =>
+        withDeploys(({ appId, world, tiers, commit, until, deploys, takeover }) =>
+          Effect.gen(function* () {
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            world.outcome = () => "BUILDING";
+            const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("building"));
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`UPDATE hq_deploy_job SET submitted_at = now() - interval '80 minutes' WHERE sha = ${sha}`;
+            // A new observer follows the aged durable receipt after the transport gap.
+            yield* takeover();
+            const reads = () => world.calls.filter((call) => call.startsWith("process:")).length;
+            const before = reads();
+            yield* until((rows) => reads() >= before + 2 && settled("building")(rows));
+            assert.deepStrictEqual(
+              (yield* deploys).map(({ sha, state }) => ({ sha, state })),
+              [{ sha, state: "building" }],
+            );
+            world.outcome = () => "ACTIVE";
+            yield* until(settled("live"));
+            assert.deepStrictEqual(
+              (yield* deploys).map(({ sha, state }) => ({ sha, state })),
+              [{ sha, state: "live" }],
+            );
+          }),
+        ),
+      );
+    });
+
     // Audit H6: Zerops takes no idempotency key, so a build HQ submitted is never submitted again
     // while it runs, however long it takes.
     it.effect("never submits again a deploy still building", () =>
@@ -2377,6 +2407,47 @@ describe("deploys", () => {
           assert.deepStrictEqual(
             versions(world).filter((name) => name.startsWith("v")),
             [`v0.1.0 ${one.slice(0, 7)}`, `v0.2.0 ${two.slice(0, 7)}`, `v0.2.1 ${one.slice(0, 7)}`],
+          );
+        }),
+      ),
+    );
+
+    it.effect("a release that fails to land keeps the last proved production version live", () =>
+      withDeploys(({ appId, world, tiers, commit, until, deploys }) =>
+        Effect.gen(function* () {
+          yield* withProduction(appId, world);
+          const releases = yield* Releases;
+          const groupHead = yield* commit("group", { "README.md": "# Shop\n" });
+          tiers.set(`${appId}/production`, tierOf(...runtime(appId, "web")));
+          const one = yield* commit("web", { "zerops.yaml": ZEROPS_YAML, "index.js": "1\n" });
+          yield* releases.release("dev", appId, {
+            tag: "v0.1.0",
+            groupHead,
+            entries: [{ service: "web", sha: one }],
+          });
+          yield* until((rows) =>
+            rows.some((row) => row.project === "P_PROD" && row.sha === one && row.state === "live"),
+          );
+          const two = yield* commit("web", { "index.js": "2\n" });
+          world.outcome = () => "BUILD_FAILED";
+          yield* releases.release("dev", appId, {
+            tag: "v0.1.1",
+            groupHead,
+            entries: [{ service: "web", sha: two }],
+          });
+          yield* until((rows) =>
+            rows.some(
+              (row) => row.project === "P_PROD" && row.sha === two && row.state === "failed",
+            ),
+          );
+          assert.deepStrictEqual(
+            (yield* deploys)
+              .filter((row) => row.project === "P_PROD")
+              .map(({ sha, state }) => ({ sha, state })),
+            [
+              { sha: one, state: "live" },
+              { sha: two, state: "failed" },
+            ],
           );
         }),
       ),
