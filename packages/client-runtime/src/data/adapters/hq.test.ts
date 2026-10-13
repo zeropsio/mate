@@ -27,6 +27,7 @@ import { factOf, streamOf } from "../reducer.ts";
 import { makeAccountStore, publicRead, readsOfState, type AccountStore } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
 import { hqNavigation } from "../projections/hqNavigation.ts";
+import { hqMateOverview } from "../projections/hqMates.ts";
 import { classifyHqClose, HQ_SILENCE_MS, hqNavigationLink } from "./hq.ts";
 
 const ORG = "org";
@@ -1293,3 +1294,335 @@ it.effect("relays health without an overview or attention and keeps it when HQ g
     });
   }),
 );
+
+describe("outage scenarios at the HQ input", () => {
+  it.effect("an unchanged HQ segment rollover keeps rows and follows the next change", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* run(store, fixture);
+      const values = [
+        { key: "app:shop", value: app("shop", "Shop", ["ada", "bea"]) },
+        { key: "project:ada", value: { ...project("ada", "shop"), name: "Ada" } },
+        { key: "project:bea", value: { ...project("bea", "shop"), name: "Bea" } },
+      ];
+      yield* fixture.send(navigation("scope-reset", 3, values));
+      yield* fixture.send(ready(3));
+      yield* settle;
+      const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
+      const before = view();
+      const observed: Array<ReturnType<typeof view>> = [];
+      const stop = store.subscribe(() => observed.push(view()));
+      try {
+        yield* fixture.endSegment;
+        yield* settle;
+        expect(fixture.opens()).toBe(2);
+        expect(view().structure).toEqual(before.structure);
+        yield* fixture.send(ready(3));
+        yield* settle;
+        expect(view().structure).toEqual(before.structure);
+        yield* fixture.send(
+          navigation("scope-values", 4, [
+            { key: "app:shop", value: app("shop", "Shop after rollover", ["ada", "bea"]) },
+          ]),
+        );
+        yield* settle;
+        expect(appName(store, "shop")).toBe("Shop after rollover");
+        expect(observed.length).toBeGreaterThan(0);
+        for (const snapshot of observed) {
+          expect(
+            snapshot.structure?.apps.flatMap((app) => app.projects.map((row) => row.name)).sort(),
+          ).toEqual(["Ada", "Bea"]);
+          expect(snapshot.live).toBe(true);
+          expect(snapshot.reconnecting).toBe(false);
+        }
+      } finally {
+        stop();
+        yield* Fiber.interrupt(fiber);
+      }
+    }),
+  );
+
+  it.effect("successive HQ session endings renew and restore the menu", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber, supervisor } = yield* live(store, fixture);
+      const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
+      for (let ended = 0; ended < 3; ended++) {
+        yield* fixture.drop(classifyHqClose(4401));
+        yield* settle;
+        // Observe the renewal before HQ answers: its grace must hide the outage.
+        expect(view()).toMatchObject({ live: true, reconnecting: false, refusal: null });
+        yield* supervisor.signal("resume");
+        yield* settle;
+        expect(fixture.opens()).toBe(ended + 2);
+        expect(
+          view().structure?.apps.flatMap((app) => app.projects.map(({ projectId }) => projectId)),
+        ).toEqual(["ada"]);
+        yield* fixture.send(ready(3));
+        yield* settle;
+        expect(view()).toMatchObject({ live: true, reconnecting: false, refusal: null });
+        expect(view().structure?.apps[0]?.name).toBe("Shop");
+      }
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  const reconcileOutages = (names: readonly string[]) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber, supervisor } = yield* live(store, fixture);
+      const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
+      const observed: Array<ReturnType<typeof view>> = [];
+      const stop = store.subscribe(() => observed.push(view()));
+      let previous = "Shop";
+      try {
+        for (const [index, name] of names.entries()) {
+          yield* fixture.drop(classifyHqClose(1011));
+          yield* settle;
+          for (const input of graceOver(store.state())) store.dispatch(input);
+          expect(view()).toMatchObject({ live: false, reconnecting: true });
+          expect(view().structure?.apps[0]?.name).toBe(previous);
+          yield* supervisor.signal("resume");
+          yield* settle;
+          yield* fixture.send(
+            navigation("scope-values", 4 + index, [
+              { key: "app:shop", value: app("shop", name, ["ada"]) },
+            ]),
+          );
+          yield* fixture.send(ready(4 + index));
+          yield* settle;
+          expect(view()).toMatchObject({ live: true, reconnecting: false });
+          expect(view().structure?.apps.map(({ name }) => name)).toEqual([name]);
+          expect(view().structure?.apps.some(({ name }) => name === previous)).toBe(false);
+          previous = name;
+        }
+        expect(observed.length).toBeGreaterThan(0);
+        for (const snapshot of observed) {
+          expect(snapshot.structure?.apps.map(({ id }) => id)).toEqual(["shop"]);
+          expect(
+            snapshot.structure?.apps.flatMap((app) =>
+              app.projects.map(({ projectId }) => projectId),
+            ),
+          ).toEqual(["ada"]);
+        }
+      } finally {
+        stop();
+        yield* Fiber.interrupt(fiber);
+      }
+    });
+
+  it.effect("two consecutive HQ outages each reconcile the latest name", () =>
+    reconcileOutages(["Shop first return", "Shop second return"]),
+  );
+  it.effect("G: HQ outage preserves rows and catches up after return", () =>
+    reconcileOutages(["Shop returned"]),
+  );
+
+  it.effect("a new HQ segment without its snapshot cannot stay live on pings", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      yield* fixture.endSegment;
+      yield* settle;
+      for (let ping = 0; ping < 3; ping++) {
+        yield* TestClock.adjust(5_000);
+        yield* fixture.send({ type: "ping" });
+        yield* settle;
+      }
+      yield* TestClock.adjust(5_000);
+      yield* settle;
+      for (const input of graceOver(store.state())) store.dispatch(input);
+      expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
+        live: false,
+        reconnecting: true,
+      });
+      expect(streamOf(store.state(), linkKeys.hq(ORG)).fault?.message).toBe(
+        "No answer came in time.",
+      );
+      expect(appName(store, "shop")).toBe("Shop");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  const main = (id: string, task: string) => ({
+    id,
+    title: task,
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    interactionMode: "default",
+    backgroundLiveness: null,
+    session: null,
+    latestTurn: null,
+    latestUserMessageAt: "2026-10-07T00:00:00Z",
+    updatedAt: "2026-10-07T00:00:00Z",
+    latestMessagePreview: null,
+    latestUserMessagePreview: { text: task },
+    planProgress: null,
+    pendingQuestion: null,
+    usagePause: null,
+    liveStep: null,
+  });
+  const corruptRecord = () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      yield* fixture.send(
+        navigation("scope-values", 4, [
+          { key: "app:shop", value: app("shop", "Shop", ["ada", "bea"]) },
+          { key: "project:bea", value: project("bea", "shop") },
+        ]),
+      );
+      yield* settle;
+
+      for (const id of ["ada", "bea"]) {
+        const scope = { kind: "attention", projectId: id, health: "apart" } as const;
+        yield* fixture.send({
+          type: "scope-reset",
+          scope,
+          incarnation: "m1",
+          revision: 1,
+          removals: [],
+          values: [
+            {
+              key: id,
+              value: {
+                presence: { online: true, since: "2026-10-07T00:00:00Z", overview: "live" },
+                overview: {
+                  identity: { environmentId: `env-${id}`, serverVersion: "0.14.35", update: null },
+                  main: main(id, `Inspect ${id} checkout`),
+                  threads: { list: [], omitted: 0 },
+                  logins: {},
+                  crew: { status: "off" },
+                },
+                attention: null,
+                attentionState: "none",
+              },
+            },
+          ],
+        });
+        yield* fixture.send({ type: "scope-ready", scope, incarnation: "m1", revision: 1 });
+      }
+      yield* settle;
+      const task = (projectId: string) =>
+        hqMateOverview.derive(readsOfState(store.state()), { orgId: ORG, projectId })?.main
+          ?.latestUserMessagePreview?.text;
+      expect(task("ada")).toBe("Inspect ada checkout");
+      expect(task("bea")).toBe("Inspect bea checkout");
+      yield* fixture.send({
+        type: "scope-values",
+        scope: { kind: "attention", projectId: "ada", health: "apart" },
+        incarnation: "m1",
+        revision: 2,
+        removals: [],
+        values: [{ key: "ada", value: { presence: "corrupt" } }],
+      });
+      yield* fixture.send(
+        navigation("scope-values", 5, [
+          { key: "app:shop", value: app("shop", "Shop after corrupt", ["ada", "bea"]) },
+        ]),
+      );
+      yield* settle;
+      expect(appName(store, "shop")).toBe("Shop after corrupt");
+      expect(
+        hqNavigation
+          .derive(readsOfState(store.state()), ORG)
+          .structure?.apps.flatMap((app) => app.projects.map(({ projectId }) => projectId))
+          .sort(),
+      ).toEqual(["ada", "bea"]);
+      expect(task("ada")).toBe("Inspect ada checkout");
+      expect(task("bea")).toBe("Inspect bea checkout");
+      yield* Fiber.interrupt(fiber);
+    });
+  it.effect("a corrupt HQ Mate record keeps unrelated tasks and menu rows", corruptRecord);
+  it.effect("Ada's task is kept after a corrupt update", corruptRecord);
+  it.effect("HQ down retains the last known pending question", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      const scope = { kind: "attention", projectId: "ada", health: "apart" } as const;
+      const question = "Which checkout should I inspect?";
+      yield* fixture.send({
+        type: "scope-reset",
+        scope,
+        incarnation: "m1",
+        revision: 1,
+        removals: [],
+        values: [
+          {
+            key: "ada",
+            value: {
+              presence: { online: true, since: "2026-10-07T00:00:00Z", overview: "live" },
+              overview: {
+                identity: { environmentId: "env-ada", serverVersion: "0.14.35", update: null },
+                main: {
+                  ...main("ada", "Inspect checkout"),
+                  hasPendingUserInput: true,
+                  pendingQuestion: question,
+                },
+                threads: { list: [], omitted: 0 },
+                logins: {},
+                crew: { status: "off" },
+              },
+              attention: null,
+              attentionState: "none",
+            },
+          },
+        ],
+      });
+      yield* fixture.send({ type: "scope-ready", scope, incarnation: "m1", revision: 1 });
+      yield* settle;
+      const heldQuestion = () =>
+        hqMateOverview.derive(readsOfState(store.state()), { orgId: ORG, projectId: "ada" })?.main
+          ?.pendingQuestion;
+      expect(heldQuestion()).toBe(question);
+      yield* fixture.drop(classifyHqClose(1011));
+      yield* settle;
+      for (const input of graceOver(store.state())) store.dispatch(input);
+      expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
+        live: false,
+        reconnecting: true,
+      });
+      // Hold the record through the whole capped retry interval, not only the first failure.
+      yield* TestClock.adjust(120_000);
+      yield* settle;
+      expect(heldQuestion()).toBe(question);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+  it.effect("HQ refusal says why and waits for an explicit retry", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber, supervisor } = yield* live(store, fixture);
+      yield* fixture.drop({
+        outcome: "definitive-refusal",
+        message: "Zerops refused HQ's access",
+        code: "zerops_refused",
+      });
+      yield* settle;
+      const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
+      expect(view().refusal).toBe("Zerops refused HQ's access");
+      expect(view().refusal).not.toContain("not reachable");
+      for (let wake = 0; wake < 3; wake++) yield* supervisor.signal("resume");
+      yield* TestClock.adjust(120_000);
+      yield* settle;
+      expect(fixture.opens()).toBe(1);
+      expect(view().refusal).toBe("Zerops refused HQ's access");
+      yield* supervisor.signal("manual-retry");
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      yield* fixture.send(ready(3));
+      yield* settle;
+      expect(view()).toMatchObject({ live: true, refusal: null });
+      expect(appName(store, "shop")).toBe("Shop");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});

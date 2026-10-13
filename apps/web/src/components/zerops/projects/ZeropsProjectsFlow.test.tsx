@@ -1,4 +1,6 @@
 import type * as React from "react";
+import { act } from "react";
+import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("@tanstack/react-router", async () => {
@@ -17,7 +19,7 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
-import { item, MERGING, renderFlow } from "./flowTestFixtures";
+import { item, MERGING, renderFlow, mount, FLOW_PROPS } from "./flowTestFixtures";
 
 const render = renderFlow;
 
@@ -120,4 +122,32 @@ it("says why it is empty though containers no project holds stand behind it", ()
   });
   expect(html).toContain("Placement not read — HQ is unavailable");
   expect(html).not.toContain('data-zerops-surface="other-containers"');
+});
+
+it("cold HQ placement stays unknown on Projects until owner evidence arrives", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  vi.stubGlobal("window", { setTimeout, clearTimeout });
+  const unknown = {
+    ...FLOW_PROPS,
+    placementReading: true,
+    placementNotice: "Reading HQ placement…",
+  };
+  const tree = mount(<ZeropsProjectsFlow {...unknown} />);
+  const words = () => JSON.stringify(tree.toJSON());
+  try {
+    expect(words()).not.toContain("Not in a project");
+    expect(words()).not.toContain("Other containers");
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(words()).toContain("Reading HQ placement…");
+    expect(words()).not.toContain("Not in a project");
+    expect(words()).not.toContain("Other containers");
+    // A later owner delivery replaces the unknown state with the actual placement.
+    act(() => tree.update(<ZeropsProjectsFlow {...FLOW_PROPS} groups={[MERGING]} />));
+    expect(words()).toContain("sm-fixture");
+    expect(words()).not.toContain("Reading HQ placement…");
+  } finally {
+    act(() => tree.unmount());
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
 });

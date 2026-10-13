@@ -1,3 +1,4 @@
+import { hqDrops, graceOver } from "@t3tools/client-runtime/data/fixtures";
 import { markupDom } from "../../../test/markupDom";
 import {
   buildZeropsGroupTree,
@@ -4760,6 +4761,39 @@ it("a reader sees the protocol notice without an update action", () => {
     official.mockRestore();
     carried.mockRestore();
     update.mockRestore();
+    registry.dispose();
+  }
+});
+
+it("HQ down retains a known Not in this HQ row", () => {
+  const registry = AtomRegistry.make();
+  registry.set(zeropsSessionAtom, {
+    status: "signed-in",
+    organizationStatus: "selected",
+    activeOrganization: organization,
+  });
+  const { store } = mountHqNavigation(registry, organization.organizationId, {
+    structure: { apps: [], ungrouped: [] },
+  });
+  const foreign = candidate("Wren", { tags: ["mate"] });
+  const draw = () =>
+    renderToStaticMarkup(
+      <RegistryContext.Provider value={registry}>
+        <SidebarZeropsTree
+          candidates={[foreign]}
+          complete
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />
+      </RegistryContext.Provider>,
+    );
+  try {
+    expect(draw()).toContain("Not in this HQ");
+    hqDrops(store, organization.organizationId, 100_000);
+    for (const input of graceOver(store.state())) store.dispatch(input);
+    expect(draw()).toContain("Not in this HQ");
+    expect(draw()).not.toContain("Nobody has signed in yet");
+  } finally {
     registry.dispose();
   }
 });

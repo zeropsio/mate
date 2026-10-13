@@ -48,28 +48,5 @@ describe("foundation: the real hosted client", () => {
         yield* then.noExternalNetwork;
       }),
     );
-
-    // Catches clearing known menu rows on HQ disconnect or failing to reconcile an outage-time change.
-    it.effect("G: HQ outage preserves rows and catches up after return", () =>
-      Effect.gen(function* () {
-        const { given, when, then, clock } = yield* createScenario();
-        yield* given.project("Ada", { mate: true, app: "Shop" });
-        yield* Effect.promise(() => clock.install());
-        yield* given.signedIn;
-        yield* then.menu.row("Shop").appears();
-        const retained = yield* then.menu.keepsRows(["Shop", "Ada"]);
-        yield* when.hq.socket.drops;
-        yield* then.hq.isUnavailable;
-        yield* then.menu.row("Shop").appears();
-        yield* then.menu.row("Ada").appears();
-        yield* when.hq.colleague.renamesProject("Shop", "Shop returned");
-        yield* retained;
-        yield* when.hq.socket.returns;
-        yield* Effect.promise(() => clock.advance(30_000));
-        yield* then.menu.row("Shop returned").appears();
-        yield* then.noReload;
-        yield* then.noExternalNetwork;
-      }),
-    );
   });
 });

@@ -1810,6 +1810,45 @@ describe("revisioned HQ values", () => {
         }),
       ),
   );
+  it.effect("target: an unchanged next HQ segment transfers no state payload", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const firstSegment = yield* f.connect("owner");
+        yield* firstSegment.subscribe([{ scope: nav }]);
+        const snapshot = resetOf(yield* firstSegment.take);
+        assert.isAbove(snapshot.values.length, 0);
+        assert.strictEqual((yield* firstSegment.take).type, "scope-ready");
+        const nextSegment = yield* f.connect("owner");
+        yield* nextSegment.subscribe([
+          {
+            scope: nav,
+            cursor: { incarnation: snapshot.incarnation, revision: snapshot.revision },
+            knownKeys: snapshot.values.map((value) => value.key),
+          },
+        ]);
+        // Consume the catchup receipt: an instant empty-queue check could miss a resend.
+        const received: ScopeOutput[] = [];
+        while (true) {
+          const message = yield* nextSegment.take;
+          received.push(message);
+          if (message.type === "scope-ready") break;
+        }
+        const payloadBytes = received.reduce(
+          (bytes, message) =>
+            message.type === "scope-values" || message.type === "scope-reset"
+              ? bytes + new TextEncoder().encode(json(message)).byteLength
+              : bytes,
+          0,
+        );
+        assert.strictEqual(payloadBytes, 0, "Unchanged HQ segment must not resend state");
+        assert.deepStrictEqual(
+          received.map((message) => message.type),
+          ["scope-ready"],
+        );
+      }),
+    ),
+  );
   it.effect("retains unchanged segments without recomputing and replays missed values", () =>
     Effect.scoped(
       Effect.gen(function* () {

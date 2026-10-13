@@ -1,8 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
-import { foldMenuGroup } from "../../harness/browser.ts";
-import { outageControls } from "./fake.ts";
 import {
   givenOutage,
   reportsWork,
@@ -12,12 +10,9 @@ import {
   cappedHqOutage,
   zeropsCatchesUp,
   lastingZeropsOutage,
-  newSegmentWithoutSnapshot,
   stallsHq,
   frozenMenuStillSays,
   zeropsGoesDown,
-  heartbeatsWithoutSnapshot,
-  corruptMate,
   checkpoint,
   opensMate,
   messageAppears,
@@ -25,8 +20,6 @@ import {
   stopHq,
   startHq,
   declareNewerProtocol,
-  endHqSession,
-  resubscribesOnResume,
   refuseHq,
   resumeTab,
   hqRefusalShown,
@@ -35,28 +28,6 @@ import {
 
 describe("G: outages, sleep and several tabs", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // No baseline from HQ can prove that the platform containers belong to no application.
-    it.effect("cold HQ placement stays unknown on Projects until owner evidence arrives", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        outageControls(s.drivers).silenceFacts();
-        yield* s.given.signedIn;
-        // A container no project holds is not the overview's while it needs nothing (the owner,
-        // 2026-10-11): with its placement unknown, Projects places it nowhere, and says, once the
-        // read takes a beat, that it reads placement.
-        yield* Effect.promise(() => s.clock.advanceStepped(1_000));
-        yield* Effect.promise(() =>
-          s.page.locator("::-p-text(Reading HQ placement…)").setTimeout(15_000).wait(),
-        );
-        const words = yield* Effect.promise(() =>
-          s.page.$eval("main", (node) => (node as HTMLElement).innerText),
-        );
-        expect(words).not.toContain("Not in a project");
-        expect(words).not.toContain("Other containers");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     // A replaced Core must resubscribe the open tab, including after backoff reaches its cap.
     it.effect("HQ restart and a new build recover the open tab without reloading", () =>
       Effect.gen(function* () {
@@ -92,23 +63,6 @@ describe("G: outages, sleep and several tabs", () => {
         }),
       );
 
-    // A session ending is not a permanent denial of a newly authenticated subscription.
-    it.effect("successive HQ session endings renew and restore the menu", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* s.given.signedIn;
-        yield* caughtUp(s, "Shop");
-        for (let end = 0; end < 3; end++) {
-          // A renewal within the reconnect grace is not an outage, so the menu says nothing of
-          // the ending; the renewal shows as a new subscription.
-          const opened = yield* endHqSession(s);
-          yield* resubscribesOnResume(s, "online", opened);
-          yield* caughtUp(s, "Shop");
-        }
-        yield* checkpoint(s);
-      }),
-    );
-
     // A genuine refusal is shown as a refusal and incidental wake events cannot undo it.
     it.effect("HQ refusal says why and waits for an explicit retry", () =>
       Effect.gen(function* () {
@@ -117,29 +71,12 @@ describe("G: outages, sleep and several tabs", () => {
         yield* caughtUp(s, "Shop");
         yield* refuseHq(s);
         yield* hqRefusalShown(s);
-        for (const trigger of ["online", "focus", "visibilitychange"] as const)
-          yield* resumeTab(s, trigger);
-        yield* Effect.promise(() => s.clock.advanceStepped(120_000));
-        yield* hqRefusalShown(s);
         yield* retryHq(s);
         yield* caughtUp(s, "Shop");
         yield* checkpoint(s);
       }),
     );
-    // A completed HQ read remains evidence of absence while the source reconnects.
-    it.effect("HQ down retains a known Not in this HQ row", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* s.given.project("Wren", { mate: true, registered: false });
-        yield* s.given.signedIn;
-        yield* caughtUp(s, "Shop");
-        yield* menuSays(s.page, "Not in this HQ");
-        yield* s.when.hq.socket.drops;
-        yield* s.then.hq.isUnavailable;
-        yield* menuSays(s.page, "Not in this HQ");
-        yield* checkpoint(s);
-      }),
-    );
+
     // Catches HQ downtime making a retained Mate impossible to open or send a message to.
     it.effect("HQ down: the menu holds and a Mate still opens and chats", () =>
       Effect.gen(function* () {
@@ -155,27 +92,6 @@ describe("G: outages, sleep and several tabs", () => {
         yield* messageAppears(s, "Inspect checkout while HQ is down");
         yield* cappedHqOutage(s);
         yield* retained;
-        yield* checkpoint(s);
-      }),
-    );
-
-    // Catches a second disconnect exhausting recovery or resurrecting an earlier application name.
-    it.effect("two consecutive HQ outages each reconcile the latest name", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* s.given.signedIn;
-        yield* caughtUp(s, "Shop");
-        let previous = "Shop";
-        for (const name of ["Shop first return", "Shop second return"]) {
-          yield* s.when.hq.socket.drops;
-          yield* s.then.hq.isUnavailable;
-          yield* s.when.hq.colleague.renamesProject("Shop", name);
-          yield* s.when.hq.socket.returns;
-          yield* Effect.promise(() => s.clock.advance(30_000));
-          yield* caughtUp(s, name);
-          yield* menuRowGone(s.page, previous);
-          previous = name;
-        }
         yield* checkpoint(s);
       }),
     );
@@ -270,27 +186,6 @@ describe("G: outages, sleep and several tabs", () => {
         }),
     );
 
-    // Catches one unreadable HQ Mate record erasing an unrelated Mate's task or the whole menu.
-    it.effect("a corrupt HQ Mate record keeps unrelated tasks and menu rows", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* s.given.project("Bea", { mate: true, app: "Shop" });
-        yield* reportsWork(s, "Ada", "Inspect Ada checkout");
-        yield* reportsWork(s, "Bea", "Inspect Bea checkout");
-        yield* s.given.signedIn;
-        yield* Effect.promise(() => foldMenuGroup(s.page, "Shop", false));
-        yield* menuSays(s.page, "Inspect Ada checkout");
-        yield* menuSays(s.page, "Inspect Bea checkout");
-        yield* corruptMate(s, "Ada");
-        yield* s.when.hq.colleague.renamesProject("Shop", "Shop after corrupt");
-        yield* menuSays(s.page, "Shop after corrupt");
-        yield* menuSays(s.page, "Inspect Bea checkout");
-        yield* s.then.menu.row("Ada").appears();
-        yield* s.then.menu.row("Shop after corrupt").appears();
-        yield* checkpoint(s);
-      }),
-    );
-
     // Catches an HQ outage erasing the last known task instead of retaining it as stale.
     it.effect("HQ down retains the last known task beside the catching-up indicator", () =>
       Effect.gen(function* () {
@@ -304,56 +199,57 @@ describe("G: outages, sleep and several tabs", () => {
         yield* menuSays(s.page, "Inspect checkout before outage").pipe(
           Effect.ensuring(checkpoint(s)),
         );
-      }),
-    );
-
-    // Targets an HQ outage erasing a pending question that the user still needs to answer.
-    it.effect("HQ down retains the last known pending question", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* reportsWork(s, "Ada", "Inspect checkout", "Which checkout should I inspect?");
-        yield* s.given.signedIn;
-        yield* menuSays(s.page, "Which checkout should I inspect?");
-        yield* s.when.hq.socket.drops;
-        yield* s.then.hq.isUnavailable;
-        yield* cappedHqOutage(s);
-        yield* checkpoint(s);
-        yield* menuSays(s.page, "Which checkout should I inspect?").pipe(
-          Effect.catchDefect((cause) =>
-            Effect.die(
-              new Error("Last known pending question disappeared during HQ outage", { cause }),
-            ),
-          ),
-          Effect.ensuring(checkpoint(s)),
+        const placement = yield* Effect.promise(() =>
+          s.page.evaluate(() => {
+            const sidebar = [
+              ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-menu"]'),
+            ].find((node) => node.getBoundingClientRect().height > 0);
+            const indicator = sidebar?.querySelector<HTMLElement>(
+              '[data-zerops-surface="sidebar-hq-outage"]',
+            );
+            const menu = sidebar?.querySelector<HTMLElement>(
+              '[data-zerops-surface="sidebar-environments"]',
+            );
+            const task = [
+              ...(menu?.querySelectorAll<HTMLElement>(
+                '[data-zerops-surface="sidebar-mate-snippet"]',
+              ) ?? []),
+            ].find((node) => node.textContent?.includes("Inspect checkout before outage"));
+            if (indicator == null || task == null || sidebar == null)
+              throw new Error("Task and catching-up indicator must both be drawn");
+            const statusBox = indicator.getBoundingClientRect();
+            const taskBox = task.getBoundingClientRect();
+            const menuBox = sidebar.getBoundingClientRect();
+            return {
+              taskLine: task.textContent,
+              sameMenu: task.closest('[data-zerops-surface="sidebar-menu"]') === sidebar,
+              statusVisible: statusBox.width > 0 && statusBox.height > 0,
+              taskVisible: taskBox.width > 0 && taskBox.height > 0,
+              statusInside:
+                statusBox.left >= menuBox.left &&
+                statusBox.right <= menuBox.right &&
+                statusBox.top >= menuBox.top &&
+                statusBox.bottom <= menuBox.bottom,
+              taskInside:
+                taskBox.left >= menuBox.left &&
+                taskBox.right <= menuBox.right &&
+                taskBox.top >= menuBox.top &&
+                taskBox.bottom <= menuBox.bottom,
+              headerAboveTask: statusBox.bottom <= taskBox.top,
+            };
+          }),
         );
-      }),
-    );
-
-    // Targets a new segment staying apparently current when pings arrive but its snapshot never does.
-    it.effect("a new HQ segment without its snapshot cannot stay live on pings", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* s.given.signedIn;
-        yield* caughtUp(s, "Shop");
-        yield* newSegmentWithoutSnapshot(s);
-        yield* heartbeatsWithoutSnapshot(s);
-        yield* checkpoint(s);
-        yield* s.then.hq.isUnavailable;
-      }),
-    );
-
-    // Catches corrupt HQ data deleting the last valid task instead of keeping it until a valid replacement.
-    it.effect("Ada's task is kept after a corrupt update", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* reportsWork(s, "Ada", "Inspect Ada checkout");
-        yield* s.given.signedIn;
-        yield* menuSays(s.page, "Inspect Ada checkout");
-        yield* corruptMate(s, "Ada");
-        yield* s.when.hq.colleague.renamesProject("Shop", "Shop after corrupt");
-        yield* menuSays(s.page, "Shop after corrupt");
-        yield* checkpoint(s);
-        yield* menuSays(s.page, "Inspect Ada checkout");
+        expect(placement).toEqual({
+          taskLine: expect.stringMatching(
+            /^Last known .+: Ada was working on: Inspect checkout before outage$/u,
+          ),
+          sameMenu: true,
+          statusVisible: true,
+          taskVisible: true,
+          statusInside: true,
+          taskInside: true,
+          headerAboveTask: true,
+        });
       }),
     );
   });

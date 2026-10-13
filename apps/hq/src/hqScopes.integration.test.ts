@@ -21,6 +21,103 @@ const readAttention = Schema.decodeEffect(HqAttentionValue);
 
 describe("HQ scoped socket", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("five tabs each receive real HQ data and show the application menu", () =>
+      Effect.gen(function* () {
+        const core = yield* startCore(true, {
+          reconcileEvery: Duration.infinity,
+          streamRecheck: Duration.infinity,
+          pingEvery: Duration.infinity,
+        });
+        yield* untilHealth(core.call, "active");
+        const session = yield* sessionFor(core.call, "door-owner");
+        const created = yield* core.call("POST", "/api/apps", {
+          session,
+          body: { name: "Shop" },
+        });
+        assert.strictEqual(created.status, 201);
+        const appId = (created.body as { id: string }).id;
+        assert.strictEqual(
+          (yield* core.call("POST", "/api/mates", {
+            session,
+            body: { projectId: "P_MATE", face: "face" },
+          })).status,
+          201,
+        );
+        assert.strictEqual(
+          (yield* core.call("PUT", "/api/projects/P_MATE/app", {
+            session,
+            body: { appId, kind: "mate" },
+          })).status,
+          200,
+        );
+        const tickets = yield* Effect.forEach(
+          Array.from({ length: 5 }),
+          () => ticketFor(core.call, session),
+          { concurrency: "unbounded" },
+        );
+        const samples = yield* Effect.promise(() =>
+          Promise.all(
+            tickets.map(
+              (ticket) =>
+                new Promise<number>((resolve, reject) => {
+                  const ws = new WebSocket(
+                    `${core.origin.replace("http:", "ws:")}/api/structure/ws?ticket=${ticket}`,
+                  );
+                  let opened = 0;
+                  let firstShop: number | undefined;
+                  const timeout = setTimeout(() => {
+                    ws.close();
+                    reject(new Error("no Shop navigation receipt"));
+                  }, 3000);
+                  const fail = (error: unknown) => {
+                    clearTimeout(timeout);
+                    ws.close();
+                    reject(error);
+                  };
+                  ws.addEventListener("error", fail);
+                  ws.addEventListener("open", () => {
+                    opened = performance.now();
+                    ws.send(
+                      JSON.stringify({
+                        type: "subscribe",
+                        scopes: [{ scope: { kind: "navigation" } }],
+                      }),
+                    );
+                  });
+                  ws.addEventListener("message", (event) => {
+                    const message = JSON.parse(String(event.data)) as {
+                      type: string;
+                      values?: Array<{
+                        key: string;
+                        value: { name?: string; projectIds?: string[] };
+                      }>;
+                    };
+                    if (message.type === "ping") ws.send('{"type":"pong"}');
+                    if (message.type === "scope-error") return fail(new Error(String(event.data)));
+                    if (message.type === "scope-reset" || message.type === "scope-values") {
+                      const app = message.values?.find((row) => row.key === `app:${appId}`)?.value;
+                      if (app?.name === "Shop" && app.projectIds?.includes("P_MATE"))
+                        firstShop ??= performance.now() - opened;
+                    }
+                    if (message.type === "scope-ready") {
+                      clearTimeout(timeout);
+                      ws.close();
+                      if (firstShop === undefined)
+                        return reject(new Error("navigation omitted Shop"));
+                      resolve(firstShop);
+                    }
+                  });
+                }),
+            ),
+          ),
+        );
+        assert.lengthOf(samples, 5);
+        const sorted = samples.toSorted((a, b) => a - b);
+        const percentile = (fraction: number) => sorted[Math.ceil(sorted.length * fraction) - 1]!;
+        assert.isAtMost(percentile(0.5), 300, "Five-tab first HQ data p50 target");
+        assert.isAtMost(percentile(0.95), 600, "Five-tab first HQ data p95 target");
+      }).pipe(Effect.scoped),
+    );
     it.effect(
       "five distinct people get cold navigation with Mate facts within the read budget; unchanged resumes send no values",
       () =>
