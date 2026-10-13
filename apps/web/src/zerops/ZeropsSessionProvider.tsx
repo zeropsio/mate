@@ -92,6 +92,8 @@ export interface ZeropsSessionValue {
     /** True when the account just claimed a pool project, so the picker is skipped. */
     readonly zcpClaimed: boolean;
   }) => Promise<void>;
+  /** Adopts the session an approved device login answered, proven before persistence. */
+  readonly adoptDeviceLogin: (session: ZeropsSession) => Promise<void>;
   readonly register: (input: ZeropsRegistrationInput) => Promise<ZeropsRegistrationResponse>;
   readonly verifyTotp: (code: string) => Promise<void>;
   readonly signOut: () => Promise<void>;
@@ -399,6 +401,9 @@ export function ZeropsSessionProvider({
           // flag.
           setLastRegistration({ auth: session, user: adopted, zcpClaimed: true });
         }
+      },
+      adoptDeviceLogin: async (session) => {
+        driver.signedIn((await calls.adoptToken(session)).user);
       },
       signIn: async (email, password) => {
         const signedIn = await calls.signIn(email, password);

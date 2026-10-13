@@ -465,6 +465,8 @@ export function ZeropsHandoverActions({
   readonly nativeSignIn?:
     | {
         readonly busy: boolean;
+        /** A device login's code, the one the Zerops page shows beside the request. */
+        readonly userCode?: string | null;
         readonly error: string | null;
         readonly onCancel: () => void;
       }
@@ -476,6 +478,15 @@ export function ZeropsHandoverActions({
         <Spinner size="lg" className="mx-auto" />
         <p className="text-sm text-muted-foreground">
           Continue in your browser, then come back here.
+        </p>
+        {/* The code arrives a moment after the click: its line is held, so nothing moves. */}
+        <p className="min-h-5 text-sm text-muted-foreground" aria-live="polite">
+          {nativeSignIn.userCode ? (
+            <>
+              Zerops shows{" "}
+              <span className="font-mono text-foreground">{nativeSignIn.userCode}</span>
+            </>
+          ) : null}
         </p>
         <button
           type="button"

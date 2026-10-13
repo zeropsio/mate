@@ -5,21 +5,25 @@
  * component.
  *
  * `apps/desktop/src/zerops/DesktopZeropsSignIn.ts` owns the main-process
- * half — opening the browser, listening on the loopback port, and resolving
- * with the callback fragment or `cancelled`. This file starts there and
- * finishes exactly where the in-tab flow does: `completeZeropsHandover` for
- * verification, `adoptHandover` (the same `ZeropsSessionProvider` method
- * `/zerops_/authorized` uses) for adoption.
+ * half — opening the browser and either listening on the loopback port (the
+ * hand-over) or polling a device login, resolving with the callback fragment,
+ * the approved session, or how it ended. A hand-over finishes exactly where
+ * the in-tab flow does: `completeZeropsHandover` for verification,
+ * `adoptHandover` (the same `ZeropsSessionProvider` method
+ * `/zerops_/authorized` uses) for adoption; a device login's session goes to
+ * `adoptDeviceLogin`, after showing the code Zerops shows while it waits.
  */
 import type { DesktopBridge } from "@t3tools/contracts";
 import type { ZeropsHandoverOutcome } from "@t3tools/client-runtime/zerops/handover";
+import type { ZeropsSession } from "@t3tools/client-runtime/zerops/session";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { completeZeropsHandover, mintZeropsHandoverNonce } from "./handover";
 
 export type ZeropsNativeSignInState =
   | { readonly kind: "idle" }
-  | { readonly kind: "busy" }
+  /** `userCode`: a device login's, for the person to compare with the one Zerops shows. */
+  | { readonly kind: "busy"; readonly userCode?: string }
   | { readonly kind: "error"; readonly message: string };
 
 /**
@@ -33,8 +37,18 @@ export function readZeropsNativeSignInBridge(): NonNullable<DesktopBridge["zerop
   return window.desktopBridge?.zeropsSignIn ?? null;
 }
 
+/** A device login's user code push, or `null` on a build that runs the hand-over only. */
+export function readZeropsNativeSignInProgress(): NonNullable<
+  DesktopBridge["onZeropsSignInProgress"]
+> | null {
+  if (typeof window === "undefined") return null;
+  return window.desktopBridge?.onZeropsSignInProgress ?? null;
+}
+
 export interface ZeropsNativeSignInDeps {
   readonly zeropsSignIn: NonNullable<DesktopBridge["zeropsSignIn"]>;
+  readonly onProgress?: DesktopBridge["onZeropsSignInProgress"] | null;
+  readonly adoptDeviceLogin: (session: ZeropsSession) => Promise<void>;
   readonly adoptHandover: (input: {
     readonly token: string;
     readonly zcpClaimed: boolean;
@@ -81,6 +95,11 @@ export async function runZeropsNativeSignIn(
 ): Promise<void> {
   setState({ kind: "busy" });
   const state = mintNonce();
+  const unsubscribe = deps.onProgress?.((progress) => {
+    if (progress.state === state && isCurrent()) {
+      setState({ kind: "busy", userCode: progress.userCode });
+    }
+  });
 
   let result;
   try {
@@ -88,12 +107,35 @@ export async function runZeropsNativeSignIn(
   } catch (cause) {
     if (isCurrent()) setState({ kind: "error", message: zeropsErrorMessage(cause) });
     return;
+  } finally {
+    unsubscribe?.();
   }
   if (!isCurrent()) return;
 
-  if (result.kind === "cancelled") {
-    setState({ kind: "idle" });
-    return;
+  switch (result.kind) {
+    case "cancelled":
+      setState({ kind: "idle" });
+      return;
+    case "denied":
+      setState({ kind: "error", message: "Sign-in was cancelled." });
+      return;
+    case "expired":
+      setState({ kind: "error", message: "The Zerops window timed out. Start again." });
+      return;
+    case "failed":
+      setState({ kind: "error", message: result.message });
+      return;
+    case "session":
+      try {
+        await deps.adoptDeviceLogin(result.session);
+      } catch (cause) {
+        if (isCurrent()) setState({ kind: "error", message: zeropsErrorMessage(cause) });
+        return;
+      }
+      if (isCurrent()) setState({ kind: "idle" });
+      return;
+    case "callback":
+      break;
   }
 
   const completeHandover = deps.completeHandover ?? completeZeropsHandover;

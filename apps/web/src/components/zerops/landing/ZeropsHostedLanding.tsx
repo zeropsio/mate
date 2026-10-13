@@ -4,6 +4,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { startZeropsHandover } from "~/zerops/handover";
 import {
   readZeropsNativeSignInBridge,
+  readZeropsNativeSignInProgress,
   runZeropsNativeSignIn,
   type ZeropsNativeSignInState,
 } from "~/zerops/nativeSignIn";
@@ -12,7 +13,8 @@ import { ZeropsFrameWait, ZeropsHandoverActions, ZeropsLandingShell } from "./Ze
 
 /** Registration and second factors belong to the Zerops account application. */
 export function ZeropsHostedLanding() {
-  const { status, adoptHandover, signOut, verifyAgain, retrying } = useZeropsSession();
+  const { status, adoptHandover, adoptDeviceLogin, signOut, verifyAgain, retrying } =
+    useZeropsSession();
   const [nativeState, setNativeState] = useState<ZeropsNativeSignInState>({ kind: "idle" });
   const generation = useRef(0);
   if (status === "signed-in") return <ZeropsProjectsPage />;
@@ -49,7 +51,12 @@ export function ZeropsHostedLanding() {
     }
     const attempt = ++generation.current;
     void runZeropsNativeSignIn(
-      { zeropsSignIn, adoptHandover },
+      {
+        zeropsSignIn,
+        onProgress: readZeropsNativeSignInProgress(),
+        adoptHandover,
+        adoptDeviceLogin,
+      },
       intent ? { intent } : {},
       setNativeState,
       () => generation.current === attempt,
@@ -67,6 +74,7 @@ export function ZeropsHostedLanding() {
           readZeropsNativeSignInBridge()
             ? {
                 busy: nativeState.kind === "busy",
+                userCode: nativeState.kind === "busy" ? (nativeState.userCode ?? null) : null,
                 error: nativeState.kind === "error" ? nativeState.message : null,
                 onCancel: () => {
                   generation.current += 1;
