@@ -31,16 +31,19 @@ export const canonicalInventoryGroups: Projection<
     const projects = inventory
       .derive(read, key)
       .projects.filter(({ id }) => key.projectIds.includes(id));
-    const apps = read.members(hqAppsScope(key.organization.organizationId)).ids.map((id) => {
+    const apps = read.members(hqAppsScope(key.organization.organizationId)).ids.flatMap((id) => {
       const app = read.fact("hqApp", id);
-      return {
-        id,
-        name: app.kind === "known" ? (app.value.name ?? "Unknown") : "Unknown",
-        environments: canonicalAppEnvironments.derive(read, {
-          orgId: key.organization.organizationId,
-          appId: id,
-        }).environments,
-      };
+      if (app.kind !== "known") return [];
+      const { environments } = canonicalAppEnvironments.derive(read, {
+        orgId: key.organization.organizationId,
+        appId: id,
+      });
+      // Missing roster members never prove an empty application. Recorded rows need no carrier.
+      return (environments?.length ?? 0) > 0 ||
+        app.value.contents?.empty === true ||
+        (app.value.contents?.deletingProjectIds.length ?? 0) > 0
+        ? [{ id, name: app.value.name ?? "Unknown", environments }]
+        : [];
     });
     return buildCanonicalGroupTree(
       projects.map((project) => ({ project })),

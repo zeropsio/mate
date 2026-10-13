@@ -519,21 +519,30 @@ export function deriveCanonicalGroups(
   const born = new Set(births.map((birth) => birth.projectId));
   const heldBack = heldBackByCreations(births);
 
+  const targetsByApp = new Map<string, Set<string>>();
+  const managedProjects = new Set<string>();
+  for (const app of options.apps ?? []) {
+    if (app.environments === undefined || "refused" in app.environments) continue;
+    const targets = new Set<string>();
+    for (const environment of app.environments) {
+      if (environment.target.kind !== "zerops") continue;
+      targets.add(environment.target.projectId);
+      managedProjects.add(environment.target.projectId);
+    }
+    targetsByApp.set(app.id, targets);
+  }
+
   for (const project of projects) {
     const { groupId, role, label } = readZeropsMembership(project);
     if (groupId === undefined) {
       // Listed before HQ places it: its birth still does — or, made while a creation still awaits
       // the platform's answer, it may be that creation's, which draws it.
-      if (!born.has(project.id) && !heldBack(project)) ungrouped.push(project);
+      if (!born.has(project.id) && !heldBack(project) && !managedProjects.has(project.id))
+        ungrouped.push(project);
       continue;
     }
-    const app = options.apps?.find((entry) => entry.id === groupId);
-    // HQ owns managed membership even when its project roster is incomplete or refused.
-    if (
-      app !== undefined &&
-      Object.hasOwn(app, "environments") &&
-      (role === "stage" || role === "prod")
-    )
+    // Only a decoded target replaces a placement; refusal and partial records prove no removal.
+    if ((role === "stage" || role === "prod") && targetsByApp.get(groupId)?.has(project.id))
       continue;
     const member: CanonicalGroupEnvironment = { kind: "project", project, role };
     const bucket = members.get(groupId);

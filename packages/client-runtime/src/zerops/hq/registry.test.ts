@@ -39,3 +39,52 @@ describe("registryFromHq", () => {
     });
   });
 });
+
+const placements = [
+  { projectId: "stage", kind: "stage" },
+  { projectId: "prod", kind: "production" },
+];
+it.each([
+  { state: "absent", environments: undefined, expected: placements },
+  { state: "refused", environments: { refused: "changes_not_seen" }, expected: placements },
+  { state: "empty", environments: [], expected: placements },
+  {
+    state: "partial",
+    environments: [
+      {
+        projectId: "stage",
+        tier: "stage" as const,
+        name: "Stage",
+        sources: ["main"],
+        order: 1,
+        keyHeld: true,
+        keyInvalid: false,
+        jobs: [],
+      },
+    ],
+    expected: [
+      { projectId: "prod", kind: "production" },
+      { projectId: "stage", kind: "stage" },
+    ],
+  },
+])(
+  "Registry placements survive $state environments unless a decoded target replaces them.",
+  ({ environments, expected }) => {
+    expect(
+      registryFromHq({
+        ungrouped: [],
+        apps: [
+          {
+            id: "shop",
+            name: "Shop",
+            ...(environments === undefined ? {} : { environments }),
+            projects: [
+              { projectId: "stage", name: "Stage", kind: "stage", mate: null },
+              { projectId: "prod", name: "Production", kind: "production", mate: null },
+            ],
+          },
+        ],
+      }).groups[0]?.projects,
+    ).toEqual(expected);
+  },
+);

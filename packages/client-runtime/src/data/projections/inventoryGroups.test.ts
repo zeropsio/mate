@@ -9,6 +9,7 @@ import {
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { linkKeys } from "../model.ts";
+import { hqAppFamily, hqAppsScope } from "../families/hqNavigation.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import {
   canonicalInventoryGroups,
@@ -153,6 +154,15 @@ it("An HQ environment arriving after first paint appears once under its applicat
     { into: f.store },
   );
   seedHqNavigation(f.store, "org", seed);
+  expect(derive().ungrouped).toEqual([]);
+  const legacy = inventoryGroups.derive(readsOfState(f.store.state()), {
+    ...key,
+    projectIds: ["mate", "project-stage"],
+  });
+  expect(legacy.ungrouped).toEqual([]);
+  expect(
+    legacy.groups.flatMap(({ environments }) => environments.map(({ item }) => item.project.id)),
+  ).toEqual(["project-stage"]);
   const after = derive().groups[0]!;
   expect(
     after.environments.map((entry) => (entry.kind === "managed" ? entry.id : entry.project.id)),
@@ -179,5 +189,210 @@ it("An HQ environment arriving after first paint appears once under its applicat
       organization: { ...key.organization, organizationId: ZeropsOrganizationId.make("other") },
     }).groups,
   ).toEqual([]);
+  f.registry.dispose();
+});
+
+const stage = {
+  id: HqEnvironmentId.make("environment-stage"),
+  target: { kind: "zerops" as const, projectId: ProjectId.make("project-stage") },
+  tier: "stage" as const,
+  name: "Stage",
+  sources: ["main"],
+  order: 1,
+  keyHeld: true,
+  keyInvalid: false,
+  jobs: [],
+};
+const placed = [
+  { projectId: "mate", name: "Ada", kind: "mate", mate: { face: "face" } },
+  { projectId: "project-stage", name: "Stage", kind: "stage", mate: null },
+  { projectId: "project-prod", name: "Production", kind: "production", mate: null },
+];
+const placedKey = { ...key, projectIds: placed.map(({ projectId }) => projectId) };
+function placedFixture() {
+  const registry = AtomRegistry.make();
+  const store = mountRoster(
+    registry,
+    "org",
+    placed.map(({ projectId, name }) => ({ id: projectId, name, status: "ACTIVE" })),
+  );
+  return {
+    registry,
+    store,
+    read: () => inventoryGroups.derive(readsOfState(store.state()), placedKey),
+  };
+}
+
+it.each(["refused", "unknown", "absent", "undecodable", "empty", "partial"] as const)(
+  "Known stage and production placements remain visible when environments are %s.",
+  (state) => {
+    const f = placedFixture();
+    seedHqNavigation(f.store, "org", {
+      structure: {
+        ungrouped: [],
+        apps: [
+          {
+            id: "shop",
+            name: "Shop",
+            projects: placed,
+            environments:
+              state === "partial"
+                ? [stage]
+                : state === "empty"
+                  ? []
+                  : { refused: "changes_not_seen" },
+          },
+        ],
+      },
+    });
+    if (state === "unknown" || state === "absent" || state === "undecodable") {
+      const fact = readsOfState(f.store.state()).fact("hqApp", "shop");
+      if (fact.kind !== "known") throw new Error("Expected seeded application");
+      const { environments: _environments, ...raw } = fact.value;
+      const value = hqAppFamily.hq!.decode(
+        state === "absent"
+          ? raw
+          : {
+              ...raw,
+              environments:
+                state === "unknown" ? undefined : [{ ...stage, target: { kind: "future" } }],
+            },
+        "app:shop",
+      )!;
+      const scope = hqAppsScope("org");
+      f.store.dispatch({
+        kind: "delivery",
+        via: "hq-stream",
+        reset: false,
+        scopes: [{ scope, generation: f.store.state().streams.get(scope)!.generation }],
+        rows: [
+          {
+            family: "hqApp",
+            id: "shop",
+            value,
+            revision: { kind: "hq", incarnation: "seed", revision: 100000 },
+          },
+        ],
+        removals: [],
+      });
+    }
+    const tree = f.read();
+    expect(tree.groups[0]?.environments.map(({ item, role }) => [item.project.id, role])).toEqual([
+      ["mate", "dev"],
+      ["project-stage", "stage"],
+      ["project-prod", "prod"],
+    ]);
+    expect(tree.groups[0]?.group.production?.project.id).toBe("project-prod");
+    expect(tree.ungrouped).toEqual([]);
+    f.registry.dispose();
+  },
+);
+
+it.each(["stage", "production"] as const)(
+  "A pending-attach %s stays in its application beside recorded environments.",
+  (kind) => {
+    const f = placedFixture();
+    seedHqNavigation(f.store, "org", {
+      structure: {
+        ungrouped: [],
+        apps: [{ id: "shop", name: "Shop", projects: [placed[0]!], environments: [stage] }],
+      },
+      presses: {
+        "project-prod": { kind, appId: "shop", heldForMs: 30000, until: "2026-10-13T00:00:30Z" },
+      },
+    });
+    const tree = f.read();
+    expect(tree.groups[0]?.environments.map(({ item }) => item.project.id)).toEqual([
+      "mate",
+      ...(kind === "stage" ? ["project-prod", "project-stage"] : ["project-stage", "project-prod"]),
+    ]);
+    expect(
+      tree.groups[0]?.environments.find(({ item }) => item.project.id === "project-prod")?.role,
+    ).toBe(kind === "stage" ? "stage" : "prod");
+    expect(tree.ungrouped).toEqual([]);
+    f.registry.dispose();
+  },
+);
+
+it.each(["not loaded", "partial", "denied", "filtered"] as const)(
+  "A %s listing never turns an HQ non-empty application into an empty group.",
+  (listing) => {
+    const registry = AtomRegistry.make();
+    const store =
+      listing === "not loaded"
+        ? makeAccountStore(registry)
+        : mountRoster(
+            registry,
+            "org",
+            listing === "denied" || listing === "filtered"
+              ? [{ id: "mate", name: "Ada", status: "ACTIVE" }]
+              : [],
+          );
+    seedHqNavigation(store, "org", { structure });
+    if (listing === "denied")
+      store.dispatch({ kind: "access", family: "project", id: "mate", access: "denied" });
+    expect(
+      inventoryGroups
+        .derive(
+          readsOfState(store.state()),
+          listing === "filtered" ? { ...key, projectIds: [] } : key,
+        )
+        .groups.map(({ group }) => group.groupId),
+    ).toEqual(["empty"]);
+    registry.dispose();
+  },
+);
+
+it("HQ navigation fixtures send an environment array to readers and a refusal to viewers.", () => {
+  const f = fixture();
+  seedHqNavigation(f.store, "org", {
+    structure: {
+      ungrouped: [],
+      apps: [
+        { id: "reader", name: "Reader", projects: [] },
+        {
+          id: "viewer",
+          name: "Viewer",
+          projects: [],
+          environments: { refused: "changes_not_seen" },
+        },
+      ],
+    },
+  });
+  const read = readsOfState(f.store.state());
+  expect(read.fact("hqApp", "reader")).toMatchObject({
+    kind: "known",
+    value: { environments: [] },
+  });
+  expect(read.fact("hqApp", "viewer")).toMatchObject({
+    kind: "known",
+    value: { environments: { refused: "changes_not_seen" } },
+  });
+  f.registry.dispose();
+});
+
+it("An HQ non-empty application with no visible placements is never offered as an empty group.", () => {
+  const f = fixture();
+  seedHqNavigation(f.store, "org", {
+    structure: {
+      ungrouped: [],
+      apps: [
+        {
+          id: "hidden",
+          name: "Hidden",
+          projects: [],
+          contents: { empty: false, deletingProjectIds: [] },
+          environments: { refused: "changes_not_seen" },
+        },
+        {
+          id: "empty",
+          name: "Empty",
+          projects: [],
+          contents: { empty: true, deletingProjectIds: [] },
+        },
+      ],
+    },
+  });
+  expect(f.read().groups.map(({ group }) => group.groupId)).toEqual(["empty"]);
   f.registry.dispose();
 });

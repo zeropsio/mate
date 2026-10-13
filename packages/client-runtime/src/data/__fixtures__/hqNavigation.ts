@@ -160,7 +160,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           births: app.births ?? [],
           environments: (app.environments !== undefined && "refused" in app.environments
             ? app.environments
-            : canonicalEnvironmentsOf(app.environments)) as HqAppValue["environments"],
+            : canonicalEnvironmentsOf(app.environments ?? [])) as HqAppValue["environments"],
           changes: seed.changes?.[app.id] ?? [],
           releaseOffer: seed.releaseOffers?.[app.id] ?? null,
         },
