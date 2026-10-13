@@ -67,13 +67,14 @@ export function mateChat(
     });
   const ready = (name: string) =>
     Effect.gen(function* () {
-      yield* Effect.promise(() =>
-        page.waitForFunction(
-          (name) => location.pathname === `/env-${name}/thread-${name}`,
-          { timeout: 8000, polling: "raf" },
-          name,
-        ),
-      );
+      if (!s.drivers.realMates.has(name))
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            (name) => location.pathname === `/env-${name}/thread-${name}`,
+            { timeout: 8000, polling: "raf" },
+            name,
+          ),
+        );
       yield* Effect.promise(async () => {
         try {
           await page.waitForSelector(composer, { visible: true, timeout: 8000 });

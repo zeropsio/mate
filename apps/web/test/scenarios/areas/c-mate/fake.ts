@@ -126,14 +126,12 @@ export class ChatDriver {
   });
   readonly crewCommands: CrewCommand[] = [];
   readonly otherThreads = new Map<string, OrchestrationThread>();
-  database: ZeropsDataConsoleResponse = wireDecodeZeropsDataConsoleResponse({
+  readonly database: ZeropsDataConsoleResponse = wireDecodeZeropsDataConsoleResponse({
     kind: "services",
     project: { id: "fixture", name: "fixture" },
     allowWrites: false,
     services: [],
   });
-  readonly heldData = new Map<string, (reply: () => void) => void>();
-  readonly databaseReplies = new Map<string, ZeropsDataConsoleResponse>();
   private readonly receipts = new NodeEvents.EventEmitter();
   usagePause: ThreadUsagePause | null = null;
   turnRefusal: string | null = null;
@@ -301,20 +299,8 @@ export class ChatDriver {
         return true;
       }
       if (request.tag === WS_METHODS.zeropsDataConsoleCall) {
-        const input = wireDecodeZeropsDataConsoleRequest(request.payload);
-        const key =
-          input.kind === "tree"
-            ? `${input.kind}:${input.path.service}:${input.path.segments.join("/")}`
-            : input.kind;
-        const reply = () =>
-          mate.reply(
-            socket,
-            request.id,
-            wireEncodeZeropsDataConsoleResponse(this.databaseReplies.get(key) ?? this.database),
-          );
-        const hold = this.heldData.get(key);
-        if (hold) hold(reply);
-        else reply();
+        wireDecodeZeropsDataConsoleRequest(request.payload);
+        mate.reply(socket, request.id, wireEncodeZeropsDataConsoleResponse(this.database));
         return true;
       }
       if (request.tag === WS_METHODS.attachmentsCreateUploadUrl) {
@@ -454,82 +440,6 @@ export class ChatDriver {
       for (const [id, request] of subscriptions)
         if (request.tag === WS_METHODS.subscribeZeropsBrowserStream)
           this.mate.chunk(socket, id, [wireEncodeZeropsBrowserStreamEvent(event)]);
-  }
-
-  holdDataReply(key: string) {
-    let received!: () => void;
-    const requested = new Promise<void>((resolve) => {
-      received = resolve;
-    });
-    const replies: Array<() => void> = [];
-    this.heldData.set(key, (reply) => {
-      replies.push(reply);
-      received();
-    });
-    return {
-      requested: () => deadline(requested, `Data request ${key}`),
-      release: () => {
-        this.heldData.delete(key);
-        for (const reply of replies) reply();
-      },
-    };
-  }
-
-  databaseCatalog() {
-    this.database = wireDecodeZeropsDataConsoleResponse({
-      kind: "services",
-      project: { id: "Ada", name: "Ada" },
-      allowWrites: false,
-      services: [
-        {
-          hostname: "ordersdb",
-          type: "postgresql@16",
-          family: "postgres",
-          support: "supported",
-          status: "ACTIVE",
-          actions: [{ id: "readTable", enabled: true, readOnly: true, reason: "" }],
-        },
-      ],
-    });
-    this.databaseReplies.set(
-      "tree:ordersdb:",
-      wireDecodeZeropsDataConsoleResponse({
-        kind: "tree",
-        nextCursor: "",
-        nodes: [
-          {
-            name: "orders",
-            kind: "tabular",
-            path: { service: "ordersdb", segments: ["public", "orders"] },
-            hasChildren: false,
-          },
-        ],
-      }),
-    );
-    this.databaseReplies.set(
-      "table",
-      wireDecodeZeropsDataConsoleResponse({
-        kind: "table",
-        page: {
-          columns: [
-            {
-              name: "order_id",
-              dataType: "uuid",
-              pk: true,
-              editable: false,
-              reason: "Read-only schema",
-              sortable: true,
-              sortReason: "",
-            },
-          ],
-          rows: [],
-          nextCursor: "",
-          rowKeyCols: ["order_id"],
-          bestEffort: false,
-          numbered: false,
-        },
-      }),
-    );
   }
 
   seedCrew() {

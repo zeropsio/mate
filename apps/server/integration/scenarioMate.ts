@@ -26,6 +26,7 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import { FetchHttpClient, HttpServer } from "effect/http";
 
+import { DataConsoleSpawn, type SpawnDataConsole } from "../src/zerops/ZeropsDataConsole.ts";
 import * as ServerConfig from "../src/config.ts";
 import { makeServerLayer } from "../src/server.ts";
 import { scriptedClaudeSignIn } from "./scriptedClaudeSignIn.ts";
@@ -55,6 +56,8 @@ export interface ScenarioMateOptions {
   /** The scenario's wall clock, in epoch milliseconds. */
   readonly now: () => number;
   readonly drivers: ReadonlyArray<AnyProviderDriver<never>>;
+  /** The external zcp console process only; its protocol still goes through the real broker. */
+  readonly spawnDataConsole?: SpawnDataConsole;
   /** The external native Claude login CLI, with scenario-only credentials. */
   readonly claudeSignIn?: boolean;
   /** A state directory to start from (a copied history); a fresh one when absent. */
@@ -195,6 +198,7 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
       })),
       Effect.provide(ServerConfig.layerTest(cwd, baseDir).pipe(Layer.provide(NodeServices.layer))),
       Effect.provideService(FetchHttpClient.Fetch, loopbackFetch),
+      Effect.provideService(DataConsoleSpawn, options.spawnDataConsole),
       Effect.provideService(HostProcessEnvironment, {
         ...process.env,
         ...options.launchEnvironment,

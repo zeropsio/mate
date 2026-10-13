@@ -32,6 +32,7 @@ import {
   makeScriptedProvider,
   type ScriptedProvider,
 } from "../../../../server/integration/scriptedProviderDriver.ts";
+import { DataConsoleSpawn } from "../../../../server/src/zerops/ZeropsDataConsole.ts";
 import { transportGate } from "./transportGate.ts";
 import { openScenarioNavigation, startScenarioCore, type HqTimings } from "./hqCore.ts";
 import {
@@ -250,6 +251,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     const credential = options.registered === false ? undefined : yield* enroll(name, options.app);
     const provider = yield* makeScriptedProvider(options.provider);
     const publicOrigin = `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`;
+    const spawnDataConsole = yield* DataConsoleSpawn;
     const server = yield* Effect.promise(() =>
       startScenarioMate({
         projectId: name,
@@ -261,6 +263,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         ...(credential ? { hq: { origin: core.origin, credential } } : {}),
         now: () => zerops.clock.currentTimeMillis(),
         drivers: [provider.driver],
+        ...(spawnDataConsole === undefined ? {} : { spawnDataConsole }),
         ...(options.claudeSignIn ? { claudeSignIn: true } : {}),
         ...(options.launchEnvironment === undefined
           ? {}

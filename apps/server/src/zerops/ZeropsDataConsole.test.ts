@@ -1,3 +1,6 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as ServerConfig from "../config.ts";
+import { FetchHttpClient } from "effect/http";
 import { describe, expect, it } from "@effect/vitest";
 
 import type {
@@ -17,6 +20,9 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import {
+  DataConsoleSpawn,
+  ZeropsDataConsole,
+  layer,
   startupFailureReason,
   isLoopbackReadyUrl,
   make,
@@ -186,6 +192,31 @@ const withService = <A, E>(
   );
 
 describe("ZeropsDataConsole", () => {
+  it.live("the launched console source is read through the real broker and normalized", () => {
+    const source = makeAutoReadySpawner();
+    return Effect.gen(function* () {
+      const console = yield* ZeropsDataConsole;
+      const result = yield* console.call({ kind: "services" });
+      expect(source.spawnCount(), "ASSERTION: the injected external source was launched").toBe(1);
+      expect(result).toEqual({ kind: "services", ...servicesEnvelope });
+    }).pipe(
+      Effect.provide(
+        layer.pipe(
+          Layer.provide(
+            ServerConfig.layerTest("/tmp", { prefix: "console-source-" }).pipe(
+              Layer.provide(NodeServices.layer),
+            ),
+          ),
+        ),
+      ),
+      Effect.provideService(DataConsoleSpawn, source.spawn),
+      Effect.provideService(
+        FetchHttpClient.Fetch,
+        Object.assign(async () => jsonResponse(servicesEnvelope), { preconnect: () => {} }),
+      ),
+    );
+  });
+
   describe("parseReadyLine", () => {
     it("parses a valid ready line", () => {
       expect(parseReadyLine(readyLine())).toEqual({

@@ -1,11 +1,32 @@
+// @effect-diagnostics nodeBuiltinImport:off -- controls real attachment bytes in a disposable Mate.
+import {
+  AttachmentCreateUploadUrlResult,
+  CommandId,
+  ConversationId,
+  MATE_ENGINE_PROTOCOLS,
+} from "@t3tools/contracts";
+import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
+import { DataConsoleSpawn } from "../../../../../server/src/zerops/ZeropsDataConsole.ts";
+import { ordersConsole } from "../../fakes/zcpConsole.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { deadline } from "../../harness/http.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
 import { installArea, standUpBirth, vaultKey, vaultWrites } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
+
+const decodeUploadReceipt = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    exit: Schema.Struct({
+      _tag: Schema.Literal("Success"),
+      value: AttachmentCreateUploadUrlResult,
+    }),
+  }),
+);
 
 describe("C: agent selection and contextual drafts", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -150,38 +171,72 @@ describe("C: agent selection and contextual drafts", () => {
       }),
     );
 
-    // Fake retained: databaseCatalog/holdDataReply and turnRefusal have no real-Mate source seam.
     // J05 · Z06/Z20/Z21: an edited picture belongs to this draft and survives an acknowledged send.
     it.effect("J05: picture notes and attachment order survive send and reload", () =>
       Effect.gen(function* () {
-        const s = yield* createScenario([installArea]);
-        yield* s.given.project("Ada", { mate: true });
+        const schemaReply = yield* ordersConsole();
+        const s = yield* createScenario([], { mate: "real" });
+        yield* s.given
+          .project("Ada", { mate: true })
+          .pipe(Effect.provideService(DataConsoleSpawn, schemaReply.spawn));
         yield* s.given.project("Bea", { mate: true });
         const chat = mateChat(s);
-        chat.fixture().history();
-        chat.fixture().databaseCatalog();
-        chat.fixture("Bea").history("Bea's conversation history");
+        const mate = s.drivers.realMates.get("Ada")!;
+        for (const name of ["Ada", "Bea"]) {
+          const real = s.drivers.realMates.get(name)!;
+          const conversationId = ConversationId.make(`composer-${name}`);
+          yield* real.server.engine.assignAgent(conversationId, {
+            instanceId: "opencode",
+            driver: "opencode",
+            model: "gpt-5.4",
+            profile: { kind: "mate" },
+          });
+          yield* real.provider.turn([
+            { kind: "say", text: "The existing conversation is still here" },
+          ]);
+          expect(
+            (yield* real.server.engine.wire.send(
+              {
+                protocol: MATE_ENGINE_PROTOCOLS[0]!,
+                conversationId,
+                commandId: CommandId.make(`composer-history-${name}`),
+                text: "Keep this conversation",
+              },
+              { subject: "scenario-person", environmentId: "scenario", epoch: 1 },
+            ))._tag,
+          ).toBe("Accepted");
+          yield* real.provider.received;
+        }
         yield* s.given.signedIn;
-        yield* chat.when.open();
-        const schemaReply = chat.fixture().holdDataReply("table");
+        yield* chat.when.openReadOnly("Ada");
+        yield* chat.then.text("The existing conversation is still here");
+        yield* chat.then.control("Stop generation", "button", false);
         yield* chat.when.type("Inspect @ordersdb");
         yield* chat.step(
           "select the reported database table",
-          chat.when
-            .mention("ordersdb.public.orders")
-            .pipe(
-              Effect.tapCause(() => Effect.logInfo(chat.fixture().mate.requests.map((r) => r.tag))),
+          chat.when.mention("ordersdb.public.orders").pipe(
+            Effect.tapCause(() =>
+              Effect.logInfo({
+                consoleRequests: schemaReply.requests,
+                consoleStarts: schemaReply.starts(),
+                mateRequests: mate.gate.requests.filter(
+                  (request) => request.startsWith("RPC ") && !request.startsWith("RPC failed"),
+                ),
+              }),
             ),
+          ),
         );
         yield* Effect.promise(() => schemaReply.requested());
         yield* chat.step(
           "a late schema belongs to Ada, even while Bea is open",
           Effect.gen(function* () {
-            yield* chat.when.open("Bea", "Bea's conversation history");
+            yield* chat.when.openReadOnly("Bea");
+            yield* chat.then.text("The existing conversation is still here");
             schemaReply.release();
             yield* chat.then.draft("");
             yield* chat.then.noText("order_id");
-            yield* chat.when.returnTo();
+            yield* chat.when.openReadOnly("Ada");
+            yield* chat.then.text("The existing conversation is still here");
           }),
         );
         yield* chat.when.pastePicture("layout.png");
@@ -200,26 +255,50 @@ describe("C: agent selection and contextual drafts", () => {
         yield* chat.when.notePicture("Move this action beside its heading");
         yield* chat.then.control("Note 1: Move this action beside its heading. Edit it");
         yield* chat.when.press("Done");
-        yield* chat.when.open("Bea", "Bea's conversation history");
+        yield* chat.when.openReadOnly("Bea");
+        yield* chat.then.text("The existing conversation is still here");
         yield* chat.then.noText("layout.png");
-        yield* chat.when.returnTo();
+        yield* chat.when.openReadOnly("Ada");
+        yield* chat.then.text("The existing conversation is still here");
         yield* chat.then.control("Picture 1, layout.png. Opens it to crop or add notes.");
+        const secondUpload = mate.gate.answered((tag) => tag === "attachments.createUploadUrl");
         yield* chat.when.pastePicture("second.png", "#334baf");
+        const second = yield* decodeUploadReceipt(
+          yield* Effect.promise(() => deadline(secondUpload, "second picture upload identity")),
+        );
+
         yield* chat.then.control("Picture 2, second.png. Opens it to crop or add notes.");
+        const uploads = mate.gate.holdHttp((path) => path.includes("/api/attachments/upload/"));
         yield* chat.when.pasteFile("order-query.sql", "select order_id from orders;");
         yield* chat.then.composerText("order-query.sql");
         yield* chat.when.type("Inspect these pictures in this order");
         yield* chat.then.composerText("Inspect these pictures in this order");
-        chat.fixture().turnRefusal = "This picture send was refused; retry it.";
+        yield* Effect.promise(() => deadline(uploads.held, "stored picture upload"));
+        const pending = yield* Effect.promise(async () => {
+          const directory = NodePath.join(mate.server.stateDir, "attachments");
+          const path = NodePath.join(directory, `${second.exit.value.attachmentId}.png`);
+          const bytes = await NodeFSP.readFile(path);
+          await NodeFSP.rm(path);
+          return { path, bytes };
+        });
+        const refusal = mate.gate.answered((tag) => tag === "engine.send");
+        uploads.release();
         yield* chat.when.press("Send message");
-        yield* chat.then.text("This picture send was refused; retry it.");
+        expect(
+          yield* Effect.promise(() => deadline(refusal, "refused picture send")),
+        ).toMatchObject({
+          exit: {
+            _tag: "Success",
+            value: { _tag: "Rejected", rejection: { reason: "attachment-refused" } },
+          },
+        });
+        yield* chat.then.text("cannot be sent: attachment not found (removed or expired).");
         yield* chat.then.control("Picture 1, layout.png. Opens it to crop or add notes.");
-        chat.fixture().turnRefusal = null;
+        yield* Effect.promise(() => NodeFSP.writeFile(pending.path, pending.bytes));
+        yield* mate.provider.turn([{ kind: "say", text: "Pictures received" }]);
         yield* chat.when.press("Send message");
-        const sent = (yield* Effect.promise(() => chat.fixture().waitForOp("send"))).payload as {
-          readonly text: string;
-          readonly attachments: ReadonlyArray<{ readonly type: string; readonly name: string }>;
-        };
+        const native = yield* mate.provider.received;
+        const sent = { text: native.input.input!, attachments: native.input.attachments! };
         expect(
           sent.attachments
             .filter((attachment) => attachment.type === "image")
@@ -234,30 +313,52 @@ describe("C: agent selection and contextual drafts", () => {
         expect(sent.text).toContain("Inspect these pictures in this order");
         expect(sent.text).toContain("ordersdb.public.orders");
         expect(sent.text).toContain("order_id");
-        // The agent answers it: the conversation is at rest again.
-        chat
-          .fixture()
-          .engine.settleRun([...chat.fixture().engine.runs.keys()].at(-1)!, "completed");
+        // The real provider answers it: the conversation is at rest again.
+        yield* chat.then.text("Pictures received");
+        yield* chat.then.control("Stop generation", "button", false);
         yield* chat.then.sent("Inspect these pictures in this order");
         yield* chat.when.reload("Ada", "Inspect these pictures in this order");
         yield* chat.then.text("Move this action beside its heading");
         yield* chat.then.text("order-query.sql");
+        yield* mate.provider.turn([{ kind: "say", text: "Image received" }]);
         yield* chat.when.pastePicture("image-only.png", "#338f7b");
         yield* chat.when.press("Send message");
-        const pictureOnly = yield* Effect.promise(() => chat.fixture().waitForOp("send", 2));
-        expect(pictureOnly.payload).toMatchObject({ attachments: [{ name: "image-only.png" }] });
+        const pictureOnly = yield* mate.provider.received;
+        expect(pictureOnly.input).toMatchObject({ attachments: [{ name: "image-only.png" }] });
+        yield* chat.then.text("Image received");
+        yield* chat.then.control("Stop generation", "button", false);
         yield* chat.when.reload("Ada", "Inspect these pictures in this order");
         yield* chat.when.openLastPicture(3);
         yield* chat.then.text("image-only.png");
         yield* chat.when.key("Escape");
-        chat.fixture().assets.clear();
+        yield* Effect.promise(async () => {
+          const directory = NodePath.join(mate.server.stateDir, "attachments");
+          const pictures = (await NodeFSP.readdir(directory)).filter((name) =>
+            name.endsWith(".png"),
+          );
+          expect(pictures.length).toBeGreaterThanOrEqual(3);
+          await Promise.all(pictures.map((name) => NodeFSP.rm(NodePath.join(directory, name))));
+          // Real asset reads use retained originals/previews, not the upload's old pathname.
+          for (const source of ["originals", "previews/objects"]) {
+            const retained = NodePath.join(mate.server.stateDir, "assets", source);
+            const objects = (await NodeFSP.readdir(retained)).filter(
+              (name) => !name.endsWith(".json"),
+            );
+            expect(
+              objects.length,
+              `ASSERTION: ${source} contains real picture bytes`,
+            ).toBeGreaterThan(0);
+            await Promise.all(objects.map((name) => NodeFSP.rm(NodePath.join(retained, name))));
+          }
+        });
         yield* chat.when.reload("Ada", "Inspect these pictures in this order");
-        yield* chat.then.text("Image unavailable");
+        yield* chat.when.openLastPicture(3);
+        yield* chat.then.text("Image no longer available");
         yield* s.then.noExternalNetwork;
       }),
     );
 
-    // Fake retained: turnRefusal needs a receipt-correlated real send-refusal seam; provider failure happens after acceptance.
+    // Fake retained: the scripted provider runs without sign-in; no real revocation source supplies this case's sign-in refusal.
     // J09 · Z07–Z09/Z34: context does not rewrite the person's durable words or become a slash prompt.
     it.effect(
       "J09: landed context stays separate from the person's message and compact event",

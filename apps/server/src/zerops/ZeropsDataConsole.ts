@@ -114,6 +114,12 @@ export interface DataConsoleProcess {
 
 export type SpawnDataConsole = () => DataConsoleProcess;
 
+/** The external zcp process boundary; a scenario supplies only its ready line and HTTP source. */
+export const DataConsoleSpawn = Context.Reference<SpawnDataConsole | undefined>(
+  "t3/zerops/DataConsoleSpawn",
+  { defaultValue: () => undefined },
+);
+
 /** Exported for a real-process regression test only (`ZeropsDataConsole.test.ts`) — everything else injects {@link SpawnDataConsole}. Always appends `["studio", "console", "serve"]` to `baseArgs`. */
 export const makeRealSpawn = (
   command: string,
@@ -1064,6 +1070,7 @@ export const layer = Layer.effect(
   ZeropsDataConsole,
   Effect.gen(function* () {
     const config = yield* ServerConfig;
-    return yield* make({ spawnDataConsole: makeRealSpawn(ZCP_COMMAND, [], config.cwd) });
+    const spawn = yield* DataConsoleSpawn;
+    return yield* make({ spawnDataConsole: spawn ?? makeRealSpawn(ZCP_COMMAND, [], config.cwd) });
   }),
 ).pipe(Layer.provide(FetchHttpClient.layer));
