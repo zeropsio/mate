@@ -518,10 +518,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("nodeFileStore", (it
           `${dir}/claude-env/.claude.json`,
         ],
         // The default inherits CODEX_HOME; a login's shadow home links to the shared ~/.codex.
-        codexConfigs: [
-          `${dir}/codex-env/config.toml`,
-          expect.stringMatching(/\/\.codex\/config\.toml$/),
-        ],
+        codexConfigs: [`${dir}/codex-env/config.toml`, `${dir}/home/.codex/config.toml`],
         cursorHome: `${dir}/home/.cursor`,
         grokConfig: "/g/config.toml",
         antigravityConfigs: [

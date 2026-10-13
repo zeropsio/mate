@@ -114,7 +114,8 @@ export const resolveMcpAgentPaths = Effect.fn("resolveMcpAgentPaths")(function* 
   for (const source of codexSources) {
     const layout = yield* codexHomeLayout({
       ...settings.providers.codex,
-      homePath: source.homePath,
+      // Without a home of its own Codex keeps `~/.codex`: this Mate's home, never the process's.
+      homePath: source.homePath.trim() || path.join(homeDir, ".codex"),
       shadowHomePath: source.shadowHomePath,
     });
     const inherited = source.env["CODEX_HOME"]?.trim() ?? "";
