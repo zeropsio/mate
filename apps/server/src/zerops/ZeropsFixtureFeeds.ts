@@ -648,6 +648,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     Layer.succeed(
       ZeropsOrgReadModule.ZeropsOrgRead,
       ZeropsOrgReadModule.ZeropsOrgRead.of({
+        forgetAccess: () => Effect.void,
         project: () => Effect.succeed({ kind: "no-key" }),
         members: () => Effect.succeed({ kind: "no-key" }),
       }),

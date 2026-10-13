@@ -14,7 +14,8 @@
  * callers can use is kept: a project that names its org, a member list that names somebody (an
  * org always has a member, so an empty list is an outage dressed as an answer). A failure goes to
  * whoever joined that read, and the next asker reads again. Each caller still reads the answer by
- * its own rules.
+ * its own rules. An access refusal discards both reads, so the next door attempt can
+ * observe a regrant without waiting for their age limit.
  *
  * @module ZeropsOrgRead
  */
@@ -76,6 +77,12 @@ export class ZeropsOrgRead extends Context.Service<
       readonly apiBaseUrl: string;
       readonly projectId: string;
     }) => Effect.Effect<OwnKeyRead>;
+    /** Discard the evidence behind an access refusal; the next asker reads Zerops again. */
+    readonly forgetAccess: (input: {
+      readonly apiBaseUrl: string;
+      readonly projectId: string;
+      readonly clientId: string;
+    }) => Effect.Effect<void>;
     /** `GET /client/{clientId}/user/list` with the Mate's own key, shared as the module says. */
     readonly members: (input: {
       readonly apiBaseUrl: string;
@@ -166,6 +173,13 @@ export const make = Effect.gen(function* () {
     });
 
   return ZeropsOrgRead.of({
+    forgetAccess: ({ apiBaseUrl, projectId, clientId }) =>
+      Ref.update(shared, (current) => {
+        const kept = new Map(current.kept);
+        kept.delete(`${apiBaseUrl}/project/${encodeURIComponent(projectId)}`);
+        kept.delete(`${apiBaseUrl}/client/${encodeURIComponent(clientId)}/user/list`);
+        return { ...current, kept };
+      }),
     project: ({ apiBaseUrl, projectId }) =>
       read(`${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, namesItsOrg),
     members: ({ apiBaseUrl, clientId }) =>

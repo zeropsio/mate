@@ -45,11 +45,14 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
  * A Zerops API that admits the person's throwaway, counting every request by its path's end. With
  * `held`, the member list answers only once it is done.
  */
-function platform(held?: Deferred.Deferred<void>) {
+function platform(
+  held?: Deferred.Deferred<void>,
+  facts?: { readonly project: () => unknown; readonly members: () => unknown },
+) {
   const seen: Array<string> = [];
   const route = (url: string): Response => {
     if (url.endsWith(`/project/${PROJECT_ID}`))
-      return json({ id: PROJECT_ID, clientId: CLIENT_ID });
+      return json(facts?.project() ?? { id: PROJECT_ID, clientId: CLIENT_ID });
     if (url.endsWith("/user/info")) return json({ id: TOKEN_ID });
     if (url.includes("/integration-token/")) {
       return json(
@@ -66,9 +69,11 @@ function platform(held?: Deferred.Deferred<void>) {
       );
     }
     if (url.endsWith("/user/list")) {
-      return json({
-        clientUserList: [{ id: "cu-1", userId: USER_ID, roleCode: "OWNER", status: "ACTIVE" }],
-      });
+      return json(
+        facts?.members() ?? {
+          clientUserList: [{ id: "cu-1", userId: USER_ID, roleCode: "OWNER", status: "ACTIVE" }],
+        },
+      );
     }
     return json({ message: "unexpected route" }, 500);
   };
@@ -157,6 +162,109 @@ describe("the org, as this Mate reads it", () => {
       yield* TestClock.adjust(Duration.millis(1));
       yield* readOwnAccess({ environment });
       assert.strictEqual(zerops.count("/user/list"), 2);
+    }).pipe(Effect.provide(zerops.layer));
+  });
+
+  it.effect.each([
+    {
+      title: "project access",
+      grantedOverride: "BASIC_USER",
+      override: undefined,
+      role: "NO_ACCESS",
+      status: "ACTIVE",
+      present: true,
+      tag: "ZeropsNotAMemberError",
+    },
+    {
+      title: "read-only access",
+      grantedOverride: undefined,
+      override: "READ_ONLY",
+      role: "BASIC_USER",
+      status: "ACTIVE",
+      present: true,
+      tag: "ZeropsReadOnlyError",
+    },
+    {
+      title: "org role",
+      grantedOverride: undefined,
+      override: undefined,
+      role: "NO_ACCESS",
+      status: "ACTIVE",
+      present: true,
+      tag: "ZeropsNotAMemberError",
+    },
+    {
+      title: "inactive membership",
+      grantedOverride: undefined,
+      override: undefined,
+      role: "BASIC_USER",
+      status: "DELETED",
+      present: true,
+      tag: "ZeropsThrowawayRefusedError",
+    },
+    {
+      title: "removed membership",
+      grantedOverride: undefined,
+      override: undefined,
+      role: "BASIC_USER",
+      status: "ACTIVE",
+      present: false,
+      tag: "ZeropsThrowawayRefusedError",
+    },
+  ])("after $title is regranted, the door admits the person on the next try", (revoked) => {
+    let granted = true;
+    const zerops = platform(undefined, {
+      project: () => ({
+        id: PROJECT_ID,
+        clientId: CLIENT_ID,
+        userRoles:
+          (granted ? revoked.grantedOverride : revoked.override) !== undefined
+            ? [
+                {
+                  clientUserId: "cu-1",
+                  roleCode: granted ? revoked.grantedOverride : revoked.override,
+                },
+              ]
+            : [],
+      }),
+      members: () => ({
+        clientUserList: [
+          { id: "cu-owner", userId: "another-owner", roleCode: "OWNER", status: "ACTIVE" },
+          ...(granted || revoked.present
+            ? [
+                {
+                  id: "cu-1",
+                  userId: USER_ID,
+                  roleCode:
+                    granted && revoked.grantedOverride === undefined ? "BASIC_USER" : revoked.role,
+                  status: granted ? "ACTIVE" : revoked.status,
+                },
+              ]
+            : []),
+        ],
+      }),
+    });
+    return Effect.gen(function* () {
+      const caller = { userId: USER_ID, clientId: CLIENT_ID, role: "BASIC_USER" } as const;
+      assert.deepStrictEqual(
+        yield* verifyThrowawayCaller({ environment, token: PRESENTED }),
+        caller,
+      );
+      granted = false;
+      yield* TestClock.adjust(ORG_READ_MAX_AGE);
+      // The membership watch can warm the cache before the door refuses.
+      yield* readOwnAccess({ environment });
+      const denied = yield* verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
+        Effect.flip,
+      );
+      assert.strictEqual(denied._tag, revoked.tag);
+      granted = true;
+      const next = yield* verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
+        Effect.match({ onFailure: (error) => error._tag, onSuccess: (answer) => answer }),
+      );
+      assert.deepStrictEqual(next, caller);
+      assert.strictEqual(zerops.count(`/project/${PROJECT_ID}`), 3);
+      assert.strictEqual(zerops.count("/user/list"), 3);
     }).pipe(Effect.provide(zerops.layer));
   });
 

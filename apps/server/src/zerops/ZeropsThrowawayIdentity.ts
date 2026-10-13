@@ -333,6 +333,7 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   }
   const member = findOrgMember(entries, createdByUser);
   if (member === null || member.status !== ZEROPS_ACTIVE_MEMBER_STATUS) {
+    yield* orgRead.forgetAccess({ apiBaseUrl, projectId, clientId: project.clientId });
     return yield* refused("not_member");
   }
 
@@ -341,8 +342,11 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
     (entry) => entry.clientUserId === member.clientUserId && member.clientUserId.length > 0,
   )?.roleCode;
   const { role, visibility } = resolveDoorVisibility({ projectId, member, override });
-  if (visibility === "listed") return yield* new ZeropsReadOnlyError({});
-  if (visibility !== "open") return yield* new ZeropsNotAMemberError({});
+  if (visibility !== "open") {
+    yield* orgRead.forgetAccess({ apiBaseUrl, projectId, clientId: project.clientId });
+    if (visibility === "listed") return yield* new ZeropsReadOnlyError({});
+    return yield* new ZeropsNotAMemberError({});
+  }
 
   return {
     userId: member.userId,
