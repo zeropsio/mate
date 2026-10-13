@@ -46,6 +46,7 @@ import {
   deriveEnvironmentName,
   environmentNameProblem,
 } from "./environments.ts";
+import { makeGitEnvironments, type GitEnvironments } from "./gitEnvironments.ts";
 import { DeployKeys } from "./deployKeys.ts";
 import { makeMateSetupMarkers } from "./mateSetupMarkers.ts";
 import { reachesOnly } from "./deployTokens.ts";
@@ -383,6 +384,9 @@ export class Structure extends Context.Service<
      * Its repositories on disk are the caller's to remove, after it.
      */
     readonly deleteApp: (userId: string, appId: string) => Effect.Effect<void, WriteError>;
+    readonly previewGitEnvironment: GitEnvironments["previewGitEnvironment"];
+    readonly addGitEnvironment: GitEnvironments["addGitEnvironment"];
+    readonly removeGitEnvironment: GitEnvironments["removeGitEnvironment"];
     readonly attachProject: (
       userId: string,
       appId: string,
@@ -659,16 +663,16 @@ const conflictOnUnique = <A, E extends { readonly _tag: string }, R>(
  */
 export const reconcileEnvironmentIdentity = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  yield* sql`UPDATE hq_environment SET id = project_id WHERE id IS DISTINCT FROM project_id`;
+  yield* sql`UPDATE hq_environment SET id = project_id WHERE target = 'zerops' AND id IS DISTINCT FROM project_id`;
   yield* sql`UPDATE hq_deploy_job SET environment_id = project_id
-    WHERE environment_id IS DISTINCT FROM project_id`;
-  yield* sql`UPDATE hq_rollout r SET environment_id = project_id, left_out = (
-    SELECT coalesce(jsonb_agg(entry || jsonb_build_object('environment_id', entry->'project_id')
+    WHERE project_id IS NOT NULL AND environment_id IS DISTINCT FROM project_id`;
+  yield* sql`UPDATE hq_rollout r SET environment_id = CASE WHEN project_id IS NOT NULL THEN project_id ELSE environment_id END, left_out = (
+    SELECT coalesce(jsonb_agg(CASE WHEN entry->>'project_id' IS NOT NULL THEN entry || jsonb_build_object('environment_id', entry->'project_id') ELSE entry END
       ORDER BY ordinal), '[]'::jsonb)
     FROM jsonb_array_elements(r.left_out) WITH ORDINALITY AS entries(entry, ordinal)
-  ) WHERE environment_id IS DISTINCT FROM project_id OR EXISTS (
+  ) WHERE (project_id IS NOT NULL AND environment_id IS DISTINCT FROM project_id) OR EXISTS (
     SELECT 1 FROM jsonb_array_elements(r.left_out) AS entries(entry)
-    WHERE entry->'environment_id' IS DISTINCT FROM entry->'project_id'
+    WHERE entry->>'project_id' IS NOT NULL AND entry->'environment_id' IS DISTINCT FROM entry->'project_id'
   )`;
 });
 
@@ -695,11 +699,13 @@ export const structureLayer = (options: {
       /** Shared by the streamed answer and Delete's guard; `a` is the application's row. */
       const appHeld = sql`
         EXISTS (SELECT 1 FROM hq_app_project WHERE app_id = a.id)
+        OR EXISTS (SELECT 1 FROM hq_environment WHERE app_id = a.id)
         OR EXISTS (SELECT 1 FROM hq_change WHERE app_id = a.id)
         OR EXISTS (SELECT 1 FROM hq_release WHERE app_id = a.id)
         OR EXISTS (SELECT 1 FROM hq_repo WHERE app_id = a.id AND name <> ${RECIPE_REPO})`;
       const version = yield* SubscriptionRef.make(0);
       const changed = SubscriptionRef.update(version, (tick) => tick + 1);
+      const gitEnvironments = yield* makeGitEnvironments(Effect.asVoid(changed));
       const setupMarkers = yield* makeMateSetupMarkers(
         ({ orgId, projectId, serviceId }) =>
           Option.match(options.credential, {
@@ -1230,6 +1236,7 @@ export const structureLayer = (options: {
             return result;
           }),
         ),
+        ...gitEnvironments,
         reconcile,
         prepareProjectDeletion: fresh((userId, projectId) =>
           Effect.gen(function* () {

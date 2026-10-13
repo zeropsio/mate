@@ -51,7 +51,8 @@ export function checkSteps(workflowYaml: string, jobId = "check"): ReadonlyArray
     if (
       step.run === undefined ||
       (step.if !== undefined && step.if !== "needs.prepare.outputs.skip != 'true'") ||
-      usesContext(step.run)
+      usesContext(step.run) ||
+      /\$\{?GITHUB_OUTPUT\b/u.test(step.run)
     )
       return [];
     // The hosted web test phase needs neither native-client generation nor Electron setup.

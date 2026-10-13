@@ -214,3 +214,20 @@ it("local Check always verifies work even when CI can skip a promoted SHA", () =
     "ASSERTION: local verification cannot disappear behind CI promotion",
   ).toEqual(["vp check"]);
 });
+
+it("local Check leaves runner output projection to GitHub", () => {
+  const workflow = `jobs:
+  check:
+    steps:
+      - name: Resolve store path
+        run: echo store=path >> "$GITHUB_OUTPUT"
+      - name: Alternate output syntax
+        run: echo store=path >> "\${GITHUB_OUTPUT}"
+      - name: Verify workflow
+        run: echo checked
+`;
+  expect(
+    checkSteps(workflow).map((step) => step.name),
+    "ASSERTION: local checks cannot write GitHub runner outputs",
+  ).toEqual(["Verify workflow"]);
+});

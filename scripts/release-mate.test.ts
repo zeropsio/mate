@@ -210,25 +210,22 @@ it("a failed or pending rerun does not reuse an older green approval", () => {
 });
 
 it("release CI grants the permissions requested by its reusable workflow", () => {
-  type Workflow = {
-    permissions: Record<string, string>;
-    jobs: Record<string, { uses?: string; permissions?: Record<string, string> }>;
-  };
-  const readWorkflow = (file: string) =>
-    parse(NodeFS.readFileSync(NodePath.join(import.meta.dirname, "..", file), "utf8")) as Workflow;
-  const release = readWorkflow(".github/workflows/release.yml");
-  const caller = release.jobs.ci!;
-  const ci = readWorkflow(caller.uses!);
-  const granted = caller.permissions ?? release.permissions;
-  const levels = ["none", "read", "write"];
-  for (const [name, job] of Object.entries(ci.jobs)) {
-    for (const [permission, level] of Object.entries(job.permissions ?? ci.permissions)) {
-      expect(
-        levels.indexOf(granted[permission] ?? "none"),
-        `ASSERTION: release CI must grant ${permission}: ${level} requested by nested job ${name}`,
-      ).toBeGreaterThanOrEqual(levels.indexOf(level));
-    }
-  }
+  const workflow = parse(
+    NodeFS.readFileSync(
+      NodePath.join(import.meta.dirname, "../.github/workflows/release.yml"),
+      "utf8",
+    ),
+  );
+  expect(
+    workflow.jobs.verify.permissions,
+    "ASSERTION: release verification needs only read access to prior workflow runs",
+  ).toEqual({ contents: "read", actions: "read" });
+  expect(
+    workflow.jobs.verify.steps.find(
+      (step: { name: string }) => step.name === "Check exact-SHA CI verification",
+    ).env.GH_TOKEN,
+  ).toBe("${{ github.token }}");
+  expect(workflow.jobs.verify.uses).toBeUndefined();
 });
 
 it("failed release CI publishes no manifest, checksum or latest release", () => {
@@ -243,11 +240,11 @@ it("failed release CI publishes no manifest, checksum or latest release", () => 
       { needs?: string[]; uses?: string; if?: string; steps?: { run?: string }[] }
     >;
   };
-  expect(workflow.jobs.ci?.uses).toBe("./.github/workflows/ci.yml");
+  expect(workflow.jobs.verify).toBeDefined();
   expect(
     workflow.jobs.release?.needs,
-    "ASSERTION: publication requires successful CI and bundle verification on R",
-  ).toEqual(["build", "ci"]);
+    "ASSERTION: publication requires the exact-SHA CI verdict and bundle verification",
+  ).toEqual(["build", "verify"]);
   expect(workflow.jobs.release?.if).toBe("github.event_name == 'push'");
   expect(workflow.jobs.release?.steps?.at(-1)?.run).toContain("--latest");
 });
@@ -273,7 +270,7 @@ it("Decision: orchestrator chose tag-from-green-SHA over a push hold (analysis: 
     NodeFS.mkdirSync(NodePath.join(root, ".github/workflows"), { recursive: true });
     NodeFS.writeFileSync(
       NodePath.join(root, ".github/workflows/release.yml"),
-      "uses: ./.github/workflows/ci.yml\nneeds: [build, ci]\n",
+      "  verify:\nneeds: [build, verify]\n",
     );
     git("add", ".");
     git("commit", "--quiet", "-m", "baseline");

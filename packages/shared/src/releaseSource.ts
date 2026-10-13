@@ -1,12 +1,9 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import versionedReleasePackages from "./versionedReleasePackages.json" with { type: "json" };
 
-export const VERSIONED_RELEASE_PACKAGES = [
-  "apps/server/package.json",
-  "apps/desktop/package.json",
-  "apps/web/package.json",
-] as const;
+export const VERSIONED_RELEASE_PACKAGES = Object.freeze(versionedReleasePackages);
 
 const decodePackage = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),

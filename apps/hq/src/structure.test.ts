@@ -28,6 +28,7 @@ import {
   Structure,
   type StructureRead,
   structureLayer,
+  reconcileEnvironmentIdentity,
 } from "./structure.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
@@ -258,6 +259,95 @@ const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A
 
 describe("structure", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "Git navigation finishes birth when verified remote data arrives after its first read, without a deploy token.",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const app = yield* structure.createApp("owner", "Git birth");
+            yield* sql`INSERT INTO hq_environment(id,target,app_id,tier,name,sources,created_by,branch,delivery)
+          VALUES ('git-production','git',${app.id}::uuid,'production','production',ARRAY['release'],'owner','main','direct')`;
+            yield* sql`INSERT INTO hq_rollout(app_id,cause,environment_id,environment_created_at,by,planned_at)
+          SELECT app_id,'env_added',id,created_at,'owner',now() FROM hq_environment WHERE id='git-production'`;
+            const birth = Effect.map(
+              structure.read("owner"),
+              (read) =>
+                shown(read.apps.find((a) => a.id === app.id)!.environments).find(
+                  (e) => e.id === "git-production",
+                )?.birth,
+            );
+            assert.deepStrictEqual(yield* birth, { ended: false });
+            yield* sql`INSERT INTO hq_repo(app_id,name,created_by) VALUES (${app.id}::uuid,'web','owner')`;
+            yield* sql`INSERT INTO hq_repo_remote(app_id,repo,url,url_key,host,sealed,key_id,kept_by,kept_at)
+          VALUES (${app.id}::uuid,'web','https://fixture.invalid/web.git','fixture.invalid/web','other',decode('01','hex'),'fixture','owner',now())`;
+            assert.deepStrictEqual(yield* birth, { ended: true });
+            assert.strictEqual((yield* sql`SELECT 1 FROM hq_deploy_token`).length, 0);
+          }),
+        ),
+    );
+    it.effect("A git production survives HQ's reconcile of Zerops projects.", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const app = yield* structure.createApp("owner", "Git shop");
+          yield* structure.attachProject("owner", app.id, {
+            projectId: "P_STAGE",
+            kind: "stage",
+            environment: { name: "stage" },
+          });
+          yield* sql`INSERT INTO hq_environment(id,target,app_id,tier,name,sources,created_by,branch,delivery)
+          VALUES ('git-production','git',${app.id}::uuid,'production','production',ARRAY['release'],'owner','main','direct')`;
+          yield* sql`INSERT INTO hq_rollout(app_id,cause,environment_id,environment_created_at,by)
+          SELECT app_id,'env_added',id,created_at,'owner' FROM hq_environment WHERE id='git-production'`;
+          yield* Ref.update(view, (org) => ({
+            ...org,
+            projects: org.projects.filter((p) => p.id !== "P_STAGE"),
+          }));
+          assert.strictEqual(yield* structure.reconcile, 1);
+          assert.deepStrictEqual(yield* sql`SELECT id,project_id FROM hq_environment`, [
+            { id: "git-production", project_id: null },
+          ]);
+          yield* sql`INSERT INTO hq_deploy_job(rollout_id,environment_id,kind,repo,sha,state,ended_at,ord)
+          SELECT id,'git-production','push','web',${"a".repeat(40)},'pushed',now(),0 FROM hq_rollout WHERE environment_id='git-production'`;
+          yield* sql`UPDATE hq_rollout SET left_out='[{"environment_id":"git-production","repo":"web"},{"project_id":"legacy","environment_id":"old"}]'::jsonb WHERE environment_id='git-production'`;
+          assert.strictEqual(
+            yield* reconcileEnvironmentIdentity.pipe(
+              Effect.match({ onSuccess: () => "ok", onFailure: () => "identity repair failed" }),
+            ),
+            "ok",
+          );
+          assert.deepStrictEqual(yield* sql`SELECT id,project_id FROM hq_environment`, [
+            { id: "git-production", project_id: null },
+          ]);
+          assert.deepStrictEqual(
+            yield* sql`SELECT environment_id,project_id FROM hq_rollout WHERE environment_id='git-production'`,
+            [{ environment_id: "git-production", project_id: null }],
+          );
+          assert.deepStrictEqual(yield* sql`SELECT environment_id,project_id FROM hq_deploy_job`, [
+            { environment_id: "git-production", project_id: null },
+          ]);
+          assert.deepStrictEqual(
+            (yield* sql<{
+              readonly left_out: unknown;
+            }>`SELECT left_out FROM hq_rollout WHERE environment_id='git-production'`)[0]!.left_out,
+            [
+              { environment_id: "git-production", repo: "web" },
+              { project_id: "legacy", environment_id: "legacy" },
+            ],
+          );
+          const read = yield* structure.read("owner");
+          assert.strictEqual(read.apps.find((a) => a.id === app.id)?.contents.empty, false);
+          assert.strictEqual(
+            yield* reasonOf(structure.deleteApp("owner", app.id)),
+            "app_not_empty",
+          );
+        }),
+      ),
+    );
+
     it.effect.each(
       Array.from([true, false] as const, (marker) => ({
         title: `shares setup marker ${String(marker)} across authorized navigation recipients`,
