@@ -187,8 +187,6 @@ export function portProblem(
 
 /** The platform's refusals the sheet can meet, as a person is told them. */
 const TROUBLE: Readonly<Record<string, string>> = {
-  publicHttpRoutingDuplicateDomainNameInAnotherRouting:
-    "That domain is already used by another project on Zerops.",
   publicHttpRoutingInvalidDomainNameFQDN: "Enter a full domain name, like shop.com.",
   publicHttpRoutingServiceStackDoesNotSupportHttp:
     "That service doesn't serve web pages. Point the domain at another one.",
@@ -201,8 +199,15 @@ const TROUBLE: Readonly<Record<string, string>> = {
     "Zerops didn't take one of the addresses. Give each with its mask, like 2001:db8::1/128.",
 };
 
-/** A refusal's sentence by its code; `undefined` for a code the sheet does not know. */
-export function addressTrouble(code: string | undefined): string | undefined {
+/**
+ * A refusal's sentence by its code, naming what the write named; `undefined` for a code the sheet
+ * does not know.
+ */
+export function addressTrouble(code: string | undefined, write?: AddressWrite): string | undefined {
+  if (code === "publicHttpRoutingDuplicateDomainNameInAnotherRouting") {
+    const named = write?.kind === "add-domain" ? write.domains.join(" or ") : "That domain";
+    return `${named} is already in use on Zerops.`;
+  }
   return code === undefined ? undefined : TROUBLE[code];
 }
 
@@ -282,6 +287,8 @@ const namesIn = (change: WaitingChange) =>
 export function othersWaiting(
   waiting: ReadonlyArray<WaitingChange>,
   own: ReadonlyArray<AddressWrite>,
+  /** The place's ports, which say what a waiting port change opens. */
+  ports: ReadonlyArray<Pick<DirectPort, "id" | "publicIpType" | "publicPort">> = [],
 ): ReadonlyArray<WaitingChange> {
   const ids = new Set<string>();
   const names = new Set<string>();
@@ -290,12 +297,19 @@ export function othersWaiting(
     if (write.kind === "change-port" || write.kind === "close-port") ids.add(write.portRoutingId);
     if (write.kind === "add-domain") for (const name of write.domains) names.add(name);
   }
-  const ports = own.filter((write) => write.kind === "open-port");
+  const opening = own.filter((write) => write.kind === "open-port");
   return waiting.filter(
     (change) =>
       !ids.has(change.id) &&
       !namesIn(change).some((name) => names.has(name)) &&
-      !ports.some((port) => change.label.startsWith(`Port ${port.publicPort} → `)),
+      !opening.some((write) => {
+        const port = ports.find((each) => each.id === change.id);
+        return (
+          port !== undefined &&
+          port.publicPort === write.publicPort &&
+          port.publicIpType === write.publicIpType
+        );
+      }),
   );
 }
 
@@ -313,6 +327,7 @@ export function withOwnWrites(
   if (own.length === 0) return place;
   let domains = [...place.domains];
   let ports = [...place.ports];
+  let zerops = [...place.zerops];
   const serviceName = (serviceId: string) =>
     [...place.webTargets, ...place.portTargets].find((each) => each.serviceId === serviceId)
       ?.serviceName ?? serviceId;
@@ -367,6 +382,11 @@ export function withOwnWrites(
           face: "going-live",
         });
         break;
+      case "disable-subdomain-access":
+        zerops = zerops.map((address) =>
+          address.serviceId === write.serviceId ? { ...address, on: false, hosts: [] } : address,
+        );
+        break;
       case "change-port":
       case "close-port":
         ports = ports.map((port) =>
@@ -382,6 +402,7 @@ export function withOwnWrites(
   return {
     ...place,
     domains: domains.toSorted(byName),
+    zerops,
     ports: ports.toSorted((left, right) => left.publicPort - right.publicPort),
   };
 }
@@ -413,14 +434,22 @@ export function checkedWords(checkedAt: string | undefined, nowMs: number): stri
   return days === 1 ? "Checked a day ago" : `Checked ${days} days ago`;
 }
 
-/** Removing one domain: its routing keeps the others, sent again as it reads; none, and it goes. */
-export function removeWrite(domain: AddressDomain, projectId: string): AddressWrite {
+/**
+ * Removing one domain: its routing keeps the others, sent again as it reads; none, and it goes.
+ * A domain whose own removal is under way is never kept: keeping it would put it back.
+ */
+export function removeWrite(
+  domain: AddressDomain,
+  projectId: string,
+  removing: ReadonlyArray<Pick<AddressDomain, "domainName">> = [],
+): AddressWrite {
+  const gone = new Set(removing.map((each) => each.domainName));
   return {
     kind: "remove-domain",
     projectId,
     routingId: domain.routingId,
     domainName: domain.domainName,
-    keep: domain.routingDomains.filter((name) => name !== domain.domainName),
+    keep: domain.routingDomains.filter((name) => name !== domain.domainName && !gone.has(name)),
     locations: domain.targets.map((target) => ({
       path: target.path,
       port: target.port,
@@ -490,4 +519,22 @@ export function addressPlaces(
     seen.add(place.projectId);
     return true;
   });
+}
+
+/**
+ * The domain of the same routing whose removal a remove must wait for: two removes of one routing
+ * at once would each send the other back. `null` when nothing of its routing is being removed.
+ */
+export function removeWaitsFor(
+  domain: AddressDomain,
+  domains: ReadonlyArray<AddressDomain>,
+): string | null {
+  return (
+    domains.find(
+      (each) =>
+        each.routingId === domain.routingId &&
+        each.domainName !== domain.domainName &&
+        each.face === "removing",
+    )?.domainName ?? null
+  );
 }
