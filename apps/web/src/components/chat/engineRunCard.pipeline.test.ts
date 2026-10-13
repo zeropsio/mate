@@ -198,6 +198,9 @@ const stressRun = (patch: Partial<RunRecord> = {}) =>
     ...patch,
   } as never);
 
+/** What still runs after every run is over: the card at the conversation's bottom (`waitsAtEnd`). */
+const waitsAtBottom = (rows: ReturnType<typeof render>) => rows.at(-1)?.kind === "after-work";
+
 const cardOf = (rows: ReturnType<typeof render>) => {
   const card = rows.find((row) => row.kind === "record" && row.turnId === run1);
   if (card?.kind !== "record") throw new Error("no card");
@@ -304,23 +307,22 @@ describe("an engine Mate's run card, from the engine's record", () => {
   ])(
     "its run over while its background command runs, it waits on that command from $when",
     ({ row }) => {
-      const card = cardOf(
-        render({
-          runs: [stressRun()],
-          items: stressItems("running"),
-          row: engineRow(key.environmentId, key.conversationId, {
-            state: row,
-            latestRun: {
-              id: RunId.make(run1),
-              end: { kind: "completed" },
-              endedAt: t0 + 77_800,
-              turnState: "completed",
-            },
-          }),
+      const rows = render({
+        runs: [stressRun()],
+        items: stressItems("running"),
+        row: engineRow(key.environmentId, key.conversationId, {
+          state: row,
+          latestRun: {
+            id: RunId.make(run1),
+            end: { kind: "completed" },
+            endedAt: t0 + 77_800,
+            turnState: "completed",
+          },
         }),
-      );
-      expect(card.status?.live).toBe(true);
-      expect(lineOf(card)).toBe("Waiting for its background command");
+      });
+      // Its card is done; the bottom waits on the command.
+      expect(cardOf(rows).status?.live).toBe(false);
+      expect(waitsAtBottom(rows)).toBe(true);
     },
   );
 
@@ -356,25 +358,24 @@ describe("an engine Mate's run card, from the engine's record", () => {
       const items = stressItems("completed").map((item) =>
         item.kind === "work" ? ({ ...item, workKind: work } as Item) : item,
       );
-      const card = cardOf(
-        render({
-          runs: [stressRun()],
-          items,
-          row: engineRow(key.environmentId, key.conversationId, {
-            state: due
-              ? { kind: "working", since: t0 + 77_800, waitsOnHelpers: true, turnDue: true }
-              : { kind: "idle" },
-            latestRun: {
-              id: RunId.make(run1),
-              end: { kind: "completed" },
-              endedAt: t0 + 77_800,
-              turnState: "completed",
-            },
-          }),
+      const rows = render({
+        runs: [stressRun()],
+        items,
+        row: engineRow(key.environmentId, key.conversationId, {
+          state: due
+            ? { kind: "working", since: t0 + 77_800, waitsOnHelpers: true, turnDue: true }
+            : { kind: "idle" },
+          latestRun: {
+            id: RunId.make(run1),
+            end: { kind: "completed" },
+            endedAt: t0 + 77_800,
+            turnState: "completed",
+          },
         }),
-      );
-      expect(card.status?.live).toBe(live);
-      if (!live) expect(lineOf(card)).toMatch(/^Milo worked /);
+      });
+      // The bottom goes on until the wake opens; the card that started it is done either way.
+      expect(waitsAtBottom(rows)).toBe(live);
+      expect(lineOf(cardOf(rows))).toMatch(/^Milo worked /);
     },
   );
 
@@ -901,6 +902,113 @@ it.each([
     expect(groups).toEqual([2, 1]);
   },
 );
+
+// The owner, 2026-10-14, of Eli's three helpers: the card that started them waited on them over a
+// later message's card, which carried them too, then not at all once it settled. Every card whose
+// runs are over is done; what still runs is waited on at the end, under the last answer, by a card
+// of its own ("the working card at bottom still goes on"), or by the card that works.
+it.each([
+  { last: "while the last card works", ended: false },
+  { last: "once every card settled", ended: true },
+])(
+  "what still runs is waited on at the conversation's end, every earlier card done: $last",
+  ({ ended }) => {
+    const runs = [
+      stressRun({
+        endedAt: t0 + 20_000,
+        summary: { items: 3, calls: { helper: 1 }, answerItemId: `${run1}/i/3`, lastItemSeq: 3 },
+      } as never),
+      engineRun(key.conversationId, 2, {
+        queuedAt: t0 + 60_000,
+        admittedAt: t0 + 60_000,
+        startedAt: t0 + 60_000,
+        ...(ended
+          ? {
+              endedAt: t0 + 80_000,
+              summary: { items: 2, calls: {}, answerItemId: `${run2}/i/2`, lastItemSeq: 2 },
+            }
+          : { state: "running", end: null, endedAt: null }),
+      } as never),
+    ];
+    const answer = "All three are well into their work.";
+    const rows = render({
+      runs,
+      items: [
+        personItem(run1, 1, "Start the helpers", { at: t0 }),
+        {
+          ...workItem(run1, 2, { work: "w1", title: "Swarm: four new monster types" }),
+          at: t0 + 5_000,
+        } as Item,
+        noteItem(run1, 3, "Three helpers are on it.", { at: t0 + 19_000 }),
+        personItem(run2, 1, "how far along are they", { at: t0 + 60_000 }),
+        ...(ended ? [noteItem(run2, 2, answer, { at: t0 + 79_000 })] : []),
+      ],
+      isWorking: !ended,
+    });
+    const cards = rows.flatMap((row) => (row.kind === "record" ? [row] : []));
+    const working = rows.flatMap((row) => (row.kind === "working" ? [row.cardKey] : []));
+    const said = rows.findIndex(
+      (row) =>
+        row.kind === "message" && row.message.role === "assistant" && row.message.text === answer,
+    );
+    expect({
+      firstDone: cards[0]?.live === false,
+      live: cards.filter((card) => card.live).map((card) => card.id),
+      working,
+      bottomUnderTheAnswer: ended
+        ? rows.findIndex((row) => row.kind === "after-work") > said && waitsAtBottom(rows)
+        : !rows.some((row) => row.kind === "after-work"),
+    }).toEqual({
+      firstDone: true,
+      live: ended ? [] : [`record:msg:send-${run2}-1`],
+      working: ended ? [] : [`msg:send-${run2}-1`],
+      bottomUnderTheAnswer: true,
+    });
+  },
+);
+
+// The owner, 2026-10-14: a helper's finish read as a line "floating in space" over the card of the
+// run it woke. What woke a run nobody wrote to opens that run's card, inside it.
+it("what woke a run opens its card, inside it", () => {
+  const rows = render({
+    runs: [
+      stressRun({
+        endedAt: t0 + 20_000,
+        summary: { items: 3, calls: { helper: 1 }, answerItemId: `${run1}/i/3`, lastItemSeq: 3 },
+      } as never),
+      engineRun(key.conversationId, 2, {
+        trigger: { kind: "wake", cause: "self", wakeId: null },
+        joins: RunId.make(run1),
+        queuedAt: t0 + 30_000,
+        admittedAt: t0 + 30_000,
+        startedAt: t0 + 30_000,
+        endedAt: t0 + 40_000,
+        summary: { items: 2, calls: { command: 1 }, answerItemId: `${run2}/i/2`, lastItemSeq: 2 },
+      } as never),
+    ],
+    items: [
+      personItem(run1, 1, "Start the helpers", { at: t0 }),
+      {
+        ...workItem(run1, 2, {
+          work: "w1",
+          title: "Interface: AAA UI polish",
+          status: "completed",
+          endedAt: t0 + 29_000,
+        } as never),
+        at: t0 + 5_000,
+      } as Item,
+      noteItem(run1, 3, "Three helpers are on it.", { at: t0 + 19_000 }),
+      { ...bash(1, 31_000, "npm test", "Run the tests"), runId: run2, id: `${run2}/i/1` } as Item,
+      noteItem(run2, 2, "The interface subagent is done.", { at: t0 + 39_000 }),
+    ],
+  });
+  const woke = rows.findIndex((row) => row.id.startsWith("woke:"));
+  expect(woke).toBeGreaterThan(-1);
+  expect(rows.slice(woke, woke + 2).map((row) => [row.kind, row.card])).toEqual([
+    ["background", "top"],
+    ["record", "middle"],
+  ]);
+});
 
 // Milo's stress run 5 (A +1:37.6): wake 92 fired as a planned restart began and only spoke, so it
 // drew no card of its own; the wake after the restart was headed by the helper it had itself started

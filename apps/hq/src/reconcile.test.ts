@@ -212,6 +212,72 @@ describe("a takeover after git moved past HQ's records", () => {
         }),
     );
 
+    it.effect(
+      "A recovered Git release retains its accepted destination and refuses a missing frozen repository commit",
+      () =>
+        Effect.gen(function* () {
+          const first = yield* startCore(true);
+          yield* untilHealth(first.call, "active");
+          const owner = yield* sessionFor(first.call, "door-owner");
+          const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+          const { appId } = ada;
+          yield* first.call("POST", "/api/mate/repos", {
+            headers: ada.auth,
+            body: { name: "api-library" },
+          });
+          yield* first.stop;
+          const code = bareAt(NodePath.join(first.gitRoot, appId, "api-library.git"));
+          const sha = code(["rev-parse", "refs/heads/main"]);
+          const group = bareAt(NodePath.join(first.gitRoot, appId, `${RECIPE_REPO}.git`));
+          const groupHead = group(["rev-parse", "refs/heads/main"]);
+          group(["tag", "-a", "v0.1.0", "-m", `api-library ${sha}`, groupHead]);
+          const attachment = {
+            environmentId: "REMOVED_GIT",
+            createdAt: "2026-10-13T10:00:00.123456Z",
+            target: { kind: "git", branch: "main", delivery: "direct" },
+          };
+          yield* rowsWhere(
+            first.url,
+            `INSERT INTO hq_git_event(kind,app_id,repo,data)
+          VALUES('released','${appId}'::uuid,'group','${JSON.stringify({ tag: "v0.1.0", releaseTarget: attachment })}'::jsonb) RETURNING seq`,
+            () => true,
+          );
+          const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          yield* untilHealth(next.call, "active");
+          yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+          assert.deepStrictEqual(
+            yield* rowsWhere(
+              next.url,
+              `SELECT target,environment_id,
+          to_char(environment_created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS stamp,entries,state
+          FROM hq_release WHERE tag='v0.1.0'`,
+              () => true,
+            ),
+            [
+              {
+                target: "git",
+                environment_id: "REMOVED_GIT",
+                stamp: attachment.createdAt,
+                entries: [{ service: "api-library", sha }],
+                state: "approved",
+              },
+            ],
+          );
+          yield* next.stop;
+          yield* rowsWhere(
+            first.url,
+            `UPDATE hq_release SET entries='[{"service":"api-library","sha":"${"e".repeat(40)}"}]'::jsonb RETURNING tag`,
+            () => true,
+          );
+          const refused = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          const health = yield* untilHealth(refused.call, "failed");
+          assert.strictEqual(
+            (health.body as { readonly reason?: string }).reason,
+            "restore_mismatch",
+          );
+        }),
+    );
+
     // Main's order decides which merge was the application's first, whether the record of a squash
     // is open and lagging or missing altogether.
     it.effect("recovers unrecorded squashes in the order main merged them", () =>

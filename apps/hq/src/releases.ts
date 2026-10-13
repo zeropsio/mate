@@ -29,7 +29,9 @@ import {
   RELEASES_SHOWN,
   RELEASE_REFUSALS,
   type Release,
-  ReleaseEntry,
+  GitReleaseEntry,
+  HqReleaseTarget,
+  type HqGitReleasePreflight,
   type RollbackRequest,
   compareReleaseTags,
   nextPatch,
@@ -40,6 +42,8 @@ import { type Facts, can } from "./permissions.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -49,18 +53,37 @@ import type { SqlError } from "effect/sql/SqlError";
 import { appendEvent } from "./gitEvents.ts";
 import { GitHost, mainOf } from "./gitHost.ts";
 import { Leader, type NotLeader } from "./leader.ts";
-import { appTarget, releaseTarget, readEnvironmentSlots } from "./offers.ts";
+import {
+  appTarget,
+  releaseTarget,
+  readEnvironmentSlots,
+  readProductionAttachment,
+  gitReleaseRoster,
+  readGitReleaseBlocker,
+} from "./offers.ts";
 import { makeReleaseNavigationReader, type ReleaseNavigationSource } from "./releaseNavigation.ts";
 import { RecipeTiers, type RecipeTierUnreadable } from "./recipeTiers.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
 import { Roles, decidedFresh } from "./roles.ts";
+import {
+  GitReleasePreflight,
+  gitReleasePreflightLayer,
+  remoteCredentialStamp,
+} from "./gitReleasePreflight.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
 /** A person's ask HQ refused: a code, and the reason (a permission's, or the release's own). */
 export class ReleaseRefused extends Schema.TaggedError<ReleaseRefused>()("ReleaseRefused", {
   code: Schema.Literals(["forbidden", "app_not_found", "release_not_found", "conflict"]),
-  reason: Schema.Literals([...REASONS, ...RELEASE_REFUSALS, "app_not_found", "release_not_found"]),
+  reason: Schema.Literals([
+    ...REASONS,
+    ...RELEASE_REFUSALS,
+    "app_not_found",
+    "release_not_found",
+    "release_running",
+    "git_release_blocked",
+  ]),
 }) {}
 
 type Made = Effect.Effect<
@@ -106,18 +129,23 @@ export class Releases extends Context.Service<
 interface ReleaseRow {
   readonly tag: string;
   readonly sha: string;
-  readonly entries: ReadonlyArray<ReleaseEntry>;
+  readonly entries: ReadonlyArray<GitReleaseEntry>;
   readonly released_by: string;
   readonly released_at: string;
   readonly state: "approved" | "refused";
   readonly reason: string | null;
   readonly rollback_of: string | null;
   readonly snapshot: boolean;
+  readonly target: "zerops" | "git";
+  readonly release_target: HqReleaseTarget | null;
 }
 
 const RELEASE_COLUMNS = `tag, sha, entries, released_by,
   to_char(released_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS released_at,
-  state, reason, rollback_of, snapshot`;
+  state, reason, rollback_of, snapshot, target,
+  (SELECT data->'releaseTarget' FROM hq_git_event
+    WHERE kind='released' AND app_id=hq_release.app_id AND data->>'tag'=hq_release.tag
+    AND data ? 'releaseTarget' ORDER BY seq DESC LIMIT 1) AS release_target`;
 
 const releaseOf = (row: ReleaseRow): Release => ({
   tag: row.tag,
@@ -129,6 +157,7 @@ const releaseOf = (row: ReleaseRow): Release => ({
   reason: row.reason,
   rollbackOf: row.rollback_of,
   ...(row.snapshot ? { snapshot: true } : {}),
+  ...(row.release_target === null ? {} : { target: row.target, releaseTarget: row.release_target }),
 });
 
 const refuse = (code: ReleaseRefused["code"], reason: ReleaseRefused["reason"]) =>
@@ -136,7 +165,7 @@ const refuse = (code: ReleaseRefused["code"], reason: ReleaseRefused["reason"]) 
 
 const person = (userId: string) => ({ kind: "person", userId }) as const;
 
-const encodeEntries = Schema.encodeSync(Schema.fromJsonString(Schema.Array(ReleaseEntry)));
+const encodeEntries = Schema.encodeSync(Schema.fromJsonString(Schema.Array(GitReleaseEntry)));
 
 export const releasesLayer: Layer.Layer<
   Releases,
@@ -152,6 +181,7 @@ export const releasesLayer: Layer.Layer<
     const recipes = yield* RecipeTiers;
     const rollouts = yield* Rollouts;
     const ticks = yield* SubscriptionRef.make(0);
+    const preflight = yield* Effect.serviceOption(GitReleasePreflight);
 
     /** The person's ask, allowed by `decision`, or refused with its reason. */
     const allowed = (userId: string, appId: string, decision: Decision) =>
@@ -189,10 +219,9 @@ export const releasesLayer: Layer.Layer<
             yield* readEnvironmentSlots(sql, appId),
           );
           yield* allowed(userId, appId, can(person(userId), "release", target, facts));
-          // Allowed only with a production: `can` refuses `no_production` to everyone else.
-          if (target.productionProjectId === null)
-            return yield* refuse("forbidden", "no_production");
-          return target.productionProjectId;
+          const attachment = yield* readProductionAttachment(sql, appId);
+          if (attachment === undefined) return yield* refuse("forbidden", "no_production");
+          return attachment;
         }),
       );
 
@@ -214,15 +243,38 @@ export const releasesLayer: Layer.Layer<
       wanted: {
         readonly tag: string | null;
         readonly groupHead: string;
-        readonly entries: ReadonlyArray<ReleaseEntry>;
+        readonly entries: ReadonlyArray<GitReleaseEntry>;
         readonly by: string;
         readonly rollbackOf: string | null;
-        readonly productionProjectId: string;
+        readonly attachment: HqReleaseTarget;
+        readonly reviewed?: HqReleaseTarget;
+        readonly target?: "zerops" | "git";
+        readonly preflight?: ReadonlyArray<HqGitReleasePreflight>;
       },
     ): Made =>
       Effect.gen(function* () {
         const git = yield* gitHost.git;
         const group = { appId, id: RECIPE_REPO };
+        const freshReviews = new Map<string, HqGitReleasePreflight>();
+        if (wanted.attachment.target.kind === "git") {
+          if (
+            Option.isNone(preflight) ||
+            wanted.preflight === undefined ||
+            wanted.reviewed === undefined ||
+            wanted.target !== "git"
+          )
+            return yield* refuse("conflict", "git_release_blocked");
+          const branch = wanted.attachment.target.branch;
+          for (const review of wanted.preflight) {
+            if (review.verdict !== "ready" || review.ref !== `refs/heads/${branch}`)
+              return yield* refuse("conflict", "git_release_blocked");
+            const fresh = yield* preflight.value
+              .check(appId, review.repo, review.sha, branch)
+              .pipe(Effect.catch(() => refuse("conflict", "git_release_blocked")));
+            if (fresh.verdict !== "ready") return yield* refuse("conflict", "git_release_blocked");
+            freshReviews.set(review.repo, fresh);
+          }
+        }
         const made = yield* leader.write(
           Effect.gen(function* () {
             // The recipe repository's row, locked: its releases, and its merges, one at a time.
@@ -230,10 +282,27 @@ export const releasesLayer: Layer.Layer<
               SELECT 1 FROM hq_repo WHERE app_id::text = ${appId} AND name = ${RECIPE_REPO}
               FOR UPDATE`;
             if (repos.length === 0) return yield* refuse("conflict", "no_group_main");
-            const slots = yield* readEnvironmentSlots(sql, appId);
-            if (slots.productionProjectId !== wanted.productionProjectId) {
+            const attachment = yield* readProductionAttachment(sql, appId, true);
+            const sameAttachment = (other: HqReleaseTarget | undefined) =>
+              other === undefined ||
+              (attachment !== undefined &&
+                attachment.environmentId === other.environmentId &&
+                attachment.createdAt === other.createdAt &&
+                JSON.stringify(attachment.target) === JSON.stringify(other.target));
+            if (
+              !sameAttachment(wanted.attachment) ||
+              !sameAttachment(wanted.reviewed) ||
+              (wanted.target !== undefined && wanted.target !== attachment?.target.kind)
+            )
               return yield* refuse("conflict", "production_moved");
-            }
+            // Fresh authority belongs to the acceptance transaction, after its owning locks.
+            const accepted = yield* releaser(wanted.by, appId);
+            if (!sameAttachment(accepted)) return yield* refuse("conflict", "production_moved");
+            if (
+              attachment!.target.kind === "git" &&
+              (yield* readGitReleaseBlocker(sql, appId, attachment!)) !== undefined
+            )
+              return yield* refuse("conflict", "release_running");
             const tags = (yield* releasesOf(appId)).map((release) => release.tag);
             const tag = wanted.tag ?? nextPatch(tags);
             if (tags.includes(tag)) return yield* refuse("conflict", "tag_taken");
@@ -243,28 +312,98 @@ export const releasesLayer: Layer.Layer<
             const main = yield* mainOf(git, group);
             if (main === null) return yield* refuse("conflict", "no_group_main");
             if (main !== wanted.groupHead) return yield* refuse("conflict", "group_moved");
-            // The production tier at that head: what each service is built from.
-            const tier = yield* recipes.read(appId, "production");
-            const read = tier.state === "present" ? tierRuntimes(tier.importYaml, appId) : null;
-            const repoOf = new Map(
-              read?.ok === true
-                ? read.runtimes.map((runtime) => [runtime.hostname, runtime.repo] as const)
-                : [],
-            );
-            // What it names before where it is: every service, then every commit. A rollback carries
-            // the earlier release's entries as they were (main C16): one production no longer
-            // builds, its deploy reports, and deploys the rest.
-            if (
-              wanted.rollbackOf === null &&
-              wanted.entries.some((entry) => !repoOf.has(entry.service))
-            ) {
-              return yield* refuse("conflict", "unknown_service");
-            }
-            for (const entry of wanted.entries) {
-              const repo = repoOf.get(entry.service);
-              if (repo === undefined) continue;
-              if (!(yield* git.onMain({ appId, id: repo }, entry.sha))) {
-                return yield* refuse("conflict", "entry_not_on_main");
+            if (attachment!.target.kind === "git") {
+              if (wanted.rollbackOf !== null) return yield* refuse("conflict", "production_moved");
+              if (
+                wanted.reviewed === undefined ||
+                wanted.target !== "git" ||
+                Option.isNone(preflight)
+              )
+                return yield* refuse("conflict", "git_release_blocked");
+              yield* sql`SELECT 1 FROM hq_repo WHERE app_id::text=${appId} ORDER BY name FOR UPDATE`;
+              const connectedRepos = yield* sql<{
+                name: string;
+                url: string;
+                host_repo_id: string | null;
+                kept_at: string | null;
+                kept_by: string | null;
+                expires_at: string | null;
+                invalid_since: string | null;
+              }>`
+                SELECT r.name,m.url,m.host_repo_id,m.kept_at::text,m.kept_by,
+                  to_char(m.expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS expires_at,m.invalid_since::text FROM hq_repo r JOIN hq_repo_remote m
+                  ON m.app_id=r.app_id AND m.repo=r.name
+                WHERE r.app_id::text=${appId} AND r.name<>${RECIPE_REPO} ORDER BY r.name FOR UPDATE OF r,m`;
+              const roster = gitReleaseRoster(
+                connectedRepos.map((repo) => ({ ...repo, connected: true })),
+              );
+              const entries = new Map(wanted.entries.map((entry) => [entry.service, entry.sha]));
+              const reviews = new Map(wanted.preflight?.map((review) => [review.repo, review]));
+              if (
+                roster.length === 0 ||
+                entries.size !== wanted.entries.length ||
+                roster.length !== entries.size ||
+                reviews.size !== roster.length ||
+                wanted.preflight?.length !== roster.length
+              )
+                return yield* refuse("conflict", "unknown_service");
+              for (const remote of roster) {
+                const sha = entries.get(remote.name);
+                const review = reviews.get(remote.name);
+                if (
+                  sha === undefined ||
+                  review?.verdict !== "ready" ||
+                  review.sha !== sha ||
+                  review.ref !== `refs/heads/${attachment!.target.branch}` ||
+                  review.remote.url !== remote.url ||
+                  review.remote.repositoryId !== remote.host_repo_id ||
+                  review.remote.keptAt !==
+                    (remote.kept_at === null ? null : remoteCredentialStamp(remote.kept_at)) ||
+                  review.remote.keptBy !== remote.kept_by ||
+                  review.remote.expiresAt !== remote.expires_at ||
+                  review.remote.invalidSince !== remote.invalid_since
+                )
+                  return yield* refuse("conflict", "production_moved");
+                if ((yield* mainOf(git, { appId, id: remote.name })) !== sha)
+                  return yield* refuse("conflict", "entry_not_on_main");
+                const fresh = freshReviews.get(remote.name)!;
+                if (
+                  fresh.before !== review.before ||
+                  fresh.sha !== sha ||
+                  fresh.ref !== review.ref ||
+                  fresh.remote.url !== review.remote.url ||
+                  fresh.remote.repositoryId !== review.remote.repositoryId ||
+                  fresh.remote.keptAt !== review.remote.keptAt ||
+                  fresh.remote.keptBy !== review.remote.keptBy ||
+                  fresh.remote.expiresAt !== review.remote.expiresAt ||
+                  fresh.remote.invalidSince !== review.remote.invalidSince
+                )
+                  return yield* refuse("conflict", "production_moved");
+              }
+            } else {
+              // The production tier at that head: what each service is built from.
+              const tier = yield* recipes.read(appId, "production");
+              const read = tier.state === "present" ? tierRuntimes(tier.importYaml, appId) : null;
+              const repoOf = new Map(
+                read?.ok === true
+                  ? read.runtimes.map((runtime) => [runtime.hostname, runtime.repo] as const)
+                  : [],
+              );
+              // What it names before where it is: every service, then every commit. A rollback carries
+              // the earlier release's entries as they were (main C16): one production no longer
+              // builds, its deploy reports, and deploys the rest.
+              if (
+                wanted.rollbackOf === null &&
+                wanted.entries.some((entry) => !repoOf.has(entry.service))
+              ) {
+                return yield* refuse("conflict", "unknown_service");
+              }
+              for (const entry of wanted.entries) {
+                const repo = repoOf.get(entry.service);
+                if (repo === undefined) continue;
+                if (!(yield* git.onMain({ appId, id: repo }, entry.sha))) {
+                  return yield* refuse("conflict", "entry_not_on_main");
+                }
               }
             }
             const tagged = yield* git.createTag(
@@ -277,10 +416,10 @@ export const releasesLayer: Layer.Layer<
             if (tagged.kind === "conflict") return yield* refuse("conflict", "tag_taken");
             const [row] = yield* sql<ReleaseRow>`
               INSERT INTO hq_release
-                (app_id, tag, sha, entries, released_by, state, rollback_of)
+                (app_id, tag, sha, entries, released_by, state, rollback_of, target, environment_id, environment_created_at)
               VALUES (${appId}::uuid, ${tag}, ${wanted.groupHead},
                 ${encodeEntries(wanted.entries)}::jsonb, ${wanted.by}, 'approved',
-                ${wanted.rollbackOf})
+                ${wanted.rollbackOf}, ${attachment!.target.kind}, ${attachment!.environmentId}, ${attachment!.createdAt}::timestamptz)
               RETURNING ${sql.literal(RELEASE_COLUMNS)}`;
             // Production deploys it: each commit it lists, even over its build's own failure there
             // (main C15, B37) — the releaser asks it.
@@ -290,9 +429,15 @@ export const releasesLayer: Layer.Layer<
               appId,
               repo: RECIPE_REPO,
               number: null,
-              data: { tag, sha: wanted.groupHead, by: wanted.by, rollbackOf: wanted.rollbackOf },
+              data: {
+                tag,
+                sha: wanted.groupHead,
+                by: wanted.by,
+                rollbackOf: wanted.rollbackOf,
+                releaseTarget: attachment!,
+              },
             });
-            return releaseOf(row!);
+            return releaseOf({ ...row!, release_target: attachment! });
           }),
         );
         yield* SubscriptionRef.update(ticks, (n) => n + 1);
@@ -328,9 +473,12 @@ export const releasesLayer: Layer.Layer<
           return (yield* releasesOf(appId)).slice(0, RELEASES_SHOWN);
         }),
       release: (userId, appId, request) =>
-        Effect.flatMap(releaser(userId, appId), (productionProjectId) =>
+        Effect.flatMap(releaser(userId, appId), (attachment) =>
           make(appId, {
-            productionProjectId,
+            attachment,
+            ...(request.releaseTarget === undefined ? {} : { reviewed: request.releaseTarget }),
+            ...(request.target === undefined ? {} : { target: request.target }),
+            ...(request.preflight === undefined ? {} : { preflight: request.preflight }),
             tag: request.tag,
             groupHead: request.groupHead,
             entries: request.entries,
@@ -340,15 +488,17 @@ export const releasesLayer: Layer.Layer<
         ),
       rollback: (userId, appId, tag, request) =>
         Effect.gen(function* () {
-          const productionProjectId = yield* releaser(userId, appId);
+          const attachment = yield* releaser(userId, appId);
           const [earlier] = yield* sql<ReleaseRow>`
             SELECT ${sql.literal(RELEASE_COLUMNS)} FROM hq_release
             WHERE app_id::text = ${appId} AND tag = ${tag}`;
           if (earlier === undefined) return yield* refuse("release_not_found", "release_not_found");
           if (earlier.state !== "approved")
             return yield* refuse("conflict", "release_not_approved");
+          if (attachment.target.kind === "git" || earlier.target !== attachment.target.kind)
+            return yield* refuse("conflict", "production_moved");
           return yield* make(appId, {
-            productionProjectId,
+            attachment,
             tag: null,
             groupHead: request.groupHead,
             entries: earlier.entries,
@@ -358,4 +508,9 @@ export const releasesLayer: Layer.Layer<
         }),
     });
   }),
+);
+
+/** Admit wires this layer only once the direct Git routes and readers are enabled. */
+export const gitReleasesLayer = releasesLayer.pipe(
+  Layer.provide(gitReleasePreflightLayer.pipe(Layer.provide(NodeHttpClient.layerNodeHttp))),
 );

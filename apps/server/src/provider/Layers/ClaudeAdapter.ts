@@ -1464,9 +1464,31 @@ function agentIdForParentToolUse(
 function helperOfCall(
   agents: Map<string, ClaudeTaskAgentState>,
   parentToolUseId: string | null | undefined,
+  frameAgentId?: string,
 ): string | undefined {
   if (parentToolUseId === null || parentToolUseId === undefined) return undefined;
-  return agentIdForParentToolUse(agents, parentToolUseId) ?? parentToolUseId;
+  return agentIdForParentToolUse(agents, parentToolUseId) ?? frameAgentId ?? parentToolUseId;
+}
+
+/** The helper's own id a subagent frame carries beside its parent_tool_use_id (its task id). */
+function frameAgentId(message: SDKMessage): string | undefined {
+  const agentId = (message as { agent_id?: unknown }).agent_id;
+  return typeof agentId === "string" && agentId.length > 0 ? agentId : undefined;
+}
+
+/**
+ * A helper Claude Code resumed (SendMessage, or a resumed session) is registered under the
+ * resume's call, while its frames still name the launch an earlier process made as their
+ * parent_tool_use_id. The frame's agent_id ties that launch to the helper: it is one of its
+ * launches from then on, so its calls and its jobs are never taken for a helper nobody started.
+ */
+function adoptHelperLaunch(agents: Map<string, ClaudeTaskAgentState>, message: SDKMessage): void {
+  const agentId = frameAgentId(message);
+  const parentToolUseId = (message as { parent_tool_use_id?: string | null }).parent_tool_use_id;
+  if (agentId === undefined || parentToolUseId === null || parentToolUseId === undefined) return;
+  const agent = agents.get(agentId);
+  if (agent === undefined || agent.launches.includes(parentToolUseId)) return;
+  agent.launches = [...agent.launches, parentToolUseId];
 }
 
 /**
@@ -3539,7 +3561,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ? (block.input as Record<string, unknown>)
           : {};
       const itemType = classifyToolItemType(block.name, toolInput);
-      const owningAgentId = helperOfCall(context.taskAgents, parentToolUseId);
+      const owningAgentId = helperOfCall(
+        context.taskAgents,
+        parentToolUseId,
+        frameAgentId(message),
+      );
       const presentation = claudeCallPresentation(meta, block.name, itemId);
       const tool: ToolInFlight = {
         itemId,
@@ -4666,6 +4692,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   ) {
     yield* logNativeSdkMessage(context, message);
     yield* ensureThreadId(context, message);
+    adoptHelperLaunch(context.taskAgents, message);
     const measured = yield* Effect.try({
       try: () => {
         if (message.type === "conversation_reset")
