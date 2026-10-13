@@ -5,6 +5,7 @@ import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { chatGateTestFiles, chatGateStages, selectsChatGate } from "./chat-gate.ts";
+import { gateSlotCount } from "./gate-slots.ts";
 import { afterAll, beforeAll, expect, it, vi } from "vite-plus/test";
 import {
   scenarioFiles,
@@ -15,6 +16,10 @@ import {
   relatedTestPackages,
   relatedFiles,
   meaningfulChanges,
+  buildRelatedFileGraph,
+  buildGateGraph,
+  selectGateSteps,
+  stateOnlySmoke,
 } from "./gate-changed.ts";
 
 const gateRunnerFiles = [
@@ -334,6 +339,7 @@ it.each([{ args: [] }, { args: ["--list"] }])(
 
 // A real repository snapshot retains the bundle/harness boundary; expectations never create imports.
 let repositoryFixture: string;
+let repositoryGraph: ReturnType<typeof buildGateGraph>;
 const sourceRoot = NodePath.resolve(import.meta.dirname, "..");
 const fixtureGit = (...args: string[]) => {
   const result = NodeChildProcess.spawnSync("git", args, {
@@ -398,6 +404,7 @@ beforeAll(() => {
   fixtureGit("config", "user.email", "gate@example.test");
   fixtureGit("add", ".");
   fixtureGit("commit", "-qm", "real repository fixture");
+  repositoryGraph = buildGateGraph(repositoryFixture);
 }, 30_000);
 afterAll(() => {
   if (repositoryFixture) NodeFS.rmSync(repositoryFixture, { recursive: true, force: true });
@@ -492,106 +499,130 @@ it.each([
   { path: "apps/web/package.json", stages: "C,types" },
   { path: "apps/web/tsconfig.json", stages: "C,types" },
 ])("a lane validates only affected obligations for $path", ({ path, stages }) => {
+  let steps: ReturnType<typeof selectGateSteps>["steps"] = [];
+  expect(() => {
+    steps = selectGateSteps(repositoryGraph, {
+      comparison: "HEAD",
+      existing: [path],
+      paths: [path],
+      typecheckPaths: [path],
+      // Rendering coverage is the builder's declaration; the app bundle is not a lane edge.
+      inventory: stages.includes("C")
+        ? [
+            "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+            "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
+            "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts",
+          ]
+        : [],
+      smokeFiles: Object.keys(stateOnlySmoke),
+      slots: 3,
+    }).steps;
+  }).not.toThrow();
+  const output = steps
+    .map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`)
+    .join("\n");
+  const lines = output.split("\n");
+  const owner = path.split("/").slice(0, 2).join("/");
+  const typechecks = lines.filter(
+    (line) => line.startsWith("typecheck ") && !line.startsWith("typecheck scenarios:"),
+  );
+  const ownerName = owner === "apps/server" ? "t3" : `@t3tools/${owner.split("/")[1]}`;
+  const dependents =
+    owner === "packages/contracts"
+      ? [
+          "@t3tools/scripts",
+          "@t3tools/shared",
+          "@t3tools/client-runtime",
+          "@t3tools/hq",
+          "@t3tools/web",
+          "@t3tools/desktop",
+          "@t3tools/mobile",
+          "t3",
+          "t3code-relay",
+        ]
+      : owner === "packages/client-runtime"
+        ? ["@t3tools/web", "@t3tools/desktop", "@t3tools/mobile", "t3", "t3code-relay"]
+        : owner === "apps/web"
+          ? ["t3"]
+          : [];
+  expect(typechecks.map((line) => line.split(":")[0]!.slice("typecheck ".length)).sort()).toEqual(
+    [ownerName, ...dependents].sort(),
+  );
+  expect(output).not.toContain("scripts/chat-gate.ts --stages");
+  const edited = lines.find((line) => line.startsWith("edited scenario files:"));
+  if (stages.includes("C")) {
+    expect(edited).toBe(
+      "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/admission.scenario.ts test/scenarios/areas/c-mate/chat.scenario.ts test/scenarios/areas/c-mate/projects-opening.scenario.ts",
+    );
+  } else expect(edited).toBeUndefined();
+  if (stages.includes("A")) {
+    expect(output).toContain("src/provider/Layers/ClaudeAdapter.test.ts");
+    expect(
+      chatGateTestFiles(
+        sourceRoot,
+        chatGateStages.filter((stage) => stage.id === "A"),
+      ),
+    ).toContain("apps/server/src/spi/replay/goldens.test.ts");
+  }
+  if (stages.includes("E")) {
+    const directOwner = path.endsWith("/domain/decide.ts")
+      ? "src/engine/domain/decide.test.ts"
+      : path.endsWith("/engineCall.ts")
+        ? "src/engine/bridge/calls.test.ts"
+        : path.endsWith("/wire/EngineWire.ts")
+          ? "src/engine/history/historyImport.test.ts"
+          : "src/engine/outbox/crash.test.ts";
+    expect(output).toContain(directOwner);
+    expect(
+      chatGateTestFiles(
+        sourceRoot,
+        chatGateStages.filter((stage) => stage.id === "E"),
+      ),
+    ).toContain(
+      path.endsWith("/wire/EngineWire.ts")
+        ? "apps/server/src/engine/history/historyImport.test.ts"
+        : "apps/server/src/engine/outbox/crash.test.ts",
+    );
+  }
+  if (path.endsWith("/d-change/dsl.ts")) {
+    expect(output).not.toContain("test/scenarios/areas/d-change/review.scenario.ts");
+    expect(edited).toBeUndefined();
+  }
+  const smoke = lines.find((line) => line.startsWith("state-only smoke:"));
+  expect(smoke).toContain("engine-secret.scenario.ts");
+  expect(smoke).toContain("engine-page.scenario.ts");
+  expect(output).toContain("repository invariants:");
+});
+
+it("the CLI and immutable gate graph select identical obligations for a real source edit", () => {
+  const path = "apps/web/src/components/chat/RunChat.tsx";
   const file = NodePath.join(repositoryFixture, path);
   const original = NodeFS.readFileSync(file, "utf8");
   try {
-    NodeFS.writeFileSync(
-      file,
-      path.endsWith(".json")
-        ? original.replace(/\}\s*$/u, ', "laneGateFixture": true\n}\n')
-        : original + "\nexport const laneGateFixture = true;\n",
-    );
+    NodeFS.writeFileSync(file, original + "\nexport const gateGraphWitness = true;\n");
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      [
-        "scripts/gate-changed.ts",
-        "--base",
-        "HEAD",
-        "--list",
-        // Rendering coverage is the builder's declaration; the app bundle is not a lane edge.
-        ...(stages.includes("C")
-          ? [
-              "--scenarios",
-              "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
-              "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts",
-              "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
-            ]
-          : []),
-      ],
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
       { cwd: repositoryFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
-    const lines = result.stdout.split("\n");
-    const owner = path.split("/").slice(0, 2).join("/");
-    const typechecks = lines.filter(
-      (line) => line.startsWith("typecheck ") && !line.startsWith("typecheck scenarios:"),
+    const selection = selectGateSteps(repositoryGraph, {
+      comparison: fixtureGit("rev-parse", "HEAD"),
+      existing: [path],
+      paths: [path],
+      typecheckPaths: [path],
+      inventory: [],
+      smokeFiles: Object.keys(stateOnlySmoke),
+      slots: gateSlotCount(),
+    });
+    expect(
+      result.stdout
+        .split("\n")
+        .filter((line) => line && !/^(?:Scenario files:|Diff from )/u.test(line)),
+      "ASSERTION: the real CLI uses the same owning selection as the immutable graph",
+    ).toEqual(
+      selection.steps.map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`),
     );
-    const ownerName = owner === "apps/server" ? "t3" : `@t3tools/${owner.split("/")[1]}`;
-    const dependents =
-      owner === "packages/contracts"
-        ? [
-            "@t3tools/scripts",
-            "@t3tools/shared",
-            "@t3tools/client-runtime",
-            "@t3tools/hq",
-            "@t3tools/web",
-            "@t3tools/desktop",
-            "@t3tools/mobile",
-            "t3",
-            "t3code-relay",
-          ]
-        : owner === "packages/client-runtime"
-          ? ["@t3tools/web", "@t3tools/desktop", "@t3tools/mobile", "t3", "t3code-relay"]
-          : owner === "apps/web"
-            ? ["t3"]
-            : [];
-    expect(typechecks.map((line) => line.split(":")[0]!.slice("typecheck ".length)).sort()).toEqual(
-      [ownerName, ...dependents].sort(),
-    );
-    expect(result.stdout).not.toContain("scripts/chat-gate.ts --stages");
-    const edited = lines.find((line) => line.startsWith("edited scenario files:"));
-    if (stages.includes("C")) {
-      expect(edited).toBe(
-        "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/admission.scenario.ts test/scenarios/areas/c-mate/chat.scenario.ts test/scenarios/areas/c-mate/projects-opening.scenario.ts",
-      );
-    } else expect(edited).toBeUndefined();
-    if (stages.includes("A")) {
-      expect(result.stdout).toContain("src/provider/Layers/ClaudeAdapter.test.ts");
-      expect(
-        chatGateTestFiles(
-          sourceRoot,
-          chatGateStages.filter((stage) => stage.id === "A"),
-        ),
-      ).toContain("apps/server/src/spi/replay/goldens.test.ts");
-    }
-    if (stages.includes("E")) {
-      const directOwner = path.endsWith("/domain/decide.ts")
-        ? "src/engine/domain/decide.test.ts"
-        : path.endsWith("/engineCall.ts")
-          ? "src/engine/bridge/calls.test.ts"
-          : path.endsWith("/wire/EngineWire.ts")
-            ? "src/engine/history/historyImport.test.ts"
-            : "src/engine/outbox/crash.test.ts";
-      expect(result.stdout).toContain(directOwner);
-      expect(
-        chatGateTestFiles(
-          sourceRoot,
-          chatGateStages.filter((stage) => stage.id === "E"),
-        ),
-      ).toContain(
-        path.endsWith("/wire/EngineWire.ts")
-          ? "apps/server/src/engine/history/historyImport.test.ts"
-          : "apps/server/src/engine/outbox/crash.test.ts",
-      );
-    }
-    if (path.endsWith("/d-change/dsl.ts")) {
-      expect(result.stdout).not.toContain("test/scenarios/areas/d-change/review.scenario.ts");
-      expect(edited).toBeUndefined();
-    }
-    const smoke = lines.find((line) => line.startsWith("state-only smoke:"));
-    expect(smoke).toContain("engine-secret.scenario.ts");
-    expect(smoke).toContain("engine-page.scenario.ts");
-    expect(result.stdout).toContain("repository invariants:");
   } finally {
     NodeFS.writeFileSync(file, original);
   }
@@ -1463,6 +1494,49 @@ it("shared dependency sources are read once per selection regardless of reader c
         reads.filter((path) => path === NodePath.join(root, file)).length,
         "ASSERTION: shared dependency sources are read once per selection",
       ).toBeLessThanOrEqual(1);
+  } finally {
+    read.mockRestore();
+    NodeModule.syncBuiltinESMExports();
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("an immutable related-file graph selects independent changes without reading sources again", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-snapshot-"));
+  const sources = {
+    "index.ts": 'export * from "./owner.ts"; export * from "./other.ts";',
+    "owner.ts": "export const Owner = 1;",
+    "other.ts": "export const Other = 2;",
+    "owner.test.ts": 'import { Owner } from "./index.ts";',
+    "other.test.ts": 'import { Other } from "./index.ts";',
+    "namespace.test.ts": 'import * as All from "./index.ts";',
+  };
+  const fs = NodeModule.createRequire(import.meta.url)("node:fs") as typeof NodeFS;
+  const read = vi.spyOn(fs, "readFileSync");
+  NodeModule.syncBuiltinESMExports();
+  try {
+    for (const [path, text] of Object.entries(sources))
+      NodeFS.writeFileSync(NodePath.join(root, path), text);
+    const graph = buildRelatedFileGraph(root, [
+      "owner.test.ts",
+      "other.test.ts",
+      "namespace.test.ts",
+    ]);
+    read.mockClear();
+    expect(graph.select(["owner.ts"])).toEqual(["namespace.test.ts", "owner.test.ts"]);
+    expect(graph.select(["other.ts"])).toEqual(["namespace.test.ts", "other.test.ts"]);
+    expect(graph.select(["index.ts"])).toEqual([
+      "namespace.test.ts",
+      "other.test.ts",
+      "owner.test.ts",
+    ]);
+    expect(
+      read.mock.calls.length,
+      "ASSERTION: selecting from an immutable graph performs no source reads",
+    ).toBe(0);
+    NodeFS.rmSync(NodePath.join(root, "owner.ts"));
+    expect(graph.select(["owner.ts"])).toEqual(["namespace.test.ts", "owner.test.ts"]);
+    expect(graph.select(["README.md"])).toEqual([]);
   } finally {
     read.mockRestore();
     NodeModule.syncBuiltinESMExports();
