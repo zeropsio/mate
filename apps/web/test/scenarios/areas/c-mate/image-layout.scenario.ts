@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import type { WireResponse } from "../../harness/http.ts";
+import { sampleImageLayout } from "../../fakes/c-mate/imageLayout.ts";
 import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 
@@ -43,44 +44,14 @@ describe("C: image tables at the conversation end", () => {
           const box = (await viewport!.boundingBox())!;
           await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
           await s.page.mouse.wheel({ deltaY: 10000 });
-          const sample = () =>
-            s.page.evaluate(async () => {
-              const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
-              const table = scroll.querySelector("table")!;
-              const readings: number[][] = [];
-              const deliveries: number[][] = [];
-              const observer = new ResizeObserver((entries) => {
-                for (const entry of entries)
-                  if (entry.target === table)
-                    deliveries.push([entry.contentRect.width, entry.contentRect.height]);
-              });
-              for (const node of scroll.querySelectorAll("*")) observer.observe(node);
-              for (let frame = 0; frame < 120; frame += 1) {
-                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-                readings.push([
-                  scroll.scrollTop,
-                  scroll.scrollHeight,
-                  scroll.clientHeight,
-                  table.getBoundingClientRect().height,
-                  table.getBoundingClientRect().width,
-                  table.parentElement!.clientWidth,
-                  ...[...table.querySelectorAll("td")].map(
-                    (cell) => cell.getBoundingClientRect().width,
-                  ),
-                ]);
-              }
-              observer.disconnect();
-              return { readings, deliveries };
-            });
+          const sample = () => s.page.evaluate(sampleImageLayout);
           const { readings, deliveries } = await sample();
           expect(
-            new Set(deliveries.slice(-30).map((reading) => JSON.stringify(reading))).size,
+            new Set(deliveries.map((reading) => JSON.stringify(reading))).size,
           ).toBeLessThanOrEqual(1);
           // With no bytes or new messages arriving, neither column sizing nor
           // the conversation end may alternate after placement.
-          expect(new Set(readings.slice(-30).map((reading) => JSON.stringify(reading))).size).toBe(
-            1,
-          );
+          expect(new Set(readings.map((reading) => JSON.stringify(reading))).size).toBe(1);
           const [top, height, client] = readings.at(-1)!;
           expect(top! + client!).toBe(height);
           const pictures = await s.page.evaluate(() =>
@@ -109,9 +80,9 @@ describe("C: image tables at the conversation end", () => {
           );
           const { readings: loaded, deliveries: decodedDeliveries } = await sample();
           expect(
-            new Set(decodedDeliveries.slice(-30).map((reading) => JSON.stringify(reading))).size,
+            new Set(decodedDeliveries.map((reading) => JSON.stringify(reading))).size,
           ).toBeLessThanOrEqual(1);
-          expect(new Set(loaded.slice(-30).map((reading) => JSON.stringify(reading))).size).toBe(1);
+          expect(new Set(loaded.map((reading) => JSON.stringify(reading))).size).toBe(1);
           expect(loaded.at(-1)!.slice(6)).toEqual(readings.at(-1)!.slice(6));
           expect(loaded.at(-1)![4]!).toBeLessThanOrEqual(loaded.at(-1)![5]!);
           const [loadedTop, loadedHeight, loadedClient] = loaded.at(-1)!;
