@@ -1,8 +1,4 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as FileSystem from "effect/FileSystem";
-import * as Path from "effect/Path";
-import * as ChildProcess from "effect/process/ChildProcess";
-import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 import * as Layer from "effect/Layer";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { assert, describe, it } from "@effect/vitest";
@@ -10,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Redacted from "effect/Redacted";
 import * as SqlClient from "effect/sql/SqlClient";
+import { preExpandCore } from "../test/harness/preExpandCore.ts";
 import { tempDir } from "../test/harness/tempDir.ts";
 import { startCore, untilHealth, sessionFor } from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
@@ -25,59 +22,6 @@ const withSql = <A, E>(use: Effect.Effect<A, E, SqlClient.SqlClient>) =>
     const url = yield* (yield* TempPostgres).createDatabase;
     return yield* use.pipe(Effect.provide(PgClient.layer({ url: Redacted.make(url) })));
   });
-const preExpandCore = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const spawner = yield* ChildProcessSpawner;
-  const fixtureRoot = yield* tempDir("hq-pre-expand-");
-  const repoRoot = path.resolve(import.meta.dirname, "../../..");
-  const sourceSha = "8bb1dee01f1d4c10c1f991323c0a41233886b787";
-  const archive = path.join(fixtureRoot, "source.tar");
-  assert.strictEqual(
-    yield* spawner.exitCode(
-      ChildProcess.make(
-        "git",
-        [
-          "archive",
-          "--format=tar",
-          `--output=${archive}`,
-          sourceSha,
-          "tsconfig.base.json",
-          "apps/hq",
-          "scripts",
-        ],
-        { cwd: repoRoot },
-      ),
-    ),
-    0,
-  );
-  assert.strictEqual(
-    yield* spawner.exitCode(ChildProcess.make("tar", ["-xf", archive, "-C", fixtureRoot])),
-    0,
-  );
-  yield* fs.symlink(path.join(repoRoot, "node_modules"), path.join(fixtureRoot, "node_modules"));
-  yield* fs.symlink(
-    path.join(repoRoot, "apps/hq/node_modules"),
-    path.join(fixtureRoot, "apps/hq/node_modules"),
-  );
-  yield* fs.copyFile(
-    path.join(import.meta.dirname, "migrations", NAME),
-    path.join(fixtureRoot, "apps/hq/src/migrations", NAME),
-  );
-  const oldModule = yield* Effect.promise(
-    () =>
-      import(
-        /* @vite-ignore */ path.join(fixtureRoot, "apps/hq/test/harness/runningCore.ts")
-      ) as Promise<typeof import("../test/harness/runningCore.ts")>,
-  );
-  const oldNavigation = yield* Effect.promise(
-    () =>
-      import(
-        /* @vite-ignore */ path.join(fixtureRoot, "apps/hq/src/environmentNavigation.ts")
-      ) as Promise<typeof import("./environmentNavigation.ts")>,
-  );
-  return { ...oldModule, oldNavigation };
-});
 const seed = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   yield* migrate(treeMigrations().filter((file) => file.name !== NAME));
@@ -376,9 +320,14 @@ describe("environment identity expansion", () => {
             yield* untilHealth(initial.call, "active");
             const receipt =
               yield* initial.sql`SELECT name, applied_at FROM hq_migration WHERE name = ${NAME}`;
+            assert.strictEqual(receipt.length, 1);
             yield* initial.stop;
             const old = yield* oldModule.startCore(true, { url, gitRoot });
             yield* untilHealth(old.call, "active");
+            assert.deepStrictEqual(
+              yield* old.sql`SELECT name, applied_at FROM hq_migration WHERE name = ${NAME}`,
+              receipt,
+            );
             const owner = yield* sessionFor(old.call, "door-owner");
             const app = yield* old.call("POST", "/api/apps", {
               session: owner,
@@ -435,6 +384,10 @@ describe("environment identity expansion", () => {
               (SELECT jsonb_agg(to_jsonb(e)-'id'-'target') FROM hq_environment e) AS environment,
               (SELECT jsonb_agg(to_jsonb(j)-'environment_id' ORDER BY j.id) FROM hq_deploy_job j) AS jobs,
               (SELECT jsonb_agg(to_jsonb(r)-'environment_id'-'left_out' ORDER BY r.id) FROM hq_rollout r) AS rollouts`;
+            assert.deepStrictEqual(
+              yield* old.sql`SELECT name, applied_at FROM hq_migration WHERE name = ${NAME}`,
+              receipt,
+            );
             const next = yield* startCore(true, { url, gitRoot });
             yield* untilHealth(next.call, "standby");
             assert.deepStrictEqual(yield* next.sql`SELECT id FROM hq_environment`, [{ id: null }]);
@@ -524,8 +477,18 @@ describe("environment identity expansion", () => {
             const oldModule = yield* preExpandCore;
             const url = yield* (yield* TempPostgres).createDatabase;
             const gitRoot = yield* tempDir("hq-identity-shared-");
+            const initial = yield* startCore(true, { url, gitRoot });
+            yield* untilHealth(initial.call, "active");
+            const receipt =
+              yield* initial.sql`SELECT name, applied_at FROM hq_migration WHERE name = ${NAME}`;
+            assert.strictEqual(receipt.length, 1);
+            yield* initial.stop;
             const old = yield* oldModule.startCore(true, { url, gitRoot });
             yield* untilHealth(old.call, "active");
+            assert.deepStrictEqual(
+              yield* old.sql`SELECT name, applied_at FROM hq_migration WHERE name = ${NAME}`,
+              receipt,
+            );
             const next = yield* startCore(true, { url, gitRoot });
             yield* untilHealth(next.call, "standby");
             const oldOwner = yield* sessionFor(old.call, "door-owner");
@@ -588,6 +551,7 @@ describe("environment identity expansion", () => {
             );
             const migrationReceipt =
               yield* next.sql`SELECT name, applied_at FROM hq_migration WHERE name = ${NAME}`;
+            assert.deepStrictEqual(migrationReceipt, receipt);
             // Ordinary accepted work is separate from the migration's no-new-jobs assertion.
             yield* next.sql`INSERT INTO hq_repo (app_id, name, created_by) VALUES (${appId}::uuid, 'web', 'owner')`;
             const git = yield* next.gitHost.git;
@@ -693,6 +657,10 @@ describe("environment identity expansion", () => {
                   },
                 ],
               })),
+            );
+            assert.deepStrictEqual(
+              yield* rollback.sql`SELECT name, applied_at FROM hq_migration WHERE name = ${NAME}`,
+              receipt,
             );
             yield* rollback.stop;
           }),
