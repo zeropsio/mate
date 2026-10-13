@@ -154,6 +154,8 @@ import { resultPictures as allResultPictures, stripShowsFiles } from "./runResul
 import { useStripFiles } from "./resultStripFiles";
 import {
   backgroundItemWord,
+  backgroundLineOf,
+  backgroundRowItems,
   reportsInline,
   type BackgroundLineModel,
 } from "./backgroundLine.logic";
@@ -3287,6 +3289,8 @@ function NowLine({
   readonly head?: {
     /** How many things the run's chat holds: said on the line while it works. */
     readonly steps: number;
+    /** What woke a run nobody wrote to: the card's title, its line under it. */
+    readonly title?: string;
     readonly toggle: {
       readonly open: boolean;
       readonly onToggle: () => void;
@@ -3370,6 +3374,7 @@ function NowLine({
       className="run-now"
       data-run-now={line.kind}
       data-run-head={head === undefined ? undefined : ""}
+      data-run-titled={head?.title === undefined ? undefined : ""}
       data-run-status={
         line.kind === "worked" ? status.face : line.kind === "waiting" ? "waiting" : "working"
       }
@@ -3401,6 +3406,7 @@ function NowLine({
         />
       )}
       <div className="run-now-words" data-work-line={status.face}>
+        {head?.title === undefined ? null : <span className="run-now-title">{head.title}</span>}
         {leaving === null ? null : (
           <span aria-hidden="true" className="run-now-head run-now-leaving" key={leaving.words}>
             <NowWords line={leaving.line} />
@@ -4482,7 +4488,16 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             <NowLine
               key="head"
               answering={row.answering}
-              head={{ steps: row.chatItems.length, toggle: headToggle }}
+              head={{
+                steps: row.chatItems.length,
+                toggle: headToggle,
+                ...(row.opener === undefined
+                  ? {}
+                  : {
+                      title: backgroundLineOf(backgroundRowItems(row.opener), row.opener.helpers)
+                        .words,
+                    }),
+              }}
               now={row.live ? now : null}
               outcome={settled ? outcome : null}
               settledHere={watchedLive && motionAllowed}
