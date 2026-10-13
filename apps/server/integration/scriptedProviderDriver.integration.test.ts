@@ -1,5 +1,13 @@
-import { ProviderInstanceId, ThreadId, type ProviderRuntimeEvent } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  ProviderDriverKind,
+  ThreadId,
+  TurnId,
+  RuntimeItemId,
+  type ProviderRuntimeEvent,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "@effect/vitest";
 
@@ -188,3 +196,111 @@ describe("scripted canonical vocabulary", () => {
     }),
   );
 });
+
+describe("scripted turn controls", () => {
+  it.effect("steering enters the running native turn without consuming another script", () =>
+    Effect.gen(function* () {
+      const { scripted, adapter } = yield* started;
+      const release = yield* Deferred.make<void>();
+      yield* scripted.turn([
+        { kind: "wait", until: release },
+        { kind: "say", text: "Continued" },
+      ]);
+      yield* scripted.turn([{ kind: "say", text: "Next turn" }]);
+      const first = yield* adapter.sendTurn({ threadId, input: "Begin" });
+      const steer = yield* adapter.sendTurn({ threadId, input: "Focus on the schema" });
+      expect(steer.turnId).toBe(first.turnId);
+      expect(scripted.unsent()).toBe(1);
+      expect(scripted.sends.map((send) => send.input.input)).toEqual([
+        "Begin",
+        "Focus on the schema",
+      ]);
+      yield* Deferred.succeed(release, undefined);
+      yield* eventsOf(adapter.streamEvents, (type) => type === "turn.completed");
+    }),
+  );
+  it.effect(
+    "interrupt stops a blocked script and emits one terminal event before the next send",
+    () =>
+      Effect.gen(function* () {
+        const { scripted, adapter } = yield* started;
+        const release = yield* Deferred.make<void>();
+        yield* scripted.turn([
+          { kind: "wait", until: release },
+          { kind: "say", text: "Must not arrive" },
+        ]);
+        const first = yield* adapter.sendTurn({ threadId, input: "Begin" });
+        yield* adapter.interruptTurn(threadId, first.turnId);
+        const events = yield* eventsOf(adapter.streamEvents, (type) => type === "turn.completed");
+        expect(events.at(-1)).toEqual({
+          type: "turn.completed",
+          payload: { state: "interrupted" },
+        });
+        yield* Deferred.succeed(release, undefined);
+        yield* scripted.turn([{ kind: "say", text: "Recovered" }]);
+        yield* adapter.sendTurn({ threadId, input: "Continue" });
+        const next = yield* eventsOf(adapter.streamEvents, (type) => type === "turn.completed");
+        expect(
+          next.filter((event) => event.type === "content.delta").map((event) => event.payload),
+        ).toEqual([{ streamKind: "assistant_text", delta: "Recovered" }]);
+      }),
+  );
+  it.effect("external provider facts keep their named turn and item outside a scripted send", () =>
+    Effect.gen(function* () {
+      const { scripted, adapter } = yield* started;
+      const nativeTurn = TurnId.make("spontaneous");
+      yield* scripted.event(threadId, { type: "turn.started", turnId: nativeTurn, payload: {} });
+      yield* scripted.event(threadId, {
+        type: "content.delta",
+        itemId: RuntimeItemId.make("continued"),
+        payload: { streamKind: "reasoning_text", delta: "I will inspect the schema" },
+      });
+      yield* scripted.event(threadId, { type: "turn.completed", payload: { state: "completed" } });
+      const events = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((e) => e.type === "turn.completed"),
+        Stream.runCollect,
+      );
+      expect([...events].slice(1).map((e) => e.turnId)).toEqual([
+        nativeTurn,
+        nativeTurn,
+        nativeTurn,
+      ]);
+    }),
+  );
+});
+
+it.effect("a Claude instance exposes its full snapshot and merges sparse usage resets", () =>
+  Effect.gen(function* () {
+    const window = {
+      id: "five_hour",
+      kind: "session" as const,
+      label: "5-hour",
+      usedPercent: 100,
+      resetsAt: "2026-10-13T14:00:00.000Z",
+    };
+    const scripted = yield* makeScriptedProvider({
+      driverKind: ProviderDriverKind.make("claudeAgent"),
+      usageLimits: {
+        checkedAt: "2026-10-13T09:00:00.000Z",
+        windows: [window, { id: "seven_day", kind: "weekly", label: "7-day", usedPercent: 45 }],
+      },
+    });
+    const instance = yield* scripted.driver.create({
+      instanceId: ProviderInstanceId.make("claude-code"),
+      displayName: "Claude Code",
+      environment: [],
+      enabled: true,
+      config: {},
+    } as never);
+    expect(
+      (yield* instance.snapshot.getSnapshot).usageLimits?.windows.map((w) => w.usedPercent),
+    ).toEqual([100, 45]);
+    yield* instance.snapshot.applyUsageLimits({
+      windows: [{ ...window, usedPercent: 0 }],
+      checkedAt: "2026-10-13T14:00:00.000Z",
+    });
+    expect(
+      (yield* instance.snapshot.getSnapshot).usageLimits?.windows.map((w) => w.usedPercent),
+    ).toEqual([0, 45]);
+  }),
+);

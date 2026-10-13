@@ -18,6 +18,7 @@ import {
   type ProviderSession,
   type ProviderUserInputAnswers,
   type ServerProvider,
+  type ServerProviderUsageLimits,
   TextGenerationError,
   type ThreadId,
   TurnId,
@@ -25,7 +26,10 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
@@ -39,6 +43,7 @@ import {
   defaultProviderContinuationIdentity,
 } from "../src/provider/ProviderDriver.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "../src/provider/providerMaintenance.ts";
+import { applyUsageLimitsUpdate } from "../src/provider/providerUsageLimits.ts";
 import type { ProviderAdapterShape } from "../src/provider/Services/ProviderAdapter.ts";
 
 /** Authored canonical adapter evidence; ids are provider ids, never engine ids. */
@@ -81,16 +86,23 @@ export interface ScriptedAnswer {
 const MODEL = "gpt-5.4";
 
 interface Session {
-  readonly session: ProviderSession;
+  session: ProviderSession;
+  fiber?: Fiber.Fiber<void>;
   turns: number;
 }
 
-export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDriverKind } = {}) =>
+export const makeScriptedProvider = (
+  options: {
+    readonly driverKind?: ProviderDriverKind;
+    readonly usageLimits?: ServerProviderUsageLimits;
+  } = {},
+) =>
   Effect.gen(function* () {
     const DRIVER_KIND = options.driverKind ?? ProviderDriverKind.make("opencode");
     const turns: Array<ReadonlyArray<ScriptedStep>> = [];
     const sends: Array<ScriptedSend> = [];
     const received = yield* Queue.unbounded<ScriptedSend>();
+    const emitters = new Map<ThreadId, (event: ScriptedEvent) => Effect.Effect<void>>();
     const answers: Array<ScriptedAnswer> = [];
     const pending = new Map<string, Deferred.Deferred<void>>();
 
@@ -104,6 +116,8 @@ export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDr
           const scope = yield* Effect.scope;
           const events = yield* Queue.unbounded<ProviderRuntimeEvent>();
           const sessions = new Map<ThreadId, Session>();
+          const snapshots = yield* PubSub.unbounded<ServerProvider>();
+          let usageLimits = options.usageLimits;
           let eventCount = 0;
           let requestCount = 0;
           const now = Effect.map(DateTime.now, DateTime.formatIso);
@@ -113,8 +127,27 @@ export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDr
             threadId: ThreadId,
             fields: Record<string, unknown> = {},
           ): Effect.Effect<void> =>
-            Effect.flatMap(now, (createdAt) =>
-              Queue.offer(events, {
+            Effect.flatMap(now, (createdAt) => {
+              const session = sessions.get(threadId);
+              if (session && type === "turn.started" && typeof fields.turnId === "string")
+                session.session = {
+                  ...session.session,
+                  activeTurnId: TurnId.make(fields.turnId),
+                  status: "running",
+                  updatedAt: createdAt,
+                };
+              if (
+                session &&
+                (type === "turn.completed" || type === "turn.aborted") &&
+                fields.turnId === session.session.activeTurnId
+              )
+                session.session = {
+                  ...session.session,
+                  activeTurnId: undefined,
+                  status: "ready",
+                  updatedAt: createdAt,
+                };
+              return Queue.offer(events, {
                 type,
                 eventId: EventId.make(`scripted-${++eventCount}`),
                 provider: DRIVER_KIND,
@@ -122,8 +155,8 @@ export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDr
                 createdAt,
                 payload: {},
                 ...fields,
-              } as unknown as ProviderRuntimeEvent),
-            );
+              } as unknown as ProviderRuntimeEvent);
+            });
 
           const invalid = (operation: string, issue: string) =>
             new ProviderAdapterValidationError({ provider: DRIVER_KIND, operation, issue });
@@ -145,7 +178,9 @@ export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDr
               const reply = yield* Deferred.make<void>();
               pending.set(requestId, reply);
               yield* emit(type, threadId, { turnId, requestId, payload });
-              yield* Deferred.await(reply);
+              yield* Deferred.await(reply).pipe(
+                Effect.ensuring(Effect.sync(() => pending.delete(requestId))),
+              );
               return requestId;
             });
 
@@ -293,12 +328,31 @@ export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDr
                   session,
                   turns: sessions.get(input.threadId)?.turns ?? 0,
                 });
+                const publish = (event: ScriptedEvent) =>
+                  emit(event.type, input.threadId, {
+                    turnId: sessions.get(input.threadId)?.session.activeTurnId,
+                    ...event,
+                  });
+                emitters.set(input.threadId, publish);
+                yield* Scope.addFinalizer(
+                  scope,
+                  Effect.sync(() => {
+                    if (emitters.get(input.threadId) === publish) emitters.delete(input.threadId);
+                  }),
+                );
                 yield* emit("session.started", input.threadId);
                 return session;
               }),
             sendTurn: (input) =>
               Effect.gen(function* () {
                 const session = yield* sessionOf(input.threadId);
+                const active = session.session.activeTurnId;
+                if (active !== undefined) {
+                  const send = { threadId: input.threadId, turnId: active, input };
+                  sends.push(send);
+                  yield* Queue.offer(received, send);
+                  return { threadId: input.threadId, turnId: active };
+                }
                 const steps = turns.shift();
                 if (steps === undefined) {
                   return yield* invalid("sendTurn", `No scripted turn for ${input.threadId}.`);
@@ -309,18 +363,49 @@ export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDr
                 sends.push(send);
                 yield* Queue.offer(received, send);
                 yield* emit("turn.started", input.threadId, { turnId });
-                yield* Effect.forkIn(run(input.threadId, turnId, steps), scope);
+                const armed = yield* Deferred.make<void>();
+                session.fiber = yield* Effect.forkIn(
+                  Deferred.await(armed).pipe(Effect.andThen(run(input.threadId, turnId, steps))),
+                  scope,
+                );
+                yield* Deferred.succeed(armed, undefined);
                 return { threadId: input.threadId, turnId };
               }),
-            interruptTurn: () => unsupported("interruptTurn"),
+            interruptTurn: (threadId, requestedTurn) =>
+              Effect.gen(function* () {
+                const session = yield* sessionOf(threadId);
+                const turnId = session.session.activeTurnId;
+                if (turnId === undefined) return;
+                if (requestedTurn !== undefined && requestedTurn !== turnId)
+                  return yield* invalid("interruptTurn", "The named scripted turn is not running.");
+                if (session.fiber !== undefined) yield* Fiber.interrupt(session.fiber);
+                if (session.session.activeTurnId === turnId)
+                  yield* emit("turn.completed", threadId, {
+                    turnId,
+                    payload: { state: "interrupted" },
+                  });
+                if (DRIVER_KIND === "claudeAgent") yield* adapter.stopSession(threadId);
+              }),
             respondToRequest: (_threadId, requestId, decision) => answered(requestId, decision),
             respondToUserInput: (_threadId, requestId, answer) => answered(requestId, answer),
-            stopSession: (threadId) => Effect.sync(() => void sessions.delete(threadId)),
+            stopSession: (threadId) =>
+              Effect.gen(function* () {
+                const session = sessions.get(threadId);
+                if (session?.fiber !== undefined) yield* Fiber.interrupt(session.fiber);
+                sessions.delete(threadId);
+                emitters.delete(threadId);
+                yield* emit("session.exited", threadId, {
+                  payload: { reason: "Stopped", exitKind: "graceful" },
+                });
+              }),
             listSessions: () => Effect.sync(() => [...sessions.values()].map((s) => s.session)),
             hasSession: (threadId) => Effect.sync(() => sessions.has(threadId)),
             readThread: () => unsupported("readThread"),
             rollbackThread: () => unsupported("rollbackThread"),
-            stopAll: () => Effect.sync(() => sessions.clear()),
+            stopAll: () =>
+              Effect.forEach([...sessions.keys()], (threadId) => adapter.stopSession(threadId), {
+                discard: true,
+              }),
             streamEvents: Stream.fromQueue(events),
           };
 
@@ -342,6 +427,7 @@ export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDr
                 capabilities: null,
               },
             ],
+            ...(usageLimits === undefined ? {} : { usageLimits }),
             slashCommands: [],
             skills: [],
           }));
@@ -373,8 +459,16 @@ export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDr
                 ),
               getSnapshot: snapshotValue,
               refresh: snapshotValue,
-              streamChanges: Stream.empty,
-              applyUsageLimits: () => Effect.void,
+              streamChanges: Stream.fromPubSub(snapshots),
+              applyUsageLimits: (update) =>
+                Effect.gen(function* () {
+                  usageLimits = applyUsageLimitsUpdate({
+                    previous: usageLimits,
+                    update,
+                    checkedAt: update.checkedAt,
+                  });
+                  yield* PubSub.publish(snapshots, yield* snapshotValue);
+                }),
             },
             adapter,
             textGeneration: {
@@ -389,6 +483,16 @@ export const makeScriptedProvider = (options: { readonly driverKind?: ProviderDr
 
     return {
       driver,
+      /** A spontaneous external fact (e.g. a helper finishing or the agent waking itself). */
+      event: (threadId: ThreadId, event: ScriptedEvent) =>
+        Effect.suspend(() => {
+          const publish = emitters.get(threadId);
+          return publish === undefined
+            ? Effect.fail(
+                new ProviderAdapterSessionNotFoundError({ provider: DRIVER_KIND, threadId }),
+              )
+            : publish(event);
+        }),
       /** Script the next turn the provider receives; turns are taken in order. */
       turn: (steps: ReadonlyArray<ScriptedStep>) => Effect.sync(() => void turns.push(steps)),
       /** The next turn the provider receives, as it arrives. */

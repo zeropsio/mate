@@ -29,6 +29,10 @@ import * as ServerConfig from "../src/config.ts";
 import { makeServerLayer } from "../src/server.ts";
 import { ServerRuntimeStartup } from "../src/serverRuntimeStartup.ts";
 import { MateEngine, type MateEngineService } from "../src/engine/MateEngine.ts";
+import {
+  ProviderInstances,
+  layer as ProviderInstancesLayer,
+} from "../src/spi/providerInstances.ts";
 import type { AnyProviderDriver } from "../src/provider/ProviderDriver.ts";
 
 export interface ScenarioMateOptions {
@@ -56,6 +60,7 @@ export interface ScenarioMate {
   readonly origin: string;
   /** The real engine and client wire, for seeding and projection witnesses. */
   readonly engine: MateEngineService;
+  readonly providers: ProviderInstances["Service"];
   readonly root: string;
   readonly homeDir: string;
   readonly stateDir: string;
@@ -133,7 +138,11 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
       if (!("port" in address))
         return yield* Effect.die(new Error("Scenario Mate has no TCP port"));
       const engine = yield* MateEngine.pipe(Effect.provide(context));
-      return { port: address.port, engine };
+      const providers = yield* ProviderInstances.pipe(
+        Effect.provide(ProviderInstancesLayer),
+        Effect.provide(context),
+      );
+      return { port: address.port, engine, providers };
     }).pipe(
       Effect.updateService(ServerConfig.ServerConfig, (config) => ({
         ...config,
@@ -175,8 +184,7 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
     return { scope, ...bound };
   };
 
-  let running: { scope: Scope.Closeable; port: number; engine: MateEngineService } | undefined =
-    await boot(0);
+  let running: Awaited<ReturnType<typeof boot>> | undefined = await boot(0);
   const port = running.port;
   const stop = async () => {
     const closing = running;
@@ -185,6 +193,10 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
   };
   return {
     origin: `http://127.0.0.1:${port}`,
+    get providers() {
+      if (!running) throw new Error("Scenario Mate is stopped");
+      return running.providers;
+    },
     get engine() {
       if (!running) throw new Error("Scenario Mate is stopped");
       return running.engine;
