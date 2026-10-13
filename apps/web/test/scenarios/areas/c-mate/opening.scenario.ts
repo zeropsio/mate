@@ -1,3 +1,5 @@
+// @effect-diagnostics globalFetch:off globalFetchInEffect:off -- read the isolated Mate's public descriptor.
+import { ConversationId, ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -7,12 +9,40 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
+import { menuMateRow, sendConversationMessage } from "../../harness/browser.ts";
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const cases = ["owner", "reader"] as const;
+const decodeDescriptor = Schema.decodeUnknownSync(ExecutionEnvironmentDescriptor);
+
+// Real history, authored in a separate browser so both owner and refused-reader opens are cold.
+const seedHistory = (s: Effect.Success<ReturnType<typeof createScenario>>) =>
+  Effect.gen(function* () {
+    const context = yield* Effect.promise(() => s.web.newContext());
+    const page = yield* Effect.promise(() => s.web.newPage(context));
+    const mate = s.drivers.realMates.get("Sage")!;
+    yield* Effect.promise(async () => {
+      s.web.setPerson(page, "personal");
+      await s.web.gotoWithSession(page, "personal");
+      await (await menuMateRow(page, "Sage", 8000)).click();
+      await page.waitForSelector('[role="textbox"]', { visible: true, timeout: 8000 });
+    });
+    yield* mate.provider.turn([{ kind: "say", text: "Sage's conversation is ready" }]);
+    yield* Effect.promise(() => sendConversationMessage(page, "Earlier question", true));
+    expect((yield* mate.provider.received).input.input).toBe("Earlier question");
+    yield* Effect.promise(() =>
+      page.waitForFunction(
+        () =>
+          document.body.innerText.includes("Sage's conversation is ready") &&
+          !location.pathname.startsWith("/draft/") &&
+          !document.querySelector('button[aria-label="Stop generation"]'),
+        { timeout: 8000, polling: 100 },
+      ),
+    );
+    yield* Effect.promise(() => context.close());
+  });
 
 describe("C: the conversation opening follows readiness", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -20,11 +50,36 @@ describe("C: the conversation opening follows readiness", () => {
       "a slow empty conversation stays behind one waking face, and a warm return never waits",
       () =>
         Effect.gen(function* () {
-          const s = yield* createScenario([installArea]);
+          const s = yield* createScenario([], { mate: "real" });
           yield* s.given.project("Sage", { mate: true });
           yield* s.given.project("Ada", { mate: true });
           const chat = mateChat(s);
-          const wire = chat.fixture("Sage");
+          const routes = new Map<string, string>();
+          for (const name of ["Sage", "Ada"]) {
+            const mate = s.drivers.realMates.get(name)!;
+            yield* mate.server.engine.assignAgent(ConversationId.make(`thread-${name}`), {
+              instanceId: "opencode",
+              driver: "opencode",
+              model: "gpt-5.4",
+              profile: { kind: "mate" },
+            });
+            const descriptor = yield* Effect.promise(async () =>
+              decodeDescriptor(
+                await (await fetch(`${mate.server.origin}/.well-known/t3/environment`)).json(),
+              ),
+            );
+            routes.set(name, `/${descriptor.environmentId}/thread-${name}`);
+          }
+          const ready = (name: string) =>
+            Effect.gen(function* () {
+              yield* chat.then.path(routes.get(name)!);
+              yield* Effect.promise(() =>
+                s.page.waitForSelector(
+                  '::-p-aria([role="textbox"]):not([inert], [inert] *, [aria-hidden="true"], [aria-hidden="true"] *)',
+                  { visible: true, timeout: 8000 },
+                ),
+              );
+            });
           const conversationSelector = "[data-chat-column-maximized-away]";
           const openingFinished = (name: string) =>
             Effect.promise(() =>
@@ -35,7 +90,7 @@ describe("C: the conversation opening follows readiness", () => {
                     "[data-conversation-content]:not([data-kept-timeline] *)",
                   );
                   return (
-                    location.pathname === `/env-${name}/thread-${name}` &&
+                    location.pathname === name &&
                     Boolean(
                       column?.querySelector(
                         '[data-conversation-avatar] [data-opening-actor="complete"]',
@@ -47,15 +102,17 @@ describe("C: the conversation opening follows readiness", () => {
                   );
                 },
                 {},
-                name,
+                routes.get(name)!,
                 conversationSelector,
               ),
             );
-          const read = wire.engine.holdOpen();
+          const read = s.drivers.realMates
+            .get("Sage")!
+            .gate.hold((tag) => tag === "subscribeEngineConversation");
           yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
           yield* s.given.signedIn;
           yield* chat.when.openReadOnly("Sage");
-          yield* Effect.promise(() => read.requested());
+          yield* Effect.promise(() => read.held);
           const stage = yield* Effect.promise(() =>
             s.page.waitForSelector(
               '[data-chat-workspace-drop-target] [data-conversation-opening="waiting"]',
@@ -164,7 +221,7 @@ describe("C: the conversation opening follows readiness", () => {
             ),
           ).toBe(true);
           yield* chat.when.openReadOnly("Ada");
-          yield* chat.then.ready("Ada");
+          yield* ready("Ada");
           yield* openingFinished("Ada");
           yield* Effect.promise(() =>
             s.page.evaluate((conversationSelector) => {
@@ -182,7 +239,7 @@ describe("C: the conversation opening follows readiness", () => {
             }, conversationSelector),
           );
           yield* chat.when.openReadOnly("Sage");
-          yield* chat.then.ready("Sage");
+          yield* ready("Sage");
           yield* openingFinished("Sage");
           const phases = yield* Effect.promise(() =>
             s.page.evaluate(() => Reflect.get(window, "warmOpeningPhases") as string[]),
@@ -207,14 +264,14 @@ describe("C: the conversation opening follows readiness", () => {
                     Effect.gen(function* () {
                       const fs = yield* FileSystem.FileSystem;
                       const path = yield* Path.Path;
-                      const s = yield* createScenario([installArea]);
+                      const s = yield* createScenario([], { mate: "real" });
                       yield* s.given.project("Sage", { mate: true });
+                      yield* seedHistory(s);
                       const chat = mateChat(s);
-                      const wire = chat.fixture("Sage");
-                      wire.history("Sage's conversation is ready");
-                      wire.ownership = "project-token";
-                      const read = wire.engine.holdOpen();
-                      yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
+                      const read = s.drivers.realMates
+                        .get("Sage")!
+                        .gate.hold((tag) => tag === "subscribeEngineConversation");
+                      yield* Effect.addFinalizer(() => Effect.sync(read.release));
                       if (person === "reader") s.given.asPerson("reader");
                       yield* Effect.promise(() =>
                         s.page.setViewport({ width: narrow ? 900 : 1786, height: 1000 }),
@@ -344,7 +401,7 @@ describe("C: the conversation opening follows readiness", () => {
                       if (person === "reader")
                         yield* chat.then.text("Sage isn't available with your access.");
                       else {
-                        yield* Effect.promise(() => read.requested());
+                        yield* Effect.promise(() => read.held);
                         yield* Effect.promise(() =>
                           s.page.waitForSelector('[data-conversation-opening="waiting"]', {
                             timeout: 8000,
