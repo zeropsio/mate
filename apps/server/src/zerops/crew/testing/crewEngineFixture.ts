@@ -355,7 +355,7 @@ export const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray
                 Effect.andThen(held(input.args.at(-1) ?? "")),
               )
             : Effect.void
-          ).pipe(Effect.andThen(Effect.interruptible(runner.run(input)))),
+          ).pipe(Effect.andThen(runner.run(input)), Effect.interruptible),
       });
     }),
   ).pipe(Layer.provide(localSshProcessRunnerLayer(TEST_IDENTITY)));
