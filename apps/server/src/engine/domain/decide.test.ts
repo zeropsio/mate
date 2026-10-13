@@ -136,7 +136,13 @@ const settled = (
 ): Command => ({ _tag: "EffectSettled", effectId: effectId(cause, kind, n), outcome });
 const opened = (
   run: number,
-  options: { session?: string; steer?: boolean; selfTurns?: boolean; n?: number } = {},
+  options: {
+    session?: string;
+    steer?: boolean;
+    steerAttachments?: boolean;
+    selfTurns?: boolean;
+    n?: number;
+  } = {},
 ) =>
   settled(
     r(run),
@@ -150,6 +156,9 @@ const opened = (
         nativeRef: "native-1",
         capabilities: {
           steer: options.steer ?? false,
+          ...(options.steerAttachments === undefined
+            ? {}
+            : { steerAttachments: options.steerAttachments }),
           ...(options.selfTurns === undefined ? {} : { selfTurns: options.selfTurns }),
         },
       },
@@ -200,6 +209,19 @@ const runningWithSteer: ReadonlyArray<Step> = [
   opened(1, { steer: true }),
   sent(1),
 ];
+const runningWithPictureSteer: ReadonlyArray<Step> = [
+  send(),
+  prepared(1),
+  opened(1, { steer: true, steerAttachments: true }),
+  sent(1),
+];
+const steeredPicture = {
+  type: "image",
+  id: "img-s",
+  name: "belts.png",
+  mimeType: "image/png",
+  sizeBytes: 2048,
+} as unknown as ChatImageAttachment;
 const limited: ReadonlyArray<Step> = [
   ...running,
   signal({ kind: "usage-limit", resetsAt: T0 + 60 * MINUTE }),
@@ -749,6 +771,20 @@ const transitions: ReadonlyArray<Row> = [
       expect(scene.events[0]).toMatchObject({ body: { delivery: { state: "steered" } } }),
   },
   {
+    // A picture sent while the Mate works goes into the work, as words do: never a run after it.
+    name: "steer puts the person's pictures into the running turn where the driver takes them",
+    given: runningWithPictureSteer,
+    when: { _tag: "Steer", runId: r(1), text: "look", attachments: [steeredPicture] },
+    events: ["ItemOpened", "EffectRequested"],
+    effects: ["provider.steer"],
+    also: (scene) => {
+      expect(scene.events[0]).toMatchObject({
+        body: { attachments: [steeredPicture], delivery: { state: "steered" } },
+      });
+      expect(scene.effects[0]).toMatchObject({ payload: { attachments: [steeredPicture] } });
+    },
+  },
+  {
     name: "a recurring wake runs with the wake's principal and re-arms at the cron's next time",
     given: [
       {
@@ -889,6 +925,12 @@ const rejections: ReadonlyArray<{
     name: "steer where the driver cannot steer",
     given: running,
     when: { _tag: "Steer", runId: r(1), text: "faster" },
+    reason: "steer-unsupported",
+  },
+  {
+    name: "steer with pictures where the driver takes words only",
+    given: runningWithSteer,
+    when: { _tag: "Steer", runId: r(1), text: "look", attachments: [steeredPicture] },
     reason: "steer-unsupported",
   },
   {

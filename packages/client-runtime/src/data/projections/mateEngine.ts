@@ -14,6 +14,7 @@ import {
   CREW_SEAM_ACTIVITY_KIND,
   MessageId,
   PROVIDER_DISPLAY_NAMES,
+  queuedBehind,
   STEP_ITEM_KINDS,
   TurnId,
   type ChatAttachment,
@@ -769,11 +770,23 @@ function cardsOf(read: ProjectionReads, conversationKey: string, header?: Conver
   // after them (Milo's stress run 4A; the owner, 2026-10-12, of a usage resume: "this state, where
   // it has answer and then it's still working above is quite strange"). A run cut before it said
   // anything goes on as it worked, on its card.
+  //
+  // A person's message sent while a run worked, on a driver that takes it only after its turn (and
+  // so queued as the next run), is part of that work as a steered one is: it stands above the
+  // working card, a line of it, and its run goes on in that card (the owner, 2026-10-13: the same
+  // for every agent and every message).
   const roots = new Map<string, RunRecord>();
   const answered = new Set<string>();
   for (const run of runs) {
+    const behind =
+      run.joins === null && run.trigger.kind === "person" ? queuedBehind(runs, run) : undefined;
     const joined = run.joins === null ? undefined : roots.get(run.joins);
-    const root = joined === undefined || answered.has(joined.id) ? run : joined;
+    const root =
+      behind !== undefined
+        ? (roots.get(behind.id) ?? behind)
+        : joined === undefined || answered.has(joined.id)
+          ? run
+          : joined;
     roots.set(run.id, root);
     if (run.summary.answerItemId !== null) answered.add(root.id);
   }
@@ -817,17 +830,19 @@ export function engineStopTarget(
 
 /**
  * The run a message sent now goes into, as V1 sends a message into its running turn: the run that
- * works (or waits on the person) while the session it runs in can take a message; else none, and
- * the message is the conversation's next run.
+ * works (or waits on the person) while the session it runs in can take a message — with pictures
+ * or files only where its steer carries them; else none, and the message is the next run.
  */
 export function engineSteerTarget(
   read: ProjectionReads,
   key: EngineConversationKey,
+  attachments = false,
 ): string | null {
   const conversation = read.fact("mateEngineConversation", engineConversationId(key));
-  if (conversation.kind !== "known" || conversation.value.header.session?.steer !== true)
-    return null;
-  return conversation.value.header.activeRunId ?? null;
+  if (conversation.kind !== "known") return null;
+  const { session, activeRunId } = conversation.value.header;
+  if (session?.steer !== true || (attachments && session.steerAttachments !== true)) return null;
+  return activeRunId ?? null;
 }
 
 /** A held conversation's turn as its own records say it: the live run, on the card it draws on. */

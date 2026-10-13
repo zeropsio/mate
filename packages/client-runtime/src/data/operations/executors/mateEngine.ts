@@ -112,6 +112,7 @@ export interface EngineCallWire {
           readonly runId: string;
           readonly text: string;
           readonly context?: ReadonlyArray<string>;
+          readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
         }
       | {
           readonly kind: "switch-model";
@@ -211,6 +212,7 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
               runId: command.runId as never,
               text: command.text,
               ...(command.context === undefined ? {} : { context: command.context }),
+              ...(command.attachments === undefined ? {} : { attachments: command.attachments }),
             }),
           );
         case "switch-model":
@@ -573,6 +575,8 @@ export function makeMateEngineOperations(options: {
         readonly text: string;
         /** What the agent hears with `text` that the person did not type; never retained here. */
         readonly context?: ReadonlyArray<string>;
+        /** Only where the session's steer carries them (`steerAttachments`). */
+        readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
         /** The steer's own id where its caller already gave it one (the message's id). */
         readonly commandId?: string;
       },
@@ -592,6 +596,7 @@ export function makeMateEngineOperations(options: {
           runId: target.runId,
           text: target.text,
           ...(target.context === undefined ? {} : { context: target.context }),
+          ...(target.attachments === undefined ? {} : { attachments: target.attachments }),
         }),
         target.commandId,
       ),

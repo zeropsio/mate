@@ -12,6 +12,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as TestClock from "effect/testing/TestClock";
 import {
   CommandId,
   EngineSendInput,
@@ -455,6 +456,41 @@ describe("a client reading more of an engine conversation", () => {
           ["One", "One done.", "Two", "Two done."],
         );
         assert.deepStrictEqual(page.window, { oldestOrdinal: 1, earlier: false });
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  // A message the agent takes after its turn draws on the card it waited behind: a reload's window
+  // holds that card whole, as the live client drew it.
+  it.effect("reads a message sent while a run worked with that run's group", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "One" });
+        yield* w.agent((agent, thread) => agent.say(thread, "On it."));
+        yield* TestClock.adjust("1 second");
+        yield* w.tell({ _tag: "Send", text: "Two" });
+        yield* TestClock.adjust("1 second");
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.agent((agent, thread) => agent.say(thread, "Two done."));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* TestClock.adjust("1 second");
+        yield* w.tell({ _tag: "Send", text: "Three" });
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const [snapshot] = yield* Effect.scoped(watch(w, wire, { groups: 2 }));
+        if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+        assert.deepStrictEqual(
+          snapshot.runs.map((run) => run.ordinal),
+          [1, 2, 3],
+        );
+        const [latest] = yield* Effect.scoped(watch(w, wire, { groups: 1 }));
+        if (latest?.type !== "snapshot") throw new Error("no snapshot");
+        assert.deepStrictEqual(
+          latest.runs.map((run) => run.ordinal),
+          [3],
+        );
         yield* w.shutdown;
       }),
     ),

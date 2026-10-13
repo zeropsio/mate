@@ -996,7 +996,8 @@ export function deriveConversationStructure(given: {
     const cardRuns = span.turnIds.flatMap((id) => input.runCards?.[id]?.runs ?? []);
     const run = cardRuns.at(-1);
     const typed = input.runCards !== undefined;
-    const live = typed ? run?.turnState === "running" : span === liveSpan;
+    // Any of its runs working: a message waiting behind the work is the card's last run, unstarted.
+    const live = typed ? cardRuns.some((each) => each.turnState === "running") : span === liveSpan;
     const turnEntries = members
       .map((index) => entries[index]!)
       .filter((entry) => !isUserMessageEntry(entry));

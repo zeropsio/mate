@@ -257,6 +257,7 @@ const headerOf = (state: ConversationState): ConversationHeader => {
             steer:
               state.session.capabilities.steer &&
               (activeRun?.state === "running" || activeRun?.state === "waiting"),
+            steerAttachments: state.session.capabilities.steerAttachments === true,
           },
     pausedUntil: state.pausedUntil,
     queued: state.queue.length,
@@ -1045,15 +1046,28 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           _tag: "Dismiss",
           requestId: input.requestId,
         }),
+      // Pictures are claimed into the asset store as a send's are, before the engine is told.
       steer: (input, caller) =>
         Effect.andThen(
           unfitContext(input),
-          command(input.protocol, input.conversationId, input.commandId, caller, {
-            _tag: "Steer",
-            runId: input.runId,
-            text: input.text,
-            ...(input.context == null ? {} : { context: input.context }),
-          }),
+          withPictures(
+            input.protocol,
+            input.conversationId,
+            input.commandId,
+            caller,
+            input.attachments ?? [],
+            (claimed) => ({
+              _tag: "Steer",
+              runId: input.runId,
+              text: input.text,
+              ...(input.context == null ? {} : { context: input.context }),
+              ...(input.attachments === undefined
+                ? {}
+                : {
+                    attachments: claimed as ReadonlyArray<ChatImageAttachment | ChatFileAttachment>,
+                  }),
+            }),
+          ),
         ),
       switchModel: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {

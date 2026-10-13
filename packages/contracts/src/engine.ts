@@ -339,6 +339,28 @@ export const Run = Schema.Struct({
 });
 export type Run = typeof Run.Type;
 
+/**
+ * The earlier run a person's message waited behind, queued while it worked (started before it, not
+ * yet ended): on an agent that takes a message only after its turn. Such a message is part of that
+ * work, as one steered into it is: its run draws on that run's card, live and after a reload.
+ */
+export function queuedBehind<
+  R extends {
+    readonly ordinal: number;
+    readonly queuedAt: number;
+    readonly startedAt: number | null;
+    readonly endedAt: number | null;
+  },
+>(runs: ReadonlyArray<R>, run: R): R | undefined {
+  return runs.findLast(
+    (earlier) =>
+      earlier.ordinal < run.ordinal &&
+      earlier.startedAt !== null &&
+      earlier.startedAt < run.queuedAt &&
+      (earlier.endedAt === null || earlier.endedAt > run.queuedAt),
+  );
+}
+
 // ── crew on the record ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -773,6 +795,8 @@ export type SessionCloseReason = typeof SessionCloseReason.Type;
 export const SessionCapabilities = Schema.Struct({
   /** The driver really injects a message into a running turn. */
   steer: Schema.Boolean,
+  /** Its steer carries the person's pictures and files as well. Absent: words only. */
+  steerAttachments: Schema.optionalKey(Schema.Boolean),
   /** The agent opens a turn of its own when its background work ends (Claude). Absent: never. */
   selfTurns: Schema.optionalKey(Schema.Boolean),
   /**

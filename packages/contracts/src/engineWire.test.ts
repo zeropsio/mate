@@ -235,6 +235,18 @@ describe("a conversation's settings on the wire", () => {
     });
   });
 
+  it("a steer carries the person's pictures and files into the running turn", () => {
+    roundTrips(EngineSteerInput, {
+      ...call,
+      runId: run,
+      text: "Look at these belts",
+      attachments: [
+        { type: "image", id: "img-1", name: "a.png", mimeType: "image/png", sizeBytes: 10 },
+        { type: "file", id: "file-1", name: "spec.pdf", mimeType: "application/pdf", sizeBytes: 9 },
+      ],
+    });
+  });
+
   it("a send carries what the agent hears beside the person's words, line by line", () => {
     const context = [
       "appdev #3 landed: Add the order summary",
