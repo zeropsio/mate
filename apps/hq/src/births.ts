@@ -20,45 +20,47 @@ import type * as SqlClient from "effect/sql/SqlClient";
 /** Each environment HQ brought up, by its project, and whether its birth ended. */
 export const environmentBirths = (sql: SqlClient.SqlClient) =>
   Effect.map(
-    sql<{ readonly project_id: string; readonly ended: boolean }>`
+    sql<{ readonly environment_id: string; readonly ended: boolean }>`
       WITH born AS (
-        SELECT DISTINCT ON (r.project_id) r.id, r.project_id
-        FROM hq_rollout r WHERE r.cause = 'env_added' AND r.project_id IS NOT NULL
-        ORDER BY r.project_id, r.id DESC
+        SELECT DISTINCT ON (r.environment_id) r.id, r.environment_id
+        FROM hq_rollout r WHERE r.cause = 'env_added' AND r.environment_id IS NOT NULL
+        ORDER BY r.environment_id, r.id DESC
       ),
       asked AS (
-        SELECT b.project_id, r.id, r.planned_at, r.left_out
+        SELECT b.environment_id, r.id, r.planned_at, r.left_out
         FROM born b JOIN hq_rollout r
-          ON r.project_id = b.project_id AND r.id >= b.id
+          ON r.environment_id = b.environment_id AND r.id >= b.id
          AND r.cause IN ('env_added', 'key_kept', 'run_again')
       ),
       jobs AS (
-        SELECT a.project_id, a.id AS rollout_id, j.state, j.ended_at
-        FROM asked a JOIN hq_deploy_job j ON j.rollout_id = a.id AND j.project_id = a.project_id
+        SELECT a.environment_id, a.id AS rollout_id, j.state, j.ended_at
+        FROM asked a JOIN hq_deploy_job j ON j.rollout_id = a.id AND j.environment_id = a.environment_id
         UNION ALL
-        SELECT a.project_id, a.id, j.state, j.ended_at
+        SELECT a.environment_id, a.id, j.state, j.ended_at
         FROM asked a
-        CROSS JOIN LATERAL jsonb_to_recordset(a.left_out) AS out(project_id text, job text)
+        CROSS JOIN LATERAL jsonb_to_recordset(a.left_out) AS out(environment_id text, job text)
         JOIN hq_deploy_job j ON j.id = out.job::bigint
-        WHERE out.project_id = a.project_id
+        WHERE out.environment_id = a.environment_id
       ),
       ran AS (
-        SELECT project_id, min(rollout_id) AS upto
-        FROM jobs WHERE state IN ('live', 'failed') GROUP BY project_id
+        SELECT environment_id, min(rollout_id) AS upto
+        FROM jobs WHERE state IN ('live', 'failed') GROUP BY environment_id
       )
-      SELECT b.project_id,
+      SELECT b.environment_id,
              NOT EXISTS (
                SELECT 1 FROM asked a
-               WHERE a.project_id = b.project_id AND a.planned_at IS NULL
+               WHERE a.environment_id = b.environment_id AND a.planned_at IS NULL
                  AND (ran.upto IS NULL OR a.id <= ran.upto))
              AND NOT EXISTS (
                SELECT 1 FROM jobs x
-               WHERE x.project_id = b.project_id AND x.ended_at IS NULL
+               WHERE x.environment_id = b.environment_id AND x.ended_at IS NULL
                  AND (ran.upto IS NULL OR x.rollout_id <= ran.upto))
              AND (ran.upto IS NOT NULL OR EXISTS (
-               SELECT 1 FROM hq_deploy_token t
-               WHERE t.project_id = b.project_id AND t.invalid_since IS NULL)) AS ended
-      FROM born b LEFT JOIN ran USING (project_id)`,
+               SELECT 1 FROM hq_environment e JOIN hq_deploy_token t USING (project_id)
+               WHERE e.id = b.environment_id AND t.invalid_since IS NULL)) AS ended
+      FROM born b LEFT JOIN ran USING (environment_id)`,
     (rows) =>
-      new Map<string, EnvironmentBirth>(rows.map((row) => [row.project_id, { ended: row.ended }])),
+      new Map<string, EnvironmentBirth>(
+        rows.map((row) => [row.environment_id, { ended: row.ended }]),
+      ),
   );

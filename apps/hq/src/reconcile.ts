@@ -105,7 +105,7 @@ export const missing = (
       SELECT app_id::text, ${RECIPE_REPO}, 'release', sha FROM hq_release
       UNION ALL
       SELECT e.app_id::text, j.repo, 'deploy', j.sha
-      FROM hq_deploy_job j JOIN hq_environment e ON e.project_id = j.project_id
+      FROM hq_deploy_job j JOIN hq_environment e ON e.id = j.environment_id
       WHERE j.kind = 'deploy'`;
     const repos = yield* sql<{ readonly app_id: string; readonly name: string }>`
       SELECT app_id::text AS app_id, name FROM hq_repo`;

@@ -66,6 +66,8 @@ import {
   orgOffers,
   environmentSetupOffers,
   productionTaken,
+  readEnvironmentSlots,
+  environmentSlotTaken,
   recordOffers,
 } from "./offers.ts";
 import { type OrgView, Roles, confirmingRefusal, decidedFresh } from "./roles.ts";
@@ -211,6 +213,8 @@ export interface JobView {
 
 /** A stage's or a production's environment as a reader of its application sees it. */
 export interface EnvironmentView {
+  readonly id: string;
+  readonly target: { readonly kind: "zerops"; readonly projectId: string };
   readonly projectId: string;
   readonly tier: "stage" | "production";
   readonly name: string;
@@ -649,6 +653,25 @@ const conflictOnUnique = <A, E extends { readonly _tag: string }, R>(
     ),
   );
 
+/**
+ * A backout writes only legacy keys. Each new Core derives identity again under its acquired
+ * epoch before serving; old columns and every other value remain available to old Core.
+ */
+export const reconcileEnvironmentIdentity = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`UPDATE hq_environment SET id = project_id WHERE id IS DISTINCT FROM project_id`;
+  yield* sql`UPDATE hq_deploy_job SET environment_id = project_id
+    WHERE environment_id IS DISTINCT FROM project_id`;
+  yield* sql`UPDATE hq_rollout r SET environment_id = project_id, left_out = (
+    SELECT coalesce(jsonb_agg(entry || jsonb_build_object('environment_id', entry->'project_id')
+      ORDER BY ordinal), '[]'::jsonb)
+    FROM jsonb_array_elements(r.left_out) WITH ORDINALITY AS entries(entry, ordinal)
+  ) WHERE environment_id IS DISTINCT FROM project_id OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements(r.left_out) AS entries(entry)
+    WHERE entry->'environment_id' IS DISTINCT FROM entry->'project_id'
+  )`;
+});
+
 export const structureLayer = (options: {
   readonly hqProjectId: string;
   readonly credential: Option.Option<Redacted.Redacted>;
@@ -787,9 +810,9 @@ export const structureLayer = (options: {
           );
           const declared = environment.replaced?.declared_seq ?? null;
           yield* sql`
-            INSERT INTO hq_environment (project_id, app_id, tier, name, sources, declared_seq,
+            INSERT INTO hq_environment (id, project_id, target, app_id, tier, name, sources, declared_seq,
               created_by, release_floor)
-            VALUES (${environment.projectId}, ${environment.appId}::uuid, ${environment.tier},
+            VALUES (${environment.projectId}, ${environment.projectId}, 'zerops', ${environment.appId}::uuid, ${environment.tier},
               ${name}, ARRAY(SELECT jsonb_array_elements_text(${sources}::jsonb)),
               COALESCE(${declared}::bigint, nextval(pg_get_serial_sequence('hq_environment',
                 'declared_seq'))),
@@ -999,7 +1022,12 @@ export const structureLayer = (options: {
                     apps: apps
                       .map((app) => {
                         const held = rows.filter((row) => row.app_id === app.id);
-                        const can = appOffers(userId, held, view);
+                        const can = appOffers(
+                          userId,
+                          held,
+                          view,
+                          environmentSource.slotsForApp(app.id),
+                        );
                         return {
                           id: app.id,
                           name: app.name,
@@ -1506,8 +1534,7 @@ export const structureLayer = (options: {
                   readonly project_id: string;
                   readonly kind: string;
                 }>`SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
-                const sameKind = (kind: string) =>
-                  kind === input.kind || (input.kind === "stage" && kind === "devstage");
+                const slots = yield* readEnvironmentSlots(sql, appId);
                 yield* allowed(
                   userId,
                   "attach",
@@ -1516,11 +1543,14 @@ export const structureLayer = (options: {
                     held: yield* heldOf(sql, input.projectId),
                     to: input.kind,
                     appProjectIds: appProjects.map((row) => row.project_id),
-                    slotTaken: appProjects.some(
-                      (row) =>
-                        sameKind(row.kind) &&
-                        view.projects.some((project) => project.id === row.project_id),
-                    ),
+                    slotTaken:
+                      input.kind === "stage" || input.kind === "production"
+                        ? environmentSlotTaken(input.kind, appProjects, slots, view)
+                        : appProjects.some(
+                            (row) =>
+                              row.kind === input.kind &&
+                              view.projects.some((project) => project.id === row.project_id),
+                          ),
                   },
                   view,
                 );
@@ -1653,7 +1683,7 @@ export const structureLayer = (options: {
               view,
             );
             // A production Zerops still has holds the place, as its offer says (`moveTo`).
-            if (productionTaken(projectId, kind, target, view)) {
+            if (productionTaken(projectId, kind, yield* readEnvironmentSlots(sql, appId), view)) {
               return yield* refuse("conflict", "production_taken");
             }
             // The application's environments of the tier, if gone from Zerops, make room as on
@@ -1684,7 +1714,9 @@ export const structureLayer = (options: {
                     view,
                   );
                   if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
-                  if (productionTaken(projectId, kind, currentTarget, view)) {
+                  if (
+                    productionTaken(projectId, kind, yield* readEnvironmentSlots(sql, appId), view)
+                  ) {
                     return yield* refuse("conflict", "production_taken");
                   }
                   if (isMateKind(kind)) {
@@ -1883,12 +1915,21 @@ export const structureLayer = (options: {
               readonly project_id: string;
             }>`SELECT project_id FROM hq_mate WHERE project_id = ${projectId}`;
             const held = rows.find((row) => row.project_id === projectId)?.kind ?? "mate";
+            const environmentSlotsRows = new Map(
+              yield* Effect.forEach(apps, (app) =>
+                Effect.map(readEnvironmentSlots(sql, app.id), (slots) => [app.id, slots] as const),
+              ),
+            );
             return moveDestinations(
               userId,
               { projectId, held, recorded: mate.length > 0 },
               apps.map((app) => ({
                 id: app.id,
                 projects: rows.filter((row) => row.app_id === app.id),
+                slots: environmentSlotsRows.get(app.id) ?? {
+                  stageProjectIds: [],
+                  productionProjectId: null,
+                },
               })),
               facts,
             );

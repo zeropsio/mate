@@ -53,8 +53,8 @@ export const addRollout = (sql: SqlClient.SqlClient, event: RolloutCause) => {
     case "env_added":
     case "key_kept":
       return sql`
-        INSERT INTO hq_rollout (app_id, cause, project_id, by)
-        SELECT app_id, ${event.cause}, project_id, ${event.by}
+        INSERT INTO hq_rollout (app_id, cause, environment_id, project_id, by)
+        SELECT app_id, ${event.cause}, id, project_id, ${event.by}
         FROM hq_environment WHERE project_id = ${event.projectId}`;
   }
 };
@@ -80,9 +80,10 @@ export const rolloutOf = (sql: SqlClient.SqlClient, event: RolloutCause) =>
         case "env_added":
         case "key_kept":
           return sql<{ readonly id: string }>`
-            SELECT id::text AS id FROM hq_rollout
-            WHERE project_id = ${event.projectId} AND cause = ${event.cause} AND by = ${event.by}
-            ORDER BY id DESC LIMIT 1`;
+            SELECT r.id::text AS id FROM hq_rollout r
+            JOIN hq_environment e ON e.id = r.environment_id
+            WHERE e.project_id = ${event.projectId} AND r.cause = ${event.cause} AND r.by = ${event.by}
+            ORDER BY r.id DESC LIMIT 1`;
       }
     })(),
     (rows) => rows[0]?.id,

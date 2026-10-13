@@ -31,7 +31,7 @@ export function makeReleaseNavigationReader<E>(
       SELECT app_id::text AS app_id, tag FROM hq_release`;
     const running = yield* sql<{ app_id: string; service: string; sha: string }>`
       SELECT DISTINCT ON (e.app_id, j.service) e.app_id::text AS app_id, j.service, j.sha
-      FROM hq_environment e JOIN hq_deploy_job j USING (project_id)
+      FROM hq_environment e JOIN hq_deploy_job j ON j.environment_id = e.id
       WHERE e.tier = 'production' AND j.kind = 'deploy' AND j.state = 'live'
         AND j.service IS NOT NULL AND j.sha IS NOT NULL
       ORDER BY e.app_id, j.service, j.id DESC`;

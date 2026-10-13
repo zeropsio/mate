@@ -58,7 +58,7 @@ import {
   mateLinkTicketsLayer,
   streamTicketsLayer,
 } from "./stream.ts";
-import { structureLayer } from "./structure.ts";
+import { reconcileEnvironmentIdentity, structureLayer } from "./structure.ts";
 import { autoUpdatePolicyLayer } from "./autoUpdate.ts";
 
 export interface CoreOptions {
@@ -108,7 +108,7 @@ const services = (options: CoreOptions) => {
   const leader = leaderLayer({
     databaseUrl: options.databaseUrl,
     migrations: options.migrations,
-    afterMigrations: sealPlainTokens(keySecret),
+    afterMigrations: Effect.andThen(reconcileEnvironmentIdentity, sealPlainTokens(keySecret)),
     ...(options.heartbeat === undefined ? {} : { heartbeat: options.heartbeat }),
     ...(options.retryAfter === undefined ? {} : { retryAfter: options.retryAfter }),
   }).pipe(

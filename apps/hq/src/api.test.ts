@@ -424,6 +424,8 @@ describe("HQ API", () => {
             ],
             [
               {
+                id: "P_MATE",
+                target: { kind: "zerops", projectId: "P_MATE" },
                 projectId: "P_MATE",
                 tier: "production",
                 name: "live",
@@ -530,6 +532,8 @@ describe("HQ API", () => {
           ).apps[0]?.environments,
           [
             {
+              id: "P_MATE",
+              target: { kind: "zerops", projectId: "P_MATE" },
               projectId: "P_MATE",
               tier: "stage",
               name: "stage",
@@ -580,6 +584,8 @@ describe("HQ API", () => {
         assert.deepStrictEqual(yield* snapshotAs("BASIC_USER"), [
           [
             {
+              id: "P_MATE",
+              target: { kind: "zerops", projectId: "P_MATE" },
               projectId: "P_MATE",
               tier: "stage",
               name: "stage",
@@ -616,9 +622,9 @@ describe("HQ API", () => {
         const sha = "a".repeat(40);
         yield* rowsWhere(
           url,
-          `INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+          `INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, state,
              reason, ended_at)
-           SELECT id, 'deploy', 'P_MATE', 'web', 'web', '${sha}', 'failed', 'failed: Build failed',
+           SELECT id, 'deploy', 'P_MATE', 'P_MATE', 'web', 'web', '${sha}', 'failed', 'failed: Build failed',
              now()
            FROM hq_rollout WHERE project_id = 'P_MATE'
            RETURNING 1`,

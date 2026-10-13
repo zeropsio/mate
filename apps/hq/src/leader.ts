@@ -100,7 +100,7 @@ export interface LeaderOptions {
   readonly migrations: ReadonlyArray<Migration>;
   /**
    * What the migrations leave for code, run after them under the lock before this Core leads: the
-   * deploy tokens kept before they were sealed (`deployKeys.ts`). Its failure is a migration's.
+   * environment identities and deploy tokens kept before sealing. Its failure is a migration's.
    */
   readonly afterMigrations?: Effect.Effect<void, SqlError, SqlClient.SqlClient>;
   /** How often the lock connection and the official verdict are checked. */
@@ -184,6 +184,16 @@ export const leaderLayer = (
         held: null,
       });
 
+      const writeAt = <A, E, R>(epoch: number, effect: Effect.Effect<A, E, R>) =>
+        sql.withTransaction(
+          Effect.gen(function* () {
+            const [row] = yield* sql<{ readonly epoch: string }>`
+              SELECT epoch FROM hq_leader WHERE id = 1 FOR SHARE`;
+            if (Number(row?.epoch) !== epoch) return yield* new NotLeader({ reason: "fenced" });
+            return yield* effect;
+          }),
+        );
+
       /**
        * Waits for `effect` up to the heartbeat's timeout without interrupting it: interrupting a
        * statement on a connection that does not answer sends a cancel request over a second one
@@ -265,7 +275,6 @@ export const leaderLayer = (
           "UPDATE hq_leader SET epoch = epoch + 1, acquired_at = now() WHERE id = 1 RETURNING epoch",
         );
         const runMigrations = migrate(options.migrations).pipe(
-          Effect.andThen(options.afterMigrations ?? Effect.void),
           Effect.tapError(() => SubscriptionRef.set(status, MIGRATION_FAILED)),
         );
         const schemaThere = yield* connection
@@ -274,6 +283,9 @@ export const leaderLayer = (
         const epoch = schemaThere
           ? yield* Effect.tap(raise, () => runMigrations)
           : yield* Effect.andThen(runMigrations, raise);
+        yield* writeAt(epoch, options.afterMigrations ?? Effect.void).pipe(
+          Effect.tapError(() => SubscriptionRef.set(status, MIGRATION_FAILED)),
+        );
         yield* SubscriptionRef.set(status, {
           state: "active",
           epoch,
@@ -338,14 +350,7 @@ export const leaderLayer = (
             if (state !== "active" || epoch === null) {
               return yield* new NotLeader({ reason: "standby" });
             }
-            return yield* sql.withTransaction(
-              Effect.gen(function* () {
-                const [row] = yield* sql<{ readonly epoch: string }>`
-                  SELECT epoch FROM hq_leader WHERE id = 1 FOR SHARE`;
-                if (Number(row?.epoch) !== epoch) return yield* new NotLeader({ reason: "fenced" });
-                return yield* effect;
-              }),
-            );
+            return yield* writeAt(epoch, effect);
           }),
       });
     }),

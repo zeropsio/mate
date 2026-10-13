@@ -1,7 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off -- scope incarnations are unique to this Core process.
 import * as NodeCrypto from "node:crypto";
+import { ProjectId } from "@t3tools/contracts";
 import {
   HQ_ZEROPS_REFUSED,
+  CanonicalHqNavigationEnvironment,
   HqNavigationApp,
   HqNavigationProject,
   HqAttentionValue,
@@ -206,7 +208,20 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         ended: boolean;
       };
       const connections = new Set<Connection>();
-      const decodeApp = Schema.decodeUnknownOption(HqNavigationApp);
+      const decodeApp = Schema.decodeUnknownOption(
+        Schema.Struct({
+          ...HqNavigationApp.fields,
+          environments: Schema.Union([
+            Schema.Array(
+              Schema.Struct({
+                ...CanonicalHqNavigationEnvironment.to.fields,
+                projectId: ProjectId,
+              }),
+            ),
+            Schema.Struct({ refused: Schema.String }),
+          ]),
+        }),
+      );
       const decodeProject = Schema.decodeUnknownOption(HqNavigationProject);
       const contents = new Map<
         string,
@@ -294,7 +309,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           releaseOffer: app.can.read_change.allow
             ? releaseNavigationOffer(releaseSource?.forApp(app.id) ?? null, {
                 permission: app.can.release,
-                hasProduction: projects.some((project) => project.kind === "production"),
+                hasProduction:
+                  (environmentSource ?? current.environmentSource).slotsForApp(app.id)
+                    .productionProjectId !== null,
                 inFlight: (() => {
                   const environments = (environmentSource ?? current.environmentSource).forApp(
                     userId,

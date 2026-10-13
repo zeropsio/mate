@@ -13,6 +13,8 @@
  *
  * @module offers
  */
+import * as Effect from "effect/Effect";
+import type * as SqlClient from "effect/sql/SqlClient";
 import type { HqOffersOf } from "@t3tools/shared/hqOffers";
 import { type Decision } from "@t3tools/shared/zeropsPermissions";
 import {
@@ -40,10 +42,48 @@ export const appTarget = (
   projectIds: projects.map((row) => row.project_id),
 });
 
+/** Slot and release verdicts come from environment rows; devstage remains a Mate placement. */
+export interface EnvironmentSlots {
+  readonly stageProjectIds: ReadonlyArray<string>;
+  readonly productionProjectId: string | null;
+}
+export const environmentSlots = (
+  environments: ReadonlyArray<{ readonly project_id: string; readonly tier: string }>,
+): EnvironmentSlots => ({
+  stageProjectIds: environments.filter((row) => row.tier === "stage").map((row) => row.project_id),
+  productionProjectId: environments.find((row) => row.tier === "production")?.project_id ?? null,
+});
+export const readEnvironmentSlots = (sql: SqlClient.SqlClient, appId: string) =>
+  Effect.map(
+    sql<{ readonly project_id: string; readonly tier: string }>`
+    SELECT project_id, tier FROM hq_environment WHERE app_id::text = ${appId}`,
+    environmentSlots,
+  );
+export const environmentSlotTaken = (
+  tier: "stage" | "production",
+  projects: ReadonlyArray<AppProjectRow>,
+  slots: EnvironmentSlots,
+  facts: Facts,
+): boolean => {
+  const projectIds =
+    tier === "production"
+      ? slots.productionProjectId === null
+        ? []
+        : [slots.productionProjectId]
+      : [
+          ...slots.stageProjectIds,
+          ...projects.filter((row) => row.kind === "devstage").map((row) => row.project_id),
+        ];
+  return projectIds.some((id) => facts.projects.some((project) => project.id === id));
+};
+
 /** An application as a release takes it: its projects, and its production (`null`: none yet). */
-export const releaseTarget = (projects: ReadonlyArray<AppProjectRow>): ReleaseTarget => ({
+export const releaseTarget = (
+  projects: ReadonlyArray<AppProjectRow>,
+  slots: EnvironmentSlots,
+): ReleaseTarget => ({
   ...appTarget(projects),
-  productionProjectId: projects.find((row) => row.kind === "production")?.project_id ?? null,
+  productionProjectId: slots.productionProjectId,
 });
 
 /**
@@ -85,6 +125,7 @@ const newEnvironmentOffer = (
   projects: ReadonlyArray<AppProjectRow>,
   facts: Facts,
   tier: "stage" | "production",
+  slots: EnvironmentSlots,
 ): Decision => {
   const member = facts.members.find(
     (member) => member.userId === userId && member.status === "ACTIVE",
@@ -92,11 +133,7 @@ const newEnvironmentOffer = (
   const writer = offer(userId, "create_app", null, facts);
   if (member === undefined) return writer;
   if (!writer.allow && !member.canCreateProjects) return writer;
-  const slotTaken = projects.some(
-    (row) =>
-      (row.kind === tier || (tier === "stage" && row.kind === "devstage")) &&
-      facts.projects.some((project) => project.id === row.project_id),
-  );
+  const slotTaken = environmentSlotTaken(tier, projects, slots, facts);
   const decision = offer(
     userId,
     "attach",
@@ -122,13 +159,14 @@ export const appOffers = (
   userId: string,
   projects: ReadonlyArray<AppProjectRow>,
   facts: Facts,
+  slots: EnvironmentSlots,
 ): HqOffersOf<AppVerb> => ({
   ...(Object.fromEntries(
     CHANGE_VERBS.map((verb) => [verb, offer(userId, verb, appTarget(projects), facts)]),
   ) as HqOffersOf<(typeof CHANGE_VERBS)[number]>),
-  release: offer(userId, "release", releaseTarget(projects), facts),
-  add_stage: newEnvironmentOffer(userId, projects, facts, "stage"),
-  add_production: newEnvironmentOffer(userId, projects, facts, "production"),
+  release: offer(userId, "release", releaseTarget(projects, slots), facts),
+  add_stage: newEnvironmentOffer(userId, projects, facts, "stage", slots),
+  add_production: newEnvironmentOffer(userId, projects, facts, "production", slots),
 });
 
 /** Finishing a held environment reuses attach, independently of the create flow's empty slot. */
@@ -182,16 +220,13 @@ export const moveTarget = (
 export const productionTaken = (
   projectId: string,
   to: string,
-  appProjects: ReadonlyArray<AppProjectRow>,
+  slots: EnvironmentSlots,
   facts: Facts,
 ): boolean =>
   to === "production" &&
-  appProjects.some(
-    (row) =>
-      row.kind === "production" &&
-      row.project_id !== projectId &&
-      facts.projects.some((project) => project.id === row.project_id),
-  );
+  slots.productionProjectId !== null &&
+  slots.productionProjectId !== projectId &&
+  facts.projects.some((project) => project.id === slots.productionProjectId);
 
 export type MateVerb = "observe_mate" | "edit_mate_record" | "detach";
 
@@ -218,16 +253,23 @@ const KINDS: ReadonlyArray<RoleProjectKind> = ["mate", "devstage", "stage", "pro
 export const moveDestinations = (
   userId: string,
   mate: { readonly projectId: string; readonly held: Held; readonly recorded: boolean },
-  apps: ReadonlyArray<{ readonly id: string; readonly projects: ReadonlyArray<AppProjectRow> }>,
+  apps: ReadonlyArray<{
+    readonly id: string;
+    readonly projects: ReadonlyArray<AppProjectRow>;
+    readonly slots: EnvironmentSlots;
+  }>,
   facts: Facts,
 ): {
   readonly moveTo: Readonly<Record<string, ReadonlyArray<RoleProjectKind>>>;
   readonly refused: Readonly<Record<string, Readonly<Record<string, string>>>>;
 } => {
-  const into = [...apps.map((app) => [app.id, app.projects] as const), ["new", []] as const];
+  const into = [
+    ...apps,
+    { id: "new", projects: [], slots: { stageProjectIds: [], productionProjectId: null } },
+  ];
   const refused: Record<string, Record<string, string>> = {};
   const moveTo: Record<string, RoleProjectKind[]> = {};
-  for (const [id, projects] of into) {
+  for (const { id, projects, slots } of into) {
     const reasons: Record<string, string> = {};
     const kinds: RoleProjectKind[] = [];
     for (const kind of KINDS) {
@@ -239,7 +281,7 @@ export const moveDestinations = (
         ? decision.reason
         : !mate.recorded && isMateKind(kind)
           ? "mate_record_missing"
-          : productionTaken(mate.projectId, kind, projects, facts)
+          : productionTaken(mate.projectId, kind, slots, facts)
             ? "production_taken"
             : isMateKind(mate.held) !== isMateKind(kind)
               ? "class_move_receipt_required"

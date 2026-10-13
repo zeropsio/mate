@@ -141,7 +141,7 @@ const EXPECTED: ReadonlyArray<readonly [string, Row]> = [
 describe("HQ's offers", () => {
   describe.each(EXPECTED)("%s", (userId, expected) => {
     const offered = {
-      ...appOffers(userId, APP, { ...ORG, freshness: "cached" }),
+      ...appOffers(userId, APP, { ...ORG, freshness: "cached" }, slotsOf(APP)),
       ...environmentOffers(userId, "P_PROD", { ...ORG, freshness: "cached" }),
       ...orgOffers(userId, { ...ORG, freshness: "cached" }),
     };
@@ -151,7 +151,7 @@ describe("HQ's offers", () => {
       const facts = { ...ORG, freshness: "fresh" } as const;
       switch (verb) {
         case "release":
-          return can(person, verb, releaseTarget(APP), facts);
+          return can(person, verb, releaseTarget(APP, slotsOf(APP)), facts);
         case "keep_deploy_token":
           return can(person, verb, { projectId: "P_PROD" }, facts);
         case "create_app":
@@ -232,7 +232,12 @@ describe("HQ's offers on a Mate", () => {
     ["a reader", "reader", "P_MADE", true, {}],
   ])("moves for %s as the write decides", (_, userId, projectId, recorded, expected) => {
     expect(
-      moveDestinations(userId, { projectId, held: "mate", recorded }, APPS, FACTS).moveTo,
+      moveDestinations(
+        userId,
+        { projectId, held: "mate", recorded },
+        APPS.map((app) => ({ ...app, slots: slotsOf(app.projects) })),
+        FACTS,
+      ).moveTo,
     ).toEqual(
       Object.fromEntries(
         Object.entries(expected)
@@ -311,6 +316,25 @@ describe("a Basic user opens a Mate: HQ's offer and the door agree", () => {
 
 describe("new environment offers", () => {
   it.each([
+    { occupied: false, expected: { attach: true, release: false } },
+    { occupied: true, expected: { attach: false, release: true } },
+  ])(
+    "The same environment-owned production slot decides attachment and release ($occupied).",
+    ({ occupied, expected }) => {
+      const offered = appOffers(
+        "owner",
+        APP,
+        { ...ORG, freshness: "cached" },
+        {
+          stageProjectIds: ["P_STAGE"],
+          productionProjectId: occupied ? "P_PROD" : null,
+        },
+      );
+      expect(offered.add_production).toEqual(expected.attach ? ALLOW : no("slot_taken"));
+      expect(offered.release).toEqual(expected.release ? ALLOW : no("no_production"));
+    },
+  );
+  it.each([
     { who: "owner", projects: [], stage: true, production: true },
     {
       who: "owner",
@@ -348,8 +372,15 @@ describe("new environment offers", () => {
         canCreateProjects: member.userId === "dev",
       })),
     } as const;
-    const offered = appOffers(who, projects, facts);
+    const offered = appOffers(who, projects, facts, slotsOf(projects));
     expect(offered.add_stage?.allow).toBe(stage);
     expect(offered.add_production?.allow).toBe(production);
   });
+});
+
+const slotsOf = (
+  projects: ReadonlyArray<{ readonly project_id: string; readonly kind: string }>,
+) => ({
+  stageProjectIds: projects.filter((row) => row.kind === "stage").map((row) => row.project_id),
+  productionProjectId: projects.find((row) => row.kind === "production")?.project_id ?? null,
 });

@@ -73,11 +73,11 @@ export const operationRecords = (
   sql: SqlClient.SqlClient,
   appId: string,
 ): Effect.Effect<ReadonlyArray<OperationRecord>, SqlError> => sql<OperationRecord>`
-  SELECT j.id::text AS id, e.app_id::text AS "appId", j.project_id AS "projectId", 'hq' AS executor,
+  SELECT j.id::text AS id, e.app_id::text AS "appId", e.project_id AS "projectId", 'hq' AS executor,
     j.kind, j.state, j.process_id AS handle, (CASE WHEN j.process_id IS NULL THEN ARRAY[]::text[] ELSE ARRAY[j.process_id] END || coalesce(j.processes, ARRAY[]::text[])) AS handles,
     j.app_version_id AS "versionId", j.verified_version_id AS "verifiedVersionId", coalesce(j.evidence, jsonb_build_object('phase', j.state, 'processes', '[]'::jsonb, 'version', null,
       'nextActor', CASE WHEN j.ended_at IS NULL THEN 'hq' ELSE 'none' END,
       'nextAction', CASE WHEN j.ended_at IS NULL THEN 'Submit once and follow the accepted handles' ELSE 'Operation ended' END)) AS evidence,
     j.steps, j.reason
-  FROM hq_deploy_job j JOIN hq_environment e ON e.project_id = j.project_id
+  FROM hq_deploy_job j JOIN hq_environment e ON e.id = j.environment_id
   WHERE e.app_id::text = ${appId} ORDER BY j.id`;

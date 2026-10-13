@@ -192,6 +192,8 @@ const environmentRow = (
   name: string,
   order: number,
 ) => ({
+  id: projectId,
+  target: { kind: "zerops" as const, projectId },
   projectId,
   tier,
   name,
@@ -2175,16 +2177,16 @@ describe("structure", () => {
           const [rollout] = yield* sql<{ readonly id: string }>`
             SELECT id::text AS id FROM hq_rollout WHERE project_id = 'P_STAGE'`;
           yield* sql`
-            INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+            INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, state,
               reason, app_version_id, process_id, requested_by, created_at, updated_at, ended_at)
             VALUES
-              (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${one}, 'live', NULL,
+              (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'P_STAGE', 'web', 'web', ${one}, 'live', NULL,
                 'V1', 'J1', NULL, now() - interval '3 minutes', now() - interval '2 minutes',
                 now() - interval '2 minutes'),
-              (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${two}, 'failed',
+              (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'P_STAGE', 'web', 'web', ${two}, 'failed',
                 'failed: Build failed', 'V2', 'J2', 'dev', now() - interval '1 minute', now(),
                 now()),
-              (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'api', 'api', ${three}, 'queued', NULL,
+              (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'P_STAGE', 'api', 'api', ${three}, 'queued', NULL,
                 NULL, NULL, NULL, now(), now(), NULL)`;
           const read = (userId: string) =>
             Effect.map(structure.read(userId), (structureRead) =>
@@ -2272,14 +2274,14 @@ describe("structure", () => {
             VALUES (${shop.id}::uuid, 'merge', 'api', ${head}, now())
             RETURNING id::text AS id`;
           yield* sql`
-            INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+            INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, state,
               ended_at)
-            VALUES (${merge!.id}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${live}, 'live',
+            VALUES (${merge!.id}::bigint, 'deploy', 'P_STAGE', 'P_STAGE', 'web', 'web', ${live}, 'live',
               now())`;
           yield* sql`
-            INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+            INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, state,
               reason, ended_at)
-            SELECT ${merge!.id}::bigint, 'deploy', 'P_STAGE', 'api', 'api', ${head}, 'refused',
+            SELECT ${merge!.id}::bigint, 'deploy', 'P_STAGE', 'P_STAGE', 'api', 'api', ${head}, 'refused',
               'Zerops did not answer', now()
             FROM generate_series(1, ${JOBS_SHOWN})`;
           const [stage] = (yield* structure.read("dev")).apps.flatMap((app) =>
@@ -2388,9 +2390,9 @@ describe("structure", () => {
             );
           const jobs = (rolloutId: string, state: string, count: number) =>
             sql<{ readonly id: string }>`
-              INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+              INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, state,
                 ended_at)
-              SELECT ${rolloutId}::bigint, 'deploy', 'P_PROD', 'api', 'api', ${sha}, ${state},
+              SELECT ${rolloutId}::bigint, 'deploy', 'P_PROD', 'P_PROD', 'api', 'api', ${sha}, ${state},
                 ${sql.literal(state === "queued" || state === "building" ? "NULL" : "now()")}
               FROM generate_series(1, ${count})
               RETURNING id::text AS id`;
@@ -2447,9 +2449,9 @@ describe("structure", () => {
           yield* jobs(second, "live", 1);
           yield* sql`
             UPDATE hq_rollout SET left_out = jsonb_build_array(
-              jsonb_build_object('project_id', 'P_PROD', 'service', 'web', 'sha', ${sha}::text,
+              jsonb_build_object('environment_id', 'P_PROD', 'project_id', 'P_PROD', 'service', 'web', 'sha', ${sha}::text,
                 'job', ${building!.id}::text, 'reason', 'under way'),
-              jsonb_build_object('project_id', 'P_OTHER', 'service', 'web', 'sha', ${sha}::text,
+              jsonb_build_object('environment_id', 'P_OTHER', 'project_id', 'P_OTHER', 'service', 'web', 'sha', ${sha}::text,
                 'job', NULL, 'reason', 'elsewhere'))
             WHERE id = ${second}::bigint`;
           assert.deepStrictEqual((yield* standing)[1], [
@@ -2521,9 +2523,9 @@ describe("structure", () => {
             const job = (rolloutId: string, state: string) =>
               Effect.map(
                 sql<{ readonly id: string }>`
-                INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+                INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, state,
                   ended_at)
-                VALUES (${rolloutId}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${sha}, ${state},
+                VALUES (${rolloutId}::bigint, 'deploy', 'P_STAGE', 'P_STAGE', 'web', 'web', ${sha}, ${state},
                   ${sql.literal(state === "queued" || state === "building" ? "NULL" : "now()")})
                 RETURNING id::text AS id`,
                 (rows) => rows[0]!.id,
@@ -2555,7 +2557,7 @@ describe("structure", () => {
             // A birth that left its service out for that job under way runs until the job ends.
             yield* sql`
             UPDATE hq_rollout SET left_out = jsonb_build_array(jsonb_build_object(
-              'project_id', 'P_STAGE', 'service', 'web', 'sha', ${sha}::text,
+              'environment_id', 'P_STAGE', 'project_id', 'P_STAGE', 'service', 'web', 'sha', ${sha}::text,
               'job', ${later}::text, 'reason', 'under way'))
             WHERE id = ${birth!.id}::bigint`;
             assert.deepStrictEqual(yield* born, [{ ended: false }]);

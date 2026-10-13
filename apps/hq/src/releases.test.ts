@@ -166,6 +166,9 @@ const withReleases = <A, E>(
       INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
       VALUES ('P_PROD', ${appId}::uuid, 'production', 'owner'),
              ('P_STAGE', ${appId}::uuid, 'stage', 'owner')`;
+    yield* sql`INSERT INTO hq_environment (id, project_id, target, app_id, tier, name, sources, created_by)
+      VALUES ('P_PROD', 'P_PROD', 'zerops', ${appId}::uuid, 'production', 'production', ARRAY['release'], 'owner'),
+             ('P_STAGE', 'P_STAGE', 'zerops', ${appId}::uuid, 'stage', 'stage', ARRAY['main'], 'owner')`;
     tiers.set(`${appId}/production`, productionTier(appId, [{ hostname: "app", repo: "appdev" }]));
 
     const heads = new Map<string, string>();
@@ -816,9 +819,9 @@ describe("an application's releases over HQ's API", () => {
           const failed = "a".repeat(40);
           yield* rowsWhere(
             url,
-            `INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+            `INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, state,
                reason, ended_at)
-             SELECT id, 'deploy', 'P_PROD', 'app', 'appdev', '${failed}', 'failed',
+             SELECT id, 'deploy', 'P_PROD', 'P_PROD', 'app', 'appdev', '${failed}', 'failed',
                'failed: Build failed', now()
              FROM hq_rollout ORDER BY id LIMIT 1
              RETURNING 1`,

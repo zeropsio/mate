@@ -101,6 +101,8 @@ const fixture = Effect.gen(function* () {
     const environments = environmentsEnabled
       ? [
           {
+            id: "P",
+            target: { kind: "zerops" as const, projectId: "P" },
             projectId: "P",
             tier: "stage" as const,
             name: "stage",
@@ -146,6 +148,10 @@ const fixture = Effect.gen(function* () {
         ]
       : [];
     return {
+      slotsForApp: () => ({
+        stageProjectIds: environmentsEnabled ? ["P"] : [],
+        productionProjectId: null,
+      }),
       fingerprints: new Map(environmentsEnabled ? [["A", json(environments)]] : []),
       forApp: (
         _user: string,
@@ -1326,6 +1332,46 @@ describe("revisioned HQ values", () => {
           const resumed = resetOf(yield* client.take);
           assert.strictEqual(resumed.type, "scope-reset");
           assert.notInclude(json(resumed.values), '"incarnation":"first"');
+        }),
+      ),
+  );
+  it.effect(
+    "Navigation emits environment identity and target beside the legacy project address when environments arrive later.",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          const owner = yield* f.connect("owner");
+          yield* owner.subscribe([{ scope: nav }]);
+          const first = resetOf(yield* owner.take);
+          const before = first.values.find((value) => value.key === "app:A")!.value as {
+            environments: ReadonlyArray<unknown>;
+          };
+          assert.deepStrictEqual(before.environments, []);
+          yield* owner.take;
+          f.enableEnvironments();
+          yield* f.deployState("live");
+          const arrived = resetOf(yield* owner.take);
+          assert.strictEqual(arrived.incarnation, first.incarnation);
+          assert.strictEqual(arrived.revision, first.revision + 1);
+          const app = arrived.values.find((value) => value.key === "app:A")!.value as {
+            environments: Array<{
+              id: string;
+              projectId: string;
+              target: unknown;
+              jobs: Array<{ state: string }>;
+            }>;
+          };
+          const environment = app.environments[0]!;
+          assert.deepStrictEqual(
+            { id: environment.id, projectId: environment.projectId, target: environment.target },
+            {
+              id: "P",
+              projectId: "P",
+              target: { kind: "zerops", projectId: "P" },
+            },
+          );
+          assert.strictEqual(environment.jobs[0]!.state, "live");
         }),
       ),
   );

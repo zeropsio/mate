@@ -284,8 +284,8 @@ const withDeploys = <A, E>(
       INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
       VALUES ('P_STAGE', ${appId}::uuid, 'stage', 'owner')`;
     yield* sql`
-      INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
-      VALUES ('P_STAGE', ${appId}::uuid, 'stage', 'shop-stage', '{main}', 'owner')`;
+      INSERT INTO hq_environment (id, project_id, app_id, tier, name, sources, created_by)
+      VALUES ('P_STAGE', 'P_STAGE', ${appId}::uuid, 'stage', 'shop-stage', '{main}', 'owner')`;
     yield* keepToken("P_STAGE", "key-stage").pipe(Effect.provideService(SqlClient.SqlClient, sql));
     world.projects.push({
       id: "P_STAGE",
@@ -428,8 +428,8 @@ const withProduction = (appId: string, world: FakeWorld) =>
       INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
       VALUES ('P_PROD', ${appId}::uuid, 'production', 'owner')`;
     yield* sql`
-      INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
-      VALUES ('P_PROD', ${appId}::uuid, 'production', 'shop-production', '{release}', 'owner')`;
+      INSERT INTO hq_environment (id, project_id, app_id, tier, name, sources, created_by)
+      VALUES ('P_PROD', 'P_PROD', ${appId}::uuid, 'production', 'shop-production', '{release}', 'owner')`;
     yield* keepToken("P_PROD", "key-prod");
     world.projects.push({
       id: "P_PROD",
@@ -679,8 +679,8 @@ describe("deploys", () => {
             assert.deepStrictEqual(yield* birth, { ended: true });
             // A Run again after its first deploy is no birth's.
             yield* sql`
-            INSERT INTO hq_rollout (app_id, cause, project_id, by)
-            VALUES (${appId}::uuid, 'run_again', 'P_STAGE', 'dev')`;
+            INSERT INTO hq_rollout (app_id, cause, environment_id, project_id, by)
+            VALUES (${appId}::uuid, 'run_again', 'P_STAGE', 'P_STAGE', 'dev')`;
             assert.deepStrictEqual(yield* birth, { ended: true });
           }),
         ),
@@ -703,13 +703,13 @@ describe("deploys", () => {
           const sql = yield* SqlClient.SqlClient;
           yield* keyed(sql);
           const [rollout] = yield* sql<{ readonly id: string }>`
-            INSERT INTO hq_rollout (app_id, cause, project_id, planned_at)
-            VALUES (${appId}::uuid, 'env_added', 'P_STAGE', now())
+            INSERT INTO hq_rollout (app_id, cause, environment_id, project_id, planned_at)
+            VALUES (${appId}::uuid, 'env_added', 'P_STAGE', 'P_STAGE', now())
             RETURNING id::text AS id`;
           yield* sql`
-            INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+            INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, state,
               reason, ended_at)
-            VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${"6".repeat(40)},
+            VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'P_STAGE', 'web', 'web', ${"6".repeat(40)},
               'refused', 'Zerops did not answer', now())`;
           const births = yield* environmentBirths(sql);
           assert.deepStrictEqual(births.get("P_STAGE"), { ended: name.endsWith("ended") });
@@ -2187,18 +2187,18 @@ describe("deploys", () => {
           yield* takeover(
             Effect.gen(function* () {
               const [rollout] = yield* sql<{ readonly id: string }>`
-                INSERT INTO hq_rollout (app_id, cause, project_id, by, planned_at)
-                VALUES (${appId}::uuid, 'run_again', 'P_STAGE', 'dev', now())
+                INSERT INTO hq_rollout (app_id, cause, environment_id, project_id, by, planned_at)
+                VALUES (${appId}::uuid, 'run_again', 'P_STAGE', 'P_STAGE', 'dev', now())
                 RETURNING id::text AS id`;
               yield* sql`
-                INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, ord,
+                INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, ord,
                   state, submitted_at)
-                VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${web}, 0,
+                VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'P_STAGE', 'web', 'web', ${web}, 0,
                   'submitting', now())`;
               yield* sql`
-                INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, ord,
+                INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, ord,
                   state, requested_by)
-                VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'api', 'api', ${api}, 1,
+                VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'P_STAGE', 'api', 'api', ${api}, 1,
                   'queued', 'dev')`;
             }).pipe(Effect.orDie),
           );
@@ -2268,13 +2268,13 @@ describe("deploys", () => {
             yield* takeover(
               Effect.gen(function* () {
                 const [rollout] = yield* sql<{ readonly id: string }>`
-                INSERT INTO hq_rollout (app_id, cause, project_id, by, planned_at)
-                VALUES (${appId}::uuid, 'run_again', 'P_STAGE', 'dev', now())
+                INSERT INTO hq_rollout (app_id, cause, environment_id, project_id, by, planned_at)
+                VALUES (${appId}::uuid, 'run_again', 'P_STAGE', 'P_STAGE', 'dev', now())
                 RETURNING id::text AS id`;
                 yield* sql`
-                INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, service_id, repo,
+                INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, service_id, repo,
                   sha, ord, state, submitted_at, app_version_id, upload_recorded)
-                VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', ${web.id}, 'web',
+                VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'P_STAGE', 'web', ${web.id}, 'web',
                   ${sha}, 0, 'submitting', now(), 'V-legacy', false)`;
               }).pipe(Effect.orDie),
             );
@@ -2359,8 +2359,8 @@ describe("deploys", () => {
           yield* sql`DELETE FROM hq_environment`;
           yield* sql`UPDATE hq_app_project SET kind = 'production' WHERE project_id = 'P_STAGE'`;
           yield* sql`
-            INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
-            VALUES ('P_STAGE', ${appId}::uuid, 'production', 'shop', '{release}', 'owner')`;
+            INSERT INTO hq_environment (id, project_id, app_id, tier, name, sources, created_by)
+            VALUES ('P_STAGE', 'P_STAGE', ${appId}::uuid, 'production', 'shop', '{release}', 'owner')`;
           yield* keepToken("P_STAGE", "key-stage");
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
           tiers.set(`${appId}/production`, stageTier(appId, [{ hostname: "web" }]));
@@ -2560,9 +2560,9 @@ describe("deploys", () => {
           // Replaced, it follows nothing again until the next release.
           yield* sql`DELETE FROM hq_environment WHERE project_id = 'P_PROD'`;
           yield* sql`
-            INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by,
+            INSERT INTO hq_environment (id, project_id, app_id, tier, name, sources, created_by,
               release_floor)
-            VALUES ('P_PROD', ${appId}::uuid, 'production', 'shop-production', '{release}', 'owner',
+            VALUES ('P_PROD', 'P_PROD', ${appId}::uuid, 'production', 'shop-production', '{release}', 'owner',
               now())`;
           const before = (yield* deploys).filter((row) => row.project === "P_PROD").length;
           yield* ask({ cause: "env_added", projectId: "P_PROD", by: "owner" });

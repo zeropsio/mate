@@ -204,6 +204,7 @@ interface Target {
 
 /** An environment HQ deploys. */
 interface Environment {
+  readonly id: string;
   readonly project_id: string;
   readonly app_id: string;
   readonly name: string;
@@ -223,19 +224,20 @@ type Cause =
 
 /** A rollout as its row holds it. */
 interface Rollout {
+  readonly environment_id: string | null;
   readonly id: string;
   readonly app_id: string;
   readonly cause: Cause;
   readonly repo: string | null;
   readonly sha: string | null;
   readonly tag: string | null;
-  readonly project_id: string | null;
   readonly by: string | null;
   readonly planned: boolean;
 }
 
 /** A service a rollout asked nothing for, and why (`hq_rollout.left_out`). */
 interface LeftOut {
+  readonly environment_id: string;
   readonly project_id: string;
   readonly service: string;
   readonly sha: string;
@@ -246,6 +248,7 @@ interface LeftOut {
 
 /** A job not ended, with its environment and what asked for it. */
 interface Job {
+  readonly environment_id: string;
   readonly id: string;
   readonly rollout_id: string;
   readonly kind: "deploy" | "delta";
@@ -301,6 +304,7 @@ const LeftOutJson = Schema.fromJsonString(
   Schema.Array(
     Schema.Struct({
       project_id: Schema.String,
+      environment_id: Schema.String,
       service: Schema.String,
       sha: Schema.String,
       job: Schema.NullOr(Schema.String),
@@ -382,13 +386,13 @@ const readWhole = (stream: NodeStream.Readable, max: number) =>
 
 /** The columns a job is read by, with its environment and its rollout. */
 const JOB_COLUMNS = `
-  j.id::text AS id, j.rollout_id::text AS rollout_id, j.kind, j.project_id,
+  j.id::text AS id, j.rollout_id::text AS rollout_id, j.kind, j.environment_id, e.project_id,
   e.app_id::text AS app_id, e.name AS env_name, e.tier, j.service, j.service_id, j.repo, j.sha,
   j.label, j.services, j.processes, j.state, j.app_version_id, j.process_id, r.cause, r.by,
   (j.uploaded_at IS NOT NULL) AS uploaded,
   j.upload_recorded`;
 const JOB_FROM = `
-  hq_deploy_job j JOIN hq_environment e ON e.project_id = j.project_id
+  hq_deploy_job j JOIN hq_environment e ON e.id = j.environment_id
   JOIN hq_rollout r ON r.id = j.rollout_id`;
 
 export const deploysLayer = (
@@ -507,7 +511,7 @@ export const deploysLayer = (
           const appId = environment.app_id;
           const release =
             tag === undefined
-              ? yield* releases.newest(appId, environment.project_id)
+              ? yield* releases.newest(appId, environment.id)
               : yield* releaseOf(environment, tag);
           if (release === undefined) return { targets: [], note: undefined };
           const { runtimes, note } = yield* runtimesOf(appId, "production");
@@ -546,7 +550,7 @@ export const deploysLayer = (
             SELECT tag, entries FROM hq_release
             WHERE app_id::text = ${environment.app_id} AND tag = ${tag} AND (
               SELECT release_floor IS NULL OR released_at >= release_floor
-              FROM hq_environment WHERE project_id = ${environment.project_id})`,
+              FROM hq_environment WHERE id = ${environment.id})`,
           (rows) => rows[0],
         );
 
@@ -560,15 +564,15 @@ export const deploysLayer = (
 
       /** The environments of `where`, in the order they were declared. */
       const environmentsOf = (
-        where: { readonly appId: string } | { readonly projectId: string },
+        where: { readonly appId: string } | { readonly environmentId: string },
       ) =>
         "appId" in where
           ? sql<Environment>`
-              SELECT project_id, app_id::text AS app_id, name, tier, sources FROM hq_environment
+              SELECT id, project_id, app_id::text AS app_id, name, tier, sources FROM hq_environment
               WHERE app_id::text = ${where.appId} ORDER BY declared_seq`
           : sql<Environment>`
-              SELECT project_id, app_id::text AS app_id, name, tier, sources FROM hq_environment
-              WHERE project_id = ${where.projectId}`;
+              SELECT id, project_id, app_id::text AS app_id, name, tier, sources FROM hq_environment
+              WHERE id = ${where.environmentId}`;
 
       /** The commit's `zerops.yaml` under the first name zcli looks for, as read; none without one. */
       const zeropsYamlOf = (git: HqGit, appId: string, repo: string, sha: string) =>
@@ -609,15 +613,24 @@ export const deploysLayer = (
        */
       const makeJob = (
         rolloutId: string,
-        projectId: string,
+        environment: { readonly id: string; readonly project_id: string },
         target: Target,
         cause: Cause,
         by: string | null,
         skip: string | undefined,
       ) =>
         Effect.gen(function* () {
+          const projectId = environment.project_id;
+          const environmentId = environment.id;
           const left = (job: string | null, reason: string): { readonly left: LeftOut } => ({
-            left: { project_id: projectId, service: target.service, sha: target.sha, job, reason },
+            left: {
+              environment_id: environment.id,
+              project_id: environment.project_id,
+              service: target.service,
+              sha: target.sha,
+              job,
+              reason,
+            },
           });
           const [newest] = yield* sql<{
             readonly id: string;
@@ -627,7 +640,7 @@ export const deploysLayer = (
             SELECT id::text AS id, state,
               to_char(ended_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI "UTC"') AS ended
             FROM hq_deploy_job
-            WHERE project_id = ${projectId} AND kind = 'deploy' AND service = ${target.service}
+            WHERE environment_id = ${environmentId} AND kind = 'deploy' AND service = ${target.service}
               AND sha = ${target.sha}
             ORDER BY id DESC LIMIT 1`;
           if (newest !== undefined && IN_FLIGHT.has(newest.state)) {
@@ -635,7 +648,7 @@ export const deploysLayer = (
           }
           const [running] = yield* sql<{ readonly repo: string; readonly sha: string }>`
             SELECT repo, sha FROM hq_deploy_job
-            WHERE project_id = ${projectId} AND kind = 'deploy' AND service = ${target.service}
+            WHERE environment_id = ${environmentId} AND kind = 'deploy' AND service = ${target.service}
               AND state = 'live'
             ORDER BY ended_at DESC, id DESC LIMIT 1`;
           if (
@@ -652,9 +665,9 @@ export const deploysLayer = (
               ? `its deploy failed at ${newest.ended ?? "an unknown time"}; Run again to retry`
               : undefined);
           const [made] = yield* sql<{ readonly id: string }>`
-            INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, label, ord,
+            INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, label, ord,
               state, reason, requested_by, ended_at)
-            VALUES (${rolloutId}::bigint, 'deploy', ${projectId}, ${target.service}, ${target.repo},
+            VALUES (${rolloutId}::bigint, 'deploy', ${environmentId}, ${projectId}, ${target.service}, ${target.repo},
               ${target.sha}, ${target.label}, ${target.ord},
               ${why === undefined ? "queued" : "skipped"}, ${why === undefined ? null : cut(why)},
               ${by}, ${sql.literal(why === undefined ? "NULL" : "now()")})
@@ -669,7 +682,7 @@ export const deploysLayer = (
                     evidence || jsonb_build_object('phase', 'closed', 'nextActor', 'none',
                       'nextAction', ${`Superseded by ${short(target.sha)}`}::text)
                     ELSE evidence END
-              WHERE project_id = ${projectId} AND kind = 'deploy' AND service = ${target.service}
+              WHERE environment_id = ${environmentId} AND kind = 'deploy' AND service = ${target.service}
                 AND (state = 'queued' OR (state = 'submitting' AND process_id IS NULL
                   AND ended_at IS NULL AND evidence->>'phase' = 'waiting-for-build'))
                 AND id <> ${made!.id}::bigint`;
@@ -829,7 +842,7 @@ export const deploysLayer = (
             case "env_added":
             case "key_kept": {
               for (const environment of yield* environmentsOf({
-                projectId: rollout.project_id ?? "",
+                environmentId: rollout.environment_id ?? "",
               })) {
                 const wanted = yield* wantedOf(environment);
                 if (wanted.note !== undefined) notes.push(wanted.note);
@@ -856,9 +869,9 @@ export const deploysLayer = (
                 if (tier.added.length === 0) continue;
                 for (const environment of tier.environments) {
                   yield* sql`
-                    INSERT INTO hq_deploy_job (rollout_id, kind, project_id, sha, services, ord,
+                    INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, sha, services, ord,
                       state)
-                    VALUES (${rollout.id}::bigint, 'delta', ${environment.project_id},
+                    VALUES (${rollout.id}::bigint, 'delta', ${environment.id}, ${environment.project_id},
                       ${rollout.sha}, ${textArray(tier.added)}, -1, 'queued')`;
                   count += 1;
                 }
@@ -869,7 +882,7 @@ export const deploysLayer = (
                   const by = rollout.cause === "release" ? rollout.by : null;
                   const job = yield* makeJob(
                     rollout.id,
-                    environment.project_id,
+                    environment,
                     target,
                     rollout.cause,
                     by,
@@ -1046,7 +1059,7 @@ export const deploysLayer = (
               AND (service IS NULL OR service = ${job.service})
               AND NOT EXISTS (
                 SELECT 1 FROM hq_deploy_job
-                WHERE project_id = ${job.project_id} AND service = ${job.service}
+                WHERE environment_id = ${job.environment_id} AND service = ${job.service}
                   AND state = 'live' AND sha <> ${job.sha}
               )`;
           if (intended.length === 0) return undefined;
@@ -1451,7 +1464,7 @@ export const deploysLayer = (
             }),
           );
           if (ended.state !== "imported") return yield* end(job, ended);
-          const [environment] = yield* environmentsOf({ projectId: job.project_id });
+          const [environment] = yield* environmentsOf({ environmentId: job.environment_id });
           const wanted = environment === undefined ? { targets: [] } : yield* wantedOf(environment);
           const setups = new Map(
             (yield* runtimesOf(job.app_id, job.tier)).runtimes.map(
@@ -1467,7 +1480,14 @@ export const deploysLayer = (
           yield* leader.write(
             Effect.gen(function* () {
               for (const { target, skip } of deploys) {
-                yield* makeJob(job.rollout_id, job.project_id, target, job.cause, job.by, skip);
+                yield* makeJob(
+                  job.rollout_id,
+                  { id: job.environment_id, project_id: job.project_id },
+                  target,
+                  job.cause,
+                  job.by,
+                  skip,
+                );
               }
             }),
           );
@@ -1479,7 +1499,7 @@ export const deploysLayer = (
         Effect.map(
           sql<Job>`
             SELECT ${sql.literal(JOB_COLUMNS)} FROM ${sql.literal(JOB_FROM)}
-            WHERE j.project_id = ${projectId} AND j.ended_at IS NULL
+            WHERE j.environment_id = ${projectId} AND j.ended_at IS NULL
             ORDER BY (j.state <> 'queued') DESC, j.rollout_id, j.ord, j.id
             LIMIT 1`,
           (rows) => rows[0],
@@ -1610,7 +1630,7 @@ export const deploysLayer = (
       const rolloutRow = (rolloutId: string) =>
         Effect.map(
           sql<Rollout>`
-            SELECT id::text AS id, app_id::text AS app_id, cause, repo, sha, tag, project_id, by,
+            SELECT id::text AS id, app_id::text AS app_id, cause, repo, sha, tag, environment_id, by,
               planned_at IS NOT NULL AS planned
             FROM hq_rollout WHERE id = ${rolloutId}::bigint`,
           (rows) => rows[0],
@@ -1644,19 +1664,17 @@ export const deploysLayer = (
               j.process_id, j.reason, j.evidence, j.app_version_id, j.verified_version_id, j.steps,
               CASE WHEN j.state = 'queued' THEN (
                 SELECT o.id::text FROM hq_deploy_job o
-                WHERE o.project_id = j.project_id AND o.ended_at IS NULL AND o.id <> j.id
+                WHERE o.environment_id = j.environment_id AND o.ended_at IS NULL AND o.id <> j.id
                   AND (o.state <> 'queued' OR (o.rollout_id, o.ord, o.id) < (j.rollout_id, j.ord, j.id))
                 ORDER BY (o.state <> 'queued') DESC, o.rollout_id, o.ord, o.id
                 LIMIT 1
               ) END AS behind
-            FROM hq_deploy_job j JOIN hq_environment e ON e.project_id = j.project_id
+            FROM hq_deploy_job j JOIN hq_environment e ON e.id = j.environment_id
             WHERE j.rollout_id = ${rolloutId}::bigint
             ORDER BY j.id`;
           const names = new Map(
-            (yield* sql<{ readonly project_id: string; readonly name: string }>`
-              SELECT project_id, name FROM hq_environment`).map(
-              (row) => [row.project_id, row.name] as const,
-            ),
+            (yield* sql<{ readonly id: string; readonly name: string }>`
+              SELECT id, name FROM hq_environment`).map((row) => [row.id, row.name] as const),
           );
           const jobsAsked: Array<HqDeployOutcome> = [
             ...jobs.map((job) => ({
@@ -1675,7 +1693,7 @@ export const deploysLayer = (
               reason: job.reason,
             })),
             ...rollout.left_out.map((left) => ({
-              environment: names.get(left.project_id) ?? left.project_id,
+              environment: names.get(left.environment_id) ?? left.environment_id,
               kind: "deploy" as const,
               service: left.service,
               sha: left.sha,
@@ -1694,12 +1712,13 @@ export const deploysLayer = (
           const rollout = yield* rolloutRow(rolloutId);
           if (rollout === undefined) return NO_DEPLOYS;
           yield* plan(rollout);
-          const projects = yield* sql<{ readonly project_id: string }>`
-            SELECT DISTINCT project_id FROM hq_deploy_job
+          const projects = yield* sql<{ readonly environment_id: string }>`
+            SELECT DISTINCT environment_id FROM hq_deploy_job
             WHERE rollout_id = ${rolloutId}::bigint AND ended_at IS NULL`;
           yield* Effect.forEach(
             projects,
-            ({ project_id: projectId }) => Effect.andThen(advance(projectId), worked(projectId)),
+            ({ environment_id: environmentId }) =>
+              Effect.andThen(advance(environmentId), worked(environmentId)),
             { concurrency: "unbounded", discard: true },
           );
           return yield* answerOf(rolloutId);
@@ -1727,9 +1746,9 @@ export const deploysLayer = (
               ),
             );
           }
-          const open = yield* sql<{ readonly project_id: string }>`
-            SELECT DISTINCT project_id FROM hq_deploy_job WHERE ended_at IS NULL`;
-          for (const { project_id: projectId } of open) yield* worked(projectId);
+          const open = yield* sql<{ readonly environment_id: string }>`
+            SELECT DISTINCT environment_id FROM hq_deploy_job WHERE ended_at IS NULL`;
+          for (const { environment_id: environmentId } of open) yield* worked(environmentId);
         }).pipe(Effect.catch((error) => Effect.logWarning("deploy dispatch failed", error)));
         // At takeover, after every event's write, and once git opens (planning reads it): what the
         // table holds, and nothing else.
@@ -1769,10 +1788,11 @@ export const deploysLayer = (
           const seenApp = can(person, "read_app", { projectIds }, view);
           if (!seenApp.allow) return yield* refuse("forbidden", seenApp.reason, log);
           const [environment] = yield* sql<{
+            readonly id: string;
             readonly project_id: string;
             readonly tier: "stage" | "production";
           }>`
-            SELECT project_id, tier FROM hq_environment
+            SELECT id, project_id, tier FROM hq_environment
             WHERE app_id::text = ${appId} AND name = ${name}`;
           if (environment === undefined) {
             return yield* refuse("environment_not_found", "environment_not_found", log);
@@ -1824,11 +1844,11 @@ export const deploysLayer = (
                       coalesce(evidence->>'phase' = 'waiting-for-build' AND process_id IS NULL AND ended_at IS NULL, false) AS waiting,
                       id = (
                       SELECT max(id) FROM hq_deploy_job
-                      WHERE project_id = ${environment.project_id} AND kind = 'deploy'
+                      WHERE environment_id = ${environment.id} AND kind = 'deploy'
                         AND service = ${service}
                     ) AS newest
                     FROM hq_deploy_job
-                    WHERE project_id = ${environment.project_id} AND kind = 'deploy'
+                    WHERE environment_id = ${environment.id} AND kind = 'deploy'
                       AND service = ${service} AND sha = ${sha}
                     ORDER BY id DESC LIMIT 1`;
                   if (repeated === undefined) return { refused: "deploy_not_found" } as const;
@@ -1848,13 +1868,13 @@ export const deploysLayer = (
                     if (superseded.length === 0) return { refused: "deploy_running" } as const;
                   }
                   const [rollout] = yield* sql<{ readonly id: string }>`
-                    INSERT INTO hq_rollout (app_id, cause, project_id, service, sha, by, planned_at)
-                    VALUES (${appId}::uuid, 'run_again', ${environment.project_id}, ${service},
+                    INSERT INTO hq_rollout (app_id, cause, environment_id, project_id, service, sha, by, planned_at)
+                    VALUES (${appId}::uuid, 'run_again', ${environment.id}, ${environment.project_id}, ${service},
                       ${sha}, ${userId}, now())
                     RETURNING id::text AS id`;
                   yield* makeJob(
                     rollout!.id,
-                    environment.project_id,
+                    { id: environment.id, project_id: environment.project_id },
                     {
                       service,
                       repo: repeated.repo,
@@ -1895,14 +1915,14 @@ export const deploysLayer = (
               const rollout = yield* leader.write(
                 Effect.gen(function* () {
                   const [made] = yield* sql<{ readonly id: string }>`
-                    INSERT INTO hq_rollout (app_id, cause, project_id, service, by, planned_at)
-                    VALUES (${appId}::uuid, 'add_service', ${environment.project_id}, ${service},
+                    INSERT INTO hq_rollout (app_id, cause, environment_id, project_id, service, by, planned_at)
+                    VALUES (${appId}::uuid, 'add_service', ${environment.id}, ${environment.project_id}, ${service},
                       ${userId}, now())
                     RETURNING id::text AS id`;
                   yield* sql`
-                    INSERT INTO hq_deploy_job (rollout_id, kind, project_id, services, ord, state,
+                    INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, services, ord, state,
                       requested_by)
-                    VALUES (${made!.id}::bigint, 'delta', ${environment.project_id},
+                    VALUES (${made!.id}::bigint, 'delta', ${environment.id}, ${environment.project_id},
                       ${textArray([service])}, -1, 'queued', ${userId})`;
                   return made!.id;
                 }),

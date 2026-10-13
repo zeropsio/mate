@@ -5,13 +5,14 @@ import type * as SqlClient from "effect/sql/SqlClient";
 import type { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { environmentBirths } from "./births.ts";
-import { environmentOffers } from "./offers.ts";
+import { environmentOffers, environmentSlots, type EnvironmentSlots } from "./offers.ts";
 import type { OrgView } from "./roles.ts";
 import type { EnvironmentView, JobView, StructureRead } from "./structure.ts";
 
 /** How many of an environment's newest jobs its view carries. */
 export const JOBS_SHOWN = 20;
 export interface EnvironmentSource {
+  readonly slotsForApp: (appId: string) => EnvironmentSlots;
   readonly fingerprints: ReadonlyMap<string, string>;
   readonly forApp: (
     userId: string,
@@ -23,7 +24,9 @@ export interface EnvironmentSource {
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 export const readEnvironmentSource = Effect.fnUntraced(function* (sql: SqlClient.SqlClient) {
   const environments = yield* sql<{
+    readonly environment_id: string;
     readonly project_id: string;
+    readonly target: "zerops";
     readonly app_id: string;
     readonly tier: "stage" | "production";
     readonly name: string;
@@ -32,7 +35,7 @@ export const readEnvironmentSource = Effect.fnUntraced(function* (sql: SqlClient
     readonly key_held: boolean;
     readonly key_invalid: boolean;
   }>`
-SELECT e.project_id, e.app_id::text AS app_id, e.tier, e.name, e.sources,
+SELECT e.id AS environment_id, e.project_id, e.target, e.app_id::text AS app_id, e.tier, e.name, e.sources,
        (rank() OVER (PARTITION BY e.app_id ORDER BY e.declared_seq))::int AS "order",
        t.project_id IS NOT NULL AS key_held,
        t.invalid_since IS NOT NULL AS key_invalid
@@ -41,7 +44,7 @@ ORDER BY e.declared_seq`;
   const iso = (column: string) =>
     `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
   const jobs = yield* sql<{
-    readonly project_id: string;
+    readonly environment_id: string;
     readonly id: string;
     readonly kind: JobView["kind"];
     readonly service: string | null;
@@ -62,14 +65,14 @@ ORDER BY e.declared_seq`;
   }>`
 WITH ranked AS (
   SELECT j.*,
-         row_number() OVER (PARTITION BY j.project_id ORDER BY j.id DESC) AS place,
+         row_number() OVER (PARTITION BY j.environment_id ORDER BY j.id DESC) AS place,
          row_number() OVER (
-           PARTITION BY j.project_id, j.service, j.state = 'live'
+           PARTITION BY j.environment_id, j.service, j.state = 'live'
            ORDER BY j.ended_at DESC NULLS LAST, j.id DESC
          ) AS live_place
   FROM hq_deploy_job j
 )
-SELECT j.project_id, j.id::text AS id, j.kind, j.service, j.sha, j.state, r.cause,
+SELECT j.environment_id, j.id::text AS id, j.kind, j.service, j.sha, j.state, r.cause,
        CASE r.cause WHEN 'merge' THEN r.sha WHEN 'release' THEN r.tag END AS ref,
        j.reason,
        j.app_version_id, j.process_id, j.evidence, j.steps, j.verified_version_id, j.requested_by,
@@ -79,7 +82,7 @@ SELECT j.project_id, j.id::text AS id, j.kind, j.service, j.sha, j.state, r.caus
 FROM ranked j JOIN hq_rollout r ON r.id = j.rollout_id
 WHERE j.place <= ${JOBS_SHOWN}
    OR (j.kind = 'deploy' AND j.state = 'live' AND j.live_place = 1)
-ORDER BY j.project_id, j.id DESC`;
+ORDER BY j.environment_id, j.id DESC`;
   // Each production's newest release, as its rollout stands there: ended once every job
   // it asked for there ended, and every job of a commit it left out as under way there.
   // Each production's newest release by version made since its release floor, as its rollout stands there: ended once
@@ -88,7 +91,7 @@ ORDER BY j.project_id, j.id DESC`;
   // A release with no rollout of its own — made before rollouts were, recorded from git,
   // or a snapshot — deploys nothing more: ended as it was made.
   const rollouts = yield* sql<{
-    readonly project_id: string;
+    readonly environment_id: string;
     readonly id: string | null;
     readonly tag: string;
     readonly planned: boolean;
@@ -98,12 +101,12 @@ ORDER BY j.project_id, j.id DESC`;
     readonly left_out: ReleaseRollout["leftOut"];
   }>`
 WITH newest AS (
-  SELECT DISTINCT ON (e.project_id) e.project_id, h.app_id, h.tag, h.released_at
+  SELECT DISTINCT ON (e.id) e.id AS environment_id, h.app_id, h.tag, h.released_at
   FROM hq_environment e
   JOIN hq_release h ON h.app_id = e.app_id AND h.state = 'approved'
     AND (e.release_floor IS NULL OR h.released_at >= e.release_floor)
   WHERE e.tier = 'production'
-  ORDER BY e.project_id,
+  ORDER BY e.id,
     string_to_array(substr(h.tag, 2), '.')::numeric[] DESC
 ),
 rollout AS (
@@ -115,36 +118,36 @@ rollout AS (
   ORDER BY r.app_id, r.tag, r.id DESC
 ),
 left_out AS (
-  SELECT r.id AS rollout_id, l.project_id, l.service, l.sha, l.job, l.reason
+  SELECT r.id AS rollout_id, l.environment_id, l.service, l.sha, l.job, l.reason
   FROM rollout r,
        jsonb_to_recordset(r.left_out)
-         AS l(project_id text, service text, sha text, job text, reason text)
+         AS l(environment_id text, service text, sha text, job text, reason text)
 ),
 ends AS (
-  SELECT j.rollout_id, j.project_id, j.state, j.ended_at
+  SELECT j.rollout_id, j.environment_id, j.state, j.ended_at
   FROM hq_deploy_job j JOIN rollout r ON r.id = j.rollout_id
   UNION ALL
-  SELECT l.rollout_id, l.project_id, j.state, j.ended_at
+  SELECT l.rollout_id, l.environment_id, j.state, j.ended_at
   FROM left_out l JOIN hq_deploy_job j ON j.id = l.job::bigint
 ),
 standing AS (
-  SELECT e.project_id, n.tag, n.released_at, r.id, r.planned_at, r.note,
+  SELECT e.id AS environment_id, n.tag, n.released_at, r.id, r.planned_at, r.note,
          r.id IS NULL OR (r.planned_at IS NOT NULL AND NOT EXISTS (
            SELECT 1 FROM ends x
-           WHERE x.rollout_id = r.id AND x.project_id = e.project_id
+           WHERE x.rollout_id = r.id AND x.environment_id = e.id
              AND x.ended_at IS NULL)) AS ended,
          r.id IS NOT NULL AND r.planned_at IS NOT NULL AND r.note IS NULL
            AND NOT EXISTS (
              SELECT 1 FROM ends x
-             WHERE x.rollout_id = r.id AND x.project_id = e.project_id
+             WHERE x.rollout_id = r.id AND x.environment_id = e.id
                AND x.state <> 'live') AS landed,
          (SELECT max(x.ended_at) FROM ends x
-          WHERE x.rollout_id = r.id AND x.project_id = e.project_id) AS last_ended
+          WHERE x.rollout_id = r.id AND x.environment_id = e.id) AS last_ended
   FROM newest n
-  JOIN hq_environment e ON e.project_id = n.project_id
+  JOIN hq_environment e ON e.id = n.environment_id
   LEFT JOIN rollout r ON r.app_id = n.app_id AND r.tag = n.tag
 )
-SELECT s.project_id, s.id::text AS id, s.tag,
+SELECT s.environment_id, s.id::text AS id, s.tag,
        s.id IS NULL OR s.planned_at IS NOT NULL AS planned,
        s.ended, s.landed,
        CASE WHEN s.ended
@@ -156,11 +159,11 @@ SELECT s.project_id, s.id::text AS id, s.tag,
          SELECT jsonb_agg(jsonb_build_object('service', l.service, 'sha', l.sha,
                   'job', l.job, 'reason', l.reason))
          FROM left_out l
-         WHERE l.rollout_id = s.id AND l.project_id = s.project_id
+         WHERE l.rollout_id = s.id AND l.environment_id = s.environment_id
        ), '[]'::jsonb) AS left_out
 FROM standing s`;
-  const releaseOf = (projectId: string): ReleaseRollout | null => {
-    const row = rollouts.find((rollout) => rollout.project_id === projectId);
+  const releaseOf = (environmentId: string): ReleaseRollout | null => {
+    const row = rollouts.find((rollout) => rollout.environment_id === environmentId);
     return row === undefined
       ? null
       : {
@@ -174,8 +177,11 @@ FROM standing s`;
         };
   };
   const born = yield* environmentBirths(sql);
-  const birthOf = (projectId: string): EnvironmentBirth | null => born.get(projectId) ?? null;
+  const birthOf = (environmentId: string): EnvironmentBirth | null =>
+    born.get(environmentId) ?? null;
   const environmentView = (row: (typeof environments)[number]): EnvironmentView => ({
+    id: row.environment_id,
+    target: { kind: row.target, projectId: row.project_id },
     projectId: row.project_id,
     tier: row.tier,
     name: row.name,
@@ -184,7 +190,7 @@ FROM standing s`;
     keyHeld: row.key_held,
     keyInvalid: row.key_invalid,
     jobs: jobs
-      .filter((job) => job.project_id === row.project_id)
+      .filter((job) => job.environment_id === row.environment_id)
       .map((job): JobView => ({
         id: job.id,
         kind: job.kind,
@@ -204,8 +210,8 @@ FROM standing s`;
         endedAt: job.ended_at,
         supersededBy: job.superseded_by,
       })),
-    release: releaseOf(row.project_id),
-    birth: birthOf(row.project_id),
+    release: releaseOf(row.environment_id),
+    birth: birthOf(row.environment_id),
   });
   const groups = new Map<string, Array<EnvironmentView>>();
   for (const row of environments) {
@@ -214,6 +220,7 @@ FROM standing s`;
     groups.set(row.app_id, values);
   }
   return {
+    slotsForApp: (appId) => environmentSlots(environments.filter((row) => row.app_id === appId)),
     fingerprints: new Map([...groups].map(([appId, values]) => [appId, json(values)])),
     forApp: (userId, appId, facts, access) =>
       access.allow

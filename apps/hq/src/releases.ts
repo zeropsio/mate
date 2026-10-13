@@ -49,7 +49,7 @@ import type { SqlError } from "effect/sql/SqlError";
 import { appendEvent } from "./gitEvents.ts";
 import { GitHost, mainOf } from "./gitHost.ts";
 import { Leader, type NotLeader } from "./leader.ts";
-import { appTarget, releaseTarget } from "./offers.ts";
+import { appTarget, releaseTarget, readEnvironmentSlots } from "./offers.ts";
 import { makeReleaseNavigationReader, type ReleaseNavigationSource } from "./releaseNavigation.ts";
 import { RecipeTiers, type RecipeTierUnreadable } from "./recipeTiers.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
@@ -86,13 +86,13 @@ export class Releases extends Context.Service<
       request: RollbackRequest,
     ) => Made;
     /**
-     * The newest approved release by version made since the production environment `projectId`'s
+     * The newest approved release by version made since the production environment `environmentId`'s
      * release floor, where it has one (`hq_environment.release_floor`): what that production follows. None before one, whatever older releases
      * the application has.
      */
     readonly newest: (
       appId: string,
-      projectId: string,
+      environmentId: string,
     ) => Effect.Effect<Release | undefined, SqlError>;
     readonly navigation: Effect.Effect<
       ReleaseNavigationSource,
@@ -184,7 +184,10 @@ export const releasesLayer: Layer.Layer<
       decidedFresh(
         Effect.gen(function* () {
           const facts = yield* roles.forWrite;
-          const target = releaseTarget(yield* seenApp(userId, appId, facts));
+          const target = releaseTarget(
+            yield* seenApp(userId, appId, facts),
+            yield* readEnvironmentSlots(sql, appId),
+          );
           yield* allowed(userId, appId, can(person(userId), "release", target, facts));
           // Allowed only with a production: `can` refuses `no_production` to everyone else.
           if (target.productionProjectId === null)
@@ -227,10 +230,8 @@ export const releasesLayer: Layer.Layer<
               SELECT 1 FROM hq_repo WHERE app_id::text = ${appId} AND name = ${RECIPE_REPO}
               FOR UPDATE`;
             if (repos.length === 0) return yield* refuse("conflict", "no_group_main");
-            const [production] = yield* sql<{ readonly project_id: string }>`
-              SELECT project_id FROM hq_app_project
-              WHERE app_id::text = ${appId} AND kind = 'production'`;
-            if (production?.project_id !== wanted.productionProjectId) {
+            const slots = yield* readEnvironmentSlots(sql, appId);
+            if (slots.productionProjectId !== wanted.productionProjectId) {
               return yield* refuse("conflict", "production_moved");
             }
             const tags = (yield* releasesOf(appId)).map((release) => release.tag);
@@ -305,13 +306,13 @@ export const releasesLayer: Layer.Layer<
         gitHost.git,
         (appId) => recipes.read(appId, "production"),
       ),
-      newest: (appId, projectId) =>
+      newest: (appId, environmentId) =>
         Effect.map(
           sql<ReleaseRow>`
             SELECT ${sql.literal(RELEASE_COLUMNS)} FROM hq_release
             WHERE app_id::text = ${appId} AND state = 'approved' AND (
               SELECT release_floor IS NULL OR released_at >= release_floor
-              FROM hq_environment WHERE project_id = ${projectId})`,
+              FROM hq_environment WHERE id = ${environmentId})`,
           (rows) => rows.map(releaseOf).sort((a, b) => compareReleaseTags(b.tag, a.tag))[0],
         ),
       changes: SubscriptionRef.changes(ticks),
