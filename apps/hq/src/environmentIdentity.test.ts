@@ -394,15 +394,35 @@ describe("environment identity expansion", () => {
             const [rollout] = yield* old.sql<{
               id: string;
             }>`SELECT id::text AS id FROM hq_rollout WHERE project_id = 'P_MATE'`;
+            yield* old.sql`INSERT INTO hq_repo (app_id, name, created_by) VALUES (${appId}::uuid, 'web', 'owner')`;
+            const git = yield* old.gitHost.git;
+            const repo = { appId, id: "web" };
+            yield* git.create(repo);
+            // Retain the historical job's commit without moving main and planning ordinary work.
+            const commit = yield* git.commitFiles(repo, "refs/heads/backout-fixture", {
+              files: { "index.js": 'console.log("backout");\n' },
+              expectedHead: null,
+              message: "Identity backout fixture",
+              author: { name: "Identity test", email: "identity@mate.test" },
+            });
+            if (!("sha" in commit)) throw new Error("Expected a new repository commit");
             const [nullHistory] = yield* old.sql.withTransaction(
               Effect.gen(function* () {
                 yield* old.sql`INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state, ended_at)
-                VALUES (${rollout!.id}::bigint, 'deploy', 'P_MATE', 'web', 'web', ${SHA}, 'failed', now())`;
+                VALUES (${rollout!.id}::bigint, 'deploy', 'P_MATE', 'web', 'web', ${commit.sha}, 'failed', now())`;
                 yield* old.sql`UPDATE hq_rollout SET left_out = '[{"project_id":"P_MATE","service":"web","job":null,"reason":"legacy replacement","extra":{"keep":true}}]'::jsonb WHERE id = ${rollout!.id}::bigint`;
                 return yield* old.sql<{
                   id: string;
                 }>`INSERT INTO hq_rollout (app_id, cause, project_id, planned_at) VALUES (${appId}::uuid, 'migrated', NULL, now()), (${appId}::uuid, 'env_added', 'removed-history', now()) RETURNING id::text AS id`;
               }),
+            );
+            const jobs = yield* old.sql<{ readonly sha: string }>`SELECT sha FROM hq_deploy_job`;
+            assert.deepStrictEqual(
+              yield* git.missingCommits(
+                repo,
+                jobs.map((job) => job.sha),
+              ),
+              [],
             );
             assert.deepStrictEqual(yield* old.sql`SELECT id, project_id FROM hq_environment`, [
               { id: null, project_id: "P_MATE" },
