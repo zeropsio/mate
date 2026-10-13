@@ -100,7 +100,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
    * tooltip, and toolbar controls cannot quietly drift apart.
    */
   --control-radius: 0.5rem;
-  --sidebar-content-inset: 0.75rem;
   --sidebar-control-gap: 0.5rem;
   --sidebar-icon-color: color-mix(
     in srgb,
@@ -5707,7 +5706,7 @@ code {
     align-items: center;
     /* As tall as a Mate's card under it, the row's two lines in its 11 px padding (the owner,
        2026-10-13: "it doesn't look good that this upper card is actually smaller"). */
-    height: 66px;
+    height: var(--sidebar-chief-row-height);
     /* Its room above it the same as on its left. */
     margin-block-start: calc(var(--sidebar-content-inset) + 1px);
     margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
