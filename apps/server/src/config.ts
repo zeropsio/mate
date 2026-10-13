@@ -103,6 +103,8 @@ export class ServerConfig extends Context.Service<
      * every child the server starts sees it as its `HOME` (`process/childHome.ts`).
      */
     readonly homeDir: string;
+    /** Resolved cgroup discovery at the kernel boundary; absent discovers the current container. */
+    readonly cgroupDirectories?: ReadonlyArray<string>;
     readonly staticDir: string | undefined;
     readonly devUrl: URL | undefined;
     readonly devAllowedOrigins: ReadonlyArray<string>;

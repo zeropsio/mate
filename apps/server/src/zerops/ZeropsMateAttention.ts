@@ -278,7 +278,7 @@ export const layer = Layer.effect(
       health: resourceHealthChanges(
         config.stateDir,
         config.homeDir,
-        undefined,
+        config.cgroupDirectories,
         Stream.fromPubSub(healthDemand),
       ).pipe(
         // One sample a CPU window at most, the latest, and only one that says something new.

@@ -29,6 +29,7 @@ import * as ServerConfig from "../src/config.ts";
 import { makeServerLayer } from "../src/server.ts";
 import { ServerRuntimeStartup } from "../src/serverRuntimeStartup.ts";
 import { MateEngine, type MateEngineService } from "../src/engine/MateEngine.ts";
+import { ZeropsMateAttention } from "../src/zerops/ZeropsMateAttention.ts";
 import { ZeropsBrowserStream } from "../src/zerops/ZeropsBrowserStream.ts";
 import {
   ProviderInstances,
@@ -54,6 +55,8 @@ export interface ScenarioMateOptions {
   readonly drivers: ReadonlyArray<AnyProviderDriver<never>>;
   /** A state directory to start from (a copied history); a fresh one when absent. */
   readonly stateFrom?: string;
+  /** Raw kernel directory discovery, read by the real resource collector. */
+  readonly cgroupDirectories?: ReadonlyArray<string>;
 }
 
 export interface ScenarioMate {
@@ -61,6 +64,7 @@ export interface ScenarioMate {
   readonly origin: string;
   /** The real engine and client wire, for seeding and projection witnesses. */
   readonly engine: MateEngineService;
+  readonly attention: ZeropsMateAttention["Service"];
   readonly browser: ZeropsBrowserStream["Service"];
   readonly providers: ProviderInstances["Service"];
   readonly root: string;
@@ -140,16 +144,20 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
       if (!("port" in address))
         return yield* Effect.die(new Error("Scenario Mate has no TCP port"));
       const engine = yield* MateEngine.pipe(Effect.provide(context));
+      const attention = yield* ZeropsMateAttention.pipe(Effect.provide(context));
       const browser = yield* ZeropsBrowserStream.pipe(Effect.provide(context));
       const providers = yield* ProviderInstances.pipe(
         Effect.provide(ProviderInstancesLayer),
         Effect.provide(context),
       );
-      return { port: address.port, engine, browser, providers };
+      return { port: address.port, engine, attention, browser, providers };
     }).pipe(
       Effect.updateService(ServerConfig.ServerConfig, (config) => ({
         ...config,
         homeDir,
+        ...(options.cgroupDirectories === undefined
+          ? {}
+          : { cgroupDirectories: options.cgroupDirectories }),
         // A container's Mate opens on its workspace as its project, as `mate serve` does.
         autoBootstrapProjectFromCwd: true,
         // A test Mate never opens the developer's browser on its origin.
@@ -196,6 +204,10 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
   };
   return {
     origin: `http://127.0.0.1:${port}`,
+    get attention() {
+      if (!running) throw new Error("Scenario Mate is stopped");
+      return running.attention;
+    },
     get browser() {
       if (!running) throw new Error("Scenario Mate is stopped");
       return running.browser;
