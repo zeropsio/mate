@@ -395,6 +395,10 @@
       "types": "./src/zerops/operations/__fixtures__/index.ts",
       "default": "./src/zerops/operations/__fixtures__/index.ts"
     },
+    "./zerops/deviceLogin": {
+      "types": "./src/zerops/deviceLogin.ts",
+      "default": "./src/zerops/deviceLogin.ts"
+    },
     "./zerops/handover": {
       "types": "./src/zerops/handover.ts",
       "default": "./src/zerops/handover.ts"
