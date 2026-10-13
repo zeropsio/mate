@@ -66,8 +66,8 @@ import type * as NodeStream from "node:stream";
 
 import type { HqGit } from "@t3tools/hq-git";
 import {
-  type HqDeployAnswer,
-  type HqDeployOutcome,
+  type HqDeliveryAnswer as HqDeployAnswer,
+  type HqDeliveryOutcome as HqDeployOutcome,
   NO_DEPLOYS,
   zeropsDidNotAnswer,
 } from "@t3tools/shared/hqDeploys";
@@ -113,6 +113,11 @@ import {
   widenedDeployToken,
 } from "./deployTokens.ts";
 import { GitHost } from "./gitHost.ts";
+import { GitPush, gitPushLayer, type PushEvidence, pushEvidenceForWire } from "./gitPush.ts";
+import { repoRemotesLayer } from "./repoRemotes.ts";
+import { githubProbesLayer } from "./githubProbes.ts";
+import { gitTransportLayer } from "./gitTransport.ts";
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { Leader, type NotLeader } from "./leader.ts";
 import { type TierService, deltaImport, deployedByHq, tierServices } from "./recipeDeltas.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
@@ -132,6 +137,12 @@ import {
 export interface DeploysOptions {
   /** A scoped observer; production uses HQ_ORG_TOKEN and HQ_ZEROPS_API. */
   readonly observer?: OperationWatch;
+  /** External delivery boundary fixtures use the production GitPush with disposable custody. */
+  readonly pushLayer?: Layer.Layer<
+    GitPush,
+    never,
+    GitHost | Leader | SqlClient.SqlClient | Roles | DeployKeys
+  >;
 }
 
 /** A person's ask HQ refused: a code, and the reason (a permission's, or the deploy's own). */
@@ -186,6 +197,20 @@ export class Deploys extends Context.Service<
     readonly changes: Stream.Stream<number>;
     /** Joins the environment workers already admitted by a completed rollout. */
     readonly drain: Effect.Effect<void>;
+    /** Lifecycle and submission share this lock; unresolved writers retain the occupied slot. */
+    readonly withEnvironment: <A, E, R>(
+      environmentId: string,
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | DeployRefused | SqlError, R>;
+    readonly writerDrained: (environmentId: string) => Effect.Effect<boolean, SqlError>;
+    /** The same open job that blocks worker advancement, including an ended unresolved push. */
+    readonly blocker: (
+      environmentId: string,
+    ) => Effect.Effect<
+      | { readonly job: string; readonly state: AnyJob["state"]; readonly label: string | null }
+      | undefined,
+      SqlError
+    >;
     /** PB operation scope: current jobs and their minimal persisted evidence. */
     readonly operations: (appId: string) => ReturnType<typeof operationRecords>;
   }
@@ -203,14 +228,17 @@ interface Target {
 }
 
 /** An environment HQ deploys. */
-interface Environment {
+type Environment = {
   readonly id: string;
-  readonly project_id: string;
   readonly app_id: string;
   readonly name: string;
   readonly tier: "stage" | "production";
   readonly sources: ReadonlyArray<string>;
-}
+  readonly created_at: string;
+} & (
+  | { readonly target: "zerops"; readonly project_id: string; readonly branch: null }
+  | { readonly target: "git"; readonly project_id: null; readonly branch: string }
+);
 
 type Cause =
   | "merge"
@@ -233,14 +261,17 @@ interface Rollout {
   readonly tag: string | null;
   readonly by: string | null;
   readonly planned: boolean;
+  readonly created_at: string;
+  readonly environment_created_at: string | null;
 }
 
 /** A service a rollout asked nothing for, and why (`hq_rollout.left_out`). */
 interface LeftOut {
   readonly environment_id: string;
-  readonly project_id: string;
+  readonly project_id: string | null;
   readonly service: string;
   readonly sha: string;
+  readonly kind?: "push";
   /** The job of the commit under way, where one is. */
   readonly job: string | null;
   readonly reason: string;
@@ -275,6 +306,15 @@ interface Job {
   readonly upload_recorded: boolean;
 }
 
+type GitJob = Omit<Job, "kind" | "project_id" | "service" | "repo" | "sha" | "state"> & {
+  readonly kind: "push";
+  readonly project_id: null;
+  readonly service: null;
+  readonly repo: string;
+  readonly sha: string;
+  readonly state: "queued" | "submitting" | "unresolved";
+};
+type AnyJob = Job | GitJob;
 type DeployJob = Job & { readonly service: string; readonly repo: string; readonly sha: string };
 
 /** How a job ended. */
@@ -303,7 +343,8 @@ const encodeBlocks = Schema.encodeSync(
 const LeftOutJson = Schema.fromJsonString(
   Schema.Array(
     Schema.Struct({
-      project_id: Schema.String,
+      project_id: Schema.NullOr(Schema.String),
+      kind: Schema.optionalKey(Schema.Literal("push")),
       environment_id: Schema.String,
       service: Schema.String,
       sha: Schema.String,
@@ -417,6 +458,7 @@ export const deploysLayer = (
       const leader = yield* Leader;
       const sql = yield* SqlClient.SqlClient;
       const gitHost = yield* GitHost;
+      const gitPush = yield* GitPush;
       const zerops = yield* ZeropsApi;
       const deploy = yield* ZeropsDeploy;
       const recipes = yield* RecipeTiers;
@@ -556,11 +598,80 @@ export const deploysLayer = (
 
       /** What an environment is wanted at now: a stage main's heads, a production its release. */
       const wantedOf = (environment: Environment) =>
-        environment.tier === "stage"
-          ? environment.sources.includes("main")
-            ? stageWanted(environment.app_id)
-            : Effect.succeed({ targets: [], note: undefined })
-          : productionWanted(environment);
+        environment.target === "git"
+          ? gitWanted(environment)
+          : environment.tier === "stage"
+            ? environment.sources.includes("main")
+              ? stageWanted(environment.app_id)
+              : Effect.succeed({ targets: [], note: undefined })
+            : productionWanted(environment);
+
+      /** Git targets read frozen release entries or repository heads, never a Zerops recipe. */
+      const gitWanted = (
+        environment: Environment,
+        tag?: string,
+        merged?: { repo: string; sha: string },
+      ) =>
+        Effect.gen(function* () {
+          if (environment.tier === "stage") {
+            const rows = yield* sql<{ readonly name: string; readonly main_head: string | null }>`
+              SELECT name, main_head FROM hq_repo WHERE app_id::text=${environment.app_id}
+                AND name<>${RECIPE_REPO} AND (${merged?.repo ?? null}::text IS NULL OR name=${merged?.repo ?? null}) ORDER BY name`;
+            return {
+              targets: rows.flatMap((row, ord): Target[] => {
+                const sha = merged?.sha ?? row.main_head;
+                return sha === null
+                  ? []
+                  : [{ service: row.name, repo: row.name, sha, label: "main", ord }];
+              }),
+              note: undefined,
+            };
+          }
+          const [release] = yield* sql<{
+            readonly tag: string;
+            readonly entries: ReadonlyArray<{ service: string; sha: string }>;
+          }>`
+            SELECT r.tag,r.entries FROM hq_release r JOIN hq_environment e ON e.id=${environment.id}
+            WHERE r.app_id::text=${environment.app_id} AND r.target='git' AND r.state='approved'
+              AND r.environment_id=e.id AND r.environment_created_at=e.created_at
+              AND (e.release_floor IS NULL OR r.released_at>=e.release_floor)
+              AND (${tag ?? null}::text IS NULL OR r.tag=${tag ?? null})
+            ORDER BY r.released_at DESC,r.tag DESC LIMIT 1`;
+          return {
+            targets:
+              release?.entries.map((entry, ord) => ({
+                service: entry.service,
+                repo: entry.service,
+                sha: entry.sha,
+                label: release.tag,
+                ord,
+              })) ?? [],
+            note: undefined,
+          };
+        });
+
+      const makePushJob = (
+        rolloutId: string,
+        environment: Environment,
+        target: Target,
+        by: string | null,
+      ) =>
+        Effect.gen(function* () {
+          const exists = yield* sql`SELECT id FROM hq_environment WHERE id=${environment.id}
+            AND created_at=${environment.created_at}::timestamptz AND target='git' FOR UPDATE`;
+          if (exists.length === 0) return;
+          const [remote] =
+            yield* sql`SELECT repo FROM hq_repo_remote WHERE app_id::text=${environment.app_id} AND repo=${target.repo}`;
+          const [made] = yield* sql<{ readonly id: string }>`INSERT INTO hq_deploy_job
+            (rollout_id,kind,environment_id,repo,sha,label,ord,state,reason,requested_by,ended_at)
+            VALUES (${rolloutId}::bigint,'push',${environment.id},${target.repo},${target.sha},${target.label},${target.ord},
+              ${remote === undefined ? "refused" : "queued"},${remote === undefined ? `No connected remote for ${target.repo}` : null},${by},
+              ${sql.literal(remote === undefined ? "now()" : "NULL")}) RETURNING id::text`;
+          yield* sql`UPDATE hq_deploy_job SET state='superseded',superseded_by=${made!.id}::bigint,
+            reason=${`superseded by ${short(target.sha)}`},ended_at=now(),updated_at=now()
+            WHERE environment_id=${environment.id} AND kind='push' AND repo=${target.repo}
+              AND state='queued' AND id<>${made!.id}::bigint`;
+        });
 
       /** The environments of `where`, in the order they were declared. */
       const environmentsOf = (
@@ -568,10 +679,10 @@ export const deploysLayer = (
       ) =>
         "appId" in where
           ? sql<Environment>`
-              SELECT id, project_id, app_id::text AS app_id, name, tier, sources FROM hq_environment
+              SELECT id, project_id, app_id::text AS app_id, name, tier, sources, target, branch, created_at::text FROM hq_environment
               WHERE app_id::text = ${where.appId} ORDER BY declared_seq`
           : sql<Environment>`
-              SELECT id, project_id, app_id::text AS app_id, name, tier, sources FROM hq_environment
+              SELECT id, project_id, app_id::text AS app_id, name, tier, sources, target, branch, created_at::text FROM hq_environment
               WHERE id = ${where.environmentId}`;
 
       /** The commit's `zerops.yaml` under the first name zcli looks for, as read; none without one. */
@@ -745,6 +856,10 @@ export const deploysLayer = (
           }> = [];
           const ask = (environment: Environment, targets: ReadonlyArray<Target>) =>
             Effect.gen(function* () {
+              if (environment.target === "git") {
+                asked.push({ environment, targets: targets.map((target) => ({ target })) });
+                return;
+              }
               const setups = new Map(
                 (yield* runtimesOf(environment.app_id, environment.tier)).runtimes.map(
                   (runtime) => [runtime.hostname, runtime.zeropsSetup] as const,
@@ -810,7 +925,9 @@ export const deploysLayer = (
                     digest: declared.digest,
                     services: declared.services,
                     added,
-                    environments: environments.filter((environment) => environment.tier === tier),
+                    environments: environments.filter(
+                      (environment) => environment.target === "zerops" && environment.tier === tier,
+                    ),
                   });
                 }
                 break;
@@ -820,20 +937,46 @@ export const deploysLayer = (
                   environment.tier === "stage" && environment.sources.includes("main"),
               );
               if (stages.length === 0) break;
-              const wanted = yield* stageWanted(
-                rollout.app_id,
-                rollout.repo === null || rollout.sha === null
-                  ? undefined
-                  : { repo: rollout.repo, sha: rollout.sha },
-              );
+              const wanted = stages.some((environment) => environment.target === "zerops")
+                ? yield* stageWanted(
+                    rollout.app_id,
+                    rollout.repo === null || rollout.sha === null
+                      ? undefined
+                      : { repo: rollout.repo, sha: rollout.sha },
+                  )
+                : { targets: [], note: undefined };
               if (wanted.note !== undefined) notes.push(wanted.note);
-              for (const environment of stages) yield* ask(environment, wanted.targets);
+              for (const environment of stages) {
+                if (environment.target === "git") {
+                  if (
+                    rollout.created_at <= environment.created_at ||
+                    rollout.repo === null ||
+                    rollout.sha === null
+                  )
+                    continue;
+                  yield* ask(
+                    environment,
+                    (yield* gitWanted(environment, undefined, {
+                      repo: rollout.repo,
+                      sha: rollout.sha,
+                    })).targets,
+                  );
+                } else yield* ask(environment, wanted.targets);
+              }
               break;
             }
             case "release": {
               for (const environment of yield* environmentsOf({ appId: rollout.app_id })) {
                 if (environment.tier !== "production") continue;
-                const wanted = yield* productionWanted(environment, rollout.tag ?? undefined);
+                if (
+                  rollout.environment_id !== null &&
+                  (rollout.environment_id !== environment.id ||
+                    rollout.environment_created_at !== environment.created_at)
+                )
+                  continue;
+                const wanted = yield* environment.target === "git"
+                  ? gitWanted(environment, rollout.tag ?? undefined)
+                  : productionWanted(environment, rollout.tag ?? undefined);
                 if (wanted.note !== undefined) notes.push(wanted.note);
                 yield* ask(environment, wanted.targets);
               }
@@ -844,9 +987,19 @@ export const deploysLayer = (
               for (const environment of yield* environmentsOf({
                 environmentId: rollout.environment_id ?? "",
               })) {
+                if (
+                  rollout.environment_created_at !== null &&
+                  rollout.environment_created_at !== environment.created_at
+                )
+                  continue;
+                if (environment.target === "git" && rollout.cause === "env_added") continue;
                 const wanted = yield* wantedOf(environment);
+                const targets =
+                  environment.target === "git" && rollout.repo !== null
+                    ? wanted.targets.filter((target) => target.repo === rollout.repo)
+                    : wanted.targets;
                 if (wanted.note !== undefined) notes.push(wanted.note);
-                yield* ask(environment, wanted.targets);
+                yield* ask(environment, targets);
               }
               break;
             }
@@ -868,6 +1021,7 @@ export const deploysLayer = (
                 yield* seen(rollout.app_id, tier.tier, tier.digest, tier.services);
                 if (tier.added.length === 0) continue;
                 for (const environment of tier.environments) {
+                  if (environment.target !== "zerops") continue;
                   yield* sql`
                     INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, sha, services, ord,
                       state)
@@ -879,6 +1033,11 @@ export const deploysLayer = (
               const leftOut: Array<LeftOut> = [];
               for (const { environment, targets } of asked) {
                 for (const { target, skip } of targets) {
+                  if (environment.target === "git") {
+                    yield* makePushJob(rollout.id, environment, target, rollout.by);
+                    count += 1;
+                    continue;
+                  }
                   const by = rollout.cause === "release" ? rollout.by : null;
                   const job = yield* makeJob(
                     rollout.id,
@@ -1497,9 +1656,9 @@ export const deploysLayer = (
       /** An environment's job not ended: the one in flight first, then in the order asked. */
       const openJob = (projectId: string) =>
         Effect.map(
-          sql<Job>`
+          sql<AnyJob>`
             SELECT ${sql.literal(JOB_COLUMNS)} FROM ${sql.literal(JOB_FROM)}
-            WHERE j.environment_id = ${projectId} AND j.ended_at IS NULL
+            WHERE j.environment_id = ${projectId} AND (j.ended_at IS NULL OR (j.kind='push' AND j.state='unresolved'))
             ORDER BY (j.state <> 'queued') DESC, j.rollout_id, j.ord, j.id
             LIMIT 1`,
           (rows) => rows[0],
@@ -1529,6 +1688,12 @@ export const deploysLayer = (
               for (;;) {
                 const job = yield* openJob(projectId);
                 if (job === undefined || job.state === "building") return;
+                if (job.kind === "push") {
+                  if (job.state === "unresolved") return;
+                  yield* gitPush.run(job, tick);
+                  yield* tick;
+                  continue;
+                }
                 // A submission without its original handle cannot be followed after takeover.
                 if (job.state === "submitting") {
                   if (job.kind === "deploy" && job.app_version_id === null) {
@@ -1585,7 +1750,14 @@ export const deploysLayer = (
           for (;;) {
             yield* advance(projectId);
             const job = yield* openJob(projectId);
-            if (job !== undefined && job.state !== "queued") {
+            if (job?.kind === "push" && job.state === "unresolved") {
+              yield* Semaphore.withPermit(
+                registry,
+                Effect.sync(() => workers.delete(projectId)),
+              );
+              return;
+            }
+            if (job !== undefined && job.kind !== "push" && job.state !== "queued") {
               yield* job.kind === "delta" ? followImport(job) : followBuild(job);
               continue;
             }
@@ -1631,7 +1803,7 @@ export const deploysLayer = (
         Effect.map(
           sql<Rollout>`
             SELECT id::text AS id, app_id::text AS app_id, cause, repo, sha, tag, environment_id, by,
-              planned_at IS NOT NULL AS planned
+              planned_at IS NOT NULL AS planned, created_at::text, environment_created_at::text
             FROM hq_rollout WHERE id = ${rolloutId}::bigint`,
           (rows) => rows[0],
         );
@@ -1653,14 +1825,14 @@ export const deploysLayer = (
             readonly sha: string | null;
             readonly state: HqDeployOutcome["state"];
             readonly process_id: string | null;
-            readonly evidence: NonNullable<HqDeployOutcome["evidence"]> | null;
+            readonly evidence: NonNullable<HqDeployOutcome["evidence"]> | PushEvidence | null;
             readonly app_version_id: string | null;
             readonly verified_version_id: string | null;
             readonly steps: ReadonlyArray<unknown>;
             readonly behind: string | null;
             readonly reason: string | null;
           }>`
-            SELECT j.id::text AS id, j.kind, e.name AS environment, j.service, j.sha, j.state,
+            SELECT j.id::text AS id, j.kind, e.name AS environment, CASE WHEN j.kind='push' THEN j.repo ELSE j.service END AS service, j.sha, j.state,
               j.process_id, j.reason, j.evidence, j.app_version_id, j.verified_version_id, j.steps,
               CASE WHEN j.state = 'queued' THEN (
                 SELECT o.id::text FROM hq_deploy_job o
@@ -1677,21 +1849,30 @@ export const deploysLayer = (
               SELECT id, name FROM hq_environment`).map((row) => [row.id, row.name] as const),
           );
           const jobsAsked: Array<HqDeployOutcome> = [
-            ...jobs.map((job) => ({
-              environment: job.environment,
-              kind: job.kind,
-              service: job.service,
-              sha: job.sha,
-              job: job.id,
-              state: job.state,
-              processId: job.process_id,
-              evidence: job.evidence,
-              appVersionId: job.app_version_id,
-              verifiedVersionId: job.verified_version_id,
-              steps: job.steps,
-              behind: job.behind,
-              reason: job.reason,
-            })),
+            ...jobs.map(
+              (job) =>
+                ({
+                  environment: job.environment,
+                  kind: job.kind,
+                  service: job.service,
+                  sha: job.sha,
+                  job: job.id,
+                  state: job.state,
+                  processId: job.process_id,
+                  evidence:
+                    job.kind === "push" && job.evidence !== null && "remote" in job.evidence
+                      ? pushEvidenceForWire(job.evidence)
+                      : job.evidence,
+                  appVersionId: job.app_version_id,
+                  verifiedVersionId: job.verified_version_id,
+                  steps:
+                    job.kind === "push"
+                      ? job.steps.map((step) => pushEvidenceForWire(step as PushEvidence))
+                      : job.steps,
+                  behind: job.behind,
+                  reason: job.reason,
+                }) as HqDeployOutcome,
+            ),
             ...rollout.left_out.map((left) => ({
               environment: names.get(left.environment_id) ?? left.environment_id,
               kind: "deploy" as const,
@@ -1712,13 +1893,15 @@ export const deploysLayer = (
           const rollout = yield* rolloutRow(rolloutId);
           if (rollout === undefined) return NO_DEPLOYS;
           yield* plan(rollout);
-          const projects = yield* sql<{ readonly environment_id: string }>`
-            SELECT DISTINCT environment_id FROM hq_deploy_job
-            WHERE rollout_id = ${rolloutId}::bigint AND ended_at IS NULL`;
+          const projects = yield* sql<{ readonly environment_id: string; readonly git: boolean }>`
+            SELECT environment_id,bool_or(kind='push') AS git FROM hq_deploy_job
+            WHERE rollout_id = ${rolloutId}::bigint AND ended_at IS NULL GROUP BY environment_id`;
           yield* Effect.forEach(
             projects,
-            ({ environment_id: environmentId }) =>
-              Effect.andThen(advance(environmentId), worked(environmentId)),
+            ({ environment_id: environmentId, git }) =>
+              git
+                ? worked(environmentId)
+                : Effect.andThen(advance(environmentId), worked(environmentId)),
             { concurrency: "unbounded", discard: true },
           );
           return yield* answerOf(rolloutId);
@@ -1787,13 +1970,9 @@ export const deploysLayer = (
           // sees it.
           const seenApp = can(person, "read_app", { projectIds }, view);
           if (!seenApp.allow) return yield* refuse("forbidden", seenApp.reason, log);
-          const [environment] = yield* sql<{
-            readonly id: string;
-            readonly project_id: string;
-            readonly tier: "stage" | "production";
-          }>`
-            SELECT id, project_id, tier FROM hq_environment
-            WHERE app_id::text = ${appId} AND name = ${name}`;
+          const [environment] = yield* sql<Environment>`
+            SELECT id,project_id,app_id::text AS app_id,tier,target,name,sources,branch,created_at::text
+            FROM hq_environment WHERE app_id::text=${appId} AND name=${name}`;
           if (environment === undefined) {
             return yield* refuse("environment_not_found", "environment_not_found", log);
           }
@@ -1814,11 +1993,65 @@ export const deploysLayer = (
 
       return Deploys.of({
         operations: (appId) => operationRecords(sql, appId),
+        blocker: (environmentId) =>
+          Effect.map(openJob(environmentId), (job) =>
+            job === undefined ? undefined : { job: job.id, state: job.state, label: job.label },
+          ),
+        withEnvironment: (environmentId, effect) =>
+          Semaphore.withPermit(
+            registry,
+            Effect.gen(function* () {
+              const [pending] = yield* sql<{
+                readonly state: string;
+                readonly recovery: boolean;
+                readonly drained: boolean;
+              }>`
+            SELECT state,evidence->>'phase'='recovering' AS recovery,
+              coalesce((evidence->>'writerDrained')::boolean,false) AS drained
+            FROM hq_deploy_job WHERE environment_id=${environmentId} AND kind='push'
+              AND state IN ('submitting','unresolved') ORDER BY id LIMIT 1`;
+              if (
+                pending !== undefined &&
+                (!pending.drained || (pending.state === "submitting" && !pending.recovery))
+              )
+                return yield* new DeployRefused({ code: "conflict", reason: "deploy_running" });
+              const worker = workers.get(environmentId);
+              if (worker !== undefined && pending?.recovery) {
+                yield* Fiber.interrupt(worker);
+                workers.delete(environmentId);
+              }
+              const lock = yield* lockOf(environmentId);
+              return yield* Semaphore.withPermit(lock, effect);
+            }),
+          ),
+        writerDrained: (environmentId) =>
+          Effect.map(
+            sql<{ readonly blocked: boolean }>`SELECT EXISTS (
+          SELECT 1 FROM hq_deploy_job WHERE environment_id=${environmentId} AND kind='push'
+            AND state IN ('submitting','unresolved') AND coalesce((evidence->>'writerDrained')::boolean,false)=false) AS blocked`,
+            ([row]) => !row!.blocked,
+          ),
         run,
         runOf: (event) =>
-          Effect.flatMap(rolloutOf(sql, event), (id) =>
-            id === undefined ? Effect.succeed(NO_DEPLOYS) : run(id),
-          ),
+          event.cause === "key_kept" && "appId" in event
+            ? Effect.gen(function* () {
+                const rows = yield* sql<{
+                  readonly id: string;
+                }>`SELECT DISTINCT ON (environment_id) id::text
+              FROM hq_rollout WHERE app_id::text=${event.appId} AND cause='key_kept' AND repo=${event.repo} AND by=${event.by}
+              ORDER BY environment_id,id DESC`;
+                const answers = yield* Effect.forEach(rows, ({ id }) => run(id));
+                const notes = answers.flatMap((answer) =>
+                  answer.note === null ? [] : [answer.note],
+                );
+                return {
+                  jobs: answers.flatMap((answer) => answer.jobs),
+                  note: notes.length === 0 ? null : notes.join("; "),
+                };
+              })
+            : Effect.flatMap(rolloutOf(sql, event), (id) =>
+                id === undefined ? Effect.succeed(NO_DEPLOYS) : run(id),
+              ),
         changes: SubscriptionRef.changes(ticks),
         drain: Effect.suspend(() =>
           Effect.forEach([...workers.values()], Fiber.join, { discard: true }),
@@ -1829,6 +2062,34 @@ export const deploysLayer = (
             Effect.gen(function* () {
               const log = { userId, appId, name, service };
               const environment = yield* personsEnvironment(userId, appId, name, log);
+              if (environment.target === "git") {
+                const wanted = yield* wantedOf(environment);
+                const target = wanted.targets.find((target) => target.repo === service);
+                if (target === undefined)
+                  return yield* refuse("deploy_not_found", "deploy_not_found", log);
+                if (target.sha !== sha) return yield* refuse("conflict", "deploy_superseded", log);
+                const lock = yield* lockOf(environment.id);
+                const rollout = yield* Semaphore.withPermit(
+                  lock,
+                  leader.write(
+                    Effect.gen(function* () {
+                      const blocked =
+                        yield* sql`SELECT id FROM hq_deploy_job WHERE environment_id=${environment.id}
+                    AND kind='push' AND state IN ('submitting','unresolved') LIMIT 1`;
+                      if (blocked.length > 0)
+                        return yield* refuse("conflict", "deploy_running", log);
+                      const [made] = yield* sql<{ readonly id: string }>`INSERT INTO hq_rollout
+                    (app_id,cause,environment_id,environment_created_at,repo,sha,by,planned_at)
+                    VALUES (${appId}::uuid,'run_again',${environment.id},${environment.created_at}::timestamptz,
+                      ${target.repo},${target.sha},${userId},now()) RETURNING id::text`;
+                      yield* makePushJob(made!.id, environment, target, userId);
+                      return made!.id;
+                    }),
+                  ),
+                );
+                yield* tick;
+                return yield* run(rollout);
+              }
               const asked = yield* leader.write(
                 Effect.gen(function* () {
                   const [repeated] = yield* sql<{
@@ -1905,6 +2166,8 @@ export const deploysLayer = (
             Effect.gen(function* () {
               const log = { userId, appId, name, service };
               const environment = yield* personsEnvironment(userId, appId, name, log);
+              if (environment.target === "git")
+                return yield* refuse("conflict", "service_not_declared", log);
               const declared = yield* declaredOf(appId, environment.tier);
               if (
                 declared === undefined ||
@@ -1933,4 +2196,21 @@ export const deploysLayer = (
           ),
       });
     }),
+  ).pipe(
+    Layer.provide(
+      options.pushLayer ??
+        gitPushLayer.pipe(
+          Layer.provide(
+            repoRemotesLayer.pipe(
+              Layer.provide(
+                githubProbesLayer.pipe(
+                  Layer.provide(
+                    gitTransportLayer.pipe(Layer.provide(NodeHttpClient.layerNodeHttp)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+    ),
   );
