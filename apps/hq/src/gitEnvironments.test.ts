@@ -1,3 +1,4 @@
+import { HqEnvironmentId } from "@t3tools/contracts";
 // @effect-diagnostics nodeBuiltinImport:off -- owned temporary bare repositories and real Postgres.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -98,6 +99,9 @@ const fixture = Effect.gen(function* () {
   });
   const remoteRows = new Map<string, RemoteRecord>();
   const remotes = Remotes.of({
+    changes: Stream.empty,
+    write: () => Effect.die("Remote writes are outside this fixture"),
+    receipt: () => Effect.succeed(null),
     get: (ref) => Effect.sync(() => remoteRows.get(ref.repo)),
     connect: () => Effect.die("not used"),
     updateAddress: () => Effect.die("not used"),
@@ -238,6 +242,57 @@ const fixture = Effect.gen(function* () {
 
 describe("Structure Git environments", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "Git Run again chooses current wanted code and returns the original queued receipt without replay",
+      () =>
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          const attachment = yield* f.add("stage");
+          yield* f.settled;
+          const intent = {
+            kind: "run-git-again",
+            orgId: "ORG",
+            hqProjectId: "HQ",
+            appId: f.app.id,
+            environmentId: HqEnvironmentId.make(attachment.environmentId),
+            repo: "web",
+          } as const;
+          const [wanted] = yield* f.sql<{
+            readonly main_head: string;
+          }>`SELECT main_head FROM hq_repo WHERE app_id=${f.app.id}::uuid AND name='web'`;
+          const receipt = yield* f.deploys.runGitAgain("owner", "run-original", intent);
+          assert.strictEqual(receipt.requestId, "run-original");
+          assert.strictEqual(receipt.executor, "hq");
+          assert.isNotEmpty(receipt.handles);
+          assert.strictEqual(receipt.outcome.kind, "pending");
+          const [job] = yield* f.sql<{
+            readonly sha: string;
+            readonly requested_by: string;
+          }>`SELECT sha,requested_by FROM hq_deploy_job WHERE id::text=${receipt.handles[0]!}`;
+          assert.strictEqual(job!.sha, wanted!.main_head);
+          assert.strictEqual(job!.requested_by, "owner");
+          const [before] = yield* f.sql<{
+            readonly count: number;
+          }>`SELECT count(*)::int AS count FROM hq_deploy_job`;
+          assert.deepStrictEqual(
+            yield* f.deploys.gitReceipt("owner", "run-original", intent),
+            receipt,
+          );
+          assert.deepStrictEqual(
+            yield* f.deploys.runGitAgain("owner", "run-original", intent),
+            receipt,
+          );
+          assert.deepStrictEqual(
+            (yield* f.sql`SELECT count(*)::int AS count FROM hq_deploy_job`)[0],
+            before,
+          );
+          f.state.role = "READ_ONLY";
+          const denied = yield* f.deploys
+            .runGitAgain("owner", "role-lost", intent)
+            .pipe(Effect.flip);
+          assert.strictEqual(denied._tag, "DeployRefused");
+        }),
+    );
     it.effect("An application holds one production, whatever its target.", () =>
       Effect.gen(function* () {
         const f = yield* fixture;
