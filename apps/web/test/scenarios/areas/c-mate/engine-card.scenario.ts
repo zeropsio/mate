@@ -4,8 +4,17 @@ import * as Deferred from "effect/Deferred";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
-import type { EngineChatWire } from "./engine.ts";
 import { installArea } from "./fake.ts";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
+import {
+  ConversationId,
+  MATE_ENGINE_PROTOCOLS,
+  type EngineConversationFrame,
+  RuntimeItemId,
+  RuntimeTaskId,
+  TurnId,
+} from "@t3tools/contracts";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { TARGET_QUESTION } from "./wire.ts";
 
@@ -67,7 +76,19 @@ const realLongConversation = Effect.gen(function* () {
   const s = yield* createScenario([], { mate: "real" });
   yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
   yield* s.given.project("Ada", { mate: true });
-  const provider = s.drivers.realMates.get("Ada")!.provider;
+  const { provider, server } = s.drivers.realMates.get("Ada")!;
+  const frames = yield* Queue.unbounded<EngineConversationFrame>();
+  const ended = (ordinal: number) =>
+    Effect.gen(function* () {
+      while (true) {
+        const frame = yield* Queue.take(frames);
+        if (
+          (frame.type === "snapshot" || frame.type === "changes") &&
+          frame.runs.some((run) => run.ordinal === ordinal && run.state === "ended")
+        )
+          return;
+      }
+    }).pipe(Effect.timeout("8 seconds"));
   const chat = mateChat(s);
   yield* s.given.signedIn;
   yield* ownerMenu(s.page);
@@ -79,6 +100,22 @@ const realLongConversation = Effect.gen(function* () {
     yield* provider.turn([{ kind: "say", text: answer }]);
     yield* s.when.conversation.sends(`How did deploy ${round} go?`);
     expect((yield* provider.received).input.input).toBe(`How did deploy ${round} go?`);
+    if (round === 1) {
+      yield* Effect.promise(() =>
+        s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), { timeout: 8000 }),
+      );
+      const conversationId = ConversationId.make(new URL(s.page.url()).pathname.split("/").at(-1)!);
+      yield* server.engine.wire
+        .subscribe(
+          { protocol: MATE_ENGINE_PROTOCOLS[0]!, conversationId },
+          { subject: "scenario-person", environmentId: "scenario", epoch: 1 },
+        )
+        .pipe(
+          Stream.runForEach((frame) => Queue.offer(frames, frame)),
+          Effect.forkScoped,
+        );
+    }
+    yield* ended(round);
     yield* s.then.conversation.showsMessage(
       "The shop's deploy built, its logs are clean and the storefront answers.",
     );
@@ -86,6 +123,7 @@ const realLongConversation = Effect.gen(function* () {
   yield* provider.turn([{ kind: "say", text: "The existing conversation is still here" }]);
   yield* s.when.conversation.sends("And now?");
   expect((yield* provider.received).input.input).toBe("And now?");
+  yield* ended(4);
   yield* s.then.conversation.showsMessage("The existing conversation is still here");
   return { s, chat, provider };
 });
@@ -191,43 +229,61 @@ const largestStep = (frames: ReadonlyArray<Frame>, of: (frame: Frame) => number 
  */
 const jobRun = (
   chat: ReturnType<typeof mateChat>,
-  engine: EngineChatWire["engine"],
+  provider: Effect.Success<typeof realLongConversation>["provider"],
   answer: string | null,
 ) =>
   Effect.gen(function* () {
-    const run = engine.personRun("Start the wait in the background");
-    engine.item(run, {
-      kind: "call",
-      step: "command",
-      tool: { name: "Bash" },
-      words: "Command run",
-      state: "done",
-      endedAt: 1791552412202,
-      input: "Bash: sleep 45 && echo done",
-      shows: {
-        toolName: "Bash",
-        command: "sleep 45 && echo done",
-        input: { description: "Wait 45 seconds in the background, then print done" },
-        rawOutput: {
-          content:
-            "Command running in background with ID: b1job. Output is being written to: /tmp/x",
+    yield* provider.turn([
+      {
+        kind: "event",
+        event: {
+          type: "item.completed",
+          itemId: RuntimeItemId.make("background-command"),
+          payload: {
+            itemType: "command_execution",
+            status: "completed",
+            detail: "sleep 45 && echo done",
+            data: {
+              tool: "Bash",
+              state: {
+                status: "completed",
+                input: { command: "sleep 45 && echo done" },
+                output:
+                  "Command running in background with ID: b1job. Output is being written to: /tmp/x",
+              },
+            },
+          },
         },
       },
-    });
-    const job = engine.item(run, {
-      kind: "work",
-      work: "session.w2",
-      workKind: "shell",
-      status: "running",
-      title: "Wait 45 seconds in the background, then print done",
-    });
-    if (answer === null) engine.end(run);
-    else engine.note(run, answer, { kind: "completed" });
+      {
+        kind: "event",
+        event: {
+          type: "task.started",
+          payload: {
+            taskId: RuntimeTaskId.make("background-wait"),
+            taskType: "local_bash",
+            description: "Wait 45 seconds in the background, then print done",
+          },
+        },
+      },
+      ...(answer === null ? [] : [{ kind: "say" as const, text: answer }]),
+    ]);
+    yield* chat.when.send("Start the wait in the background");
+    const native = yield* provider.received;
+    expect(native.input.input).toBe("Start the wait in the background");
     yield* chat.then.text("Waiting for its background command");
-    engine.update(job, { status: "completed" });
+    yield* provider.event(native.threadId, {
+      type: "task.completed",
+      turnId: native.turnId,
+      payload: {
+        taskId: RuntimeTaskId.make("background-wait"),
+        taskType: "local_bash",
+        status: "completed",
+      },
+    });
     yield* chat.then.noText("Waiting for its background command");
     yield* chat.then.noText("running in the background");
-    return run;
+    return native;
   });
 
 /** The last card folds as its wait ends; the page is still once it has. */
@@ -247,15 +303,33 @@ describe("C: an engine Mate's run card in a live conversation", () => {
     // run the job's end woke snapped it open 532 px in one frame and scrolled the page 768 px.
     it.effect("a run its job's end wakes goes on in the folded card without moving the page", () =>
       Effect.gen(function* () {
-        const { s, chat, engine } = yield* longConversation;
+        const { s, chat, provider } = yield* realLongConversation;
         yield* underLoad(s.page);
         // The run ends with no answer: the run the job's end wakes is the same card's to go on in.
-        const run = yield* jobRun(chat, engine, null);
+        const run = yield* jobRun(chat, provider, null);
         yield* foldedCard(s.page);
         yield* trace(s.page, "Start the wait in the background");
-        const wake = engine.startRun(run);
-        engine.note(wake, "The background wait finished and printed done.", {
-          kind: "completed",
+        yield* provider.event(run.threadId, {
+          type: "turn.started",
+          turnId: TurnId.make("native-wake"),
+          payload: {},
+        });
+        yield* provider.event(run.threadId, {
+          type: "content.delta",
+          itemId: RuntimeItemId.make("wake-answer"),
+          payload: {
+            streamKind: "assistant_text",
+            delta: "The background wait finished and printed done.",
+          },
+        });
+        yield* provider.event(run.threadId, {
+          type: "item.completed",
+          itemId: RuntimeItemId.make("wake-answer"),
+          payload: { itemType: "assistant_message", status: "completed" },
+        });
+        yield* provider.event(run.threadId, {
+          type: "turn.completed",
+          payload: { state: "completed" },
         });
         yield* chat.then.text("The background wait finished and printed done.");
         const frames = yield* readTrace(s.page, 1500);
@@ -288,24 +362,44 @@ describe("C: an engine Mate's run card in a live conversation", () => {
       "a turn the agent opens itself after a background job ends stands below the answer it gave before",
       () =>
         Effect.gen(function* () {
-          const { s, chat, engine } = yield* longConversation;
+          const { s, chat, provider } = yield* realLongConversation;
           const before = "Now waiting for the jobs to end.";
           const after = "The background wait finished and printed done.";
-          const run = yield* jobRun(chat, engine, before);
+          const run = yield* jobRun(chat, provider, before);
           yield* foldedCard(s.page);
           yield* trace(s.page, before);
-          const wake = engine.startRun(run);
-          engine.item(wake, {
-            kind: "call",
-            step: "command",
-            tool: { name: "Bash" },
-            words: "Command run",
-            state: "done",
-            endedAt: 1791552412202,
-            input: "Bash: cat /tmp/x",
-            shows: { toolName: "Bash", command: "cat /tmp/x" },
+          yield* provider.event(run.threadId, {
+            type: "turn.started",
+            turnId: TurnId.make("native-wake"),
+            payload: {},
           });
-          engine.note(wake, after, { kind: "completed" });
+          yield* provider.event(run.threadId, {
+            type: "item.completed",
+            itemId: RuntimeItemId.make("read-background-output"),
+            payload: {
+              itemType: "command_execution",
+              status: "completed",
+              detail: "cat /tmp/x",
+              data: {
+                tool: "Bash",
+                state: { status: "completed", input: { command: "cat /tmp/x" }, output: "done" },
+              },
+            },
+          });
+          yield* provider.event(run.threadId, {
+            type: "content.delta",
+            itemId: RuntimeItemId.make("wake-answer"),
+            payload: { streamKind: "assistant_text", delta: after },
+          });
+          yield* provider.event(run.threadId, {
+            type: "item.completed",
+            itemId: RuntimeItemId.make("wake-answer"),
+            payload: { itemType: "assistant_message", status: "completed" },
+          });
+          yield* provider.event(run.threadId, {
+            type: "turn.completed",
+            payload: { state: "completed" },
+          });
           yield* chat.then.text(after);
           const frames = yield* readTrace(s.page, 1500);
           expect(frames.length, "ASSERTION: the wake was sampled").toBeGreaterThan(20);
@@ -317,6 +411,7 @@ describe("C: an engine Mate's run card in a live conversation", () => {
                   while (walker.nextNode()) {
                     const node = walker.currentNode;
                     if (!node.textContent?.includes(text)) continue;
+                    if (!node.parentElement?.closest("[data-timeline-thread]")) continue;
                     const box = node.parentElement?.getBoundingClientRect();
                     if (box && box.height > 0) return box.top;
                   }
