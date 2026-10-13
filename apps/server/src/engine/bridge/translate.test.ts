@@ -1382,6 +1382,61 @@ describe("the fold's rules", () => {
     },
   );
 
+  // Eli, 2026-10-13: a restart resumed three helpers by SendMessage. Claude Code registers a
+  // resumed helper under the resume's call but streams its calls under the launch the dead
+  // process made (probed on 2.1.296), and ~180 calls went to three helpers nobody started.
+  it.each([
+    { name: "fresh", from: "fresh" as const, started: "agent-call", streamed: "agent-call" },
+    { name: "resumed", from: "resume" as const, started: "resume-call", streamed: "first-launch" },
+  ])(
+    "claudeAgent [scripted]: a helper's calls, its own jobs and its end are its helper's: $name",
+    ({ from, started, streamed }) => {
+      const w = wire("claudeAgent");
+      const translator = makeTranslator({ driver: "claudeAgent", threadId: THREAD });
+      const signals = [
+        ...w.open(S1, from),
+        ...w.begin(H1, "X1"),
+        w.task(
+          "task.started",
+          { taskId: "t1", toolUseId: started, taskType: "local_agent", description: "Review" },
+          "X1",
+        ),
+        w.tool("X1", "helper-call-1", "started", { agentId: "t1", parentToolUseId: streamed }),
+        w.tool("X1", "helper-call-2", "started", { parentToolUseId: streamed }),
+        w.task(
+          "task.started",
+          { taskId: "bash-1", toolUseId: "helper-bg", agentId: "t1", taskType: "local_bash" },
+          "X1",
+        ),
+        w.task("task.completed", {
+          taskId: "t1",
+          toolUseId: started,
+          status: "completed",
+          taskType: "local_agent",
+          summary: "Reviewed.",
+        }),
+        w.completed("X1"),
+      ].flatMap((input) => translator.step(input));
+      const lines = signalLines(signals);
+      assert.includeMembers(
+        [...lines],
+        [
+          "h1.i1 tool command_execution running, for s1.w1",
+          "h1.i2 tool command_execution running, for s1.w1",
+          "s1.w1 helper completed, from h1",
+        ],
+      );
+      const works = new Set(
+        signals.flatMap((signal) => (signal.type === "work.upsert" ? [signal.work] : [])),
+      );
+      assert.deepStrictEqual([...works], ["s1.w1", "s1.w2"]);
+      const job = signals.find(
+        (signal) => signal.type === "work.upsert" && signal.work === "s1.w2",
+      );
+      assert.strictEqual(job?.type === "work.upsert" ? job.helper : undefined, "s1.w1");
+    },
+  );
+
   // Codex's child that fails before any start, Antigravity's subagent whose first word is a
   // failure: in a session that ran from its start, the end is the work's only report.
   it("a fresh session's work first reported as failed still opens, failed", () => {
