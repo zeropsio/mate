@@ -19,6 +19,7 @@ import * as NodePath from "node:path";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Clock from "effect/Clock";
+import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -164,7 +165,9 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
         return yield* Effect.die(new Error("Scenario Mate has no TCP port"));
       const engine = yield* MateEngine.pipe(Effect.provide(context));
       const clock = yield* Clock.Clock;
-      const offboardingService = yield* ZeropsOffboarding.pipe(Effect.provide(context));
+      // This harness boots live feeds; the server layer's common type also includes fixture feeds,
+      // which do not expose offboarding. Require the actual live service from the built context.
+      const offboardingService = Context.getUnsafe(context, ZeropsOffboarding);
       // A direct worker receipt keeps this Mate's clock, including its platform answer's age.
       const offboarding = {
         checkNow: offboardingService.checkNow.pipe(Effect.provideService(Clock.Clock, clock)),

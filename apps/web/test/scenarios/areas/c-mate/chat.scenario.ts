@@ -25,6 +25,7 @@ import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.t
 import { createScenario, type ScenarioOptions } from "../../harness/scenario.ts";
 import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
 import { mateChat, projectAccessRevoked } from "./dsl.ts";
+import { installArea } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 const history = "The existing conversation is still here";
@@ -1109,7 +1110,7 @@ describe("C: opening a Mate and chat", () => {
         );
         const earlierRoute = new URL(s.page.url()).pathname;
         const member = yield* s.given.browserActor({ person: "observer" });
-        const memberChat = mateChat({ ...s, ...member, given: { ...s.given, ...member.given } });
+        const memberChat = mateChat({ ...s, ...member });
         yield* member.given.signedIn;
         yield* memberChat.when.openReadOnly();
         yield* memberChat.then.path(earlierRoute);
