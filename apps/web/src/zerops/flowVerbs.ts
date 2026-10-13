@@ -191,6 +191,10 @@ export function useFlowVerbs(): FlowVerbs {
   const release = useCallback(
     (flow: ZeropsProjectFlow, tag?: string): Promise<FlowVerbOutcome> => {
       const offer = flow.release;
+      if (offer.git !== undefined && offer.git.delivery?.release.allowed !== true)
+        return Promise.resolve(
+          refused(offer.git.delivery?.release.reason ?? "Checking what can be released…"),
+        );
       if (!offer.gate.allowed) return Promise.resolve(refused(offer.gate.reason));
       const { groupHead } = offer;
       if (groupHead === undefined) return Promise.resolve(refuse(NO_GROUP_MAIN));
@@ -212,6 +216,8 @@ export function useFlowVerbs(): FlowVerbs {
 
   const rollBack = useCallback(
     (flow: ZeropsProjectFlow, earlier: string): Promise<FlowVerbOutcome> => {
+      if (flow.release.git !== undefined)
+        return Promise.resolve(refused("A branch production offers no roll back."));
       const groupHead = flow.repos?.find((repo) => repo.name === RECIPE_REPO)?.mainHead;
       if (groupHead == null) return Promise.resolve(refuse(NO_GROUP_MAIN));
       return run(

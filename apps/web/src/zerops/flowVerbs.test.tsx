@@ -6,6 +6,8 @@
 import { act, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { HqEnvironmentId } from "@t3tools/contracts";
+import { gitDeliveryOf } from "@t3tools/client-runtime/zerops";
 import type { Release } from "@t3tools/shared/hqRelease";
 
 import { openAccountLifetime, closeAccountLifetime } from "./accountLifetime";
@@ -13,6 +15,21 @@ import { holdHqWrites } from "./hqWrites";
 import { useFlowVerbs, VERB_ALREADY_RUNNING, type FlowVerbs } from "./flowVerbs";
 import type { ZeropsProjectFlow } from "./projectFlows";
 
+const gitEnvironment = {
+  id: HqEnvironmentId.make("git-production"),
+  target: { kind: "git", branch: "main", delivery: "direct" },
+  tier: "production",
+  jobs: [],
+  release: null,
+} as const;
+const gitRemote = {
+  url: "https://github.com/acme/api.git",
+  repositoryId: "1",
+  keptAt: "2026-10-13T10:00:00Z",
+  keptBy: "custodian",
+  expiresAt: null,
+  invalidSince: "2026-10-13T10:01:00Z",
+};
 const ORG = "org";
 const SHA = "a".repeat(40);
 const HEAD = "b".repeat(40);
@@ -226,4 +243,39 @@ describe("useFlowVerbs", () => {
     expect(hq.release).not.toHaveBeenCalled();
     expect(hq.merge).not.toHaveBeenCalled();
   });
+});
+
+it("a refused Git standing cannot invoke Release even through an old allowed offer", async () => {
+  const delivery = gitDeliveryOf(gitEnvironment, {
+    repos: [{ name: "web", mainHead: SHA, updatedAt: gitRemote.keptAt, remote: gitRemote }],
+  })!;
+  const git = {
+    attachment: {
+      environmentId: HqEnvironmentId.make(gitEnvironment.id),
+      createdAt: "2026-10-13T10:00:00Z",
+      target: gitEnvironment.target,
+    },
+    delivery,
+    replaceTokenPermission: undefined,
+    repositories: undefined,
+  };
+  hq.release.mockResolvedValue({ made: release("v1.0.1"), deploys: DEPLOYS });
+  const outcome = await verbs.release({ ...FLOW, release: { ...FLOW.release, git } });
+  expect(hq.release).not.toHaveBeenCalled();
+  expect(outcome).toEqual({ ok: false, reason: delivery.release.reason });
+});
+it("a Git environment cannot invoke branch rollback through an old platform offer", async () => {
+  const git = {
+    attachment: {
+      environmentId: HqEnvironmentId.make(gitEnvironment.id),
+      createdAt: "2026-10-13T10:00:00Z",
+      target: gitEnvironment.target,
+    },
+    delivery: gitDeliveryOf(gitEnvironment),
+    replaceTokenPermission: undefined,
+    repositories: undefined,
+  };
+  const outcome = await verbs.rollBack({ ...FLOW, release: { ...FLOW.release, git } }, "v1.0.0");
+  expect(outcome).toEqual({ ok: false, reason: "A branch production offers no roll back." });
+  expect(hq.release).not.toHaveBeenCalled();
 });

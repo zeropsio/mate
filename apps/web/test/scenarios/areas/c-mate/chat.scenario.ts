@@ -23,6 +23,8 @@ import { FetchHttpClient, HttpClient } from "effect/http";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario, type ScenarioOptions } from "../../harness/scenario.ts";
 
+import { waitForStillFrames } from "../../harness/stillFrames.ts";
+import { ownerViewport } from "./ownerViewport.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea } from "./fake.ts";
 
@@ -404,6 +406,34 @@ describe("C: opening a Mate and chat", () => {
       );
     });
 
+    // Catches returning to a parked Mate losing its history, opening another chat, or repeating the cold door.
+    it.effect("returning to a parked Mate preserves history", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.project("Bea", { mate: true });
+        yield* seed(s, "Bea", [["Earlier question", "Bea's conversation history"]]);
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.then.text("The existing conversation is still here");
+        const adaDoors = doorCount(s);
+        yield* chat.when.open("Bea", "Bea's conversation history");
+        const beaDoors = doorCount(s, "Bea");
+        yield* chat.when.returnTo();
+        yield* chat.when.type("Keep this draft with Ada");
+        yield* chat.when.open("Bea", "Bea's conversation history");
+        yield* chat.when.returnTo();
+        yield* chat.then.text("The existing conversation is still here");
+        yield* chat.then.draft("Keep this draft with Ada");
+        yield* chat.then.noButton("Sign in");
+        expect(doorCount(s), "ASSERTION: returning to Ada reuses its parked door").toBe(adaDoors);
+        expect(doorCount(s, "Bea"), "ASSERTION: returning to Bea reuses its parked door").toBe(
+          beaDoors,
+        );
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     describe("Decision: V1 behaviour unchanged; engine gets image parity.", () => {
       it.effect(
         "a tool screenshot and an attached image render from the Mate's asset references",
@@ -568,6 +598,83 @@ describe("C: opening a Mate and chat", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
+
+    it.effect("/mate/project-id opens the Mate conversation from a cold door", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        expect(doorCount(s)).toBe(0);
+        yield* chat.when.visit("/mate/Ada");
+        yield* chat.then.ready("Ada");
+        expect(doorCount(s)).toBe(1);
+        yield* chat.then.headerName("Ada");
+        yield* chat.then.path(route(s));
+        yield* chat.then.text("The existing conversation is still here");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    for (const [sentence, skew] of [
+      ["a sent message keeps a long conversation at its end", 0],
+      [
+        "a message the Mate's clock puts on another day keeps a long conversation at its end",
+        -3 * 24 * 60 * 60 * 1000,
+      ],
+    ] as const) {
+      it.effect(sentence, () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          const wire = chat.fixture();
+          for (const round of [1, 2, 3])
+            wire.exchange(`Deploy ${round}`, "Deployment logs are clean.\n\n".repeat(30));
+          wire.exchange("And now?", history);
+          wire.skewClock(skew);
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.signedIn;
+          yield* Effect.promise(() => ownerViewport(s.page));
+          yield* chat.when.open();
+          yield* Effect.promise(() => waitForStillFrames(s.page));
+          const trace = yield* Effect.promise(() =>
+            s.page.evaluateHandle(() => {
+              const state = { active: true, readings: [] as number[] };
+              const sample = () => {
+                if (!state.active) return;
+                const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                state.readings.push(list.scrollHeight - list.clientHeight - list.scrollTop);
+                requestAnimationFrame(sample);
+              };
+              sample();
+              return state;
+            }),
+          );
+          expect(
+            yield* Effect.promise(() => trace.evaluate((state) => state.readings[0])),
+          ).toBeLessThanOrEqual(2);
+          yield* chat.when.send("Keep me at the end, whatever day the Mate says it is");
+          yield* chat.then.once("Keep me at the end, whatever day the Mate says it is");
+          yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 12 }));
+          const readings = yield* Effect.promise(() =>
+            trace.evaluate((state) => {
+              state.active = false;
+              return state.readings;
+            }),
+          );
+          yield* Effect.promise(() => trace.dispose());
+          expect(readings.length).toBeGreaterThan(10);
+          expect(
+            Math.max(...readings),
+            "ASSERTION: the acknowledged message never takes the long conversation to its top",
+          ).toBeLessThan(400);
+          expect(
+            readings.at(-1),
+            "ASSERTION: the acknowledged message leaves the conversation at its end",
+          ).toBeLessThanOrEqual(2);
+          yield* s.then.noExternalNetwork;
+        }),
+      );
+    }
 
     // Catches reload losing the selected chat/history or turning a kept session into a slow cold opening.
     it.effect("reload restores history", () =>
