@@ -122,6 +122,8 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
     Effect.updateService(ServerConfig.ServerConfig, (config) => ({
       ...config,
       homeDir,
+      // A test Mate never opens the developer's browser on its origin.
+      noBrowser: true,
       basePath: "/mate",
       host: "127.0.0.1",
       zerops: {
