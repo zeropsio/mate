@@ -1,0 +1,370 @@
+/** The only owner of a repository's verified connection and sealed credential custody. */
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import type * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
+import type { SqlError } from "effect/sql/SqlError";
+import { DeployKeys } from "./deployKeys.ts";
+import {
+  GithubProbes,
+  type ProbeRefused,
+  type VerifiedRemote,
+  tokenExpiryLabel,
+} from "./githubProbes.ts";
+import { remoteIdentity } from "./gitTransport.ts";
+import { Leader, type NotLeader } from "./leader.ts";
+import { can } from "./permissions.ts";
+import { Roles, decidedFresh } from "./roles.ts";
+
+export interface RemoteRef {
+  readonly appId: string;
+  readonly repo: string;
+}
+export interface ConnectRemote extends RemoteRef {
+  readonly url: string;
+  readonly token: Redacted.Redacted;
+  readonly branch: string;
+}
+/** Surface-safe facts; the seal and plaintext never leave custody in this shape. */
+export interface RemoteRecord extends RemoteRef {
+  readonly url: string;
+  readonly urlKey: string;
+  readonly host: string;
+  readonly hostRepoId: string | null;
+  readonly keptBy: string | null;
+  /** Exact database timestamp: the attempt's fencing evidence, not a rounded JS date. */
+  readonly keptAt: string | null;
+  readonly invalidSince: string | null;
+  readonly expiresAt: string | null;
+  readonly expiryLabel: string;
+  readonly credentialState: "kept" | "missing" | "invalid";
+}
+export class RemoteRefused extends Schema.TaggedError<RemoteRefused>()("RemoteRefused", {
+  url: Schema.optionalKey(Schema.String),
+  hostRepoId: Schema.optionalKey(Schema.String),
+  environments: Schema.optionalKey(Schema.Array(Schema.String)),
+  reason: Schema.Literals([
+    "remote_taken",
+    "no_key",
+    "no_remote",
+    "not_repo",
+    "not_structure_writer",
+    "membership_unknown",
+    "custodian_removed",
+    "credential_invalid",
+    "disconnect_required",
+    "address_review",
+    "repository_changed",
+    "changed",
+    "in_use",
+    "bad_address",
+    "bad_branch",
+    "key_unavailable",
+  ]),
+}) {
+  override get message() {
+    switch (this.reason) {
+      case "remote_taken":
+        return "This remote belongs to another application or repository.";
+      case "no_key":
+        return "HQ has no usable key to seal this token.";
+      case "no_remote":
+        return "This repository has no connected remote.";
+      case "not_repo":
+        return "This repository is not in the application.";
+      case "not_structure_writer":
+        return "Only an organization owner or admin can change a remote.";
+      case "membership_unknown":
+        return "Mate couldn't verify current organization membership. Try again when it is available.";
+      case "custodian_removed":
+        return "The person who supplied this token is no longer in this organization. Replace the token.";
+      case "credential_invalid":
+        return "This remote's saved token was refused. Replace the token.";
+      case "disconnect_required":
+        return "Remove the dependent Git environments and disconnect before connecting another repository.";
+      case "address_review":
+        return "This repository's address changed. Review its address before Mate pushes again.";
+      case "repository_changed":
+        return "This address now names a different repository. Mate didn't push.";
+      case "changed":
+        return "The remote changed while it was being verified. Review it again.";
+      case "in_use":
+        return `Remove ${(this.environments ?? []).join(", ")} before disconnecting this remote.`;
+      case "bad_address":
+        return "Give the repository's HTTPS address without credentials or request parameters.";
+      case "bad_branch":
+        return "Give a valid Git branch name.";
+      case "key_unavailable":
+        return "HQ cannot open this saved token under its key. Replace the token.";
+    }
+  }
+}
+export type RemoteError = RemoteRefused | ProbeRefused | SqlError | NotLeader;
+export class Remotes extends Context.Service<
+  Remotes,
+  {
+    /** Internal readers still apply their own application read gate before presenting these facts. */
+    readonly get: (ref: RemoteRef) => Effect.Effect<RemoteRecord | undefined, SqlError>;
+    readonly connect: (
+      userId: string,
+      input: ConnectRemote,
+    ) => Effect.Effect<RemoteRecord, RemoteError>;
+    /** Explicit same-id GitHub address review, never an automatic transfer of authority. */
+    readonly updateAddress: (
+      userId: string,
+      input: ConnectRemote,
+    ) => Effect.Effect<RemoteRecord, RemoteError>;
+    readonly disconnect: (userId: string, ref: RemoteRef) => Effect.Effect<void, RemoteError>;
+    /** Worker-only credential handoff; the caller captures keptAt before using it. */
+    readonly forUse: (
+      ref: RemoteRef,
+      branch: string,
+    ) => Effect.Effect<
+      { readonly remote: RemoteRecord; readonly token: Redacted.Redacted },
+      RemoteError
+    >;
+    readonly invalidate: (
+      ref: RemoteRef,
+      attemptedKeptAt: string,
+    ) => Effect.Effect<void, SqlError | NotLeader>;
+  }
+>()("@t3tools/hq/repoRemotes/Remotes") {}
+
+interface RemoteRow {
+  readonly app_id: string;
+  readonly repo: string;
+  readonly url: string;
+  readonly url_key: string;
+  readonly host: string;
+  readonly host_repo_id: string | null;
+  readonly sealed: Uint8Array | null;
+  readonly key_id: string | null;
+  readonly kept_by: string | null;
+  readonly kept_at: string | null;
+  readonly invalid_since: string | null;
+  readonly expires_at: string | null;
+}
+const COLUMNS = `app_id::text,repo,url,url_key,host,host_repo_id,sealed,key_id,kept_by,kept_at::text,invalid_since::text,
+  to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS expires_at`;
+const record = (row: RemoteRow): RemoteRecord => ({
+  appId: row.app_id,
+  repo: row.repo,
+  url: row.url,
+  urlKey: row.url_key,
+  host: row.host,
+  hostRepoId: row.host_repo_id,
+  keptBy: row.kept_by,
+  keptAt: row.kept_at,
+  invalidSince: row.invalid_since,
+  expiresAt: row.expires_at,
+  expiryLabel: tokenExpiryLabel(row.expires_at),
+  credentialState:
+    row.invalid_since !== null ? "invalid" : row.sealed === null ? "missing" : "kept",
+});
+// Matches Git's branch constraints without launching a credentialed Git command to validate input.
+const branchValid = (branch: string) =>
+  branch.length > 0 &&
+  branch.length <= 255 &&
+  branch !== "@" &&
+  [...branch].every(
+    (char) => char.charCodeAt(0) > 32 && char.charCodeAt(0) !== 127 && !"~^:?*[\\".includes(char),
+  ) &&
+  !branch.includes("..") &&
+  !branch.includes("@{") &&
+  !branch.startsWith("-") &&
+  !branch.endsWith(".") &&
+  branch
+    .split("/")
+    .every((part) => part.length > 0 && !part.startsWith(".") && !part.endsWith(".lock"));
+
+export const repoRemotesLayer = Layer.effect(
+  Remotes,
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const keys = yield* DeployKeys;
+    const leader = yield* Leader;
+    const roles = yield* Roles;
+    const probes = yield* GithubProbes;
+    const lookup = (ref: RemoteRef) =>
+      sql<RemoteRow>`SELECT ${sql.literal(COLUMNS)} FROM hq_repo_remote WHERE app_id::text=${ref.appId} AND repo=${ref.repo}`.pipe(
+        Effect.map((rows) => rows[0]),
+      );
+    const fresh = decidedFresh(roles.forWrite).pipe(
+      Effect.mapError(() => new RemoteRefused({ reason: "membership_unknown" })),
+      Effect.flatMap((view) =>
+        view.freshness !== "fresh" || view.members.length === 0
+          ? Effect.fail(new RemoteRefused({ reason: "membership_unknown" }))
+          : Effect.succeed(view),
+      ),
+    );
+    const authorize = Effect.fnUntraced(function* (userId: string) {
+      const verdict = can({ kind: "person", userId }, "create_app", null, yield* fresh);
+      if (!verdict.allow) return yield* new RemoteRefused({ reason: "not_structure_writer" });
+    });
+    const lockRepo = Effect.fnUntraced(function* (ref: RemoteRef) {
+      const rows =
+        yield* sql`SELECT name FROM hq_repo WHERE app_id::text=${ref.appId} AND name=${ref.repo} FOR UPDATE`;
+      if (rows.length === 0) return yield* new RemoteRefused({ reason: "not_repo" });
+    });
+    const invalidate = (ref: RemoteRef, attemptedKeptAt: string) =>
+      leader
+        .write(sql`
+    UPDATE hq_repo_remote SET invalid_since=clock_timestamp()
+    WHERE app_id::text=${ref.appId} AND repo=${ref.repo} AND kept_at=${attemptedKeptAt}::timestamptz
+      AND invalid_since IS NULL`)
+        .pipe(Effect.asVoid);
+    const custody = Effect.fnUntraced(function* (ref: RemoteRef, row: RemoteRow) {
+      const view = yield* fresh;
+      if (
+        view.members.some((member) => member.userId === row.kept_by && member.status === "ACTIVE")
+      )
+        return;
+      yield* leader.write(sql`UPDATE hq_repo_remote SET sealed=NULL,key_id=NULL,expires_at=NULL,invalid_since=clock_timestamp()
+      WHERE app_id::text=${ref.appId} AND repo=${ref.repo} AND kept_at IS NOT DISTINCT FROM ${row.kept_at}::timestamptz`);
+      return yield* new RemoteRefused({ reason: "custodian_removed" });
+    });
+    const checkIdentity = (old: RemoteRow, checked: VerifiedRemote, reviewed = false) => {
+      if (old.host_repo_id !== checked.hostRepoId)
+        return Effect.fail(new RemoteRefused({ reason: "repository_changed" }));
+      if (old.url_key !== checked.remote.key && !reviewed)
+        return Effect.fail(
+          new RemoteRefused({
+            reason: "address_review",
+            url: checked.remote.url,
+            ...(checked.hostRepoId === null ? {} : { hostRepoId: checked.hostRepoId }),
+          }),
+        );
+      return Effect.void;
+    };
+    const keep = Effect.fn("Remotes.keep")(function* (
+      userId: string,
+      input: ConnectRemote,
+      review: boolean,
+    ) {
+      yield* authorize(userId);
+      const remote = remoteIdentity(input.url);
+      if (!remote) return yield* new RemoteRefused({ reason: "bad_address" });
+      if (!branchValid(input.branch)) return yield* new RemoteRefused({ reason: "bad_branch" });
+      const old = yield* lookup(input);
+      if (review) {
+        if (!old) return yield* new RemoteRefused({ reason: "no_remote" });
+        if (old.host_repo_id === null || remote.kind !== "github" || old.host !== remote.host)
+          return yield* new RemoteRefused({ reason: "disconnect_required" });
+      } else if (old && old.url_key !== remote.key)
+        return yield* new RemoteRefused({ reason: "disconnect_required" });
+      const checked = yield* probes.verify(remote, input.token, input.branch);
+      if (checked.remote.key !== remote.key)
+        return yield* new RemoteRefused({
+          reason: "address_review",
+          url: checked.remote.url,
+          ...(checked.hostRepoId === null ? {} : { hostRepoId: checked.hostRepoId }),
+        });
+      if (old) yield* checkIdentity(old, checked, review);
+      const sealed = keys.sealRemote(input.appId, input.repo, input.token);
+      if (!sealed) return yield* new RemoteRefused({ reason: "no_key" });
+      // Fresh authority at acceptance as well as before the candidate's read-only host I/O.
+      yield* authorize(userId);
+      return yield* leader
+        .write(
+          sql.withTransaction(
+            Effect.gen(function* () {
+              yield* lockRepo(input);
+              const current = yield* lookup(input);
+              if (current?.kept_at !== old?.kept_at || current?.url_key !== old?.url_key)
+                return yield* new RemoteRefused({ reason: "changed" });
+              const rows =
+                yield* sql<RemoteRow>`INSERT INTO hq_repo_remote(app_id,repo,url,url_key,host,host_repo_id,sealed,key_id,kept_by,kept_at,expires_at)
+        VALUES (${input.appId}::uuid,${input.repo},${checked.remote.url},${checked.remote.key},${checked.remote.host},${checked.hostRepoId},${sealed.sealed},${sealed.keyId},${userId},clock_timestamp(),${checked.expiresAt}::timestamptz)
+        ON CONFLICT (app_id,repo) DO UPDATE SET url=excluded.url,url_key=excluded.url_key,host=excluded.host,host_repo_id=excluded.host_repo_id,
+          sealed=excluded.sealed,key_id=excluded.key_id,kept_by=excluded.kept_by,kept_at=excluded.kept_at,expires_at=excluded.expires_at,invalid_since=NULL
+        RETURNING ${sql.literal(COLUMNS)}`;
+              return record(rows[0]!);
+            }),
+          ),
+        )
+        .pipe(
+          Effect.catchTags({
+            SqlError: (error) =>
+              error.reason._tag === "UniqueViolation" &&
+              ["hq_repo_remote_url_key_key", "hq_repo_remote_host_id"].includes(
+                error.reason.constraint,
+              )
+                ? Effect.fail(new RemoteRefused({ reason: "remote_taken" }))
+                : Effect.fail(error),
+          }),
+        );
+    });
+    return Remotes.of({
+      get: (ref) => Effect.map(lookup(ref), (row) => (row === undefined ? undefined : record(row))),
+      connect: (userId, input) => keep(userId, input, false),
+      updateAddress: (userId, input) => keep(userId, input, true),
+      invalidate,
+      disconnect: Effect.fn("Remotes.disconnect")(function* (userId: string, ref: RemoteRef) {
+        yield* authorize(userId);
+        yield* leader.write(
+          sql.withTransaction(
+            Effect.gen(function* () {
+              yield* lockRepo(ref);
+              const dependencies = yield* sql<{
+                name: string;
+              }>`SELECT name FROM hq_environment WHERE app_id::text=${ref.appId} AND target='git' ORDER BY declared_seq,name`;
+              if (dependencies.length > 0)
+                return yield* new RemoteRefused({
+                  reason: "in_use",
+                  environments: dependencies.map((row) => row.name),
+                });
+              yield* sql`DELETE FROM hq_repo_remote WHERE app_id::text=${ref.appId} AND repo=${ref.repo}`;
+            }),
+          ),
+        );
+      }),
+      forUse: Effect.fn("Remotes.forUse")(function* (ref: RemoteRef, branch: string) {
+        if (!branchValid(branch)) return yield* new RemoteRefused({ reason: "bad_branch" });
+        const row = yield* lookup(ref);
+        if (!row) return yield* new RemoteRefused({ reason: "no_remote" });
+        yield* custody(ref, row);
+        if (row.invalid_since !== null)
+          return yield* new RemoteRefused({ reason: "credential_invalid" });
+        const token =
+          row.sealed !== null && row.key_id !== null
+            ? keys.openRemote(ref.appId, ref.repo, { sealed: row.sealed, keyId: row.key_id })
+            : undefined;
+        if (!token) return yield* new RemoteRefused({ reason: "key_unavailable" });
+        const remote = remoteIdentity(row.url);
+        if (!remote) return yield* new RemoteRefused({ reason: "bad_address" });
+        const checked = yield* probes.verify(remote, token, branch).pipe(
+          Effect.catchTags({
+            ProbeRefused: (error) =>
+              (error.reason === "token_invalid" || error.reason === "push_not_granted") &&
+              row.kept_at !== null
+                ? Effect.andThen(invalidate(ref, row.kept_at), Effect.fail(error))
+                : Effect.fail(error),
+          }),
+        );
+        yield* checkIdentity(row, checked);
+        yield* custody(ref, row);
+        return yield* leader.write(
+          sql.withTransaction(
+            Effect.gen(function* () {
+              yield* lockRepo(ref);
+              const current = yield* lookup(ref);
+              if (
+                !current ||
+                current.kept_at !== row.kept_at ||
+                current.invalid_since !== null ||
+                current.sealed === null
+              )
+                return yield* new RemoteRefused({ reason: "changed" });
+              // A conditional update keeps an old attempt from replacing a rotation's expiry evidence.
+              yield* sql`UPDATE hq_repo_remote SET expires_at=${checked.expiresAt}::timestamptz
+          WHERE app_id::text=${ref.appId} AND repo=${ref.repo} AND kept_at=${row.kept_at}::timestamptz`;
+              return { remote: record({ ...current, expires_at: checked.expiresAt }), token };
+            }),
+          ),
+        );
+      }),
+    });
+  }),
+);

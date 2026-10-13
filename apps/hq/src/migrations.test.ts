@@ -137,5 +137,118 @@ describe("migrate", () => {
         }),
       ),
     );
+    it.effect(
+      "Git target expansion preserves Zerops records, project bindings and legacy storage.",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            const all = treeMigrations();
+            const name = "0054_git_targets_expand.sql";
+            assert.strictEqual(all.filter((file) => file.name === name).length, 1);
+            yield* migrate(all.filter((file) => file.name < name));
+            const sql = yield* SqlClient.SqlClient;
+            const app = "11111111-1111-4111-8111-111111111111";
+            yield* sql`INSERT INTO hq_app(id,name,created_by) VALUES (${app}::uuid,'migration','owner')`;
+            yield* sql`INSERT INTO hq_repo(app_id,name,created_by) VALUES (${app}::uuid,'web','owner')`;
+            yield* sql`INSERT INTO hq_app_project(project_id,app_id,kind,created_by) VALUES ('stage',${app}::uuid,'stage','owner')`;
+            yield* sql`INSERT INTO hq_environment(id,project_id,app_id,tier,name,sources,created_by,release_floor)
+        VALUES ('stage','stage',${app}::uuid,'stage','stage',ARRAY['main'],'owner','2026-09-01T00:00:00Z')`;
+            yield* sql`INSERT INTO hq_deploy_token(project_id,sealed,key_id,kept_by) VALUES ('stage',decode('012345','hex'),'old-key','owner')`;
+            yield* sql`INSERT INTO hq_subdomain_intent(project_id,service) VALUES ('stage','web')`;
+            const [rollout] = yield* sql<{
+              id: string;
+            }>`INSERT INTO hq_rollout(app_id,cause,project_id,environment_id,left_out)
+        VALUES (${app}::uuid,'env_added','stage','stage','[{"project_id":"stage","environment_id":"stage","reason":"kept"}]') RETURNING id::text AS id`;
+            for (const [state, ended] of [
+              ["queued", false],
+              ["building", false],
+              ["live", true],
+              ["unresolved", true],
+            ] as const)
+              yield* sql`INSERT INTO hq_deploy_job(rollout_id,kind,project_id,environment_id,service,repo,sha,state,ended_at,evidence)
+          VALUES (${rollout!.id}::bigint,'deploy','stage','stage','web','web',${"a".repeat(40)},${state},${ended ? sql`now()` : null},'{"receipt":"kept"}')`;
+            yield* sql`INSERT INTO hq_release(app_id,tag,sha,entries,released_by,state,snapshot)
+        VALUES (${app}::uuid,'v1.0.0',${"a".repeat(40)},'[]','owner','approved',true)`;
+            const tables = [
+              "hq_environment",
+              "hq_app_project",
+              "hq_rollout",
+              "hq_deploy_job",
+              "hq_deploy_token",
+              "hq_subdomain_intent",
+              "hq_release",
+            ];
+            const before: Record<string, ReadonlyArray<{ value: Record<string, unknown> }>> = {};
+            for (const table of tables)
+              before[table] = yield* sql<{
+                value: Record<string, unknown>;
+              }>`SELECT to_jsonb(t) AS value FROM ${sql(table)} t ORDER BY to_jsonb(t)::text`;
+            yield* migrate(all);
+            for (const table of tables) {
+              const after = yield* sql<{
+                value: Record<string, unknown>;
+              }>`SELECT to_jsonb(t) AS value FROM ${sql(table)} t ORDER BY to_jsonb(t)::text`;
+              assert.strictEqual(after.length, before[table]!.length);
+              for (let i = 0; i < after.length; i++)
+                for (const [key, value] of Object.entries(before[table]![i]!.value))
+                  assert.deepStrictEqual(after[i]!.value[key], value, `${table}.${key}`);
+            }
+            yield* sql`UPDATE hq_environment SET name='still-writable' WHERE project_id='stage'`;
+            yield* sql`UPDATE hq_deploy_token SET key_id='legacy-updated' WHERE project_id='stage'`;
+            assert.deepStrictEqual(yield* sql`SELECT id,project_id FROM hq_environment`, [
+              { id: "stage", project_id: "stage" },
+            ]);
+            yield* sql`INSERT INTO hq_environment(id,app_id,target,tier,name,sources,branch,delivery,created_by)
+        VALUES ('git-prod',${app}::uuid,'git','production','git-prod',ARRAY['release'],'release','direct','owner')`;
+            assert.deepStrictEqual(
+              yield* sql`SELECT id,project_id,target FROM hq_environment WHERE id='git-prod'`,
+              [{ id: "git-prod", project_id: null, target: "git" }],
+            );
+            yield* sql`INSERT INTO hq_deploy_job(rollout_id,kind,environment_id,repo,sha,state,ended_at)
+        VALUES (${rollout!.id}::bigint,'push','git-prod','web',${"a".repeat(40)},'pushed',now())`;
+            // Legacy project-bound storage still cascades only when its Zerops attachment leaves.
+            yield* sql`DELETE FROM hq_environment WHERE project_id='stage'`;
+            for (const table of ["hq_deploy_token", "hq_subdomain_intent"])
+              assert.strictEqual((yield* sql`SELECT 1 FROM ${sql(table)}`).length, 0);
+            assert.strictEqual(
+              (yield* sql`SELECT 1 FROM hq_deploy_job WHERE environment_id='git-prod'`).length,
+              1,
+            );
+            assert.strictEqual((yield* sql`SELECT 1 FROM hq_release`).length, 1);
+          }),
+        ),
+    );
+
+    it.effect(
+      "Git targets cannot steal Zerops project bindings, branch slots or another application's remote.",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            yield* migrate(treeMigrations());
+            const sql = yield* SqlClient.SqlClient;
+            const app = "11111111-1111-4111-8111-111111111111";
+            yield* sql`INSERT INTO hq_app(id,name,created_by) VALUES (${app}::uuid,'constraints','owner')`;
+            yield* sql`INSERT INTO hq_repo(app_id,name,created_by) VALUES (${app}::uuid,'web','owner')`;
+            yield* sql`INSERT INTO hq_app_project(project_id,app_id,kind,created_by) VALUES ('stage',${app}::uuid,'stage','owner')`;
+            yield* sql`INSERT INTO hq_environment(id,project_id,app_id,tier,name,sources,created_by)
+        VALUES ('stage','stage',${app}::uuid,'stage','stage',ARRAY['main'],'owner')`;
+            const rejected = [
+              sql`INSERT INTO hq_environment(id,project_id,app_id,tier,name,sources,created_by) VALUES ('duplicate','stage',${app}::uuid,'stage','duplicate',ARRAY['main'],'owner')`,
+              sql`INSERT INTO hq_environment(id,app_id,target,tier,name,sources,created_by) VALUES ('bad-git',${app}::uuid,'git','stage','bad-git',ARRAY['main'],'owner')`,
+              sql`INSERT INTO hq_environment(id,project_id,app_id,target,tier,name,sources,branch,delivery,created_by) VALUES ('git-project','stage',${app}::uuid,'git','stage','git-project',ARRAY['main'],'main','direct','owner')`,
+              sql`INSERT INTO hq_repo_remote(app_id,repo,url,url_key,host) VALUES (${app}::uuid,'absent','https://github.com/a/b.git','github.com/a/b','github.com')`,
+            ];
+            for (const operation of rejected)
+              assert.strictEqual((yield* operation.pipe(Effect.flip))._tag, "SqlError");
+            yield* sql`INSERT INTO hq_environment(id,app_id,target,tier,name,sources,branch,delivery,created_by) VALUES ('git-one',${app}::uuid,'git','stage','git-one',ARRAY['main'],'main','direct','owner')`;
+            assert.strictEqual(
+              (yield* sql`INSERT INTO hq_environment(id,app_id,target,tier,name,sources,branch,delivery,created_by) VALUES ('git-two',${app}::uuid,'git','stage','git-two',ARRAY['main'],'main','direct','owner')`.pipe(
+                Effect.flip,
+              ))._tag,
+              "SqlError",
+            );
+          }),
+        ),
+    );
   });
 });

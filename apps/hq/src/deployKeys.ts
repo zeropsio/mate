@@ -61,26 +61,19 @@ export const keySecretOf = (raw: Option.Option<Redacted.Redacted>): KeySecret =>
 /** What binds a sealed token to its row: a token copied onto another row does not open there. */
 const rowOf = (projectId: string) => Buffer.from(`hq_deploy_token:${projectId}`, "utf8");
 
-/** `token`, sealed under `secret` for the environment of `projectId`. */
-export const sealToken = (
-  secret: KeySecretOk,
-  projectId: string,
-  token: Redacted.Redacted,
-): Sealed => {
+/** Authenticated row data binds the ciphertext to its owning storage domain. */
+const sealWithData = (secret: KeySecretOk, data: Uint8Array, token: Redacted.Redacted): Sealed => {
   const nonce = NodeCrypto.randomBytes(NONCE_BYTES);
   const cipher = NodeCrypto.createCipheriv("aes-256-gcm", Redacted.value(secret.key), nonce);
-  cipher.setAAD(rowOf(projectId));
+  cipher.setAAD(data);
   const body = Buffer.concat([cipher.update(Redacted.value(token), "utf8"), cipher.final()]);
   return { keyId: secret.id, sealed: Buffer.concat([nonce, body, cipher.getAuthTag()]) };
 };
 
-/**
- * The token `sealed` holds for the environment of `projectId`, opened under `secret`; none where it
- * was sealed under another key, for another row, or was changed since.
- */
-export const openToken = (
+/** Opens only under the same key and authenticated row data, with unchanged ciphertext. */
+const openWithData = (
   secret: KeySecretOk,
-  projectId: string,
+  data: Uint8Array,
   sealed: Sealed,
 ): Redacted.Redacted | undefined => {
   const bytes = Buffer.from(sealed.sealed);
@@ -90,7 +83,7 @@ export const openToken = (
     Redacted.value(secret.key),
     bytes.subarray(0, NONCE_BYTES),
   );
-  decipher.setAAD(rowOf(projectId));
+  decipher.setAAD(data);
   decipher.setAuthTag(bytes.subarray(bytes.length - TAG_BYTES));
   try {
     const body = bytes.subarray(NONCE_BYTES, bytes.length - TAG_BYTES);
@@ -99,6 +92,27 @@ export const openToken = (
     return undefined;
   }
 };
+
+/** Legacy Zerops ciphertext remains bound to its project, byte-for-byte compatible. */
+export const sealToken = (
+  secret: KeySecretOk,
+  projectId: string,
+  token: Redacted.Redacted,
+): Sealed => sealWithData(secret, rowOf(projectId), token);
+export const openToken = (secret: KeySecretOk, projectId: string, sealed: Sealed) =>
+  openWithData(secret, rowOf(projectId), sealed);
+
+const remoteRow = (appId: string, repo: string) =>
+  Buffer.from(`hq_repo_remote:${JSON.stringify([appId, repo])}`, "utf8");
+/** Repository custody has its own namespace, bound to both parts of the owning row. */
+export const sealRemoteToken = (
+  secret: KeySecretOk,
+  appId: string,
+  repo: string,
+  token: Redacted.Redacted,
+): Sealed => sealWithData(secret, remoteRow(appId, repo), token);
+export const openRemoteToken = (secret: KeySecretOk, appId: string, repo: string, sealed: Sealed) =>
+  openWithData(secret, remoteRow(appId, repo), sealed);
 
 /**
  * The pass over the tokens kept before they were sealed (`0028_sealed_deploy_tokens.sql`), run by
@@ -148,6 +162,16 @@ export class DeployKeys extends Context.Service<
     readonly seal: (projectId: string, token: Redacted.Redacted) => Sealed | undefined;
     /** The token `sealed` holds; none without a key, or where it does not open under it. */
     readonly open: (projectId: string, sealed: Sealed) => Redacted.Redacted | undefined;
+    readonly sealRemote: (
+      appId: string,
+      repo: string,
+      token: Redacted.Redacted,
+    ) => Sealed | undefined;
+    readonly openRemote: (
+      appId: string,
+      repo: string,
+      sealed: Sealed,
+    ) => Redacted.Redacted | undefined;
   }
 >()("@t3tools/hq/deployKeys") {}
 
@@ -171,12 +195,16 @@ export const deployKeysLayer = (
               ),
               seal: (projectId, token) => sealToken(secret, projectId, token),
               open: (projectId, sealed) => openToken(secret, projectId, sealed),
+              sealRemote: (appId, repo, token) => sealRemoteToken(secret, appId, repo, token),
+              openRemote: (appId, repo, sealed) => openRemoteToken(secret, appId, repo, sealed),
             }
           : {
               state: secret.state,
               status: Effect.succeed(secret.state),
               seal: () => undefined,
               open: () => undefined,
+              sealRemote: () => undefined,
+              openRemote: () => undefined,
             },
       );
     }),

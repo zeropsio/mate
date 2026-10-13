@@ -7,12 +7,22 @@ import * as NodeURL from "node:url";
 import * as NodeUtil from "node:util";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { makePreExpandCore, PRE_EXPAND_PACKAGES, PRE_EXPAND_SHA } from "./preExpandCore.ts";
 import { tempDir } from "./tempDir.ts";
 import { TempPostgres, tempPostgresLayer } from "./tempPostgres.ts";
 import { startCore, untilHealth, sessionFor } from "./runningCore.ts";
+
+// This historical writer's compatibility boundary is the schema before 0054.
+vi.mock("../../src/migrationFiles.ts", async (original) => {
+  const module = await original<typeof import("../../src/migrationFiles.ts")>();
+  return {
+    ...module,
+    treeMigrations: () => module.treeMigrations().filter((file) => file.name < "0054_"),
+  };
+});
 
 const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
 const repoRoot = NodePath.resolve(import.meta.dirname, "../../../..");

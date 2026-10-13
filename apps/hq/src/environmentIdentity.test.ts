@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Layer from "effect/Layer";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { assert, describe, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Redacted from "effect/Redacted";
@@ -13,6 +14,15 @@ import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { readEnvironmentSource } from "./environmentNavigation.ts";
+// Old-Core compatibility belongs to 0052's supported schema. 0054 requires the identity-writer
+// floor; its full-current-schema controls live in migrations.test.ts.
+vi.mock("./migrationFiles.ts", async (original) => {
+  const module = await original<typeof import("./migrationFiles.ts")>();
+  return {
+    ...module,
+    treeMigrations: () => module.treeMigrations().filter((file) => file.name < "0054_"),
+  };
+});
 const NAME = "0052_environment_identity.sql";
 const APP = "11111111-1111-4111-8111-111111111111";
 const SHA = "a".repeat(40);
@@ -24,7 +34,7 @@ const withSql = <A, E>(use: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   });
 const seed = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  yield* migrate(treeMigrations().filter((file) => file.name !== NAME));
+  yield* migrate(treeMigrations().filter((file) => file.name < NAME));
   yield* sql`INSERT INTO hq_app (id, name, created_by) VALUES (${APP}::uuid, 'identity', 'owner')`;
   for (const tier of ["stage", "production"] as const) {
     yield* sql`INSERT INTO hq_app_project (project_id, app_id, kind, created_by) VALUES (${tier}, ${APP}::uuid, ${tier}, 'owner')`;

@@ -21,6 +21,8 @@ import {
   openToken,
   sealPlainTokens,
   sealToken,
+  sealRemoteToken,
+  openRemoteToken,
 } from "./deployKeys.ts";
 import { Leader, leaderLayer } from "./leader.ts";
 import { treeMigrations } from "./migrationFiles.ts";
@@ -93,6 +95,25 @@ describe("a sealed deploy token", () => {
     for (const bytes of [sealed.sealed, again.sealed]) {
       assert.notInclude(Buffer.from(bytes).toString("latin1"), VALUE);
     }
+  });
+});
+
+describe("a sealed repository token", () => {
+  it("A repository token opens only for its application and repository, never a deploy row.", () => {
+    const key = testKey(TEST_KEY_SECRET);
+    const token = Redacted.make("repo-token-test");
+    const sealed = sealRemoteToken(key, "app-a", "web", token);
+    assert.strictEqual(
+      Redacted.value(openRemoteToken(key, "app-a", "web", sealed)!),
+      "repo-token-test",
+    );
+    assert.strictEqual(openRemoteToken(key, "app-b", "web", sealed), undefined);
+    assert.strictEqual(openRemoteToken(key, "app-a", "worker", sealed), undefined);
+    assert.strictEqual(openToken(key, "app-a/web", sealed), undefined);
+    assert.strictEqual(
+      openRemoteToken(key, "app-a", "web", sealToken(key, "app-a/web", token)),
+      undefined,
+    );
   });
 });
 

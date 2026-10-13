@@ -429,8 +429,8 @@ describe("GET /health", () => {
                INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
                SELECT '${projectId}', id, 'stage', 'owner' FROM app RETURNING project_id, app_id),
              environment AS (
-               INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
-               SELECT project_id, app_id, 'stage', 'stage', '{main}', 'owner' FROM placed
+               INSERT INTO hq_environment (id, project_id, app_id, tier, name, sources, created_by)
+               SELECT project_id, project_id, app_id, 'stage', 'stage', '{main}', 'owner' FROM placed
                RETURNING project_id)
              INSERT INTO hq_deploy_token (project_id, key_id, sealed, kept_by)
              SELECT project_id, ${sealedSql(sealedFor(projectId, "a-token", raw))}, 'owner'

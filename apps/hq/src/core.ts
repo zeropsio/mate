@@ -17,6 +17,7 @@ import { observationLayer } from "./observation.ts";
  *
  * @module core
  */
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -46,6 +47,9 @@ import type { Migration } from "./migrations.ts";
 import { officialLayer } from "./official.ts";
 import { recomputesLayer } from "./recomputes.ts";
 import { recipeTiersLayer } from "./recipeTiers.ts";
+import { repoRemotesLayer } from "./repoRemotes.ts";
+import { githubProbesLayer } from "./githubProbes.ts";
+import { gitTransportLayer } from "./gitTransport.ts";
 import { releasesLayer } from "./releases.ts";
 import { rolloutsLayer } from "./rollouts.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
@@ -127,6 +131,13 @@ const services = (options: CoreOptions) => {
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,
+    repoRemotesLayer.pipe(
+      Layer.provide(
+        githubProbesLayer.pipe(
+          Layer.provide(gitTransportLayer.pipe(Layer.provide(NodeHttpClient.layerNodeHttp))),
+        ),
+      ),
+    ),
     structureLayer({
       hqProjectId: options.hqProjectId,
       credential: options.credential,
