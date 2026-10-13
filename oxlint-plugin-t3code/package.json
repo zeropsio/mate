@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "oxc-parser": "0.148.0",
     "vite-plus": "catalog:"
   }
 }
