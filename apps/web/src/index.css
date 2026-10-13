@@ -12329,6 +12329,9 @@ button.rv-relrow:hover .rv-relrow-go {
 .arrival-sign-in {
   position: relative;
   container-type: inline-size;
+  /* A card of its own in the stage's slot: its words start on their line, never the stage's
+     centred text (the owner, 2026-10-13: "once again misaligned"). */
+  text-align: start;
 }
 
 .arrival-sign-in[data-arrives] {
