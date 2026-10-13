@@ -442,6 +442,80 @@
       "captures": []
     },
     {
+      "id": "zerops-addresses",
+      "title": "Zerops addresses sheet",
+      "components": [
+        "apps/web/src/components/zerops/addresses/AddressesSheet.tsx",
+        "apps/web/src/components/zerops/addresses/AddressesSheetBits.tsx",
+        "apps/web/src/components/zerops/addresses/AddressesSheetContainer.tsx",
+        "apps/web/src/components/zerops/addresses/AddressesWeb.tsx",
+        "apps/web/src/components/zerops/addresses/AddressesDirect.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "overlay",
+          "value": "A place's addresses — every door that calls useAddressesSheet.open (the globe popover, the project's ··· menu, Chief's card, the release review)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data"],
+      "reverseStates": [
+        {
+          "action": "Add your domain",
+          "reverse": "Remove"
+        },
+        {
+          "action": "Remove",
+          "reverse": "Add your domain"
+        },
+        {
+          "action": "Close it",
+          "reverse": "Open to the internet"
+        },
+        {
+          "action": "Open to the internet",
+          "reverse": "Close it"
+        },
+        {
+          "action": "Open a port",
+          "reverse": "Close port"
+        },
+        {
+          "action": "Close port",
+          "reverse": "Open a port"
+        },
+        {
+          "action": "Change who can connect",
+          "reverse": "none: changing it again puts back who could connect."
+        },
+        {
+          "action": "Get your own IPv4",
+          "reverse": "none: it is turned off in Zerops (Open in Zerops); a paid period can't be refunded."
+        },
+        {
+          "action": "Put them live",
+          "reverse": "none: each change put live is undone by its own reverse."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the addresses sheet yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/addresses/AddressesSheet.test.tsx",
+        "apps/web/src/components/zerops/addresses/addresses.logic.test.ts"
+      ],
+      "captures": []
+    },
+    {
       "id": "zerops-vault-request",
       "title": "Zerops vault request card",
       "components": [
