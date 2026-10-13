@@ -263,11 +263,13 @@ export function dnsAdvice(
   };
 }
 
+/**
+ * The ports a domain may point at: the ones Zerops routes HTTP to, or that declare an HTTP scheme
+ * (set at deploy, before any routing exists) — zcp's `webPorts` holds the Chief to the same.
+ */
 const webPorts = (service: ServiceValue) =>
-  (service.ports ?? []).filter((port) =>
-    port.httpRouting === undefined
-      ? port.scheme === "http" || port.scheme === "https"
-      : port.httpRouting,
+  (service.ports ?? []).filter(
+    (port) => port.httpRouting === true || port.scheme === "http" || port.scheme === "https",
   );
 
 const reachable = (service: ServiceValue) => service.isSystem !== true && !isZcpService(service);
