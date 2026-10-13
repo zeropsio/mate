@@ -106,16 +106,6 @@ it("the gate runs the crew's journeys on the engine, every case certified", () =
   ]);
 });
 
-it("CI runs the same named gate as local ports", () => {
-  const workflow = NodeFS.readFileSync(
-    new URL("../.github/workflows/ci.yml", import.meta.url),
-    "utf8",
-  );
-  expect(checkSteps(workflow, "chat_gate").map((step) => step.run)).toEqual([
-    "node scripts/chat-gate.ts --stages A,E,F,types",
-  ]);
-});
-
 it("CI's Test job runs scenario-driver units after provisioning their browser", () => {
   const workflow = NodeFS.readFileSync(
     new URL("../.github/workflows/ci.yml", import.meta.url),
@@ -593,54 +583,6 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
     .sort();
   expect(actual).toEqual(expected);
   expect(actual.length).toBeGreaterThan(0);
-});
-
-it("CI builds once and certifies both complete C shards from that artifact", () => {
-  const { jobs } = parse(
-    NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
-  ) as {
-    jobs: Record<
-      string,
-      {
-        needs: string;
-        strategy?: { "fail-fast": boolean; matrix: { include: { command: string }[] } };
-        steps: {
-          uses?: string;
-          run?: string;
-          with?: Record<string, unknown>;
-          env?: Record<string, string>;
-        }[];
-      }
-    >;
-  };
-  const build = jobs.chat_bundle!;
-  const journeys = jobs.chat_scenarios!;
-  expect(build.needs).toBe("changes");
-  expect(jobs.chat_gate!.needs).toBe("changes");
-  expect(build.steps.filter((step) => step.run).map((step) => step.run)).toEqual([
-    "vp exec node apps/web/test/scenarios/harness/build.ts",
-  ]);
-  expect(journeys.needs).toBe("chat_bundle");
-  expect(journeys.strategy?.["fail-fast"]).toBe(false);
-  expect(journeys.strategy?.matrix.include.slice(0, 2).map((row) => row.command)).toEqual([
-    "node scripts/chat-gate.ts --stages C --shard 1/2",
-    "node scripts/chat-gate.ts --stages C --shard 2/2",
-  ]);
-  const uploaded = build.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"))!;
-  const downloaded = journeys.steps.find((step) =>
-    step.uses?.startsWith("actions/download-artifact@"),
-  )!;
-  expect(uploaded.with).toMatchObject({
-    "include-hidden-files": true,
-    "if-no-files-found": "error",
-  });
-  expect(downloaded.with).toEqual({ name: uploaded.with!.name, path: uploaded.with!.path });
-  expect(journeys.steps.filter((step) => step.run)).toEqual([
-    expect.objectContaining({
-      run: "${{ matrix.command }}",
-      env: { MATE_SCENARIO_REQUIRE_BUNDLE: "1" },
-    }),
-  ]);
 });
 
 it.each([

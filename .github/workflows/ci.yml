@@ -200,31 +200,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  chat_gate:
-    name: Chat Contract (A + E + F + Typecheck)
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.chat != 'false' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: true
-
-      - name: Provider goldens, engine proof, crew journeys and typecheck
-        run: node scripts/chat-gate.ts --stages A,E,F,types
-
   chat_scenarios:
     name: Test Web Scenarios (${{ matrix.name }})
     needs: chat_bundle
@@ -239,9 +214,9 @@ jobs:
         # native non-C partitions to size those shards; their filter includes new areas.
         include:
           - name: C shard 1
-            command: node scripts/chat-gate.ts --stages C --shard 1/2
+            command: node scripts/chat-gate.ts --verbose --stages C --shard 1/2
           - name: C shard 2
-            command: node scripts/chat-gate.ts --stages C --shard 2/2
+            command: node scripts/chat-gate.ts --verbose --stages C --shard 2/2
           - name: non-C shard 1
             command: >-
               vp -C apps/web test run --config test/scenarios/vitest.config.ts
@@ -415,7 +390,18 @@ jobs:
         env:
           T3CODE_TRANSFER_BUDGET_REPORT_PATH: ${{ runner.temp }}/t3code-transfer-budget.md
           T3CODE_TRANSFER_BUDGET_RESULT_PATH: ${{ runner.temp }}/thread-transfer-result.json
-        run: vp run --filter t3 test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+          # Apply certification to the existing A/E/F inventory. The rest of the
+          # server suite includes platform-specific skips and still runs in full.
+          MATE_CHAT_GATE_SERVER: "1"
+        run: >-
+          vp run --filter t3 test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+          --allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
+
+      - name: Certify engine oracles
+        if: matrix.shard == 1
+        run: |
+          vp exec tsc --noEmit --incremental -p apps/web/test/engine-oracle/tsconfig.json
+          vp -C apps/web test run --project engine-oracle test/engine-oracle/runCard.oracle.test.ts test/engine-oracle/mateHealth.oracle.test.ts --allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
 
       # src/server.test.ts writes the budget report, so exactly one shard
       # produces it. Published straight to the run's step summary — gated on
@@ -487,12 +473,11 @@ jobs:
       resource_monitor: ${{ steps.detect.outputs.resource_monitor }}
       mobile_native: ${{ steps.detect.outputs.mobile_native }}
     steps:
-      - name: Checkout gate selector
+      - name: Checkout workspace manifest
         uses: actions/checkout@v6
         with:
           sparse-checkout: |
             /package.json
-            /scripts/chat-gate.ts
           sparse-checkout-cone-mode: false
 
       - name: Setup Node
@@ -552,10 +537,6 @@ jobs:
 
           paths=$(tr '\t' '\n' <<< "$rows")
 
-          chat=$(printf '%s\n' "$paths" | node scripts/chat-gate.ts --select) \
-            || fail_open "Could not select the chat contract gate."
-          echo "chat=${chat}" >> "$GITHUB_OUTPUT"
-
           gate() {
             local area="$1" pattern="$2"
             if grep -qE "$pattern" <<< "$paths"; then
@@ -572,6 +553,9 @@ jobs:
           # config, this workflow, and the packages the clients import. The
           # clients never import apps/server; they meet it over the contracts.
           shared='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|vite\.config\.ts|\.github/workflows/ci\.yml)$|^packages/(contracts|shared|client-runtime)/'
+
+          # The bundle feeds every scenario area, all of which run real HQ Core.
+          gate chat "${shared}|^apps/(hq|server|web)/|^packages/(effect-codex-app-server|effect-acp)/|^scripts/(chat-gate|gate-changed|test-postgres)"
 
           if [[ -n "${PR_NUMBER}" ]]; then
             # Desktop Smoke stages the hosted web bundle through scripts/.
