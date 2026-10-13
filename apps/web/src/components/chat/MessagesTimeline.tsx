@@ -1215,6 +1215,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // Rows arriving, and the viewport resizing, move the end too.
   useLayoutEffect(() => {
     if (!followingEnd || rows.length === 0) return;
+    // A commit can clamp the native range before later row measurements grow it again.
+    endFollowRef.current?.observe();
     // Composer geometry keeps the followed line in place. Row growth keeps its existing motion.
     if (previousContentInsetEndAdjustmentRef.current !== contentInsetEndAdjustment) {
       if (outerFoldsRef.current.size === 0)
@@ -1559,15 +1561,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const lastReadingRef = useRef<TimelineScrollReading | null>(null);
 
   const readList = useCallback(
-    (personScrolling: boolean, own = false) => {
+    (personScrolling: boolean) => {
       const node = listRef.current?.getScrollableNode();
+      const own = node ? takeOwnScroll(node) : undefined;
+      placeFolds();
       const reading = node ? { scrollTop: node.scrollTop, contentHeight: node.scrollHeight } : null;
       const scroll = reading
         ? {
             ...classifyTimelineScroll({
               previous: lastReadingRef.current,
               current: reading,
-              personScrolling,
+              personScrolling: own === undefined && personScrolling,
             }),
             // A jump far up that no change of the content explains — find in
             // page, a fragment link, focus moving — leaves the end, whoever
@@ -1578,13 +1582,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       lastReadingRef.current = reading && nextTimelineReading(lastReadingRef.current, reading);
       notePersonSession({ type: "scrolled", at: performance.now(), byPerson: scroll.byPerson });
       const state = listRef.current?.getState?.();
-      if (restoringReadingPosition || state?.data !== rows) return;
+      if (restoringReadingPosition || state?.data !== rows) return own;
       const isAtEnd = rememberPosition();
       if (isAtEnd !== undefined) {
         onIsAtEndChange(isAtEnd, scroll);
       }
       if (!state || minimapItems.length === 0) {
-        return;
+        return own;
       }
 
       const scrollTop = state.scroll ?? 0;
@@ -1620,6 +1624,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       setMinimapCurrentIndex((current) =>
         current === nextCurrentIndex ? current : nextCurrentIndex,
       );
+      return own;
     },
     [
       listRef,
@@ -1627,6 +1632,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       minimapStripMap,
       notePersonSession,
       onIsAtEndChange,
+      placeFolds,
       rememberPosition,
       restoringReadingPosition,
       rows,
@@ -1635,17 +1641,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // A move the page made itself (`scrollOwn`: a glide, a fold) is never the
   // person's, however recently they touched the list.
   const handleScroll = useCallback(() => {
-    const node = listRef.current?.getScrollableNode();
-    const own = node ? takeOwnScroll(node) : undefined;
-    placeFolds();
-    readList(
-      own === undefined && personIsScrolling(personSessionRef.current, performance.now()),
-      own !== undefined,
-    );
+    const own = readList(personIsScrolling(personSessionRef.current, performance.now()));
     // A move of the page's own that left the end while it follows: back to the end; the list's
     // own before the frame paints.
     if (own && followingEndRef.current && listPlacedRef.current) followEnd(0, own);
-  }, [followEnd, listRef, placeFolds, readList]);
+  }, [followEnd, readList]);
 
   // Rows changed under the list: where it stands now is none of the person's doing.
   useEffect(() => {

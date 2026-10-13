@@ -39,12 +39,7 @@ function FoldBoundaryProbe() {
   return null;
 }
 
-import { takeOwnScroll } from "./timelineEndFollow";
-import {
-  classifyTimelineScroll,
-  jumpedAway,
-  nextTimelineFollow,
-} from "@t3tools/client-runtime/zerops/timelineFollow";
+import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
 
 vi.mock("@legendapp/list/react", async () => {
   const legendListTestId = "legend-list";
@@ -757,22 +752,39 @@ describe("MessagesTimeline", () => {
     vi.stubGlobal("cancelAnimationFrame", () => {});
     const { LegendList } = await import("@legendapp/list/react");
     const viewport = { scrollTop: 1200, scrollHeight: 2000, clientHeight: 800 };
+    let renderer: ReactTestRenderer | undefined;
+    let follows = true;
+    let data: ReadonlyArray<{ id: string }> = [];
     const listRef = {
       current: {
-        getState: () => ({ isWithinMaintainScrollAtEndThreshold: true }),
+        getState: () => ({
+          data,
+          isAtEnd: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 2,
+        }),
         getScrollableNode: () => viewport,
       } as unknown as LegendListRef,
     };
-    const timeline = (follows: boolean) => (
+    const first = buildUserTimelineEntry("Keep following after measurement.");
+    const second = {
+      ...buildUserTimelineEntry("One live update."),
+      id: "entry-2",
+      message: {
+        ...buildUserTimelineEntry("One live update.").message,
+        id: MessageId.make("message-2"),
+      },
+    };
+    const timeline = (arrived = false) => (
       <MessagesTimeline
         {...buildProps()}
         listRef={listRef}
         liveFollowEnabled={follows}
+        onIsAtEndChange={(atEnd, scroll) => {
+          follows = nextTimelineFollow(follows, { type: "position", atEnd, ...scroll });
+        }}
         routeThreadKey="environment-local:measured-clamp"
-        timelineEntries={[buildUserTimelineEntry("Keep following after measurement.")]}
+        timelineEntries={arrived ? [first, second] : [first]}
       />
     );
-    let renderer: ReactTestRenderer | undefined;
     const measure = (previous: number, size: number) =>
       renderer!.root.findByType(LegendList).props.onItemSizeChanged({
         index: 0,
@@ -781,34 +793,39 @@ describe("MessagesTimeline", () => {
         previous,
         size,
       });
+    const frame = async (at: number) => {
+      data = renderer!.root.findByType(LegendList).props.data;
+      await act(async () => {
+        for (const run of frames.splice(0)) run(at);
+      });
+    };
     try {
       await act(() => {
-        renderer = create(timeline(true));
+        renderer = create(timeline());
       });
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      for (let turn = 0; turn < 8; turn++) await frame(turn * (1000 / 60));
       await act(async () => {
         measure(280, 300);
       });
-      takeOwnScroll(viewport as unknown as HTMLElement);
-      const previous = { scrollTop: 1200, contentHeight: 2000 };
-      // A row shrinks the native range; another grows it before the scroll receipt.
+      renderer!.root.findByType(LegendList).props.onScroll();
+      // Shrink clamps the native range; growth and its row reflection precede the scroll receipt.
       viewport.scrollHeight = 1800;
       viewport.scrollTop = 1000;
-      measure(300, 100);
+      await act(() => renderer!.update(timeline(true)));
       viewport.scrollHeight = 2200;
-      const current = { scrollTop: viewport.scrollTop, contentHeight: viewport.scrollHeight };
-      const own = takeOwnScroll(viewport as unknown as HTMLElement);
-      const follows = nextTimelineFollow(true, {
-        type: "position",
-        atEnd: false,
-        ...classifyTimelineScroll({ previous, current, personScrolling: false }),
-        jumped: !own && jumpedAway({ previous, current }),
-      });
-      await act(() => renderer!.update(timeline(follows)));
-      await act(async () => {
-        for (let turn = 0; frames.length > 0 && turn < 200; turn += 1)
-          for (const frame of frames.splice(0)) frame(turn * (1000 / 60));
-      });
-      expect(viewport.scrollTop).toBe(1400);
+      measure(300, 100);
+      await frame(150);
+      expect(follows, "ASSERTION: a row reflection preserves the measured clamp's ownership").toBe(
+        true,
+      );
+      renderer!.root.findByType(LegendList).props.onScroll();
+      await act(() => renderer!.update(timeline(true)));
+      for (let turn = 10; frames.length > 0 && turn < 200; turn++) await frame(turn * (1000 / 60));
+      expect(
+        viewport.scrollTop,
+        "ASSERTION: the live arrival is followed to the conversation end",
+      ).toBe(1400);
     } finally {
       await act(() => renderer?.unmount());
     }
