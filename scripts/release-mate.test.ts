@@ -209,6 +209,28 @@ it("a failed or pending rerun does not reuse an older green approval", () => {
   ).toBe(false);
 });
 
+it("release CI grants the permissions requested by its reusable workflow", () => {
+  type Workflow = {
+    permissions: Record<string, string>;
+    jobs: Record<string, { uses?: string; permissions?: Record<string, string> }>;
+  };
+  const readWorkflow = (file: string) =>
+    parse(NodeFS.readFileSync(NodePath.join(import.meta.dirname, "..", file), "utf8")) as Workflow;
+  const release = readWorkflow(".github/workflows/release.yml");
+  const caller = release.jobs.ci!;
+  const ci = readWorkflow(caller.uses!);
+  const granted = caller.permissions ?? release.permissions;
+  const levels = ["none", "read", "write"];
+  for (const [name, job] of Object.entries(ci.jobs)) {
+    for (const [permission, level] of Object.entries(job.permissions ?? ci.permissions)) {
+      expect(
+        levels.indexOf(granted[permission] ?? "none"),
+        `ASSERTION: release CI must grant ${permission}: ${level} requested by nested job ${name}`,
+      ).toBeGreaterThanOrEqual(levels.indexOf(level));
+    }
+  }
+});
+
 it("failed release CI publishes no manifest, checksum or latest release", () => {
   const workflow = parse(
     NodeFS.readFileSync(
