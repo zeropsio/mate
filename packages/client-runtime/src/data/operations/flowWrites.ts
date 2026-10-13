@@ -12,7 +12,7 @@
  */
 import { ProjectId } from "@t3tools/contracts";
 import type { ChangeLink, HqChange } from "@t3tools/shared/hqChanges";
-import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+import type { HqDeliveryAnswer, HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { Release } from "@t3tools/shared/hqRelease";
 
 import { canonicalEnvironmentsOf, jobsByService } from "../../zerops/hq/environments.ts";
@@ -81,6 +81,8 @@ declare module "../model.ts" {
 }
 
 export interface FlowAnswer {
+  /** Additive Git hand-over evidence; the existing deploy answer stays Zerops-only. */
+  readonly delivery?: HqDeliveryAnswer;
   readonly tag: string;
   readonly deploys: HqDeployAnswer | undefined;
 }

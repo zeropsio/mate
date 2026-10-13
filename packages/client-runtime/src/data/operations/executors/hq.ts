@@ -1,3 +1,16 @@
+import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
+import { hqOffer } from "@t3tools/shared/hqOffers";
+import { canonicalHqNavigation } from "../../projections/hqNavigation.ts";
+import { readsOfState, type AccountStore } from "../../store.ts";
+import { sameValue } from "../../projections/equal.ts";
+import {
+  HQ_GIT_OPERATION_VERBS,
+  isHqGitTargetIntent,
+  needsGitCandidate,
+  type HqGitTargetIntent,
+  type HqGitCandidateIntent,
+} from "../hqGitTargets.ts";
+import type { Operations } from "../coordinator.ts";
 import { lifecycleReceipt } from "../../families/hqLifecycle.ts";
 /**
  * HQ as the owner of the operations it executes: each kind's write through the organization's
@@ -36,8 +49,12 @@ import {
 /** The flow's writes HQ executes, as its client sends them. */
 type FlowWrites = Pick<
   HqApi,
-  "release" | "rollback" | "redeploy" | "addService" | "mergeChange" | "closeChange"
->;
+  "rollback" | "redeploy" | "addService" | "mergeChange" | "closeChange"
+> & {
+  readonly release: (
+    ...input: Parameters<HqApi["release"]>
+  ) => Promise<Awaited<ReturnType<HqApi["release"]>> & { readonly delivery?: HqDeliveryAnswer }>;
+};
 
 /** The writes HQ executes, as its client sends them. */
 export type HqWrites = Pick<
@@ -56,9 +73,33 @@ export type HqWrites = Pick<
   | "decideProposal"
 > &
   FlowWrites &
+  Partial<HqGitWrites> &
   Partial<
     Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt" | "updateMate" | "setAutoUpdatePolicy">
   >;
+
+/** Optional adapter ports; an older HQ/client never implies support for a Git verb. */
+export interface HqGitWrites {
+  readonly gitTargetWrite: (
+    requestId: string,
+    intent: HqGitTargetIntent,
+    candidate?: string,
+  ) => Promise<OperationReceipt>;
+  readonly gitTargetReceipt: (
+    requestId: string,
+    intent: HqGitTargetIntent,
+  ) => Promise<OperationReceipt | null>;
+}
+export interface HqExecutor extends OperationExecutor {
+  readonly submitGitCandidate: (
+    operations: Operations,
+    requestId: string,
+    intent: HqGitCandidateIntent,
+    token: string,
+  ) => Effect.Effect<string>;
+  readonly cancelGitCandidate: (requestId: string) => void;
+  readonly hasGitCandidate: (requestId: string) => boolean;
+}
 
 type Write = <A>(call: () => Promise<A>) => Effect.Effect<A, StreamFault | UncertainAcceptance>;
 
@@ -94,7 +135,13 @@ function flowWrite(
             entries: intent.entries,
           }),
         ),
-        ({ made, deploys }) => receipt(requestId, made.tag, { tag: made.tag, deploys }, PENDING),
+        ({ made, deploys, delivery }) =>
+          receipt(
+            requestId,
+            made.tag,
+            { tag: made.tag, deploys, ...(delivery === undefined ? {} : { delivery }) },
+            PENDING,
+          ),
       );
     case "roll-back":
       return Effect.map(
@@ -187,6 +234,19 @@ const answered = (
   outcome: { kind: "succeeded", evidence: "HQ answered the write." },
 });
 
+/** Reject an adapter answer that echoes transient input before it enters an operation receipt. */
+function containsCandidate(value: unknown, token: string): boolean {
+  if (typeof value === "string") return value.includes(token);
+  if (Array.isArray(value)) return value.some((entry) => containsCandidate(entry, token));
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.entries(value).some(
+      ([key, entry]) => key.includes(token) || containsCandidate(entry, token),
+    )
+  );
+}
+
 export function makeHqExecutor(ports: {
   /** The organization's official HQ, once known; `null` while none is. */
   readonly apiOf: (orgId: string) => HqWrites | null;
@@ -194,6 +254,8 @@ export function makeHqExecutor(ports: {
   readonly zerops: Pick<ZeropsApiClient, "mintIntegrationToken" | "deleteIntegrationToken">;
   /** Captured account lifetime; lifecycle writes require it. */
   readonly active?: () => boolean;
+  /** Required for Git: offers and candidate cleanup share the account store lifetime. */
+  readonly gitStore?: AccountStore;
   readonly hqProjectIdOf?: (orgId: string) => string | null;
   /**
    * Handed what a Chief's record answered for its project: the credential its zcp reaches the
@@ -203,7 +265,115 @@ export function makeHqExecutor(ports: {
     projectId: string,
     access: { readonly credential: string; readonly proxyUrl: string },
   ) => void;
-}): OperationExecutor {
+}): HqExecutor {
+  const candidates = new Map<string, { readonly intent: HqGitCandidateIntent; token: string }>();
+  let gitClosed = false;
+  const cancelGitCandidate = (id: string) => {
+    const held = candidates.get(id);
+    if (held !== undefined) held.token = "";
+    candidates.delete(id);
+  };
+  ports.gitStore?.onClose(() => {
+    gitClosed = true;
+    for (const id of candidates.keys()) cancelGitCandidate(id);
+  });
+  const gitCurrent = (intent: HqGitTargetIntent) =>
+    ports.gitStore !== undefined &&
+    !gitClosed &&
+    ports.active?.() === true &&
+    ports.hqProjectIdOf?.(intent.orgId) === intent.hqProjectId;
+  const gitFault = (message: string): StreamFault => ({ outcome: "definitive-refusal", message });
+  const gitReceipt = (id: string, said: OperationReceipt): OperationReceipt => {
+    if (said.requestId !== id || said.executor !== "hq")
+      throw new HqError({
+        kind: "uncertain",
+        code: "unreadable",
+        message: "HQ did not confirm the original Git operation identity.",
+      });
+    return said;
+  };
+  const gitWrite = (id: string, intent: HqGitTargetIntent) =>
+    Effect.gen(function* () {
+      const held = candidates.get(id);
+      // Move the candidate out before use; neither retry nor a second execution can recover it.
+      let token = held?.token;
+      cancelGitCandidate(id);
+      if (!gitCurrent(intent))
+        return yield* Effect.fail(gitFault("This Zerops sign-in has ended."));
+      if (
+        needsGitCandidate(intent) &&
+        (token === undefined || token === "" || !sameValue(held?.intent, intent))
+      )
+        return yield* Effect.fail(gitFault("Enter the candidate token again."));
+      const read = readsOfState(ports.gitStore!.state());
+      const nav = canonicalHqNavigation.derive(read, intent.orgId);
+      const app = read.fact("hqApp", intent.appId);
+      if (app.kind !== "known")
+        return yield* Effect.fail(gitFault("HQ has not offered this Git operation."));
+      let can = app.value.can;
+      if ("environmentId" in intent) {
+        const environments = app.value.environments;
+        can =
+          environments === undefined || "refused" in environments
+            ? undefined
+            : environments.find((environment) => environment.id === intent.environmentId)?.can;
+      }
+      const offer = hqOffer(can, HQ_GIT_OPERATION_VERBS[intent.kind], {
+        current: nav.live,
+        unavailableSince: nav.downSince ?? null,
+      });
+      if (offer.kind !== "allowed")
+        return yield* Effect.fail(
+          gitFault(
+            offer.kind === "refused" ? offer.reason : "HQ has not offered this Git operation.",
+          ),
+        );
+      const api = ports.apiOf(intent.orgId);
+      if (api?.gitTargetWrite === undefined)
+        return yield* Effect.fail(
+          gitFault("Update HQ and the client to use Git target operations."),
+        );
+      const releaseClose = ports.gitStore!.onClose(() => {
+        token = undefined;
+      });
+      return yield* Effect.tryPromise({
+        try: async () => {
+          const said = await api.gitTargetWrite!(id, intent, token);
+          if (token && containsCandidate(said, token))
+            throw new HqError({
+              kind: "uncertain",
+              code: "unreadable",
+              message: "HQ returned unsafe candidate evidence.",
+            });
+          if (!gitCurrent(intent))
+            throw new HqError({
+              kind: "uncertain",
+              code: "closed",
+              message: "This Zerops sign-in has ended.",
+            });
+          return gitReceipt(id, said);
+        },
+        // Keep proven refusal words, withholding any error that echoes transient input.
+        catch: (cause) => {
+          const fault = faultOf(cause, true);
+          return needsGitCandidate(intent) &&
+            (token === undefined || containsCandidate(fault, token))
+            ? {
+                outcome: fault.outcome,
+                message: "HQ did not return safe evidence for this Git operation.",
+              }
+            : fault;
+        },
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            token = undefined;
+            releaseClose();
+          }),
+        ),
+      );
+    });
+
   /** The environment's own token minted, then kept by HQ; a refused one taken back. */
   const keepKey = (
     api: HqWrites,
@@ -340,7 +510,26 @@ export function makeHqExecutor(ports: {
   };
 
   return {
+    cancelGitCandidate,
+    hasGitCandidate: (id) => candidates.has(id),
+    submitGitCandidate: (operations, id, intent, token) => {
+      if (candidates.has(id)) throw new Error("This Git operation already has a candidate.");
+      const candidate = { intent, token };
+      if (gitCurrent(intent)) candidates.set(id, candidate);
+      else candidate.token = "";
+      token = "";
+      return Effect.suspend(() =>
+        candidates.get(id) === candidate ? operations.submit(intent, id) : Effect.succeed(id),
+      ).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (candidates.get(id) === candidate) cancelGitCandidate(id);
+          }),
+        ),
+      );
+    },
     lookupKinds: new Set([
+      ...Object.keys(HQ_GIT_OPERATION_VERBS),
       "move-project",
       "prepare-mate-deletion",
       "complete-mate-deletion",
@@ -348,6 +537,38 @@ export function makeHqExecutor(ports: {
     ]),
     lookup: (requestId, intent) =>
       Effect.gen(function* () {
+        if (isHqGitTargetIntent(intent)) {
+          if (!gitCurrent(intent))
+            return yield* Effect.fail(
+              gitFault("Return to the original account to check this Git operation."),
+            );
+          const api = ports.apiOf(intent.orgId);
+          if (api?.gitTargetReceipt === undefined)
+            return yield* Effect.fail({
+              outcome: "transient" as const,
+              message: "The original HQ must resolve this Git operation.",
+            });
+          const said = yield* Effect.tryPromise({
+            try: () => api.gitTargetReceipt!(requestId, intent),
+            catch: (cause): StreamFault => ({
+              outcome: "transient",
+              message: faultOf(cause).message,
+            }),
+          });
+          // An absent answer cannot authorize replay of an external write or a consumed token.
+          if (said === null)
+            return yield* Effect.fail({
+              outcome: "transient" as const,
+              message: "HQ has not resolved this Git operation.",
+            });
+          return yield* Effect.try({
+            try: () => gitReceipt(requestId, said),
+            catch: (): StreamFault => ({
+              outcome: "transient",
+              message: "HQ did not confirm the original Git operation identity.",
+            }),
+          });
+        }
         if (
           !("orgId" in intent) ||
           !("hqProjectId" in intent) ||
@@ -381,11 +602,13 @@ export function makeHqExecutor(ports: {
         return record === null ? null : lifecycleReceipt(record);
       }),
     isCurrent: (intent) =>
+      (!isHqGitTargetIntent(intent) || gitCurrent(intent)) &&
       ports.active?.() !== false &&
       (!("hqProjectId" in intent) ||
         (ports.active !== undefined && ports.hqProjectIdOf?.(intent.orgId) === intent.hqProjectId)),
     submit: (requestId, intent: OperationIntent) =>
       Effect.gen(function* () {
+        if (isHqGitTargetIntent(intent)) return yield* gitWrite(requestId, intent);
         if (ports.active?.() === false)
           return yield* Effect.fail<StreamFault>({
             outcome: "definitive-refusal",

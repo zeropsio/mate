@@ -457,3 +457,34 @@ describe("a flow's writes, executed by HQ", () => {
     expect(kind?.observedIn?.(intent as never, receipt) ?? null).toEqual(demand);
   });
 });
+
+it.effect(
+  "a Git release retains the accepted repository roster and delivery answer without changing Zerops deploys",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const delivery = {
+        jobs: [],
+        note: "No remote for worker; web included at its accepted sha.",
+      };
+      const { operations, calls } = operationsOf(store, async () => ({
+        made: release("v1.0.1"),
+        deploys: DEPLOYS,
+        delivery,
+      }));
+      const git = { ...RELEASE, entries: [{ service: "web", sha: SHA }] };
+      yield* operations.submit(git);
+      expect(calls).toEqual([
+        [
+          "release",
+          "shop",
+          { tag: "v1.0.1", groupHead: HEAD, entries: [{ service: "web", sha: SHA }] },
+        ],
+      ]);
+      expect(operationResult(store.state().operations.get("r1")!, "release")).toEqual({
+        tag: "v1.0.1",
+        deploys: DEPLOYS,
+        delivery,
+      });
+    }),
+);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   environmentsOf,
+  deliveryEnvironmentsOf,
   jobFailed,
   jobInFlight,
   jobsByService,
@@ -197,5 +198,24 @@ describe("environmentsOf", () => {
     expect(
       environmentsOf([{ ...STAGE, jobs: [{ ...job("1", "app", "live"), state: "deploying" }] }]),
     ).toBeUndefined();
+  });
+});
+
+describe("delivery environments", () => {
+  it("reads Git push jobs by environment identity without inventing a project", () => {
+    const { projectId: _projectId, ...stage } = STAGE;
+    const git = {
+      ...stage,
+      can: {},
+      id: "git-stage",
+      target: { kind: "git", branch: "main", delivery: "direct" },
+      jobs: [],
+    };
+    expect(deliveryEnvironmentsOf([git])?.[0]).toMatchObject({
+      id: "git-stage",
+      target: { kind: "git" },
+      jobs: [],
+    });
+    expect(environmentsOf([git])).toEqual([]);
   });
 });

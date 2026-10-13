@@ -1,7 +1,13 @@
+import { gitEnvironment } from "../../data/__fixtures__/hqWire.ts";
 import type { HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 import { describe, expect, it } from "vite-plus/test";
 
-import { deployAnswerFollowing, deployAnswerSaid } from "./deployAnswer.ts";
+import {
+  deliveryAnswerSaid,
+  deliveryAnswerFollowing,
+  deployAnswerFollowing,
+  deployAnswerSaid,
+} from "./deployAnswer.ts";
 
 const WEB = "5c3ea18b00000000000000000000000000000000";
 const API = "b21d904c00000000000000000000000000000000";
@@ -298,5 +304,97 @@ describe("deployAnswerFollowing — HQ's stream over the request's snapshot", ()
       processId: "process-1",
     });
     expect(followed.jobs.slice(1)).toEqual(answer.jobs.slice(1));
+  });
+});
+
+describe("Git delivery answers", () => {
+  const sha = "a".repeat(40);
+  const remote = { url: "https://github.com/o/web.git", repositoryId: "1" };
+  const confirmed = {
+    remote,
+    ref: "refs/heads/main",
+    before: null,
+    after: sha,
+    at: "2026-10-13T00:00:00Z",
+    via: "answer",
+  } as const;
+  const push = {
+    environment: "production",
+    kind: "push",
+    service: "web",
+    sha,
+    job: "push-1",
+    state: "pushed",
+    processId: null,
+    behind: null,
+    reason: null,
+    evidence: {
+      attempt: {
+        remote,
+        ref: "refs/heads/main",
+        sha,
+        credentialKeptAt: "2026-10-13T00:00:00Z",
+        before: null,
+        phase: "submitting",
+      },
+      confirmed,
+      nextActor: "none",
+      nextAction: "Open the remote branch",
+    },
+  } as const;
+  it("a confirmed Git answer says pushed and never says live or building", () => {
+    const said = deliveryAnswerSaid({ jobs: [push], note: null });
+    expect(said.environments[0]?.jobs[0]?.text).toBe("web aaaaaaa pushed to refs/heads/main");
+    expect(said.environments[0]?.jobs[0]).toMatchObject({
+      kind: "push",
+      sha,
+      jobId: "push-1",
+      evidence: { confirmed },
+    });
+  });
+  it("an unresolved Git answer preserves its sha and confirmed evidence without manufacturing failure", () => {
+    const said = deliveryAnswerSaid({
+      jobs: [
+        {
+          ...push,
+          state: "unresolved",
+          evidence: {
+            ...push.evidence,
+            nextActor: "person",
+            nextAction: "Check refs/heads/main on github.com",
+          },
+        },
+      ],
+      note: null,
+    });
+    expect(said.environments[0]?.jobs[0]?.text).toBe(
+      "web aaaaaaa: Mate couldn't confirm this push. Check refs/heads/main on github.com",
+    );
+    expect(said.environments[0]?.jobs[0]).toMatchObject({
+      sha,
+      state: "unresolved",
+      evidence: { confirmed },
+    });
+  });
+  it("a delayed Git receipt follows only its original job identity and sha", () => {
+    const { evidence: _evidence, ...queued } = push;
+    const answer = {
+      jobs: [{ ...queued, state: "queued" as const }],
+      note: null,
+    };
+    const following = deliveryAnswerFollowing(
+      answer,
+      new Map([
+        ["other", { ...gitEnvironment.jobs[0]!, ...push, id: "other" }],
+        ["push-1", { ...gitEnvironment.jobs[0]!, ...push, id: "push-1", sha: "b".repeat(40) }],
+      ]),
+    );
+    expect(following.jobs[0]?.state).toBe("queued");
+    expect(
+      deliveryAnswerFollowing(
+        answer,
+        new Map([["push-1", { ...gitEnvironment.jobs[0]!, ...push, id: "push-1" }]]),
+      ).jobs[0],
+    ).toMatchObject({ state: "pushed", sha, evidence: { confirmed } });
   });
 });

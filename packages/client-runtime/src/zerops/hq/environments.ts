@@ -1,3 +1,4 @@
+import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 /**
  * An application's stage and production as HQ's structure carries them (SPEC §3.2b): each
  * environment's record — its project, tier, name, the branches it follows, its place in the order
@@ -158,4 +159,24 @@ export function jobsByService(
     }
   }
   return services;
+}
+
+/** Additive delivery reader: Git uses its push schema; older Zerops rows normalize once. */
+export type HqDeliveryEnvironment = CanonicalHqEnvironment | HqGitNavigationEnvironment;
+const readDeliveryEnvironments = Schema.decodeUnknownOption(
+  Schema.Array(
+    Schema.Union([
+      HqGitNavigationEnvironment,
+      CanonicalHqEnvironment.check(
+        Schema.makeFilter((environment) =>
+          environment.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
+        ),
+      ),
+    ]),
+  ),
+);
+export function deliveryEnvironmentsOf(
+  value: unknown,
+): ReadonlyArray<HqDeliveryEnvironment> | undefined {
+  return Option.getOrUndefined(readDeliveryEnvironments(value));
 }

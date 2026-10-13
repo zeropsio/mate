@@ -1,3 +1,4 @@
+import { HQ_GIT_TARGET_KINDS } from "./hqGitTargets.ts";
 import { creationPress } from "./creationPress.ts";
 import { issueGitCredential, revokeGitCredential } from "./hqGitCredentials.ts";
 import { WORKSPACE_MUTATION_KINDS } from "./mateWorkspace.ts";
@@ -56,6 +57,7 @@ export function defineOperationKinds(
 
 export const OPERATION_KINDS = defineOperationKinds([
   creationPress,
+  ...HQ_GIT_TARGET_KINDS,
   issueGitCredential,
   revokeGitCredential,
   ...WORKSPACE_MUTATION_KINDS,

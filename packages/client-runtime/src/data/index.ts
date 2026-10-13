@@ -25,6 +25,9 @@ export type {
 } from "./families/hqNavigation.ts";
 export {
   hqAppChanges,
+  hqAppGitTargets,
+  type HqDeliveryNavigationRead,
+  type CanonicalHqDeliveryNavigationRead,
   canonicalHqNavigation,
   canonicalHqMenuNavigation,
   type CanonicalHqNavigationRead,
@@ -180,7 +183,12 @@ export {
   type SampledRead,
 } from "./projections/sampled.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
-export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
+export {
+  makeHqExecutor,
+  type HqWrites,
+  type HqExecutor,
+  type HqGitWrites,
+} from "./operations/executors/hq.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { type FlowWriteIntent } from "./operations/flowWrites.ts";
 export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
@@ -656,3 +664,16 @@ export {
   presentOutcomes,
   type OutcomeInvocation,
 } from "./notices/outcomes.ts";
+
+export {
+  HQ_GIT_TARGET_KINDS,
+  type HqGitTargetIntent,
+  type HqGitCandidateIntent,
+} from "./operations/hqGitTargets.ts";
+export {
+  deliveryAnswerSaid,
+  deliveryAnswerFollowing,
+  type DeliveryAnswerSaid,
+  type PushAnswerJob,
+} from "../zerops/hq/deployAnswer.ts";
+export { deliveryEnvironmentsOf, type HqDeliveryEnvironment } from "../zerops/hq/environments.ts";
