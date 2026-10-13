@@ -1,0 +1,60 @@
+name: Probe
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+      - run: vp exec node apps/web/test/scenarios/harness/build.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-bundle
+          path: node_modules/.cache/mate-scenario-web
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+  layout:
+    needs: bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        copy: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mate-test-browser
+          key: mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: probe-bundle
+          path: node_modules/.cache/mate-scenario-web
+      - env:
+          MATE_SCENARIO_REQUIRE_BUNDLE: "1"
+        run: vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenarios test/scenarios/areas/c-mate/owner-reported-layout-regressions.scenario.ts

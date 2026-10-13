@@ -403,6 +403,32 @@ describe("owner-reported layout regressions", () => {
           Math.max(...jumps),
           `ASSERTION: delayed historical landing moves painted words by at most 1 px: ${trace.map((frame) => frame.top).join(" ")}`,
         ).toBeLessThanOrEqual(1);
+        yield* Effect.promise(() =>
+          s.page.evaluate(() => {
+            const probe = { out: [] as string[], active: true, last: "", start: performance.now() };
+            (window as unknown as { liveProbe: typeof probe }).liveProbe = probe;
+            const read = () => {
+              const scroll = document.querySelector<HTMLElement>(".timeline-legend-list");
+              if (scroll) {
+                const reading = [
+                  Math.round(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop),
+                  Math.round(scroll.scrollTop),
+                  scroll.scrollHeight,
+                  scroll.clientHeight,
+                  scroll.hasAttribute("data-timeline-holds-head") ? "H" : "",
+                  document.querySelector("[data-timeline-placing]") ? "P" : "",
+                  document.querySelector('button[aria-label="Stop generation"]') ? "W" : "",
+                  scroll.querySelectorAll("[data-timeline-row-id]").length,
+                ].join("/");
+                if (reading !== probe.last)
+                  probe.out.push(`${Math.round(performance.now() - probe.start)}:${reading}`);
+                probe.last = reading;
+              }
+              if (probe.active) requestAnimationFrame(read);
+            };
+            read();
+          }),
+        );
         yield* exchange("One live update", "A live arrival still follows.\n\n".repeat(12));
         yield* Effect.promise(() => waitForStillFrames(s.page));
         const gap = yield* Effect.promise(() =>
@@ -415,17 +441,13 @@ describe("owner-reported layout regressions", () => {
           s.page.evaluate(
             () =>
               new Promise<string>((resolve) => {
-                const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
-                const out: string[] = [];
-                const start = performance.now();
-                const read = () => {
-                  out.push(
-                    `${Math.round(performance.now() - start)}:${Math.round(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop)}/${scroll.scrollHeight}/${scroll.clientHeight}`,
-                  );
-                  if (performance.now() - start < 2000) requestAnimationFrame(read);
-                  else resolve(out.join(" "));
-                };
-                read();
+                const probe = (
+                  window as unknown as { liveProbe: { out: string[]; active: boolean } }
+                ).liveProbe;
+                setTimeout(() => {
+                  probe.active = false;
+                  resolve(probe.out.join(" "));
+                }, 2000);
               }),
           ),
         );
