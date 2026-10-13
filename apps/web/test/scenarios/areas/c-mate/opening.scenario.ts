@@ -24,6 +24,17 @@ describe("C: the conversation opening follows readiness", () => {
           yield* Effect.promise(() =>
             s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
           );
+          // Keep the lazy conversation code pending so the same stage is checked on its
+          // Mate coming page before it transfers into the chat workspace.
+          const chunk = Promise.withResolvers<string>();
+          const cdp = yield* Effect.promise(() => s.page.createCDPSession());
+          cdp.on("Fetch.requestPaused", ({ requestId }) => chunk.resolve(requestId));
+          yield* Effect.promise(() =>
+            cdp.send("Fetch.enable", {
+              patterns: [{ urlPattern: "*/assets/ChatView-*.js", requestStage: "Response" }],
+            }),
+          );
+          yield* Effect.addFinalizer(() => Effect.promise(() => cdp.send("Fetch.disable")));
           yield* s.given.signedIn;
           yield* Effect.promise(() => ownerViewport(s.page));
           yield* chat.when.openReadOnly("Sage");
@@ -31,13 +42,14 @@ describe("C: the conversation opening follows readiness", () => {
           yield* Effect.promise(() =>
             s.page.waitForSelector('[data-conversation-opening="waiting"]'),
           );
+          const chunkId = yield* Effect.promise(() => chunk.promise);
           const stage = yield* Effect.promise(() =>
             s.page.$('[data-conversation-opening="waiting"]'),
           );
           expect(stage).not.toBeNull();
           const count = () =>
             s.page.$$eval(
-              "[data-chat-workspace-drop-target] [data-mate-face-state]",
+              ':is([data-chat-workspace-drop-target], [data-zerops-surface="mate-coming-page"]) [data-mate-face-state]',
               (faces) =>
                 faces.filter(
                   (face) =>
@@ -81,6 +93,7 @@ describe("C: the conversation opening follows readiness", () => {
               return state;
             }),
           );
+          yield* Effect.promise(() => cdp.send("Fetch.continueResponse", { requestId: chunkId }));
           read.release();
           yield* chat.then.text("Sage's conversation is ready");
           yield* Effect.promise(() => waitForStillFrames(s.page));

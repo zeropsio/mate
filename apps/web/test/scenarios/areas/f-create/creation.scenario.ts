@@ -16,7 +16,7 @@ describe("F: creation through the hosted client", () => {
       it.effect(`add ${role} with an agent to an existing project`, () =>
         Effect.gen(function* () {
           const s = yield* createScenario([installCreation]);
-          yield* s.given.project("Ada", { mate: true, app: "Shop" });
+          yield* environmentRecipe(s, role);
           yield* s.given.signedIn;
           const c = creation(s);
           yield* c.openAdd(role);
