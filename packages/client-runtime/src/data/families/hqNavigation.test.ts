@@ -87,3 +87,23 @@ describe("navigation record decoding", () => {
     },
   );
 });
+
+it("keeps modern identity and its authoritative target, even beside an older address", () => {
+  const environment = {
+    id: "environment-stage",
+    target: { kind: "zerops", projectId: "project-stage" },
+    projectId: "wrong-legacy",
+    tier: "stage",
+    name: "Stage",
+    sources: ["main"],
+    order: 1,
+    keyHeld: true,
+    keyInvalid: false,
+    can: {},
+    jobs: [],
+    release: null,
+    birth: null,
+  };
+  const app = hqAppFamily.hq!.decode({ environments: [environment] }, "app:shop");
+  expect(app?.environments).toEqual([environment]);
+});

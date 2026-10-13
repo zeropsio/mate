@@ -41,7 +41,9 @@ import {
 } from "../../zerops/index.ts";
 import { hqRefusalWords } from "../../zerops/hq/index.ts";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
-import type { HqNavigationApp, HqNavigationChange } from "@t3tools/shared/hqStream";
+import type { CanonicalHqNavigationApp, HqNavigationChange } from "@t3tools/shared/hqStream";
+import { canonicalEnvironmentRow, type CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
+import type { CanonicalGroupEnvironmentRowInput } from "../../zerops/groupDeploys.ts";
 import type { Release } from "@t3tools/shared/hqRelease";
 
 type ComparedCommits = MovedCommits & { readonly again?: (() => void) | undefined };
@@ -274,7 +276,7 @@ export function joinProjectFlows(input: {
   readonly groups: ReadonlyArray<{ readonly groupId: string }>;
   readonly review?: boolean | undefined;
   readonly navigationOffers?:
-    | Readonly<Record<string, HqNavigationApp["releaseOffer"] | undefined>>
+    | Readonly<Record<string, CanonicalHqNavigationApp["releaseOffer"] | undefined>>
     | undefined;
   /** Each group's stops, by its id, while HQ has told its environments. */
   readonly stops: ReadonlyMap<string, GroupStops>;
@@ -380,11 +382,17 @@ export function joinProjectFlows(input: {
  * A stop's row. A production is named by the newest release all its services run, where one
  * does; a stage, and a production no release matches, keep the first labelled service's name.
  */
-function stopRow(
-  entry: GroupEnvironmentRowInput,
+export function canonicalStopRow(
+  entry: CanonicalGroupEnvironmentRowInput,
   releases: ReadonlyArray<FlowRelease>,
-): EnvironmentRow {
-  const row = environmentRow(entry);
+): CanonicalEnvironmentRow {
+  return nameProductionRow(canonicalEnvironmentRow(entry), entry, releases);
+}
+function nameProductionRow<Row extends Omit<EnvironmentRow, "projectId">>(
+  row: Row,
+  entry: Pick<GroupEnvironmentRowInput, "tier" | "services">,
+  releases: ReadonlyArray<FlowRelease>,
+): Row {
   if (entry.tier !== "production") return row;
   const running = new Map<string, string>();
   for (const service of entry.services) {
@@ -393,6 +401,12 @@ function stopRow(
   }
   const tag = releaseRunBy(releases, running);
   return tag === undefined ? row : nameStopByRelease(row, tag);
+}
+function stopRow(
+  entry: GroupEnvironmentRowInput,
+  releases: ReadonlyArray<FlowRelease>,
+): EnvironmentRow {
+  return nameProductionRow(environmentRow(entry), entry, releases);
 }
 
 function projectFlow(
@@ -411,7 +425,7 @@ function projectFlow(
     readonly permission: ReleaseGate | undefined;
     readonly live: ReleaseLive;
     readonly review?: boolean | undefined;
-    readonly navigationOffer?: HqNavigationApp["releaseOffer"] | undefined;
+    readonly navigationOffer?: CanonicalHqNavigationApp["releaseOffer"] | undefined;
   },
   /** The newest release on its way to production, or stalled there (`releaseInFlight`, `releaseStalled`). */
   deploy: { readonly inFlight: string | undefined; readonly stalled: string | undefined },

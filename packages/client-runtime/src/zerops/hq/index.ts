@@ -37,6 +37,7 @@ export {
   type HqKeys,
   type HqParts,
   type HqSocket,
+  type CanonicalHqStructure,
   type HqStructure,
   type HqAppContents,
   type OpenHqSocket,
@@ -76,8 +77,10 @@ export {
   type HqPresses,
   type PressElsewhere,
 } from "./pressElsewhere.ts";
-export { hqStructureOf, type HqMates } from "./structure.ts";
+export { canonicalHqStructureOf, hqStructureOf, type HqMates } from "./structure.ts";
 export {
+  CanonicalHqEnvironment,
+  canonicalEnvironmentsOf,
   environmentsOf,
   jobFailed,
   jobInFlight,

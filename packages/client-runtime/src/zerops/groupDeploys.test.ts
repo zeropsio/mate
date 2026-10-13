@@ -1,6 +1,8 @@
+import { ProjectId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  canonicalEnvironmentRowInputsOf,
   appRecipeOf,
   deployWord,
   environmentRowInputsOf,
@@ -10,9 +12,14 @@ import {
   statedVersionNames,
 } from "./groupDeploys.ts";
 import type { ZeropsServiceDeployedVersion } from "../data/projections/serviceRuns.ts";
-import { environmentRow } from "./groupRows.ts";
+import { canonicalEnvironmentRow, environmentRow } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
-import { jobInFlight, type HqEnvironment, type HqJob } from "./hq/environments.ts";
+import {
+  canonicalEnvironmentsOf,
+  jobInFlight,
+  type HqEnvironment,
+  type HqJob,
+} from "./hq/environments.ts";
 import { releaseCandidate } from "./release.ts";
 import { productionRuns, releaseReads } from "./releaseCompare.ts";
 import { sameCommit } from "./versionName.ts";
@@ -658,4 +665,46 @@ describe("what a release compares", () => {
   it("has nothing to compare for a group that has deployed nothing", () => {
     expect(releaseDeploys(snapshot(new Map())).production.size).toBe(0);
   });
+});
+
+it("HQ's environment identity keys its row while its target joins the Zerops project.", () => {
+  const environments = canonicalEnvironmentsOf([
+    {
+      ...environment({ projectId: "wrong-address", tier: "stage", name: "Stage" }),
+      id: "environment-stage",
+      target: { kind: "zerops", projectId: "project-stage" },
+    },
+  ])!;
+  const inputs = canonicalEnvironmentRowInputsOf({
+    environments,
+    projectNames: new Map([[ProjectId.make("project-stage"), "Project name"]]),
+    services: [
+      { projectId: ProjectId.make("project-stage"), serviceId: "api", hostname: "api" },
+      { projectId: ProjectId.make("environment-stage"), serviceId: "decoy", hostname: "wrong" },
+    ],
+    versions: new Map([
+      ["api", API],
+      ["decoy", OLD],
+    ]),
+  });
+  expect(
+    inputs.map((input) => ({
+      id: input.id,
+      target: input.target,
+      name: input.name,
+      services: input.services.map((service) => service.serviceId),
+    })),
+  ).toEqual([
+    {
+      id: "environment-stage",
+      target: { kind: "zerops", projectId: "project-stage" },
+      name: "Project name",
+      services: ["api"],
+    },
+  ]);
+  const rows = inputs.map(canonicalEnvironmentRow);
+  expect(rows.map((row) => ({ id: row.id, sha: row.version.sha }))).toEqual([
+    { id: "environment-stage", sha: API },
+  ]);
+  expect(rows[0]).not.toHaveProperty("projectId");
 });

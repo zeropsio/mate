@@ -46,6 +46,7 @@ export {
   type ZeropsMateFace,
   type ZeropsMateFaceTag,
 } from "@t3tools/shared/mateFaces";
+import type { CanonicalHqEnvironment } from "./hq/environments.ts";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsProject } from "./api.ts";
@@ -254,6 +255,37 @@ export function generateZeropsGroupId(randomBytes: RandomBytes): string {
   return id;
 }
 
+export type CanonicalGroupEnvironment =
+  | (ZeropsGroupEnvironment & { readonly kind: "project" })
+  | {
+      readonly kind: "managed";
+      readonly id: CanonicalHqEnvironment["id"];
+      readonly target: CanonicalHqEnvironment["target"];
+      readonly environment: CanonicalHqEnvironment;
+      readonly role: "stage" | "prod";
+      readonly project: ZeropsProject | undefined;
+    };
+export interface CanonicalGroup extends Omit<ZeropsGroup, "environments" | "production"> {
+  readonly environments: ReadonlyArray<CanonicalGroupEnvironment>;
+  readonly production: CanonicalGroupEnvironment | undefined;
+}
+export interface CanonicalGroupTree extends Omit<ZeropsGroupTree, "groups"> {
+  readonly groups: ReadonlyArray<CanonicalGroup>;
+}
+
+/** Legacy consumers keep their project carriers; no project is invented for a target. */
+export function zeropsGroup(group: CanonicalGroup): ZeropsGroup {
+  const environments = group.environments.flatMap(({ project, role }) =>
+    project === undefined ? [] : [{ project, role }],
+  );
+  const production = environments.filter((entry) => entry.role === "prod");
+  return {
+    ...group,
+    environments,
+    production: production.length === 1 ? production[0] : undefined,
+  };
+}
+
 export interface ZeropsGroupEnvironment {
   readonly project: ZeropsProject;
   readonly role: ZeropsEnvironmentRole | undefined;
@@ -376,6 +408,17 @@ export interface DeriveZeropsGroupsOptions {
   readonly apps?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
 }
 
+export interface CanonicalGroupsOptions extends Omit<DeriveZeropsGroupsOptions, "apps"> {
+  readonly apps?: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly environments?:
+      | ReadonlyArray<CanonicalHqEnvironment>
+      | { readonly refused: string }
+      | undefined;
+  }>;
+}
+
 function roleRank(role: ZeropsEnvironmentRole | undefined): number {
   return role === undefined ? ROLE_ORDER.length : ROLE_ORDER.indexOf(role);
 }
@@ -400,10 +443,10 @@ function byCreatedNewestFirst(left: string | undefined, right: string | undefine
  * creation under way in it — so a group just created leads at once rather
  * than sorting last until the listing dates it. `undefined` when neither says.
  */
-function groupBornAt(group: ZeropsGroup): number | undefined {
+function groupBornAt(group: CanonicalGroup): number | undefined {
   let earliest: string | undefined;
   for (const { project } of group.environments) {
-    const { created } = project;
+    const created = project?.created;
     if (created === undefined) continue;
     if (earliest === undefined || created < earliest) earliest = created;
   }
@@ -465,11 +508,11 @@ export function heldGroupLabel(
  * The left menu's whole data model: projects in, a group tree out. Pure, and
  * total — a project HQ does not place is ungrouped rather than an error.
  */
-export function deriveZeropsGroups(
+export function deriveCanonicalGroups(
   projects: ReadonlyArray<ZeropsProject>,
-  options: DeriveZeropsGroupsOptions,
-): ZeropsGroupTree {
-  const members = new Map<string, Array<ZeropsGroupEnvironment>>();
+  options: CanonicalGroupsOptions,
+): CanonicalGroupTree {
+  const members = new Map<string, Array<CanonicalGroupEnvironment>>();
   const labels = new Map<string, string>();
   const ungrouped: Array<ZeropsProject> = [];
   const births = options.births ?? [];
@@ -484,15 +527,54 @@ export function deriveZeropsGroups(
       if (!born.has(project.id) && !heldBack(project)) ungrouped.push(project);
       continue;
     }
+    const app = options.apps?.find((entry) => entry.id === groupId);
+    // HQ owns managed membership even when its project roster is incomplete or refused.
+    if (
+      app !== undefined &&
+      Object.hasOwn(app, "environments") &&
+      (role === "stage" || role === "prod")
+    )
+      continue;
+    const member: CanonicalGroupEnvironment = { kind: "project", project, role };
     const bucket = members.get(groupId);
-    if (bucket) bucket.push({ project, role });
-    else members.set(groupId, [{ project, role }]);
+    if (bucket) bucket.push(member);
+    else members.set(groupId, [member]);
     if (label !== undefined) labels.set(groupId, label);
+  }
+
+  const byProject = new Map(projects.map((project) => [project.id, project]));
+  for (const app of options.apps ?? []) {
+    if (app.environments === undefined || "refused" in app.environments) continue;
+    const bucket = members.get(app.id) ?? [];
+    for (const environment of app.environments) {
+      bucket.push({
+        kind: "managed",
+        id: environment.id,
+        target: environment.target,
+        environment,
+        role: environment.tier === "stage" ? "stage" : "prod",
+        project:
+          environment.target.kind === "zerops"
+            ? byProject.get(environment.target.projectId)
+            : undefined,
+      });
+    }
+    members.set(app.id, bucket);
   }
 
   // A creation stays pending until a group of the listing holds its project;
   // its group exists from the moment it started, members listed or not.
-  const listed = new Set([...members.values()].flat().map(({ project }) => project.id));
+  const listed = new Set(
+    [...members.values()]
+      .flat()
+      .flatMap((environment) =>
+        environment.kind === "managed"
+          ? environment.target.kind === "zerops"
+            ? [environment.target.projectId]
+            : []
+          : [environment.project.id],
+      ),
+  );
   const listedIntents = new Set(
     projects.flatMap((project) => {
       const birth = readZeropsMembership(project).birth;
@@ -522,8 +604,17 @@ export function deriveZeropsGroups(
     const sorted = [...environments].sort(
       (left, right) =>
         roleRank(left.role) - roleRank(right.role) ||
-        byName(projectNameInApp(left.project), projectNameInApp(right.project)) ||
-        byName(left.project.id, right.project.id),
+        (left.kind === "managed" && right.kind === "managed"
+          ? left.environment.order - right.environment.order
+          : 0) ||
+        byName(
+          left.kind === "managed" ? left.environment.name : projectNameInApp(left.project),
+          right.kind === "managed" ? right.environment.name : projectNameInApp(right.project),
+        ) ||
+        byName(
+          left.kind === "managed" ? left.id : left.project.id,
+          right.kind === "managed" ? right.id : right.project.id,
+        ),
     );
     const production = sorted.filter((environment) => environment.role === "prod");
     const coming = [...(pending.get(groupId) ?? [])].sort(
@@ -552,7 +643,7 @@ export function deriveZeropsGroups(
         ...(birth.failed === true ? { failed: true } : {}),
       })),
       production: production.length === 1 ? production[0] : undefined,
-    } satisfies ZeropsGroup;
+    } satisfies CanonicalGroup;
   });
 
   if (options.order === "newest" || options.order === "custom") {
@@ -584,4 +675,18 @@ export function deriveZeropsGroups(
   }
 
   return { groups, ungrouped };
+}
+
+/** @deprecated Converted consumers use deriveCanonicalGroups with HQ environments. */
+export function deriveZeropsGroups(
+  projects: ReadonlyArray<ZeropsProject>,
+  options: DeriveZeropsGroupsOptions,
+): ZeropsGroupTree {
+  const tree = deriveCanonicalGroups(projects, {
+    ...options,
+    ...(options.apps === undefined
+      ? {}
+      : { apps: options.apps.map(({ id, name }) => ({ id, name })) }),
+  });
+  return { ...tree, groups: tree.groups.map(zeropsGroup) };
 }

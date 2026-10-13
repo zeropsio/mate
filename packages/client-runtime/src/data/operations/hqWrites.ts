@@ -182,7 +182,8 @@ export const deployKeyShown = (
     Array.isArray(environments) &&
     environments.some(
       (environment) =>
-        environment.projectId === intent.projectId &&
+        environment.target.kind === "zerops" &&
+        environment.target.projectId === intent.projectId &&
         environment.keyHeld &&
         !environment.keyInvalid,
     )

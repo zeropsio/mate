@@ -11,8 +11,9 @@
 import { HQ_NAVIGATION_PROTOCOL } from "@t3tools/shared/hqStream";
 import type { HqPeople } from "@t3tools/shared/hqMates";
 
-import type { HqMate, HqStructure } from "../../zerops/hq/client.ts";
-import { environmentsOf } from "../../zerops/hq/environments.ts";
+import type { HqMate, HqStructure, CanonicalHqStructure } from "../../zerops/hq/client.ts";
+import { zeropsStructure } from "../../zerops/hq/structure.ts";
+import { canonicalEnvironmentsOf } from "../../zerops/hq/environments.ts";
 import {
   hqAppsScope,
   hqPeopleScope,
@@ -52,6 +53,24 @@ export interface HqNavigationRead extends Omit<ScopeFreshness, "complete"> {
   readonly coreBuild: string | undefined;
 }
 
+export interface CanonicalHqNavigationRead extends Omit<HqNavigationRead, "structure"> {
+  readonly structure: CanonicalHqStructure | null;
+}
+
+function compatibilityNavigation(answer: CanonicalHqNavigationRead): HqNavigationRead {
+  return {
+    ...answer,
+    structure: answer.structure === null ? null : zeropsStructure(answer.structure),
+  };
+}
+
+export const canonicalHqNavigation: Projection<string, CanonicalHqNavigationRead> = {
+  name: "canonicalHqNavigation",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => navigationOf(read, orgId, true),
+  equals: sameValue,
+};
+
 /** The ids a navigation scope lists, each with its value. */
 function listed<F extends "hqApp" | "placement" | "hqPerson" | "hqPress">(
   read: ProjectionReads,
@@ -89,10 +108,10 @@ function mateOf(
  */
 function environmentsOfApp(
   environments: HqAppValue["environments"],
-): Pick<HqStructure["apps"][number], "environments"> {
+): Pick<CanonicalHqStructure["apps"][number], "environments"> {
   if (environments === undefined) return {};
   if ("refused" in environments) return { environments: { refused: environments.refused } };
-  const read = environmentsOf(environments);
+  const read = canonicalEnvironmentsOf(environments);
   return read === undefined ? {} : { environments: read };
 }
 
@@ -103,7 +122,7 @@ function structureOf(
   read: ProjectionReads,
   orgId: string,
   organization: HqOrganizationValue | null,
-): HqStructure | null {
+): CanonicalHqStructure | null {
   if (
     read.coverage(hqAppsScope(orgId)) !== "complete" &&
     read.members(hqAppsScope(orgId)).ids.length === 0
@@ -163,7 +182,7 @@ function navigationOf(
   read: ProjectionReads,
   orgId: string,
   includePeople: boolean,
-): HqNavigationRead {
+): CanonicalHqNavigationRead {
   const scope = hqAppsScope(orgId);
   const { complete, ...freshness } = scopeFreshness(read, scope);
   const organizationFact = read.fact("hqOrganization", orgId);
@@ -212,14 +231,14 @@ function navigationOf(
 export const hqNavigation: Projection<string, HqNavigationRead> = {
   name: "hqNavigation",
   keyOf: (orgId) => orgId,
-  derive: (read, orgId) => navigationOf(read, orgId, true),
+  derive: (read, orgId) => compatibilityNavigation(canonicalHqNavigation.derive(read, orgId)),
   equals: sameValue,
 };
 /** Structure and navigation standing have no dependency on individual people. */
 export const hqMenuNavigation: Projection<string, HqNavigationRead> = {
   name: "hqMenuNavigation",
   keyOf: (orgId) => orgId,
-  derive: (read, orgId) => navigationOf(read, orgId, false),
+  derive: (read, orgId) => compatibilityNavigation(navigationOf(read, orgId, false)),
   equals: sameValue,
 };
 

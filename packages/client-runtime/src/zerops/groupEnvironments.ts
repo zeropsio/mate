@@ -45,7 +45,7 @@ export function environmentTierForRole(
 export interface GroupEnvironment {
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
-  /** The Zerops project it is. */
+  /** @deprecated Zerops-only compatibility address; canonical declarations carry target. */
   readonly project: string;
   /**
    * The branches that feed it, or the literal `release` for a production —

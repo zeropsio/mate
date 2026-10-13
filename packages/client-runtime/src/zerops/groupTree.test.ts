@@ -168,3 +168,32 @@ describe("buildZeropsGroupTree", () => {
     ]);
   });
 });
+
+it("keeps the current menu's legacy environment DTOs readable at the canonical boundary", () => {
+  const currentMenu = () =>
+    buildZeropsGroupTree([CRM_PROD], {
+      order: "name",
+      apps: [
+        {
+          id: "aaa",
+          name: "Beviro CRM",
+          environments: [
+            {
+              projectId: "crm-prod",
+              tier: "production",
+              name: "Production",
+              sources: ["release"],
+              order: 1,
+              keyHeld: true,
+              keyInvalid: false,
+              jobs: [],
+            },
+          ],
+        },
+      ],
+    });
+  expect(currentMenu).not.toThrow();
+  expect(currentMenu().groups[0]?.environments.map((entry) => entry.item.project.id)).toEqual([
+    "crm-prod",
+  ]);
+});

@@ -13,6 +13,7 @@
  *
  * @module hq/environments
  */
+import { hqEnvironmentCodec } from "@t3tools/shared/hqEnvironment";
 import { HqOffers } from "@t3tools/shared/hqOffers";
 import { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
 import { ReleaseRollout } from "@t3tools/shared/hqRelease";
@@ -109,11 +110,30 @@ export const HqEnvironment = Schema.Struct({
 });
 export type HqEnvironment = typeof HqEnvironment.Type;
 
-const readEnvironments = Schema.decodeUnknownOption(Schema.Array(HqEnvironment));
+const { projectId: _projectId, ...payload } = HqEnvironment.fields;
+export const CanonicalHqEnvironment = hqEnvironmentCodec(payload);
+export type CanonicalHqEnvironment = typeof CanonicalHqEnvironment.Type;
+const readCanonicalEnvironments = Schema.decodeUnknownOption(Schema.Array(CanonicalHqEnvironment));
+
+export function canonicalEnvironmentsOf(
+  value: unknown,
+): ReadonlyArray<CanonicalHqEnvironment> | undefined {
+  return Option.getOrUndefined(readCanonicalEnvironments(value));
+}
+
+/** Temporary outward DTOs only address Zerops; Git has no project to project. */
+export function zeropsEnvironments(
+  environments: ReadonlyArray<CanonicalHqEnvironment>,
+): ReadonlyArray<HqEnvironment> {
+  return environments.flatMap(({ id: _id, target, projectId: _legacy, ...environment }) =>
+    target.kind === "zerops" ? [{ ...environment, projectId: target.projectId }] : [],
+  );
+}
 
 /** An application's environments as HQ sent them; `undefined` where it sent none it can read. */
 export function environmentsOf(value: unknown): ReadonlyArray<HqEnvironment> | undefined {
-  return Option.getOrUndefined(readEnvironments(value));
+  const environments = canonicalEnvironmentsOf(value);
+  return environments === undefined ? undefined : zeropsEnvironments(environments);
 }
 
 /** A service's deploys: its newest job, and the newest that went live. */

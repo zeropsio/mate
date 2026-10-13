@@ -19,6 +19,7 @@
  * @module groupRows
  */
 
+import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
 import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
@@ -31,6 +32,7 @@ export type GroupRowTone = "neutral" | "pending" | "good" | "bad";
 
 export interface EnvironmentRow {
   readonly kind: "environment";
+  /** @deprecated Zerops-only compatibility address; canonical rows carry id and target. */
   readonly projectId: string;
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
@@ -202,8 +204,7 @@ export function deployTone(services: ReadonlyArray<EnvironmentServiceState>): Gr
  * row that vanished until its first deploy would leave the person wondering
  * whether *Add stage* had worked at all.
  */
-export function environmentRow(input: {
-  readonly projectId: string;
+function environmentRowDisplay(input: {
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
   readonly sources: ReadonlyArray<string> | "release";
@@ -212,7 +213,7 @@ export function environmentRow(input: {
   readonly keyHeld?: boolean | undefined;
   readonly keyInvalid?: boolean | undefined;
   readonly birth?: EnvironmentBirth | null | undefined;
-}): EnvironmentRow {
+}): Omit<EnvironmentRow, "projectId"> {
   const source = input.sources === "release" ? "release" : input.sources.join(" + ") || "—";
   // The first service that is running something names the environment: in a
   // monorepo they all carry the same release, and in a split one the row has
@@ -228,7 +229,6 @@ export function environmentRow(input: {
   const tone = deployTone(input.services);
   return {
     kind: "environment",
-    projectId: input.projectId,
     name: input.name,
     tier: input.tier,
     source,
@@ -249,4 +249,17 @@ export function environmentRow(input: {
     keyGap: input.keyHeld === false || input.keyInvalid === true,
     ...(input.birth === undefined ? {} : { birth: input.birth }),
   };
+}
+
+export type CanonicalEnvironmentRow = Omit<EnvironmentRow, "projectId"> & HqEnvironmentIdentity;
+export function canonicalEnvironmentRow(
+  input: Parameters<typeof environmentRowDisplay>[0] & HqEnvironmentIdentity,
+): CanonicalEnvironmentRow {
+  return { ...environmentRowDisplay(input), id: input.id, target: input.target };
+}
+/** @deprecated Project-carrier DTO for unmigrated surfaces. */
+export function environmentRow(
+  input: Parameters<typeof environmentRowDisplay>[0] & { readonly projectId: string },
+): EnvironmentRow {
+  return { ...environmentRowDisplay(input), projectId: input.projectId };
 }

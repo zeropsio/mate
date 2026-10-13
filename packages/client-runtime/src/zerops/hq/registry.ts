@@ -12,7 +12,8 @@
  */
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
-import type { HqStructure } from "./client.ts";
+import { canonicalEnvironmentsOf } from "./environments.ts";
+import type { HqStructure, CanonicalHqStructure } from "./client.ts";
 import { isRoleProjectKind } from "./placement.ts";
 
 export interface ZeropsRegistryProject {
@@ -32,14 +33,24 @@ export interface ZeropsRegistry {
 
 export const EMPTY_REGISTRY: ZeropsRegistry = { groups: [] };
 
-export function registryFromHq(structure: HqStructure): ZeropsRegistry {
+export function registryFromHq(structure: HqStructure | CanonicalHqStructure): ZeropsRegistry {
   return {
     groups: structure.apps.map((app) => ({
       groupId: app.id,
       name: app.name,
-      projects: app.projects.flatMap(({ projectId, kind }) =>
-        isRoleProjectKind(kind) ? [{ projectId, kind }] : [],
-      ),
+      projects: [
+        ...app.projects.flatMap(({ projectId, kind }) =>
+          isRoleProjectKind(kind) &&
+          (app.environments === undefined || kind === "mate" || kind === "devstage")
+            ? [{ projectId, kind }]
+            : [],
+        ),
+        ...(canonicalEnvironmentsOf(app.environments) ?? []).flatMap((environment) =>
+          environment.target.kind === "zerops"
+            ? [{ projectId: environment.target.projectId, kind: environment.tier }]
+            : [],
+        ),
+      ],
     })),
   };
 }

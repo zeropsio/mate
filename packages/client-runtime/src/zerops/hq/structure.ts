@@ -12,10 +12,10 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { HqAppContents, HqBirth, HqStructure } from "./client.ts";
-import { environmentsOf } from "./environments.ts";
+import type { HqAppContents, HqBirth, HqStructure, CanonicalHqStructure } from "./client.ts";
+import { canonicalEnvironmentsOf, zeropsEnvironments } from "./environments.ts";
 
-type HqApp = HqStructure["apps"][number];
+type HqApp = CanonicalHqStructure["apps"][number];
 type HqUngrouped = HqStructure["ungrouped"];
 
 /** Each Mate HQ relays to the reader, by its project: its presence, and its overview's sections. */
@@ -124,7 +124,8 @@ function appOf(value: HqApp): HqApp {
     readonly births?: unknown;
     readonly contents?: unknown;
   };
-  const environments = sent === undefined ? undefined : (refusedOf(sent) ?? environmentsOf(sent));
+  const environments =
+    sent === undefined ? undefined : (refusedOf(sent) ?? canonicalEnvironmentsOf(sent));
   const can = offersOf(offered);
   return {
     ...app,
@@ -140,7 +141,7 @@ function appOf(value: HqApp): HqApp {
  * The structure as HQ answers it (`GET /api/structure`, a snapshot): each part read through its
  * shape; none where its applications or its Mates in no application cannot be read.
  */
-export function hqStructureOf(value: unknown): HqStructure | undefined {
+export function canonicalHqStructureOf(value: unknown): CanonicalHqStructure | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const {
     apps,
@@ -170,4 +171,24 @@ export function hqStructureOf(value: unknown): HqStructure | undefined {
     ungrouped: ungrouped.map(mateOffersOf),
     apps: apps.map(appOf),
   };
+}
+
+export function zeropsStructure(structure: CanonicalHqStructure): HqStructure {
+  return {
+    ...structure,
+    apps: structure.apps.map(({ environments, ...app }) => ({
+      ...app,
+      ...(environments === undefined
+        ? {}
+        : {
+            environments:
+              "refused" in environments ? environments : zeropsEnvironments(environments),
+          }),
+    })),
+  };
+}
+/** @deprecated Outward project DTOs for clients that have not adopted canonical selectors. */
+export function hqStructureOf(value: unknown): HqStructure | undefined {
+  const structure = canonicalHqStructureOf(value);
+  return structure === undefined ? undefined : zeropsStructure(structure);
 }

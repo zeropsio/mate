@@ -7,9 +7,14 @@ import {
   ZeropsOrganizationId,
 } from "../../zerops/data/types.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { linkKeys } from "../model.ts";
-import { readsOfState } from "../store.ts";
-import { inventoryGroups, type InventoryGroupsKey } from "./inventoryGroups.ts";
+import { makeAccountStore, readsOfState } from "../store.ts";
+import {
+  canonicalInventoryGroups,
+  inventoryGroups,
+  type InventoryGroupsKey,
+} from "./inventoryGroups.ts";
 
 const key: InventoryGroupsKey = {
   organization: {
@@ -106,4 +111,73 @@ describe("Projects inventory grouping", () => {
     expect(f.read().ungrouped).toEqual([]);
     f.registry.dispose();
   });
+});
+
+it("An HQ environment arriving after first paint appears once under its application.", () => {
+  const registry = AtomRegistry.make();
+  const f = { registry, store: makeAccountStore(registry) };
+  const derive = () =>
+    canonicalInventoryGroups.derive(readsOfState(f.store.state()), {
+      ...key,
+      projectIds: ["mate", "project-stage"],
+    });
+  expect(derive().groups).toEqual([]);
+  const environment = {
+    id: HqEnvironmentId.make("environment-stage"),
+    target: { kind: "zerops" as const, projectId: ProjectId.make("project-stage") },
+    tier: "stage" as const,
+    name: "Stage",
+    sources: ["main"],
+    order: 1,
+    keyHeld: true,
+    keyInvalid: false,
+    jobs: [],
+  };
+  const seed = {
+    structure: {
+      ungrouped: [],
+      apps: [{ id: "shop", name: "Shop", projects: [], environments: [environment] }],
+    },
+  };
+  seedHqNavigation(f.store, "org", seed);
+  const before = derive().groups[0]!;
+  expect(before.group.groupId).toBe("shop");
+  expect(
+    before.environments.map((entry) => (entry.kind === "managed" ? entry.id : entry.project.id)),
+  ).toEqual(["environment-stage"]);
+  expect(before.environments[0]?.item).toBeUndefined();
+  mountRoster(
+    f.registry,
+    "org",
+    [{ id: "project-stage", name: "Shop - Stage", status: "ACTIVE" }],
+    { into: f.store },
+  );
+  seedHqNavigation(f.store, "org", seed);
+  const after = derive().groups[0]!;
+  expect(
+    after.environments.map((entry) => (entry.kind === "managed" ? entry.id : entry.project.id)),
+  ).toEqual(["environment-stage"]);
+  expect(after.environments[0]?.item?.project.id).toBe("project-stage");
+  f.store.dispatch({
+    kind: "stream",
+    key: linkKeys.hq("org"),
+    now: 1,
+    event: {
+      kind: "fault",
+      jitter: 0,
+      fault: { outcome: "definitive-refusal", message: "Refused" },
+    },
+  });
+  expect(
+    derive().groups[0]?.environments.map((entry) =>
+      entry.kind === "managed" ? entry.id : entry.project.id,
+    ),
+  ).toEqual(["environment-stage"]);
+  expect(
+    canonicalInventoryGroups.derive(readsOfState(f.store.state()), {
+      ...key,
+      organization: { ...key.organization, organizationId: ZeropsOrganizationId.make("other") },
+    }).groups,
+  ).toEqual([]);
+  f.registry.dispose();
 });

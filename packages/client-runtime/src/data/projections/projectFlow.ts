@@ -1,18 +1,26 @@
 /** One application's flow from keyed owner facts; reading it holds no app detail. */
-import { appRecipeOf, groupStopsOf, summarizeEnvironmentServices } from "../../zerops/index.ts";
+import { ProjectId } from "@t3tools/contracts";
+import {
+  canonicalGroupStopsOf,
+  zeropsStops,
+  type CanonicalGroupStops,
+} from "../../zerops/groupDeploys.ts";
+import type { CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
+import { flowReleaseOf, appRecipeOf, summarizeEnvironmentServices } from "../../zerops/index.ts";
 import { nameUnderApp } from "../../zerops/groups.ts";
 import { hqRefusalWords } from "../../zerops/hq/index.ts";
 import type { GroupStopProject } from "../../zerops/groupDeploys.ts";
 import type { ZeropsOrganization } from "../../zerops/api.ts";
-import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
+import { hqAppsScope } from "../families/hqNavigation.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection } from "../store.ts";
-import { appEnvironments } from "./appEnvironments.ts";
+import { canonicalAppEnvironments } from "./appEnvironments.ts";
 import { hqAppDetail } from "./hqAppDetail.ts";
 import { platformAccess } from "./platformAccess.ts";
 import { projectServices } from "./services.ts";
 import { serviceRuns } from "./serviceRuns.ts";
 import {
+  canonicalStopRow,
   groupChangesOf,
   joinProjectFlows,
   HQ_CHANGES_UNANSWERED,
@@ -82,8 +90,16 @@ export interface ProjectFlowKey {
   readonly viewer: ZeropsOrganization | undefined;
 }
 
-export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefined> = {
-  name: "projectFlow",
+export interface CanonicalProjectFlow extends Omit<
+  ZeropsProjectFlow,
+  "declarations" | "environments" | "environmentInputs"
+> {
+  readonly declarations: CanonicalGroupStops["declarations"];
+  readonly environments: ReadonlyArray<CanonicalEnvironmentRow>;
+  readonly environmentInputs: CanonicalGroupStops["environments"];
+}
+export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFlow | undefined> = {
+  name: "canonicalProjectFlow",
   keyOf: (key) => JSON.stringify(key),
   derive: (read, key) => {
     const { orgId, appId, hqAddress, viewer } = key;
@@ -100,13 +116,16 @@ export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefin
             stage: stage.state === "present" ? stage.importYaml : null,
             production: production.state === "present" ? production.importYaml : null,
           });
-    const projectIds =
-      app.projectIds ??
-      read.members(placementsScope(orgId)).ids.filter((id) => {
-        const placement = read.fact("placement", id);
-        return placement.kind === "known" && placement.value.appId === appId;
-      });
-    const projects: GroupStopProject[] = [];
+    const environments = canonicalAppEnvironments.derive(read, key).environments;
+    const projectIds = [
+      ...new Set(
+        (environments ?? []).flatMap((environment) =>
+          environment.target.kind === "zerops" ? [environment.target.projectId] : [],
+        ),
+      ),
+    ];
+    const projects: (Omit<GroupStopProject, "projectId"> & { readonly projectId: ProjectId })[] =
+      [];
     const versions = new Map<string, string>();
     const activeVersions = new Map<string, string | null>();
     const withheld = new Map<string, string>();
@@ -134,7 +153,10 @@ export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefin
         if (runs.name !== null) versions.set(serviceId, runs.name);
       }
     }
-    const environments = appEnvironments.derive(read, key).environments;
+    const stops =
+      environments === undefined
+        ? undefined
+        : canonicalGroupStopsOf({ environments, projects, versions, activeVersions, recipe });
     const changes =
       hqAddress === undefined || app.changes === undefined
         ? undefined
@@ -152,11 +174,7 @@ export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefin
     const flow = joinProjectFlows({
       groups: [{ groupId: appId }],
       navigationOffers: { [appId]: app.releaseOffer },
-      stops: new Map(
-        environments === undefined
-          ? []
-          : [[appId, groupStopsOf({ environments, projects, versions, activeVersions, recipe })]],
-      ),
+      stops: new Map(stops === undefined ? [] : [[appId, zeropsStops(stops)]]),
       releases: new Map(detail.releases === undefined ? [] : [[appId, detail.releases]]),
       repos: new Map(detail.repos === undefined ? [] : [[appId, detail.repos]]),
       recipes: new Map(recipe === undefined ? [] : [[appId, recipe]]),
@@ -167,9 +185,18 @@ export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefin
       changesRefused: changes?.refused ?? new Map(),
       withheld,
     }).get(appId);
-    if (flow === undefined || !unavailable) return flow;
-    return {
+    if (flow === undefined) return undefined;
+    const canonical: CanonicalProjectFlow = {
       ...flow,
+      declarations: stops?.declarations ?? [],
+      environmentInputs: stops?.environments ?? [],
+      environments: (stops?.environments ?? []).map((entry) =>
+        canonicalStopRow(entry, (detail.releases ?? []).map(flowReleaseOf)),
+      ),
+    };
+    if (!unavailable) return canonical;
+    return {
+      ...canonical,
       release: {
         ...flow.release,
         gate: {
@@ -209,4 +236,27 @@ export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefin
           },
         },
       )),
+};
+
+/** @deprecated Project DTOs retained until web/mobile migrate their consumers. */
+export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefined> = {
+  ...canonicalProjectFlow,
+  name: "projectFlow",
+  equals: sameValue,
+  derive: (read, key) => {
+    const flow = canonicalProjectFlow.derive(read, key);
+    if (flow === undefined) return undefined;
+    const stops = zeropsStops({
+      declarations: flow.declarations,
+      environments: flow.environmentInputs,
+    });
+    return {
+      ...flow,
+      declarations: stops.declarations,
+      environmentInputs: stops.environments,
+      environments: flow.environments.flatMap(({ id: _id, target, projectId: _legacy, ...row }) =>
+        target.kind === "zerops" ? [{ ...row, projectId: target.projectId }] : [],
+      ),
+    };
+  },
 };

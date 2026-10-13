@@ -9,7 +9,8 @@ import type { MateAttention } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqOfficialVerdict } from "@t3tools/shared/hqStream";
 
-import type { HqStructure } from "../../zerops/hq/client.ts";
+import { canonicalEnvironmentsOf } from "../../zerops/hq/environments.ts";
+import type { HqStructure, CanonicalHqStructure } from "../../zerops/hq/client.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqMateAttentionScope } from "../families/mateAttention.ts";
 import {
@@ -30,7 +31,7 @@ import type { AccountStore } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 
 export interface SeededHq {
-  readonly structure?: HqStructure;
+  readonly structure?: HqStructure | CanonicalHqStructure;
   readonly lifecycle?: ReadonlyArray<HqLifecycleRecord>;
   /** Each Mate HQ relays, by project. */
   readonly mates?: Readonly<Record<string, MateLiveView>>;
@@ -97,7 +98,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
       generation: store.state().streams.get(scope)?.generation ?? 0,
     }));
   // HQ relays only the Mates it places: those a seed names alone are placed in no application.
-  const structure: HqStructure | undefined =
+  const structure: HqStructure | CanonicalHqStructure | undefined =
     seed.structure ??
     (seed.mates === undefined
       ? undefined
@@ -157,7 +158,9 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           contents: app.contents ?? { empty: app.projects.length === 0, deletingProjectIds: [] },
           projectIds: app.projects.map(({ projectId }) => projectId),
           births: app.births ?? [],
-          environments: (app.environments ?? []) as HqAppValue["environments"],
+          environments: (app.environments !== undefined && "refused" in app.environments
+            ? app.environments
+            : canonicalEnvironmentsOf(app.environments)) as HqAppValue["environments"],
           changes: seed.changes?.[app.id] ?? [],
           releaseOffer: seed.releaseOffers?.[app.id] ?? null,
         },

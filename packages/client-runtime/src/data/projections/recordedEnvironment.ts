@@ -31,7 +31,9 @@ export const recordedEnvironment: Projection<
     const environments = app.kind === "known" ? app.value.environments : undefined;
     if (environments !== undefined && "refused" in environments)
       return { kind: "refused", reason: environments.refused };
-    const environment = environments?.find((entry) => entry.projectId === projectId);
+    const environment = environments?.find(
+      (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
+    );
     if (environment !== undefined)
       return { kind: "recorded", name: environment.name, keyed: environmentKeyed(environment) };
     return UNOBSERVED_PHASES.has(read.stream(linkKeys.hq(orgId)).phase)

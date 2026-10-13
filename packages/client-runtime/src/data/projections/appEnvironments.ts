@@ -7,7 +7,13 @@
  *
  * @module data/projections/appEnvironments
  */
-import { environmentsOf, type HqEnvironment } from "../../zerops/hq/environments.ts";
+import type { HqEnvironmentId } from "@t3tools/contracts";
+import {
+  canonicalEnvironmentsOf,
+  zeropsEnvironments,
+  type CanonicalHqEnvironment,
+  type HqEnvironment,
+} from "../../zerops/hq/environments.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
@@ -18,16 +24,36 @@ export interface AppEnvironmentsRead {
   readonly refused: string | null;
 }
 
-const UNTOLD: AppEnvironmentsRead = { environments: undefined, refused: null };
+export interface CanonicalAppEnvironmentsRead extends Omit<AppEnvironmentsRead, "environments"> {
+  readonly environments: ReadonlyArray<CanonicalHqEnvironment> | undefined;
+}
 
-function environmentsRead(read: ProjectionReads, appId: string): AppEnvironmentsRead {
+const UNTOLD: CanonicalAppEnvironmentsRead = { environments: undefined, refused: null };
+
+function environmentsRead(read: ProjectionReads, appId: string): CanonicalAppEnvironmentsRead {
   const fact = read.fact("hqApp", appId);
   if (fact.kind !== "known") return UNTOLD;
   const { environments } = fact.value;
   if (environments === undefined) return UNTOLD;
   if ("refused" in environments) return { environments: undefined, refused: environments.refused };
-  return { environments: environmentsOf(environments), refused: null };
+  return { environments: canonicalEnvironmentsOf(environments), refused: null };
 }
+
+export const canonicalAppEnvironments: Projection<
+  { readonly orgId: string; readonly appId: string },
+  CanonicalAppEnvironmentsRead
+> = {
+  name: "canonicalAppEnvironments",
+  keyOf: ({ orgId, appId }) => `${orgId}/${appId}`,
+  derive: (read, { appId }) => environmentsRead(read, appId),
+  equals: sameValue,
+};
+
+const compatibilityRead = (answer: CanonicalAppEnvironmentsRead): AppEnvironmentsRead => ({
+  ...answer,
+  environments:
+    answer.environments === undefined ? undefined : zeropsEnvironments(answer.environments),
+});
 
 export const appEnvironments: Projection<
   { readonly orgId: string; readonly appId: string },
@@ -35,7 +61,7 @@ export const appEnvironments: Projection<
 > = {
   name: "appEnvironments",
   keyOf: ({ orgId, appId }) => `${orgId}/${appId}`,
-  derive: (read, { appId }) => environmentsRead(read, appId),
+  derive: (read, key) => compatibilityRead(canonicalAppEnvironments.derive(read, key)),
   equals: sameValue,
 };
 
@@ -47,6 +73,22 @@ export const appsEnvironments: Projection<
   name: "appsEnvironments",
   keyOf: ({ orgId, appIds }) => `${orgId}/${appIds.join(",")}`,
   derive: (read, { appIds }) =>
-    Object.fromEntries(appIds.map((appId) => [appId, environmentsRead(read, appId)])),
+    Object.fromEntries(
+      appIds.map((appId) => [appId, compatibilityRead(environmentsRead(read, appId))]),
+    ),
   equals: sameValue,
+};
+
+/** A route resolves an environment under its application, never a project by this id. */
+export const environmentById: Projection<
+  { readonly orgId: string; readonly appId: string; readonly id: HqEnvironmentId },
+  CanonicalHqEnvironment | undefined
+> = {
+  name: "environmentById",
+  keyOf: ({ orgId, appId, id }) => `${orgId}/${appId}/${id}`,
+  equals: sameValue,
+  derive: (read, key) =>
+    canonicalAppEnvironments
+      .derive(read, key)
+      .environments?.find((environment) => environment.id === key.id),
 };

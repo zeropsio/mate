@@ -10,7 +10,7 @@
  */
 import { HqOffers } from "@t3tools/shared/hqOffers";
 import {
-  HqNavigationApp,
+  CanonicalHqNavigationApp,
   HqNavigationProject,
   HqNavigationPerson,
   HqNavigationPress,
@@ -49,7 +49,7 @@ const Birth = Schema.Struct({
   face: Schema.String,
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
-const App = navigationRecord({ ...HqNavigationApp.fields, births: Schema.Array(Birth) });
+const App = navigationRecord({ ...CanonicalHqNavigationApp.fields, births: Schema.Array(Birth) });
 const PersonFacts = navigationRecord(HqPersonFactsSchema.fields);
 const Mate = navigationRecord(HqNavigationMate.fields);
 const Project = navigationRecord({

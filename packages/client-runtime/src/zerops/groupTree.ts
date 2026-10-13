@@ -18,7 +18,16 @@
 
 import type { ZeropsProject } from "./api.ts";
 import {
-  deriveZeropsGroups,
+  canonicalEnvironmentsOf,
+  type HqEnvironment,
+  type CanonicalHqEnvironment,
+} from "./hq/environments.ts";
+import {
+  deriveCanonicalGroups,
+  type CanonicalGroupsOptions,
+  zeropsGroup,
+  type CanonicalGroup,
+  type CanonicalGroupEnvironment,
   type DeriveZeropsGroupsOptions,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
@@ -28,6 +37,16 @@ import { partitionZeropsToolProjects, type ZeropsToolKind } from "./tools.ts";
 /** Anything the client holds that knows which project it is about. */
 export interface ZeropsProjectCarrier {
   readonly project: ZeropsProject;
+}
+
+export type CanonicalGroupTreeEnvironment<T> = CanonicalGroupEnvironment & {
+  readonly item: T | undefined;
+};
+export interface CanonicalGroupTreeView<T> extends Omit<ZeropsGroupTreeView<T>, "groups"> {
+  readonly groups: ReadonlyArray<{
+    readonly group: CanonicalGroup;
+    readonly environments: ReadonlyArray<CanonicalGroupTreeEnvironment<T>>;
+  }>;
 }
 
 export interface ZeropsGroupTreeEnvironment<T> {
@@ -56,7 +75,15 @@ export interface ZeropsGroupTreeView<T> {
   readonly empty: boolean;
 }
 
-export interface BuildZeropsGroupTreeOptions<T> extends DeriveZeropsGroupsOptions {
+export interface BuildZeropsGroupTreeOptions<T> extends Omit<DeriveZeropsGroupsOptions, "apps"> {
+  readonly apps?: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly environments?:
+      | ReadonlyArray<HqEnvironment | CanonicalHqEnvironment>
+      | { readonly refused: string }
+      | undefined;
+  }>;
   /**
    * A primary sort key applied to the ungrouped list ahead of the name —
    * lower ranks first. Groups are untouched: a group's own membership
@@ -68,10 +95,42 @@ export interface BuildZeropsGroupTreeOptions<T> extends DeriveZeropsGroupsOption
   readonly rank?: (item: T) => number;
 }
 
-export function buildZeropsGroupTree<T extends ZeropsProjectCarrier>(
-  items: ReadonlyArray<T>,
+/** The existing project-carrier API opts into the same codec as the HQ boundary. */
+function canonicalGroupsOptions<T>(
   options: BuildZeropsGroupTreeOptions<T>,
-): ZeropsGroupTreeView<T> {
+): CanonicalGroupsOptions {
+  const { apps, ...restOptions } = options;
+  return {
+    ...restOptions,
+    ...(apps === undefined
+      ? {}
+      : {
+          apps: apps.map((app) => {
+            const { environments, ...rest } = app;
+            return {
+              ...rest,
+              ...(Object.hasOwn(app, "environments")
+                ? {
+                    environments:
+                      environments !== undefined && "refused" in environments
+                        ? environments
+                        : canonicalEnvironmentsOf(environments),
+                  }
+                : {}),
+            };
+          }),
+        }),
+  };
+}
+
+export interface BuildCanonicalGroupTreeOptions<T> extends CanonicalGroupsOptions {
+  readonly rank?: ((item: T) => number) | undefined;
+}
+
+export function buildCanonicalGroupTree<T extends ZeropsProjectCarrier>(
+  items: ReadonlyArray<T>,
+  options: BuildCanonicalGroupTreeOptions<T>,
+): CanonicalGroupTreeView<T> {
   // Last carrier wins for a duplicated project id: two candidates for one
   // project means the newer read, not two rows for the same environment.
   const byProjectId = new Map<string, T>();
@@ -82,14 +141,19 @@ export function buildZeropsGroupTree<T extends ZeropsProjectCarrier>(
   const { tools, rest } = partitionZeropsToolProjects(
     [...byProjectId.values()].map((item) => item.project),
   );
-  const tree = deriveZeropsGroups(rest, options);
+  const tree = deriveCanonicalGroups(rest, options);
 
   const groups = tree.groups.map((group) => ({
     group,
-    environments: group.environments.flatMap((environment) => {
-      const item = byProjectId.get(environment.project.id);
-      return item === undefined ? [] : [{ role: environment.role, item }];
-    }),
+    environments: group.environments.map((environment) => ({
+      ...environment,
+      item:
+        environment.kind === "managed"
+          ? environment.target.kind === "zerops"
+            ? byProjectId.get(environment.target.projectId)
+            : undefined
+          : byProjectId.get(environment.project.id),
+    })),
   }));
 
   const ungroupedItems = tree.ungrouped.flatMap((project) => {
@@ -113,5 +177,31 @@ export function buildZeropsGroupTree<T extends ZeropsProjectCarrier>(
     ungrouped,
     tools: toolItems,
     empty: groups.length === 0 && toolItems.length === 0,
+  };
+}
+
+/** @deprecated Project-carrier DTO for unmigrated clients. */
+export function buildZeropsGroupTree<T extends ZeropsProjectCarrier>(
+  items: ReadonlyArray<T>,
+  options: BuildZeropsGroupTreeOptions<T>,
+): ZeropsGroupTreeView<T> {
+  return zeropsGroupTree(
+    buildCanonicalGroupTree(items, {
+      ...canonicalGroupsOptions(options),
+      ...(options.rank === undefined ? {} : { rank: options.rank }),
+    }),
+  );
+}
+
+/** One compatibility projection for all project-carrier consumers. */
+export function zeropsGroupTree<T>(tree: CanonicalGroupTreeView<T>): ZeropsGroupTreeView<T> {
+  return {
+    ...tree,
+    groups: tree.groups.map(({ group, environments }) => ({
+      group: zeropsGroup(group),
+      environments: environments.flatMap(({ role, item }) =>
+        item === undefined ? [] : [{ role, item }],
+      ),
+    })),
   };
 }

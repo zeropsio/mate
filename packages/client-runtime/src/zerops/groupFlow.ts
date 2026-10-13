@@ -193,6 +193,7 @@ export interface GroupFlowMain {
 export type GroupFlowStopState = "checking" | "empty" | "deploying" | "deployed" | "failed";
 
 export interface GroupFlowStop {
+  /** @deprecated Zerops-only compatibility address; canonical rows carry id and target. */
   readonly projectId: string;
   readonly name: string;
   readonly state: GroupFlowStopState;

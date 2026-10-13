@@ -320,7 +320,10 @@ function runsAll(release: Pick<FlowRelease, "entries">, running: ReadonlyMap<str
  * same deploy. Its tagger is dropped: it tagged the release that service was last deployed by,
  * which may be an older one than the tag the stop is now named by.
  */
-export function nameStopByRelease(row: EnvironmentRow, tag: string): EnvironmentRow {
+export function nameStopByRelease<Row extends Omit<EnvironmentRow, "projectId">>(
+  row: Row,
+  tag: string,
+): Row {
   return {
     ...row,
     version: { ...row.version, name: tag, label: tag, taggedBy: undefined },

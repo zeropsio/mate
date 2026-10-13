@@ -25,6 +25,8 @@
  * @module groupDeploys
  */
 
+import { ProjectId } from "@t3tools/contracts";
+import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
 import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 
@@ -32,7 +34,13 @@ import { type GroupEnvironment, type GroupEnvironmentTier } from "./groupEnviron
 import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import type { ZeropsServiceDeployedVersion } from "../data/projections/serviceRuns.ts";
-import { type HqEnvironment, jobFailed, jobsByService } from "./hq/environments.ts";
+import {
+  type HqEnvironment,
+  type CanonicalHqEnvironment,
+  canonicalEnvironmentsOf,
+  jobFailed,
+  jobsByService,
+} from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import { recipeTierRepositories, recipeTierServices } from "./recipeTier.ts";
 
@@ -46,6 +54,7 @@ export interface GroupEnvironmentService {
 
 /** What one environment's row is built from, before the row itself. */
 export interface GroupEnvironmentRowInput {
+  /** @deprecated Zerops-only compatibility address; canonical rows carry id and target. */
   readonly projectId: string;
   readonly name: string;
   readonly tier: GroupEnvironment["tier"];
@@ -68,6 +77,27 @@ export interface GroupEnvironmentRowInput {
   readonly releaseFailures?: ReadonlyArray<ReleaseDeployFailure>;
   /** HQ bringing it up (`HqEnvironment.birth`). */
   readonly birth?: EnvironmentBirth | null | undefined;
+}
+
+export type CanonicalGroupEnvironmentRowInput = Omit<GroupEnvironmentRowInput, "projectId"> &
+  HqEnvironmentIdentity;
+export type CanonicalGroupEnvironmentDeclaration = Omit<GroupEnvironment, "project"> &
+  HqEnvironmentIdentity;
+export interface CanonicalGroupStops {
+  readonly declarations: ReadonlyArray<CanonicalGroupEnvironmentDeclaration>;
+  readonly environments: ReadonlyArray<CanonicalGroupEnvironmentRowInput>;
+}
+
+/** Temporary outward address fields exist only for Zerops targets. */
+export function zeropsStops(stops: CanonicalGroupStops): GroupStops {
+  return {
+    declarations: stops.declarations.flatMap(({ id: _id, target, projectId: _legacy, ...entry }) =>
+      target.kind === "zerops" ? [{ ...entry, project: target.projectId }] : [],
+    ),
+    environments: stops.environments.flatMap(({ id: _id, target, projectId: _legacy, ...entry }) =>
+      target.kind === "zerops" ? [{ ...entry, projectId: target.projectId }] : [],
+    ),
+  };
 }
 
 /**
@@ -157,11 +187,13 @@ export function appRecipeOf(files: {
  * Named by the Zerops project when the account can see it, and by HQ's name for it when it cannot:
  * an environment in a project this person may not read is still one the application has.
  */
-export function environmentRowInputsOf(input: {
-  readonly environments: ReadonlyArray<HqEnvironment>;
+export function canonicalEnvironmentRowInputsOf(input: {
+  readonly environments: ReadonlyArray<CanonicalHqEnvironment>;
   /** What each Zerops project is called, by id. */
-  readonly projectNames: ReadonlyMap<string, string>;
-  readonly services: ReadonlyArray<GroupEnvironmentService>;
+  readonly projectNames: ReadonlyMap<ProjectId, string>;
+  readonly services: ReadonlyArray<
+    Omit<GroupEnvironmentService, "projectId"> & { readonly projectId: ProjectId }
+  >;
   /** The version name each service runs, by service id. */
   readonly versions: ReadonlyMap<string, string>;
   /** The id of the version each service runs, by service id (`statedActiveVersions`). */
@@ -170,13 +202,15 @@ export function environmentRowInputsOf(input: {
   readonly repositories?: ReadonlyMap<string, string> | undefined;
   /** The services each tier declares (`AppRecipe.declared`); none while the recipe is unread. */
   readonly declared?: AppRecipe["declared"] | undefined;
-}): ReadonlyArray<GroupEnvironmentRowInput> {
+}): ReadonlyArray<CanonicalGroupEnvironmentRowInput> {
   return [...input.environments]
     .sort((left, right) => left.order - right.order)
     .map((environment) => {
       const deploys = jobsByService(environment);
       const listed = input.services.filter(
-        (service) => service.projectId === environment.projectId,
+        (service) =>
+          environment.target.kind === "zerops" &&
+          service.projectId === environment.target.projectId,
       );
       const state = (hostname: string, serviceId?: string): EnvironmentServiceState => {
         const repository = input.repositories?.get(hostname);
@@ -213,13 +247,17 @@ export function environmentRowInputsOf(input: {
                 : [],
             );
       return {
-        projectId: environment.projectId,
-        name: input.projectNames.get(environment.projectId) ?? environment.name,
+        id: environment.id,
+        target: environment.target,
+        name:
+          (environment.target.kind === "zerops"
+            ? input.projectNames.get(environment.target.projectId)
+            : undefined) ?? environment.name,
         tier: environment.tier,
         sources: environment.tier === "production" ? "release" : environment.sources,
         environment: environment.name,
-        keyHeld: environment.keyHeld,
-        keyInvalid: environment.keyInvalid,
+        keyHeld: environment.target.kind === "git" || environment.keyHeld,
+        keyInvalid: environment.target.kind === "zerops" && environment.keyInvalid,
         services: [
           ...listed.map((service) => state(service.hostname, service.serviceId)),
           ...unlisted.map((hostname) => state(hostname)),
@@ -253,25 +291,30 @@ export interface GroupStops {
  * records, and a row that asks for each tier the recipe on `main` offers and no environment and no
  * project's role fills — none while the recipe is not read.
  */
-export function groupStopsOf(input: {
-  readonly environments: ReadonlyArray<HqEnvironment>;
-  readonly projects: ReadonlyArray<GroupStopProject>;
+export function canonicalGroupStopsOf(input: {
+  readonly environments: ReadonlyArray<CanonicalHqEnvironment>;
+  readonly projects: ReadonlyArray<
+    Omit<GroupStopProject, "projectId"> & { readonly projectId: ProjectId }
+  >;
   /** The version name each service runs, by service id. */
   readonly versions: ReadonlyMap<string, string>;
   /** The id of the version each service runs, by service id (`statedActiveVersions`). */
   readonly activeVersions?: ReadonlyMap<string, string | null> | undefined;
   readonly recipe: AppRecipe | undefined;
-}): GroupStops {
+}): CanonicalGroupStops {
   const { recipe } = input;
-  const declarations = input.environments.map((environment): GroupEnvironment => ({
-    name: environment.name,
-    tier: environment.tier,
-    project: environment.projectId,
-    sources: environment.tier === "production" ? "release" : environment.sources,
-  }));
+  const declarations = input.environments.map(
+    (environment): CanonicalGroupEnvironmentDeclaration => ({
+      name: environment.name,
+      tier: environment.tier,
+      id: environment.id,
+      target: environment.target,
+      sources: environment.tier === "production" ? "release" : environment.sources,
+    }),
+  );
   return {
     declarations,
-    environments: environmentRowInputsOf({
+    environments: canonicalEnvironmentRowInputsOf({
       environments: input.environments,
       projectNames: new Map(input.projects.map((project) => [project.projectId, project.name])),
       services: input.projects.flatMap((project) =>
@@ -373,4 +416,49 @@ export function deployWord(tone: GroupRowTone): string | undefined {
     case "neutral":
       return undefined;
   }
+}
+
+/** @deprecated Use canonicalEnvironmentRowInputsOf after the HQ boundary. */
+export function environmentRowInputsOf(
+  input: Omit<
+    Parameters<typeof canonicalEnvironmentRowInputsOf>[0],
+    "environments" | "projectNames" | "services"
+  > & {
+    readonly environments: ReadonlyArray<HqEnvironment | CanonicalHqEnvironment>;
+    readonly projectNames: ReadonlyMap<string, string>;
+    readonly services: ReadonlyArray<GroupEnvironmentService>;
+  },
+): ReadonlyArray<GroupEnvironmentRowInput> {
+  const environments = canonicalEnvironmentsOf(input.environments);
+  if (environments === undefined) return [];
+  const rows = canonicalEnvironmentRowInputsOf({
+    ...input,
+    environments,
+    projectNames: new Map([...input.projectNames].map(([id, name]) => [ProjectId.make(id), name])),
+    services: input.services.map((entry) => ({
+      ...entry,
+      projectId: ProjectId.make(entry.projectId),
+    })),
+  });
+  return zeropsStops({ declarations: [], environments: rows }).environments;
+}
+/** @deprecated Unmigrated callers keep the Zerops DTO, derived from canonical stops. */
+export function groupStopsOf(
+  input: Omit<Parameters<typeof canonicalGroupStopsOf>[0], "environments" | "projects"> & {
+    readonly environments: ReadonlyArray<HqEnvironment | CanonicalHqEnvironment>;
+    readonly projects: ReadonlyArray<GroupStopProject>;
+  },
+): GroupStops {
+  const environments = canonicalEnvironmentsOf(input.environments);
+  if (environments === undefined) return { declarations: [], environments: [] };
+  return zeropsStops(
+    canonicalGroupStopsOf({
+      ...input,
+      environments,
+      projects: input.projects.map((entry) => ({
+        ...entry,
+        projectId: ProjectId.make(entry.projectId),
+      })),
+    }),
+  );
 }

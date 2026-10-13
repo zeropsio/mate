@@ -10,11 +10,12 @@
  *
  * @module data/operations/flowWrites
  */
+import { ProjectId } from "@t3tools/contracts";
 import type { ChangeLink, HqChange } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { Release } from "@t3tools/shared/hqRelease";
 
-import { environmentsOf, jobsByService } from "../../zerops/hq/environments.ts";
+import { canonicalEnvironmentsOf, jobsByService } from "../../zerops/hq/environments.ts";
 import type { DetailDemand } from "../demand.ts";
 import type { OperationReceipt } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
@@ -108,7 +109,7 @@ const changeOf = (read: ProjectionReads, link: ChangeLink): HqChange | undefined
     : undefined;
 };
 /** The jobs HQ's navigation lists for one of the application's environments. */
-const jobsOf = (read: ProjectionReads, appId: string, projectId: string) => {
+const jobsOf = (read: ProjectionReads, appId: string, projectId: ProjectId) => {
   const app = read.fact("hqApp", appId);
   if (
     app.kind !== "known" ||
@@ -116,7 +117,9 @@ const jobsOf = (read: ProjectionReads, appId: string, projectId: string) => {
     "refused" in app.value.environments
   )
     return undefined;
-  return environmentsOf(app.value.environments)?.find((entry) => entry.projectId === projectId);
+  return canonicalEnvironmentsOf(app.value.environments)?.find(
+    (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
+  );
 };
 
 const appDetail = (appId: string): DetailDemand => ({ family: "hqAppDetail", ownerId: appId });
@@ -160,7 +163,7 @@ export const rollBackWrite: OperationKind<"roll-back"> = {
 
 /** Whether the service's newest job is newer than the one it was asked again over. */
 const askedAgain = (read: ProjectionReads, intent: IntentOf<"redeploy">) => {
-  const environment = jobsOf(read, intent.appId, intent.projectId);
+  const environment = jobsOf(read, intent.appId, ProjectId.make(intent.projectId));
   const latest =
     environment === undefined ? undefined : jobsByService(environment).get(intent.service)?.latest;
   return latest !== undefined && latest.id !== intent.after;
@@ -176,7 +179,7 @@ export const redeployWrite: OperationKind<"redeploy"> = {
 
 /** Whether HQ's navigation lists a job adding the service to the environment. */
 const added = (read: ProjectionReads, intent: IntentOf<"add-service">) =>
-  jobsOf(read, intent.appId, intent.projectId)?.jobs.some(
+  jobsOf(read, intent.appId, ProjectId.make(intent.projectId))?.jobs.some(
     ({ cause, service }) => cause === "add_service" && service === intent.service,
   ) ?? false;
 

@@ -26,6 +26,8 @@ export type {
 export {
   hqAppChanges,
   hqAppReleaseOffers,
+  canonicalHqNavigation,
+  type CanonicalHqNavigationRead,
   hqNavigation,
   hqPersonFacts,
   hqStatus,
@@ -54,6 +56,9 @@ export {
 export { discussionDemand } from "./families/hqDiscussion.ts";
 export type { ZeropsWire } from "./adapters/zerops.ts";
 export {
+  canonicalAppEnvironments,
+  environmentById,
+  type CanonicalAppEnvironmentsRead,
   appEnvironments,
   appsEnvironments,
   type AppEnvironmentsRead,
@@ -558,13 +563,19 @@ export {
 } from "./projections/projectFlowJoin.ts";
 
 export {
+  canonicalProjectFlow,
+  type CanonicalProjectFlow,
   projectFlow,
   projectApplications,
   projectSummary,
   type ProjectFlowKey,
 } from "./projections/projectFlow.ts";
 
-export { inventoryGroups, type InventoryGroupsKey } from "./projections/inventoryGroups.ts";
+export {
+  canonicalInventoryGroups,
+  inventoryGroups,
+  type InventoryGroupsKey,
+} from "./projections/inventoryGroups.ts";
 
 export { hqProjectPerson } from "./projections/hqProjectPeople.ts";
 export * from "./families/mateEngine.ts";

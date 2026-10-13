@@ -48,7 +48,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { type FetchImplementation } from "../api.ts";
-import type { HqEnvironment } from "./environments.ts";
+import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
 import { hqRefusalWords, ZEROPS_UNANSWERED } from "./refusals.ts";
 import { hqStructureOf } from "./structure.ts";
 import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
@@ -177,6 +177,15 @@ export interface HqStructure {
     readonly births?: ReadonlyArray<HqBirth>;
   }>;
 }
+
+/** HQ membership retains target identity independently of the Zerops roster. */
+export type CanonicalHqStructure = Omit<HqStructure, "apps"> & {
+  readonly apps: ReadonlyArray<
+    Omit<HqStructure["apps"][number], "environments"> & {
+      readonly environments?: ReadonlyArray<CanonicalHqEnvironment> | { readonly refused: string };
+    }
+  >;
+};
 
 export interface HqAttach {
   readonly projectId: string;
