@@ -185,9 +185,9 @@ it("Decision: CI keeps native compilation, mobile units, desktop smoke and mobil
   expect(runs("test_mobile"), "ASSERTION: CI still runs the native mobile unit task").toContain(
     "vp run --filter @t3tools/mobile test",
   );
-  expect(runs("desktop_smoke").some((run) => run.includes("vp run build:desktop"))).toBe(true);
+  expect(runs("test_packages").some((run) => run.includes("vp run build:desktop"))).toBe(true);
   expect(
-    runs("desktop_smoke").some((run) =>
+    runs("test_packages").some((run) =>
       run.includes("vp run --filter @t3tools/desktop smoke-test"),
     ),
   ).toBe(true);

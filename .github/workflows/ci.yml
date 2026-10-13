@@ -48,7 +48,7 @@ jobs:
 
   check:
     name: Check
-    needs: prepare
+    needs: [prepare, changes]
     if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -105,10 +105,6 @@ jobs:
         if: needs.prepare.outputs.skip != 'true'
         run: node scripts/showcase-scenes.ts --check
 
-      - name: mate zone architecture
-        if: needs.prepare.outputs.skip != 'true'
-        run: vp test run scripts/mate-zone-architecture.test.ts
-
       # One AST scan reconciles every ledger and checks the identity ratchets.
       - name: Reconcile guard exceptions
         if: needs.prepare.outputs.skip != 'true'
@@ -151,6 +147,25 @@ jobs:
       - name: Build server bundle
         if: needs.prepare.outputs.skip != 'true'
         run: vp run --filter t3 build
+
+      # Reuse Check's Ubuntu checkout/install; retain individually named failure steps.
+      - name: Setup Rust
+        if: needs.prepare.outputs.skip != 'true' && needs.changes.outputs.resource_monitor != 'false'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check resource monitor formatting
+        if: needs.prepare.outputs.skip != 'true' && needs.changes.outputs.resource_monitor != 'false'
+        run: cargo fmt --manifest-path native/resource-monitor/Cargo.toml -- --check
+
+      - name: Test resource monitor
+        if: needs.prepare.outputs.skip != 'true' && needs.changes.outputs.resource_monitor != 'false'
+        run: cargo test --locked --manifest-path native/resource-monitor/Cargo.toml
+
+      - name: Exercise release-only workflow steps
+        if: needs.prepare.outputs.skip != 'true'
+        run: node scripts/release-smoke.ts
 
   # Every job gated on the `changes` outputs below runs unless the gate said
   # an explicit "false": a gate that failed leaves the output empty, and that
@@ -309,7 +324,7 @@ jobs:
     needs: prepare
     if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -337,6 +352,45 @@ jobs:
         run: |
           vp run test:browser
           vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenario-drivers --allowOnly=false
+
+      # Reuse Packages' Electron install for the complete Linux runtime smoke.
+      - name: Build desktop pipeline
+        env:
+          VITE_HTTP_URL: ""
+          VITE_WS_URL: ""
+        run: |
+          VITE_HOSTED_APP_CHANNEL="$(node --input-type=module -e 'import { resolveDesktopUpdateChannel } from "./scripts/stage-desktop-web.ts"; import pkg from "./apps/server/package.json" with { type: "json" }; process.stdout.write(resolveDesktopUpdateChannel(pkg.version));')"
+          export VITE_HOSTED_APP_CHANNEL
+          vp run build:desktop
+
+      - name: Verify preload bundle output
+        run: node apps/desktop/scripts/verify-preload-bundle.mjs
+
+      - name: Stage desktop web bundle
+        run: node scripts/stage-desktop-web.ts --skip-build
+
+      - name: Diagnose Linux Electron runtime
+        continue-on-error: true
+        run: |
+          electron_binary="$(cd apps/desktop && node -e 'process.stdout.write(require("electron"))')"
+          ldd "$electron_binary" | grep "not found" || true
+          xvfb-run -a -s "-screen 0 1440x900x24" "$electron_binary" --version
+
+      - name: Smoke test desktop
+        run: |
+          xvfb-run -a -s "-screen 0 1440x900x24" vp run --filter @t3tools/desktop smoke-test 2>&1 |
+            tee "${{ runner.temp }}/desktop-smoke-log.txt"
+
+      - name: Upload desktop smoke capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-smoke-capture
+          path: |
+            ${{ runner.temp }}/desktop-smoke-*/smoke.png
+            ${{ runner.temp }}/desktop-smoke-log.txt
+          if-no-files-found: warn
+          retention-days: 7
 
   test_scripts:
     name: Test Scripts ${{ matrix.shard }}
@@ -437,9 +491,8 @@ jobs:
   # apps/server sets `fileParallelism: false`, so its files run strictly one at
   # a time. Sharding spreads them over separate runners instead of separate
   # workers, so no two server test files ever share a machine and the isolation
-  # that flag buys is preserved exactly. Each shard deals every 4th file of the
-  # sorted paths (scripts/lib/spread-shard.ts): about 340 s of tests each, where
-  # three hash slices ran 390–525 s and the heaviest neared the 10-minute limit.
+  # that flag buys is preserved exactly. The existing sequencer assigns whole
+  # files by observed duration (scripts/lib/spread-shard.ts), longest first.
   test_server:
     name: Test Server ${{ matrix.shard }}
     needs: prepare
@@ -512,34 +565,6 @@ jobs:
           else
             echo "Transfer budget report was not produced." >> "$GITHUB_STEP_SUMMARY"
           fi
-
-  # Split out of Check and Test: both paid ~7-9s to install a Rust toolchain
-  # for checks that take under 3s, on the critical path of every PR.
-  rust:
-    name: Rust
-    needs: [prepare, changes]
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && needs.changes.outputs.resource_monitor != 'false' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check resource monitor formatting
-        run: cargo fmt --manifest-path native/resource-monitor/Cargo.toml -- --check
-
-      - name: Test resource monitor
-        run: cargo test --locked --manifest-path native/resource-monitor/Cargo.toml
 
   # PRs select the scenario bundle and resource monitor by their inputs. Pushes
   # run both; an unresolved diff fails open to keep their coverage complete.
@@ -647,104 +672,21 @@ jobs:
             echo "resource_monitor=true" >> "$GITHUB_OUTPUT"
           fi
 
+  # Keep the required Release Smoke context; its commands run in Check's installed workspace.
   release_smoke:
     name: Release Smoke
-    needs: prepare
+    needs: [prepare, check]
     if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 1
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
         run: echo 'This SHA passed full CI on kh-next.'
 
-      - name: Checkout
+      - name: Require release smoke to pass
         if: needs.prepare.outputs.skip != 'true'
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        if: needs.prepare.outputs.skip != 'true'
-        uses: voidzero-dev/setup-vp@v1
-        env: *verified_lockfile
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: |
-            args:
-              - --filter=@t3tools/scripts...
-
-      - name: Exercise release-only workflow steps
-        if: needs.prepare.outputs.skip != 'true'
-        run: node scripts/release-smoke.ts
-
-  desktop_smoke:
-    name: Desktop Smoke
-    needs: prepare
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        env: *verified_lockfile
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: true
-
-      - name: Ensure Electron runtime is installed
-        run: vp run --filter @t3tools/desktop ensure:electron
-
-      - name: Build desktop pipeline
-        env:
-          VITE_HTTP_URL: ""
-          VITE_WS_URL: ""
-        run: |
-          VITE_HOSTED_APP_CHANNEL="$(node --input-type=module -e 'import { resolveDesktopUpdateChannel } from "./scripts/stage-desktop-web.ts"; import pkg from "./apps/server/package.json" with { type: "json" }; process.stdout.write(resolveDesktopUpdateChannel(pkg.version));')"
-          export VITE_HOSTED_APP_CHANNEL
-          vp run build:desktop
-
-      - name: Verify preload bundle output
-        run: node apps/desktop/scripts/verify-preload-bundle.mjs
-
-      - name: Stage desktop web bundle
-        run: node scripts/stage-desktop-web.ts --skip-build
-
-      - name: Diagnose Linux Electron runtime
-        continue-on-error: true
-        run: |
-          electron_binary="$(cd apps/desktop && node -e 'process.stdout.write(require("electron"))')"
-          ldd "$electron_binary" | grep "not found" || true
-          xvfb-run -a -s "-screen 0 1440x900x24" "$electron_binary" --version
-
-      - name: Smoke test desktop
-        run: |
-          xvfb-run -a -s "-screen 0 1440x900x24" vp run --filter @t3tools/desktop smoke-test 2>&1 |
-            tee "${{ runner.temp }}/desktop-smoke-log.txt"
-
-      - name: Upload desktop smoke capture
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-smoke-capture
-          path: |
-            ${{ runner.temp }}/desktop-smoke-*/smoke.png
-            ${{ runner.temp }}/desktop-smoke-log.txt
-          if-no-files-found: warn
-          retention-days: 7
+        run: test "${{ needs.check.result }}" = success
 
   test_mobile:
     name: Test Mobile

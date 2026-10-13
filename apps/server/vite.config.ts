@@ -87,7 +87,7 @@ export default mergeConfig(
       // The server suite exercises sqlite, git, temp worktrees, and orchestration
       // runtimes heavily. Running files in parallel introduces load-sensitive flakes.
       fileParallelism: false,
-      // CI's shards each take every n-th file, so its slow crew and engine suites never share one.
+      // CI distributes whole files by measured duration while retaining one-file-at-a-time execution.
       sequence: { sequencer: SpreadShardSequencer },
       // Appended to the root setup, which mergeConfig concatenates.
       setupFiles: ["./src/testUtils/gitConfig.setup.ts"],
