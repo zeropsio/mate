@@ -18,7 +18,7 @@ describe("D: change review, comments and merge", () => {
     // Catches a menu review opening the wrong change or losing its description and changed files.
     it.effect("opens the menu change with its description and files", () =>
       Effect.gen(function* () {
-        const s = yield* createScenario([installArea]);
+        const s = yield* createScenario([installArea], { mate: "real" });
         const change = yield* sourceChange(s, {
           title: `Order summary ${"checkout".repeat(12)}`,
           summary: `Order total: ${"1234567890".repeat(80)}\n`,

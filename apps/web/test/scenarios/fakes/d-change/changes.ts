@@ -6,6 +6,8 @@ import { expect } from "@effect/vitest";
 import { HqChange } from "@t3tools/shared/hqChanges";
 import * as Schema from "effect/Schema";
 import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
+import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
+import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import { remoteOf } from "../../../../../hq/test/harness/mates.ts";
 import type { createScenario } from "../../harness/scenario.ts";
 
@@ -57,12 +59,24 @@ export const changeFixture = Effect.fn(function* (
   yield* git.checked(["add", "summary.txt"], work);
   yield* git.checked(["commit", "-m", "Add order summary"], work);
   const head = yield* git.checked(["rev-parse", "HEAD"], work);
-  // Subscribe before pushing; the real link receipt confirms HQ has consumed the git update.
   yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/Ada/1"], work);
-  yield* s.drivers.links.get("Ada")!.takeWhere("HQ recorded the change head", (frame) => {
-    if (frame.type !== "state") return false;
-    return JSON.stringify(frame).includes(head);
-  });
+  // The source baseline or update must name this exact pushed head before consumers open it.
+  yield* openScenarioNavigation(
+    s.drivers.core.origin,
+    yield* ticketFor(s.drivers.core.call, s.owner),
+    (message) =>
+      (message.type === "scope-reset" || message.type === "scope-values") &&
+      message.scope.kind === "app-detail" &&
+      message.scope.appId === appId &&
+      message.values.some(
+        (entry) =>
+          entry.key === "changes" &&
+          Schema.decodeUnknownSync(Schema.Array(HqChange))(entry.value).some(
+            (change) => change.repo === "appdev" && change.number === 1 && change.head === head,
+          ),
+      ),
+    { kind: "app-detail", appId },
+  ).pipe(Effect.scoped);
   const edited = yield* s.drivers.core.call("PATCH", "/api/mate/changes/appdev/1", {
     headers,
     body: { body: DESCRIPTION },
