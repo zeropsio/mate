@@ -31,7 +31,7 @@ export function ZeropsMenuPreview() {
   // Until the rows are settled the frame's own loading rows stand (index.html).
   if (slot === null || !settled) return null;
   return createPortal(
-    <div inert className="h-full overflow-y-auto px-4 pt-20">
+    <div inert className="h-full overflow-y-auto">
       <SidebarZeropsTree
         candidates={rows}
         complete={false}
