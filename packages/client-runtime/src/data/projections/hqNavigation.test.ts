@@ -1,3 +1,4 @@
+import { canonicalProjectFlow } from "./projectFlow.ts";
 import { hqProjectPeople } from "./hqProjectPeople.ts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -18,13 +19,7 @@ import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { pastGrace } from "../__fixtures__/account.ts";
 import { hqMates } from "./hqMates.ts";
-import {
-  hqAppReleaseOffers,
-  hqAppChanges,
-  hqNavigation,
-  hqPersonFacts,
-  hqStatus,
-} from "./hqNavigation.ts";
+import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
@@ -276,7 +271,14 @@ describe("hqNavigation", () => {
       "Ada",
       "Stage",
     ]);
-    expect(hqAppReleaseOffers.derive(readsOfState(next), ORG).shop).toBeUndefined();
+    expect(
+      canonicalProjectFlow.derive(readsOfState(next), {
+        orgId: ORG,
+        appId: "shop",
+        hqAddress: undefined,
+        viewer: undefined,
+      })?.release.summary,
+    ).toBeUndefined();
   });
 
   it("keeps the placement when Mate metadata is unknown without claiming there is no Mate", () => {
@@ -597,6 +599,15 @@ describe("release offers from navigation", () => {
         },
       ],
     }).state;
-    expect(hqAppReleaseOffers.derive(readsOfState(next), ORG).shop).toEqual(offer);
+    const flow = canonicalProjectFlow.derive(readsOfState(next), {
+      orgId: ORG,
+      appId: "shop",
+      hqAddress: undefined,
+      viewer: undefined,
+    });
+    expect(flow?.release.suggestion).toBe(offer.suggestion);
+    expect(flow?.release.summary).toEqual(offer.summary);
+    expect(flow?.recipeRead).toBe(false);
+    expect(flow?.releasesKnown).toBe(false);
   });
 });

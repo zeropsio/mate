@@ -11,7 +11,6 @@ import {
   environmentRow,
   flowAppChanges,
   flowReleaseOf,
-  groupStopsOf,
   releaseRunBy,
   nameStopByRelease,
   releaseDeploys,
@@ -196,32 +195,6 @@ export function groupChangesOf(
 
 /** What the flow says while HQ has never told it any change, and does not answer. */
 export const HQ_CHANGES_UNANSWERED = "HQ is not answering right now.";
-
-/** Each group's stops as last built, with the content they were built from. */
-const builtStops = new Map<string, { readonly key: string; readonly stops: GroupStops }>();
-
-/**
- * A group's stops: the same object for as long as what they are built from reads the same, so one
- * group's change never republishes another's flow.
- */
-export function groupStopsFor(
-  groupId: string,
-  input: Parameters<typeof groupStopsOf>[0],
-): GroupStops {
-  const { recipe } = input;
-  const key = JSON.stringify([
-    input.environments,
-    input.projects,
-    [...input.versions],
-    [...(input.activeVersions ?? [])],
-    recipe === undefined ? null : [recipe.tiers, [...recipe.repositories]],
-  ]);
-  const before = builtStops.get(groupId);
-  if (before?.key === key) return before.stops;
-  const stops = groupStopsOf(input);
-  builtStops.set(groupId, { key, stops });
-  return stops;
-}
 
 /** What a release lists while HQ's repositories or the recipe are not read. */
 const NOTHING_TO_LIST: ReadonlyMap<string, string> = new Map();

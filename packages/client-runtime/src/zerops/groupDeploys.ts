@@ -33,7 +33,6 @@ import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { type GroupEnvironment, type GroupEnvironmentTier } from "./groupEnvironments.ts";
 import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
-import type { ZeropsServiceDeployedVersion } from "../data/projections/serviceRuns.ts";
 import {
   type HqEnvironment,
   type CanonicalHqEnvironment,
@@ -41,7 +40,6 @@ import {
   jobFailed,
   jobsByService,
 } from "./hq/environments.ts";
-import type { Shown } from "./knowledge/known.ts";
 import { recipeTierRepositories, recipeTierServices } from "./recipeTier.ts";
 
 /** One runtime service of one Zerops project, as an environment's row needs it. */
@@ -98,36 +96,6 @@ export function zeropsStops(stops: CanonicalGroupStops): GroupStops {
       target.kind === "zerops" ? [{ ...entry, projectId: target.projectId }] : [],
     ),
   };
-}
-
-/**
- * The version name each service runs, by service id, as the account's store states it
- * (`serviceRuns`). A service it states no name for — not read yet, or running what
- * nobody named — is left out: its row says less until the store says more.
- */
-export function statedVersionNames(
-  stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>,
-): ReadonlyMap<string, string> {
-  const names = new Map<string, string>();
-  for (const [serviceId, version] of stated) {
-    if (version.state !== "known" || version.value.name === null) continue;
-    names.set(serviceId, version.value.name);
-  }
-  return names;
-}
-
-/**
- * The id of the version each service runs, by service id, where the platform said; `null` for one
- * it says runs none. What a service runs against what HQ last made it run (`driftOf`).
- */
-export function statedActiveVersions(
-  stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>,
-): ReadonlyMap<string, string | null> {
-  const ids = new Map<string, string | null>();
-  for (const [serviceId, version] of stated) {
-    if (version.state === "known") ids.set(serviceId, version.value.activeId);
-  }
-  return ids;
 }
 
 /** What an application's recipe on `main` offers: the tiers a person can add, and where code lives. */
@@ -196,7 +164,7 @@ export function canonicalEnvironmentRowInputsOf(input: {
   >;
   /** The version name each service runs, by service id. */
   readonly versions: ReadonlyMap<string, string>;
-  /** The id of the version each service runs, by service id (`statedActiveVersions`). */
+  /** The id of the version each service runs, by service id. */
   readonly activeVersions?: ReadonlyMap<string, string | null> | undefined;
   /** The repository each service is built from, by hostname (the tier's `buildFromGit`). */
   readonly repositories?: ReadonlyMap<string, string> | undefined;
@@ -298,7 +266,7 @@ export function canonicalGroupStopsOf(input: {
   >;
   /** The version name each service runs, by service id. */
   readonly versions: ReadonlyMap<string, string>;
-  /** The id of the version each service runs, by service id (`statedActiveVersions`). */
+  /** The id of the version each service runs, by service id. */
   readonly activeVersions?: ReadonlyMap<string, string | null> | undefined;
   readonly recipe: AppRecipe | undefined;
 }): CanonicalGroupStops {

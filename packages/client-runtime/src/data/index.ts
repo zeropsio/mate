@@ -25,7 +25,6 @@ export type {
 } from "./families/hqNavigation.ts";
 export {
   hqAppChanges,
-  hqAppReleaseOffers,
   canonicalHqNavigation,
   canonicalHqMenuNavigation,
   type CanonicalHqNavigationRead,
@@ -553,7 +552,6 @@ export { shownHqMateIdentitiesAtom } from "./reads.ts";
 
 export {
   groupChangesOf,
-  groupStopsFor,
   HQ_CHANGES_UNANSWERED,
   joinProjectFlows,
   NOT_COMPARED,

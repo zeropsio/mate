@@ -293,17 +293,3 @@ export const hqAppChanges: Projection<string, Readonly<Record<string, HqAppValue
     ),
   equals: sameValue,
 };
-
-/** Compact per-person release offers; independent of any app-detail demand. */
-export const hqAppReleaseOffers: Projection<
-  string,
-  Readonly<Record<string, HqAppValue["releaseOffer"]>>
-> = {
-  name: "hqAppReleaseOffers",
-  keyOf: (orgId) => orgId,
-  derive: (read, orgId) =>
-    Object.fromEntries(
-      listed(read, "hqApp", hqAppsScope(orgId)).map(({ id, value }) => [id, value.releaseOffer]),
-    ),
-  equals: sameValue,
-};

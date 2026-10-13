@@ -16,28 +16,29 @@ const key = {
   hqAddress: "https://hq.test",
   viewer: { id: "org", name: "Org", membershipId: "owner", roleCode: "OWNER" },
 };
-function fixture() {
+function fixture(
+  versions: ReadonlyArray<
+    Pick<import("../families/service.ts").ServiceValue, "id" | "activeAppVersion">
+  > = [{ id: "web", activeAppVersion: { id: "v1", name: "v1.2.3", source: "GIT" } }],
+) {
   const registry = AtomRegistry.make();
   const store = mountRoster(
     registry,
     "org",
     [{ id: "prod", name: "Shop - Production", status: "ACTIVE" }],
     {
-      services: [
-        {
-          id: "web",
-          projectId: "prod",
-          name: "web",
-          status: "ACTIVE",
-          isSystem: false,
-          serviceStackTypeInfo: {
-            serviceStackTypeName: "Node.js",
-            serviceStackTypeVersionName: "nodejs@24",
-            serviceStackTypeCategory: "USER",
-          },
-          activeAppVersion: { id: "v1", name: "v1.2.3", source: "GIT" },
+      services: versions.map((version) => ({
+        ...version,
+        projectId: "prod",
+        name: version.id,
+        status: "ACTIVE",
+        isSystem: false,
+        serviceStackTypeInfo: {
+          serviceStackTypeName: "Node.js",
+          serviceStackTypeVersionName: "nodejs@24",
+          serviceStackTypeCategory: "USER",
         },
-      ],
+      })),
     },
   );
   seedHqNavigation(store, "org", {
@@ -302,4 +303,40 @@ it("One repository's two runtime services share one environment identity and ret
   ]);
   expect(flow.environments[0]?.version.sha).toBe(SHA);
   registry.dispose();
+});
+
+describe("the version names the account's store states", () => {
+  it("names a service only where the store states a name for what it runs", () => {
+    const f = fixture([
+      { id: "s1", activeAppVersion: { id: "v-1", name: "main 3f9c1b2", source: "GIT" } },
+      { id: "s2", activeAppVersion: { id: "v-1", name: null, source: "GIT" } },
+      { id: "s3" },
+    ]);
+    const services = canonicalProjectFlow.derive(readsOfState(f.store.state()), key)
+      ?.environmentInputs[0]?.services;
+    expect(services?.map(({ serviceId, appVersionName }) => [serviceId, appVersionName])).toEqual([
+      ["s1", "main 3f9c1b2"],
+      ["s2", undefined],
+      ["s3", undefined],
+    ]);
+    f.registry.dispose();
+  });
+
+  it("states the id of the version each service runs, null for none, nothing while unread", () => {
+    const f = fixture([
+      { id: "s1", activeAppVersion: { id: "v-1", source: "GIT" } },
+      { id: "s2", activeAppVersion: null },
+      { id: "s3" },
+    ]);
+    const services = canonicalProjectFlow.derive(readsOfState(f.store.state()), key)
+      ?.environmentInputs[0]?.services;
+    expect(services?.map(({ serviceId, activeVersionId }) => [serviceId, activeVersionId])).toEqual(
+      [
+        ["s1", "v-1"],
+        ["s2", null],
+        ["s3", undefined],
+      ],
+    );
+    f.registry.dispose();
+  });
 });

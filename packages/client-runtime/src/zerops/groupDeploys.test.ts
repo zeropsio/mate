@@ -8,8 +8,6 @@ import {
   environmentRowInputsOf,
   groupStopsOf,
   releaseDeploys,
-  statedActiveVersions,
-  statedVersionNames,
 } from "./groupDeploys.ts";
 import type { ZeropsServiceDeployedVersion } from "../data/projections/serviceRuns.ts";
 import { canonicalEnvironmentRow, environmentRow } from "./groupRows.ts";
@@ -405,52 +403,6 @@ describe("an application's stops, as HQ records them", () => {
         ],
       ],
     ]);
-  });
-});
-
-describe("the version names the account's store states", () => {
-  const known = (name: string | null): Shown<ZeropsServiceDeployedVersion> => ({
-    state: "known",
-    value: { activeId: "v-1", source: "GIT", name },
-    asOf: { ordinal: 1, atMs: 0 },
-    coverage: "complete",
-    freshness: { kind: "live" },
-  });
-
-  it("names a service only where the store states a name for what it runs", () => {
-    expect(
-      statedVersionNames(
-        new Map<string, Shown<ZeropsServiceDeployedVersion>>([
-          ["s1", known(`main ${API.slice(0, 7)}`)],
-          ["s2", known(null)],
-          ["s3", { state: "unread", waitingFor: null }],
-        ]),
-      ),
-    ).toEqual(new Map([["s1", `main ${API.slice(0, 7)}`]]));
-  });
-
-  it("states the id of the version each service runs, null for none, nothing while unread", () => {
-    const active = (activeId: string | null): Shown<ZeropsServiceDeployedVersion> => ({
-      state: "known",
-      value: { activeId, source: "GIT", name: null },
-      asOf: { ordinal: 1, atMs: 0 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    });
-    expect(
-      statedActiveVersions(
-        new Map<string, Shown<ZeropsServiceDeployedVersion>>([
-          ["s1", active("v-1")],
-          ["s2", active(null)],
-          ["s3", { state: "unread", waitingFor: null }],
-        ]),
-      ),
-    ).toEqual(
-      new Map([
-        ["s1", "v-1"],
-        ["s2", null],
-      ]),
-    );
   });
 });
 
