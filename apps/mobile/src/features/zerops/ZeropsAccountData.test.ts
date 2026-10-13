@@ -189,8 +189,9 @@ describe("ZeropsAccountData on mobile", () => {
       target: { kind: "git", branch: "production", delivery: "direct" },
     };
     account.seed("org-1", [zerops, git]);
+    // Git delivery is read on its own (`deliveryEnvironments`): it is never listed as a project.
     const environments = () => account.registry.get(account.navigation)?.apps[0]?.environments;
-    expect(environments()).toEqual([zerops, git]);
+    expect(environments()).toEqual([zerops]);
     const heard: Array<string | null | undefined> = [];
     const stop = account.registry.subscribe(accountReadsAtom, (reads) => heard.push(reads?.orgId));
     account.render("org-2");
@@ -205,7 +206,7 @@ describe("ZeropsAccountData on mobile", () => {
       },
     ]);
     account.render("org-1");
-    expect(environments()).toEqual([zerops, git]);
+    expect(environments()).toEqual([zerops]);
     expect(heard).toEqual(["org-2", "org-1"]);
     expect(account.registry.get(accountReadsAtom)?.data).toBe(account.store.data);
     account.render(null);
