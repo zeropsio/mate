@@ -4,6 +4,7 @@ import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeni
 import { useThreadDetail } from "~/state/entities";
 import { useMateOfflineSince, useLastKnownMateWords } from "../zerops/useMenuMateReadings";
 import { useMateRecovery } from "../zerops/useMateRecovery";
+import { useMateHeld } from "../zerops/accountEnvironments";
 import { recoveryNotice, mateProjectUnavailable } from "@t3tools/client-runtime/data";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import {
@@ -166,6 +167,10 @@ function SignedInRootRouteView() {
   const draftEnvironmentId = useComposerDraftStore((store) =>
     draftId === null ? null : (store.getDraftSession(DraftId.make(draftId))?.environmentId ?? null),
   );
+  // A draft names no environment in its address, so no route lease holds its Mate: the draft holds
+  // it instead, or a Mate left for a while is parked under it and never comes back — its sign-in
+  // inert, its models never read, after a reload too.
+  useMateHeld(door.shell === "bare" ? null : draftEnvironmentId);
   const conversation = useRouteConversation(
     door.shell === "bare"
       ? null
