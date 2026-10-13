@@ -860,9 +860,12 @@ describe("githubRatchetRevision", () => {
       },
       compares: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     },
-    ...["kh-try", "kh-final"].map((branch) => ({
+    ...["kh-next", "kh-bisect"].map((branch) => ({
       run: `a new ${branch} verification branch`,
-      event: { before: "0".repeat(40), ref: `refs/heads/${branch}/candidate` },
+      event: {
+        before: "0".repeat(40),
+        ref: `refs/heads/${branch}${branch === "kh-next" ? "" : "/candidate"}`,
+      },
       compares: "origin/main",
     })),
     {

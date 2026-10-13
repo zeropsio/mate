@@ -49,7 +49,8 @@ The loop:
 - Prepare a worktree: `cd "$(node scripts/prepare-worktree.ts <name>)"` (reuses an idle one, installs,
   checks readiness).
 - Iterate: targeted `vp test run <files>`. Never repo-wide `vp check`, `vp run -r test` or
-  `vp run -r typecheck` in a worktree; `kh-try/**` CI runs fast, `kh-final/**` runs final.
+  `vp run -r typecheck` in a worktree; `main`, `kh-next` and `kh-bisect/**` CI run full verification; promotion to main
+  reuses a green kh-next run for the same SHA.
 - On completion, run `node scripts/gate-changed.ts` once: guard ledgers/repository invariants,
   touched-file `vp check`, incremental typechecks of touched packages and dependents, owned unit tests,
   then edited scenario files plus fixed state-only smoke (door, send, reload, approve, engine-secret,

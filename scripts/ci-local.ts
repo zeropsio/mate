@@ -41,13 +41,19 @@ const usesContext = (text: string) => text.includes("${{");
 
 /**
  * The job's `run` steps in order. A `uses` step sets up a runner that a checkout already is; a
- * step behind an `if`, or one that reads a `${{ }}` context, only means something on CI.
+ * promotion skip is never available locally. Other conditional steps and `${{ }}` contexts
+ * only mean something on CI.
  */
 export function checkSteps(workflowYaml: string, jobId = "check"): ReadonlyArray<CheckStep> {
   const job = (parse(workflowYaml) as Workflow).jobs?.[jobId];
   if (!job?.steps) throw new Error(`no job "${jobId}" with steps in the workflow`);
   return job.steps.flatMap((step) => {
-    if (step.run === undefined || step.if !== undefined || usesContext(step.run)) return [];
+    if (
+      step.run === undefined ||
+      (step.if !== undefined && step.if !== "needs.prepare.outputs.skip != 'true'") ||
+      usesContext(step.run)
+    )
+      return [];
     // The hosted web test phase needs neither native-client generation nor Electron setup.
     if (
       /@t3tools\/(?:mobile|desktop)\b/u.test(step.run) ||
