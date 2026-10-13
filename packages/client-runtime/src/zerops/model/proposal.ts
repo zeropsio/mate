@@ -24,7 +24,8 @@ export type ZeropsProposalKind =
   | "service.stop"
   | "env.set"
   | "mate.message"
-  | "chief.message";
+  | "chief.message"
+  | "domain.add";
 
 interface ProposalHead {
   readonly id: string;
@@ -59,6 +60,13 @@ export interface ZeropsChiefMessageParams {
   readonly attachment?: { readonly title: string; readonly text: string };
 }
 
+export interface ZeropsDomainProposalParams {
+  /** The domains, put on one routing: `shop.com` and `www.shop.com` answer alike. */
+  readonly domains: ReadonlyArray<string>;
+  /** The service's web port they point at. */
+  readonly port: number;
+}
+
 export type ZeropsProposal =
   | (ProposalHead & {
       readonly kind: "service.restart" | "service.start" | "service.stop";
@@ -79,6 +87,12 @@ export type ZeropsProposal =
       /** The asking Mate's project. */
       readonly projectId: string;
       readonly params: ZeropsChiefMessageParams;
+    })
+  | (ProposalHead & {
+      readonly kind: "domain.add";
+      readonly projectId: string;
+      readonly serviceId: string;
+      readonly params: ZeropsDomainProposalParams;
     });
 
 const Words = Schema.NonEmptyString;
@@ -132,8 +146,25 @@ const ChiefMessageProposal = Schema.Struct({
   }),
 });
 
+const DomainProposal = Schema.Struct({
+  ...Head,
+  kind: Schema.Literal("domain.add"),
+  projectId: Words,
+  serviceId: Words,
+  params: Schema.Struct({
+    domains: Schema.NonEmptyArray(Words),
+    port: Schema.Int.check(Schema.isGreaterThan(0)),
+  }),
+});
+
 const ProposalDocument = Schema.Struct({
-  proposal: Schema.Union([ServiceProposal, EnvProposal, MessageProposal, ChiefMessageProposal]),
+  proposal: Schema.Union([
+    ServiceProposal,
+    EnvProposal,
+    MessageProposal,
+    ChiefMessageProposal,
+    DomainProposal,
+  ]),
 });
 
 type DecodedProposal = (typeof ProposalDocument.Type)["proposal"];
@@ -195,6 +226,17 @@ function shaped(proposal: DecodedProposal): ZeropsProposal | undefined {
           words,
           ...(attachment === undefined ? {} : { attachment: { ...attachment } }),
         },
+      };
+    }
+    case "domain.add": {
+      const { domains, port } = proposal.params;
+      if (domains.some(blank)) return undefined;
+      return {
+        ...head,
+        kind: "domain.add",
+        projectId: proposal.projectId,
+        serviceId: proposal.serviceId,
+        params: { domains: [...domains], port },
       };
     }
   }
