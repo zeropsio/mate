@@ -4,7 +4,7 @@
  * zcp's does, and forwards HTTP bodies and WebSocket frames byte for byte. A case can hold the
  * Mate's answers to one kind of request — chosen by the client's request envelope (`_tag:
  * "Request"`, its `tag`) — and release them later: delayed loading is a held real frame, never a
- * fake reply.
+ * fake reply. A case can also wait for the Mate's answer to one: its receipt.
  */
 import * as NodeHttp from "node:http";
 import type * as NodeNet from "node:net";
@@ -46,6 +46,9 @@ export async function transportGate(target: () => string, prefix = "/mate") {
     open: boolean;
     first: () => void;
   }>();
+  // Requests the Mate has not answered yet, by id, and who waits for an answer to one kind.
+  const unanswered = new Map<string, string>();
+  const waiters = new Set<{ match: (tag: string) => boolean; answer: (exit: unknown) => void }>();
   const sockets = new Set<NodeNet.Socket>();
   const peers = new Set<WebSocket>();
   const requests: string[] = [];
@@ -87,6 +90,7 @@ export async function transportGate(target: () => string, prefix = "/mate") {
           for (const envelope of envelopes(data, isBinary))
             if (envelope._tag === "Request" && typeof envelope.tag === "string") {
               requests.push(`RPC ${envelope.tag}`);
+              unanswered.set(String(envelope.id), envelope.tag);
               for (const hold of holds)
                 if (hold.open && hold.match(envelope.tag)) {
                   hold.ids.add(String(envelope.id));
@@ -99,9 +103,19 @@ export async function transportGate(target: () => string, prefix = "/mate") {
           const deliver = () =>
             client.readyState === WebSocket.OPEN && client.send(data, { binary: isBinary });
           const answers = envelopes(data, isBinary);
-          for (const envelope of answers)
-            if (envelope._tag === "Exit" && JSON.stringify(envelope).includes('"Failure"'))
+          for (const envelope of answers) {
+            if (envelope._tag !== "Exit") continue;
+            if (JSON.stringify(envelope).includes('"Failure"'))
               requests.push(`RPC failed ${JSON.stringify(envelope).slice(0, 400)}`);
+            const tag = unanswered.get(String(envelope.requestId));
+            if (tag === undefined) continue;
+            unanswered.delete(String(envelope.requestId));
+            for (const waiter of waiters)
+              if (waiter.match(tag)) {
+                waiters.delete(waiter);
+                waiter.answer(envelope);
+              }
+          }
           const answered = answers.map((envelope) => String(envelope.requestId));
           const hold = [...holds].find((hold) => answered.some((id) => hold.ids.has(id)));
           if (hold?.open) hold.queue.push(deliver);
@@ -143,6 +157,9 @@ export async function transportGate(target: () => string, prefix = "/mate") {
         },
       };
     },
+    /** Settles with the Mate's exit for the next request whose RPC tag matches, once it answers. */
+    answered: (match: (tag: string) => boolean): Promise<unknown> =>
+      new Promise((answer) => waiters.add({ match, answer })),
     close: async () => {
       for (const peer of peers) peer.terminate();
       for (const socket of sockets) socket.destroy();
