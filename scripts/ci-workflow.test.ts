@@ -208,6 +208,20 @@ it("the Test verdict includes every scripts and HQ shard", () => {
   expect(command).toContain("--filter '!@t3tools/hq'");
 });
 
+it("HQ's offline shallow clone receives every object in its current commit", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const checkout = workflow.jobs.test_hq.steps.find(
+    (step: { name: string }) => step.name === "Checkout",
+  );
+  expect(
+    checkout.with?.["sparse-checkout"],
+    "ASSERTION: HQ's offline clone cannot serve missing promisor objects",
+  ).toBeUndefined();
+  expect(checkout.with?.filter).toBeUndefined();
+});
+
 it("hosted web CI omits desktop and mobile jobs and work", () => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
