@@ -41,6 +41,7 @@ import {
 } from "./families/mateEngine.ts";
 import { engineHeader, engineRun } from "./__fixtures__/mateEngine.ts";
 import { engineResendId } from "./projections/mateEngine.ts";
+import { agentNotesFor } from "../zerops/projectFlow.ts";
 import { agentContext } from "./projections/agentContext.ts";
 import { vaultChangesSince, vaultNote } from "./projections/vaultChanges.ts";
 import type { VaultChange, VaultView } from "./projections/vaultModel.ts";
@@ -542,6 +543,72 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       }),
   );
 
+  it.effect("with plan mode on, a message sent in plan mode goes to the agent as a plan", () =>
+    Effect.gen(function* () {
+      for (const state of ["idle", "running", "waiting"] as const) {
+        const r = rig(1);
+        yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+        r.runs(state === "idle" ? [engineRun("thread-ada", 1)] : [working(state)], SESSION(true));
+        const receipt = yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, { ...turn(), interactionMode: "plan" } as never),
+          ),
+        );
+        expect(receipt).toEqual({ sequence: 16 });
+        expect(r.calls).toMatchObject([
+          { kind: "send", text: "And the worker", interactionMode: "plan" },
+        ]);
+        expect(r.calls).toHaveLength(1);
+      }
+    }),
+  );
+
+  it.effect("J09: landed context stays separate from the person's message and compact event", () =>
+    Effect.gen(function* () {
+      for (const running of [false, true]) {
+        const r = rig(1);
+        yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+        r.runs(
+          running ? [working("running")] : [engineRun("thread-ada", 1)],
+          SESSION(running, running),
+        );
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, {
+              ...turn(),
+              agentNotes: [LANDED],
+            } as never),
+          ),
+        );
+        expect(r.calls).toEqual([
+          expect.objectContaining({
+            kind: running ? "steer" : "send",
+            text: "And the worker",
+            context: [LANDED],
+          }),
+        ]);
+        const compact = turn();
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, {
+              ...compact,
+              message: { ...compact.message, text: "/compact" },
+              agentNotes: agentNotesFor("/compact", [LANDED]),
+            } as never),
+          ),
+        );
+        expect(r.calls.at(-1)).toMatchObject({ text: "/compact" });
+        expect(r.calls.at(-1)).not.toHaveProperty("context");
+      }
+    }),
+  );
+
   // Catches plan mode dropped: a steer carries no interaction mode, and the working run keeps its own.
   it.effect("a plan sent while the run works goes as the next run, in plan mode", () =>
     Effect.gen(function* () {
@@ -700,6 +767,31 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         expect(failure.message).toMatch(/Pictures/);
         expect(r.calls).toEqual([]);
       }),
+  );
+
+  it.effect("decline an agent command and see it resolve", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineRespondToApproval(ENV, {
+            threadId: "thread-ada",
+            requestId: "thread-ada/r/2/q/1",
+            decision: "decline",
+          } as never),
+        ),
+      );
+      expect(r.calls).toEqual([
+        expect.objectContaining({
+          kind: "answer",
+          requestId: "thread-ada/r/2/q/1",
+          answer: { kind: "approval", decision: "decline" },
+          summary: "Declined",
+        }),
+      ]);
+    }),
   );
 
   it.effect("an approval's decision goes as the engine's answer, its words as the summary", () =>

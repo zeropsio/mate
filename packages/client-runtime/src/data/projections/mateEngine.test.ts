@@ -20,6 +20,7 @@ import {
 import { emptyAccount, type AccountState, type Revision } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
+import { derivePendingRequests } from "../../pendingRequests.ts";
 import { foldSubagentActivities } from "../../state/subagentRuntime.ts";
 import {
   callItem,
@@ -1914,4 +1915,84 @@ it.each([
       "The agent process failed",
     ),
   ).toBe(shown);
+});
+
+// The durable engine record is the reload input; both deliveries pass through the real reducer and chat projection.
+it("J03: current model and explicit effort remain selected after send and reload", () => {
+  for (const effort of ["high", "max"]) {
+    const records: Parameters<typeof held>[0] = {
+      header: {
+        model: "claude-opus",
+        agent: {
+          instanceId: "claudeAgent",
+          driver: "claudeAgent",
+          profile: { kind: "mate" },
+          model: "claude-opus",
+          options: [{ id: "effort", value: effort }],
+        },
+      },
+      runs: [engineRun("thread-ada", 1)],
+      items: [personItem(run1, 1, "Inspect at my chosen effort")],
+    };
+    for (const state of [held(records), held(structuredClone(records))]) {
+      expect(thread(state)?.modelSelection).toEqual({
+        instanceId: "claudeAgent",
+        model: "claude-opus",
+        options: [{ id: "effort", value: effort }],
+      });
+      expect(thread(state)?.messages[0]?.text).toBe("Inspect at my chosen effort");
+    }
+  }
+});
+
+it("J05: picture notes and attachment order survive send and reload", () => {
+  const layout = {
+    type: "image" as const,
+    id: "layout",
+    name: "layout.png",
+    mimeType: "image/png",
+    sizeBytes: 3,
+  };
+  const detail = { ...layout, id: "detail", name: "detail.png", sizeBytes: 5 };
+  for (const attachments of [
+    [layout, detail],
+    [detail, layout],
+  ]) {
+    const words = "Inspect these pictures in this order\nMove this action beside its heading";
+    const records = {
+      runs: [engineRun("thread-ada", 1)],
+      items: [personItem(run1, 1, words, { attachments })],
+    };
+    for (const state of [held(records), held(structuredClone(records))]) {
+      const message = thread(state)?.messages[0];
+      expect(message?.text).toBe(words);
+      expect(message?.attachments).toEqual(attachments);
+    }
+  }
+});
+
+it("decline an agent command and see it resolve", () => {
+  const ask = { kind: "approval" as const, requestKind: "command", detail: "vp run build" };
+  for (const state of ["open", "answered"] as const) {
+    const request = engineRequest(
+      run1,
+      1,
+      ask,
+      state === "open"
+        ? {}
+        : {
+            state,
+            answer: { by: { kind: "person", subject: "u" }, at: 5, summary: "Declined" },
+          },
+    );
+    const activities = thread(
+      held({ runs: [engineRun("thread-ada", 1)], requests: [request] }),
+    )!.activities;
+    expect(derivePendingRequests(activities).approvals.map(({ requestId }) => requestId)).toEqual(
+      state === "open" ? [request.id] : [],
+    );
+    expect(
+      activities.filter(({ kind }) => kind === "approval.resolved").map(({ summary }) => summary),
+    ).toEqual(state === "open" ? [] : ["Declined"]);
+  }
 });
