@@ -30,23 +30,46 @@ jobs:
       contents: read
       actions: read
     steps:
+      - name: Checkout release and first parent
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          sparse-checkout: packages/shared/src
+
       - name: Check exact-SHA CI verification
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&status=success&per_page=100" --paginate --jq '
-            .workflow_runs[]
-            | select(.head_sha == env.GITHUB_SHA)
-            | select(.path == ".github/workflows/ci.yml")
-            | select(.head_branch == "main" or .head_branch == "kh-next")
-            | select(.status == "completed" and .conclusion == "success")
-            | .id')
+          ci_verification() {
+            local sha="$1"
+            GH_VERIFIED_SHA="$sha" gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${sha}&status=success&per_page=100" --paginate --jq '
+              .workflow_runs[]
+              | select(.head_sha == env.GH_VERIFIED_SHA)
+              | select(.path == ".github/workflows/ci.yml")
+              | select(.head_branch == "main" or .head_branch == "kh-next")
+              | select(.status == "completed" and .conclusion == "success")
+              | .id'
+          }
+          verified_sha="$GITHUB_SHA"
+          verified=$(ci_verification "$verified_sha")
           if [[ -z "$verified" ]]; then
-            echo "No completed successful CI run on main/kh-next for ${GITHUB_SHA}; run CI on this commit first." >&2
+            if parent=$(git rev-parse --verify "${GITHUB_SHA}^1" 2>/dev/null) &&
+              packages=$(git show "${parent}:packages/shared/src/versionedReleasePackages.json" 2>/dev/null); then
+              if git diff --no-renames --name-only -z "$parent" "$GITHUB_SHA" |
+                jq -e --raw-input --slurp --argjson packages "$packages" '
+                  split("\u0000") | map(select(length > 0))
+                  | all(.[]; . as $path | $packages | index($path) != null)' > /dev/null; then
+                verified_sha="$parent"
+                verified=$(ci_verification "$verified_sha")
+              fi
+            fi
+          fi
+          if [[ -z "$verified" ]]; then
+            echo "No completed successful CI run on main/kh-next for ${GITHUB_SHA} or its version-only first parent; run CI on this commit first." >&2
             exit 1
           fi
-          echo "CI verified ${GITHUB_SHA} (run IDs: ${verified//$'\n'/, })."
+          echo "CI verified ${verified_sha} for release ${GITHUB_SHA} (run IDs: ${verified//$'\n'/, })."
 
   build:
     name: Build and verify bundle

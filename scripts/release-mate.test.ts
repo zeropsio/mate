@@ -220,7 +220,11 @@ it("release CI grants the permissions requested by its reusable workflow", () =>
     workflow.jobs.verify.permissions,
     "ASSERTION: release verification needs only read access to prior workflow runs",
   ).toEqual({ contents: "read", actions: "read" });
-  expect(workflow.jobs.verify.steps[0].env.GH_TOKEN).toBe("${{ github.token }}");
+  expect(
+    workflow.jobs.verify.steps.find(
+      (step: { name: string }) => step.name === "Check exact-SHA CI verification",
+    ).env.GH_TOKEN,
+  ).toBe("${{ github.token }}");
   expect(workflow.jobs.verify.uses).toBeUndefined();
 });
 
