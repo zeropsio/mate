@@ -13,7 +13,7 @@ export function foldTimelineWork({
   done,
   viewport,
   rows,
-  arriving,
+  waits,
   follows,
   start,
   release,
@@ -24,7 +24,8 @@ export function foldTimelineWork({
     readonly position: number;
     readonly size: number;
   }>;
-  readonly arriving: () => boolean;
+  /** Something else places the rows or the view now: the fold starts once it is done. */
+  readonly waits: () => boolean;
   readonly follows: () => boolean;
   readonly start: () => void;
   readonly release: () => void;
@@ -95,7 +96,7 @@ export function foldTimelineWork({
         const busy =
           waited < LIST_LAYS_OUT_FRAMES ||
           viewport()?.hasAttribute(GLIDING_ATTRIBUTE) === true ||
-          arriving();
+          waits();
         if (!busy || waited >= WAIT_AT_MOST_FRAMES) return true;
         if (waited === 0) capture();
         waited += 1;

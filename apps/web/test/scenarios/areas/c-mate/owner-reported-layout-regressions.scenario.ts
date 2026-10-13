@@ -2835,7 +2835,7 @@ describe("owner-reported layout regressions", () => {
                 "ASSERTION: the page never stands still while the answer's foot is out of sight",
               ).toBeLessThan(100);
             }
-            if (length === "long" && end === "whole" && answer === "streamed") {
+            if (length === "long" && answer === "streamed") {
               const reading = frames[0]!.lastLine;
               expect(reading, "ASSERTION: the answer's last line was read in view").not.toBeNull();
               // It lands under the strip of what runs on, a strip's height down at most, and travels

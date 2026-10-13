@@ -1146,8 +1146,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             },
           );
         },
-        arriving: () => arrivingRef.current,
-        // Under a held head the fold takes room under the end, never the view's place.
+        // What the settle brought is still arriving; or a head is held, then the view eases out of
+        // the room under the end: folded under the held head, the work carried the words read at
+        // the slot's foot up with it, and the view's way out of the room brought them back down
+        // (a crash-cut run, 298 px). Waited out, it folds with the view at the end: the history
+        // above comes down, the words stay where they were read.
+        waits: () =>
+          arrivingRef.current ||
+          (landingRef.current === null
+            ? followRoomRef.current > 0
+            : landingRef.current.edge === "top"),
+        // Under a held head past its wait, the fold takes room under the end, never the view's place.
         follows: () => followingEndRef.current && landingRef.current?.edge !== "top",
         start: () => {
           outerFoldsRef.current.add(release);
@@ -2935,7 +2944,14 @@ function usePanelStand(turnKey: string, cardKey: string) {
  * Room at the top of the Mate's last word under a run that settled into its
  * line alone: as tall as the panel that just stood there, easing to nothing.
  */
-function FoldRoom({ fold }: { readonly fold: FoldsFrom | undefined }) {
+function FoldRoom({
+  fold,
+  words,
+}: {
+  readonly fold: FoldsFrom | undefined;
+  /** The message whose words it stands above. */
+  readonly words: string;
+}) {
   const roomRef = useRef<HTMLDivElement>(null);
   // Once it folds it folds through: a report arriving a moment later — the
   // files a run changed are known after its settle — eases in from the card
@@ -2946,7 +2962,9 @@ function FoldRoom({ fold }: { readonly fold: FoldsFrom | undefined }) {
     const room = roomRef.current;
     if (folding === undefined || room === null) return;
     const stand = takePanelStand(folding.turnKey);
-    if (stand === null) return;
+    // Words read in the run's slot land from where they stood (`onAnswerLands`): under the panel's
+    // room they opened a panel's height below it, then eased back up (a crash's lost job, 49 px).
+    if (stand === null || wordsJustStood(words)) return;
     const lineNow = rowElementById(`work-line:${folding.cardKey}`)?.getBoundingClientRect().height;
     const from =
       stand.panel +
@@ -3683,7 +3701,7 @@ function TimelineRowTimestamp({
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   return (
     <>
-      <FoldRoom fold={row.foldsFrom} />
+      <FoldRoom fold={row.foldsFrom} words={row.message.id} />
       <MateProse message={row.message} showMeta={row.showAssistantMeta} />
     </>
   );
