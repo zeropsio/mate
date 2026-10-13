@@ -57,21 +57,6 @@ export function withoutOwnChief<T extends { readonly project: { readonly id: str
   return candidates.filter((candidate) => candidate.project.id !== own);
 }
 
-/**
- * Whether a Chief's empty conversation is its sign-in: while no coding agent is signed in, the
- * Mate sign-in every empty conversation offers stands in place of its question and the composer —
- * nothing typed there could be acted on. A conversation under way keeps its own notice.
- */
-export function chiefShowsSignIn(input: {
-  readonly chief: boolean;
-  /** No agent is signed in (`zeropsAgentSignInRequired`). */
-  readonly signInRequired: boolean;
-  /** Something is said in it already. */
-  readonly said: boolean;
-}): boolean {
-  return input.chief && input.signInRequired && !input.said;
-}
-
 /** The person a Chief is named after, as Zerops knows them. */
 export interface ChiefPerson {
   readonly firstName?: string | undefined;

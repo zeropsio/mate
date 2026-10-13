@@ -372,7 +372,7 @@ import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
-import { chiefShowsSignIn } from "~/zerops/chief";
+import { mateShowsSignIn } from "~/zerops/mateSignIn";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
@@ -3107,15 +3107,16 @@ function ConversationView(props: ChatViewProps) {
     const at = zeropsMateAt(zeropsMates, environmentId);
     return at.kind === "mate" && at.mate.chief === true;
   })();
-  // A Chief no coding agent is signed in to: the Mate sign-in stands in place of its question and
-  // the composer, as an empty conversation's opening (`chiefShowsSignIn`).
-  const chiefSignIn = chiefShowsSignIn({
-    chief: chiefConversation,
+  // A Mate no coding agent is signed in to — its Chief, or one nobody has signed in yet, whose
+  // opening lands on a draft: the Mate sign-in stands in place of its question and the composer,
+  // as an empty conversation's opening (`mateShowsSignIn`).
+  const mateSignIn = mateShowsSignIn({
+    mate: zeropsMateAt(zeropsMates, environmentId).kind === "mate",
     signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead, providerStatuses),
     said: timelineEntries.length > 0,
   });
   const isDraftHeroState =
-    !chiefSignIn &&
+    !mateSignIn &&
     resolveDraftHeroState({
       isLocalDraftThread,
       hasTimelineEntries: timelineEntries.length > 0,
@@ -4090,7 +4091,7 @@ function ConversationView(props: ChatViewProps) {
   );
   // A started conversation keeps its login; its admission item explains why Send waits.
   const zeropsSendBlockReason = admission.sendBlockReason;
-  const zeropsArrivalHoldsComposer = admission.holdsComposer || chiefSignIn;
+  const zeropsArrivalHoldsComposer = admission.holdsComposer || mateSignIn;
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
