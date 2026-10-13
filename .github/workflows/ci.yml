@@ -319,6 +319,11 @@ jobs:
       - name: Test
         run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/monorepo' test
 
+      - name: Test scenario drivers
+        run: |
+          vp run test:browser
+          vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenario-drivers --allowOnly=false
+
   test_mobile:
     name: Test Mobile
     needs: changes

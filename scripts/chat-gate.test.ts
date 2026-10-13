@@ -116,6 +116,21 @@ it("CI runs the same named gate as local ports", () => {
   ]);
 });
 
+it("CI's Test job runs scenario-driver units after provisioning their browser", () => {
+  const workflow = NodeFS.readFileSync(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  const driver = checkSteps(workflow, "test").find((step) =>
+    step.run.includes("--project scenario-drivers"),
+  );
+  expect(driver, "ASSERTION: scenario-driver units are covered by CI's Test job").toBeDefined();
+  expect(driver?.run.split("\n").filter(Boolean)).toEqual([
+    "vp run test:browser",
+    "vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenario-drivers --allowOnly=false",
+  ]);
+});
+
 it("CI's stdin selector considers every changed path, including the old side of renames", () => {
   const result = NodeChildProcess.spawnSync(
     process.execPath,

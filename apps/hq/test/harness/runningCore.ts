@@ -448,6 +448,14 @@ export type Call = Effect.Success<ReturnType<typeof startCore>>["call"];
 
 export const untilHealth = (call: Call, state: string) =>
   call("GET", "/health").pipe(
+    Effect.catchDefect((defect) =>
+      typeof defect === "object" &&
+      defect !== null &&
+      "code" in defect &&
+      (defect.code === "ECONNRESET" || defect.code === "ECONNREFUSED")
+        ? Effect.fail(defect)
+        : Effect.die(defect),
+    ),
     Effect.filterOrFail(
       (response) =>
         response.body !== null &&

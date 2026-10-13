@@ -1,9 +1,11 @@
+import GateTimingReporter from "../../../../scripts/gate-timing-reporter.ts";
 import { defineConfig } from "vite-plus/test/config";
 import * as NodeURL from "node:url";
 
 export default defineConfig({
   root: NodeURL.fileURLToPath(new URL("../../", import.meta.url)),
   test: {
+    reporters: ["default", new GateTimingReporter()],
     globalSetup: ["../../scripts/test-postgres.setup.ts"],
     // Bound browser work across both projects; PostgreSQL is shared across runs.
     maxWorkers: 1,

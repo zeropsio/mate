@@ -313,7 +313,7 @@ it.each([{ args: [] }, { args: ["--list"] }])(
       );
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain(
-        "Missing selected scenario path: test/scenarios/areas/a-signin",
+        "Missing selected file: apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
       );
       expect(result.stdout).not.toContain("guard ledgers");
     } finally {
@@ -440,36 +440,77 @@ it.each([
       { cwd: repositoryFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
-    if (stages) expect(result.stdout).toContain(`scripts/chat-gate.ts --stages ${stages}`);
-    else expect(result.stdout).not.toContain("scripts/chat-gate.ts --stages");
+    const lines = result.stdout.split("\n");
+    const owner = path.split("/").slice(0, 2).join("/");
+    const typechecks = lines.filter(
+      (line) => line.startsWith("typecheck ") && !line.startsWith("typecheck scenarios:"),
+    );
+    const ownerName = owner === "apps/server" ? "t3" : `@t3tools/${owner.split("/")[1]}`;
+    const dependents =
+      owner === "packages/contracts"
+        ? [
+            "@t3tools/scripts",
+            "@t3tools/shared",
+            "@t3tools/client-runtime",
+            "@t3tools/hq",
+            "@t3tools/web",
+            "@t3tools/desktop",
+            "@t3tools/mobile",
+            "t3",
+            "t3code-relay",
+          ]
+        : owner === "packages/client-runtime"
+          ? ["@t3tools/web", "@t3tools/desktop", "@t3tools/mobile", "t3", "t3code-relay"]
+          : owner === "apps/web"
+            ? ["t3"]
+            : [];
+    expect(typechecks.map((line) => line.split(":")[0]!.slice("typecheck ".length)).sort()).toEqual(
+      [ownerName, ...dependents].sort(),
+    );
+    expect(result.stdout).not.toContain("scripts/chat-gate.ts --stages");
+    const edited = lines.find((line) => line.startsWith("edited scenario files:"));
     if (stages.includes("C")) {
-      expect(result.stdout).toContain(
-        '"apps/web/test/scenarios/areas/c-mate/admission.scenario.ts"',
+      expect(edited).toBe(
+        "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/admission.scenario.ts test/scenarios/areas/c-mate/chat.scenario.ts test/scenarios/areas/c-mate/opening.scenario.ts",
       );
-      expect(result.stdout).toContain('"apps/web/test/scenarios/areas/c-mate/opening.scenario.ts"');
-      expect(result.stdout).not.toContain("test/scenarios/areas/c-mate --");
-      expect(result.stdout).toContain("inputs:");
+    } else expect(edited).toBeUndefined();
+    if (stages.includes("A")) {
+      expect(result.stdout).toContain("src/provider/Layers/ClaudeAdapter.test.ts");
+      expect(
+        chatGateTestFiles(
+          sourceRoot,
+          chatGateStages.filter((stage) => stage.id === "A"),
+        ),
+      ).toContain("apps/server/src/spi/replay/goldens.test.ts");
     }
-    if (stages.includes("A"))
-      expect(result.stdout).toContain("--exclude src/spi/replay/goldens.test.ts");
-    if (stages.includes("E"))
-      expect(result.stdout).toContain(
+    if (stages.includes("E")) {
+      const directOwner = path.endsWith("/domain/decide.ts")
+        ? "src/engine/domain/decide.test.ts"
+        : path.endsWith("/engineCall.ts")
+          ? "src/engine/bridge/calls.test.ts"
+          : path.endsWith("/wire/EngineWire.ts")
+            ? "src/engine/history/historyImport.test.ts"
+            : "src/engine/outbox/crash.test.ts";
+      expect(result.stdout).toContain(directOwner);
+      expect(
+        chatGateTestFiles(
+          sourceRoot,
+          chatGateStages.filter((stage) => stage.id === "E"),
+        ),
+      ).toContain(
         path.endsWith("/wire/EngineWire.ts")
-          ? "--exclude src/engine/history/historyImport.test.ts"
-          : "--exclude src/engine/outbox/crash.test.ts",
+          ? "apps/server/src/engine/history/historyImport.test.ts"
+          : "apps/server/src/engine/outbox/crash.test.ts",
       );
-    if (stages.includes("types")) {
-      expect(result.stdout).not.toContain("typecheck @t3tools/contracts:");
-      expect(result.stdout).not.toContain("typecheck @t3tools/web:");
     }
     if (path.endsWith("/d-change/dsl.ts")) {
-      expect(result.stdout).toContain("test/scenarios/areas/d-change/review.scenario.ts");
-      expect(result.stdout).not.toContain(
-        '"apps/web/test/scenarios/areas/c-mate/admission.scenario.ts"',
-      );
+      expect(result.stdout).not.toContain("test/scenarios/areas/d-change/review.scenario.ts");
+      expect(edited).toBeUndefined();
     }
-    expect(result.stdout).toContain("Selection A:");
-    expect(result.stdout).toContain("Selection C:");
+    const smoke = lines.find((line) => line.startsWith("state-only smoke:"));
+    expect(smoke).toContain("engine-secret.scenario.ts");
+    expect(smoke).toContain("engine-page.scenario.ts");
+    expect(result.stdout).toContain("repository invariants:");
   } finally {
     NodeFS.writeFileSync(file, original);
   }
@@ -794,7 +835,21 @@ it("lane scenarios follow their own imports without the bundled app entry", () =
     );
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("Scenario files: 0;");
-    expect(result.stdout).toContain("Selection C: skip:");
+    expect(result.stdout).not.toContain("edited scenario files:");
+    expect(
+      relatedFiles(
+        repositoryFixture,
+        ["apps/web/test/scenarios/areas/c-mate/dsl.ts"],
+        ["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"],
+      ),
+    ).toEqual(["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"]);
+    expect(
+      relatedFiles(
+        repositoryFixture,
+        ["apps/web/src/main.tsx"],
+        ["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"],
+      ),
+    ).toEqual([]);
   } finally {
     NodeFS.writeFileSync(file, original);
   }
@@ -847,9 +902,10 @@ it("named rendering scenarios join changed scenarios once and keep their owning 
       `Scenario ${changed}; reason: changed file; explicit --scenarios`,
     );
     expect(result.stdout).toContain(`Scenario ${named}; reason: explicit --scenarios`);
-    expect(result.stdout).toContain("scripts/chat-gate.ts --stages C,types");
+    expect(result.stdout).toContain("typecheck @t3tools/web:");
+    expect(result.stdout).toContain("typecheck scenarios:");
     expect(result.stdout).toContain(
-      "related scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/d-change/review.scenario.ts",
+      "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/opening.scenario.ts test/scenarios/areas/d-change/review.scenario.ts",
     );
   } finally {
     NodeFS.writeFileSync(file, original);
@@ -963,7 +1019,7 @@ esac
     expect(checks()).toBe(checked);
     const verbose = run(["--verbose", "--force"]);
     expect(verbose.status).toBe(0);
-    expect(verbose.stdout).toContain("Selection A:");
+    expect(verbose.stdout).toContain("Scenario files: 0; reason: documentation/comments only");
     const failed = run(["--force"], true);
     expect(failed.status).toBe(9);
     expect(failed.stderr).toContain("Full log:");
@@ -1029,7 +1085,7 @@ esac
     // Decision: no test deleted or weakened; the receipt never masks a failure.
     // Selection inputs can change on main without changing the lane patch or command list.
     for (const path of [
-      "scripts/chat-gate.ts",
+      "scripts/gate-timing-reporter.ts",
       "scripts/gate-changed.ts",
       "pnpm-lock.yaml",
       "vite.config.ts",
@@ -1071,7 +1127,7 @@ esac
     const explicit = run(["--scenarios", scenario]);
     expect(explicit.status, explicit.stderr).toBe(0);
     expect(explicit.stdout).not.toContain("reused receipt");
-    expect(explicit.stdout).toContain("ok related scenario files");
+    expect(explicit.stdout).toContain("ok edited scenario files");
     expect(run(["--scenarios", scenario]).stdout).toContain("reused receipt");
     expect(run().stdout).not.toContain("reused receipt");
   } finally {
@@ -1108,5 +1164,328 @@ it("BigInt source edits select checks while comments alone select none", () => {
     }
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+const smokeTitles = [
+  "cold direct conversation URL opens the named Mate and its history",
+  "reload restores history",
+  "sending a message puts it in the durable visible conversation",
+  "approve an agent command and see it resolve",
+  "a secret the person gives never reaches the Mate's records or its agent",
+  "a published page that navigates itself by script sends nothing and is never shown",
+];
+
+it("L2 runs invariants, touched typechecks, owned units, edited scenarios and fixed state-only smoke in order", () => {
+  const path = "packages/contracts/src/engine.ts";
+  const file = NodePath.join(repositoryFixture, path);
+  const original = NodeFS.readFileSync(file, "utf8");
+  const editedFile = NodePath.join(
+    repositoryFixture,
+    "apps/web/test/scenarios/areas/d-change/review.scenario.ts",
+  );
+  const editedOriginal = NodeFS.readFileSync(editedFile, "utf8");
+  try {
+    NodeFS.appendFileSync(file, "\nexport const l2Witness = true;\n");
+
+    NodeFS.appendFileSync(editedFile, "\nexport const editedL2Witness = true;\n");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const lines = result.stdout.split("\n");
+    const index = (prefix: string) => lines.findIndex((line) => line.startsWith(prefix));
+    expect(
+      index("repository invariants:"),
+      "ASSERTION: invariants run before typechecks",
+    ).toBeGreaterThan(-1);
+    expect(index("typecheck @t3tools/contracts:")).toBeGreaterThan(index("repository invariants:"));
+    expect(index("related root tests:")).toBeGreaterThan(index("typecheck @t3tools/contracts:"));
+    const smoke = lines.find((line) => line.startsWith("state-only smoke:"));
+    expect(index("state-only smoke:")).toBeGreaterThan(index("related root tests:"));
+    expect(smoke).toContain("chat.scenario.ts");
+    expect(smoke).toContain("engine-secret.scenario.ts");
+    expect(smoke).toContain("engine-page.scenario.ts");
+    expect(smoke).toContain(smokeTitles.map((title) => `(?:${title})$`).join("|"));
+    expect(smoke).not.toContain("first open crosses the door and OAuth");
+    const edited = lines.find((line) => line.startsWith("edited scenario files:"));
+    expect(edited).toBe(
+      "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/d-change/review.scenario.ts",
+    );
+    const typeIndexes = lines.flatMap((line, i) => (line.startsWith("typecheck ") ? [i] : []));
+    const unitIndexes = lines.flatMap((line, i) => (line.startsWith("related ") ? [i] : []));
+    expect(Math.min(...typeIndexes)).toBeGreaterThan(index("repository invariants:"));
+    expect(Math.min(...unitIndexes)).toBeGreaterThan(Math.max(...typeIndexes));
+    expect(index("edited scenario files:")).toBeGreaterThan(Math.max(...unitIndexes));
+    expect(index("state-only smoke:")).toBeGreaterThan(index("edited scenario files:"));
+    for (const guard of ["guard ledgers:", "runtime cycle ratchet:", "test sentence retention:"])
+      expect(index(guard)).toBeLessThan(index("repository invariants:"));
+    expect(result.stdout).not.toContain("scripts/chat-gate.ts --stages");
+  } finally {
+    NodeFS.writeFileSync(file, original);
+    NodeFS.writeFileSync(editedFile, editedOriginal);
+  }
+});
+
+it.each(["apps/web/package.json", "package.json", "pnpm-lock.yaml"])(
+  "L2 manifest rule keeps %s on touched typechecks and explicit owned tests",
+  (path) => {
+    const file = NodePath.join(repositoryFixture, path);
+    const original = NodeFS.readFileSync(file, "utf8");
+    const ownedTest = "scripts/gate-timing-reporter.test.ts";
+    const ownedOriginal = NodeFS.readFileSync(NodePath.join(sourceRoot, ownedTest), "utf8");
+    NodeFS.writeFileSync(
+      NodePath.join(repositoryFixture, ownedTest),
+      ownedOriginal + "\nexport const manifestOwnedWitness = true;\n",
+    );
+    try {
+      NodeFS.writeFileSync(
+        file,
+        path.endsWith(".json")
+          ? original.replace(/\}\s*$/u, ', "l2Witness": true\n}\n')
+          : original + "\n# L2 witness\n",
+      );
+      const result = NodeChildProcess.spawnSync(
+        process.execPath,
+        ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+        { cwd: repositoryFixture, encoding: "utf8" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("typecheck @t3tools/web:");
+      const unitLines = result.stdout.split("\n").filter((line) => line.startsWith("related "));
+      expect(unitLines.length).toBeGreaterThan(0);
+      expect(
+        unitLines.join("\n"),
+        "ASSERTION: manifests never trigger Vitest's full-suite --changed fallback",
+      ).not.toContain("--changed");
+      expect(unitLines.join("\n")).toContain(ownedTest);
+      if (path !== "apps/web/package.json") {
+        expect(unitLines).toHaveLength(1);
+        expect(unitLines[0]).toBe(`related root tests: vp test run ${ownedTest}`);
+      } else {
+        expect(unitLines.some((line) => line.startsWith("related @t3tools/web:"))).toBe(true);
+        expect(unitLines.some((line) => line.startsWith("related t3:"))).toBe(false);
+      }
+      expect(result.stdout).not.toContain("vp run -r");
+    } finally {
+      NodeFS.writeFileSync(file, original);
+      NodeFS.rmSync(NodePath.join(repositoryFixture, ownedTest));
+    }
+  },
+);
+
+it.each(["added", "comment-only addition", "renamed", "deleted"])(
+  "a %s source file selects repository-scanning invariants without an import edge",
+  (change) => {
+    const oldPath = "apps/web/src/components/zerops/ZeropsGitChangeRow.tsx";
+    const newPath = "apps/web/src/components/zerops/GateUnclaimedRow.tsx";
+    try {
+      if (change === "added")
+        NodeFS.writeFileSync(NodePath.join(repositoryFixture, newPath), "export {};\n");
+      if (change === "comment-only addition")
+        NodeFS.writeFileSync(
+          NodePath.join(repositoryFixture, newPath),
+          "// Newly added component.\n",
+        );
+      if (change === "renamed") fixtureGit("mv", oldPath, newPath);
+      if (change === "deleted") fixtureGit("rm", oldPath);
+      const result = NodeChildProcess.spawnSync(
+        process.execPath,
+        ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+        { cwd: repositoryFixture, encoding: "utf8" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      const scanners = result.stdout
+        .split("\n")
+        .find((line) => line.startsWith("repository invariants:"));
+      expect(scanners, "ASSERTION: tree scans must run independently of import edges").toContain(
+        "scripts/surface-manifest.test.ts",
+      );
+      expect(scanners).toContain("scripts/mate-zone-architecture.test.ts");
+      expect(scanners).not.toContain("--changed");
+      expect(scanners).not.toContain("scripts/gate-changed.test.ts");
+    } finally {
+      fixtureGit("reset", "--hard", "HEAD");
+      NodeFS.rmSync(NodePath.join(repositoryFixture, newPath), { force: true });
+    }
+  },
+);
+
+it.each([
+  "apps/server/src/zerops/mcp/McpServers.ts",
+  "packages/client-runtime/src/zerops/agentOwnership.ts",
+  "apps/server/src/zerops/engineOverview.ts",
+])("an import-edge repair selects the architecture scanner: %s", (path) => {
+  const file = NodePath.join(repositoryFixture, path);
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.appendFileSync(file, '\nimport "./gate-boundary-witness.ts";\n');
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const scanner = result.stdout
+      .split("\n")
+      .find((line) => line.startsWith("repository invariants:"));
+    expect(scanner, "ASSERTION: changed import edges must run architecture invariants").toContain(
+      "scripts/mate-zone-architecture.test.ts",
+    );
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
+});
+
+it("named barrel imports select only readers of the changed export owner", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-barrel-"));
+  const write = (file: string, text: string) => {
+    NodeFS.mkdirSync(NodePath.dirname(NodePath.join(root, file)), { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(root, file), text);
+  };
+  try {
+    write(
+      "packages/fixture/package.json",
+      JSON.stringify({ name: "@fixture/contracts", exports: { ".": "./src/index.ts" } }),
+    );
+    write(
+      "packages/fixture/src/index.ts",
+      'export * from "./owner.ts"; export * from "./other.ts";',
+    );
+    write(
+      "packages/fixture/src/owner.ts",
+      "export const Owner = 1; export type OwnerRecord = string;",
+    );
+    write("packages/fixture/src/other.ts", "export const Other = 2;");
+    write("owner.test.ts", 'import { Owner as Alias } from "@fixture/contracts";');
+    write("type.test.ts", 'import type { OwnerRecord } from "@fixture/contracts";');
+    write("other.test.ts", 'import { Other } from "@fixture/contracts";');
+    write("namespace.test.ts", 'import * as Contracts from "@fixture/contracts";');
+    write("sideEffect.test.ts", 'import "@fixture/contracts";');
+    const files = [
+      "owner.test.ts",
+      "type.test.ts",
+      "other.test.ts",
+      "namespace.test.ts",
+      "sideEffect.test.ts",
+    ];
+    expect(
+      relatedFiles(root, ["packages/fixture/src/owner.ts"], files),
+      "ASSERTION: unrelated exports do not own the changed contract",
+    ).toEqual(["namespace.test.ts", "owner.test.ts", "sideEffect.test.ts", "type.test.ts"]);
+    expect(
+      relatedFiles(root, ["packages/fixture/src/owner.ts"], files, new Map(), 1),
+      "ASSERTION: a direct namespace or side-effect barrel import retains its exported owner",
+    ).toEqual(["namespace.test.ts", "owner.test.ts", "sideEffect.test.ts", "type.test.ts"]);
+    expect(relatedFiles(root, ["packages/fixture/src/index.ts"], files)).toEqual([...files].sort());
+    write(
+      "packages/fixture/src/index.ts",
+      'export { Owner as Published } from "./owner.ts"; export * from "./other.ts";',
+    );
+    write("owner.test.ts", 'import { Published } from "@fixture/contracts";');
+    expect(relatedFiles(root, ["packages/fixture/src/owner.ts"], files)).toContain("owner.test.ts");
+    write("packages/fixture/src/index.ts", 'import "./owner.ts"; export * from "./other.ts";');
+    expect(relatedFiles(root, ["packages/fixture/src/owner.ts"], ["other.test.ts"])).toEqual([
+      "other.test.ts",
+    ]);
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("L2 runs owned scenario-driver units through their existing project before scenarios", () => {
+  const path = "apps/web/test/scenarios/fakes/mate.test.ts";
+  const file = NodePath.join(repositoryFixture, path);
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.appendFileSync(file, "\nexport const l2DriverWitness = true;\n");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const lines = result.stdout.split("\n");
+    const driver = lines.findIndex((line) => line.startsWith("related scenario-driver units:"));
+    expect(
+      driver,
+      "ASSERTION: an edited driver unit must run in its owning project",
+    ).toBeGreaterThan(-1);
+    expect(lines[driver]).toContain("vp test run --config test/scenarios/vitest.config.ts");
+    expect(lines[driver]).toContain("test/scenarios/fakes/mate.test.ts");
+    const types = lines.flatMap((line, index) => (line.startsWith("typecheck ") ? [index] : []));
+    expect(driver).toBeGreaterThan(Math.max(...types));
+    expect(lines.findIndex((line) => line.startsWith("state-only smoke:"))).toBeGreaterThan(driver);
+    expect(lines.find((line) => line.startsWith("related @t3tools/web:")) ?? "").not.toContain(
+      "test/scenarios/fakes/mate.test.ts",
+    );
+    expect(lines.some((line) => line.startsWith("edited scenario files:"))).toBe(false);
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
+});
+
+it("Decision: L2 selects changed modules' same-name tests and one-hop direct importers, leaves transitive readers to dependent typechecks and CI, and preserves normal package parallelism", () => {
+  const head = fixtureGit("rev-parse", "HEAD");
+  const fixtures = {
+    "packages/contracts/src/engine.spec.ts": "export {};",
+    "packages/gate-hop-consumer/package.json": JSON.stringify({
+      name: "@fixture/direct",
+      scripts: { typecheck: "tsc --noEmit" },
+      dependencies: { "@t3tools/contracts": "workspace:*" },
+    }),
+    "packages/gate-hop-consumer/src/direct.test.ts":
+      'import { ConversationId } from "@t3tools/contracts";',
+    "packages/gate-hop-consumer/src/reader.ts":
+      'import { ConversationId } from "@t3tools/contracts"; export { ConversationId };',
+    "packages/gate-hop-downstream/package.json": JSON.stringify({
+      name: "@fixture/transitive",
+      scripts: { typecheck: "tsc --noEmit" },
+      dependencies: { "@fixture/direct": "workspace:*" },
+    }),
+    "packages/gate-hop-downstream/src/transitive.test.ts":
+      'import { ConversationId } from "../../gate-hop-consumer/src/reader.ts";',
+  };
+  try {
+    for (const [path, content] of Object.entries(fixtures)) {
+      const file = NodePath.join(repositoryFixture, path);
+      NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
+      NodeFS.writeFileSync(file, content);
+    }
+    fixtureGit("add", ...Object.keys(fixtures));
+    fixtureGit("commit", "-qm", "one-hop ownership fixture");
+    NodeFS.appendFileSync(
+      NodePath.join(repositoryFixture, "packages/contracts/src/engine.ts"),
+      "\nexport const oneHopWitness = true;\n",
+    );
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const units = result.stdout.split("\n").filter((line) => line.startsWith("related "));
+    expect(
+      units.join("\n").includes("gate-hop-downstream/src/transitive.test.ts"),
+      "ASSERTION: a contracts edit selects direct test importers, never transitive readers",
+    ).toBe(false);
+    expect(units.join("\n")).toContain("gate-hop-consumer/src/direct.test.ts");
+    expect(units.join("\n")).toContain("packages/contracts/src/engine.spec.ts");
+    expect(result.stdout).toContain("typecheck @fixture/direct:");
+    expect(result.stdout).toContain("typecheck @fixture/transitive:");
+    expect(units.find((line) => line.startsWith("related t3:"))).toContain(
+      "vp test run --fileParallelism ",
+    );
+    for (const line of units) {
+      expect(line).not.toMatch(/--(?:no-file-parallelism|maxWorkers|minWorkers)/u);
+    }
+  } finally {
+    fixtureGit("reset", "--hard", head);
+    for (const path of Object.keys(fixtures))
+      NodeFS.rmSync(NodePath.join(repositoryFixture, path), { force: true });
+    for (const directory of ["packages/gate-hop-consumer", "packages/gate-hop-downstream"])
+      NodeFS.rmSync(NodePath.join(repositoryFixture, directory), { recursive: true, force: true });
   }
 });

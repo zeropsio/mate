@@ -1,4 +1,5 @@
 import "vite-plus/test/config";
+import GateTimingReporter from "./scripts/gate-timing-reporter.ts";
 import { defineConfig } from "vite-plus";
 import * as NodeURL from "node:url";
 import * as NodeOS from "node:os";
@@ -42,6 +43,7 @@ export default defineConfig({
     },
   },
   test: {
+    reporters: ["default", new GateTimingReporter()],
     ...(maxWorkers === undefined ? {} : { maxWorkers }),
     environment: "node",
     exclude: [

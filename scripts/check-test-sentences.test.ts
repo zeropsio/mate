@@ -4,6 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
+import { stateOnlySmoke } from "./gate-changed.ts";
 import { checkTestSentences, collectTestTitles } from "./check-test-sentences.ts";
 
 function fixture(run: (repo: ReturnType<typeof repository>) => void): void {
@@ -284,6 +285,7 @@ it("the lane gate lists its chosen comparison and stops on unapproved test remov
     // Other guards are outside this fixture's concern; sentence retention runs through the real runner.
     write("scripts/check-guard-exceptions.ts", "process.exitCode = 0;");
     write("scripts/check-runtime-cycles.ts", "process.exitCode = 0;");
+    for (const file of Object.keys(stateOnlySmoke)) write(file, "export {};\n");
     commit("gate fixture");
     const base = git("rev-parse", "HEAD");
     write("old.test.ts", "export {};");
