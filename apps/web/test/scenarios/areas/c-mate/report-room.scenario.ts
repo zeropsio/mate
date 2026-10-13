@@ -2,16 +2,104 @@
 // @effect-diagnostics preferSchemaOverJson:off -- Human-readable geometry evidence.
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
-import { VcsStatusResult, WS_METHODS } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
+import {
+  type AssetCreateUrlInput,
+  CommandId,
+  ConversationId,
+  MATE_ENGINE_PROTOCOLS,
+  RuntimeItemId,
+  RuntimeTaskId,
+  WS_METHODS,
+  type EngineConversationFrame,
+} from "@t3tools/contracts";
+import type {
+  ScriptedEvent,
+  ScriptedStep,
+} from "../../../../../server/integration/scriptedProviderDriver.ts";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 
-const encodeStatus = Schema.encodeSync(VcsStatusResult);
+// Authored external tool facts; real SPI readers own the call, picture and report projections.
+const roomTool = (id: string, picture?: string): ScriptedEvent => {
+  const input = picture
+    ? { file_path: picture }
+    : { commands: [["open", "https://store.example/orders"]] };
+  const output = picture ? undefined : '{"url":"https://store.example/orders","steps":[]}';
+  return {
+    type: "item.completed",
+    itemId: RuntimeItemId.make(id),
+    payload: {
+      itemType: picture ? "image_view" : "mcp_tool_call",
+      status: "completed",
+      data: {
+        tool: picture ? "Read" : "zerops_zerops_browser",
+        state: { status: "completed", input, output },
+        toolName: picture ? "Read" : "mcp__zerops__zerops_browser",
+        input,
+        ...(picture
+          ? { imagePath: picture }
+          : { result: { content: [{ type: "text", text: output }] } }),
+      },
+    },
+  };
+};
+const roomHelper = (index: number, completed = false): ScriptedStep => ({
+  kind: "event",
+  event: completed
+    ? {
+        type: "task.completed",
+        payload: {
+          taskId: RuntimeTaskId.make(`helper-${index}`),
+          taskType: "subagent",
+          status: "completed",
+        },
+      }
+    : {
+        type: "task.started",
+        payload: {
+          taskId: RuntimeTaskId.make(`helper-${index}`),
+          taskType: "subagent",
+          title: `Helper ${index}`,
+        },
+      },
+});
+
+// The tile's own native RPC demand is the decode oracle, not the original fixture size.
+type PictureWitness = {
+  requests: Record<string, { width: number; height: number }>;
+  decoded: (image: HTMLImageElement) => boolean;
+};
+const installPictureWitness = () => {
+  const requests: PictureWitness["requests"] = {};
+  (window as unknown as { reportPictures: PictureWitness }).reportPictures = {
+    requests,
+    decoded: (image) => {
+      const source = image.dataset.imageSrc;
+      if (!source?.startsWith("mate-image:")) return false;
+      const reference = JSON.parse(decodeURIComponent(source.slice("mate-image:".length))) as {
+        resource: AssetCreateUrlInput["resource"];
+      };
+      const expected =
+        reference.resource._tag === "workspace-file"
+          ? requests[reference.resource.path]
+          : undefined;
+      return (
+        expected !== undefined &&
+        image.complete &&
+        image.naturalWidth > 0 &&
+        image.naturalWidth === expected.width &&
+        image.naturalHeight === expected.height
+      );
+    },
+  };
+};
+
 const report = '[data-timeline-row-kind="outcome"] .run-band';
 type Reading = {
   height: number;
@@ -27,7 +115,6 @@ type Reading = {
 /** `arrivedAt`: the first reading after a reader away from the end scrolled to the report's card. */
 type Trace = { active: boolean; readings: Reading[]; arrivedAt?: number; grownAt?: number };
 
-// Retains the fake: these decode witnesses expect 640 px originals, while real report tiles request 154 px previews.
 describe("C: panel to report rooms", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     describe("Decision: one derivation per state; consumers never recompute it; no new domain concepts; mobile stays out (later).", () => {
@@ -45,7 +132,41 @@ describe("C: panel to report rooms", () => {
           `report content has its full room through ${mode} replacement, following ${follows}`,
           () =>
             Effect.gen(function* () {
-              const s = yield* createScenario([installArea]);
+              const s = yield* createScenario([], { mate: "real" });
+              yield* Effect.promise(() => s.page.evaluateOnNewDocument(installPictureWitness));
+              const requests = yield* Effect.promise(() => s.page.createCDPSession());
+              const observed: Promise<unknown>[] = [];
+              requests.on("Network.webSocketFrameSent", ({ response }) => {
+                for (const line of response.payloadData.trim().split("\n")) {
+                  const request = JSON.parse(line) as {
+                    tag?: string;
+                    payload?: AssetCreateUrlInput;
+                  };
+                  if (
+                    request.tag !== WS_METHODS.assetsCreateUrl ||
+                    !request.payload?.preview ||
+                    request.payload.resource._tag !== "workspace-file"
+                  )
+                    continue;
+                  observed.push(
+                    s.page.evaluate(
+                      ({ path, preview }) => {
+                        (
+                          window as unknown as { reportPictures: PictureWitness }
+                        ).reportPictures.requests[path] = preview;
+                      },
+                      { path: request.payload.resource.path, preview: request.payload.preview },
+                    ),
+                  );
+                }
+              });
+              yield* Effect.promise(() => requests.send("Network.enable"));
+              yield* Effect.addFinalizer(() =>
+                Effect.promise(async () => {
+                  await requests.detach();
+                  await Promise.all(observed);
+                }),
+              );
               yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
               if (mode === "reduced motion")
                 yield* Effect.promise(() =>
@@ -53,11 +174,6 @@ describe("C: panel to report rooms", () => {
                     { name: "prefers-reduced-motion", value: "reduce" },
                   ]),
                 );
-              let release!: () => void;
-              const bytesReady = new Promise<void>((resolve) => {
-                release = resolve;
-              });
-              yield* Effect.addFinalizer(() => Effect.sync(release));
               const bytes = Buffer.from(
                 yield* Effect.promise(() =>
                   s.page.evaluate(() => {
@@ -70,85 +186,90 @@ describe("C: panel to report rooms", () => {
                 ),
                 "base64",
               );
-              s.drivers.onMate.push((mate) => {
-                mate.rpcHandlers.push((request, socket) => {
-                  if (request.tag !== WS_METHODS.vcsRefreshStatus) return false;
-                  mate.reply(
-                    socket,
-                    request.id,
-                    encodeStatus({
-                      isRepo: false,
-                      hasPrimaryRemote: false,
-                      isDefaultRef: true,
-                      refName: null,
-                      hasWorkingTreeChanges: false,
-                      workingTree: { files: [], insertions: 0, deletions: 0 },
-                      hasUpstream: false,
-                      aheadCount: 0,
-                      behindCount: 0,
-                      pr: null,
-                    }),
-                  );
-                  return true;
-                });
-                const handle = mate.handle;
-                mate.handle = async (request) => {
-                  if (!request.url.pathname.includes("/api/chat-assets/")) return handle(request);
-                  await bytesReady;
-                  return { bytes, headers: { "content-type": "image/png" } };
-                };
-              });
               yield* s.given.project("Ada", { mate: true });
               const chat = mateChat(s);
-              const wire = chat.fixture();
-              // Enough real earlier content to exercise reading away from the outer end.
-              for (let index = 0; index < 20; index++)
-                wire.exchange(`Earlier question ${index}`, "Earlier answer.\n\n".repeat(30));
-              wire.history("Inspect the report room", "room-run");
-              wire.run("room-run", "running");
-              for (let index = 0; index < 12; index++)
-                wire.work(`helper-${index}`, "running", { title: `Helper ${index}` }, "room-run");
+              const { server, provider, gate } = s.drivers.realMates.get("Ada")!;
+              const heldPictures = gate.holdHttp(
+                (path) => path.includes("/api/") && path.includes("assets/"),
+              );
+              const release = () => heldPictures.release();
+              yield* Effect.addFinalizer(() => Effect.sync(release));
+              for (const id of ["first", "second"])
+                yield* Effect.promise(() =>
+                  NodeFSP.writeFile(NodePath.join(server.root, "workspace", `${id}.png`), bytes),
+                );
+              const conversationId = ConversationId.make("thread-Ada");
+              const protocol = MATE_ENGINE_PROTOCOLS[0]!;
+              const caller = { subject: "scenario-person", environmentId: "scenario", epoch: 1 };
+              yield* server.engine.assignAgent(conversationId, {
+                instanceId: "opencode",
+                driver: "opencode",
+                model: "gpt-5.4",
+                profile: { kind: "mate" },
+              });
+              const changes = yield* Queue.unbounded<EngineConversationFrame>();
+              yield* server.engine.wire.subscribe({ protocol, conversationId }, caller).pipe(
+                Stream.runForEach((frame) => Queue.offer(changes, frame)),
+                Effect.forkScoped,
+              );
+              while ((yield* Queue.take(changes)).type !== "synchronized") {}
+              const send = (text: string, id: string) =>
+                server.engine.wire.send(
+                  { protocol, conversationId, commandId: CommandId.make(id), text },
+                  caller,
+                );
+              for (let index = 0; index < 20; index++) {
+                yield* provider.turn([{ kind: "say", text: "Earlier answer.\n\n".repeat(30) }]);
+                expect((yield* send(`Earlier question ${index}`, `history-${index}`))._tag).toBe(
+                  "Accepted",
+                );
+                while (true) {
+                  const frame = yield* Queue.take(changes);
+                  if (
+                    frame.type === "changes" &&
+                    frame.runs.some((run) => run.ordinal === index + 1 && run.state === "ended")
+                  )
+                    break;
+                }
+              }
+              const settlement = yield* Deferred.make<void>();
+              yield* provider.turn([
+                ...Array.from({ length: 12 }, (_, index) => roomHelper(index)),
+                { kind: "wait", until: settlement },
+                ...Array.from({ length: 12 }, (_, index) => roomHelper(index, true)),
+                { kind: "say", text: "The report is ready" },
+              ]);
+              expect((yield* send("Inspect the report room", "room-run"))._tag).toBe("Accepted");
+              // Earlier sends have already passed through the same real driver.
+              for (let index = 0; index < 20; index++) yield* provider.received;
+              const native = yield* provider.received;
               const picture = (id: string) =>
-                wire.call(
-                  id,
-                  "done",
-                  {
-                    toolName: "Read",
-                    input: { file_path: `/tmp/${id}.png` },
-                    imagePath: `/tmp/${id}.png`,
-                  },
-                  "room-run",
-                  { step: "look" },
-                );
+                provider.event(native.threadId, {
+                  ...roomTool(id, NodePath.join(server.root, "workspace", `${id}.png`)),
+                  turnId: native.turnId,
+                });
               const checkedPage = () =>
-                wire.call(
-                  "checked-page",
-                  "done",
-                  {
-                    toolName: "mcp__zerops__zerops_browser",
-                    input: { commands: [["open", "https://store.example/orders"]] },
-                  },
-                  "room-run",
-                  {
-                    step: "mcp",
-                    result: {
-                      toolName: "zerops_browser",
-                      resultText: '{"url":"https://store.example/orders","steps":[]}',
-                    },
-                  },
-                );
-              const settle = () => {
-                for (let index = 0; index < 12; index++) wire.work(`helper-${index}`, "completed");
-                wire.say("The report is ready", "room-run");
-                wire.run("room-run", "completed");
-              };
+                provider.event(native.threadId, {
+                  ...roomTool("checked-page"),
+                  turnId: native.turnId,
+                });
+              const settle = () => Deferred.succeed(settlement, undefined);
               if (mode === "first layout") {
-                checkedPage();
-                picture("first");
-                settle();
+                yield* checkedPage();
+                yield* picture("first");
+                yield* settle();
+                while (true) {
+                  const frame = yield* Queue.take(changes);
+                  if (
+                    frame.type === "changes" &&
+                    frame.runs.some((run) => run.ordinal === 21 && run.state === "ended")
+                  )
+                    break;
+                }
               }
               yield* s.given.signedIn;
-              yield* chat.when.open("Ada", "Inspect the report room");
+              yield* s.when.menu.opensMate("Ada");
+              yield* s.then.conversation.showsMessage("Inspect the report room");
               if (mode !== "first layout")
                 yield* Effect.promise(() =>
                   s.page.waitForSelector('[data-timeline-row-kind="working"]'),
@@ -292,8 +413,10 @@ describe("C: panel to report rooms", () => {
                         held: root.style.height !== "",
                         top: scroll.scrollTop,
                         end: scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop,
-                        decoded: [...marker.querySelectorAll("img")].some(
-                          (image) => image.naturalWidth === 640,
+                        decoded: [...marker.querySelectorAll("img")].some((image) =>
+                          (
+                            window as unknown as { reportPictures: PictureWitness }
+                          ).reportPictures.decoded(image),
                         ),
                         at: performance.now(),
                         y: marker.getBoundingClientRect().top - scroll.getBoundingClientRect().top,
@@ -304,8 +427,8 @@ describe("C: panel to report rooms", () => {
                 }, report),
               );
               if (mode !== "first layout") {
-                if (mode !== "late") checkedPage();
-                settle();
+                if (mode !== "late") yield* checkedPage();
+                yield* settle();
                 // Away from the end, the report lands where the reader is not: they scroll to its
                 // card, and it shows there (the list builds rows near the view, not 700 px off it).
                 if (!follows)
@@ -383,7 +506,7 @@ describe("C: panel to report rooms", () => {
                       performance.now = () => now() + 1600;
                     }),
                   );
-                  picture("first");
+                  yield* picture("first");
                 }
               }
               yield* Effect.promise(() => s.page.waitForSelector(report));
@@ -410,8 +533,8 @@ describe("C: panel to report rooms", () => {
                   trace.grownAt = trace.readings.length;
                 }),
               );
-              if (mode !== "late" && mode !== "first layout") picture("first");
-              picture("second");
+              if (mode !== "late" && mode !== "first layout") yield* picture("first");
+              yield* picture("second");
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   (report) =>
@@ -447,7 +570,10 @@ describe("C: panel to report rooms", () => {
                       [...document.querySelectorAll<HTMLImageElement>(`${report} img`)].length >=
                         2 &&
                       [...document.querySelectorAll<HTMLImageElement>(`${report} img`)].every(
-                        (image) => image.naturalWidth === 640,
+                        (image) =>
+                          (
+                            window as unknown as { reportPictures: PictureWitness }
+                          ).reportPictures.decoded(image),
                       ),
                     { timeout: 8000 },
                     report,
@@ -628,7 +754,10 @@ describe("C: panel to report rooms", () => {
                       [...document.querySelectorAll<HTMLImageElement>(`${report} img`)].length >=
                         2 &&
                       [...document.querySelectorAll<HTMLImageElement>(`${report} img`)].every(
-                        (image) => image.naturalWidth === 640,
+                        (image) =>
+                          (
+                            window as unknown as { reportPictures: PictureWitness }
+                          ).reportPictures.decoded(image),
                       ),
                     { timeout: 8000 },
                     report,
