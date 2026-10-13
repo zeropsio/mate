@@ -514,7 +514,13 @@ export class ContentAssets {
     // Derived indexes are built once after restart and updated at publication, never one scan per image GET.
     this.ownership ??= (async () => {
       const owners = new Map<string, ImageOccurrence[]>();
-      const files = await NodeFSP.readdir(NodePath.join(this.directory, "occurrences"));
+      // A store that never kept a picture has no index yet: no picture has readers.
+      const files = await NodeFSP.readdir(NodePath.join(this.directory, "occurrences")).catch(
+        (error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return [];
+          throw error;
+        },
+      );
       for (const file of files.filter((name) => name.endsWith(".json"))) {
         // Each on its own: one occurrence this build cannot read never hides every other.
         const occurrence = await this.occurrence(file.slice(0, -5)).catch(() => null);

@@ -255,6 +255,17 @@ describe("a page an agent published, in the asset store", () => {
     expect(await store.owners(page.original.digest)).toEqual([]);
   });
 
+  // A fresh Mate whose first asset was a page answered its reader 503: no picture index existed.
+  it("finds its readers on a Mate that never kept a picture", async () => {
+    const { store } = await fixture();
+    const page = await store.ingestPage(["call"], Buffer.from("<h1>Plan</h1>"), pageOwner);
+    // Who may read an object, as the asset route asks: the pictures' readers, then the pages'.
+    expect([
+      ...(await store.owners(page.original.digest)),
+      ...(await store.pageOwners(page.original.digest)),
+    ]).toEqual([page]);
+  });
+
   it("is kept once for the same call, however often it is told", async () => {
     const { store } = await fixture();
     const first = await store.ingestPage(["call"], Buffer.from("<h1>Plan</h1>"), pageOwner);
