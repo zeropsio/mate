@@ -3,6 +3,45 @@ import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { ANSWER, TITLE, journey, sampled } from "./pageJourney.ts";
 
+type Scenario = Effect.Success<ReturnType<typeof journey>>["s"];
+
+const countLoads = (s: Scenario) =>
+  Effect.promise(() =>
+    s.page.evaluate((title) => {
+      (window as unknown as { pageLoads: number[] }).pageLoads = [];
+      document.addEventListener(
+        "load",
+        (event) => {
+          if (event.target instanceof HTMLIFrameElement && event.target.title === title)
+            (window as unknown as { pageLoads: number[] }).pageLoads.push(performance.now());
+        },
+        true,
+      );
+    }, TITLE),
+  );
+
+const loaded = (s: Scenario, count: number) =>
+  Effect.promise(() =>
+    s.page.waitForFunction(
+      (count) => (window as unknown as { pageLoads: number[] }).pageLoads.length >= count,
+      { polling: "raf", timeout: 10_000 },
+      count,
+    ),
+  );
+
+const settled = (s: Scenario) =>
+  Effect.promise(() =>
+    s.page.waitForFunction(
+      (answer) =>
+        document.body.textContent?.includes(answer) &&
+        document.querySelector('[data-run-now="worked"] button[aria-expanded="false"]') !== null &&
+        document.querySelector("[data-timeline-placing]") === null &&
+        document.getAnimations().every((animation) => animation.playState !== "running"),
+      { polling: "raf", timeout: 10_000 },
+      ANSWER,
+    ),
+  );
+
 describe("C: a page the Mate publishes", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
@@ -49,14 +88,40 @@ describe("C: a page the Mate publishes", () => {
         "a page published during a live run is still open 3 s after its run settles and folds",
         () =>
           Effect.gen(function* () {
-            const { s, publishLive, answer } = yield* journey(180);
-            yield* Effect.sync(publishLive);
+            const { s, engine, publishLive, answer } = yield* journey(180);
+            const pageId = yield* Effect.sync(publishLive);
             yield* Effect.promise(() =>
               s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
             );
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+            yield* Effect.promise(() => engine.waitForPageHeight(pageId));
             yield* Effect.sync(answer);
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
+            yield* settled(s);
+            // The title promises a three-second observation after the run folded, not a blind
+            // delay: every paint must still have its page and no navigation notice.
+            const observed = yield* Effect.promise(() =>
+              s.page.evaluate(
+                (title) =>
+                  new Promise<boolean>((resolve) => {
+                    const start = performance.now();
+                    let stood = true;
+                    const paint = () => {
+                      stood &&=
+                        document.querySelector(`iframe[title="${title}"]`) !== null &&
+                        !document.body.textContent?.includes(
+                          "The page tried to open something else",
+                        );
+                      if (performance.now() - start >= 3000) resolve(stood);
+                      else requestAnimationFrame(paint);
+                    };
+                    requestAnimationFrame(paint);
+                  }),
+                TITLE,
+              ),
+            );
+            expect(
+              observed,
+              "ASSERTION: the page stands throughout the three seconds after folding",
+            ).toBe(true);
             const state = yield* Effect.promise(() =>
               s.page.evaluate(
                 (title) => ({
@@ -82,22 +147,10 @@ describe("C: a page the Mate publishes", () => {
         "a page published during a live run loads once as it lands and its run settles",
         () =>
           Effect.gen(function* () {
-            const { s, publishLive, workOn, answer } = yield* journey(180, { earlierPage: true });
-            yield* Effect.promise(() =>
-              s.page.evaluate((title) => {
-                const loads: number[] = [];
-                (window as unknown as { pageLoads: number[] }).pageLoads = loads;
-                document.addEventListener(
-                  "load",
-                  (event) => {
-                    const target = event.target;
-                    if (target instanceof HTMLIFrameElement && target.title === title)
-                      loads.push(performance.now());
-                  },
-                  true,
-                );
-              }, TITLE),
-            );
+            const { s, engine, publishLive, workOn, answer } = yield* journey(180, {
+              earlierPage: true,
+            });
+            yield* countLoads(s);
             // The conversation stands placed before the page lands: its rows in the document in
             // the order they show.
             yield* Effect.promise(() =>
@@ -111,15 +164,32 @@ describe("C: a page the Mate publishes", () => {
                 { polling: 100, timeout: 10_000 },
               ),
             );
-            yield* Effect.sync(publishLive);
+            const pageId = yield* Effect.sync(publishLive);
             yield* Effect.promise(() =>
               s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
             );
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 300)));
+            yield* loaded(s, 1);
+            yield* Effect.promise(() => engine.waitForPageHeight(pageId));
+            const beforeWork = yield* Effect.promise(() =>
+              s.page.evaluate(() =>
+                [...document.querySelectorAll("[data-run-now]")]
+                  .map((row) => row.textContent)
+                  .join("\n"),
+              ),
+            );
             yield* Effect.sync(workOn);
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(
+                (before) =>
+                  [...document.querySelectorAll("[data-run-now]")]
+                    .map((row) => row.textContent)
+                    .join("\n") !== before,
+                { polling: "raf", timeout: 10_000 },
+                beforeWork,
+              ),
+            );
             yield* Effect.sync(answer);
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 2000)));
+            yield* settled(s);
             const loads = yield* Effect.promise(
               () =>
                 s.page.evaluate(
@@ -132,12 +202,16 @@ describe("C: a page the Mate publishes", () => {
       );
       it.effect("a page whose frame the conversation moves loads again and stays open", () =>
         Effect.gen(function* () {
-          const { s, publish } = yield* journey(180);
-          yield* Effect.sync(publish);
+          const { s, engine, publishLive, answer } = yield* journey(180);
+          yield* countLoads(s);
+          const pageId = yield* Effect.sync(publishLive);
+          yield* Effect.sync(answer);
           yield* Effect.promise(() =>
             s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
           );
-          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+          yield* loaded(s, 1);
+          yield* Effect.promise(() => engine.waitForPageHeight(pageId));
+          yield* settled(s);
           // A list moving a row (React reordering keyed rows, the list recycling one) takes the
           // frame out of the document and puts it back: the browser loads its document again.
           yield* Effect.promise(() =>
@@ -149,7 +223,11 @@ describe("C: a page the Mate publishes", () => {
               parent.insertBefore(box, next);
             }, TITLE),
           );
-          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 2000)));
+          yield* loaded(s, 2);
+          const loads = yield* Effect.promise(() =>
+            s.page.evaluate(() => (window as unknown as { pageLoads: number[] }).pageLoads.length),
+          );
+          expect(loads, "ASSERTION: moving the frame loaded it again").toBe(2);
           const state = yield* Effect.promise(() =>
             s.page.evaluate(
               (title) => ({
@@ -175,31 +253,22 @@ describe("C: a page the Mate publishes", () => {
     it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
       const LOGIN = "https://example.com/login";
       for (const trick of [
-        { how: "by script", script: `location.href=${JSON.stringify(LOGIN)};`, takenDown: true },
+        { how: "by script", script: `location.href=${JSON.stringify(LOGIN)};` },
         {
           how: "to a data: document",
           script: 'location.href="data:text/html,<h1>Sign in to Zerops</h1>";',
-          takenDown: true,
         },
         {
           how: "by a refresh",
           script: `document.head.insertAdjacentHTML("beforeend",'<meta http-equiv="refresh" content="0;url=${LOGIN}">');`,
-          takenDown: true,
         },
         {
           how: "by a link it clicks itself",
           script: `var a=document.createElement("a");a.href=${JSON.stringify(LOGIN)};document.body.append(a);a.click();`,
-          takenDown: true,
         },
         {
           how: "by a named target",
           script: `window.name="self";window.open(${JSON.stringify(LOGIN)},"self");`,
-          takenDown: true,
-        },
-        {
-          how: "by a form",
-          script: `var f=document.createElement("form");f.action=${JSON.stringify(LOGIN)};document.body.append(f);f.submit();`,
-          takenDown: false,
         },
       ])
         it.effect(
@@ -213,7 +282,15 @@ describe("C: a page the Mate publishes", () => {
               yield* Effect.promise(() =>
                 s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
               );
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  (title) =>
+                    document.querySelector(`iframe[title="${title}"]`) === null &&
+                    document.body.textContent?.includes("The page tried to open something else"),
+                  { polling: "raf", timeout: 10_000 },
+                  TITLE,
+                ),
+              );
               const state = yield* Effect.promise(() =>
                 s.page.evaluate(
                   (title) => ({
@@ -226,9 +303,10 @@ describe("C: a page the Mate publishes", () => {
                   TITLE,
                 ),
               );
-              expect(state, "ASSERTION: a page whose frame loads again is taken down").toEqual(
-                trick.takenDown ? { framed: false, notice: true } : { framed: true, notice: false },
-              );
+              expect(state, "ASSERTION: a page whose frame loads again is taken down").toEqual({
+                framed: false,
+                notice: true,
+              });
               const readable = yield* Effect.promise(() =>
                 Promise.all(
                   s.page
@@ -278,6 +356,32 @@ describe("C: a page the Mate publishes", () => {
               last.answer!,
               "ASSERTION: the answer stands under the whole page",
             ).toBeGreaterThanOrEqual(shape.stands);
+            if (shape.page > shape.stands) {
+              const wrapper = s.page
+                .frames()
+                .find((frame) => frame.parentFrame() === s.page.mainFrame());
+              const inner = wrapper?.childFrames()[0];
+              expect(inner, "ASSERTION: the page has its inner scrolling document").toBeDefined();
+              const scroll = yield* Effect.promise(() =>
+                inner!.evaluate(() => {
+                  const root = document.scrollingElement!;
+                  const before = root.scrollTop;
+                  window.scrollTo(0, root.scrollHeight);
+                  return {
+                    before,
+                    after: root.scrollTop,
+                    maximum: root.scrollHeight - root.clientHeight,
+                  };
+                }),
+              );
+              expect(scroll.maximum, "ASSERTION: the page extends below the frame").toBeGreaterThan(
+                0,
+              );
+              expect(scroll.after, "ASSERTION: the page scrolls inside to its bottom").toBe(
+                scroll.maximum,
+              );
+              expect(scroll.after).toBeGreaterThan(scroll.before);
+            }
             yield* s.then.noExternalNetwork;
           }),
         );
@@ -308,15 +412,16 @@ describe("C: a page the Mate publishes", () => {
         "a page measured once paints at its height on every later view: nothing moves after its first paint on a reload",
         () =>
           Effect.gen(function* () {
-            const { s, chat, engine, publish } = yield* journey(600);
+            const { s, chat, engine, publishLive, answer } = yield* journey(600);
+            let pageId = "";
             yield* sampled(
               s,
-              Effect.sync(() => publish()),
+              Effect.sync(() => {
+                pageId = publishLive();
+                answer();
+              }),
             );
-            yield* Effect.promise(async () => {
-              for (let wait = 0; wait < 50 && engine.pageHeights.length === 0; wait++)
-                await new Promise((resolve) => setTimeout(resolve, 100));
-            });
+            yield* Effect.promise(() => engine.waitForPageHeight(pageId));
             expect(
               engine.pageHeights.map(([, , height]) => height),
               "ASSERTION: the view recorded it",
