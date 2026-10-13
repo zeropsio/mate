@@ -4,16 +4,19 @@
  * closed, the project's own IPv4 asked for, and a project's waiting changes put in place.
  *
  * A domain or port write is followed by putting the project's routings of its kind in place, a
- * process that puts every waiting one there too. The write is done once the organization's
- * routings show it in place, and failed if that process failed; the project's process history is
- * held until then. A lost answer is resolved from the same routings, never by asking again: what
- * they show of the write is its handle (`address:`), as the vault's are.
+ * process that puts every waiting one there too: that process's end is the write's, its project's
+ * process history held until then. A write no process follows — none to follow, or found after a
+ * lost answer — is done once the routings show it in place, the project's routings held until
+ * then. What the routings show of a write is its handle (`address:`), as the vault's are: put in
+ * place or still waiting, it is how a lost answer is found again, never by asking again. Nothing
+ * is said from a listing not read in full.
  *
  * @module data/operations/addressWrites
  */
 import type { ZeropsPortRoutingWrite } from "../../zerops/api.ts";
 import { portRoutingsScope, type PublicPortRoutingValue } from "../families/publicPortRouting.ts";
 import {
+  PROJECT_ROUTINGS_LISTING,
   projectRoutingsScope,
   routingsScope,
   type PublicRoutingValue,
@@ -76,17 +79,28 @@ type AddressKind =
   | "publish-ports"
   | "request-ipv4";
 
-/** The project's domain routings as they read now: the organization's listing, or the project's. */
-function routingsIn(
+/** The kinds whose writes are the project's domain routings. */
+const DOMAIN_KINDS: ReadonlySet<AddressKind> = new Set([
+  "add-domain",
+  "remove-domain",
+  "publish-domains",
+]);
+
+type Rows<V> = ReadonlyArray<{ readonly id: string; readonly value: V }>;
+
+/** The project's domain routings as a complete listing holds them; `null` while none does. */
+function routingsIn(read: ProjectionReads, orgId: string, projectId: string) {
+  const routings = projectRoutings(read, { orgId, projectId });
+  return routings.kind === "read" && routings.complete ? routings.rows : null;
+}
+
+/** The project's ports as the organization's complete listing holds them; `null` while it doesn't. */
+function portsIn(
   read: ProjectionReads,
   orgId: string,
   projectId: string,
-): ReadonlyArray<{ readonly id: string; readonly value: PublicRoutingValue }> {
-  const routings = projectRoutings(read, { orgId, projectId });
-  return routings.kind === "read" ? routings.rows : [];
-}
-
-function portsIn(read: ProjectionReads, projectId: string) {
+): Rows<PublicPortRoutingValue> | null {
+  if (read.coverage(portRoutingsScope(orgId)) !== "complete") return null;
   const rows: { id: string; value: PublicPortRoutingValue }[] = [];
   for (const id of read.index("portRoutingProject", projectId)) {
     const fact = read.fact("publicPortRouting", id);
@@ -110,89 +124,134 @@ function leftListing(read: ProjectionReads, scopes: ReadonlyArray<ScopeKey>, id:
 const sameSet = (left: ReadonlyArray<string>, right: ReadonlyArray<string>) =>
   left.length === right.length && left.every((item) => right.includes(item));
 
-const inPlace = (value: { readonly isSynced: boolean; readonly deleteOnSync?: boolean }) =>
-  value.isSynced && value.deleteOnSync !== true;
+const removing = (value: { readonly deleteOnSync?: boolean }) => value.deleteOnSync === true;
 
-/** What the routings show of each write now, as handles; empty while they show nothing of it. */
+/** A write the routings show: its handle, and whether it is in place yet. */
+interface Shown {
+  readonly handle: string;
+  readonly live: boolean;
+}
+
+/** A routing being removed until a listing no longer holds it; `null` while none is complete. */
+function going(
+  handle: string,
+  fact: { readonly kind: string; readonly value?: { readonly deleteOnSync?: boolean } },
+  left: boolean | null,
+): ReadonlyArray<Shown> | null {
+  if (left === null) return null;
+  if (left) return [{ handle, live: true }];
+  return fact.kind === "known" && fact.value !== undefined && removing(fact.value)
+    ? [{ handle, live: false }]
+    : [];
+}
+
+/**
+ * What the facts show of each write: empty while they show nothing of it, `null` while what they
+ * would be read from is not read in full.
+ */
 const SHOWS: {
   readonly [K in AddressKind]: (
     read: ProjectionReads,
     intent: IntentOf<K>,
-  ) => ReadonlyArray<string>;
+  ) => ReadonlyArray<Shown> | null;
 } = {
   "add-domain": (read, intent) =>
     routingsIn(read, intent.orgId, intent.projectId)
-      .filter(
+      ?.filter(
         ({ value }) =>
-          inPlace(value) &&
-          intent.domains.every((name) => value.domains.some((d) => d.domainName === name)),
+          !removing(value) &&
+          sameSet(
+            value.domains.map(({ domainName }) => domainName),
+            intent.domains,
+          ) &&
+          value.locations.some(
+            ({ serviceStackId, port }) =>
+              serviceStackId === intent.serviceId && port === intent.port,
+          ),
       )
-      .map(({ id }) => `address:routing:${id}`),
+      .map(({ id, value }) => ({ handle: `address:routing:${id}`, live: value.isSynced })) ?? null,
   "remove-domain": (read, intent) => {
-    if (intent.keep.length === 0)
-      return leftListing(
-        read,
-        [routingsScope(intent.orgId), projectRoutingsScope(intent.orgId, intent.projectId)],
-        intent.routingId,
-      ) === true
-        ? [`address:gone:${intent.routingId}`]
-        : [];
+    const handle = `address:gone:${intent.routingId}`;
     const fact = read.fact("publicRouting", intent.routingId);
-    if (fact.kind !== "known" || !inPlace(fact.value)) return [];
+    if (intent.keep.length === 0)
+      return going(
+        handle,
+        fact,
+        leftListing(
+          read,
+          [routingsScope(intent.orgId), projectRoutingsScope(intent.orgId, intent.projectId)],
+          intent.routingId,
+        ),
+      );
+    if (fact.kind !== "known") return null;
     return sameSet(
       fact.value.domains.map(({ domainName }) => domainName),
       intent.keep,
     )
-      ? [`address:kept:${intent.routingId}`]
+      ? [{ handle: `address:kept:${intent.routingId}`, live: fact.value.isSynced }]
       : [];
   },
-  "publish-domains": (read, intent) =>
-    routingsIn(read, intent.orgId, intent.projectId).some(
-      ({ value }) => value.isEditable === true && !value.isSynced,
-    )
+  "publish-domains": (read, intent) => {
+    const routings = routingsIn(read, intent.orgId, intent.projectId);
+    if (routings === null) return null;
+    return routings.some(({ value }) => value.isEditable === true && !value.isSynced)
       ? []
-      : [`address:published:${intent.projectId}`],
+      : [{ handle: `address:published:${intent.projectId}`, live: true }];
+  },
   "disable-subdomain-access": (read, intent) => {
     const service = read.fact("service", intent.serviceId);
-    return service.kind === "known" && service.value.subdomainAccess === false
-      ? [`address:closed:${intent.serviceId}`]
+    if (service.kind !== "known") return null;
+    return service.value.subdomainAccess === false
+      ? [{ handle: `address:closed:${intent.serviceId}`, live: true }]
       : [];
   },
   "open-port": (read, intent) =>
-    portsIn(read, intent.projectId)
-      .filter(
+    portsIn(read, intent.orgId, intent.projectId)
+      ?.filter(
         ({ value }) =>
-          inPlace(value) &&
+          !removing(value) &&
           value.publicPort === intent.publicPort &&
           value.publicIpType === intent.publicIpType &&
           value.serviceStackId === intent.serviceId,
       )
-      .map(({ id }) => `address:port:${id}`),
+      .map(({ id, value }) => ({ handle: `address:port:${id}`, live: value.isSynced })) ?? null,
   "change-port": (read, intent) => {
     const fact = read.fact("publicPortRouting", intent.portRoutingId);
-    return fact.kind === "known" &&
-      inPlace(fact.value) &&
-      fact.value.publicPort === intent.publicPort &&
-      fact.value.firewallPolicy === intent.firewallPolicy &&
-      sameSet(fact.value.firewallIpRanges, intent.firewallIpRanges)
-      ? [`address:port:${intent.portRoutingId}`]
+    if (fact.kind !== "known") return null;
+    const port = fact.value;
+    return port.publicPort === intent.publicPort &&
+      port.internalPort === intent.internalPort &&
+      port.internalProtocol === intent.internalProtocol &&
+      port.firewallPolicy === intent.firewallPolicy &&
+      sameSet(port.firewallIpRanges, intent.firewallIpRanges)
+      ? [{ handle: `address:port:${intent.portRoutingId}`, live: port.isSynced && !removing(port) }]
       : [];
   },
   "close-port": (read, intent) =>
-    leftListing(read, [portRoutingsScope(intent.orgId)], intent.portRoutingId) === true
-      ? [`address:gone:${intent.portRoutingId}`]
-      : [],
-  "publish-ports": (read, intent) =>
-    portsIn(read, intent.projectId).some(({ value }) => !value.isSynced)
+    going(
+      `address:gone:${intent.portRoutingId}`,
+      read.fact("publicPortRouting", intent.portRoutingId),
+      leftListing(read, [portRoutingsScope(intent.orgId)], intent.portRoutingId),
+    ),
+  "publish-ports": (read, intent) => {
+    const ports = portsIn(read, intent.orgId, intent.projectId);
+    if (ports === null) return null;
+    return ports.some(({ value }) => !value.isSynced)
       ? []
-      : [`address:published-ports:${intent.projectId}`],
+      : [{ handle: `address:published-ports:${intent.projectId}`, live: true }];
+  },
   "request-ipv4": (read, intent) => {
     const project = read.fact("project", intent.projectId);
-    return project.kind === "known" && (project.value as { publicIpV4?: string }).publicIpV4
-      ? [`address:ipv4:${intent.projectId}`]
+    if (project.kind !== "known") return null;
+    return typeof project.value.publicIpV4 === "string"
+      ? [{ handle: `address:ipv4:${intent.projectId}`, live: true }]
       : [];
   },
 };
+
+/** Whether a process follows the write: its receipt is that process's. */
+const followsProcess = (receipt: OperationReceipt) =>
+  receipt.affected.some(({ family }) => family === "process");
 
 /** What the person is told when the process that puts it in place fails. */
 const FAILED: { readonly [K in AddressKind]: string } = {
@@ -211,20 +270,26 @@ function addressKind<K extends AddressKind>(kind: K): OperationKind<K> {
   const shows = SHOWS[kind] as (
     read: ProjectionReads,
     intent: IntentOf<K>,
-  ) => ReadonlyArray<string>;
+  ) => ReadonlyArray<Shown> | null;
+  // Every address intent is one project's (`InProject`); the generic kind cannot say so.
+  const projectOf = (intent: IntentOf<K>) => (intent as unknown as InProject).projectId;
   return {
     kind,
     executor: "zerops",
-    reflected: (read, intent) => shows(read, intent).length > 0,
-    settledBy: (read, intent, receipt: OperationReceipt): Settlement | null => {
-      if (shows(read, intent).length > 0) return { kind: "succeeded" };
-      const end = settledByProcess(read, receipt, () => FAILED[kind]);
-      return end?.kind === "failed" ? end : null;
+    reflected: (read, intent) => (shows(read, intent)?.length ?? 0) > 0,
+    settledBy: (read, intent, receipt): Settlement | null => {
+      if (followsProcess(receipt)) return settledByProcess(read, receipt, () => FAILED[kind]);
+      return shows(read, intent)?.some(({ live }) => live) === true ? { kind: "succeeded" } : null;
     },
-    // Every address intent is one project's (`InProject`); the generic kind cannot say so.
-    observedIn: (intent, receipt) =>
-      historyHolding((intent as unknown as InProject).projectId, receipt),
-    effectHandles: (read, intent) => shows(read, intent),
+    observedIn: (intent, receipt) => {
+      if (followsProcess(receipt)) return historyHolding(projectOf(intent), receipt);
+      // The organization's routings are its navigation, always read; the project's own listing
+      // is what a viewer refused them reads, held while no screen does.
+      return DOMAIN_KINDS.has(kind) && receipt.outcome.kind === "pending"
+        ? { family: "publicRouting", listing: PROJECT_ROUTINGS_LISTING, ownerId: projectOf(intent) }
+        : null;
+    },
+    effectHandles: (read, intent) => shows(read, intent)?.map(({ handle }) => handle) ?? null,
   };
 }
 
