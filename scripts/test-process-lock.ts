@@ -1,11 +1,12 @@
 // @effect-diagnostics nodeBuiltinImport:off -- kernel-owned locks for test process lifetimes.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeURL from "node:url";
 
 /** The same inode stays in place; the kernel elects one owner and releases it on pipe EOF. */
 export async function acquireProcessLock(path: string): Promise<() => Promise<void>> {
   const holder = NodeChildProcess.spawn(
-    "flock",
-    ["-x", path, process.execPath, "-e", "process.stdout.write('locked'); process.stdin.resume()"],
+    process.execPath,
+    [NodeURL.fileURLToPath(new URL("./test-process-lock-holder.ts", import.meta.url)), path],
     { stdio: ["pipe", "pipe", "inherit"] },
   );
   const closed = new Promise<void>((resolve, reject) => {

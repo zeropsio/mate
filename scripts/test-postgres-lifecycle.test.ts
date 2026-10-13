@@ -7,6 +7,61 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import { expect, it } from "vite-plus/test";
 
+it("releases the lifecycle lock while a scenario run keeps its PostgreSQL lease open", async () => {
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-run-"));
+  const fixture = NodePath.join(import.meta.dirname, "fixtures/test-postgres-lifecycle.ts");
+  const children: NodeChildProcess.ChildProcess[] = [];
+  const exits: Promise<void>[] = [];
+  const released = new Set<NodeChildProcess.ChildProcess>();
+  const start = (mode: string) => {
+    const child = NodeChildProcess.spawn(process.execPath, [fixture, mode], {
+      env: { ...process.env, MATE_TEST_PG_HOME: home },
+      stdio: ["ignore", "ignore", "inherit", "ipc"],
+    });
+    children.push(child);
+    exits.push(new Promise<void>((resolve) => child.once("exit", () => resolve())));
+    return child;
+  };
+  const next = (child: NodeChildProcess.ChildProcess, event: string) =>
+    new Promise<void>((resolve) => {
+      const receive = (message: unknown) => {
+        if ((message as { event: string }).event !== event) return;
+        child.off("message", receive);
+        resolve();
+      };
+      child.on("message", receive);
+    });
+  try {
+    const scenario = start("scenario");
+    await next(scenario, "admitted");
+    // Probe the kernel itself while the real scenario global-setup consumer still owns its lease.
+    const probe = NodeChildProcess.spawnSync("flock", [
+      "-n",
+      NodePath.join(home, "lifecycle.lock"),
+      process.execPath,
+      "-e",
+      "",
+    ]);
+    expect(probe.status, "an active scenario lease must not hold lifecycle.lock").toBe(0);
+    const worker = start("worker");
+    await next(worker, "created");
+    expect(scenario.exitCode).toBeNull();
+    const workerReleased = next(worker, "released");
+    worker.send("release");
+    await workerReleased;
+    released.add(worker);
+    const scenarioReleased = next(scenario, "released");
+    scenario.send("release");
+    await scenarioReleased;
+    released.add(scenario);
+  } finally {
+    for (const child of children)
+      if (!released.has(child) && child.connected) child.send("release", () => {});
+    await Promise.all(exits);
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 it("admits another worktree's lease while the last release waits for its lifecycle lock", async () => {
   // Short socket paths also fit macOS's Unix-domain limit in deeply nested worktrees.
   const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-cycle-"));

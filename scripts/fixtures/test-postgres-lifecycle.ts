@@ -3,6 +3,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeNet from "node:net";
 import * as NodePath from "node:path";
 import { acquireTestPostgres } from "../test-postgres.ts";
+import setup from "../test-postgres.setup.ts";
 
 if (process.argv[2] === "lock") {
   const args = process.argv.slice(3);
@@ -41,6 +42,15 @@ if (process.argv[2] === "lock") {
     if (process.connected) process.disconnect();
     if (signal) process.kill(process.pid, signal);
     else process.exitCode = code ?? 1;
+  });
+} else if (process.argv[2] === "scenario") {
+  const teardown = await setup();
+  process.send?.({ event: "admitted" });
+  process.on("message", async (message) => {
+    if (message !== "release") return;
+    await teardown();
+    process.send?.({ event: "released" });
+    process.disconnect();
   });
 } else {
   const owner = await acquireTestPostgres();
