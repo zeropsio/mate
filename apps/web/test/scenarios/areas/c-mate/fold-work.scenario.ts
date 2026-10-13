@@ -81,7 +81,13 @@ type Trace = { active: boolean; frames: Frame[]; sample: () => void };
 // Real list, RunChat and foldWork; include intermediate frames starting before settlement.
 describe("Decision: one owner per concern as the report's table assigns; no new state model.", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    for (const mode of ["following", "keyboard", "focus/find", "opened command"] as const) {
+    for (const mode of [
+      "following",
+      "wheel",
+      "keyboard",
+      "focus/find",
+      "opened command",
+    ] as const) {
       it.effect(`settlement preserves the assembled outer and inner reader (${mode})`, () =>
         Effect.gen(function* () {
           const s = yield* createScenario([], { mate: "real" });
@@ -238,7 +244,11 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
           } else if (mode !== "following") {
             yield* Effect.promise(async () => {
               const outer = await s.page.$(".timeline-legend-list");
-              if (mode === "keyboard") {
+              const box = (await outer!.boundingBox())!;
+              if (mode === "wheel") {
+                await s.page.mouse.move(box.x + box.width - 8, box.y + box.height / 2);
+                await s.page.mouse.wheel({ deltaY: -300 });
+              } else if (mode === "keyboard") {
                 await outer!.evaluate((node) => {
                   (node as HTMLElement).focus();
                 });
