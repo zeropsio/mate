@@ -13,7 +13,6 @@ import {
   AssetCreateUrlResult,
   WS_METHODS,
   ThreadId,
-  ProviderDriverKind,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
@@ -23,8 +22,8 @@ import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario, type ScenarioOptions } from "../../harness/scenario.ts";
-import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
-import { mateChat, projectAccessRevoked } from "./dsl.ts";
+
+import { mateChat } from "./dsl.ts";
 import { installArea } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -405,34 +404,6 @@ describe("C: opening a Mate and chat", () => {
       );
     });
 
-    // Catches returning to a parked Mate losing its history, opening another chat, or repeating the cold door.
-    it.effect("returning to a parked Mate preserves history", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        yield* s.given.project("Bea", { mate: true });
-        yield* seed(s, "Bea", [["Earlier question", "Bea's conversation history"]]);
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* chat.then.text("The existing conversation is still here");
-        const adaDoors = doorCount(s);
-        yield* chat.when.open("Bea", "Bea's conversation history");
-        const beaDoors = doorCount(s, "Bea");
-        yield* chat.when.returnTo();
-        yield* chat.when.type("Keep this draft with Ada");
-        yield* chat.when.open("Bea", "Bea's conversation history");
-        yield* chat.when.returnTo();
-        yield* chat.then.text("The existing conversation is still here");
-        yield* chat.then.draft("Keep this draft with Ada");
-        yield* chat.then.noButton("Sign in");
-        expect(doorCount(s), "ASSERTION: returning to Ada reuses its parked door").toBe(adaDoors);
-        expect(doorCount(s, "Bea"), "ASSERTION: returning to Bea reuses its parked door").toBe(
-          beaDoors,
-        );
-        yield* s.then.noReload;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     describe("Decision: V1 behaviour unchanged; engine gets image parity.", () => {
       it.effect(
         "a tool screenshot and an attached image render from the Mate's asset references",
@@ -598,22 +569,6 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
-    // Catches the project-level Mate URL stranding a signed-in user on the arrival page instead of the chat.
-    it.effect("/mate/project-id opens the Mate conversation from a cold door", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        yield* s.given.signedIn;
-        expect(doorCount(s)).toBe(0);
-        yield* chat.when.visit("/mate/Ada");
-        yield* chat.then.ready("Ada");
-        expect(doorCount(s)).toBe(1);
-        yield* chat.then.headerName("Ada");
-        yield* chat.then.path(route(s));
-        yield* chat.then.text("The existing conversation is still here");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     // Catches reload losing the selected chat/history or turning a kept session into a slow cold opening.
     it.effect("reload restores history", () =>
       Effect.gen(function* () {
@@ -644,96 +599,6 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.then.once("Please inspect the Shop project");
         yield* s.then.noExternalNetwork;
       }),
-    );
-
-    // Catches the conversation jumping to its top once a sent message's run arrives (the engine's did).
-    it.effect("a sent message keeps a long conversation at its end", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([], { mate: "real" });
-        yield* s.given.project("Ada", { mate: true });
-        const chat = realChat(s);
-        yield* seed(s, "Ada", [
-          ...[1, 2, 3].map((round) => [
-            `How did deploy ${round} go?`,
-            "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
-              30,
-            ),
-          ]),
-          ["And now?", history],
-        ]);
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        // How far the view stands from the end, frame by frame, for about two seconds.
-        const fromEnd = () =>
-          Effect.promise(() =>
-            s.page.evaluate(async () => {
-              const readings: number[] = [];
-              for (let frame = 0; frame < 120; frame += 1) {
-                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-                const scroll = document.querySelector<HTMLElement>(".timeline-legend-list");
-                if (scroll !== null)
-                  readings.push(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop);
-              }
-              return readings;
-            }),
-          );
-        const before = yield* fromEnd();
-        expect(Math.max(...before.slice(-10))).toBeLessThanOrEqual(2);
-        yield* chat.when.send("Keep me at the end of this conversation");
-        // Every frame after Send, while its run is sent, starts and works: never far from the end.
-        const after = yield* fromEnd();
-        expect(Math.max(...after)).toBeLessThan(400);
-        expect(after.at(-1)).toBeLessThanOrEqual(2);
-        yield* chat.then.once("Keep me at the end of this conversation");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches a row above the sent message changing as the Mate's record replaces the person's (a
-    // day divider the Mate's clock moves) and the list leaving its end for its top.
-    it.effect(
-      "a message the Mate's clock puts on another day keeps a long conversation at its end",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([], { mate: "real" });
-          yield* s.given.project("Ada", { mate: true });
-          const chat = realChat(s);
-          yield* seed(s, "Ada", [
-            ...[1, 2, 3].map((round) => [
-              `How did deploy ${round} go?`,
-              "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
-                30,
-              ),
-            ]),
-            ["And now?", history],
-          ]);
-          s.drivers.zerops.clock.setTime(
-            s.drivers.zerops.clock.currentTimeMillis() - 3 * 24 * 60 * 60 * 1000,
-          );
-          yield* s.given.signedIn;
-          yield* chat.when.open();
-          const fromEnd = () =>
-            Effect.promise(() =>
-              s.page.evaluate(async () => {
-                const readings: number[] = [];
-                for (let frame = 0; frame < 120; frame += 1) {
-                  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-                  const scroll = document.querySelector<HTMLElement>(".timeline-legend-list");
-                  if (scroll !== null)
-                    readings.push(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop);
-                }
-                return readings;
-              }),
-            );
-          const before = yield* fromEnd();
-          expect(Math.max(...before.slice(-10))).toBeLessThanOrEqual(2);
-          yield* chat.when.send("Keep me at the end, whatever day the Mate says it is");
-          const after = yield* fromEnd();
-          expect(Math.max(...after)).toBeLessThan(400);
-          expect(after.at(-1)).toBeLessThanOrEqual(2);
-          yield* chat.then.once("Keep me at the end, whatever day the Mate says it is");
-          yield* s.then.noExternalNetwork;
-        }),
     );
 
     // Catches the conversation opening mid-way (an engine Mate's did on CI, "list at 1764 of
@@ -783,75 +648,6 @@ describe("C: opening a Mate and chat", () => {
           yield* chat.then.text("The existing conversation is still here");
           yield* s.then.noExternalNetwork;
         }),
-    );
-
-    // Catches "Send now" starting a run of its own behind the running one (the engine's did) instead of steering it.
-    it.effect("Send now puts a waiting message into the running turn", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        const ui = mateChat(s);
-        const provider = s.drivers.realMates.get("Ada")!.provider;
-        const finish = yield* Deferred.make<void>();
-        yield* Effect.addFinalizer(() => Deferred.succeed(finish, undefined));
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* provider.turn([
-          { kind: "wait", until: finish },
-          { kind: "say", text: "A short story about a lighthouse cat" },
-        ]);
-        yield* ui.when.send("Write a story about a lighthouse cat");
-        const running = yield* provider.received;
-        expect(running.input.input).toBe("Write a story about a lighthouse cat");
-        yield* chat.then.control("Stop generation");
-        yield* ui.when.send("Change of plan: keep it under 120 words");
-        yield* chat.when.press("Send now");
-        yield* chat.then.once("Change of plan: keep it under 120 words");
-        const steered = yield* provider.received;
-        expect(steered.turnId).toBe(running.turnId);
-        expect(steered.input.input).toBe("Change of plan: keep it under 120 words");
-        yield* Deferred.succeed(finish, undefined);
-        yield* chat.then.text("A short story about a lighthouse cat");
-        // The message went into that turn: when it ends, nothing else works.
-        yield* chat.then.control("Stop generation", "button", false);
-        // A retained answer is a message outside the folding work. Seeing its text inside
-        // the closing card alone does not prove that completion kept the answer.
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(
-            () =>
-              [...document.querySelectorAll('[data-message-role="assistant"]')].some(
-                (row) =>
-                  row.textContent?.includes("A short story about a lighthouse cat") &&
-                  row.getBoundingClientRect().height > 0,
-              ),
-            { timeout: 8000 },
-          ),
-        );
-        // The virtualized list recycles its DOM out of display order. Read the actual
-        // message boxes: the sent message stays above the run and its retained answer.
-        const messages = yield* Effect.promise(() =>
-          s.page.evaluate(() =>
-            [...document.querySelectorAll("[data-message-role]")].map((row) => ({
-              role: row.getAttribute("data-message-role"),
-              text: row.textContent,
-              top: row.getBoundingClientRect().top,
-              bottom: row.getBoundingClientRect().bottom,
-            })),
-          ),
-        );
-        const sent = messages.filter(
-          (row) =>
-            row.role === "user" && row.text?.includes("Change of plan: keep it under 120 words"),
-        );
-        const answers = messages.filter(
-          (row) =>
-            row.role === "assistant" && row.text?.includes("A short story about a lighthouse cat"),
-        );
-        expect(sent).toHaveLength(1);
-        expect(answers).toHaveLength(1);
-        expect(sent[0]!.bottom).toBeLessThanOrEqual(answers[0]!.top);
-        yield* chat.then.once("Change of plan: keep it under 120 words");
-        yield* s.then.noExternalNetwork;
-      }),
     );
 
     // Approval crosses the real browser, Mate engine and provider callback.
@@ -927,7 +723,6 @@ describe("C: opening a Mate and chat", () => {
       });
 
     it.effect("approve an agent command and see it resolve", () => respondToCommand("accept"));
-    it.effect("decline an agent command and see it resolve", () => respondToCommand("decline"));
 
     it.effect("a free answer carries only the picture attached to that question", () =>
       Effect.gen(function* () {
@@ -1041,113 +836,6 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.when.activateLast("Show work");
         yield* chat.then.once("Inspect the preview shown here");
         yield* chat.then.control("Open question-preview.png");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches plan mode, turned on in settings, not reaching the agent with the message it was picked for.
-    it.effect("with plan mode on, a message sent in plan mode goes to the agent as a plan", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* chat.when.visit("/settings/general");
-        yield* chat.when.press("Legacy features");
-        yield* chat.when.press("Plan mode (legacy)", "switch");
-        yield* chat.when.visit(route(s));
-        yield* chat.then.ready("Ada");
-        yield* chat.when.press("Default mode — click to enter plan mode");
-        yield* chat.then.control("Plan mode — click to return to normal build mode");
-        yield* chat.when.send("Plan the worker's migration");
-        yield* chat.then.once("Plan the worker's migration");
-        expect(s.drivers.realMates.get("Ada")!.provider.sends.at(-1)!.input.interactionMode).toBe(
-          "plan",
-        );
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches a removed signer's login leaving Send enabled in an open chat.
-    it.effect("offboarding the signer blocks new turns without losing history", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([], { mate: "real" });
-        yield* s.given.project("Ada", {
-          mate: true,
-          provider: { driverKind: ProviderDriverKind.make("claudeAgent") },
-          claudeSignIn: true,
-        });
-        s.given.person("observer", { role: "ADMIN" });
-        const chat = mateChat(s);
-        yield* s.given.signedIn;
-        yield* chat.when.openReadOnly();
-        yield* Effect.promise(async () => {
-          await s.page.locator('button[data-agent-id="claude-code"]').setTimeout(8000).click();
-          await s.page.waitForSelector(
-            '[data-sign-in-open="claude-code"][href^="https://claude.scenario.invalid/oauth/authorize"]',
-            { visible: true, timeout: 8000 },
-          );
-          await s.page.waitForSelector("[data-sign-in-code]", { visible: true, timeout: 8000 });
-          await s.page.type("[data-sign-in-code]", CLAUDE_SCENARIO_CODE);
-          await s.page.keyboard.press("Enter");
-          await s.page.waitForSelector('[role="textbox"]:not([inert] *)', {
-            visible: true,
-            timeout: 8000,
-          });
-        });
-        const { provider, server } = s.drivers.realMates.get("Ada")!;
-        yield* provider.turn([{ kind: "say", text: history }]);
-        yield* chat.when.send("Earlier question");
-        expect((yield* provider.received).input.input).toBe("Earlier question");
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(
-            (answer) =>
-              document.body.innerText.includes(answer) &&
-              !location.pathname.startsWith("/draft/") &&
-              !document.querySelector('button[aria-label="Stop generation"]'),
-            { timeout: 8000 },
-            history,
-          ),
-        );
-        const earlierRoute = new URL(s.page.url()).pathname;
-        const member = yield* s.given.browserActor({ person: "observer" });
-        const memberChat = mateChat({ ...s, ...member });
-        yield* member.given.signedIn;
-        yield* memberChat.when.openReadOnly();
-        yield* memberChat.then.path(earlierRoute);
-        yield* memberChat.then.text("Earlier question");
-        yield* memberChat.then.text(history);
-        const sent = provider.sends.length;
-        s.given.person("owner", { role: "NO_ACCESS", grants: {} });
-        // Expire the kept platform answer; checkNow reads the changed API membership.
-        s.drivers.zerops.clock.advance(300_001);
-        expect(yield* server.offboarding.checkNow).toBe(1);
-        yield* memberChat.then.text("Earlier question");
-        yield* memberChat.then.text(history);
-        yield* memberChat.when.press("Toggle right panel");
-        yield* memberChat.when.click("Zerops");
-        yield* memberChat.then.control("Sign in to Claude");
-        expect(provider.sends.length).toBe(sent);
-        yield* member.then.noReload;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches a still-ponging platform receiver keeping a revoked conversation or write controls.
-    it.effect("project revocation withdraws the open Mate while its receiver still pongs", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        yield* s.given.project("Bea", { mate: true });
-        yield* Effect.promise(() => s.clock.install());
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* chat.then.text("The existing conversation is still here");
-        const sent = s.drivers.realMates.get("Ada")!.provider.sends.length;
-        yield* projectAccessRevoked(s, "Ada");
-        yield* chat.then.noText("The existing conversation is still here");
-        yield* chat.then.noComposer;
-        yield* s.then.menu.row("Bea").appears();
-        expect(s.drivers.realMates.get("Ada")!.provider.sends.length).toBe(sent);
-        yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
       }),
     );

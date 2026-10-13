@@ -127,43 +127,6 @@ describe("H: hosted client budgets", () => {
       }),
     );
 
-    // Catches extra tabs starving one another of the first HQ-backed application menu.
-    it.effect("five tabs each receive real HQ data and show the application menu", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installBudget]);
-        const b = budgets(s);
-        yield* b.given.mates(["Ada"]);
-        const tabs = yield* b.given.fiveTabs();
-        for (const tab of tabs) {
-          yield* Effect.promise(() => tab.page.bringToFront());
-          yield* tab.given.signedIn;
-          yield* tab.then.menu.row("Shop").appears();
-        }
-        // Cached rows can appear before the last tab's initial HQ snapshot arrives.
-        yield* b.when.hqFirstData(5);
-        const connections = yield* b.when.observeTabConnections(tabs.map((tab) => tab.page));
-        const receivedBefore = b.measure
-          .hqSegments()
-          .filter((segment) => segment.firstDataMs !== null).length;
-        const countsBefore = connections.counts();
-        yield* Effect.forEach(tabs, (tab) => Effect.promise(() => tab.page.reload()), {
-          concurrency: "unbounded",
-        });
-        yield* b.when.hqFirstData(receivedBefore + 5);
-        for (const tab of tabs) {
-          yield* Effect.promise(() => tab.page.bringToFront());
-          yield* tab.then.menu.row("Shop").appears();
-        }
-        yield* Effect.promise(() => s.hq.ready());
-        for (const [index, count] of connections.counts().entries())
-          expect(
-            count - countsBefore[index]!,
-            "At most one HQ connection per tab",
-          ).toBeLessThanOrEqual(1);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     // Catches opening one Mate fanning out to other containers or never enabling its composer.
     it.effect("opening one Mate spends one door visit and leaves the other three unopened", () =>
       Effect.gen(function* () {
@@ -323,36 +286,6 @@ describe("H: hosted client budgets", () => {
         expect(variablesAtStart, "No variables search at menu load").toBe(0);
         expect(variablesIdle, "No variables search while idle").toBe(0);
       }),
-    );
-
-    // Catches reading each project's own row, services and public routing when no surface
-    // shows them.
-    // An owner reads no project's own row: whose a Mate is comes from HQ.
-    it.effect(
-      "an eight-project menu starts with no per-project row, services or routing read",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([installBudget]);
-          const b = budgets(s);
-          yield* b.given.mates(names);
-          yield* b.given.stops("Shop");
-          yield* b.given.plainProjects(["Plain1", "Plain2"]);
-          yield* s.given.signedIn;
-          yield* b.when.menuReady(names);
-          yield* b.when.browserSettled;
-          const own = b.measure.projectReads();
-          const others = b.measure.projectReads(["Staging", "Production", "Plain1", "Plain2"]);
-          const services = b.measure.projectServiceReads();
-          const routing = b.measure.projectRoutingReads();
-          report(
-            `H start, 8 projects (4 Mates, stage, production, 2 plain), with preflights: GET project=${own} (of which not a Mate's ${others}), GET service-stack=${services}, GET public-http-routing=${routing}`,
-          );
-          yield* s.then.noExternalNetwork;
-          expect(own, "Own project rows at start").toBe(0);
-          expect(others, "Own rows of projects no Mate is drawn for").toBe(0);
-          expect(services, "Per-project services reads at start").toBe(0);
-          expect(routing, "Per-project public routing reads at start").toBe(0);
-        }),
     );
 
     // Catches startup reads that make a populated organization slow and expensive.

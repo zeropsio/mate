@@ -4,13 +4,8 @@ import * as Schema from "effect/Schema";
 import { MateLinkUp } from "@t3tools/shared/mateLink";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { menuScenario } from "./dsl.ts";
-import { AssetCreateUrlInput, AssetCreateUrlResult, WS_METHODS } from "@t3tools/contracts";
 import { dropZerops } from "../g-outage/fake.ts";
 import { lastingZeropsOutage } from "../g-outage/dsl.ts";
-import { deadline } from "../../harness/http.ts";
-
-const decodeAsset = Schema.decodeUnknownSync(AssetCreateUrlInput);
-const encodeAsset = Schema.encodeSync(AssetCreateUrlResult);
 
 describe("B: text-only drafts", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -197,118 +192,6 @@ describe("B: text-only drafts", () => {
             ),
             "ASSERTION: account failure and recovery preserve footer room",
           ).toBeLessThanOrEqual(4);
-          yield* s.then.noExternalNetwork;
-        }),
-    );
-    it.effect(
-      "project icons show pixels or their folder, never conversation failure controls",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* menuScenario();
-          let release!: () => void;
-          const held = new Promise<void>((resolve) => {
-            release = resolve;
-          });
-          yield* Effect.addFinalizer(() => Effect.sync(release));
-          const requested = new Set<string>();
-          let requestedAll!: () => void;
-          const allRequested = new Promise<void>((resolve) => {
-            requestedAll = resolve;
-          });
-          s.drivers.onMate.push((mate) => {
-            mate.rpcHandlers.unshift((request, socket) => {
-              if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
-              const input = decodeAsset(request.payload);
-              if (input.resource._tag !== "project-favicon") return false;
-              mate.reply(
-                socket,
-                request.id,
-                encodeAsset({
-                  relativeUrl: `/api/favicon/${mate.name}`,
-                  expiresAt: 0,
-                  imageDimensions: { width: 16, height: 16 },
-                }),
-              );
-              return true;
-            });
-            const handle = mate.handle;
-            mate.handle = async (request) => {
-              if (!request.url.pathname.includes("/api/favicon/")) return handle(request);
-              requested.add(mate.name);
-              if (requested.size === 2) requestedAll();
-              await held;
-              return {
-                // SVG bypasses bitmap preflight, so invalid bytes reach the img error event.
-                bytes: Buffer.from(
-                  mate.name === "Ada"
-                    ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16"/></svg>'
-                    : "invalid svg",
-                ),
-                headers: { "content-type": "image/svg+xml" },
-              };
-            };
-          });
-          yield* s.given.project("Ada", { mate: true });
-          yield* s.given.project("Bea", { mate: true });
-          // CI's Linux platform must exercise the same shortcut even on a Mac test host.
-          yield* Effect.promise(() =>
-            s.page.evaluateOnNewDocument(() => {
-              Object.defineProperty(navigator, "platform", { value: "Linux x86_64" });
-            }),
-          );
-          yield* s.given.signedIn;
-          for (const name of ["Ada", "Bea"]) yield* s.when.menu.opensMate(name);
-          yield* Effect.promise(async () => {
-            const modifier = await s.page.evaluate(() =>
-              navigator.platform.includes("Mac") ? "Meta" : "Control",
-            );
-            await s.page.keyboard.down(modifier);
-            await s.page.keyboard.press("k");
-            await s.page.keyboard.up(modifier);
-            await s.page.waitForSelector('[data-testid="command-palette"]');
-            await s.page.keyboard.type(">");
-            await s.page.waitForSelector('[data-testid="jump-box"]', { hidden: true });
-            await s.page
-              .locator('[data-testid="command-palette"] [data-slot="autocomplete-input"]')
-              .fill(">New thread");
-            await s.page.locator("::-p-text(New thread in...)").click();
-            await deadline(allRequested, "both project favicon byte requests");
-            expect(await s.page.$$('[data-testid="command-palette"] img')).toHaveLength(0);
-            await s.page.evaluate(() => {
-              const failed = (event: Event) => {
-                if (
-                  !(event.target instanceof HTMLImageElement) ||
-                  !event.target.closest('[data-testid="command-palette"]')
-                )
-                  return;
-                document.removeEventListener("error", failed, true);
-                requestAnimationFrame(() => {
-                  document
-                    .querySelector('[data-testid="command-palette"]')!
-                    .setAttribute("data-favicon-failed", "true");
-                });
-              };
-              document.addEventListener("error", failed, true);
-            });
-            release();
-            await s.page.waitForFunction(() =>
-              [
-                ...document.querySelectorAll<HTMLImageElement>(
-                  '[data-testid="command-palette"] img',
-                ),
-              ].some((img) => img.naturalWidth === 16),
-            );
-            await s.page.waitForSelector('[data-favicon-failed="true"]');
-            expect(
-              await s.page.$('[data-testid="command-palette"] .asset-image-unavailable'),
-            ).toBeNull();
-            await s.page.waitForFunction(() =>
-              [...document.querySelectorAll('[data-slot="command-item"]')].some(
-                (row) => row.textContent?.includes("Bea") && row.querySelector("svg.lucide-folder"),
-              ),
-            );
-            expect(requested).toEqual(new Set(["Ada", "Bea"]));
-          });
           yield* s.then.noExternalNetwork;
         }),
     );

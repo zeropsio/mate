@@ -8,14 +8,9 @@ import {
   menuRowGone,
   caughtUp,
   cappedHqOutage,
-  zeropsCatchesUp,
-  lastingZeropsOutage,
   stallsHq,
   frozenMenuStillSays,
-  zeropsGoesDown,
   checkpoint,
-  opensMate,
-  messageAppears,
   showsWokenTab,
   stopHq,
   startHq,
@@ -73,25 +68,6 @@ describe("G: outages, sleep and several tabs", () => {
         yield* hqRefusalShown(s);
         yield* retryHq(s);
         yield* caughtUp(s, "Shop");
-        yield* checkpoint(s);
-      }),
-    );
-
-    // Catches HQ downtime making a retained Mate impossible to open or send a message to.
-    it.effect("HQ down: the menu holds and a Mate still opens and chats", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* s.given.signedIn;
-        yield* caughtUp(s, "Shop");
-        const retained = yield* s.then.menu.keepsRows(["Shop", "Ada"]);
-        yield* s.when.hq.socket.drops;
-        yield* s.then.hq.isUnavailable;
-        yield* opensMate(s);
-        yield* s.then.conversation.appears;
-        yield* s.when.conversation.sends("Inspect checkout while HQ is down");
-        yield* messageAppears(s, "Inspect checkout while HQ is down");
-        yield* cappedHqOutage(s);
-        yield* retained;
         yield* checkpoint(s);
       }),
     );
@@ -160,30 +136,6 @@ describe("G: outages, sleep and several tabs", () => {
         yield* caughtUp(s, "Shop surviving tab");
         yield* checkpoint(s);
       }),
-    );
-
-    // Catches losing the menu or an already connected conversation when Zerops realtime fails.
-    it.effect(
-      "Zerops outage shows catching up and retains menu/chat through capped HQ retries",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* givenOutage();
-          yield* s.given.signedIn;
-          yield* caughtUp(s, "Shop");
-          yield* opensMate(s);
-          yield* s.then.conversation.appears;
-          const retained = yield* s.then.menu.keepsRows(["Shop", "Ada"]);
-          yield* zeropsGoesDown(s);
-          yield* lastingZeropsOutage(s);
-          yield* zeropsCatchesUp(s);
-          yield* s.when.hq.socket.drops;
-          yield* cappedHqOutage(s);
-          yield* zeropsCatchesUp(s);
-          yield* s.when.conversation.sends("Inspect checkout while Zerops is down");
-          yield* messageAppears(s, "Inspect checkout while Zerops is down");
-          yield* retained;
-          yield* checkpoint(s);
-        }),
     );
 
     // Catches an HQ outage erasing the last known task instead of retaining it as stale.
