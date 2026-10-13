@@ -3,8 +3,6 @@ import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
-import { mateChat } from "./dsl.ts";
-import { reportConversation } from "../b-menu/fake.ts";
 
 describe("opening a Mate from the projects page", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -47,76 +45,6 @@ describe("opening a Mate from the projects page", () => {
 
 describe("Projects source states", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    it.effect(
-      "Projects shows the Mate's limit, latest outcome and missing sign-in from its records",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([installArea]);
-          yield* s.given.project("Ada", { mate: true, app: "Shop" });
-          const wire = mateChat(s).fixture();
-          wire.run("limited", "running");
-          wire.run("limited", "error", "Claude usage limit reached");
-          yield* reportConversation(
-            s.drivers,
-            "Ada",
-            {
-              session: { status: "error", lastError: "Claude usage limit reached" },
-              latestTurn: wire.latestTurn(),
-            },
-            "failed",
-          );
-          yield* s.given.signedIn;
-          const rows = '[data-zerops-surface="project-cards"]';
-          const capture = (name: string, words: string) =>
-            Effect.promise(async () => {
-              await expect
-                .poll(() => s.page.$eval(rows, (element) => element.textContent), {
-                  timeout: 8_000,
-                })
-                .toContain(words);
-              if (process.env.PROJECTS_EVIDENCE) {
-                await s.page.screenshot({
-                  path: `${process.env.PROJECTS_EVIDENCE}-${name}-full.png`,
-                  fullPage: true,
-                });
-                await (await s.page.$(rows))!.screenshot({
-                  path: `${process.env.PROJECTS_EVIDENCE}-${name}.png`,
-                });
-              }
-            });
-          yield* capture("limit", "Ada hit the Claude limit.");
-          wire.run("finished", "running");
-          wire.run("finished", "completed");
-          yield* reportConversation(s.drivers, "Ada", {
-            session: { status: "ready", lastError: null },
-            latestTurn: wire.latestTurn(),
-            latestUserMessagePreview: { text: "Redesign checkout" },
-            latestMessagePreview: {
-              role: "assistant",
-              text: "Checkout is redesigned and verified.",
-            },
-          });
-          yield* capture("outcome", "Checkout is redesigned and verified.");
-          yield* s.drivers.links.get("Ada")!.send({
-            type: "overview",
-            full: true,
-            overview: {
-              identity: {
-                environmentId: wire.mate.descriptor.environmentId,
-                serverVersion: "0.14.35",
-                update: null,
-              },
-              main: null,
-              threads: { list: [], omitted: 0 },
-              crew: { status: "off" },
-              logins: { "claude-code": { present: false, signedInBy: null, token: false } },
-            },
-          });
-          // The card says it as its menu row does: whom the missing sign-in waits on.
-          yield* capture("sign-in", "Waiting for your sign-in");
-          yield* s.then.noExternalNetwork;
-        }),
-    );
     it.effect(
       "account verification failure separates Verify again from Sign out without a storage claim",
       () =>

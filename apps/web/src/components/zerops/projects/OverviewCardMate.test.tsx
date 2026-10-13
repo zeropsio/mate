@@ -9,6 +9,7 @@ const linked = vi.hoisted(() => ({ value: false }));
 const people = vi.hoisted(() => ({
   value: { waitsOnViewer: true, owner: null } as {
     waitsOnViewer: boolean | undefined;
+    everSignedIn?: Readonly<Record<string, string>>;
     owner: { userId: string; name: string; avatarUrl: string | null } | null;
   },
 }));
@@ -41,7 +42,12 @@ vi.mock("~/hooks/useSettings", () => ({
 vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => () => {} }));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => () => {} }));
 vi.mock("~/zerops/review", () => ({ useOpenReview: () => () => {} }));
-vi.mock("~/zerops/useZeropsAgentActivity", () => ({ useProjectMateActivity: () => undefined }));
+const activityReading = vi.hoisted(() => ({
+  value: undefined as import("~/zerops/agentActivity").ZeropsAgentActivity | undefined,
+}));
+vi.mock("~/zerops/useZeropsAgentActivity", () => ({
+  useProjectMateActivity: () => activityReading.value,
+}));
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSessionOptional: () => session.value,
 }));
@@ -49,6 +55,10 @@ vi.mock("~/zerops/useMateWrite", () => ({ useMateWrite: () => ({ requests: {} })
 
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+
+import { MateLiveView } from "@t3tools/shared/hqMates";
+import * as Schema from "effect/Schema";
+import { overviewAgentActivity } from "~/zerops/agentActivity";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 
@@ -62,6 +72,8 @@ function ada(group: ZeropsCandidate["group"]): ZeropsCandidate {
     project: { id: "ada", name: "Ada", status: "ACTIVE", tagList: [] },
   } as ZeropsCandidate;
 }
+
+const decodeMateView = Schema.decodeUnknownSync(MateLiveView);
 
 const faceOf = (markup: string) => /data-mate-face-state="([^"]+)"/u.exec(markup)?.[1];
 
@@ -98,7 +110,12 @@ describe("a Mate on its card", () => {
   const card = (change: ReturnType<typeof pull> | undefined) =>
     renderToStaticMarkup(
       <OverviewCardMate
-        candidate={{ ...ada("ready"), service: { id: "zcp" } } as ZeropsCandidate}
+        candidate={
+          {
+            ...ada("ready"),
+            service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+          } as ZeropsCandidate
+        }
         change={change}
         containerActions={null}
         containerLine={undefined}
@@ -112,6 +129,107 @@ describe("a Mate on its card", () => {
         tint="sky"
       />,
     );
+  describe("Projects source states", () => {
+    it("Projects shows the Mate's limit, latest outcome and missing sign-in from its records", () => {
+      linked.value = true;
+      session.value = { user: { id: "me" } };
+      people.value = { waitsOnViewer: true, owner: null, everSignedIn: {} };
+      const main = {
+        id: "thread-Ada",
+        title: "Redesign checkout",
+        interactionMode: "default",
+        hasPendingApprovals: false,
+        hasPendingUserInput: false,
+        hasActionableProposedPlan: false,
+        backgroundLiveness: null,
+        planProgress: null,
+        pendingQuestion: null,
+        usagePause: null,
+        liveStep: null,
+        latestUserMessageAt: "2026-10-06T12:00:00Z",
+        updatedAt: "2026-10-06T12:00:00Z",
+        latestUserMessagePreview: { text: "Redesign checkout" },
+        latestMessagePreview: null,
+        latestTurn: {
+          turnId: "limited",
+          state: "error",
+          requestedAt: "2026-10-06T12:00:00Z",
+          startedAt: "2026-10-06T12:00:00Z",
+          completedAt: "2026-10-06T12:01:00Z",
+          assistantMessageId: null,
+        },
+        session: { status: "error", lastError: "Claude usage limit reached" },
+      };
+      const record = (patch: object) =>
+        decodeMateView({
+          presence: { online: true, since: "2026-10-06T12:00:00Z", overview: "live" },
+          identity: { environmentId: "env-Ada", serverVersion: "0.14.35", update: null },
+          main: { ...main, ...patch },
+        });
+      try {
+        activityReading.value = overviewAgentActivity(record({}), false, {});
+        let markup = card(undefined);
+        expect(markup).toContain("Ada hit the Claude limit.");
+        activityReading.value = overviewAgentActivity(
+          record({
+            session: { status: "ready", lastError: null },
+            latestTurn: { ...main.latestTurn, turnId: "finished", state: "completed" },
+            latestMessagePreview: {
+              role: "assistant",
+              text: "Checkout is redesigned and verified.",
+            },
+          }),
+          false,
+          {},
+        );
+        markup = card(undefined);
+        expect(markup).toContain("Checkout is redesigned and verified.");
+        expect(markup).not.toContain("Ada hit the Claude limit.");
+        activityReading.value = undefined;
+        const candidate = {
+          ...ada("ready"),
+          service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+          project: {
+            ...ada("ready").project,
+            hq: {
+              appId: "shop",
+              appName: "Shop",
+              kind: "mate" as const,
+              mate: {
+                face: "",
+                madeBy: "me",
+                logins: { "claude-code": { present: false, signedInBy: null, token: false } },
+              },
+            },
+          },
+        } satisfies ZeropsCandidate;
+        markup = renderToStaticMarkup(
+          <OverviewCardMate
+            candidate={candidate}
+            change={undefined}
+            containerActions={null}
+            containerLine={undefined}
+            conversationsRead
+            flow={undefined}
+            groupId="shop"
+            name="Ada"
+            onOpen={undefined}
+            outsideHq={false}
+            shape={undefined}
+            tint="sky"
+          />,
+        );
+        expect(markup).toContain("Waiting for your sign-in");
+        expect(markup).not.toContain("Ada hit the Claude limit.");
+        expect(markup).not.toContain("Checkout is redesigned and verified.");
+      } finally {
+        activityReading.value = undefined;
+        session.value = null;
+        linked.value = false;
+      }
+    });
+  });
+
   const KAREL = { userId: "karel", name: "Alex Novak", avatarUrl: null };
 
   it.each([
@@ -170,7 +288,7 @@ describe("a Mate on its card", () => {
               {
                 ...ada("ready"),
                 environmentId: "env-ada",
-                service: { id: "zcp" },
+                service: { id: "zcp", name: "zcp", status: "ACTIVE" },
               } as ZeropsCandidate
             }
             change={undefined}

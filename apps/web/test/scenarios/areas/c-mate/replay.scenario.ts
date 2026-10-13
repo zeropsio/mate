@@ -65,6 +65,7 @@ describe("C: reading, replay and attention", () => {
         yield* restartMate(s.drivers, "Ada");
         yield* relayAttention(s.drivers, "Ada", { results });
         yield* theirs.then.control("Ada, Unseen reply");
+        yield* chat.then.control("Ada, Unseen reply", "button", false);
         yield* speakFromRunBefore(s.drivers, "Ada", {
           working: 1,
           waiting: 0,
@@ -73,11 +74,16 @@ describe("C: reading, replay and attention", () => {
         });
         yield* relayAttention(s.drivers, "Ada", { results });
         yield* theirs.then.control("Ada, Unseen reply");
+        yield* chat.then.control("Ada, Unseen reply", "button", false);
+        // A still-open reader witnesses the late message's delivery after the owner closes.
+        yield* theirs.when.openReadOnly("Ada");
+        yield* theirs.then.text("Ada finished the newer inspection");
         yield* chat.when.press("Account: owner");
         yield* chat.when.press("Sign out", "menuitem");
         yield* chat.then.control("Continue with your Zerops account");
         wire.say("This late reply belongs to the closed account");
         wire.browser({ type: "state", status: "live", title: "Old account's browser" });
+        yield* theirs.then.text("This late reply belongs to the closed account");
         yield* chat.then.noText("This late reply belongs to the closed account");
         yield* chat.then.noText("Old account's browser");
         yield* chat.then.noText("The existing conversation is still here");

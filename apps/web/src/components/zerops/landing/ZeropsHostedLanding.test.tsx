@@ -121,3 +121,20 @@ it("keeps the failure through a background retry, saying quietly that it tries a
     session.retrying = false;
   }
 });
+
+describe("Projects source states", () => {
+  it("account verification failure separates Verify again from Sign out without a storage claim", () => {
+    session.status = "unavailable";
+    try {
+      const markup = renderLanding();
+      expect(markup).toContain("Could not verify your account");
+      const actions = [...markup.matchAll(/<button\b[^>]*>(.*?)<\/button>/gu)].map(
+        (match) => match[1],
+      );
+      expect(actions).toEqual(["Verify again", "Sign out"]);
+      expect(markup).not.toMatch(/on this device|stored|storage|saved locally/iu);
+    } finally {
+      session.status = "signed-out";
+    }
+  });
+});

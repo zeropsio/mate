@@ -1830,6 +1830,97 @@ describe("ZeropsDataPanel", () => {
       expect(findByAttribute(tree, "data-zerops-data-next-page")!.props.disabled).toBe(true);
     });
 
+    describe("C: service data detail", () => {
+      it("SQL pages arriving after first paint preserve exact rows and Back returns to the table", async () => {
+        const columns = [column({ name: "id", dataType: "int4" })];
+        const view = () => render({ service: "db1", widthForTest: 435 });
+        const rows = (tree: unknown) =>
+          findComponent<Parameters<typeof ZeropsDataTable>[0]>(tree, ZeropsDataTable)!.props.model
+            .rows;
+        const filters = (tree: unknown) =>
+          findComponent<Parameters<typeof ZeropsDataFilters>[0]>(tree, ZeropsDataFilters)!.props;
+        let tree = await selectOrders(
+          () => ({ kind: "table", page: tablePage({ columns, rows: [[700]] }) }),
+          { widthForTest: 435 },
+        );
+        expect(rows(tree)).toEqual([[700]]);
+        filters(tree).onChangeFilters([{ column: "id", op: "eq", value: "700" }]);
+        tree = view();
+        const filterTree = ZeropsDataFilters(filters(tree));
+        expect(findByAttribute(filterTree, "data-zerops-data-filter-raw-toggle")).toBeNull();
+        filters(tree).onApply();
+        await flush();
+        tree = view();
+        expect(
+          findComponent<Parameters<typeof ZeropsDataTable>[0]>(tree, ZeropsDataTable)!.props
+            .filtered,
+        ).toBe(true);
+        expect(rows(tree)).toEqual([[700]]);
+        filters(tree).onClear();
+        await flush();
+        tree = view();
+        expect(
+          findComponent<Parameters<typeof ZeropsDataTable>[0]>(tree, ZeropsDataTable)!.props
+            .filtered,
+        ).toBe(false);
+        (findByAttribute(tree, "data-zerops-data-query-toggle")!.props.onClick as () => void)();
+        let release: (() => void) | undefined;
+        const first = Array.from({ length: 100 }, (_, i) => [i + 1]);
+        commandSpy.mockImplementation(
+          ({ input }: { input: ZeropsDataConsoleRequest }) =>
+            new Promise((resolve) => {
+              release = () =>
+                resolve(
+                  AsyncResult.success({
+                    kind: "table",
+                    page: tablePage({
+                      columns,
+                      rows: input.kind === "query" && input.page?.cursor ? [[101]] : first,
+                      nextCursor: input.kind === "query" && input.page?.cursor ? "" : "100",
+                    }),
+                  }),
+                );
+            }),
+        );
+        findComponent<Parameters<typeof ZeropsDataQuery>[0]>(
+          view(),
+          ZeropsDataQuery,
+        )!.props.onSubmit("SELECT id FROM orders ORDER BY id");
+        tree = view();
+        expect(
+          findComponent<Parameters<typeof ZeropsDataQuery>[0]>(tree, ZeropsDataQuery)!.props
+            .pending,
+        ).toBe(true);
+        expect(rows(tree)).toEqual([[700]]);
+        expect(release).toBeTypeOf("function");
+        release!();
+        await flush();
+        tree = view();
+        expect(rows(tree)).toEqual(first);
+        (findByAttribute(tree, "data-zerops-data-next-page")!.props.onClick as () => void)();
+        tree = view();
+        expect(findByAttribute(tree, "data-zerops-data-next-page")!.props.disabled).toBe(true);
+        expect(rows(tree)).toEqual(first);
+        release!();
+        await flush();
+        tree = view();
+        expect(rows(tree)).toEqual([[101]]);
+        expect(textOf(tree)).toContain("Rows 101–101");
+        // Query Back restores the selected table; it is distinct from the previous SQL page.
+        (findByAttribute(tree, "data-zerops-data-query-back")!.props.onClick as () => void)();
+        tree = view();
+        expect(rows(tree)).toEqual([[700]]);
+        (findByAttribute(tree, "data-zerops-data-maximize")!.props.onClick as () => void)();
+        expect(onToggleMaximized).toHaveBeenCalledOnce();
+        expect(
+          findByAttribute(
+            render({ service: "db1", widthForTest: 1200, maximized: true }),
+            "data-zerops-data-layout",
+          )!.props["data-zerops-data-layout"],
+        ).toBe("wide");
+      });
+    });
+
     it("SQL result pages arrive after first paint and Next/Back preserve every row.", async () => {
       let release: (() => void) | undefined;
       const first = Array.from({ length: 100 }, (_, i) => [i + 1]);

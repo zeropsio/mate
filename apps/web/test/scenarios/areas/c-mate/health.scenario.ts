@@ -27,7 +27,7 @@ describe("Approved Mate health placement", () => {
       () =>
         Effect.gen(function* () {
           const s = yield* createScenario([installArea]);
-          yield* s.given.project("Ada", { mate: true });
+          yield* s.given.project("Ada", { mate: true, app: "Shop" });
           const chat = mateChat(s);
           chat.fixture().history("Look after this Mate");
           yield* s.given.signedIn;
@@ -104,7 +104,9 @@ describe("Approved Mate health placement", () => {
               const banner = await s.page.$("[data-composer-banner-anchor]");
               const text = await banner!.evaluate((node) => node.textContent ?? "");
               expect(text.includes("Open in Zerops")).toBe(state.action);
-              expect(text).not.toContain("Restart Mate");
+              expect(await s.page.evaluate(() => document.body.innerText)).not.toContain(
+                "Restart Mate",
+              );
               const faceText = await s.page.$$eval(
                 "[data-mate-face-state], [data-header-face]",
                 (nodes) => nodes.map((node) => node.textContent).join(" "),
@@ -121,6 +123,17 @@ describe("Approved Mate health placement", () => {
           }
           yield* publish({ ...quiet, status: "strained", resources: ["pids"] });
           yield* chat.then.text(states[4].title);
+          const overviewReader = yield* s.given.browserActor({ person: "owner" });
+          yield* overviewReader.given.signedIn;
+          yield* Effect.promise(async () => {
+            await overviewReader.page.goto(`${s.web.origin}/zerops`);
+            await overviewReader.page.waitForSelector(
+              '[data-zerops-surface="project-cards"] [aria-label="Open Ada"]',
+            );
+            const overview = await overviewReader.page.evaluate(() => document.body.innerText);
+            expect(overview).not.toContain("Restart Mate");
+            for (const state of states) expect(overview).not.toContain(state.title);
+          });
           yield* link.close;
           yield* chat.then.noText(states[4].title);
           yield* s.then.noExternalNetwork;
