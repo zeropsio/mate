@@ -132,7 +132,13 @@ import { restartWords } from "../../zerops/restartWords";
 import { calmClockMs } from "./nowLineCalm.logic";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import { useCalmLine } from "./useCalmLine";
-import { wordsCutUnder, wordsStood, wordsStoodUnder } from "./wordsLanding";
+import {
+  headStood,
+  headStoodJustNow,
+  wordsCutUnder,
+  wordsStood,
+  wordsStoodUnder,
+} from "./wordsLanding";
 import {
   SLOT_MAX_ROWS,
   slotHoldsIn,
@@ -4060,7 +4066,6 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // nothing, and the head travelled 120 px). Only words the slot's cap cut keep their last line
   // instead (`onAnswerLands`).
   const turnOverRef = useRef(turnOver);
-  const headStoodRef = useRef<{ readonly top: number; readonly at: number } | null>(null);
   // How tall the card stood as last painted while its turn went on.
   const paintedHeightRef = useRef<number | null>(null);
   useEffect(() => {
@@ -4072,8 +4077,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       return;
     let frame = requestAnimationFrame(function tell() {
       const head = rootRef.current?.querySelector<HTMLElement>(":scope > [data-run-head]");
-      if (head != null)
-        headStoodRef.current = { top: head.getBoundingClientRect().top, at: performance.now() };
+      if (head != null) headStood(head, head.getBoundingClientRect().top);
       paintedHeightRef.current = heightOf(rootRef.current);
       frame = requestAnimationFrame(tell);
     });
@@ -4113,10 +4117,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     turnOverRef.current = turnOver;
     if (was || !turnOver || onTurnLands === undefined || !watchedRef.current || ctx.syncing) return;
     const head = rootRef.current?.querySelector<HTMLElement>(":scope > [data-run-head]") ?? null;
-    const stood = headStoodRef.current;
-    if (head === null || stood === null || performance.now() - stood.at > HEAD_STOOD_WITHIN_MS)
-      return;
-    if (!wordsCutUnder(head)) onTurnLands(head, stood.top, !swapsRef.current);
+    const stood = head === null ? null : headStoodJustNow(head);
+    if (head === null || stood === null) return;
+    if (!wordsCutUnder(head)) onTurnLands(head, stood, !swapsRef.current);
   }, [turnOver, onTurnLands, ctx.syncing]);
   const cardRoomsRef = useRef<Rooms | null>(null);
   useLayoutEffect(() => {
@@ -4646,9 +4649,6 @@ function motionAllowedNow(): boolean {
     (typeof document === "undefined" || document.visibilityState !== "hidden")
   );
 }
-
-/** How long after its last painted frame a head's place still holds: the same commit, give or take. */
-const HEAD_STOOD_WITHIN_MS = 1000;
 
 /** How tall a box stands as laid out; null drawn outside a page (a test's renderer). */
 function heightOf(element: HTMLElement | null): number | null {

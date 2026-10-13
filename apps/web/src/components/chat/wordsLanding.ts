@@ -20,8 +20,22 @@ const byHead = new WeakMap<
   { readonly whole: boolean; readonly top: number; readonly at: number }
 >();
 
+/** By card head: where it stood as last painted while its run went on. */
+const headsStood = new WeakMap<HTMLElement, { readonly top: number; readonly at: number }>();
+
 /** How long after its box left the answer may still land on it: the same commit, give or take. */
 const LANDS_WITHIN_MS = 1000;
+
+/** A live card's head was painted at `top`, a screen y: what a landing holds it at. */
+export function headStood(head: HTMLElement, top: number): void {
+  headsStood.set(head, { top, at: performance.now() });
+}
+
+/** Where `head` stood as last painted, while that is fresh; null otherwise. */
+export function headStoodJustNow(head: HTMLElement): number | null {
+  const held = headsStood.get(head);
+  return held === undefined || performance.now() - held.at > LANDS_WITHIN_MS ? null : held.top;
+}
 
 /** The words' box leaves the slot, standing at its foot: where its last line was. */
 export function wordsStood(id: string, where: WordsStood): void {

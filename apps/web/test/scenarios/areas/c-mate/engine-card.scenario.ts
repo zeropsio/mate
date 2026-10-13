@@ -319,12 +319,43 @@ describe("C: an engine Mate's run card in a live conversation", () => {
         Effect.gen(function* () {
           const { s, chat, engine } = yield* longConversation;
           const run = engine.personRun("Check both pages");
+          engine.session();
           engine.note(run, "Checking the first page now.");
           yield* chat.then.text("Checking the first page now.");
           yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
           yield* trace(s.page, "Checking the first page now.");
           yield* chat.when.send("also tell me the page title");
+          yield* chat.when.press("Send now");
+          yield* chat.then.once("also tell me the page title");
+          expect(
+            engine.applied
+              .filter(({ op }) => op === "steer")
+              .map(({ payload }) => ({ runId: payload.runId, text: payload.text })),
+            "ASSERTION: the message was steered into the running run",
+          ).toEqual([{ runId: run, text: "also tell me the page title" }]);
           const frames = yield* readTrace(s.page, 1500);
+          const order = yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+              let message: number | null = null;
+              while (walker.nextNode()) {
+                const node = walker.currentNode;
+                if (!node.textContent?.includes("also tell me the page title")) continue;
+                if (node.parentElement?.closest('[data-message-role="user"]') === null) continue;
+                const box = node.parentElement?.getBoundingClientRect();
+                if (box && box.height > 0) {
+                  message = box.top;
+                  break;
+                }
+              }
+              const card = [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1);
+              return { message, card: card?.getBoundingClientRect().top ?? null };
+            }),
+          );
+          expect(
+            order.message !== null && order.card !== null && order.message < order.card,
+            "ASSERTION: the steered message stands above the running run's card",
+          ).toBe(true);
           expect(frames.length, "ASSERTION: the steer was sampled").toBeGreaterThan(20);
           expect(
             largestStep(frames, (frame) => frame.anchor),

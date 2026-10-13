@@ -56,7 +56,7 @@ import {
   type EndFollow,
 } from "./timelineEndFollow";
 import { landingHolds } from "./answerLanding.logic";
-import { takeWordsStood, wordsJustStood, type WordsStood } from "./wordsLanding";
+import { headStoodJustNow, takeWordsStood, wordsJustStood, type WordsStood } from "./wordsLanding";
 import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
@@ -1048,6 +1048,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       land({ element: head, edge: "top", at: top, glides: answerApart && !reducedMotion() }),
     [land],
   );
+  // A message the person had queued leaves its row under the running run's card — steered into
+  // the run, it lands above the card instead: the card's head stands where it was last painted,
+  // and the view glides on to the end once it settles. Never the list clamping at its shrunken
+  // end, which moved the conversation by both rows at once (Milo's third stress run: 105 px).
+  const queuedRowIdsRef = useRef<ReadonlySet<string>>(new Set());
+  useLayoutEffect(() => {
+    const queued = new Set(rows.flatMap((row) => (row.kind === "queued-message" ? [row.id] : [])));
+    const left = [...queuedRowIdsRef.current].some((id) => !queued.has(id));
+    queuedRowIdsRef.current = queued;
+    const live = rows.findLast((row) => row.kind === "record" && row.live);
+    if (!left || live === undefined || landingRef.current !== null) return;
+    const head = listRef.current
+      ?.getScrollableNode()
+      ?.querySelector<HTMLElement>(
+        `[data-timeline-row-id="${CSS.escape(live.id)}"] [data-run-chat] > [data-run-head]`,
+      );
+    const top = head ? headStoodJustNow(head) : null;
+    if (head && top !== null) land({ element: head, edge: "top", at: top });
+  }, [land, listRef, rows]);
   // Run 5 (C +0:15.29): the answer whose words the person read at the slot's foot landed from its
   // first line, and the page glided 1033 px after it. Cut by the slot's cap, its last line stands
   // where theirs was: held there while the card folds above it and the list places and measures
