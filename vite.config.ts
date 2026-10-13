@@ -47,6 +47,8 @@ export default defineConfig({
     ...(maxWorkers === undefined ? {} : { maxWorkers }),
     environment: "node",
     exclude: [
+      "**/apps/mobile/**",
+      "**/apps/desktop/**",
       "**/.repos/**",
       "**/node_modules/**",
       "**/dist/**",

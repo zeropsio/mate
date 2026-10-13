@@ -88,3 +88,42 @@ describe("selectSteps", () => {
     expect(selectSteps(steps, words).map((step) => step.name)).toEqual(names);
   });
 });
+
+it("Decision: local Check defers desktop and mobile steps during the hosted web test phase", () => {
+  const workflow = `
+jobs:
+  check:
+    steps:
+      - name: Check generated mobile themes
+        run: vp run --filter @t3tools/mobile generate -- --check
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+      - name: Mobile native analysis
+        run: node scripts/mobile-native-static-check.ts
+        working-directory: apps/mobile
+      - name: Web
+        run: vp check
+`;
+  expect(
+    checkSteps(workflow).map((step) => step.name),
+    "ASSERTION: local Check runs hosted web work without deferred client setup",
+  ).toEqual(["Web"]);
+});
+
+it.each(["build", "typecheck", "tc", "test"])(
+  "Decision: the default %s task excludes desktop and mobile during the test phase",
+  (task) => {
+    const manifest = JSON.parse(
+      NodeFS.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { scripts: Record<string, string> };
+    expect(manifest.scripts[task]).toContain("--filter '!@t3tools/mobile'");
+    expect(manifest.scripts[task]).toContain("--filter '!@t3tools/desktop'");
+  },
+);
+
+it("Decision: desktop and mobile source is kept during the hosted web test phase", () => {
+  for (const client of ["desktop", "mobile"]) {
+    const source = new URL(`../apps/${client}/src/`, import.meta.url);
+    expect(NodeFS.readdirSync(source).length).toBeGreaterThan(0);
+  }
+});

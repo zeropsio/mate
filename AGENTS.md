@@ -107,9 +107,9 @@ and dev servers.
 Before calling frontend work done, decide which apply:
 
 - **Entry points.** Chat behaviour is often also reachable from Settings, command palette, keybinding.
-- **Clients.** Web, desktop and mobile have separate navigation/presentation; shared logic:
-  `packages/client-runtime`. Shared changes need a desktop/mobile decision to avoid silent divergence;
-  user docs never point to upstream desktop/mobile apps.
+- **Clients.** During the test phase only the hosted web client is in use. Desktop and mobile source
+  stay in the repository but are not built, tested or decided on until a maintainer reopens them.
+  Shared logic lives in `packages/client-runtime`; user docs never point to upstream desktop/mobile apps.
 - **Providers.** Codex, Claude, Cursor, Grok and OpenCode each have an adapter. Provider-shaped features
   need a decision per adapter, even when the product catalog hides one.
 - **Contracts.** Anything crossing the wire is typed in `packages/contracts`; follow schema changes

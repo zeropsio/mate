@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off - a thin runner over CI's own job definition.
 /**
- * CI's Check job, run locally: the same steps in the same order, read from
- * `.github/workflows/ci.yml` at run time, so the local run cannot drift from CI. One line per step,
+ * CI's Check job, run locally with desktop/mobile work deferred during the test phase, read from
+ * `.github/workflows/ci.yml` at run time. One line per step,
  * the first error and a short tail on failure, then stop with its exit code.
  *
  *   node scripts/ci-local.ts              every step of the Check job
@@ -48,6 +48,12 @@ export function checkSteps(workflowYaml: string, jobId = "check"): ReadonlyArray
   if (!job?.steps) throw new Error(`no job "${jobId}" with steps in the workflow`);
   return job.steps.flatMap((step) => {
     if (step.run === undefined || step.if !== undefined || usesContext(step.run)) return [];
+    // The hosted web test phase needs neither native-client generation nor Electron setup.
+    if (
+      /@t3tools\/(?:mobile|desktop)\b/u.test(step.run) ||
+      /^apps\/(?:mobile|desktop)(?:\/|$)/u.test(step["working-directory"] ?? "")
+    )
+      return [];
     const env = Object.fromEntries(
       Object.entries({ ...job.env, ...step.env }).filter(
         ([, value]) => !usesContext(String(value)),

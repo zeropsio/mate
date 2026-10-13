@@ -55,6 +55,9 @@ export const scenarioAreas = [
   "lifecycle-mutations",
 ] as const;
 
+// Desktop and mobile source stays dormant until a maintainer reopens those clients.
+const activePath = (path: string) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path);
+
 const sourceFile = /\.[cm]?[jt]sx?$/u;
 const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
 
@@ -679,7 +682,7 @@ function workspacePackages(root: string): GatePackage[] {
         .map((entry) => `${parent}/${entry.name}`),
     ),
   ];
-  return directories.flatMap((directory) => {
+  return directories.filter(activePath).flatMap((directory) => {
     const manifest = NodePath.join(root, directory, "package.json");
     if (!NodeFS.existsSync(manifest)) return [];
     const pkg = JSON.parse(NodeFS.readFileSync(manifest, "utf8")) as {
@@ -866,7 +869,8 @@ function unitFiles(root: string): string[] {
     NodeFS.readdirSync(NodePath.join(root, directory), { withFileTypes: true }).flatMap((entry) => {
       const path = NodePath.posix.join(directory, entry.name);
       if (entry.isDirectory())
-        return ["node_modules", "dist", "dist-electron", ".plans", ".git"].includes(entry.name)
+        return !activePath(path) ||
+          ["node_modules", "dist", "dist-electron", ".plans", ".git"].includes(entry.name)
           ? []
           : collect(path);
       return /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path) ? [path] : [];
@@ -918,7 +922,7 @@ if (import.meta.main) {
   }
   validateSelectedFiles(root, namedScenarios);
   const comparison = comparisonBase(root, base);
-  const paths = changedPaths(root, comparison);
+  const paths = changedPaths(root, comparison).filter(activePath);
   if (paths.length === 0 && namedScenarios.length === 0) {
     console.log("No changed files; no gates to run.");
     process.exit(0);

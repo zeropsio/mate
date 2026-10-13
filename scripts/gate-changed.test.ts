@@ -403,6 +403,67 @@ afterAll(() => {
   if (repositoryFixture) NodeFS.rmSync(repositoryFixture, { recursive: true, force: true });
 });
 
+it.each(["mobile", "desktop"])(
+  "Decision: during the test phase a change only in apps/%s runs no local gate stage",
+  (client) => {
+    const files = ["src/scope.ts", "src/scope.test.ts", "test/scope.scenario.ts"].map((file) =>
+      NodePath.join(repositoryFixture, "apps", client, file),
+    );
+    try {
+      for (const file of files) {
+        NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
+        NodeFS.writeFileSync(file, "export const hostedWebScopeFixture = true;\n");
+      }
+      const result = NodeChildProcess.spawnSync(
+        process.execPath,
+        ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+        { cwd: repositoryFixture, encoding: "utf8" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        result.stdout.trim(),
+        "ASSERTION: deferred client source, units and scenarios schedule no gate stage",
+      ).toBe("No changed files; no gates to run.");
+    } finally {
+      for (const file of files) NodeFS.rmSync(file, { force: true });
+    }
+  },
+);
+
+it("Decision: shared web logic excludes desktop and mobile typechecks and unit readers during the test phase", () => {
+  const shared = "packages/client-runtime/src/delayedStatus.ts";
+  const file = NodePath.join(repositoryFixture, shared);
+  const original = NodeFS.readFileSync(file, "utf8");
+  const units = ["web", "mobile", "desktop"].map((client) =>
+    NodePath.join(repositoryFixture, "apps", client, "src/hostedWebScopeFixture.test.ts"),
+  );
+  try {
+    for (const unit of units) {
+      NodeFS.mkdirSync(NodePath.dirname(unit), { recursive: true });
+      NodeFS.writeFileSync(unit, 'import "@t3tools/client-runtime/delayed-status";\n');
+    }
+    fixtureGit("add", ...units);
+    fixtureGit("commit", "-qm", "web and deferred client unit readers");
+    NodeFS.writeFileSync(file, original + "\nexport const hostedWebScopeFixture = true;\n");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const stages = result.stdout.split("\n").filter((line) => /^(typecheck |related )/u.test(line));
+    expect(stages.join("\n")).toContain("typecheck @t3tools/web:");
+    expect(stages.join("\n")).toContain("src/hostedWebScopeFixture.test.ts");
+    expect(
+      stages.filter((line) => /@t3tools\/(?:mobile|desktop)/u.test(line)),
+      "ASSERTION: shared web edits run active consumers only",
+    ).toEqual([]);
+  } finally {
+    NodeFS.writeFileSync(file, original);
+    fixtureGit("reset", "--hard", "HEAD~1");
+  }
+});
+
 it.each([
   { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", stages: "A" },
   { path: "apps/server/src/engine/domain/decide.ts", stages: "E" },
@@ -464,13 +525,11 @@ it.each([
             "@t3tools/client-runtime",
             "@t3tools/hq",
             "@t3tools/web",
-            "@t3tools/desktop",
-            "@t3tools/mobile",
             "t3",
             "t3code-relay",
           ]
         : owner === "packages/client-runtime"
-          ? ["@t3tools/web", "@t3tools/desktop", "@t3tools/mobile", "t3", "t3code-relay"]
+          ? ["@t3tools/web", "t3", "t3code-relay"]
           : owner === "apps/web"
             ? ["t3"]
             : [];
