@@ -9,7 +9,6 @@ describe("Decision: restore pre-regression behaviour; no test weakened; titles k
     for (const state of composerStates)
       it.effect(`history does not paint through the composer footer (${state})`, () =>
         Effect.gen(function* () {
-          // Fake retained until the shared composerLayout owner supplies real plain/review history; notice needs legacy context.
           const { s } = yield* composerLayout(state);
           yield* Effect.promise(async () => {
             const list = await s.page.$(".timeline-legend-list");

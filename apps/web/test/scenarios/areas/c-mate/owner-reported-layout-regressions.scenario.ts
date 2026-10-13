@@ -1995,7 +1995,7 @@ describe("owner-reported layout regressions", () => {
           "a notice arriving at the conversation's end moves nothing above it, and the composer holds no band for it",
           () =>
             Effect.gen(function* () {
-              const { s, chat } = yield* composerLayout("plain");
+              const { s, chat } = yield* composerLayout("before-notice");
               yield* Effect.promise(() => ownerMenu(s.page));
               const read = () =>
                 s.page.evaluate(() => {
