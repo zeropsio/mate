@@ -1757,7 +1757,7 @@ describe("detailTrail: where a detail page sits", () => {
 });
 
 describe("environment route target dispatch", () => {
-  it.each(["unknown", "git"] as const)(
+  it.each(["unknown", "empty", "git"] as const)(
     "The environment route resolves its target before observing a Zerops project.",
     (kind) => {
       const registry = AtomRegistry.make();
@@ -1769,7 +1769,7 @@ describe("environment route target dispatch", () => {
             name: "Shop",
             projects: [],
             environments:
-              kind === "unknown"
+              kind !== "git"
                 ? []
                 : [
                     {
@@ -1789,7 +1789,9 @@ describe("environment route target dispatch", () => {
         ],
         ungrouped: [],
       } as CanonicalHqStructure;
-      const { store, seed } = mountHqNavigation(registry, "org", { structure });
+      const { store, seed } = mountHqNavigation(registry, "org", {
+        structure: kind === "unknown" ? undefined : structure,
+      });
       const requests: string[] = [];
       const data = {
         data: store.data,
