@@ -16,6 +16,9 @@ import {
 import {
   checkGuardExceptions,
   GUARD_SCOPE_PATHS,
+  loadRatchetBaseline,
+  ratchetAdditions,
+  RATCHET_RULES,
   type GuardLintOutput,
   type GuardLintRequest,
 } from "./check-guard-exceptions.ts";
@@ -714,6 +717,127 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
 
         assert.equal(error._tag, "GuardExceptionDriverError");
         assert.match(error.message, /malformed\.ts is missing a valid finding marker/u);
+      }),
+    ),
+  );
+});
+
+it.layer(NodeServices.layer)("environment identity ratchet", (it) => {
+  it.effect("The environment identity guard starts with no exceptions and cannot gain one.", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "environment-guard-baseline-" });
+        const directory = `${cwd}/oxlint-plugin-t3code/exceptions`;
+        const rule = "no-environment-as-project";
+        const git = (...args: string[]) =>
+          Effect.scoped(
+            Effect.gen(function* () {
+              const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+              const child = yield* spawner.spawn(ChildProcess.make("git", args, { cwd }));
+              const collect = <E>(stream: Stream.Stream<Uint8Array, E>) =>
+                stream.pipe(
+                  Stream.decodeText(),
+                  Stream.runCollect,
+                  Effect.map((parts) => parts.join("")),
+                );
+              const [stdout, stderr, exitCode] = yield* Effect.all(
+                [collect(child.stdout), collect(child.stderr), child.exitCode],
+                { concurrency: "unbounded" },
+              );
+              assert.equal(Number(exitCode), 0, stderr);
+              return stdout.trim();
+            }),
+          );
+        yield* fs.makeDirectory(directory, { recursive: true });
+        // Model the last consumer's main commit, before this rule or ledger exists.
+        for (const name of RATCHET_RULES.filter((name) => name !== rule))
+          yield* fs.writeFileString(`${directory}/${name}.json`, "[]");
+        yield* git("init", "-q");
+        yield* git("add", ".");
+        yield* git(
+          "-c",
+          "user.name=Guard Test",
+          "-c",
+          "user.email=guard@example.invalid",
+          "commit",
+          "-qm",
+          "pre-guard main",
+        );
+        const main = yield* git("rev-parse", "HEAD");
+        yield* fs.writeFileString(`${directory}/${rule}.json`, "[]");
+        const baseline = loadRatchetBaseline(cwd, main);
+        assert.deepStrictEqual(baseline.get(rule), []);
+        const hit = {
+          ...entry("apps/hq/src/deploys.ts"),
+          kind: "sql-project-identity-read",
+          fingerprint: "SELECT project_id FROM hq_deploy_job",
+          expires: "never",
+        };
+        assert.deepStrictEqual(ratchetAdditions([], baseline.get(rule)!), []);
+        assert.equal(ratchetAdditions([hit], baseline.get(rule)!).length, 1);
+        assert.equal(ratchetAdditions([hit, hit], [hit]).length, 1);
+        assert.equal(
+          ratchetAdditions(
+            [{ ...hit, fingerprint: "SELECT j.project_id FROM hq_deploy_job j" }],
+            [hit],
+          ).length,
+          1,
+        );
+        for (const scenario of [
+          { entries: [], previous: [], additions: 0 },
+          { entries: [hit], previous: [], additions: 1 },
+          { entries: [hit, hit], previous: [hit], additions: 1 },
+          {
+            entries: [{ ...hit, fingerprint: "SELECT j.project_id FROM hq_deploy_job j" }],
+            previous: [hit],
+            additions: 1,
+          },
+        ]) {
+          yield* fs.writeFileString(
+            `${directory}/${rule}.json`,
+            encodeUnknownJson(scenario.entries),
+          );
+          const result = yield* checkGuardExceptions({
+            cwd,
+            directory,
+            ruleNames: [rule],
+            baseline: new Map([[rule, scenario.previous]]),
+            runLint: () =>
+              Effect.succeed({
+                exitCode: scenario.entries.length === 0 ? 0 : 1,
+                stderr: "",
+                stdout: encodeUnknownJson({
+                  diagnostics: scenario.entries.map((finding) => ({
+                    ...diagnostic({ path: finding.path, fingerprint: finding.fingerprint }),
+                    code: `t3code(${rule})`,
+                    message: formatFindingMessage({
+                      ruleName: rule,
+                      kind: finding.kind,
+                      fingerprint: finding.fingerprint,
+                      ledgered: true,
+                      summary: "Environment identity fixture.",
+                    }),
+                  })),
+                }),
+              }),
+          });
+          assert.equal(result.problemCount, scenario.additions);
+          assert.equal(result.exitCode, scenario.additions === 0 ? 0 : 1);
+        }
+        assert.throws(() => loadRatchetBaseline(cwd, "missing-revision"));
+        // Other missing ledgers and unreadable objects remain errors, not empty baselines.
+        yield* git("rm", "-q", `${directory}/no-retired-mechanism.json`);
+        yield* git(
+          "-c",
+          "user.name=Guard Test",
+          "-c",
+          "user.email=guard@example.invalid",
+          "commit",
+          "-qm",
+          "missing existing ledger",
+        );
+        assert.throws(() => loadRatchetBaseline(cwd, "HEAD"), /no-retired-mechanism/);
       }),
     ),
   );

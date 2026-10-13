@@ -941,6 +941,52 @@ describe("deploys", () => {
       ),
     );
 
+    it.effect.each(["same environment", "another environment", "legacy key only"] as const)(
+      "recognizes a running commit only through its environment binding: %s",
+      (binding) =>
+        withDeploys(({ appId, world, tiers, commit, deploys, until, drained }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("live"));
+            yield* drained;
+            if (binding === "another environment") {
+              yield* sql`
+                INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
+                VALUES ('P_OTHER', ${appId}::uuid, 'stage', 'owner')`;
+              yield* sql`
+                INSERT INTO hq_environment (id, project_id, app_id, tier, name, sources, created_by)
+                VALUES ('P_OTHER', 'P_OTHER', ${appId}::uuid, 'stage', 'other-stage', '{main}', 'owner')`;
+            }
+            if (binding !== "same environment") {
+              // Keep Run again's canonical job; move only its version observation to a foreign
+              // environment, or a legacy-only row that old Core can write during expansion.
+              const observationEnvironment = binding === "another environment" ? "P_OTHER" : null;
+              const observationProject = binding === "another environment" ? "P_OTHER" : "P_STAGE";
+              yield* sql`
+                INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service,
+                  service_id, repo, sha, state, app_version_id, ended_at)
+                SELECT rollout_id, kind, ${observationEnvironment}, ${observationProject}, service,
+                  service_id, repo, sha, state, app_version_id, ended_at FROM hq_deploy_job`;
+              yield* sql`UPDATE hq_deploy_job SET app_version_id = NULL WHERE environment_id = 'P_STAGE'`;
+            }
+            assert.strictEqual(yield* runAgain(appId, "dev", sha), "ok");
+            yield* until(
+              (rows) =>
+                rows.length === (binding === "same environment" ? 2 : 3) && settled("live")(rows),
+            );
+            const alreadyRuns = binding === "same environment";
+            assert.strictEqual(
+              (yield* deploys).at(-1)?.reason,
+              alreadyRuns ? "web already runs it" : null,
+              `${binding}: only a matching environment observation proves the running commit`,
+            );
+            assert.lengthOf(versions(world), alreadyRuns ? 1 : 2);
+          }),
+        ),
+    );
+
     // Main B17: the running version is verified separately; a mismatch leaves the operation unresolved.
     it.effect("calls a deploy live only once the service runs that commit", () =>
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>

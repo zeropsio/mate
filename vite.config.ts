@@ -157,6 +157,7 @@ export default defineConfig({
       "typescript/restrict-template-expressions": "off",
       "typescript/unbound-method": "off",
       "eslint/no-restricted-imports": ["error", { paths: RESTRICTED_IMPORT_PATHS }],
+      "t3code/no-environment-as-project": "error",
       "t3code/no-failure-to-empty": "error",
       "t3code/no-global-process-runtime": "error",
       "t3code/no-infinite-motion": "error",

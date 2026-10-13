@@ -995,7 +995,7 @@ export const deploysLayer = (
           : Effect.map(
               sql<{ readonly repo: string; readonly sha: string }>`
                 SELECT repo, sha FROM hq_deploy_job
-                WHERE project_id = ${job.project_id} AND service_id = ${service.id}
+                WHERE environment_id = ${job.environment_id} AND service_id = ${service.id}
                   AND app_version_id = ${service.activeVersionId}`,
               (rows) => rows.some((row) => row.repo === job.repo && row.sha === job.sha),
             );

@@ -162,6 +162,7 @@ const spawnGuardLint = Effect.fn("spawnGuardLint")(function* (request: GuardLint
 
 /** These ledgers remain files even at zero; rule discovery must never lose a guard. */
 export const RATCHET_RULES = [
+  "no-environment-as-project",
   "no-legacy-notice-policy",
   "no-remote-io-outside-data-layer",
   "no-retired-mechanism",
@@ -269,6 +270,12 @@ export const loadRatchetBaseline = (
       RATCHET_RULES.map((ruleName) => {
         // The admission guard was bootstrapped with this slice; the frozen AST findings are its first baseline.
         const ledgerPath = `oxlint-plugin-t3code/exceptions/${ruleName}.json`;
+        if (ruleName === "no-environment-as-project") {
+          // Only an absent path in a valid ancestor is the guard's first empty baseline.
+          // ls-tree errors stay fatal; cat-file's generic failure must not mask a Git error.
+          const existing = git(["ls-tree", "--name-only", revision, "--", ledgerPath]);
+          if (existing === "") return [ruleName, []];
+        }
         if (
           ruleName === "no-legacy-notice-policy" &&
           NodeChildProcess.spawnSync("git", ["cat-file", "-e", `${revision}:${ledgerPath}`], {
