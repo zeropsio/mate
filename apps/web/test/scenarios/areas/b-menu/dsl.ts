@@ -23,6 +23,75 @@ import {
   releaseDetails,
 } from "./fake.ts";
 
+/** Read the application's actual environment buttons, in declaration order. */
+export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
+  return Effect.promise(async () => {
+    await page
+      .waitForFunction(
+        (expected) => {
+          const section = [...document.querySelectorAll("main section")].find(
+            (section) => section.querySelector("h2")?.textContent === "Environments",
+          );
+          const rows = [...(section?.querySelectorAll("ul > li > button") ?? [])].flatMap((row) => {
+            const name = row.querySelector("span")?.textContent?.trim();
+            return name === undefined ? [] : [name];
+          });
+          return JSON.stringify(rows) === JSON.stringify(expected);
+        },
+        { timeout: 15_000, polling: "raf" },
+        expected,
+      )
+      .catch(async (cause) => {
+        const actual = await page.evaluate(() => {
+          const section = [...document.querySelectorAll("main section")].find(
+            (section) => section.querySelector("h2")?.textContent === "Environments",
+          );
+          return [...(section?.querySelectorAll("ul > li > button") ?? [])].flatMap((row) => {
+            const name = row.querySelector("span")?.textContent?.trim();
+            return name === undefined ? [] : [name];
+          });
+        });
+        expect(actual, "The application retains its exact environment rows.").toEqual(expected);
+        throw cause;
+      });
+    expect(
+      await page.evaluate(() => {
+        const section = [...document.querySelectorAll("main section")].find(
+          (section) => section.querySelector("h2")?.textContent === "Environments",
+        );
+        return [...(section?.querySelectorAll("ul > li > button") ?? [])].flatMap((row) => {
+          const name = row.querySelector("span")?.textContent?.trim();
+          return name === undefined ? [] : [name];
+        });
+      }),
+    ).toEqual(expected);
+  });
+}
+
+export function openEnvironment(page: Page, appId: string, name: string, id: string) {
+  return Effect.promise(async () => {
+    const button = await page.waitForFunction(
+      (name) => {
+        const section = [...document.querySelectorAll("main section")].find(
+          (section) => section.querySelector("h2")?.textContent === "Environments",
+        );
+        return [...(section?.querySelectorAll("ul > li > button") ?? [])].find(
+          (row) => row.querySelector("span")?.textContent?.trim() === name,
+        );
+      },
+      { timeout: 15_000, polling: "raf" },
+      name,
+    );
+    await (button.asElement() as ElementHandle<HTMLElement>).click();
+    await page.waitForFunction(
+      (path) => location.pathname === path,
+      { timeout: 15_000, polling: "raf" },
+      `/group/${appId}/${id}`,
+    );
+    expect(new URL(page.url()).pathname).toBe(`/group/${appId}/${id}`);
+  });
+}
+
 export const menuScenario = Effect.fn("menu.scenario")(function* (
   extensions: ScenarioExtension[] = [],
   options: ScenarioOptions = {},
