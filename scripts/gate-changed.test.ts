@@ -404,7 +404,7 @@ afterAll(() => {
 });
 
 it.each(["mobile", "desktop"])(
-  "Decision: during the test phase a change only in apps/%s runs no local gate stage",
+  "Decision: during the test phase a change only in apps/%s runs typechecks without local tests or scenarios",
   (client) => {
     const files = ["src/scope.ts", "src/scope.test.ts", "test/scope.scenario.ts"].map((file) =>
       NodePath.join(repositoryFixture, "apps", client, file),
@@ -420,17 +420,22 @@ it.each(["mobile", "desktop"])(
         { cwd: repositoryFixture, encoding: "utf8" },
       );
       expect(result.status, result.stderr).toBe(0);
+      const stages = result.stdout
+        .split("\n")
+        .filter((line) =>
+          /^(?:typecheck |related |edited scenario files:|state-only smoke:)/u.test(line),
+        );
       expect(
-        result.stdout.trim(),
-        "ASSERTION: deferred client source, units and scenarios schedule no gate stage",
-      ).toBe("No changed files; no gates to run.");
+        stages,
+        "ASSERTION: native-only edits keep compiling without local tests or scenarios",
+      ).toEqual([`typecheck @t3tools/${client}: vp exec tsc --noEmit --incremental`]);
     } finally {
       for (const file of files) NodeFS.rmSync(file, { force: true });
     }
   },
 );
 
-it("Decision: shared web logic excludes desktop and mobile typechecks and unit readers during the test phase", () => {
+it("Decision: shared web logic typechecks desktop and mobile without running their local unit readers during the test phase", () => {
   const shared = "packages/client-runtime/src/delayedStatus.ts";
   const file = NodePath.join(repositoryFixture, shared);
   const original = NodeFS.readFileSync(file, "utf8");
@@ -454,9 +459,14 @@ it("Decision: shared web logic excludes desktop and mobile typechecks and unit r
     const stages = result.stdout.split("\n").filter((line) => /^(typecheck |related )/u.test(line));
     expect(stages.join("\n")).toContain("typecheck @t3tools/web:");
     expect(stages.join("\n")).toContain("src/hostedWebScopeFixture.test.ts");
+    for (const client of ["mobile", "desktop"]) {
+      expect(stages, "ASSERTION: shared web edits keep native consumers compiling").toContain(
+        `typecheck @t3tools/${client}: vp exec tsc --noEmit --incremental`,
+      );
+    }
     expect(
-      stages.filter((line) => /@t3tools\/(?:mobile|desktop)/u.test(line)),
-      "ASSERTION: shared web edits run active consumers only",
+      stages.filter((line) => /^related @t3tools\/(?:mobile|desktop)/u.test(line)),
+      "ASSERTION: shared web edits exclude local native unit readers",
     ).toEqual([]);
   } finally {
     NodeFS.writeFileSync(file, original);
@@ -525,11 +535,13 @@ it.each([
             "@t3tools/client-runtime",
             "@t3tools/hq",
             "@t3tools/web",
+            "@t3tools/desktop",
+            "@t3tools/mobile",
             "t3",
             "t3code-relay",
           ]
         : owner === "packages/client-runtime"
-          ? ["@t3tools/web", "t3", "t3code-relay"]
+          ? ["@t3tools/web", "@t3tools/desktop", "@t3tools/mobile", "t3", "t3code-relay"]
           : owner === "apps/web"
             ? ["t3"]
             : [];

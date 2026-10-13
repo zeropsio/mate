@@ -1,7 +1,10 @@
 // @effect-diagnostics nodeBuiltinImport:off - reads the repository's own workflow file.
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 
 import { describe, expect, it } from "vite-plus/test";
+
+import { parse } from "yaml";
 
 import { checkSteps, selectSteps } from "./ci-local.ts";
 
@@ -113,7 +116,7 @@ jobs:
   ).toEqual(["Web"]);
 });
 
-it.each(["build", "typecheck", "tc", "test"])(
+it.each(["test"])(
   "Decision: the default %s task excludes desktop and mobile during the test phase",
   (task) => {
     const manifest = JSON.parse(
@@ -129,4 +132,68 @@ it("Decision: desktop and mobile source is kept during the hosted web test phase
     const source = new URL(`../apps/${client}/src/`, import.meta.url);
     expect(NodeFS.readdirSync(source).length).toBeGreaterThan(0);
   }
+});
+
+it.each(["build", "typecheck", "tc"])(
+  "Decision: the default %s task keeps desktop and mobile compiling during the test phase",
+  (task) => {
+    const manifest = JSON.parse(
+      NodeFS.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { scripts: Record<string, string> };
+    expect(
+      manifest.scripts[task],
+      "ASSERTION: default typechecking includes native clients",
+    ).not.toContain("!@t3tools/mobile");
+    expect(manifest.scripts[task]).not.toContain("!@t3tools/desktop");
+  },
+);
+
+it.each(["true", "false"])(
+  "Decision: native tests remain discoverable on GitHub Actions and excluded locally (GITHUB_ACTIONS=%s)",
+  (githubActions) => {
+    const result = NodeChildProcess.spawnSync(
+      "vp",
+      ["test", "list", "apps/mobile", "apps/desktop", "--filesOnly", "--passWithNoTests"],
+      {
+        cwd: new URL("../", import.meta.url),
+        encoding: "utf8",
+        env: { ...process.env, GITHUB_ACTIONS: githubActions },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const files = result.stdout
+      .split("\n")
+      .filter((line) => /^apps\/(?:mobile|desktop)\//u.test(line));
+    if (githubActions === "true") {
+      expect(files, "ASSERTION: CI discovers the existing mobile unit consumer").toContain(
+        "apps/mobile/src/state/workspaceModel.test.ts",
+      );
+      expect(files).toContain("apps/desktop/scripts/smoke-test.test.mjs");
+    } else expect(files).toEqual([]);
+  },
+);
+
+it("Decision: CI keeps native compilation, mobile units, desktop smoke and mobile static analysis during the hosted web test phase", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
+  ) as {
+    jobs: Record<string, { steps?: { run?: string }[] }>;
+  };
+  const runs = (job: string) =>
+    workflow.jobs[job]?.steps?.flatMap((step) => (step.run === undefined ? [] : [step.run])) ?? [];
+  expect(runs("check")).toContain("vpr typecheck");
+  expect(runs("test_mobile"), "ASSERTION: CI still runs the native mobile unit task").toContain(
+    "vp run --filter @t3tools/mobile test",
+  );
+  expect(runs("desktop_smoke").some((run) => run.includes("vp run build:desktop"))).toBe(true);
+  expect(
+    runs("desktop_smoke").some((run) =>
+      run.includes("vp run --filter @t3tools/desktop smoke-test"),
+    ),
+  ).toBe(true);
+  expect(runs("mobile_native_static_analysis")).toContain("vp run lint:mobile");
+  const packageTests = runs("test_packages").find((run) => run.includes("vp run --parallel"));
+  expect(packageTests).toBeDefined();
+  expect(packageTests).not.toContain("!@t3tools/desktop");
+  expect(runs("test_packages")).toContain("vp run --filter @t3tools/desktop ensure:electron");
 });

@@ -55,7 +55,7 @@ export const scenarioAreas = [
   "lifecycle-mutations",
 ] as const;
 
-// Desktop and mobile source stays dormant until a maintainer reopens those clients.
+// Native clients keep compiling; their local tests and scenarios stay dormant.
 const activePath = (path: string) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path);
 
 const sourceFile = /\.[cm]?[jt]sx?$/u;
@@ -682,7 +682,7 @@ function workspacePackages(root: string): GatePackage[] {
         .map((entry) => `${parent}/${entry.name}`),
     ),
   ];
-  return directories.filter(activePath).flatMap((directory) => {
+  return directories.flatMap((directory) => {
     const manifest = NodePath.join(root, directory, "package.json");
     if (!NodeFS.existsSync(manifest)) return [];
     const pkg = JSON.parse(NodeFS.readFileSync(manifest, "utf8")) as {
@@ -727,7 +727,9 @@ function typecheckPackages(paths: ReadonlyArray<string>, packages: ReadonlyArray
 
 // Each application and service owns the configuration used for its selected test files.
 export function relatedTestPackages(packages: ReadonlyArray<GatePackage>) {
-  return packages.filter((pkg) => /^(?:apps|infra)\//u.test(pkg.directory));
+  return packages.filter(
+    (pkg) => activePath(pkg.directory) && /^(?:apps|infra)\//u.test(pkg.directory),
+  );
 }
 
 interface GateStage {
@@ -922,13 +924,15 @@ if (import.meta.main) {
   }
   validateSelectedFiles(root, namedScenarios);
   const comparison = comparisonBase(root, base);
-  const paths = changedPaths(root, comparison).filter(activePath);
-  if (paths.length === 0 && namedScenarios.length === 0) {
+  const allPaths = changedPaths(root, comparison);
+  const paths = allPaths.filter(activePath);
+  if (allPaths.length === 0 && namedScenarios.length === 0) {
     console.log("No changed files; no gates to run.");
     process.exit(0);
   }
   const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
-  const meaningful = meaningfulChanges(root, comparison, paths);
+  const changes = meaningfulChanges(root, comparison, allPaths);
+  const meaningful = { ...changes, paths: changes.paths.filter(activePath) };
   // L3 owns import-graph scenario coverage; L2 runs only declared files and a fixed smoke.
   const inventory = [
     ...new Set([
@@ -954,7 +958,7 @@ if (import.meta.main) {
       );
   }
   const workspace = workspacePackages(root);
-  const packages = typecheckPackages(meaningful.paths, workspace);
+  const packages = typecheckPackages(changes.paths, workspace);
   const steps: GateStage[] = [];
   steps.push({
     name: "guard ledgers",
