@@ -182,8 +182,8 @@ export interface ZeropsProject {
    */
   readonly publicIpV4Shared?: boolean;
   readonly maxCreditLimit?: number | null;
-  /** The project's own IPv4 (the paid add-on); absent while it has none. */
-  readonly publicIpV4?: string;
+  /** The project's own IPv4 (the paid add-on); `null` once it has none, as Zerops says it. */
+  readonly publicIpV4?: string | null;
   /** The project's own IPv6: every project has one (read 2026-10-14). */
   readonly publicIpV6?: string;
 }

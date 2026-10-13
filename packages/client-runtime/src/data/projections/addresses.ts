@@ -182,7 +182,7 @@ export function placeIps(project: ZeropsProject): PlaceIps {
   const sharedV4 = region === undefined ? undefined : SHARED_IPV4[region];
   return {
     ...(project.publicIpV6 === undefined ? {} : { v6: project.publicIpV6 }),
-    ...(project.publicIpV4 === undefined ? {} : { ownV4: project.publicIpV4 }),
+    ...(project.publicIpV4 == null ? {} : { ownV4: project.publicIpV4 }),
     ...(sharedV4 === undefined ? {} : { sharedV4 }),
     ...(project.publicZone === undefined ? {} : { zone: project.publicZone }),
     zoneHasSharedV4: project.publicIpV4Shared === true,
