@@ -43,6 +43,7 @@ import type { HqPlacement } from "./hq/placement.ts";
 import {
   buildCreateProjectBody,
   buildDevelopmentContainerImportBody,
+  buildZcpDeploymentYaml,
   buildZcpServiceImportYaml,
   generateVscodePassword,
   nextZcpServiceName,
@@ -2869,6 +2870,67 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
+  }
+
+  /** Redeploy a Mate whose container has no active app version, retaining its saved run config. */
+  async deployMate(
+    serviceId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{ readonly processId: string }> {
+    const generation = this.#generation;
+    const service = await this.#request<ZeropsService>(`/service-stack/${serviceId}`, {
+      signal: signal ?? null,
+    });
+    if (
+      !isZcpService(service) ||
+      service.status !== "READY_TO_DEPLOY" ||
+      service.activeAppVersion !== null
+    )
+      throw new ZeropsApiError(
+        "This Mate no longer needs a deployment. Refresh its status.",
+        "invalid-input",
+      );
+    const env = await this.#serviceEnv(serviceId, signal);
+    const saved = env.find((entry) => entry.key === "ZEROPS_YAML")?.content;
+    // Reuse existing secrets, including older Mates without a dedicated integration key.
+    // Publishing a code-server container still requires the password creation requires.
+    const configured = env.some(
+      (entry) => entry.key === "VSCODE_PASSWORD" && entry.content.length > 0,
+    );
+    if (!saved || !configured)
+      throw new ZeropsApiError(
+        "The Mate's saved deployment settings are unavailable.",
+        "invalid-input",
+      );
+    let zeropsYaml: string;
+    try {
+      zeropsYaml = buildZcpDeploymentYaml(service.name, saved);
+    } catch {
+      throw new ZeropsApiError(
+        "The Mate's saved run configuration is unavailable.",
+        "invalid-input",
+      );
+    }
+    this.#assertGeneration(generation);
+    const answer = await this.#request<{ readonly process?: { readonly id?: string } }>(
+      `/service-stack/${serviceId}/trigger-pipeline`,
+      {
+        method: "PUT",
+        signal: signal ?? null,
+        body: JSON.stringify({ zeropsYaml, enableSubdomainAccess: true }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    if (!answer.process?.id)
+      throw new ZeropsApiError(
+        "Zerops accepted the deployment but did not return its process, so it cannot be followed.",
+        "uncertain",
+      );
+    return { processId: answer.process.id };
   }
 
   /** `GET /service-stack/{id}/env` — the service's own env records. */

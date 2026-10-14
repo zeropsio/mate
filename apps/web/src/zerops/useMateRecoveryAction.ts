@@ -22,7 +22,7 @@ export function useMateRecoveryAction(projectId: string | null) {
     role === "READ_ONLY" ||
     role === "NO_ACCESS"
       ? undefined
-      : async (action: "start" | "restart") => {
+      : async (action: "start" | "restart" | "redeploy") => {
           if (candidate.service === undefined) return;
           await command(
             {

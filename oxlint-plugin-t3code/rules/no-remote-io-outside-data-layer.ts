@@ -143,6 +143,7 @@ export const ZEROPS_CLIENT_VERBS = [
   "deleteIntegrationTokenDelegation",
   "deleteProject",
   "deleteThrowaway",
+  "deployMate",
   "enableSubdomainAccess",
   "exchangeWebSocketToken",
   "fetchProject",

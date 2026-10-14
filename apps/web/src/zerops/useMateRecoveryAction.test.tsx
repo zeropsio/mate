@@ -7,6 +7,7 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import { AccountDataContext, type AccountData } from "./accountData";
 import { AccountOperationsContext, type AccountOperations } from "./accountOperations";
 import { useMateRecoveryAction } from "./useMateRecoveryAction";
+import { MateDeployConfirmation } from "./MateDeployConfirmation";
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
 import { useRestartMate } from "./mateRestart";
 import { MateRestartError } from "./mateRestartRefusal";
@@ -68,9 +69,10 @@ const branches = [
   { action: "restart", stopped: false, kind: "mate-restart" },
   { action: "start", stopped: false, kind: "start-service" },
   { action: "start", stopped: true, kind: "start-project" },
+  { action: "redeploy", stopped: false, kind: "mate-deploy" },
 ] as const;
 
-function fixture(mode: "lost" | "accepted" | "refused" = "lost", form = false) {
+function fixture(mode: "lost" | "accepted" | "refused" = "lost", form: boolean | "deploy" = false) {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
@@ -154,7 +156,29 @@ function fixture(mode: "lost" | "accepted" | "refused" = "lost", form = false) {
     <RegistryContext.Provider value={registry}>
       <AccountDataContext.Provider value={{ data: store.data, orgId: "org" } as AccountData}>
         <AccountOperationsContext.Provider value={operations}>
-          {origin ? form ? <Form /> : <Origin /> : null}
+          {origin ? (
+            form === "deploy" ? (
+              <MateDeployConfirmation
+                candidate={{
+                  ...candidate,
+                  group: "provisioning",
+                  presence: "known",
+                  project: { ...candidate.project, tagList: [] },
+                  service: {
+                    ...candidate.service,
+                    name: "zcp",
+                    status: "READY_TO_DEPLOY",
+                    activeAppVersion: null,
+                  },
+                }}
+                onClose={() => {}}
+              />
+            ) : form ? (
+              <Form />
+            ) : (
+              <Origin />
+            )
+          ) : null}
           <RecoveryOutcomeStatus toasts={sink} />
         </AccountOperationsContext.Provider>
       </AccountDataContext.Provider>
@@ -169,7 +193,7 @@ function fixture(mode: "lost" | "accepted" | "refused" = "lost", form = false) {
     store.close();
     registry.dispose();
   };
-  const press = async (action: "start" | "restart") =>
+  const press = async (action: "start" | "restart" | "redeploy") =>
     act(async () => {
       await recovery!.act!(action);
     });
@@ -403,4 +427,44 @@ it("recovery keeps its owner result in the shell after opening another Mate", as
     vi.unstubAllGlobals();
     vi.useRealTimers();
   }
+});
+
+it("the Redeploy dialog follows its deployment receipt and retains the result after closing", async () => {
+  const f = fixture("accepted", "deploy");
+  f.show(true);
+  const button = () =>
+    mounted!.root.findAllByType("button").find((node) => node.children.includes("Redeploy"))!;
+  expect(button()).toBeDefined();
+  await act(async () => {
+    button().props.onClick();
+  });
+  expect(f.calls).toEqual([`send:mate-deploy:${f.requestIds[0]}`]);
+  expect(JSON.stringify(mounted!.toJSON())).toContain(
+    "Zerops accepted the redeploy. Its outcome is not confirmed yet.",
+  );
+  expect(
+    mounted!.root.findAllByType("button").find((node) => node.children.includes("Redeploying…"))
+      ?.props.disabled,
+  ).toBe(true);
+  f.show(false);
+  expect(f.shell()).toContain("Zerops accepted the redeploy.");
+  await act(async () => {
+    f.receipt(f.requestIds[0]!, { kind: "succeeded", evidence: "Deployment finished." });
+  });
+  expect(f.shell()).toContain("Redeploy completed.");
+  f.show(true);
+  expect(JSON.stringify(mounted!.toJSON())).toContain("Deployment finished.");
+  expect(button()).toBeUndefined();
+});
+
+it("a redeployment does not reuse an earlier restart request for the same service", async () => {
+  const f = fixture("accepted");
+  f.show(true);
+  await f.press("restart");
+  await f.press("redeploy");
+  expect(f.calls).toEqual([
+    `send:mate-restart:${f.requestIds[0]}`,
+    `send:mate-deploy:${f.requestIds[1]}`,
+  ]);
+  expect(f.requestIds[1]).not.toBe(f.requestIds[0]);
 });

@@ -592,6 +592,17 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const finishSetup =
     finishEntry === undefined || "separator" in finishEntry ? undefined : finishEntry.onSelect;
 
+  const redeployEntry =
+    coming?.kind !== "failed" || coming.verb !== "redeploy" || candidate === undefined
+      ? undefined
+      : mateActions
+          .actionsFor(candidate, readZeropsMembership(candidate.project))
+          .find((entry) => entry.id === "redeploy");
+  const redeploy =
+    redeployEntry === undefined || "separator" in redeployEntry
+      ? undefined
+      : redeployEntry.onSelect;
+
   // *Finish setup* running, or through: its steps as the Add dialog draws them, and their end — on
   // a Mate this tab made, its own step under the project's row follows that press instead
   // (`creationSubsteps`), and nothing above it moves.
@@ -741,6 +752,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     mate={mate}
                     nowMs={progress?.nowMs}
                     onRemove={remove}
+                    onRedeploy={redeploy}
                     {...(finishSetup === undefined ? {} : { onFinishSetup: finishSetup })}
                     finishing={mateActions.busyKey === candidate?.key}
                     {...(pressRetry === null
@@ -913,6 +925,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           </ConversationOpeningStage>
         )}
       </MateComingFrame>
+      {mateActions.dialogs}
     </MateFaceAsMark.Provider>
   );
 }
@@ -1089,6 +1102,7 @@ export function ComingBelow({
   finishing = false,
   onRemove,
   onFinishSetup,
+  onRedeploy,
   onTryAgain,
   onSetupAgain,
   ends,
@@ -1118,6 +1132,7 @@ export function ComingBelow({
   /** *Finish setup*, for a Mate whose press stopped before its container. */
   readonly onFinishSetup?: () => void;
   readonly onTryAgain?: (() => void) | undefined;
+  readonly onRedeploy?: (() => void) | undefined;
   /** Reads its setup again, where the last read could not be it (`refreshMateSetup`). */
   readonly onSetupAgain?: () => void;
   /**
@@ -1160,7 +1175,7 @@ export function ComingBelow({
   if ([...remembered].some(([id, names]) => seen.get(id) !== names)) setSeen(remembered);
   const steps = arrived === null ? null : <ZeropsArrivalSteps steps={arrived} you={you} />;
   const verb =
-    coming?.kind === "failed" && setupFailureDetails !== undefined ? (
+    coming?.kind === "failed" && coming.verb !== "redeploy" && setupFailureDetails !== undefined ? (
       <>
         {onTryAgain === undefined ? null : (
           <Button
@@ -1184,7 +1199,11 @@ export function ComingBelow({
         )}
       </>
     ) : coming?.kind === "failed" ? (
-      coming.verb === "remove" && onRemove !== undefined ? (
+      coming.verb === "redeploy" && onRedeploy !== undefined ? (
+        <Button variant="pill" size="compact" onClick={onRedeploy}>
+          Redeploy
+        </Button>
+      ) : coming.verb === "remove" && onRemove !== undefined ? (
         <Button variant="pill" size="compact" disabled={removing} onClick={onRemove}>
           Remove
         </Button>

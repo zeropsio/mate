@@ -988,6 +988,7 @@ function ZeropsProjectsContent({
           waiting || presses.some((press) => press.projectId === candidate.project.id),
         ),
       candidate,
+      coming: comingOf(candidate),
       health: candidateHealth.get(candidate.key),
       // A first build past its grace is still on its way, taking longer.
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),

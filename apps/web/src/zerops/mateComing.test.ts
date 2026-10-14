@@ -396,6 +396,86 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
   });
 });
 
+describe("a Mate whose service has no deployment", () => {
+  const project: ZeropsProject = {
+    id: "project-no-deployment",
+    name: "Nic",
+    status: "ACTIVE",
+    clientId: "org-1",
+  };
+  it.each<{
+    readonly sentence: string;
+    readonly activeAppVersion: ZeropsService["activeAppVersion"];
+    readonly status?: string;
+    readonly extra?: Partial<MateComingInput>;
+    readonly expected: ReturnType<typeof mateComing>;
+  }>([
+    {
+      sentence: "A Mate with no deployment says nothing is deployed and offers Redeploy",
+      activeAppVersion: null,
+      expected: { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" },
+    },
+    {
+      sentence: "A Mate with an unread deployment does not claim nothing is deployed",
+      activeAppVersion: undefined,
+      expected: { kind: "coming", line: "Taking longer than usual." },
+    },
+    {
+      sentence: "A Mate with a deployed version does not claim nothing is deployed",
+      activeAppVersion: { id: "deployed-version", status: "ACTIVE" },
+      expected: { kind: "coming", line: "Taking longer than usual." },
+    },
+    {
+      sentence: "A Mate whose first deployment is running stays on its way",
+      activeAppVersion: null,
+      extra: { firstBuild: { kind: "running" } },
+      expected: { kind: "coming", line: "Taking longer than usual." },
+    },
+    {
+      sentence: "A Mate being set up in this browser stays on its way before its first deployment",
+      activeAppVersion: null,
+      extra: { press: { container: true } },
+      expected: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
+      sentence:
+        "A Mate being set up in another browser stays on its way before its first deployment",
+      activeAppVersion: null,
+      extra: { pressElsewhere: "pressing" },
+      expected: { kind: "coming", line: "Taking longer than usual." },
+    },
+    {
+      sentence:
+        "A stopped Mate without an active version does not offer a missing-deployment recovery",
+      activeAppVersion: null,
+      status: "STOPPED",
+      expected: undefined,
+    },
+    {
+      sentence: "A failed first deployment offers Redeploy when no version was deployed",
+      activeAppVersion: null,
+      extra: { firstBuild: { kind: "failed", why: "Build failed" } },
+      expected: { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" },
+    },
+  ])("$sentence", ({ activeAppVersion, status, extra, expected }) => {
+    const candidate = deriveZeropsCandidates(
+      project,
+      [
+        {
+          id: "service-no-deployment",
+          name: "zcp",
+          status: status ?? "READY_TO_DEPLOY",
+          created: new Date(NOW - 30 * 60_000).toISOString(),
+          serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+          ...(activeAppVersion === undefined ? {} : { activeAppVersion }),
+        },
+      ],
+      new Map(),
+    )[0];
+    expect(mateComing({ press: undefined, candidate, nowMs: NOW, ...extra })).toEqual(expected);
+  });
+});
+
 describe("mateComingHeadlineClauses — its own view's words", () => {
   const QUINN = { name: "Quinn", project: "Acme Docs" };
   it.each<{
@@ -1088,6 +1168,59 @@ describe("firstBuildState — a Mate's first build, as its project's processes s
   ])("$case", ({ processes, expected }) => {
     expect(firstBuildState(processes, "zcp")).toEqual(expected);
   });
+});
+
+describe("a run-only Mate's first deployment", () => {
+  it.each([
+    {
+      status: "PENDING",
+      expected: { kind: "running" },
+      coming: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
+      status: "RUNNING",
+      expected: { kind: "running" },
+      coming: { kind: "coming", line: "Coming up. A few minutes." },
+    },
+    {
+      status: "FAILED",
+      expected: { kind: "failed", why: "Deployment failed" },
+      coming: { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" },
+    },
+  ])(
+    "A $status deployment owns the first-deployment verdict and recovery",
+    ({ status, expected, coming }) => {
+      const firstBuild = firstBuildState(
+        [
+          {
+            actionName: "stack.build",
+            serviceStackIds: ["zcp"],
+            status: "FAILED",
+            created: "2026-10-14T10:00:00Z",
+          },
+          {
+            actionName: "stack.deploy",
+            serviceStackIds: ["zcp"],
+            status,
+            created: "2026-10-14T10:05:00Z",
+            failReason: "Deployment failed",
+          },
+        ],
+        "zcp",
+      );
+      expect(firstBuild).toEqual(expected);
+      expect(
+        mateComing({
+          press: undefined,
+          candidate: {
+            group: "provisioning",
+            service: { id: "zcp", status: "READY_TO_DEPLOY", activeAppVersion: null },
+          },
+          firstBuild,
+        }),
+      ).toEqual(coming);
+    },
+  );
 });
 
 // A Mate this tab made whose project went before it ever connected: a whole listing read well

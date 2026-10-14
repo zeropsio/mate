@@ -31,6 +31,7 @@ import { importServices } from "./importServices.ts";
 import { renameApp, deleteApp } from "./hqAppWrites.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
+import { mateDeploy } from "./mateDeploy.ts";
 import { mateRestart } from "./mateRestart.ts";
 import { moveProject } from "./moveProject.ts";
 import { MATE_DELETION_KINDS } from "./mateDeletion.ts";
@@ -67,6 +68,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   mateAction,
   throwawaySweep,
   mateRestart,
+  mateDeploy,
   mateUpdate,
   deleteProject,
   enableSubdomainAccess,
