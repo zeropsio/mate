@@ -63,7 +63,10 @@ describe("a project's People section", () => {
     ).toEqual({
       heading: "People",
       rows: [
-        { text: ["Petr NovákYou", "Production: read · Stage: full · 1 Mate"], pending: false },
+        {
+          text: ["Petr NovákYou", "Works on stage · only looks at production · 1 Mate"],
+          pending: false,
+        },
         { text: ["Anna Berg", "Owner · everything"], pending: false },
         {
           text: ["iva@example.com", "Invited · not joined yet · Works on every project"],

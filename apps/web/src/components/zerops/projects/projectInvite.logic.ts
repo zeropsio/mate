@@ -77,7 +77,7 @@ export const INVITE_LEVELS: ReadonlyArray<{
   {
     level: "work",
     label: "Can work on it",
-    hint: "Full access wherever it runs. Sees its Mates and can add their own.",
+    hint: "Deploys and works on it wherever it runs. Sees its Mates and can add their own.",
   },
   { level: "look", label: "Can only look", hint: "Sees everything, changes nothing." },
 ];

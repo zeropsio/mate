@@ -148,10 +148,11 @@ export const appProjectsOf = (projects: ProjectPeopleInput["projects"]): AppProj
 const listed = (words: ReadonlyArray<string>): string =>
   words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
 
+/** The menu's own words for each level, so a row says what its menu would set. */
 const EXCEPTION_WORDS: Readonly<Record<Access, string>> = {
-  full: "full access on",
-  read: "read only on",
-  none: "no access on",
+  full: "works on",
+  read: "only looks at",
+  none: "no access to",
 };
 
 /** What a member may do here, in words; `null` where they may touch none of its places. */
@@ -168,7 +169,7 @@ function accessWords(
         ? []
         : [`${EXCEPTION_WORDS[access]} ${listed(differing.map(({ place }) => place.inSentence))}`];
     });
-    // "Admin · read only on production": an exception stands where "everything" would.
+    // "Admin · only looks at production": an exception stands where "everything" would.
     return [
       words.role,
       ...(exceptions.length === 0 && words.reach !== undefined ? [words.reach] : exceptions),
@@ -178,8 +179,17 @@ function accessWords(
   if (reached.length === 0) return null;
   const alike =
     reached.length === onPlaces.length && reached.every((one) => one.access === reached[0]!.access);
-  if (alike) return reached[0]!.access === "full" ? "Full access here" : "Read only here";
-  return reached.map(({ place, access }) => `${place.label}: ${access}`).join(" · ");
+  if (alike) return reached[0]!.access === "full" ? "Can work on it" : "Can only look";
+  // "Works on stage · only looks at production": what they work on first, then what they see.
+  const by = (access: Access) =>
+    reached.filter((one) => one.access === access).map(({ place }) => place.inSentence);
+  const works = by("full");
+  const looks = by("read");
+  const said = [
+    ...(works.length === 0 ? [] : [`works on ${listed(works)}`]),
+    ...(looks.length === 0 ? [] : [`only looks at ${listed(looks)}`]),
+  ].join(" · ");
+  return said.charAt(0).toUpperCase() + said.slice(1);
 }
 
 const UNREADABLE = {

@@ -118,46 +118,46 @@ describe("what each person may do on the project, in words", () => {
       line: "Sees every project",
     },
     {
-      name: "A member given read access on production only reads 'Production: read'",
+      name: "A member given read access on production only reads 'Only looks at production'",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: PROD_AND_STAGE([["ada", "READ_ONLY"]]),
-      line: "Production: read",
+      line: "Only looks at production",
     },
     {
       name: "A member given different access per place reads each place's",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "ADMIN"]]),
-      line: "Production: read · Stage: full",
+      line: "Works on stage · only looks at production",
     },
     {
-      name: "A member given full access on every place reads 'Full access here'",
+      name: "A member given full access on every place reads 'Can work on it'",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: PROD_AND_STAGE([["ada", "ADMIN"]], [["ada", "ADMIN"]]),
-      line: "Full access here",
+      line: "Can work on it",
     },
     {
-      name: "A member given read access on every place reads 'Read only here'",
+      name: "A member given read access on every place reads 'Can only look'",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "READ_ONLY"]]),
-      line: "Read only here",
+      line: "Can only look",
     },
     {
       name: "An admin lowered to read on production reads the exception beside the role",
       member: member("ada", "Ada", "ADMIN"),
       places: PROD_AND_STAGE([["ada", "READ_ONLY"]]),
-      line: "Admin · read only on production",
+      line: "Admin · only looks at production",
     },
     {
       name: "An owner lowered on two places names both",
       member: member("ada", "Ada", "OWNER"),
       places: PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "READ_ONLY"]]),
-      line: "Owner · read only on production and stage",
+      line: "Owner · only looks at production and stage",
     },
     {
       name: "A read-only member raised to full on stage reads the exception beside the role",
       member: member("ada", "Ada", "READ_ONLY"),
       places: PROD_AND_STAGE([], [["ada", "ADMIN"]]),
-      line: "Sees every project · full access on stage",
+      line: "Sees every project · works on stage",
     },
     {
       name: "An override that grants what the role already does changes nothing",
@@ -185,13 +185,13 @@ describe("what each person may do on the project, in words", () => {
         place("p-beta", "stage", [["ada", "ADMIN"]], "Beta"),
         place("p-rc", "stage", [], "RC"),
       ],
-      line: "Production: read · Beta: full",
+      line: "Works on Beta · only looks at production",
     },
     {
       name: "A Mate that serves as stage is a place: 'Dev / Stage'",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: [place("p-prod", "production"), place("p-dev", "devstage", [["ada", "ADMIN"]])],
-      line: "Dev / Stage: full",
+      line: "Works on dev / stage",
     },
     {
       name: "An integration token in the member list is not a person on the project",
@@ -418,7 +418,7 @@ describe("what is said when the people cannot be known", () => {
         ],
       }),
     );
-    expect(lineOf(view, "Ada")).toBe("Read only here");
+    expect(lineOf(view, "Ada")).toBe("Can only look");
   });
 });
 
