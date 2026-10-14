@@ -436,7 +436,9 @@ function ProjectCard<T>({
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly focused: boolean;
   /** Drawn as its own page's card: every Mate unfolded, *Add a Mate* at their foot. */
-  readonly page?: { readonly onAddMate?: (() => void) | undefined } | undefined;
+  readonly page?:
+    | { readonly onAddMate?: (() => void) | undefined; readonly people?: ReactNode }
+    | undefined;
 }) {
   const nowMs = useNowMs();
   const { group, flow } = entry;
@@ -508,6 +510,7 @@ function ProjectCard<T>({
         </section>
       )}
       <CardMates all={page !== undefined} entry={entry} onAdd={page?.onAddMate} props={props} />
+      {page?.people}
       {unknown.kind === "unread" ? (
         <p className="ov-card-note" data-zerops-row-line="unread">
           {unknown.text}
@@ -531,15 +534,18 @@ export function ProjectPage<T>({
   props,
   aside,
   onAddMate,
+  people,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly aside: ReactNode;
   readonly onAddMate?: (() => void) | undefined;
+  /** Who can work on it, under its Mates. */
+  readonly people?: ReactNode;
 }) {
   return (
     <div className="ov-page" data-zerops-surface="project-page">
-      <ProjectCard entry={entry} focused={false} page={{ onAddMate }} props={props} />
+      <ProjectCard entry={entry} focused={false} page={{ onAddMate, people }} props={props} />
       <div className="ov-page-aside">{aside}</div>
     </div>
   );

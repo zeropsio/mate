@@ -82,6 +82,8 @@ export interface ProjectPageSlot {
   readonly aside: ReactNode;
   /** *Add a Mate*, at the foot of its Mates. */
   readonly onAddMate?: (() => void) | undefined;
+  /** Who can work on it, and how — under its Mates on the card. */
+  readonly people?: ReactNode;
   /** What the page says while the project is not among the read ones yet. */
   readonly unread: ReactNode;
 }
@@ -219,7 +221,13 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         {entry === undefined ? (
           page.unread
         ) : (
-          <ProjectPage aside={page.aside} entry={entry} onAddMate={page.onAddMate} props={props} />
+          <ProjectPage
+            aside={page.aside}
+            entry={entry}
+            onAddMate={page.onAddMate}
+            people={page.people}
+            props={props}
+          />
         )}
       </div>
     );

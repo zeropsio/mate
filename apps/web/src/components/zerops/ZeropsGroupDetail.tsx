@@ -139,6 +139,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { ProjectPeople } from "./projects/ProjectPeople";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
@@ -441,6 +442,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     () => ({
       groupId,
       aside: <ZeropsGroupAside groupId={groupId} />,
+      people: <ProjectPeople groupId={groupId} />,
       onAddMate: () => {
         addMate(groupId);
       },
