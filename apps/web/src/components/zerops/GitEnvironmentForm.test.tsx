@@ -310,6 +310,9 @@ describe("Git environment setup's real form", () => {
     });
     await draw({ repos: [], setup: { ...props.setup, connect: vi.fn(() => pending) } });
     await chooseRepository();
+    expect(host.textContent).toContain(
+      "On GitHub, under Repository access choose Only select repositories and pick acme/shop — the link cannot do it for you.",
+    );
     expect(host.textContent).toContain("On GitHub, check that it says");
     expect(host.textContent).toContain("Repository access: Only select repositories → acme/shop");
     expect(host.textContent).toContain("Mate keeps it in HQ. Agents and containers never see it.");

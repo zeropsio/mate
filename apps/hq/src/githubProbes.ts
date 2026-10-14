@@ -1,3 +1,4 @@
+import { HqGitProbeRefusalReason } from "@t3tools/shared/hqGitTargets";
 /** Read-only capability evidence. User role fields are never token permission proof. */
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
@@ -16,18 +17,7 @@ import {
 } from "./gitTransport.ts";
 
 export class ProbeRefused extends Schema.TaggedError<ProbeRefused>()("ProbeRefused", {
-  reason: Schema.Literals([
-    "token_invalid",
-    "rate_limited",
-    "sso",
-    "archived",
-    "push_not_granted",
-    "not_visible",
-    "could_not_verify",
-    "classic_scope",
-    "pull_requests_only",
-    "unreachable",
-  ]),
+  reason: HqGitProbeRefusalReason,
   hostKind: Schema.Literals(["github", "gitlab", "unknown"]),
   remote: Schema.String,
   branch: Schema.String,
@@ -41,32 +31,43 @@ export class ProbeRefused extends Schema.TaggedError<ProbeRefused>()("ProbeRefus
   override get message() {
     const tokenSettings =
       this.hostKind === "github" ? "GitHub token settings" : "the repository host’s token settings";
-    switch (this.reason) {
-      case "token_invalid":
+    const words: Record<HqGitProbeRefusalReason, () => string> = {
+      token_invalid: () => {
         return `${this.hostKind === "github" ? "GitHub" : "The repository host"} rejected this token (expired, revoked or mistyped). Create a replacement in ${tokenSettings}.`;
-      case "rate_limited":
+      },
+      rate_limited: () => {
         return this.resetAt
           ? `The repository host asked Mate to wait until ${this.resetAt}.`
           : "The repository host asked Mate to wait.";
-      case "sso":
+      },
+      sso: () => {
         return "This token needs the organization's SSO authorization. Authorize it in the organization's GitHub SSO settings.";
-      case "archived":
+      },
+      archived: () => {
         return `${this.remote} is archived, so nothing can be pushed to it. Unarchive it in repository settings before testing again.`;
-      case "push_not_granted":
+      },
+      push_not_granted: () => {
         if (this.hostKind !== "github")
           return `This token can't push to ${this.remote}: the host did not grant write access.${this.hostKind === "gitlab" ? " GitLab's push scope is write_repository." : ""} Check repository write access in ${tokenSettings}.`;
         return `This token can't push to ${this.remote}: under Repository access choose Only select repositories → ${this.remote} with Contents: Read and write. If ${this.remote.split("/")[0]} approves tokens, it may still be pending.`;
-      case "not_visible":
+      },
+      not_visible: () => {
         return `${this.remote} doesn't exist, or your account can't see it. Check the repository address and this token's repository access in ${tokenSettings}.`;
-      case "classic_scope":
+      },
+      classic_scope: () => {
         return `This is a classic token without ${this.scope}. Create a fine-grained token with the link above, or add ${this.scope} in ${tokenSettings}.`;
-      case "pull_requests_only":
+      },
+      pull_requests_only: () => {
         return `${this.branch} takes changes only through pull requests. Choose Open a pull request.`;
-      case "unreachable":
+      },
+      unreachable: () => {
         return "The repository host could not be reached in time. Check the connection, then test this token again.";
-      case "could_not_verify":
+      },
+      could_not_verify: () => {
         return `Mate couldn't verify access to ${this.remote}. Check the repository address and this token's repository access in ${tokenSettings}, then test again.`;
-    }
+      },
+    };
+    return words[this.reason]();
   }
 }
 export interface VerifiedRemote {
