@@ -7170,6 +7170,31 @@ a.ov-card-site:hover {
   -webkit-line-clamp: 2;
 }
 
+/* A project's people: a Mate row's face and two lines, never lifted; an invitation dimmed. */
+.ov-people {
+  display: grid;
+  gap: 2px;
+}
+
+.ov-person {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+  padding: 6px 0;
+}
+
+.ov-person[data-pending] {
+  opacity: 0.55;
+}
+
+.ov-person-you {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
 .ov-acts,
 .ov-reply {
   position: relative;
