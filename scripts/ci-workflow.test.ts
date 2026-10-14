@@ -791,6 +791,61 @@ it.each([
     skip: true,
     api: true,
   },
+  {
+    ref: "refs/heads/main",
+    event: "push",
+    runs: [
+      {
+        id: 8,
+        head_sha: "same-tree-new-sha",
+        head_branch: "kh-next",
+        event: "push",
+        status: "completed",
+        conclusion: "success",
+        head_commit: {
+          id: "same-tree-new-sha",
+          tree_id: NodeChildProcess.execFileSync("git", ["rev-parse", "HEAD^{tree}"], {
+            cwd: root,
+            encoding: "utf8",
+          }).trim(),
+        },
+      },
+    ],
+    skip: true,
+    api: true,
+  },
+  ...[
+    { head_branch: "kh-bisect/probe" },
+    { head_branch: "main" },
+    { event: "pull_request" },
+    { status: "in_progress" },
+    { conclusion: "failure" },
+    { head_sha: "mismatched-head-commit" },
+    { head_commit: { id: "same-tree-new-sha", tree_id: "different-tree" } },
+  ].map((override) => ({
+    ref: "refs/heads/main",
+    event: "push",
+    runs: [
+      {
+        id: 8,
+        head_sha: "same-tree-new-sha",
+        head_branch: "kh-next",
+        event: "push",
+        status: "completed",
+        conclusion: "success",
+        head_commit: {
+          id: "same-tree-new-sha",
+          tree_id: NodeChildProcess.execFileSync("git", ["rev-parse", "HEAD^{tree}"], {
+            cwd: root,
+            encoding: "utf8",
+          }).trim(),
+        },
+        ...override,
+      },
+    ],
+    skip: false,
+    api: true,
+  })),
   ...[
     { head_branch: "kh-bisect/abc1234" },
     { head_branch: "kh-next/other" },

@@ -30,6 +30,7 @@ jobs:
     timeout-minutes: 1
     permissions:
       actions: read
+      contents: read
     outputs:
       skip: ${{ steps.verdict.outputs.skip }}
       jobs: ${{ steps.blame.outputs.jobs }}
@@ -71,7 +72,21 @@ jobs:
               | select(.head_branch == "kh-next")
               | select(.event == "push" and .status == "completed" and .conclusion == "success")
               | .id')
-            if [[ -n "$verified" ]]; then skip=true; fi
+            if [[ -z "$verified" ]]; then
+              # Promotions may change commit metadata without changing a single tree entry.
+              export GITHUB_TREE
+              GITHUB_TREE=$(git rev-parse 'HEAD^{tree}')
+              verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=kh-next&event=push&status=success&per_page=100" --paginate --jq '
+                .workflow_runs[]
+                | select(.head_branch == "kh-next")
+                | select(.event == "push" and .status == "completed" and .conclusion == "success")
+                | select(.head_commit.id == .head_sha and .head_commit.tree_id == env.GITHUB_TREE)
+                | .id')
+            fi
+            if [[ -n "$verified" ]]; then
+              skip=true
+              printf 'Verified kh-next CI run(s): %s\n' "$verified"
+            fi
           fi
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
           echo "Already verified on kh-next: ${skip}"
@@ -448,7 +463,7 @@ jobs:
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This SHA passed full CI on kh-next.'
+        run: echo 'This tree passed full CI on kh-next.'
 
       - name: Require every package test job to pass
         if: needs.prepare.outputs.skip != 'true'
@@ -881,7 +896,7 @@ jobs:
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This SHA passed full CI on kh-next.'
+        run: echo 'This tree passed full CI on kh-next.'
 
       - name: Require release smoke to pass
         if: needs.prepare.outputs.skip != 'true'
