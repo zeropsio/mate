@@ -87,8 +87,6 @@ export interface TeamPerson {
   readonly userId: string | undefined;
   readonly name: string;
   readonly email: string | null;
-  /** When they joined or were invited, as Zerops dates it; `null` where it doesn't. */
-  readonly created: string | null;
   /** Their role as a card's badge: a preset's name, else Zerops's role in words. */
   readonly badge: string;
   /** Their membership whole, as the person page edits it. */
@@ -223,7 +221,6 @@ export function teamPeople(input: TeamInput): TeamView {
       userId,
       name,
       email: member.user?.email?.trim() || null,
-      created: member.created ?? null,
       badge:
         preset === null ? ROLE_CODE_WORDS[asOrgRole(member.roleCode)] : TEAM_ROLE_WORDS[preset],
       membership: membershipOf(member),
@@ -267,23 +264,14 @@ export function teamPeople(input: TeamInput): TeamView {
   };
 }
 
-/** How the team is ordered: when each joined, either way, or by name. */
-export type TeamSort = "created-asc" | "created-desc" | "name";
-
-export const TEAM_SORT_WORDS: Readonly<Record<TeamSort, string>> = {
-  "created-asc": "Oldest first",
-  "created-desc": "Newest first",
-  name: "By name",
-};
-
 /**
- * The people a search and an order leave: a name or an e-mail containing what was typed, any case;
- * ordered by when they joined — someone Zerops doesn't date last — or by name.
+ * The people a search leaves — a name or an e-mail containing what was typed, any case — by name,
+ * invitations not joined yet last, as legacy Zerops lists them. Zerops's member list dates nobody,
+ * so no order by when they joined is offered.
  */
 export function shownTeam(
   people: ReadonlyArray<TeamPerson>,
   query: string,
-  sort: TeamSort,
 ): ReadonlyArray<TeamPerson> {
   const needle = query.trim().toLocaleLowerCase();
   const found =
@@ -294,13 +282,7 @@ export function shownTeam(
             name.toLocaleLowerCase().includes(needle) ||
             (email?.toLocaleLowerCase().includes(needle) ?? false),
         );
-  const byName = (a: TeamPerson, b: TeamPerson) => a.name.localeCompare(b.name);
-  if (sort === "name") return found.toSorted(byName);
-  const direction = sort === "created-asc" ? 1 : -1;
-  return found.toSorted((a, b) => {
-    if (a.created === b.created) return byName(a, b);
-    if (a.created === null) return 1;
-    if (b.created === null) return -1;
-    return direction * a.created.localeCompare(b.created);
-  });
+  return found.toSorted(
+    (a, b) => Number(a.pending) - Number(b.pending) || a.name.localeCompare(b.name),
+  );
 }

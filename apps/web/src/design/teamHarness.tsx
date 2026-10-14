@@ -42,28 +42,26 @@ const member = (
   id: string,
   fullName: string,
   roleCode: string,
-  created: string,
   extra: Partial<ZeropsOrganizationMember> = {},
 ): ZeropsOrganizationMember => ({
   id: `cu-${id}`,
   status: "ACTIVE",
   roleCode,
-  created,
   user: { id, fullName, email: `${fullName.toLowerCase().replace(/\W+/g, ".")}@example.com` },
   ...extra,
 });
 
 const MEMBERS = [
-  member("me", "Ada Lovelace", "OWNER", "2022-01-10T09:00:00Z"),
-  member("karel", "Karel Novak", "ADMIN", "2022-04-02T09:00:00Z"),
-  member("petra", "Petra Kralova", "OWNER", "2022-06-18T09:00:00Z"),
-  member("jan", "Jan Svoboda", "NO_ACCESS", "2023-02-11T09:00:00Z", { canCreateProjects: true }),
-  member("eva", "Eva Dvorakova", "NO_ACCESS", "2023-09-30T09:00:00Z"),
-  member("tomas", "Tomas Benes", "BASIC_USER", "2024-01-05T09:00:00Z", {
+  member("me", "Ada Lovelace", "OWNER"),
+  member("karel", "Karel Novak", "ADMIN"),
+  member("petra", "Petra Kralova", "OWNER"),
+  member("jan", "Jan Svoboda", "NO_ACCESS", { canCreateProjects: true }),
+  member("eva", "Eva Dvorakova", "NO_ACCESS"),
+  member("tomas", "Tomas Benes", "BASIC_USER", {
     canCreateProjects: true,
   }),
-  member("lucie", "Lucie Horakova", "ADMIN", "2024-05-21T09:00:00Z"),
-  member("iva", "iva.mala@example.com", "NO_ACCESS", "2025-03-03T09:00:00Z", {
+  member("lucie", "Lucie Horakova", "ADMIN"),
+  member("iva", "iva.mala@example.com", "NO_ACCESS", {
     status: "WAITING_AUTHORIZATION",
     user: { id: "iva", email: "iva.mala@example.com" },
   }),

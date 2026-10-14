@@ -1,27 +1,19 @@
 /**
- * Settings → Team, as legacy Zerops draws it: a search by name or e-mail, an order, and everyone
- * in the organization — never an integration token — as a card: their face, name, role and
+ * Settings → Team, as legacy Zerops draws it: a search by name or e-mail, and everyone
+ * in the organization — never an integration token — as a card, by name, invitations last: their face, name, role and
  * e-mail, a developer's or guest's projects under it, an invitation not joined yet saying so.
  * A card opens that person's own page. An organization owner or admin finds *Invite* beside the
  * search, which opens the invitation.
  */
 import { Link } from "@tanstack/react-router";
-import { ArrowDownUpIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { PlusIcon, SearchIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
-import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import { Avatar } from "../zerops/primitives";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
-import {
-  reachWords,
-  shownTeam,
-  TEAM_SORT_WORDS,
-  type TeamPerson,
-  type TeamSort,
-  type TeamView,
-} from "./teamSettings.logic";
+import { reachWords, shownTeam, type TeamPerson, type TeamView } from "./teamSettings.logic";
 import { useTeam } from "./useTeam";
 
 /** Settings → Team. */
@@ -34,8 +26,6 @@ export function TeamSettings() {
   );
 }
 
-const SORTS: ReadonlyArray<TeamSort> = ["created-asc", "created-desc", "name"];
-
 /** The team as drawn from what is known of it. */
 export function TeamList({
   view,
@@ -46,10 +36,9 @@ export function TeamList({
   readonly initialQuery?: string;
 }) {
   const [query, setQuery] = useState(initialQuery);
-  const [sort, setSort] = useState<TeamSort>("created-asc");
   const shown = useMemo(
-    () => (view.kind === "people" ? shownTeam(view.people, query, sort) : []),
-    [query, sort, view],
+    () => (view.kind === "people" ? shownTeam(view.people, query) : []),
+    [query, view],
   );
   return (
     <SettingsSection
@@ -83,24 +72,6 @@ export function TeamList({
                   />
                 </InputGroup>
               </div>
-              <Menu>
-                <MenuTrigger render={<Button variant="ghost" />}>
-                  <ArrowDownUpIcon aria-hidden="true" />
-                  {TEAM_SORT_WORDS[sort]}
-                </MenuTrigger>
-                <MenuPopup align="end">
-                  <MenuRadioGroup
-                    onValueChange={(value) => setSort(value as TeamSort)}
-                    value={sort}
-                  >
-                    {SORTS.map((one) => (
-                      <MenuRadioItem key={one} value={one} variant="check">
-                        {TEAM_SORT_WORDS[one]}
-                      </MenuRadioItem>
-                    ))}
-                  </MenuRadioGroup>
-                </MenuPopup>
-              </Menu>
               {view.invite.length > 0 ? (
                 <Button
                   data-zerops-surface="invite-team"

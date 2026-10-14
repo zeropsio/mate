@@ -298,33 +298,24 @@ describe("finding someone on the team", () => {
   const TEAM = people(
     teamPeople(
       input([
-        member("petra", "Petra Kralova", "OWNER", { created: "2024-03-01T10:00:00Z" }),
-        member("ota", "Ota Benes", "ADMIN", { created: "2025-01-15T10:00:00Z" }),
-        member("zora", "Zora Mala", "NO_ACCESS", { created: "2023-06-20T10:00:00Z" }),
-        member("ivo", "ivo.novy@example.com", "NO_ACCESS"),
+        member("petra", "Petra Kralova", "OWNER"),
+        member("ota", "Ota Benes", "ADMIN"),
+        member("zora", "Zora Mala", "NO_ACCESS"),
+        member("ivo", "Ivo Novy", "NO_ACCESS", { status: "WAITING_AUTHORIZATION" }),
+        member("ada", "Ada Cerna", "NO_ACCESS"),
       ]),
     ),
   );
   const names = (list: ReturnType<typeof shownTeam>) => list.map(({ name }) => name);
 
-  it.each([
-    {
-      sentence: "Oldest first: by when they joined, anyone Zerops doesn't date last",
-      sort: "created-asc" as const,
-      order: ["Zora Mala", "Petra Kralova", "Ota Benes", "ivo.novy@example.com"],
-    },
-    {
-      sentence: "Newest first turns it round",
-      sort: "created-desc" as const,
-      order: ["Ota Benes", "Petra Kralova", "Zora Mala", "ivo.novy@example.com"],
-    },
-    {
-      sentence: "By name, alphabetically",
-      sort: "name" as const,
-      order: ["ivo.novy@example.com", "Ota Benes", "Petra Kralova", "Zora Mala"],
-    },
-  ])("$sentence", ({ sort, order }) => {
-    expect(names(shownTeam(TEAM, "", sort))).toEqual(order);
+  it("The team is listed by name, invitations not joined yet last", () => {
+    expect(names(shownTeam(TEAM, ""))).toEqual([
+      "Ada Cerna",
+      "Ota Benes",
+      "Petra Kralova",
+      "Zora Mala",
+      "Ivo Novy",
+    ]);
   });
 
   it.each([
@@ -333,7 +324,7 @@ describe("finding someone on the team", () => {
     { query: "ota@example", found: ["Ota Benes"] },
     { query: "nobody", found: [] },
   ])("The search finds by name or e-mail, any case: $query", ({ query, found }) => {
-    expect(names(shownTeam(TEAM, query, "name"))).toEqual(found);
+    expect(names(shownTeam(TEAM, query))).toEqual(found);
   });
 
   it("A card's badge is the preset's name, else Zerops's role in words", () => {
