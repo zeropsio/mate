@@ -6,7 +6,7 @@ on:
   push:
     branches:
       - kh-next
-      - "kh-bisect/**"
+      - "kh-bisect/signal-**"
 
 permissions:
   contents: read
@@ -18,8 +18,9 @@ env:
   PNPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "30000"
 
 concurrency:
-  group: signal-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: signal-${{ github.ref }}
+  # Integration verdicts must finish; diagnostics and PRs keep only their newest run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
 
 jobs:
   chat_bundle:

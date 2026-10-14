@@ -19,14 +19,15 @@ env:
   PNPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "30000"
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.ref }}
+  # Integration verdicts must finish; diagnostics and PRs keep only their newest run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
 
 jobs:
   prepare:
     name: CI promotion
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 1
     permissions:
       actions: read
     outputs:
@@ -338,7 +339,7 @@ jobs:
     needs: [prepare, changes]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_bundle') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -387,7 +388,7 @@ jobs:
     needs: [prepare, chat_bundle]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && needs.chat_bundle.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -458,7 +459,7 @@ jobs:
     needs: [prepare, changes]
     if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_packages') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -752,7 +753,7 @@ jobs:
     needs: prepare
     if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'changes') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 1
     permissions:
       contents: read
       pull-requests: read

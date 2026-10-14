@@ -3,6 +3,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeVM from "node:vm";
 import { parse as parseYaml } from "yaml";
 import { blameMatrices } from "./ci-blame.ts";
 
@@ -159,7 +160,7 @@ it("Decision: Signal never blocks merge, promotion or release; the blocking tier
   expect(signal.name).toBe("Signal");
   expect(signal.on).toEqual({
     pull_request: ci.on.pull_request,
-    push: { branches: ["kh-next", "kh-bisect/**"] },
+    push: { branches: ["kh-next", "kh-bisect/signal-**"] },
   });
   expect(
     ci.jobs.chat_scenarios,
@@ -205,11 +206,13 @@ it("Decision: supersede pending main runs; never cancel a running deploy", () =>
   expect(
     workflow.concurrency.group,
     "ASSERTION: main pushes must share one CI concurrency group to replace older pending runs",
-  ).toBe("ci-${{ github.event.pull_request.number || github.ref }}");
+  ).toBe("ci-${{ github.ref }}");
   expect(
     workflow.concurrency["cancel-in-progress"],
-    "ASSERTION: only PRs may cancel an in-progress CI run",
-  ).toBe("${{ github.event_name == 'pull_request' }}");
+    "ASSERTION: integration runs retain their verdict while PRs and diagnostics supersede older runs",
+  ).toBe(
+    "${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}",
+  );
   expect(workflow.concurrency.queue ?? "single").toBe("single");
   const release = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/release.yml"), "utf8"),
@@ -1098,7 +1101,7 @@ it("short Ubuntu checks share installed jobs without losing their commands or fa
   expect(check.needs).toContain("changes");
   expect(check.if).toContain("!cancelled()");
   expect(check.if).not.toContain("needs.changes.result");
-  expect(packages["timeout-minutes"]).toBeGreaterThanOrEqual(20);
+  expect(packages["timeout-minutes"]).toBeGreaterThanOrEqual(7);
   const diagnostic = packages.steps.find(
     (step: { name: string }) => step.name === "Diagnose Linux Electron runtime",
   );
@@ -1425,4 +1428,76 @@ it("CI and local Check validate every workflow with pinned actionlint", () => {
     NodeFS.readFileSync(NodePath.join(root, "scripts/package.json"), "utf8"),
   );
   expect(manifest.devDependencies["github-actionlint"]).toBe("1.7.12");
+});
+
+it.each(["ci", "signal"])(
+  "Decision: a diag ref never costs more than one live CI run, and Signal runs on diag refs only by name (%s)",
+  (name) => {
+    const workflow = parse(
+      NodeFS.readFileSync(NodePath.join(root, `.github/workflows/${name}.yml`), "utf8"),
+    );
+    expect(
+      workflow.concurrency.group,
+      "ASSERTION: every workflow/ref owns one cancellation group",
+    ).toBe(name + "-${{ github.ref }}");
+    const expression = workflow.concurrency["cancel-in-progress"].slice(3, -2);
+    for (const [ref, event, cancels] of [
+      ["refs/heads/main", "push", false],
+      ["refs/heads/kh-next", "push", false],
+      ["refs/heads/kh-bisect/diag-ci-diag-economy", "push", true],
+      ["refs/heads/kh-bisect/signal-ci-diag-economy", "push", true],
+      ["refs/pull/42/merge", "pull_request", true],
+    ]) {
+      expect(
+        NodeVM.runInNewContext(expression, {
+          github: { ref, event_name: event },
+          startsWith: (value: string, prefix: string) => value.startsWith(prefix),
+        }),
+        `ASSERTION: ${name} cancellation for ${ref} must be ${cancels}`,
+      ).toBe(cancels);
+    }
+    expect(workflow.on.push.branches).toEqual(
+      name === "ci" ? ["main", "kh-next", "kh-bisect/**"] : ["kh-next", "kh-bisect/signal-**"],
+    );
+    expect(workflow.on.pull_request).toBeNull();
+  },
+);
+
+it("blocking CI dependency paths have at most fifteen minutes of execution budget", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const jobs = workflow.jobs as Record<
+    string,
+    { needs?: string | string[]; "timeout-minutes": number }
+  >;
+  const budget = (id: string): number => {
+    const job = jobs[id]!;
+    return job["timeout-minutes"] + Math.max(0, ...[job.needs ?? []].flat().map(budget));
+  };
+  for (const id of Object.keys(jobs)) {
+    expect(
+      budget(id),
+      `ASSERTION: ${id} dependency path must finish within 15 minutes`,
+    ).toBeLessThanOrEqual(15);
+  }
+  for (const [id, measuredCeiling] of Object.entries({
+    prepare: 1,
+    changes: 1,
+    check: 9,
+    chat_bundle: 3,
+    state_smoke: 3,
+    test_packages: 7,
+    test_scripts: 4,
+    test_hq: 4,
+    test_web: 5,
+    test_server: 7,
+    test_mobile: 2,
+    mobile_native_static_analysis: 4,
+  })) {
+    expect(
+      jobs[id]!["timeout-minutes"],
+      `ASSERTION: ${id} retains its measured execution headroom`,
+    ).toBeGreaterThanOrEqual(measuredCeiling);
+  }
 });
