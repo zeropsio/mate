@@ -42,19 +42,15 @@ describe("E: stage, production, release and rollback", () => {
           ).toBe("Nothing pushed yet · pushes on the next merge");
           yield* a.when.click("Remove environment");
           yield* a.then.text("Removing this environment never deletes an external");
-          const removal = f.s.page.waitForResponse(
-            (reply) =>
-              reply.request().method() === "POST" &&
-              new URL(reply.url()).pathname.startsWith("/api/git-targets/"),
+          const removed = f.s.page.waitForResponse(
+            (response) =>
+              response.request().method() === "POST" &&
+              /\/api\/git-targets\/[^/]+$/.test(new URL(response.url()).pathname) &&
+              response.status() === 200,
+            { timeout: 15_000 },
           );
           yield* a.when.click("Confirm removal");
-          expect((yield* Effect.promise(() => removal)).status()).toBe(200);
-          yield* Effect.promise(() =>
-            f.s.page.waitForFunction(() => !document.body.innerText.includes("Confirm removal"), {
-              timeout: 15_000,
-              polling: "raf",
-            }),
-          );
+          expect((yield* Effect.promise(() => removed)).status()).toBe(200);
           const accepted = yield* f.s.drivers.core.sql<{
             readonly receipt: {
               readonly executor: string;

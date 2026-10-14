@@ -1,3 +1,11 @@
+import * as Schema from "effect/Schema";
+import {
+  HqRemoteRefusalReason,
+  remoteRefusalWords,
+  HqGitEnvironmentRefusalReason,
+  HqGitRequestRefusalReason,
+  type HqRemoteRefusal,
+} from "@t3tools/shared/hqGitTargets";
 /**
  * HQ's refusals in the person's words. HQ answers a refusal with a code and, for its structure, a
  * reason (`apps/hq/src/api.ts`): a permission's (`@t3tools/shared/zeropsPermissions`'s `REASONS`,
@@ -120,7 +128,9 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   mate_not_found: "HQ has no such Mate.",
   placed_or_production_taken:
     "This Zerops project is in a project already, or that project has its production.",
-  production_taken: "That project has its production already.",
+  production_taken:
+    "That project has its production already. Close this form and open the existing production.",
+  branch_taken: "An environment already uses this branch. Choose another branch.",
   class_move_receipt_required:
     "This Move needs a credential and job migration that HQ cannot complete yet.",
   key_still_exists: "The original Mate key still exists. Finish its key cleanup first.",
@@ -138,7 +148,8 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   environment_name_long: "An environment's name has at most 63 characters.",
   environment_name_invalid:
     "An environment's name starts with a letter and has only small letters, digits and dashes.",
-  environment_name_taken: "This project has an environment of that name already.",
+  environment_name_taken:
+    "This project has an environment of that name already. Close this form and open Add again to get a new name.",
   environment_not_found: "HQ has no such environment.",
   deploy_token_refused: "Zerops did not accept this deploy key.",
   deploy_token_scope: "This deploy key reaches more than its own project.",
@@ -198,12 +209,56 @@ const isMergeRefusal = (reason: string): reason is keyof typeof MERGE_WORDS =>
 const isReleaseRefusal = (reason: string): reason is ReleaseRefusal =>
   Object.hasOwn(RELEASE_WORDS, reason);
 
+const GIT_ENVIRONMENT_WORDS: Record<HqGitEnvironmentRefusalReason, string> = {
+  forbidden:
+    "Your role cannot change Git environments. Ask an organization owner or admin to do this.",
+  app_not_found:
+    "This application is no longer available. Return to the application list and choose another.",
+  environment_not_found:
+    "This environment is no longer available. Refresh the application and choose another.",
+  production_taken:
+    "This application already has a production environment. Remove it before adding another.",
+  branch_taken:
+    "This branch already has a Git environment. Choose another branch or open its existing environment.",
+  environment_name_taken: "An environment already uses this name. Choose another name.",
+  environment_name_missing: "The environment needs a name. Enter one to continue.",
+  environment_name_long: "The environment name is too long. Use at most 63 characters.",
+  environment_name_invalid:
+    "The environment name is invalid. Start with a letter and use lowercase letters, digits and dashes.",
+  review_stale: "The repositories changed since your review. Review them again before continuing.",
+  no_repositories:
+    "This application has no connected repositories. Connect a repository before adding a Git environment.",
+  history_loss_confirmation_required:
+    "This adoption would replace repository history. Review the changes and confirm the replacement to continue.",
+};
+const GIT_REQUEST_WORDS: Record<HqGitRequestRefusalReason, string> = {
+  request_changed:
+    "This request was already used for different settings. Close Git setup and start it again.",
+};
+const isRemoteRefusal = Schema.is(HqRemoteRefusalReason);
+const isGitEnvironmentRefusal = Schema.is(HqGitEnvironmentRefusalReason);
+const isGitRequestRefusal = Schema.is(HqGitRequestRefusalReason);
+
 /** What HQ's refusal says to the person: its reason in words, else named by its reason or code. */
 export function hqRefusalWords(refusal: {
   readonly code: string;
   readonly reason: string | undefined;
+  readonly remote?: HqRemoteRefusal;
+  readonly gitSetup?: boolean;
 }): string {
   const { reason } = refusal;
+  if (refusal.code === "remote_refused") {
+    return isRemoteRefusal(reason)
+      ? remoteRefusalWords(refusal.remote ?? { reason })
+      : "Mate could not change this repository connection. Review its settings and try again.";
+  }
+  if (isGitRequestRefusal(reason)) return GIT_REQUEST_WORDS[reason];
+  if (
+    refusal.gitSetup &&
+    (refusal.code === "conflict" || refusal.code === "forbidden") &&
+    isGitEnvironmentRefusal(reason)
+  )
+    return GIT_ENVIRONMENT_WORDS[reason];
   if (refusal.code === ZEROPS_REFUSED && reason !== undefined && isZeropsRefusal(reason)) {
     return ZEROPS_REFUSAL_WORDS[reason];
   }
@@ -214,6 +269,8 @@ export function hqRefusalWords(refusal: {
     const words = STRUCTURE_WORDS[reason];
     if (words !== undefined) return words;
   }
+  if (refusal.gitSetup)
+    return "Mate could not complete Git setup. Review the settings and try again.";
   return `HQ refused this (${reason ?? refusal.code}).`;
 }
 

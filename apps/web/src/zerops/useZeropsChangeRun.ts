@@ -17,7 +17,7 @@ import { changeRunMessage, runWords } from "../components/zerops/review/ZeropsRe
 import { useThreadMessages, useThreadShells, useThreadStatus } from "../state/entities";
 import { useHqAddress } from "./projectFlows";
 import { askMateThread } from "./useAskMate";
-import { useZeropsCandidates } from "./useZeropsCandidates";
+import { useZeropsDetailCandidates } from "./useZeropsCandidates";
 
 export interface ZeropsChangeRun {
   /** What it does, in the Mate's words; `undefined` while reading and where none linked it. */
@@ -40,7 +40,7 @@ export function useZeropsChangeRun(
   } | null,
 ): ZeropsChangeRun {
   const hqAddress = useHqAddress();
-  const { listing } = useZeropsCandidates();
+  const { listing } = useZeropsDetailCandidates();
   const shells = useThreadShells();
   const mateProjectId = change?.mateProjectId;
   const environmentId = useMemo(

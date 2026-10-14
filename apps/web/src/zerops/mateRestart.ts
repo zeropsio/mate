@@ -15,7 +15,7 @@ import { useAccountOperations } from "./accountOperations";
 import { MateRestartError } from "./mateRestartRefusal";
 import { restartRefusal } from "./mateNoticeVoice";
 import { useAccountData } from "./accountData";
-import { useHeldZeropsCandidates } from "./useZeropsCandidates";
+import { useHeldZeropsDetailCandidates } from "./useZeropsCandidates";
 import { intendContainer } from "./zeropsContainers";
 
 export interface RestartTarget {
@@ -33,7 +33,7 @@ export interface RestartTarget {
  */
 export function useRestartMate(): (target: RestartTarget) => Promise<void> {
   const command = useRecoveryCommand("restart-confirmation");
-  const rows = useHeldZeropsCandidates();
+  const rows = useHeldZeropsDetailCandidates();
   return async (target) => {
     const { progress } = await command(
       {
@@ -51,7 +51,7 @@ export function useRestartMate(): (target: RestartTarget) => Promise<void> {
  * has not failed — its *Try now* is the link's own retry — and for one the listing does not hold.
  */
 export function useReviveFailedMate(): (serviceId: string | undefined) => boolean {
-  const rows = useHeldZeropsCandidates();
+  const rows = useHeldZeropsDetailCandidates();
   const operations = useAccountOperations();
   const { orgId } = useAccountData();
   return useCallback(

@@ -13,6 +13,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { mountHqNavigation } from "./__fixtures__/hqNavigation";
 import { menuRowsAtom, type MenuRows } from "./menuRows";
+import { zeropsSessionAtom } from "../state/zerops";
+import { organization } from "./__fixtures__/platformData";
+import { candidateListingAtom, detailCandidateListingAtom } from "./useZeropsCandidates";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 
 const ORG = "org-example";
 
@@ -163,4 +167,123 @@ describe("menuRowsAtom", () => {
     mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
     expect(registry.get(menuRowsAtom(ORG, []))).toEqual({ settled: false, rows: [] });
   });
+});
+
+describe("personal Chiefs in the menu data", () => {
+  it("the Mates list excludes every Chief even when HQ placements arrive after the roster", () => {
+    const registry = AtomRegistry.make();
+    const own = { ...ADA, id: "own-chief", name: "Chief · Ada", tagList: ["mate", "chief"] };
+    const other = { ...ZOE, id: "other-chief", name: "Chief · Zoe", tagList: ["mate", "chief"] };
+    const store = mountRoster(registry, ORG, [ADA, own, other]);
+    seedHqVerdict(store, ORG, "official");
+    const atom = menuRowsAtom(ORG, []);
+    expect(registry.get(atom).rows).toEqual([]);
+    mountHqNavigation(
+      registry,
+      ORG,
+      {
+        structure: {
+          ...STRUCTURE,
+          apps: [
+            STRUCTURE.apps[0]!,
+            ...[own, other].map((chief) => ({
+              id: `app-${chief.id}`,
+              name: chief.name,
+              projects: [
+                {
+                  projectId: chief.id,
+                  name: chief.name,
+                  kind: "mate" as const,
+                  mate: { face: "" },
+                },
+              ],
+            })),
+          ],
+        },
+      },
+      store,
+    );
+    expect(registry.get(atom).rows.map(({ project }) => project.id)).toEqual([ADA.id]);
+    store.close();
+    registry.dispose();
+  });
+});
+
+it("known Mate details include only ordinary Mates and the person's own Chief", () => {
+  const registry = AtomRegistry.make();
+  const orgId = organization.organizationId;
+  const projects = [
+    { ...ADA, id: "ordinary", clientId: orgId },
+    { ...ADA, id: "own-chief", clientId: orgId, tagList: ["mate", "chief"] },
+    { ...ADA, id: "other-chief", clientId: orgId, tagList: ["mate", "chief"] },
+    { ...ADA, id: "unregistered-chief", clientId: orgId, tagList: ["mate", "chief"] },
+  ];
+  const store = mountRoster(registry, orgId, projects, {
+    services: projects.map((project) => ({
+      id: `service-${project.id}`,
+      projectId: project.id,
+      name: "zcp",
+      status: "ACTIVE",
+      subdomainAccess: true,
+      ports: [{ port: 8080, httpSupport: true }],
+      serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+    })),
+  });
+  registry.set(zeropsSessionAtom, {
+    status: "signed-in",
+    organizationStatus: "selected",
+    activeOrganization: organization,
+  });
+  mountHqNavigation(
+    registry,
+    orgId,
+    {
+      structure: {
+        apps: [],
+        ungrouped: projects.slice(0, 3).map((project) => ({
+          projectId: project.id,
+          name: project.name,
+          mate: { face: "" },
+        })),
+      },
+    },
+    store,
+  );
+  const ids = (atom: typeof candidateListingAtom) =>
+    heldCandidates(registry.get(atom)).rows.map((row) => row.project.id);
+  // Before HQ attributes a Chief, a known project ID does not grant access to its detail.
+  expect(ids(detailCandidateListingAtom)).toEqual(["ordinary"]);
+  const scope = `hq:${orgId}:hq-placements` as const;
+  store.dispatch({
+    kind: "delivery",
+    via: "hq-stream",
+    scopes: [{ scope, generation: store.state().streams.get(scope)?.generation ?? 0 }],
+    reset: false,
+    removals: [],
+    rows: ["own-chief", "other-chief"].map((id) => ({
+      family: "placement" as const,
+      id,
+      revision: { kind: "hq" as const, incarnation: "seed", revision: 100 },
+      value: {
+        projectId: id,
+        appId: null,
+        name: id,
+        kind: "mate" as const,
+        mate: { face: "" },
+        person: {
+          role: "ADMIN" as const,
+          mayWrite: true,
+          mine: id === "own-chief",
+          ownerUserId: id,
+          waitsOnViewer: false,
+          unseen: null,
+          chief: id === "own-chief" ? ("mine" as const) : ("another" as const),
+        },
+      },
+    })),
+  });
+  expect(ids(candidateListingAtom)).toEqual(["ordinary"]);
+  expect(ids(detailCandidateListingAtom)).toEqual(["ordinary", "own-chief"]);
+  store.close();
+  registry.dispose();
 });

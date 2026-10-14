@@ -6,6 +6,7 @@ import {
   FIRST_BUILD_GRACE_MS,
   type ZeropsCandidateGroup,
   type ZeropsCandidate,
+  type ZeropsCandidateService,
 } from "../../zerops/candidates.ts";
 import type { PressElsewhere } from "../../zerops/hq/index.ts";
 import {
@@ -64,6 +65,8 @@ export type MateComingVerb =
    * (*Finish setup*), the same steps the press makes.
    */
   | "finish-setup"
+  /** Its container has no deployment; create one through the same recipe as setup. */
+  | "redeploy"
   /** The platform may have taken it anyway: the projects page lists it if it did. */
   | "go-to-projects";
 
@@ -105,7 +108,12 @@ export interface MateComingInput {
         readonly environmentId?: EnvironmentId | undefined;
         readonly creationFailed?: { readonly message: string | undefined } | undefined;
         readonly service?:
-          | { readonly id?: string; readonly status: string; readonly created?: string | undefined }
+          | {
+              readonly id?: string;
+              readonly status: string;
+              readonly created?: string | undefined;
+              readonly activeAppVersion?: ZeropsCandidateService["activeAppVersion"];
+            }
           | undefined;
         /** Its project lists no container. */
         readonly missingContainer?: true | undefined;
@@ -221,6 +229,17 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
     return undefined;
   if (input.link?.reachability != null && isTerminalReachability(input.link.reachability))
     return undefined;
+  // A missing deployment is affirmative platform evidence, not an overdue start. A live press or
+  // build still owns the first deployment; a clock never turns that work into a failed setup.
+  if (
+    candidate?.service?.status === "READY_TO_DEPLOY" &&
+    candidate.service.activeAppVersion === null &&
+    press?.container !== true &&
+    input.pressElsewhere !== "pressing" &&
+    input.firstBuild?.kind !== "running"
+  ) {
+    return { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" };
+  }
   const created = input.created === true;
   const setupFailed =
     input.setupFailure ??
@@ -360,7 +379,7 @@ export type FirstBuildState =
   | { readonly kind: "failed"; readonly why: string };
 
 /**
- * Its container's first build, as its project's processes say it: its newest build for that
+ * Its container's first deployment, as its project's processes say it: its newest build or deploy for that
  * service queued or running, or ended failed or cancelled — its process's, or its version's own
  * failure once the process ended. `undefined` while nothing says either.
  */
@@ -381,7 +400,8 @@ export function firstBuildState(
   const newest = processes
     .filter(
       (process) =>
-        process.actionName === "stack.build" && process.serviceStackIds.includes(serviceId),
+        (process.actionName === "stack.build" || process.actionName === "stack.deploy") &&
+        process.serviceStackIds.includes(serviceId),
     )
     .sort((left, right) => Date.parse(right.created) - Date.parse(left.created))[0];
   if (newest === undefined) return undefined;
@@ -463,6 +483,9 @@ export function mateComingPage(input: {
   // coming — a birth left behind never keeps it from its conversation.
   if (reachability !== null && isTerminalReachability(reachability)) {
     return { kind: "unreachable", reachability };
+  }
+  if (input.coming?.kind === "failed" && input.coming.verb === "redeploy") {
+    return { kind: "coming", coming: input.coming };
   }
   if (input.linked || candidate?.group === "connected") return { kind: "up" };
   if (input.coming !== undefined) return { kind: "coming", coming: input.coming };

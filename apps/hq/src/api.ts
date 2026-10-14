@@ -1,6 +1,6 @@
 import { HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { gitTargetWrite, gitTargetReceipt } from "./gitTargetsApi.ts";
-import { RemoteRefused } from "./repoRemotes.ts";
+import { Remotes, RemoteRefused } from "./repoRemotes.ts";
 import { ProbeRefused } from "./githubProbes.ts";
 import { GitEnvironmentRefused } from "./gitEnvironments.ts";
 import { GitRequestRefused } from "./gitTargetReceipts.ts";
@@ -332,6 +332,10 @@ export const failure = (error: {
         {
           code: "remote_refused",
           reason: error.reason,
+          ...(error.repository === undefined ? {} : { repository: error.repository }),
+          ...(error.applicationName === undefined
+            ? {}
+            : { applicationName: error.applicationName }),
           ...(error.url === undefined ? {} : { url: error.url }),
           ...(error.environments === undefined ? {} : { environments: error.environments }),
         },
@@ -1419,7 +1423,7 @@ const routes = (
         Effect.gen(function* () {
           const { userId } = yield* principal;
           const appId = (yield* HttpRouter.params)["appId"] ?? "";
-          return json({ repos: yield* (yield* Changes).listRepos(userId, appId) }, 200);
+          return json({ repos: yield* (yield* Remotes).listRepos(userId, appId) }, 200);
         }),
       ),
     ),

@@ -1,3 +1,5 @@
+import { useAtomValue } from "@effect/atom-react";
+import { shownHqMateDirectoryAtom, isListedMateEnvironment } from "@t3tools/client-runtime/data";
 import type { ScopedProjectRef } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { FolderPlusIcon } from "lucide-react";
@@ -43,7 +45,13 @@ export function DraftHeroHeadline({
   activeProjectRef,
   activeProjectTitle,
 }: DraftHeroHeadlineProps) {
-  const projects = useProjects();
+  const allProjects = useProjects();
+  const directory = useAtomValue(shownHqMateDirectoryAtom);
+  const projects = useMemo(
+    () =>
+      allProjects.filter((project) => isListedMateEnvironment(directory, project.environmentId)),
+    [allProjects, directory],
+  );
   const threads = useThreadShells();
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();

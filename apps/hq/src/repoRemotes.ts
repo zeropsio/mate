@@ -1,3 +1,4 @@
+import { HqRemoteRefusalReason, remoteRefusalWords } from "@t3tools/shared/hqGitTargets";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { HqGitTargetIntent, HqGitOperationReceipt } from "@t3tools/shared/hqGitTargets";
@@ -65,66 +66,15 @@ export const remoteForWire = (row: RemoteRecord): HqRepoRemote | null =>
         keptBy: row.keptBy,
       };
 export class RemoteRefused extends Schema.TaggedError<RemoteRefused>()("RemoteRefused", {
+  repository: Schema.optionalKey(Schema.String),
+  applicationName: Schema.optionalKey(Schema.String),
   url: Schema.optionalKey(Schema.String),
   hostRepoId: Schema.optionalKey(Schema.String),
   environments: Schema.optionalKey(Schema.Array(Schema.String)),
-  reason: Schema.Literals([
-    "remote_taken",
-    "no_key",
-    "no_remote",
-    "not_repo",
-    "not_structure_writer",
-    "membership_unknown",
-    "custodian_removed",
-    "credential_invalid",
-    "disconnect_required",
-    "address_review",
-    "repository_changed",
-    "changed",
-    "in_use",
-    "bad_address",
-    "bad_repo",
-    "bad_branch",
-    "key_unavailable",
-  ]),
+  reason: HqRemoteRefusalReason,
 }) {
   override get message() {
-    switch (this.reason) {
-      case "remote_taken":
-        return "This remote belongs to another application or repository.";
-      case "no_key":
-        return "HQ has no usable key to seal this token.";
-      case "no_remote":
-        return "This repository has no connected remote.";
-      case "not_repo":
-        return "This repository is not in the application.";
-      case "not_structure_writer":
-        return "Only an organization owner or admin can change a remote.";
-      case "membership_unknown":
-        return "Mate couldn't verify current organization membership. Try again when it is available.";
-      case "custodian_removed":
-        return "The person who supplied this token is no longer in this organization. Replace the token.";
-      case "credential_invalid":
-        return "This remote's saved token was refused. Replace the token.";
-      case "disconnect_required":
-        return "Remove the dependent Git environments and disconnect before connecting another repository.";
-      case "address_review":
-        return "This repository's address changed. Review its address before Mate pushes again.";
-      case "repository_changed":
-        return "This address now names a different repository. Mate didn't push.";
-      case "changed":
-        return "The remote changed while it was being verified. Review it again.";
-      case "in_use":
-        return `Remove ${(this.environments ?? []).join(", ")} before disconnecting this remote.`;
-      case "bad_repo":
-        return "Give a valid code repository name.";
-      case "bad_address":
-        return "Give the repository's HTTPS address without credentials or request parameters.";
-      case "bad_branch":
-        return "Give a valid Git branch name.";
-      case "key_unavailable":
-        return "HQ cannot open this saved token under its key. Replace the token.";
-    }
+    return remoteRefusalWords(this);
   }
 }
 export type RemoteError = RemoteRefused | ProbeRefused | SqlError | NotLeader;
@@ -135,6 +85,7 @@ export class Remotes extends Context.Service<
   Remotes,
   {
     readonly changes: Stream.Stream<number>;
+    readonly listRepos: Changes["Service"]["listRepos"];
     readonly write: (
       userId: string,
       requestId: string,
@@ -291,6 +242,38 @@ export const repoRemotesLayer = Layer.effect(
         );
       return Effect.void;
     };
+    const refuseOccupiedRemote = Effect.fnUntraced(function* (
+      userId: string,
+      checked: VerifiedRemote,
+    ) {
+      const owners = yield* sql<{ readonly id: string; readonly name: string }>`
+        SELECT a.id::text, a.name FROM hq_repo_remote r JOIN hq_app a ON a.id=r.app_id
+        WHERE r.url_key=${checked.remote.key}
+          OR (r.host=${checked.remote.host} AND r.host_repo_id=${checked.hostRepoId})
+        LIMIT 1`;
+      const owner = owners[0];
+      let applicationName: string | undefined;
+      if (owner) {
+        const projects = yield* sql<{ readonly project_id: string }>`
+          SELECT project_id FROM hq_app_project WHERE app_id::text=${owner.id}`;
+        const view = yield* fresh.pipe(Effect.option);
+        if (
+          view._tag === "Some" &&
+          can(
+            { kind: "person", userId },
+            "read_app",
+            { projectIds: projects.map((project) => project.project_id) },
+            view.value,
+          ).allow
+        )
+          applicationName = owner.name;
+      }
+      return yield* new RemoteRefused({
+        reason: "remote_taken",
+        repository: checked.remote.path,
+        ...(applicationName === undefined ? {} : { applicationName }),
+      });
+    });
     const keep = Effect.fn("Remotes.keep")(function* (
       userId: string,
       input: ConnectRemote,
@@ -331,7 +314,7 @@ export const repoRemotesLayer = Layer.effect(
             OR (host=${checked.remote.host} AND host_repo_id=${checked.hostRepoId}))
             AND (app_id::text<>${input.appId} OR repo<>${input.repo})
           LIMIT 1`;
-        if (occupied.length > 0) return yield* new RemoteRefused({ reason: "remote_taken" });
+        if (occupied.length > 0) return yield* refuseOccupiedRemote(userId, checked);
         yield* changes.ensurePersonRepo(userId, input.appId, input.repo).pipe(
           Effect.catchTags({
             ZeropsRefused: () => Effect.fail(new RemoteRefused({ reason: "membership_unknown" })),
@@ -365,7 +348,7 @@ export const repoRemotesLayer = Layer.effect(
               ["hq_repo_remote_url_key_key", "hq_repo_remote_host_id"].includes(
                 error.reason.constraint,
               )
-                ? Effect.fail(new RemoteRefused({ reason: "remote_taken" }))
+                ? refuseOccupiedRemote(userId, checked)
                 : Effect.fail(error),
           }),
         );
@@ -376,6 +359,15 @@ export const repoRemotesLayer = Layer.effect(
     });
     const remotes: Remotes["Service"] = Remotes.of({
       changes: SubscriptionRef.changes(ticks),
+      listRepos: Effect.fn("Remotes.listRepos")(function* (userId, appId) {
+        const repos = yield* changes.listRepos(userId, appId);
+        return yield* Effect.forEach(repos, (repo) =>
+          Effect.map(remotes.get({ appId, repo: repo.name }), (remote) => ({
+            ...repo,
+            remote: remote === undefined ? null : remoteForWire(remote),
+          })),
+        );
+      }),
       receipt: (userId, requestId, intent) =>
         decidedFresh(
           Effect.gen(function* () {

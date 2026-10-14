@@ -34,6 +34,7 @@ import { mateKeyRetirementAllowed } from "../mateDeletion.ts";
 import { hqBirthExecutor } from "./hqBirth.ts";
 import { hqUpdateExecutor } from "./hqUpdate.ts";
 import { creationWritesExecutor } from "./creationWrites.ts";
+import { mateDeployExecutor } from "./mateDeploy.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
 import {
   assignMateOwnerExecutor,
@@ -53,6 +54,7 @@ import { serviceRestartExecutor, vaultWriteExecutor } from "./vaultWrites.ts";
 
 type ZeropsOperationsClient = Pick<
   ZeropsApiClient,
+  | "deployMate"
   | "restartService"
   | "stopService"
   | "startService"
@@ -126,6 +128,7 @@ export function makeZeropsExecutor(input: {
 }): OperationExecutor {
   const tagLocks = input.locks ?? makeInMemoryProjectTagLocks();
   const assemble = (client: ZeropsOperationsClient): OperationExecutor => {
+    const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
       platform: {
         restartService: (serviceId) => client.restartService(serviceId),
@@ -269,6 +272,8 @@ export function makeZeropsExecutor(input: {
       submit: (requestId, intent) =>
         Effect.suspend(() => {
           switch (intent.kind) {
+            case "mate-deploy":
+              return deploy(requestId, intent);
             case "mate-restart":
               return restart.submit(requestId, intent);
             case "delete-project":
@@ -381,6 +386,7 @@ export function makeZeropsExecutor(input: {
       };
       const source = input.client;
       const client: ZeropsOperationsClient = {
+        deployMate: (id, signal) => source.deployMate(id, signal, check),
         restartService: (id, signal) => source.restartService(id, signal, check),
         stopService: (id) => source.stopService(id, check),
         startService: (id) => source.startService(id, check),

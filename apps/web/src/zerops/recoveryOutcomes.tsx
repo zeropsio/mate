@@ -19,7 +19,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "~/components/ui/button";
 import { appRecoveryToasts, type RecoveryToast, type RecoveryToastSink } from "./recoveryToasts";
 
-export type RecoveryOrigin = "recovery" | "restart-confirmation";
+export type RecoveryOrigin = "recovery" | "restart-confirmation" | "deploy-confirmation";
 interface Invocation {
   readonly requestId: string;
   readonly origin: string;
@@ -28,7 +28,7 @@ interface Invocation {
   readonly projectId: string;
   readonly serviceId: string;
   readonly name: string;
-  readonly action: "start" | "restart";
+  readonly action: "start" | "restart" | "redeploy";
   readonly preparationFailure?: string;
 }
 const originKey = (kind: RecoveryOrigin, orgId: string | null, projectId: string) =>
@@ -79,7 +79,7 @@ export interface RecoveryTarget {
 export function useRecoveryCommand(origin: RecoveryOrigin) {
   const { account, owner, registry } = useOwner();
   const operations = useAccountOperations();
-  return async (target: RecoveryTarget, action: "start" | "restart") => {
+  return async (target: RecoveryTarget, action: "start" | "restart" | "redeploy") => {
     if (account?.orgId == null) throw new Error("No organization is open.");
     const { orgId } = account;
     const epoch = currentAccountEpoch();
@@ -88,6 +88,7 @@ export function useRecoveryCommand(origin: RecoveryOrigin) {
       .findLast(
         (item) =>
           item.orgId === orgId &&
+          item.action === action &&
           item.projectId === target.projectId &&
           item.serviceId === target.serviceId,
       );
@@ -133,22 +134,29 @@ export function useRecoveryCommand(origin: RecoveryOrigin) {
     if (epoch !== currentAccountEpoch())
       throw new Error("The account changed before the request was sent.");
     const result = await operations.submit(
-      action === "restart"
+      action === "redeploy"
         ? {
-            kind: "mate-restart",
+            kind: "mate-deploy",
             orgId,
             projectId: target.projectId,
             serviceId: target.serviceId,
-            way: restartWay(target.status),
           }
-        : target.projectStatus === "STOPPED"
-          ? { kind: "start-project", orgId, projectId: target.projectId }
-          : {
-              kind: "start-service",
+        : action === "restart"
+          ? {
+              kind: "mate-restart",
               orgId,
               projectId: target.projectId,
               serviceId: target.serviceId,
-            },
+              way: restartWay(target.status),
+            }
+          : target.projectStatus === "STOPPED"
+            ? { kind: "start-project", orgId, projectId: target.projectId }
+            : {
+                kind: "start-service",
+                orgId,
+                projectId: target.projectId,
+                serviceId: target.serviceId,
+              },
       requestId,
     );
     if (
@@ -192,7 +200,7 @@ export function RecoveryItems({
 }: {
   readonly items: ReadonlyArray<Placement>;
   readonly actions?: boolean;
-  readonly onRetry?: ((action: "start" | "restart") => void) | undefined;
+  readonly onRetry?: ((action: "start" | "restart" | "redeploy") => void) | undefined;
 }) {
   const operations = useAccountOperations();
   const { owner, registry } = useOwner();

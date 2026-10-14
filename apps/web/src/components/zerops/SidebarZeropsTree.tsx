@@ -1,3 +1,4 @@
+import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { showProjectParts } from "~/zerops/projectPartsShown";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
@@ -151,8 +152,6 @@ import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import { type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import { mateFace } from "~/zerops/mateFace.logic";
-import { isChief } from "~/zerops/chief";
-import { useOwnChief } from "~/zerops/ownChief";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
@@ -162,7 +161,7 @@ import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useMateOfflineSince, useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
-import { hqNavigationAtom, hqDown, hqPlacementsAtom } from "~/state/zerops";
+import { hqDown, hqPlacementsAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { mayBearHq } from "@t3tools/shared/zeropsRoles";
@@ -711,7 +710,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   onShowEveryone,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
-  const structureView = useAtomValue(hqNavigationAtom);
+  const structureView = useAtomValue(shownCanonicalHqListNavigationAtom);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const session = useZeropsSessionOptional();
   const accountHq = useAccountHq(structureView.orgId ?? undefined);
@@ -776,7 +775,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // in step without either one owning the other. In *Custom* the headings
   // take a grip, and every heading's menu moves its project up or down.
   const projectOrder = useProjectOrder();
-  const ownChief = useOwnChief();
   // Only the Mates HQ says wait on the viewer wait on them (`waitsOnViewer`).
   const waitsOnViewer = useWaitsOnViewer();
   // Every listed Mate's crew, read once for the whole menu (`useCrewRows`): its mini Mates, what
@@ -1068,12 +1066,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // — so every row agrees on which container is the environment's.
   const mates = selectMateEnvironments(candidates);
   const mateByProject = new Map(mates.map((mate) => [mate.project.id, mate]));
-  // The person's Chief is the organization's, not a project's: the menu's top row, not here.
-  const chief = mates.find((mate) => mate.project.id === ownChief || isChief(mate.project));
   const everyEnvironment = [
     ...candidates.filter((candidate) => !mateByProject.has(candidate.project.id)),
     ...mates,
-  ].filter((candidate) => candidate.project.id !== chief?.project.id);
+  ];
   const view = buildCanonicalGroupTree(everyEnvironment, {
     apps: appsWithWork,
     rank: rankZeropsCandidateForListing,
@@ -2068,10 +2064,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // The viewer's Mate filter still hides applications whose Mates are all filtered out.
   const groups = orderedGroups.filter(
     ({ group, environments }) =>
-      !environments.some(({ item }) => item.project.id === chief?.project.id) &&
-      (!environments.some(({ item }) => hasMate(item)) ||
-        environments.some(({ item }) => hasMate(item) && (shown?.(item) ?? true)) ||
-        group.pending.some((member) => member.kind === "mate")),
+      !environments.some(({ item }) => hasMate(item)) ||
+      environments.some(({ item }) => hasMate(item) && (shown?.(item) ?? true)) ||
+      group.pending.some((member) => member.kind === "mate"),
   );
   // A group of Mates is one row until its person opens it (`projectFolded`): what they opened or
   // folded is kept.

@@ -694,3 +694,24 @@ export {
   type PushAnswerJob,
 } from "../zerops/hq/deployAnswer.ts";
 export { deliveryEnvironmentsOf, type HqDeliveryEnvironment } from "../zerops/hq/environments.ts";
+
+export {
+  hqMateDirectory,
+  canonicalHqListNavigation,
+  hqListNavigation,
+  hqListedMateIdentities,
+  hqListedMates,
+  organizationMateListProjects,
+  isListedMateProject,
+  isListedMateEnvironment,
+  type HqMateDirectory,
+  type MyChief,
+} from "./projections/hqMateDirectory.ts";
+export {
+  shownHqMateDirectoryAtom,
+  shownCanonicalHqListNavigationAtom,
+  shownHqListNavigationAtom,
+  shownHqListedMateIdentitiesAtom,
+  shownHqListedMatesAtom,
+  shownMateListProjectsAtom,
+} from "./reads.ts";

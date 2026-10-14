@@ -63,6 +63,18 @@ describe("chiefSetupAfter", () => {
       { phase: "done", birthId: "b1", projectId: "p-chief" },
     ],
     [
+      "completed setup yields to HQ ownership so a later deletion can offer setup again",
+      { phase: "done", birthId: "b1", projectId: "p-chief" },
+      { type: "observed", projectId: "p-chief" },
+      CHIEF_SETUP_IDLE,
+    ],
+    [
+      "another Chief's observation cannot finish this setup",
+      { phase: "done", birthId: "b1", projectId: "p-chief" },
+      { type: "observed", projectId: "other-chief" },
+      { phase: "done", birthId: "b1", projectId: "p-chief" },
+    ],
+    [
       "a project that stopped says why",
       running("project", null),
       { type: "failed", reason: "No." },

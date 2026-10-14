@@ -1,3 +1,6 @@
+import { RemoteRefused } from "./repoRemotes.ts";
+import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
+import * as Schema from "effect/Schema";
 import { scopeReset, scopeValue, nextScopeValue, scopeRemoval } from "../test/harness/scopes.ts";
 import type {
   HqNavigationApp,
@@ -55,7 +58,28 @@ const withProjectAddresses = (
           : environment,
       );
 
+const decodeRemoteRefusal = Schema.decodeUnknownEffect(HqRemoteRefusal);
+
 describe("HQ's failures", () => {
+  it.effect(
+    "Repository ownership guidance carries only the application name authorized by HQ",
+    () =>
+      Effect.gen(function* () {
+        for (const applicationName of [undefined, "mate-rig-e2e-c"]) {
+          const evidence = {
+            reason: "remote_taken" as const,
+            repository: "krls2020/tst123",
+            ...(applicationName === undefined ? {} : { applicationName }),
+          };
+          const response = yield* failure(new RemoteRefused(evidence));
+          const body = yield* Effect.promise(() => HttpServerResponse.toWeb(response).json());
+          assert.deepStrictEqual(yield* decodeRemoteRefusal(body), {
+            code: "remote_refused",
+            ...evidence,
+          });
+        }
+      }),
+  );
   it.effect("a refused Git token keeps its safe explanation through the HTTP response", () =>
     Effect.gen(function* () {
       const error = new ProbeRefused({

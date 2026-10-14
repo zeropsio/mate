@@ -3,10 +3,8 @@
  * that sets one up, its steps running on wherever the person goes. The Chief page shows them.
  */
 import { useChiefSetupRunner } from "~/zerops/chiefSetup";
-import { useOwnChiefRead } from "~/zerops/ownChief";
 
 export function ChiefSetupHost() {
-  useOwnChiefRead();
   useChiefSetupRunner();
   return null;
 }

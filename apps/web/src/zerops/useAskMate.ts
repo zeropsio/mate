@@ -39,7 +39,7 @@ import { useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useComposerDraftStore, type ComposerSendIds } from "../composerDraftStore";
 import { useOpenMate } from "./useOpenMate";
-import { useZeropsCandidates } from "./useZeropsCandidates";
+import { useZeropsDetailCandidates } from "./useZeropsCandidates";
 
 /**
  * Writes `ask` into the Mate's composer and goes there: its main chat, or the
@@ -127,7 +127,7 @@ export function useAskMate(
 ): AskMate {
   const router = useRouter();
   const threads = useThreadShells();
-  const { listing } = useZeropsCandidates();
+  const { listing } = useZeropsDetailCandidates();
   const openMate = useOpenMate();
   const { onNavigate } = options;
 

@@ -93,20 +93,19 @@ export function chiefPageView(input: {
   const { setup, own } = input;
   if (setup.phase === "running" || setup.phase === "failed") return { kind: "steps", setup };
   if (setup.phase === "done") return { kind: "coming", projectId: setup.projectId };
+  if (input.hq === "none") return { kind: "offer", blocked: NO_HQ };
   if (own === undefined) return { kind: "reading" };
   if (own !== null)
     return input.unfinished
       ? { kind: "finish", projectId: own }
       : { kind: "coming", projectId: own };
   const blocked =
-    input.hq === "none"
-      ? NO_HQ
-      : input.hq === "reading"
-        ? HQ_READING
-        : input.hq === "behind"
-          ? HQ_BEHIND
-          : input.mayCreate
-            ? undefined
-            : MAY_NOT_CREATE;
+    input.hq === "reading"
+      ? HQ_READING
+      : input.hq === "behind"
+        ? HQ_BEHIND
+        : input.mayCreate
+          ? undefined
+          : MAY_NOT_CREATE;
   return { kind: "offer", blocked };
 }

@@ -38,7 +38,10 @@ vi.mock("~/zerops/flowVerbs", () => ({
     rollBack: (flow: ZeropsProjectFlow, tag: string) => state.value.rollBack(flow.groupId, tag),
   }),
 }));
-vi.mock("~/zerops/useZeropsCandidates", () => ({ useZeropsCandidates: () => ({ listing: null }) }));
+vi.mock("~/zerops/useZeropsCandidates", () => ({
+  useZeropsCandidates: () => ({ listing: null }),
+  useZeropsDetailCandidates: () => ({ listing: null }),
+}));
 vi.mock("@t3tools/client-runtime/zerops/projections", () => ({
   heldCandidates: () => ({ rows: [] }),
 }));

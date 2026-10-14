@@ -186,9 +186,9 @@ const environments = { setOnScreen: (projectId: string | null) => app.onScreen(p
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
 vi.mock("~/zerops/usePressesElsewhere", () => ({ usePressesElsewhere: () => () => "stopped" }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
-  useHeldZeropsCandidates: () =>
+  useHeldZeropsDetailCandidates: () =>
     heldCandidates(app.listing as Shown<ReadonlyArray<CandidateRow>>).rows,
-  useZeropsCandidates: () => ({
+  useZeropsDetailCandidates: () => ({
     listing: app.listing,
     wholeForPerson: app.wholeForPerson,
     refresh: app.refresh,
@@ -1877,3 +1877,83 @@ function liveRecovery(read: MateRecovery): MateRecovery {
     ),
   };
 }
+
+describe("a Mate with no deployment", () => {
+  it.each([false, true])(
+    "offers Redeploy from the Mate page and never offers Restart (%s)",
+    (oldFailure) => {
+      const redeploy = vi.fn();
+      let rendered: ReactTestRenderer;
+      act(() => {
+        rendered = create(
+          h(ComingBelow, {
+            coming: { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" },
+            progress: undefined,
+            nowMs: undefined,
+            mate: { name: "Nic", project: "Acme" },
+            you: null,
+            onRedeploy: redeploy,
+            onTryAgain: vi.fn(),
+            onRemove: vi.fn(),
+            ...(oldFailure
+              ? {
+                  setupFailureDetails: {
+                    process: {
+                      id: "old-setup",
+                      projectId: PROJECT,
+                      serviceStackIds: ["zcp"],
+                      actionName: "stack.create",
+                      status: "FAILED",
+                      created: "2020-01-01T00:00:00Z",
+                    },
+                    projectUrl: undefined,
+                    details: "Old setup failure",
+                    status: "ended",
+                    retrying: false,
+                  },
+                }
+              : {}),
+          }),
+        );
+      });
+      const buttons = rendered!.root
+        .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger");
+      expect(buttons.map((button) => button.children.join(""))).toEqual(["Redeploy"]);
+      act(() => buttons[0]!.props.onClick());
+      expect(redeploy).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("replaces a startup notice when the missing deployment record arrives", () => {
+    app.listing = listingOf([
+      {
+        ...QUINN,
+        group: "provisioning",
+        service: {
+          ...QUINN.service!,
+          status: "READY_TO_DEPLOY",
+          created: "2020-01-01T00:00:00Z",
+        },
+      },
+    ]);
+    openView();
+    expect(said()).toContain("About two minutes.");
+    app.listing = listingOf([
+      {
+        ...QUINN,
+        group: "provisioning",
+        service: {
+          ...QUINN.service!,
+          status: "READY_TO_DEPLOY",
+          activeAppVersion: null,
+        },
+      },
+    ]);
+    act(() => tree?.update(comingView(PROJECT)));
+    expect(said()).toContain("Nothing is deployed yet.");
+    expect(said()).not.toContain("taking longer");
+    expect(buttons()).not.toContain("Restart");
+    expect(buttons()).not.toContain("Try now");
+  });
+});

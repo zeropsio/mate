@@ -46,7 +46,7 @@ import { useCreations } from "./creations";
 import { newMateView } from "./newMate";
 import { madeOf } from "./newProjectBirth";
 import { useHqMainChats } from "./useMenuMateReadings";
-import { useZeropsCandidates } from "./useZeropsCandidates";
+import { useZeropsDetailCandidates } from "./useZeropsCandidates";
 import { useCloseOffHolds } from "./accountEnvironments";
 import { closeOffHoldOf, pressComingInput, useMatePresses } from "./matePress";
 
@@ -65,7 +65,7 @@ export function useOpenMate(): OpenMate {
   const presses = useMatePresses();
   const closeOffHolds = useCloseOffHolds();
   const creations = useCreations();
-  const { listing } = useZeropsCandidates();
+  const { listing } = useZeropsDetailCandidates();
   const mainChatOf = useHqMainChats();
   return useCallback<OpenMate>(
     (mate, then) => {

@@ -1,14 +1,18 @@
 /** Route identities are HQ navigation joined to HQ overview, just as the menu names them. */
 import { useAtomValue } from "@effect/atom-react";
-import { shownHqMateIdentitiesAtom, shownHqMenuNavigationAtom } from "@t3tools/client-runtime/data";
+import {
+  shownHqMateIdentitiesAtom,
+  shownHqMenuNavigationAtom,
+  shownHqMateDirectoryAtom,
+  isListedMateProject,
+} from "@t3tools/client-runtime/data";
 import { mateArrivingUntil } from "@t3tools/client-runtime/zerops";
 import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 
-import { isChief } from "./chief";
-import { othersChiefsAtom } from "./ownChief";
-import { heldCandidateRowsAtom } from "./useZeropsCandidates";
+import { allCandidateListingAtom } from "./useZeropsCandidates";
 import {
   readMateMemory,
   rememberMates,
@@ -29,7 +33,9 @@ import {
 export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   const environments = get(zeropsEnvironmentsAtom);
   // Platform rows supply only the body, never the name, face, project or environment identity.
-  const rows = get(heldCandidateRowsAtom);
+  const rows = heldCandidates(get(allCandidateListingAtom)).rows;
+  const directory = get(shownHqMateDirectoryAtom);
+  const ownId = directory.myChief.kind === "present" ? directory.myChief.projectId : undefined;
   const bodies = new Map<string, Array<(typeof rows)[number]>>();
   for (const row of rows) {
     const held = bodies.get(row.project.id);
@@ -43,23 +49,24 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   const memory = readMateMemory();
   const remembered = rememberMates(memory, named, listRead);
   if (remembered !== memory) writeMateMemory(remembered);
-  // Another person's Chief is named nowhere (`ownChief.ts`).
-  const othersChiefs = get(othersChiefsAtom);
   for (const mate of seededIdentities(named, remembered, listRead)) {
-    if (mate.environmentId !== undefined && !othersChiefs.has(mate.projectId)) {
+    if (
+      mate.environmentId !== undefined &&
+      (mate.projectId === ownId || isListedMateProject(directory, { id: mate.projectId }))
+    ) {
       const bodiesHere = bodies.get(mate.projectId) ?? [];
       const body =
         bodiesHere.find((row) => row.environmentId === mate.environmentId) ??
         (bodiesHere.length === 1 ? bodiesHere[0] : undefined);
       mates.set(mate.environmentId, {
         ...mate,
+        ...(mate.projectId === ownId ? { chief: true } : {}),
         ...(body === undefined
           ? {}
           : {
               serviceId: body.service?.id,
               running: candidateContainerRuns(body),
               arrivingUntil: mateArrivingUntil(body),
-              ...(isChief(body.project) ? { chief: true } : {}),
             }),
         connected: environments.some(
           (environment) =>
@@ -75,13 +82,13 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   Atom.withLabel("zerops:mates"),
 );
 
-/** Every environment's answer, for a surface that names several (a picker). */
+/** Identities for explicit detail and action targets, including the viewer's own Chief. */
 export function useZeropsMateDirectory(): ZeropsMateDirectory {
   return useAtomValue(zeropsMatesAtom);
 }
 
 export function useZeropsMate(environmentId: EnvironmentId): ZeropsMateAt {
-  return zeropsMateAt(useZeropsMateDirectory(), environmentId);
+  return zeropsMateAt(useAtomValue(zeropsMatesAtom), environmentId);
 }
 
 /**

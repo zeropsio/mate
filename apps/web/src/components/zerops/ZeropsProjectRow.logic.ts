@@ -78,6 +78,7 @@ export function mateOutsideHq(
 export const NOT_IN_HQ_LINE = "Not in this HQ";
 
 export interface ZeropsRowInput {
+  readonly coming?: import("@t3tools/client-runtime/data").MateComing | undefined;
   /** What says a project is its person's own (`plainZeropsProject`); none, and nothing is. */
   readonly plainEvidence?: PlainProjectEvidence | undefined;
   /** A current HQ structure places no record here, and no local birth is in progress. */
@@ -173,6 +174,7 @@ export type ZeropsRowAction =
   | { readonly kind: "remove"; readonly label: "Remove" }
   /** The Mate card's menu only (`deriveZeropsRestartAction`), never the row's own verb. */
   | { readonly kind: "restart"; readonly label: "Restart" }
+  | { readonly kind: "redeploy"; readonly label: "Redeploy" }
   /**
    * A re-probe, nothing that writes (H9) — offered for `unreachable` and
    * `stalled`, which a browser cannot tell apart from a container that
@@ -457,6 +459,13 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     };
   }
 
+  if (input.coming?.kind === "failed" && input.coming.verb === "redeploy") {
+    return {
+      status: { label: "Not deployed", tone: "attention" },
+      detail: input.coming.line,
+      detailIsError: true,
+    };
+  }
   if (candidate.group === "connected") {
     return { status: { label: "Connected", tone: "ok" } };
   }
@@ -645,6 +654,9 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   // place of it.
   if (input.visibility === "listed") return { kind: "none" };
 
+  if (input.coming?.kind === "failed" && input.coming.verb === "redeploy") {
+    return can.restart ? { kind: "redeploy", label: "Redeploy" } : { kind: "none" };
+  }
   switch (candidate.group) {
     case "connected":
       return can.open ? { kind: "open", label: "Open" } : { kind: "none" };
