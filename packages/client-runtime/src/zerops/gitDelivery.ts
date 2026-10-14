@@ -54,6 +54,11 @@ export interface GitDelivery {
   readonly nextActor: "hq" | "person" | "none";
   readonly nextAction: string;
   readonly blocked: boolean;
+  /**
+   * Only HQ's last preflight refuses the release, and the review runs it again on opening: a branch
+   * settled since then is released from there, so its door stays open while the release is blocked.
+   */
+  readonly recheck: boolean;
   readonly release: {
     readonly allowed: boolean;
     readonly reason: string | undefined;
@@ -262,6 +267,12 @@ export function gitDeliveryOf(
       (replaced ? undefined : failed?.job?.evidence?.nextAction) ??
       (credential ? "Replace token" : ""),
     blocked: reason !== undefined,
+    recheck:
+      target.delivery === "direct" &&
+      facts.live !== false &&
+      blocker === undefined &&
+      !credential &&
+      preflight !== undefined,
     release: {
       allowed: reason === undefined,
       reason,
