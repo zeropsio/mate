@@ -151,6 +151,9 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "packages/client-runtime/src/zerops/api.ts",
     "packages/client-runtime/src/zerops/hq/client.ts",
   ],
+  "packages/client-runtime/src/zerops/zcpFixtures.test.ts": [
+    "packages/client-runtime/src/zerops/fixtures/zcp/**",
+  ],
   "packages/hq-git/src/integration.test.ts": [],
   "packages/hq-git/src/operations.test.ts": [],
   "packages/shared/src/logging.test.ts": [],
