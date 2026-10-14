@@ -6,6 +6,7 @@
  * are the same ones the conversation and project panel read.
  */
 import { derivePublicRoutes } from "@t3tools/client-runtime/zerops";
+import { devServersOf } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useContext, useMemo } from "react";
 
@@ -49,17 +50,10 @@ export function useMateAddresses(
             },
           });
     const addresses = mateAddresses({
-      // Each service with the dev servers zcp last read on it; a service zcp read none of says none.
-      services: topology.services.map((service) =>
-        lifecycle?.state === "known"
-          ? {
-              ...service,
-              devServers: lifecycle.value.envelope?.services.find(
-                (entry) => entry.hostname === service.hostname,
-              )?.devServers,
-            }
-          : service,
-      ),
+      services: topology.services.map((service) => ({
+        ...service,
+        devServers: devServersOf(service.hostname, lifecycle),
+      })),
       ownRole: group?.ownRole,
       environments: group?.environments ?? [],
     });

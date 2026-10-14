@@ -518,7 +518,8 @@ const productionOf = (
   return (snapshot?.feedsProduction ?? []).map(parseZeropsProductionLaunch);
 };
 
-const devServersOf = (
+/** The dev servers zcp last read on a service; none while the lifecycle is not known. */
+export const devServersOf = (
   hostname: string,
   lifecycle: Known<ZeropsLifecycle> | undefined,
 ): ReadonlyArray<ZeropsDevServer> | undefined =>
