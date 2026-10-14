@@ -3230,6 +3230,22 @@ describe("a Mate's row says more without words", () => {
     }
   });
 
+  // The owner, 2026-10-15: "unread is not highlighted at all".
+  it.each([
+    { case: "finished, not seen", activity: live({ face: "done", unread: true }), dot: true },
+    {
+      case: "stopped on an error not seen",
+      activity: live({ kind: "failed", face: "needs", errorLine: "Build broke", unread: true }),
+      dot: true,
+    },
+    { case: "seen", activity: live(), dot: false },
+    { case: "at work", activity: working({ unread: true }), dot: false },
+  ])("An unread Mate shows its dot beside the time: $case", ({ activity, dot }) => {
+    const time = slot(row(activity));
+    expect(time).not.toBe("");
+    expect(time.includes('data-zerops-surface="sidebar-mate-unread"')).toBe(dot);
+  });
+
   describe("an unsent draft", () => {
     const ref = scopeThreadRef(EnvironmentId.make("env-crm-dev"), ThreadId.make("thread-1"));
     const NEW_CHAT = DraftId.make("draft-crm-dev");

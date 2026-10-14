@@ -4623,25 +4623,56 @@ code {
     opacity: 1;
   }
 
-  /* The dot before a row's age: one meaning per colour (S3) — amber needs
-     you, blue finished and unseen (the blue of what clicks), red broken. */
+  /* A Mate's state as one dot (`MateDot`), the same on a row, the rail and a card: one meaning
+     per colour (S3) — amber needs you, blue finished and unseen (the blue of what clicks), red
+     broken, the Mate's own tint at work. */
   .menu-dot {
     flex: none;
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 9999px;
   }
 
-  .menu-dot[data-tone="attention"] {
+  .menu-dot[data-dot="attention"] {
     background: var(--zerops-status-attention);
   }
 
-  .menu-dot[data-tone="unread"] {
+  .menu-dot[data-dot="unread"] {
     background: var(--info-foreground);
   }
 
-  .menu-dot[data-tone="failed"] {
-    background: var(--zerops-status-failed-text);
+  .menu-dot[data-dot="failed"] {
+    background: var(--zerops-status-failed);
+  }
+
+  .menu-dot[data-dot="working"] {
+    background: color-mix(
+      in oklab,
+      var(--menu-dot-tint, var(--sidebar-muted-foreground)) 80%,
+      var(--sidebar-foreground)
+    );
+  }
+
+  /* Hung in the gap before its text, as the working clock's mark is: nothing beside it moves. */
+  .menu-dot[data-place="before"] {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + 5px);
+    margin-top: -3px;
+  }
+
+  .menu-dot[data-place="corner"] {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    z-index: 6;
+    width: 9px;
+    height: 9px;
+    box-shadow: 0 0 0 2px var(--menu-ground);
+  }
+
+  .menu-dot[data-place="inline"] {
+    display: inline-block;
   }
 }
 
@@ -5833,6 +5864,13 @@ code {
 
   /* Whose Chief it is: the person's picture on the mark's corner, as on a colleague's Mate, ringed
      in the row's own ground. */
+  /* The unread dot (`MateDot`) on the mark's own corner, ringed by the Chief's ground. */
+  .menu-chief-mark .menu-dot[data-place="corner"] {
+    top: 2px;
+    right: 1px;
+    box-shadow: 0 0 0 2px var(--chief-ground);
+  }
+
   .menu-chief-mark .menu-owner {
     top: auto;
     left: auto;
@@ -6435,44 +6473,13 @@ code {
     white-space: nowrap;
   }
 
-  /* One dot on the face's corner: amber waits on you, red stopped on an error, blue an unseen
-     reply, the Mate's own tint at work. Still: the face already moves while it works. */
-  .menu-rail-dot {
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    z-index: 6;
-    width: 9px;
-    height: 9px;
-    border-radius: 9999px;
-    box-shadow: 0 0 0 2px var(--menu-ground);
-  }
-
-  .menu-rail-face[data-kid] .menu-rail-dot {
+  /* The rail's dot (`MateDot`) on the face's corner. Still: the face already moves while it
+     works. */
+  .menu-rail-face[data-kid] .menu-dot[data-place="corner"] {
     top: 2px;
     right: 2px;
     width: 8px;
     height: 8px;
-  }
-
-  .menu-rail-dot[data-dot="attention"] {
-    background: var(--zerops-status-attention);
-  }
-
-  .menu-rail-dot[data-dot="failed"] {
-    background: var(--zerops-status-failed);
-  }
-
-  .menu-rail-dot[data-dot="unread"] {
-    background: var(--info-foreground);
-  }
-
-  .menu-rail-dot[data-dot="working"] {
-    background: color-mix(
-      in oklab,
-      var(--menu-rail-tint, var(--sidebar-muted-foreground)) 80%,
-      var(--sidebar-foreground)
-    );
   }
 
   .menu-rail-foot {
@@ -7125,25 +7132,6 @@ a.ov-card-site:hover {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.ov-mate-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-}
-
-.ov-mate-dot[data-dot="attention"] {
-  background: var(--zerops-status-attention);
-}
-
-.ov-mate-dot[data-dot="unread"] {
-  background: var(--zerops-status-busy);
-}
-
-.ov-mate-dot[data-dot="failed"] {
-  background: var(--zerops-status-failed);
 }
 
 /* What was asked, over the answer: the menu row's second ink. */
