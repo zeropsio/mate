@@ -19,18 +19,8 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
     status: session.status,
     retrying: session.retrying,
-    signIn: vi.fn(),
-    register: vi.fn(),
-    verifyTotp: vi.fn(),
   }),
   zeropsErrorMessage: () => "Zerops request failed",
-}));
-
-vi.mock("~/zerops/turnstile", () => ({
-  useZeropsTurnstile: () => ({
-    state: { status: "unavailable", reason: "Unavailable in this test" },
-    widget: null,
-  }),
 }));
 
 vi.mock("../ZeropsProjectsPage", () => ({

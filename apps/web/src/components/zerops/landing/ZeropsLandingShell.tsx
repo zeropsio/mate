@@ -1,8 +1,7 @@
 /**
  * The Zerops entry surface, presentational only: one composition in the
- * middle of the page — the live mark, a title, a card — plus the three forms
- * the card can hold (sign in, sign up, two-factor), and the byline at the
- * foot. No bar: the mark is the brand here. Every decision arrives as a prop,
+ * middle of the page — the live mark, a title, a card — plus the way in the
+ * card holds, and the byline at the foot. No bar: the mark is the brand here. Every decision arrives as a prop,
  * so this file renders without a session, a router or a network.
  *
  * The reusable frame may keep a way out to upstream's manual connect flow.
@@ -10,8 +9,7 @@
  * product and one next action, while the legacy pairing route stays separate.
  */
 
-import { ExternalLinkIcon } from "lucide-react";
-import { useLayoutEffect, type FormEvent, type ReactNode } from "react";
+import { useLayoutEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { appBasePath } from "~/basePath";
@@ -22,8 +20,6 @@ import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS, bootWaitLine } from "~/zerops/waitLine.logic";
 
 import { Button } from "../../ui/button";
-import { Input } from "../../ui/input";
-import { Label } from "../../ui/label";
 import { Spinner } from "../../ui/spinner";
 import { MateMark } from "../../MateMark";
 import { ZeropsMark } from "../../ZeropsMark";
@@ -157,294 +153,11 @@ function FormError({ message }: { readonly message: string | null }) {
   );
 }
 
-function SubmitButton({
-  busy,
-  label,
-  blocked = false,
-}: {
-  readonly busy: boolean;
-  readonly label: string;
-  readonly blocked?: boolean;
-}) {
-  return (
-    <Button type="submit" className="w-full" disabled={busy || blocked}>
-      {busy ? <Spinner size="md" /> : null}
-      {label}
-    </Button>
-  );
-}
-
 /**
- * Where a user can sign up when this origin cannot: the platform's own form,
- * carrying the pool claim the same way our request does.
- */
-export const ZEROPS_GUI_REGISTRATION_URL = "https://app.zerops.io/registration?zcp=true";
-
-/**
- * Cloudflare Turnstile only renders on hostnames its site key allows, and the
- * platform refuses a registration without a token — so on any other origin
- * signing up here is impossible until Zerops allows the hostname. Rather than
- * a dead form, the primary action is a real hand-off to the sign-up that does
- * work, with a way back once it is done.
- */
-export function ZeropsRegistrationUnavailable({
-  reason,
-  onSignIn,
-  onHandOff,
-}: {
-  readonly reason: string;
-  readonly onSignIn: () => void;
-  /** Called when the user follows the hand-off; the caller opens the tab and moves the landing on. */
-  readonly onHandOff: () => void;
-}) {
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-foreground">
-        Creating an account is not available from this address yet.
-      </p>
-      <p className="text-xs text-muted-foreground">Sign-up runs on app.zerops.io.</p>
-      <Button
-        className="w-full"
-        render={
-          <a
-            href={ZEROPS_GUI_REGISTRATION_URL}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(event) => {
-              // The href/target already work with no JS at all; when JS does
-              // run, the caller takes over so it can also move the landing on.
-              event.preventDefault();
-              onHandOff();
-            }}
-          >
-            <ExternalLinkIcon className="size-4" />
-            Sign up at app.zerops.io
-          </a>
-        }
-      />
-      <p className="text-center text-xs text-muted-foreground">
-        Done, or already have an account?{" "}
-        <button
-          type="button"
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onSignIn}
-        >
-          Sign in here
-        </button>
-      </p>
-      <p className="text-center text-[11px] text-muted-foreground/70">Reported reason: {reason}</p>
-    </div>
-  );
-}
-
-/**
- * Shown above the sign-in form once the user has been sent to app.zerops.io
- * to register: the account they are creating there already comes with a
- * project prepared, so the way back in is to sign in, not to register again.
- */
-export function ZeropsHandedOffBanner({
-  onOpenSignUpAgain,
-}: {
-  readonly onOpenSignUpAgain: () => void;
-}) {
-  return (
-    <div className="mb-4 space-y-2 rounded-2xl border border-border/55 bg-card/30 px-4 py-3 text-xs text-muted-foreground">
-      <p>
-        Finish creating your account in the Zerops tab — it prepares a project with Zerops Mate for
-        you. Then sign in here.
-      </p>
-      <a
-        href={ZEROPS_GUI_REGISTRATION_URL}
-        target="_blank"
-        rel="noreferrer"
-        className="underline underline-offset-2 hover:text-foreground"
-        onClick={(event) => {
-          event.preventDefault();
-          onOpenSignUpAgain();
-        }}
-      >
-        Open the sign-up page again
-      </a>
-    </div>
-  );
-}
-
-function readField(form: HTMLFormElement, name: string): string {
-  const value = new FormData(form).get(name);
-  return typeof value === "string" ? value : "";
-}
-
-export function ZeropsSignInForm({
-  busy,
-  error,
-  onSubmit,
-  onSwitchToRegister,
-}: {
-  readonly busy: boolean;
-  readonly error: string | null;
-  readonly onSubmit: (input: { readonly email: string; readonly password: string }) => void;
-  readonly onSwitchToRegister: () => void;
-}) {
-  return (
-    <form
-      className="space-y-4"
-      onSubmit={(event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        onSubmit({
-          email: readField(event.currentTarget, "email"),
-          password: readField(event.currentTarget, "password"),
-        });
-      }}
-    >
-      <div className="space-y-1.5">
-        <Label htmlFor="zerops-email">Email</Label>
-        <Input id="zerops-email" name="email" type="email" autoComplete="email" required />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="zerops-password">Password</Label>
-        <Input
-          id="zerops-password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-        />
-      </div>
-      <FormError message={error} />
-      <SubmitButton busy={busy} label="Sign in" />
-      <p className="text-center text-xs text-muted-foreground">
-        No Zerops account?{" "}
-        <button
-          type="button"
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onSwitchToRegister}
-        >
-          Create one
-        </button>
-      </p>
-    </form>
-  );
-}
-
-export function ZeropsRegisterForm({
-  busy,
-  error,
-  captcha,
-  captchaPending,
-  onSubmit,
-  onSwitchToSignIn,
-}: {
-  readonly busy: boolean;
-  readonly error: string | null;
-  /** The Turnstile widget. The platform enforces it, so it is always rendered. */
-  readonly captcha: ReactNode | null;
-  /** True until the captcha hands over a token; submitting before then is refused. */
-  readonly captchaPending: boolean;
-  readonly onSubmit: (input: {
-    readonly email: string;
-    readonly password: string;
-    readonly fullName: string;
-    readonly organizationName: string;
-  }) => void;
-  readonly onSwitchToSignIn: () => void;
-}) {
-  return (
-    <form
-      className="space-y-4"
-      onSubmit={(event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        onSubmit({
-          email: readField(event.currentTarget, "email"),
-          password: readField(event.currentTarget, "password"),
-          fullName: readField(event.currentTarget, "fullName"),
-          organizationName: readField(event.currentTarget, "organizationName"),
-        });
-      }}
-    >
-      <div className="space-y-1.5">
-        <Label htmlFor="zerops-signup-name">Your name</Label>
-        <Input id="zerops-signup-name" name="fullName" autoComplete="name" required />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="zerops-signup-org">Organization</Label>
-        <Input
-          id="zerops-signup-org"
-          name="organizationName"
-          autoComplete="organization"
-          required
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="zerops-signup-email">Email</Label>
-        <Input id="zerops-signup-email" name="email" type="email" autoComplete="email" required />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="zerops-signup-password">Password</Label>
-        <Input
-          id="zerops-signup-password"
-          name="password"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          required
-        />
-      </div>
-      {captcha}
-      <FormError message={error} />
-      <SubmitButton busy={busy} blocked={captchaPending} label="Create account" />
-      <p className="text-center text-xs text-muted-foreground">
-        Already have one?{" "}
-        <button
-          type="button"
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onSwitchToSignIn}
-        >
-          Sign in
-        </button>
-      </p>
-    </form>
-  );
-}
-
-export function ZeropsTotpForm({
-  busy,
-  error,
-  onSubmit,
-}: {
-  readonly busy: boolean;
-  readonly error: string | null;
-  readonly onSubmit: (code: string) => void;
-}) {
-  return (
-    <form
-      className="space-y-4"
-      onSubmit={(event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        onSubmit(readField(event.currentTarget, "code"));
-      }}
-    >
-      <div className="space-y-1.5">
-        <Label htmlFor="zerops-totp">Two-factor code</Label>
-        <Input
-          id="zerops-totp"
-          name="code"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          required
-        />
-      </div>
-      <FormError message={error} />
-      <SubmitButton busy={busy} label="Verify" />
-    </form>
-  );
-}
-
-/**
- * The way in, and the primary one: the account lives on Zerops, and signing up
- * or signing in with GitHub only works there — Turnstile's site key is bound to
- * that hostname and the OAuth callback is fixed on Zerops' own OAuth App. The
- * password form stays underneath for anyone who wants it, and for the origins
- * the hand-over is not registered for.
+ * The way in: the account lives on Zerops, and signing up or signing in with
+ * GitHub only works there — Turnstile's site key is bound to that hostname and
+ * the OAuth callback is fixed on Zerops' own OAuth App. Credentials are typed
+ * only there; this client never shows a password field.
  */
 export function ZeropsHandoverActions({
   onContinue,
@@ -516,40 +229,6 @@ export function ZeropsHandoverActions({
         </button>
       </p>
       <FormError message={nativeSignIn?.error ?? null} />
-    </div>
-  );
-}
-
-/**
- * One way in at a time. Closed, the card is the hand-over and a line offering
- * the password form; open, it is the form and a line back. Each state has one
- * primary action and one sign-up link — never two of either on one card.
- */
-export function ZeropsPasswordDisclosure({
-  open,
-  onToggle,
-  handover,
-  children,
-}: {
-  readonly open: boolean;
-  readonly onToggle: () => void;
-  /** The hand-over block shown while the form is closed. */
-  readonly handover: ReactNode;
-  /** The password form shown while open. */
-  readonly children: ReactNode;
-}) {
-  return (
-    <div className="space-y-3" data-zerops-password-form={open ? "open" : "closed"}>
-      {open ? children : handover}
-      <p className="text-center text-xs text-muted-foreground">
-        <button
-          type="button"
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onToggle}
-        >
-          {open ? "Use the Zerops sign-in instead" : "Sign in with a password instead"}
-        </button>
-      </p>
     </div>
   );
 }

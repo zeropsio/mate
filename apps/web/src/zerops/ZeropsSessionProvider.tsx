@@ -22,7 +22,6 @@ import {
   saveZeropsSession,
   zeropsClientsFromUser,
   type ZeropsOrganization,
-  type ZeropsRegistrationInput,
   type ZeropsRegistrationResponse,
   type ZeropsSession,
   type ZeropsStorageAdapter,
@@ -50,7 +49,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -80,7 +78,6 @@ export interface ZeropsSessionValue {
   readonly organizationStatus: ZeropsOrganizationStatus;
   readonly updateVerifiedMemberships: (verified: ZeropsUser) => void;
   readonly selectOrganization: (membershipId: string) => Promise<void>;
-  readonly signIn: (email: string, password: string) => Promise<void>;
   /**
    * Adopts the bearer the sign-in hand-over delivered after the user signed in
    * on the Zerops app. It is proven before persistence, so an invalid token
@@ -97,8 +94,6 @@ export interface ZeropsSessionValue {
    * like a hand-over's.
    */
   readonly adoptDeviceLogin: (session: ZeropsSession) => Promise<void>;
-  readonly register: (input: ZeropsRegistrationInput) => Promise<ZeropsRegistrationResponse>;
-  readonly verifyTotp: (code: string) => Promise<void>;
   readonly signOut: () => Promise<void>;
   readonly verifyAgain?: () => void;
   /** A background retry of a failed check is running: the failure stays, saying it tries again. */
@@ -255,7 +250,6 @@ export function ZeropsSessionProvider({
   const [lastRegistration, setLastRegistration] = useState<ZeropsRegistrationResponse | null>(null);
   const [selectedMembershipId, setSelectedMembershipId] = useState<string | null>(null);
   const [organizationStatus, setOrganizationStatus] = useState<ZeropsOrganizationStatus>("idle");
-  const preferredClientIdRef = useRef<string | null>(null);
 
   const { calls, client, driver, signOutLocally } = useMemo(() => makeSession(storage), [storage]);
   const machine = useSyncExternalStore(driver.subscribe, driver.state);
@@ -347,8 +341,7 @@ export function ZeropsSessionProvider({
   );
 
   // The platform GUI persists the exact clientUser membership. Restore it per
-  // Zerops user, while letting a registration's clientId override stale
-  // local state. Multiple new memberships deliberately require a choice.
+  // Zerops user. Multiple new memberships deliberately require a choice.
   useEffect(() => {
     if (!user) {
       setSelectedMembershipId(null);
@@ -357,12 +350,10 @@ export function ZeropsSessionProvider({
     }
     let cancelled = false;
     setOrganizationStatus("loading");
-    const preferredClientId = preferredClientIdRef.current;
-    preferredClientIdRef.current = null;
     void loadZeropsSelection(storage, user.id).then(async (selection) => {
       if (cancelled) return;
       const selected = resolveActiveZeropsOrganization(organizations, {
-        preferredClientId,
+        preferredClientId: null,
         storedClientUserId: selection.clientUserId,
         storedClientId: selection.clientId,
       });
@@ -441,21 +432,6 @@ export function ZeropsSessionProvider({
       },
       adoptDeviceLogin: async (session) => {
         driver.signedIn((await calls.adoptToken(session)).user);
-      },
-      signIn: async (email, password) => {
-        const signedIn = await calls.signIn(email, password);
-        if (signedIn === null) driver.send({ type: "SECOND_FACTOR_REQUIRED" });
-        else driver.signedIn(signedIn);
-      },
-      register: async (input) => {
-        const { response, user: registered } = await calls.signUp(input);
-        preferredClientIdRef.current = response.clientId ?? null;
-        driver.signedIn(registered);
-        setLastRegistration(response);
-        return response;
-      },
-      verifyTotp: async (code) => {
-        driver.signedIn((await calls.confirmSecondFactor(code)).user);
       },
       signOut: async () => {
         setLastRegistration(null);
