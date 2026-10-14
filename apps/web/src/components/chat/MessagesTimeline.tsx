@@ -2049,6 +2049,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         ),
       );
     };
+    const placingSince = performance.now();
     const tick = () => {
       frame = null;
       if (cancelled) return;
@@ -2057,6 +2058,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         {
           listReady,
           offBy: target === null ? null : viewport.scrollTop - target,
+          elapsedMs: performance.now() - placingSince,
         },
         stableFrames,
       );
@@ -2065,11 +2067,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         if (noticeResize === null) finish();
         return;
       }
-      if (judged.verdict === "correct" && target !== null) {
+      if ((judged.verdict === "correct" || judged.verdict === "settle") && target !== null) {
         scrollOwn(viewport, target);
-        // The loaded rows and this measured anchor are now placed. Streaming may move the end
-        // every frame, so verify the scroll we applied instead of waiting for silence.
-        if (noticeResize === null && Math.abs(viewport.scrollTop - target) <= 1) {
+        // Hidden until the rows' late measurements stop moving it (LegendList places rows a
+        // frame late), so the first frame shown is the settled one; a Mate streaming its answer
+        // moves the end every frame, so past the deadline it shows where it now stands.
+        if (judged.verdict === "settle" && noticeResize === null) {
           finish();
           return;
         }

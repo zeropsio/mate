@@ -32,6 +32,7 @@ import { InventoryContext, type Inventory } from "../../zerops/inventoryContext"
 import { ZeropsDataContext, type ZeropsDataContextValue } from "../../zerops/zeropsDataContext";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
+import { TIMELINE_PLACING_DEADLINE_MS } from "./timelineScrollAnchoring";
 
 let foldContext: TimelineRowSharedState;
 function FoldBoundaryProbe() {
@@ -2758,7 +2759,7 @@ describe("MessagesTimeline — placing its rows", () => {
         );
       });
       await act(() => renderer!.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
-      now = 16;
+      now = TIMELINE_PLACING_DEADLINE_MS;
       await settleFrames(3);
       expect(outOfSight(renderer!)).toBe(false);
     } finally {
