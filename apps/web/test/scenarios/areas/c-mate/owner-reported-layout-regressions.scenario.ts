@@ -11,6 +11,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
@@ -209,6 +210,174 @@ async function settledEnd(page: Page) {
 describe("owner-reported layout regressions", () => {
   // Cyd: delayed HQ app detail inserted an old landing above the painted final answer,
   // dropping its words 79 px before the end follower glided back. The source stays unchanged.
+
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("the Chief's first message and composer enter the conversation without a jump", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([], { mate: "real" });
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* s.given.project("Chief", { mate: true });
+        const { zerops, core, owner } = s.drivers;
+        zerops.put("project", {
+          ...zerops.rows("project").find((project) => project.id === "Chief")!,
+          tagList: ["chief"],
+        });
+        zerops.put("user-data", {
+          id: "chief-token",
+          clientId: "ORG",
+          serviceStackId: "service-Chief",
+          projectId: "Chief",
+          key: "ZCP_ORG_TOKEN",
+          type: "USER",
+          sensitive: true,
+          editable: true,
+          content: "scenario-chief-token",
+        });
+        const registered = yield* core.call("POST", "/api/chief", {
+          session: owner,
+          body: { projectId: "Chief" },
+        });
+        expect(registered.status, "ASSERTION: HQ names the person's Chief").toBe(200);
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => ownerMenu(s.page));
+        yield* Effect.promise(() =>
+          s.page
+            .locator('[data-sidebar="sidebar"] [data-zerops-surface="sidebar-chief-row"]')
+            .click(),
+        );
+        yield* Effect.promise(() =>
+          s.page.waitForSelector('[role="textbox"]', { visible: true, timeout: 8000 }),
+        );
+        const question = "Look into my organization.";
+        const answer = "I will look into your organization.";
+        const mate = s.drivers.realMates.get("Chief")!;
+        const answerArrives = yield* Deferred.make<void>();
+        yield* mate.provider.turn([
+          { kind: "wait", until: answerArrives },
+          { kind: "say", text: answer },
+        ]);
+        yield* Effect.promise(async () => {
+          await s.page.locator('[role="textbox"]').fill(question);
+          await waitForStillFrames(s.page);
+        });
+        const slowed = yield* Effect.promise(() => slowAnimations(s.page, 0.2));
+        const trace = yield* Effect.promise(() =>
+          s.page.evaluateHandle(() => {
+            const state = {
+              active: true,
+              frames: [] as Array<{
+                at: number;
+                composer: number;
+                message: number | null;
+                path: string;
+                opacity: number;
+              }>,
+            };
+            const sample = () =>
+              setTimeout(() => {
+                const composer = document.querySelector('[data-slot="composer-shell"]');
+                const message = document.querySelector('[data-message-role="user"]');
+                let opacity = 1;
+                for (let element = message; element !== null; element = element.parentElement)
+                  opacity *= Number(getComputedStyle(element).opacity);
+                if (composer)
+                  state.frames.push({
+                    at: performance.now(),
+                    composer: composer.getBoundingClientRect().top,
+                    message: message?.getBoundingClientRect().top ?? null,
+                    path: location.pathname,
+                    opacity,
+                  });
+                if (state.active) requestAnimationFrame(sample);
+              }, 0);
+            requestAnimationFrame(sample);
+            return state;
+          }),
+        );
+        yield* s.when.conversation.sends(question);
+        expect((yield* mate.provider.received).input.input).toBe(question);
+        // The answer is real server data arriving after the saved conversation's first paint.
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(
+            (state) =>
+              state.frames.some(
+                (frame) =>
+                  !frame.path.includes("/draft/") && frame.opacity === 1 && frame.message !== null,
+              ),
+            { polling: "raf" },
+            trace,
+          ),
+        );
+        yield* Deferred.succeed(answerArrives, undefined);
+        yield* s.then.conversation.showsMessage(answer);
+        yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 24 }));
+        const frames = yield* Effect.promise(() =>
+          trace.evaluate((state) => {
+            state.active = false;
+            return state.frames;
+          }),
+        );
+        yield* Effect.promise(() => trace.dispose());
+        yield* Effect.promise(() => slowed.restore());
+        const steps = (read: (frame: (typeof frames)[number]) => number | null) =>
+          frames.slice(1).flatMap((frame, index) => {
+            const previous = frames[index]!;
+            const [to, from] = [read(frame), read(previous)];
+            return to === null || from === null
+              ? []
+              : [(Math.abs(to - from) * (1000 / 60)) / Math.max(1000 / 60, frame.at - previous.at)];
+          });
+        const draftVisible = frames.filter(
+          (frame) =>
+            frame.path.includes("/draft/") && frame.opacity === 1 && frame.message !== null,
+        );
+        const savedVisible = frames.filter(
+          (frame) =>
+            !frame.path.includes("/draft/") && frame.opacity === 1 && frame.message !== null,
+        );
+        expect(
+          draftVisible.length,
+          "ASSERTION: the draft's message is visibly sampled",
+        ).toBeGreaterThan(0);
+        expect(
+          savedVisible.length,
+          "ASSERTION: the saved conversation's message is visibly sampled",
+        ).toBeGreaterThan(0);
+        const firstMessageLine = draftVisible.at(-1)!.message!;
+        const promotionShift = Math.max(
+          ...savedVisible.map((frame) => Math.abs(frame.message! - firstMessageLine)),
+        );
+        yield* Effect.log("CHIEF GEOMETRY", {
+          firstMessageLine,
+          promotionShift,
+          composerStep: Math.max(0, ...steps((frame) => frame.composer)),
+        });
+        expect(
+          promotionShift,
+          "ASSERTION: promotion keeps the Chief's first message on its visible line",
+        ).toBeLessThanOrEqual(1);
+        if (process.env.MATE_LAYOUT_EVIDENCE)
+          yield* Effect.promise(() =>
+            s.page.screenshot({
+              path: `${process.env.MATE_LAYOUT_EVIDENCE}/chief-first-send-full.png`,
+            }),
+          );
+        expect(
+          frames.length,
+          "ASSERTION: the first send is sampled through its docking",
+        ).toBeGreaterThan(10);
+        expect(
+          Math.max(0, ...steps((frame) => frame.composer)),
+          "ASSERTION: the Chief's composer docks by a glide, never a jump",
+        ).toBeLessThan(60);
+        expect(
+          Math.max(0, ...steps((frame) => frame.message)),
+          "ASSERTION: the Chief's first message settles by a glide, never a jump",
+        ).toBeLessThan(60);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+  });
 
   describe("Decision: geometry relations only; no style pins.", () => {
     const shapes = [
