@@ -700,8 +700,8 @@ export function stopFailedDeploys(input: {
     const newer = live === -1 ? input.releases : input.releases.slice(0, live);
     const failed = newer.find((release) => release.failedEntries.length > 0);
     if (failed !== undefined)
-      return failed.failedEntries
-        .toSorted((left, right) => left.service.localeCompare(right.service, "en"))
+      return [...failed.failedEntries]
+        .sort((left, right) => left.service.localeCompare(right.service, "en"))
         .map(({ service, commit }) => {
           const record = recordOf(service, commit);
           return {
