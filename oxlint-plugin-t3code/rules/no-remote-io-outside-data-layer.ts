@@ -203,6 +203,8 @@ export const HQ_CLIENT_VERBS = [
   "openScopeSocket",
   "lifecycleWrite",
   "lifecycleReceipt",
+  "gitTargetWrite",
+  "gitTargetReceipt",
   "mateKey",
   "updateMate",
   "renameApp",

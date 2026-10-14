@@ -3,7 +3,7 @@
  *
  * A Mate is somebody: its dialog asks who — a name, a colour, a shape — and
  * decides the rest (`ZeropsNewMateForm`), its project named in full after its application. A
- * stage or a production leaves three things to the person: what the
+ * stage or a production in Zerops leaves three things to the person: what the
  * environment is called — the one name its project has, an agent in it going
  * by it too — whether it runs an agent, and what application goes in — the
  * group's published recipe, or nothing yet. Everything else follows from the
@@ -16,7 +16,7 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { GitEnvironmentForm, type GitEnvironmentFormProps } from "./GitEnvironmentForm";
 
 import { Button } from "../ui/button";
@@ -95,7 +95,7 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly onCancel: () => void;
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
   readonly git?:
-    | Omit<GitEnvironmentFormProps, "groupName" | "tier" | "defaultName" | "where" | "onCancel">
+    | Omit<GitEnvironmentFormProps, "groupName" | "tier" | "defaultName" | "onCancel" | "onBack">
     | undefined;
 }
 
@@ -160,33 +160,78 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
 
 function EnvironmentDestinationForm(props: ZeropsEnvironmentCreationFormProps) {
   const [target, setTarget] = useState("zerops");
-  const where =
-    props.git === undefined ? undefined : (
-      <div className="space-y-2">
-        <span className="text-sm">Where does it go?</span>
-        <RadioGroup aria-label="Where does it go?" value={target} onValueChange={setTarget}>
-          <label className="flex items-center gap-2 text-sm">
-            <Radio value="zerops" />
-            Zerops project
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <Radio value="git" disabled={!props.git.offered.add} />
-            Git branch
-          </label>
-        </RadioGroup>
-      </div>
+  const [continued, setContinued] = useState(false);
+  if (!continued) {
+    return (
+      <form
+        className="flex min-h-0 flex-col"
+        data-zerops-surface="environment-destination-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setContinued(true);
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>
+            New {props.role === "prod" ? "production" : "stage"} environment
+          </DialogTitle>
+          <DialogDescription>
+            {props.role === "prod"
+              ? "Production is where a release goes"
+              : "Stage is where merged changes go"}
+            : a Zerops project Mate deploys, or a branch in your repository, where whatever you have
+            set up there takes over.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogPanel>
+          <div className="space-y-2">
+            <span className="text-sm">Where does it go?</span>
+            <RadioGroup aria-label="Where does it go?" value={target} onValueChange={setTarget}>
+              <label className="flex items-start gap-3 rounded-lg border p-4 text-sm">
+                <Radio value="zerops" />
+                <span className="space-y-1">
+                  <span className="block font-medium">A Zerops project</span>
+                  <span className="block text-muted-foreground">
+                    A new Zerops project in {props.groupName}. It takes a couple of minutes to come
+                    up.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-3 rounded-lg border p-4 text-sm">
+                <Radio value="git" disabled={props.git?.offered.add !== true} />
+                <span className="space-y-1">
+                  <span className="block font-medium">A branch in your Git repository</span>
+                  <span className="block text-muted-foreground">
+                    Mate pushes there. What that repository does with a push is up to how it is set
+                    up.
+                  </span>
+                </span>
+              </label>
+            </RadioGroup>
+          </div>
+        </DialogPanel>
+        <DialogFooter>
+          <Button variant="ghost" type="button" onClick={props.onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={target === "git" && props.git?.offered.add !== true}>
+            Continue
+          </Button>
+        </DialogFooter>
+      </form>
     );
+  }
   return target === "git" && props.git !== undefined ? (
     <GitEnvironmentForm
       {...props.git}
       groupName={props.groupName}
       defaultName={props.defaultName}
       tier={props.role === "prod" ? "production" : "stage"}
-      where={where}
+      onBack={() => setContinued(false)}
       onCancel={props.onCancel}
     />
   ) : (
-    <EnvironmentForm {...props} where={where} />
+    <EnvironmentForm {...props} onBack={() => setContinued(false)} />
   );
 }
 
@@ -203,8 +248,8 @@ function EnvironmentForm({
   onRecipeRetry,
   onCancel,
   onCreate,
-  where,
-}: ZeropsEnvironmentCreationFormProps & { readonly where?: ReactNode }) {
+  onBack,
+}: ZeropsEnvironmentCreationFormProps & { readonly onBack?: (() => void) | undefined }) {
   const id = useId();
   const what = environmentWord(role);
   const options = useMemo(
@@ -249,7 +294,6 @@ function EnvironmentForm({
         </DialogDescription>
       </DialogHeader>
       <DialogPanel className="flex flex-col gap-5 space-y-0">
-        {where}
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-name`}>Environment</Label>
           <Input
@@ -331,8 +375,8 @@ function EnvironmentForm({
       </DialogPanel>
 
       <DialogFooter>
-        <Button onClick={onCancel} type="button" variant="ghost">
-          Cancel
+        <Button onClick={onBack ?? onCancel} type="button" variant="ghost">
+          {onBack === undefined ? "Cancel" : "Back"}
         </Button>
         <Button disabled={held !== undefined} type="submit">
           Add {what} to {groupName}

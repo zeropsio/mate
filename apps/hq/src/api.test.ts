@@ -9,6 +9,7 @@ import type {
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
+import * as NodeChildProcess from "node:child_process";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Stream from "effect/Stream";
@@ -38,7 +39,20 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { ZeropsOwnToken } from "./zerops/api.ts";
 import { corsRoutes, failure } from "./api.ts";
 import { NotLeader } from "./leader.ts";
+import type { StructureRead } from "./structure.ts";
 import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
+
+// Existing value controls compare the outward Zerops address derived from its target.
+const withProjectAddresses = (
+  environments: StructureRead["apps"][number]["environments"],
+): unknown =>
+  "refused" in environments
+    ? environments
+    : environments.map((environment) =>
+        environment.target.kind === "zerops"
+          ? { ...environment, projectId: environment.target.projectId }
+          : environment,
+      );
 
 describe("HQ's failures", () => {
   it.effect("caches a preflight from any origin for two hours, without credentials", () =>
@@ -151,6 +165,12 @@ const APP_ALLOWED = each(
     "release",
     "add_stage",
     "add_production",
+    "connect_remote",
+    "replace_remote_token",
+    "update_remote_address",
+    "disconnect_remote",
+    "add_git_environment",
+    "remove_git_environment",
   ],
   ALLOW,
 );
@@ -162,6 +182,179 @@ const MATE_OWNED = () => ({
 });
 describe("HQ API", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "Git HTTP writes refuse fresh role loss despite an earlier offer and never reflect candidates",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, sql } = yield* startCore(true, { reconcileEvery: Duration.hours(1) });
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const app = yield* call("POST", "/api/apps", {
+            session: owner,
+            body: { name: "Git authorization" },
+          });
+          const appId = (app.body as { readonly id: string }).id;
+          const offered = (yield* call("GET", "/api/structure", { session: owner })).body as {
+            readonly apps: ReadonlyArray<{
+              readonly can: Record<string, { readonly allow: boolean }>;
+            }>;
+          };
+          assert.strictEqual(offered.apps[0]!.can.connect_remote!.allow, true);
+          yield* sql`INSERT INTO hq_environment(id,target,app_id,tier,name,sources,branch,delivery,created_by) VALUES ('git-env','git',${appId}::uuid,'stage','git-stage','{main}','staging','direct','owner')`;
+          fake.members.set(
+            "ORG",
+            fake.members
+              .get("ORG")!
+              .map((member) =>
+                member.userId === "owner" ? { ...member, roleCode: "READ_ONLY" } : member,
+              ),
+          );
+          const scope = { orgId: "ORG", hqProjectId: "HQ1", appId };
+          const intents = [
+            {
+              kind: "probe-git-remote",
+              ...scope,
+              repo: "api",
+              url: "https://github.com/krls2020/tst123",
+              branch: "main",
+            },
+            {
+              kind: "connect-git-remote",
+              ...scope,
+              repo: "api",
+              url: "https://github.com/krls2020/tst123",
+            },
+            { kind: "replace-git-remote-token", ...scope, repo: "api" },
+            { kind: "disconnect-git-remote", ...scope, repo: "api" },
+            {
+              kind: "update-git-remote-address",
+              ...scope,
+              repo: "api",
+              url: "https://github.com/krls2020/tst123",
+            },
+            {
+              kind: "preview-git-environment",
+              ...scope,
+              request: { target: { kind: "git", branch: "main", delivery: "direct" } },
+            },
+            {
+              kind: "add-git-environment",
+              ...scope,
+              request: {
+                tier: "stage",
+                name: "stage",
+                target: { kind: "git", branch: "main", delivery: "direct" },
+                adoption: [
+                  {
+                    repo: "api",
+                    remote: { url: "https://github.com/krls2020/tst123", repositoryId: "123" },
+                    branch: "main",
+                    mainHead: "a".repeat(40),
+                    remoteHead: null,
+                    changedFiles: 0,
+                    seed: true,
+                  },
+                ],
+              },
+            },
+            { kind: "remove-git-environment", ...scope, environmentId: "git-env" },
+            { kind: "run-git-again", ...scope, environmentId: "git-env", repo: "api" },
+          ];
+          for (const [i, intent] of intents.entries()) {
+            const answer = yield* call("POST", `/api/git-targets/lost-role-${i}`, {
+              session: owner,
+              body: { intent, candidate: "CANDIDATE_BOUNDARY_MARKER" },
+            });
+            assert.strictEqual(answer.status, 403, intent.kind);
+            assert.notInclude(JSON.stringify(answer.body), "CANDIDATE_BOUNDARY_MARKER");
+          }
+          assert.deepStrictEqual(yield* sql`SELECT * FROM hq_git_target_receipt`, []);
+          assert.deepStrictEqual(yield* sql`SELECT * FROM hq_repo_remote`, []);
+          const review = yield* call("POST", "/api/git-targets/read-only-review", {
+            session: owner,
+            body: { intent: { kind: "preflight-git-release", ...scope } },
+          });
+          assert.strictEqual(review.status, 409);
+        }),
+    );
+    it.effect(
+      "Git removal returns its original receipt over HTTP and backup plaintext excludes candidate and seal fields",
+      () =>
+        Effect.gen(function* () {
+          const stagingDir = yield* tempDir("hq-git-boundary-");
+          const { call, sql, backup } = yield* startCore(true, {
+            reconcileEvery: Duration.hours(1),
+            stagingDir,
+          });
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const appId = (
+            (yield* call("POST", "/api/apps", { session: owner, body: { name: "Mixed targets" } }))
+              .body as { readonly id: string }
+          ).id;
+          yield* sql`INSERT INTO hq_environment(id,target,app_id,tier,name,sources,branch,delivery,created_by) VALUES ('git-env','git',${appId}::uuid,'stage','git-stage','{main}','staging','direct','owner')`;
+          const intent = {
+            kind: "remove-git-environment",
+            orgId: "ORG",
+            hqProjectId: "HQ1",
+            appId,
+            environmentId: "git-env",
+          };
+          const answer = yield* call("POST", "/api/git-targets/remove-original", {
+            session: owner,
+            body: {
+              intent: {
+                ...intent,
+                token: "SEALED_BOUNDARY_MARKER",
+                sealed: "SEALED_BOUNDARY_MARKER",
+              },
+              candidate: "CANDIDATE_BOUNDARY_MARKER",
+            },
+          });
+          assert.strictEqual(answer.status, 200);
+          const receipt = answer.body as {
+            readonly requestId: string;
+            readonly executor: string;
+            readonly acceptance: { readonly kind: string };
+          };
+          assert.strictEqual(receipt.requestId, "remove-original");
+          assert.strictEqual(receipt.executor, "hq");
+          assert.strictEqual(receipt.acceptance.kind, "accepted");
+          const recovered = yield* call("POST", "/api/git-targets/remove-original/receipt", {
+            session: owner,
+            body: { intent },
+          });
+          assert.deepStrictEqual(recovered.body, { receipt });
+          assert.deepStrictEqual(
+            (yield* call("POST", "/api/git-targets/remove-original", {
+              session: owner,
+              body: { intent },
+            })).body,
+            receipt,
+          );
+          assert.deepStrictEqual(yield* sql`SELECT 1 FROM hq_environment WHERE id='git-env'`, []);
+          const changed = yield* call("POST", "/api/git-targets/remove-original/receipt", {
+            session: owner,
+            body: { intent: { ...intent, environmentId: "another" } },
+          });
+          assert.strictEqual(changed.status, 409);
+          const manifest = yield* backup.take;
+          const plaintext = yield* Effect.promise(
+            () =>
+              new Promise<string>((resolve, reject) => {
+                NodeChildProcess.execFile(
+                  "pg_restore",
+                  ["--file=-", NodePath.join(stagingDir, "sets", manifest.id, "db.dump")],
+                  { maxBuffer: 10_000_000 },
+                  (error, stdout) => (error === null ? resolve(stdout) : reject(error)),
+                );
+              }),
+          );
+          assert.include(plaintext, "remove-original");
+          assert.notInclude(plaintext, "CANDIDATE_BOUNDARY_MARKER");
+          assert.notInclude(plaintext, "SEALED_BOUNDARY_MARKER");
+        }),
+    );
     it.effect("explicit deletion completion checks one project and publishes empty contents", () =>
       Effect.gen(function* () {
         const { call, fake } = yield* startCore(true, { reconcileEvery: Duration.hours(1) });
@@ -404,14 +597,9 @@ describe("HQ API", () => {
             ],
           ],
         );
-        const read = (yield* call("GET", "/api/structure", { session })).body as {
-          readonly apps: ReadonlyArray<{
-            readonly projects: ReadonlyArray<unknown>;
-            readonly environments: ReadonlyArray<unknown>;
-          }>;
-        };
+        const read = (yield* call("GET", "/api/structure", { session })).body as StructureRead;
         assert.deepStrictEqual(
-          [read.apps[0]?.projects, read.apps[0]?.environments],
+          [read.apps[0]?.projects, withProjectAddresses(read.apps[0]!.environments)],
           [
             [
               {
@@ -525,11 +713,7 @@ describe("HQ API", () => {
         );
         const read = yield* call("GET", "/api/structure", { session });
         assert.deepStrictEqual(
-          (
-            read.body as {
-              readonly apps: ReadonlyArray<{ readonly environments: ReadonlyArray<unknown> }>;
-            }
-          ).apps[0]?.environments,
+          withProjectAddresses((read.body as StructureRead).apps[0]!.environments),
           [
             {
               id: "P_MATE",
@@ -575,8 +759,8 @@ describe("HQ API", () => {
             Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode }] });
             yield* Effect.sleep(Duration.millis(400));
             const response = yield* call("GET", "/api/structure", { session: dev });
-            return (response.body as { apps: ReadonlyArray<{ environments: unknown }> }).apps.map(
-              (app) => app.environments,
+            return (response.body as StructureRead).apps.map((app) =>
+              withProjectAddresses(app.environments),
             );
           });
         // Refused, and said so: never an empty list that reads as "no environments".

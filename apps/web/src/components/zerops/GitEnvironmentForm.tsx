@@ -1,9 +1,7 @@
 import type { HqGitAdoption, RepoListEntry } from "@t3tools/shared/hqChanges";
-import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import type { GitEnvironmentSetup } from "~/zerops/setUpEnvironment";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
 import {
   DialogDescription,
   DialogFooter,
@@ -17,6 +15,7 @@ import {
   gitAdoptionSentence,
   gitSetupBranchValid,
   gitSetupExpiry,
+  gitSetupRepository,
   gitSetupRepositories,
   gitSetupReview,
 } from "./GitEnvironmentForm.logic";
@@ -28,7 +27,7 @@ export interface GitEnvironmentFormProps {
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly setup: GitEnvironmentSetup;
   readonly offered: { readonly add: boolean; readonly connect: boolean; readonly replace: boolean };
-  readonly where?: ReactNode;
+  readonly onBack?: () => void;
   readonly onCancel: () => void;
   readonly onAdded: (name: string) => void;
 }
@@ -40,18 +39,26 @@ export function GitEnvironmentForm({
   repos,
   setup,
   offered,
-  where,
+  onBack,
   onCancel,
   onAdded,
 }: GitEnvironmentFormProps) {
   const id = useId();
-  const [name, setName] = useState(defaultName);
+  const [step, setStep] = useState<"repository" | "token" | "branch">("repository");
+  const [address, setAddress] = useState("");
   const [branch, setBranch] = useState(tier === "production" ? "main" : "staging");
-  const [adoption, setAdoption] = useState<ReadonlyArray<HqGitAdoption>>();
-  const [confirmed, setConfirmed] = useState<ReadonlyArray<HqGitAdoption>>();
-  const [pending, setPending] = useState<string>();
+  const [readBranch, setReadBranch] = useState(branch);
+  const [preview, setPreview] = useState<{
+    key: string;
+    adoption?: ReadonlyArray<HqGitAdoption>;
+    error?: string;
+  }>();
+  const [pending, setPending] = useState<"connect" | "add">();
   const [notice, setNotice] = useState<string>();
   const [uncertain, setUncertain] = useState(false);
+  const tokenInput = useRef<HTMLInputElement>(null);
+  const [hasToken, setHasToken] = useState(false);
+  const [tested, setTested] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -59,28 +66,59 @@ export function GitEnvironmentForm({
       mounted.current = false;
     };
   }, []);
-  const roster = gitSetupRepositories(repos);
-  const review = gitSetupReview(repos, branch, adoption);
-  useEffect(() => {
-    if (review !== "ready") setConfirmed(undefined);
-  }, [review]);
-  const busy = pending !== undefined;
-  const canReview =
+  const repository = gitSetupRepository(repos, address, groupName);
+  const remote = repository?.existing?.remote;
+  const connected = repository?.connected === true;
+  const previewKey =
+    step === "branch" && connected && offered.add && gitSetupBranchValid(readBranch) && !uncertain
+      ? JSON.stringify([
+          readBranch,
+          gitSetupRepositories(repos)?.map(({ repo, leftOut }) => [
+            repo.name,
+            repo.mainHead,
+            repo.remote?.url,
+            repo.remote?.repositoryId,
+            leftOut,
+          ]),
+        ])
+      : undefined;
+  const adoption =
+    branch === readBranch && preview?.key === previewKey ? preview?.adoption : undefined;
+  const reading = previewKey !== undefined && preview?.key !== previewKey;
+  const review = gitSetupReview(repos, readBranch, adoption);
+  const busy = pending !== undefined || reading;
+  const canAdd =
+    step === "branch" &&
+    connected &&
     offered.add &&
     gitSetupBranchValid(branch) &&
-    review !== "unread" &&
-    review !== "empty" &&
-    !busy &&
-    !uncertain;
-  const canAdd =
-    offered.add &&
-    name.trim() !== "" &&
+    readBranch === branch &&
     review === "ready" &&
-    confirmed === adoption &&
     !busy &&
     !uncertain;
+  const readPreview = useEffectEvent((value: string) => setup.preview(value));
+  // Read once for the chosen branch and exact repository evidence, never on a timer.
+  useEffect(() => {
+    if (previewKey === undefined) return;
+    let current = true;
+    void readPreview(readBranch).then(
+      (result) => {
+        if (current) setPreview({ key: previewKey, adoption: result });
+      },
+      (cause: unknown) => {
+        if (current)
+          setPreview({
+            key: previewKey,
+            error: cause instanceof Error ? cause.message : "HQ could not read the branch.",
+          });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [previewKey, readBranch]);
 
-  const act = async (action: string, run: () => Promise<void>) => {
+  async function act(action: "connect" | "add", run: () => Promise<void>) {
     if (busy || uncertain) return;
     setPending(action);
     setNotice(undefined);
@@ -96,14 +134,11 @@ export function GitEnvironmentForm({
         cause.kind === "uncertain"
       )
         setUncertain(true);
-      if (action === "add") {
-        setAdoption(undefined);
-        setConfirmed(undefined);
-      }
+      if (action === "add" && previewKey !== undefined) setPreview({ key: previewKey });
     } finally {
       if (mounted.current) setPending(undefined);
     }
-  };
+  }
 
   return (
     <form
@@ -111,166 +146,263 @@ export function GitEnvironmentForm({
       data-zerops-surface="git-environment-form"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!canAdd || adoption === undefined) return;
-        void act("add", async () => {
-          await setup.add({
-            tier,
-            name: name.trim(),
-            target: { kind: "git", branch, delivery: "direct" },
-            adoption,
+        if (step === "repository") {
+          if (repository && !busy && !uncertain) setStep(connected ? "branch" : "token");
+        } else if (step === "token") {
+          if (connected && !busy && !uncertain) setStep("branch");
+        } else {
+          setReadBranch(branch);
+          if (!canAdd || adoption === undefined) return;
+          void act("add", async () => {
+            await setup.add({
+              tier,
+              name: defaultName,
+              target: { kind: "git", branch, delivery: "direct" },
+              adoption,
+            });
+            if (mounted.current) onAdded(defaultName);
           });
-          if (mounted.current) onAdded(name.trim());
-        });
+        }
       }}
     >
       <DialogHeader>
-        <DialogTitle>New {tier} environment</DialogTitle>
+        <DialogTitle>
+          {step === "token" ? "A token that may write to it" : "A branch in your Git repository"}
+        </DialogTitle>
         <DialogDescription>
-          Mate pushes to a branch in your repository. What happens next is up to how that repository
-          is set up.
+          {step === "token"
+            ? `Give Mate access to ${repository?.guide.repository ?? "your repository"}.`
+            : "Mate pushes there. What that repository does with a push is up to how it is set up."}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        {where}
-        <div className="space-y-1.5">
-          <Label htmlFor={`${id}-name`}>Environment</Label>
-          <Input
-            id={`${id}-name`}
-            value={name}
-            disabled={busy}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`${id}-branch`}>Git branch</Label>
-          <Input
-            id={`${id}-branch`}
-            value={branch}
-            disabled={busy}
-            aria-invalid={!gitSetupBranchValid(branch)}
-            onChange={(event) => {
-              setBranch(event.target.value);
-              setAdoption(undefined);
-              setConfirmed(undefined);
-            }}
-          />
-          {!gitSetupBranchValid(branch) ? (
-            <p role="alert" className="text-sm text-destructive">
-              Enter an unreserved Git branch name. The mate/ prefix is reserved.
+        {step === "repository" ? (
+          <div className="space-y-1.5">
+            <Label htmlFor={`${id}-repository`}>Repository</Label>
+            <Input
+              id={`${id}-repository`}
+              value={address}
+              placeholder="github.com/acme/app"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy || uncertain}
+              onChange={(event) => {
+                setAddress(event.target.value);
+                setTested(false);
+                setPreview(undefined);
+                setNotice(undefined);
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              {repository?.guide.hostLabel ?? "GitHub"} · a token comes next
             </p>
-          ) : null}
-          <p className="text-xs text-muted-foreground">
-            Push directly to {branch || "the branch"}: Mate must be the only one that writes to it.
-            A commit made on {branch || "the branch"} any other way stops Mate’s pushes until you
-            settle it. Its branch and direct mode stay fixed; to change them, remove this
-            environment and add it again.
+            {address.trim() !== "" && repos !== undefined && repository === undefined ? (
+              <p role="alert" className="text-sm text-destructive">
+                Enter a repository address without credentials. SSH URLs are not supported.
+              </p>
+            ) : null}
+            {repos === undefined ? (
+              <p className="text-xs text-muted-foreground">
+                Reading the application’s repositories…
+              </p>
+            ) : null}
+            {connected ? (
+              <p className="text-sm">
+                {address} is already connected to {groupName}.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        {step === "token" && repository ? (
+          <div className="space-y-3">
+            {repository.guide.host === "github" ? (
+              <>
+                <p className="text-sm">
+                  Create a fine-grained token on GitHub for {repository.guide.repository} only. The
+                  link fills in the name, owner, expiry and permissions.
+                </p>
+                <a
+                  className="text-primary underline underline-offset-2"
+                  href={repository.guide.tokenUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Create the token on GitHub
+                </a>
+                <p className="text-sm font-medium">On GitHub, check that it says</p>
+                <ul className="space-y-1 text-sm">
+                  <li>Resource owner: {repository.guide.owner}</li>
+                  <li>
+                    Repository access: Only select repositories → {repository.guide.repository}
+                  </li>
+                  <li>Contents: Read and write</li>
+                  <li>Workflows: Read and write</li>
+                  <li>Expiration: 366 days</li>
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  Your organization may require approval or limit the token’s lifetime.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm">
+                  Create a personal access token with {repository.guide.permission}. Check{" "}
+                  {repository.guide.hostLabel}’s settings; other hosts may use different permission
+                  names.
+                </p>
+                <a
+                  className="text-primary underline underline-offset-2"
+                  href={repository.guide.tokenUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {repository.guide.host === "unknown"
+                    ? "Open likely token settings"
+                    : `Create ${repository.guide.hostLabel} token`}
+                </a>
+              </>
+            )}
+            <Label htmlFor={`${id}-token`}>Token</Label>
+            <Input
+              id={`${id}-token`}
+              ref={tokenInput}
+              type="password"
+              autoComplete="off"
+              disabled={busy || uncertain}
+              onChange={(event) => setHasToken(event.target.value.trim() !== "")}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={
+                busy ||
+                uncertain ||
+                !hasToken ||
+                !(repository.sameRemote ? offered.replace : offered.connect)
+              }
+              onClick={() => {
+                const candidate = tokenInput.current?.value.trim() ?? "";
+                if (tokenInput.current) tokenInput.current.value = "";
+                setHasToken(false);
+                if (candidate === "") return;
+                void act("connect", async () => {
+                  const result = await setup.connect(
+                    repository.name,
+                    repository.url,
+                    candidate,
+                    repository.sameRemote,
+                    branch,
+                  );
+                  if (!mounted.current) return;
+                  setTested(result.ok);
+                  setNotice(result.ok ? undefined : result.reason);
+                });
+              }}
+            >
+              Test
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Mate keeps it in HQ. Agents and containers never see it.
+            </p>
+            {pending === "connect" ? (
+              <p role="status" className="text-sm">
+                Testing the token against {repository.guide.repository}…
+              </p>
+            ) : null}
+            {tested && !connected ? (
+              <p role="status" className="text-sm">
+                Token verified. Waiting for HQ’s repository record.
+              </p>
+            ) : null}
+            {connected ? (
+              <ul aria-label="Token test results" className="space-y-1 text-sm">
+                <li>Sees {repository.guide.repository}</li>
+                <li>Can push to {branch}</li>
+                <li className="text-muted-foreground">
+                  A release that changes .github/workflows needs Workflows: Read and write, which
+                  Mate can’t test.
+                </li>
+                <li>{gitSetupExpiry(remote?.expiresAt ?? null)}</li>
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+        {step === "branch" ? (
+          <div className="space-y-3">
+            <p className="break-all text-sm">{repository?.url}</p>
+            <Label htmlFor={`${id}-branch`}>Branch</Label>
+            <Input
+              id={`${id}-branch`}
+              value={branch}
+              disabled={pending !== undefined || uncertain}
+              aria-invalid={!gitSetupBranchValid(branch)}
+              onChange={(event) => {
+                setBranch(event.target.value);
+              }}
+              onBlur={() => setReadBranch(branch)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  setReadBranch(branch);
+                }
+              }}
+            />
+            {!gitSetupBranchValid(branch) ? (
+              <p role="alert" className="text-sm text-destructive">
+                Enter an unreserved Git branch name. The mate/ prefix is reserved.
+              </p>
+            ) : null}
+            <p className="text-sm font-medium">How Mate hands over</p>
+            <p className="text-sm">
+              Push directly to {branch || "the branch"} — Mate must be the only one that writes to
+              it.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              A commit made on {branch || "the branch"} any other way stops Mate’s pushes until you
+              settle it.
+            </p>
+            {reading ? (
+              <p role="status" className="text-sm">
+                Reading the remote branch and HQ main…
+              </p>
+            ) : null}
+            {review === "ready"
+              ? adoption?.map((entry) => (
+                  <p key={entry.repo} className="text-sm">
+                    {gitAdoptionSentence(entry)}
+                    {entry.seed ? " HQ starts from the remote’s files." : ""}
+                  </p>
+                ))
+              : null}
+            <p className="text-xs text-muted-foreground">
+              {tier === "production"
+                ? "Adding production pushes nothing. It starts with the next Release."
+                : "Adoption before attachment pushes nothing to this stage. Its first push follows the next main move."}{" "}
+              Verified remotes stay connected if you cancel environment setup.
+            </p>
+          </div>
+        ) : null}
+        {preview?.key === previewKey && preview?.error ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            {preview.error}
           </p>
-        </div>
-        <section aria-label="Git repositories" className="space-y-3">
-          <h3 className="text-sm font-medium">Code repositories</h3>
-          {roster === undefined ? (
-            <p className="text-sm text-muted-foreground">Reading the application’s repositories…</p>
-          ) : roster.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No code repositories have been recorded yet.
-            </p>
-          ) : (
-            roster.map(({ repo, leftOut }) => (
-              <RemoteSetup
-                key={repo.name}
-                repo={repo}
-                groupName={groupName}
-                leftOut={leftOut}
-                disabled={busy || uncertain}
-                connectOffered={repo.remote == null ? offered.connect : offered.replace}
-                onConnect={(url, token) => {
-                  void act(`connect:${repo.name}`, async () => {
-                    const connecting = setup.connect(repo.name, url, token, repo.remote != null);
-                    token = "";
-                    const result = await connecting;
-                    if (!mounted.current) return;
-                    setAdoption(undefined);
-                    setConfirmed(undefined);
-                    setNotice(
-                      result.ok
-                        ? `${repo.name}: token verified and connected. Waiting for HQ’s repository record if it has not arrived yet.`
-                        : `${repo.name}: ${result.reason}`,
-                    );
-                  });
-                }}
-              />
-            ))
-          )}
-        </section>
-        {notice === undefined ? null : (
+        ) : null}
+        {notice ? (
           <p role="status" className="text-sm text-muted-foreground">
             {notice}
           </p>
-        )}
+        ) : null}
         {uncertain ? (
           <p className="text-sm text-muted-foreground">
             HQ may have accepted setup. Close this form and check the environment and repository
             records before trying again.
           </p>
         ) : null}
-        <div className="space-y-3">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!canReview}
-            onClick={() => {
-              void act("preview", async () => {
-                const result = await setup.preview(branch);
-                if (mounted.current) {
-                  setAdoption(result);
-                  setConfirmed(undefined);
-                }
-              });
-            }}
-          >
-            {pending === "preview" ? "Reading branch review…" : "Review branch"}
-          </Button>
-          {review === "stale" ? (
-            <p role="alert" className="text-sm text-destructive">
-              The branch, HQ main or repository roster changed while this was being reviewed. Review
-              it again.
-            </p>
-          ) : null}
-          {adoption?.map((entry) => (
-            <p className="text-sm" key={entry.repo}>
-              {entry.repo}: {gitAdoptionSentence(entry)}
-              {entry.seed ? " HQ starts from the remote’s files." : ""}
-            </p>
-          ))}
-          {review === "ready" ? (
-            <div className="flex items-start gap-2">
-              <Checkbox
-                id={`${id}-confirm`}
-                checked={confirmed === adoption}
-                disabled={busy}
-                onCheckedChange={(checked) => setConfirmed(checked === true ? adoption : undefined)}
-              />
-              <Label htmlFor={`${id}-confirm`}>
-                I confirm these exact file counts before HQ main moves.
-              </Label>
-            </div>
-          ) : null}
-          <p className="text-xs text-muted-foreground">
-            {tier === "production"
-              ? "Adding production pushes nothing. It starts with the next Release."
-              : "Adoption before attachment pushes nothing to this stage. Its first push follows the next main move."}{" "}
-            Verified remotes stay connected if you cancel environment setup.
-          </p>
-        </div>
-        {pending === undefined ? null : (
+        {pending === "add" ? (
           <p role="status" className="text-sm text-muted-foreground">
-            {pending === "add"
-              ? "Adding environment… HQ may accept it even if you close this form."
-              : pending.startsWith("connect:")
-                ? "Testing the token and connecting the remote…"
-                : "Reading the remote branch and HQ main…"}
+            Adding environment… HQ may accept it even if you close this form.
           </p>
-        )}
+        ) : null}
         {!offered.add ? (
           <p className="text-sm text-muted-foreground">
             HQ is not offering Git environment setup right now. Zerops remains available where HQ
@@ -282,137 +414,36 @@ export function GitEnvironmentForm({
         <Button type="button" variant="ghost" onClick={onCancel}>
           {pending === "add" ? "Close" : "Cancel"}
         </Button>
-        <Button type="submit" disabled={!canAdd}>
-          {pending === "add" ? "Adding…" : `Add ${tier} to ${groupName}`}
+        {step !== "repository" || onBack ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              if (step === "repository") onBack?.();
+              else setStep("repository");
+            }}
+          >
+            Back
+          </Button>
+        ) : null}
+        <Button
+          type="submit"
+          disabled={
+            step === "repository"
+              ? repository === undefined || busy || uncertain
+              : step === "token"
+                ? !connected || busy || uncertain
+                : !canAdd
+          }
+        >
+          {step !== "branch"
+            ? "Continue"
+            : pending === "add"
+              ? "Adding…"
+              : `Add ${tier} to ${groupName}`}
         </Button>
       </DialogFooter>
     </form>
-  );
-}
-
-function RemoteSetup({
-  repo,
-  groupName,
-  leftOut,
-  disabled,
-  connectOffered,
-  onConnect,
-}: {
-  readonly repo: RepoListEntry;
-  readonly groupName: string;
-  readonly leftOut: string | undefined;
-  readonly disabled: boolean;
-  readonly connectOffered: boolean;
-  readonly onConnect: (url: string, token: string) => void;
-}) {
-  const id = useId();
-  const [url, setUrl] = useState(repo.remote?.url ?? "");
-  const tokenInput = useRef<HTMLInputElement>(null);
-  const [hasToken, setHasToken] = useState(false);
-  const guide = gitTokenGuide(repo.remote?.url ?? url, groupName);
-  const connected = repo.remote != null && leftOut === undefined;
-  return (
-    <div className="space-y-2 rounded-lg border border-border p-3">
-      <p className="text-sm font-medium">
-        {repo.name} · {connected ? "Included" : "Left out"}
-      </p>
-      {leftOut === undefined ? null : <p className="text-xs text-muted-foreground">{leftOut}</p>}
-      {repo.remote == null ? (
-        <>
-          <Label htmlFor={`${id}-url`}>Repository HTTPS URL for {repo.name}</Label>
-          <Input
-            id={`${id}-url`}
-            type="url"
-            autoComplete="off"
-            spellCheck={false}
-            value={url}
-            disabled={disabled}
-            aria-invalid={guide.kind === "invalid"}
-            onChange={(event) => {
-              setUrl(event.target.value);
-              if (tokenInput.current !== null) tokenInput.current.value = "";
-              setHasToken(false);
-            }}
-          />
-        </>
-      ) : (
-        <>
-          <p className="break-all text-xs text-muted-foreground">{repo.remote.url}</p>
-          <p className="text-xs text-muted-foreground">{gitSetupExpiry(repo.remote.expiresAt)}</p>
-        </>
-      )}
-      {connected ? null : (
-        <>
-          {guide.kind === "invalid" ? (
-            <p role="alert" className="text-sm text-destructive">
-              Enter a credential-free HTTPS repository URL. SSH URLs are not supported.
-            </p>
-          ) : guide.kind === "guide" ? (
-            <div className="space-y-1 text-xs text-muted-foreground">
-              <p>
-                {guide.hostLabel} · {guide.repository}
-              </p>
-              {guide.host === "github" ? (
-                <>
-                  <p>
-                    Create a fine-grained personal access token. Resource owner: {guide.owner}.
-                    Under Repository access, choose Only select repositories → {guide.repository}.
-                    The link cannot select it for you.
-                  </p>
-                  <p>
-                    {guide.permission} is required. Workflows: Read and write is optional; keep it
-                    if releases change .github/workflows. Your organization may require approval or
-                    limit its lifetime.
-                  </p>
-                </>
-              ) : (
-                <p>
-                  Create a personal access token with {guide.permission}. Check {guide.hostLabel}’s
-                  settings; other hosts may use different permission names.
-                </p>
-              )}
-              <a
-                className="text-primary underline underline-offset-2"
-                href={guide.tokenUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {guide.host === "unknown"
-                  ? "Open likely token settings"
-                  : `Create ${guide.hostLabel} token`}
-              </a>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Enter the repository URL to see which token to create.
-            </p>
-          )}
-          <Label htmlFor={`${id}-token`}>Token for {repo.name}</Label>
-          <Input
-            id={`${id}-token`}
-            ref={tokenInput}
-            type="password"
-            autoComplete="off"
-            disabled={disabled}
-            onChange={(event) => setHasToken(event.target.value.trim() !== "")}
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={disabled || !connectOffered || !hasToken || guide.kind !== "guide"}
-            onClick={() => {
-              const candidate = tokenInput.current?.value.trim() ?? "";
-              if (tokenInput.current !== null) tokenInput.current.value = "";
-              setHasToken(false);
-              if (candidate !== "" && guide.kind === "guide")
-                onConnect(repo.remote?.url ?? url.trim(), candidate);
-            }}
-          >
-            Test and connect {repo.name}
-          </Button>
-        </>
-      )}
-    </div>
   );
 }

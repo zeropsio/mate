@@ -50,7 +50,7 @@ import { recipeTiersLayer } from "./recipeTiers.ts";
 import { repoRemotesLayer } from "./repoRemotes.ts";
 import { githubProbesLayer } from "./githubProbes.ts";
 import { gitTransportLayer } from "./gitTransport.ts";
-import { releasesLayer } from "./releases.ts";
+import { gitReleasesLayer } from "./releases.ts";
 import { rolloutsLayer } from "./rollouts.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
 import { writesLayer } from "./writes.ts";
@@ -98,6 +98,7 @@ const routes = (options: CoreOptions) =>
     chiefRoutes,
     apiRoutes({
       build: options.build,
+      hqProjectId: options.hqProjectId,
       ...(options.streamRecheck === undefined ? {} : { recheck: options.streamRecheck }),
       ...(options.pingEvery === undefined ? {} : { pingEvery: options.pingEvery }),
       link: {
@@ -109,6 +110,13 @@ const routes = (options: CoreOptions) =>
 
 const services = (options: CoreOptions) => {
   const keySecret = keySecretOf(options.keySecret);
+  const remotes = repoRemotesLayer.pipe(
+    Layer.provide(
+      githubProbesLayer.pipe(
+        Layer.provide(gitTransportLayer.pipe(Layer.provide(NodeHttpClient.layerNodeHttp))),
+      ),
+    ),
+  );
   const leader = leaderLayer({
     databaseUrl: options.databaseUrl,
     migrations: options.migrations,
@@ -131,13 +139,7 @@ const services = (options: CoreOptions) => {
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,
-    repoRemotesLayer.pipe(
-      Layer.provide(
-        githubProbesLayer.pipe(
-          Layer.provide(gitTransportLayer.pipe(Layer.provide(NodeHttpClient.layerNodeHttp))),
-        ),
-      ),
-    ),
+    remotes,
     structureLayer({
       hqProjectId: options.hqProjectId,
       credential: options.credential,
@@ -160,15 +162,15 @@ const services = (options: CoreOptions) => {
     backupLayer({ databaseUrl: options.databaseUrl, ...options.backup }).pipe(
       Layer.provideMerge(
         deploysLayer().pipe(
-          Layer.provideMerge(releasesLayer),
+          Layer.provideMerge(gitReleasesLayer.pipe(Layer.provide(remotes))),
           Layer.provide(recipeTiersLayer),
-          Layer.provideMerge(changesLayer),
         ),
       ),
-      Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),
     ),
   )
     .pipe(
+      Layer.provideMerge(changesLayer),
+      Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),
       Layer.provideMerge(usageLedgerLayer),
       Layer.provideMerge(mateOverviewsLayer),
       // One set of buckets for the API's addresses and the door's people.

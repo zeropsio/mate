@@ -160,6 +160,12 @@ export class Changes extends Context.Service<
       projectId: string,
       tier: RecipeTier,
     ) => Effect.Effect<RecipeTierResponse, ReadError | NotLeader | GitError>;
+    /** A person's first code repository, using the same storage and authority as a source push. */
+    readonly ensurePersonRepo: (
+      userId: string,
+      appId: string,
+      name: string,
+    ) => Effect.Effect<HqRepo, ReadError | NotLeader | GitError>;
     /**
      * The repository `name` in the Mate's application, made if new: `main` begins with HQ's commit.
      * The recipe's (`RECIPE_REPO`) is Core's, whichever Mate asks for it first.
@@ -914,6 +920,10 @@ export const changesLayer: Layer.Layer<
     return Changes.of({
       mateApp,
       mateFetch,
+      ensurePersonRepo: (userId, appId, name) =>
+        decidedFresh(
+          Effect.andThen(personApp(userId, appId, "push_repo"), makeRepo(appId, name, userId)),
+        ),
       ensureRepo: (projectId, name) =>
         Effect.flatMap(mateApp(projectId, "ensure_repo"), (appId) =>
           // The recipe's is Core's, whoever asks for it first: a Mate joins it.

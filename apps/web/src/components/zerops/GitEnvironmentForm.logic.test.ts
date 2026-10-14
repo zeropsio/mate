@@ -6,6 +6,7 @@ import {
   gitSetupBranchValid,
   gitSetupExpiry,
   gitSetupRepositories,
+  gitSetupRepository,
   gitSetupReview,
 } from "./GitEnvironmentForm.logic";
 
@@ -33,6 +34,48 @@ export const adoption: HqGitAdoption = {
 };
 
 describe("direct Git setup", () => {
+  it("a typed repository address can start an application with no recorded code repository", () => {
+    expect(gitSetupRepository([], "github.com/acme/shop")).toMatchObject({
+      name: "shop",
+      url: "https://github.com/acme/shop",
+      connected: false,
+    });
+    expect(gitSetupRepository([repos[2]!], "https://github.com/acme/shop.git")).toMatchObject({
+      name: "shop",
+      connected: false,
+    });
+  });
+  it("a known address uses its recorded repository and a sole code repository keeps its name", () => {
+    expect(gitSetupRepository(repos, "github.com/acme/shop")).toMatchObject({
+      name: "app",
+      connected: true,
+    });
+    expect(gitSetupRepository([repos[1]!], "github.com/acme/shop")).toMatchObject({
+      name: "worker",
+      connected: false,
+    });
+  });
+  it.each([
+    "",
+    "https://user:secret@github.com/acme/shop",
+    "git@github.com:acme/shop",
+    "github.com/acme/../shop",
+    "github.com/acme/__recipe__",
+  ])("an invalid repository address cannot advance setup: %s", (address) => {
+    expect(gitSetupRepository([], address)).toBeUndefined();
+  });
+  it("a different address does not overwrite the sole connected repository", () => {
+    expect(gitSetupRepository([repos[0]!], "github.com/acme/new-app")).toMatchObject({
+      name: "new-app",
+      url: "https://github.com/acme/new-app",
+      connected: false,
+      sameRemote: false,
+    });
+    expect(gitSetupRepository([repos[0]!], "github.com/acme/new-app")?.existing).toBeUndefined();
+  });
+  it("unread repository evidence cannot be mistaken for an empty application", () => {
+    expect(gitSetupRepository(undefined, "github.com/acme/shop")).toBeUndefined();
+  });
   it("lists code repositories and names every repository left out", () => {
     expect(gitSetupRepositories(repos)?.map(({ repo, leftOut }) => [repo.name, leftOut])).toEqual([
       ["app", undefined],

@@ -15,6 +15,8 @@ export interface GitRemoteActions {
   readonly replaceToken?: (repo: string, token: string) => Promise<HqRemoteProbe>;
   readonly disconnect?: (repo: string) => Promise<void>;
   readonly connect?: (repo: string, url: string, token: string) => Promise<HqRemoteProbe>;
+  readonly reviewAddress?: (repo: string, url: string, token: string) => Promise<HqRemoteProbe>;
+  readonly updateAddress?: (repo: string, url: string) => Promise<void>;
   readonly addressReview?: {
     readonly repo: string;
     readonly verified: Extract<HqRemoteProbe, { readonly ok: true }>;
@@ -39,7 +41,7 @@ export function GitRemoteSettings({
   }>;
   readonly can?: HqOffers | undefined;
   readonly actions?: GitRemoteActions | undefined;
-  readonly live?: boolean;
+  readonly live?: boolean | undefined;
   readonly now?: number;
 }) {
   const clock = useNowMs();
@@ -89,17 +91,27 @@ function Remote({
   const [editing, setEditing] = useState(false);
   const [token, setToken] = useState("");
   const [url, setUrl] = useState("");
+  const [reviewingAddress, setReviewingAddress] = useState(false);
+  const [verifiedAddress, setVerifiedAddress] =
+    useState<Extract<HqRemoteProbe, { readonly ok: true }>>();
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<string | undefined>();
   const [disconnecting, setDisconnecting] = useState(false);
   const allowed = (verb: string) =>
     hqOffer(can, verb, { current: live, unavailableSince: live ? null : 0 }).kind === "allowed";
   const remote = repo.remote;
-  const guide = gitTokenGuide(remote?.url ?? url, appName);
+  const guide = gitTokenGuide(reviewingAddress ? url : (remote?.url ?? url), appName);
   const keep = remote == null ? actions?.connect : actions?.replaceToken;
   const permitted =
     allowed(remote == null ? "connect_remote" : "replace_remote_token") && keep !== undefined;
-  const review = actions?.addressReview;
+  const review =
+    verifiedAddress === undefined || actions?.updateAddress === undefined
+      ? actions?.addressReview
+      : {
+          repo: repo.name,
+          verified: verifiedAddress,
+          confirm: () => actions.updateAddress!(repo.name, verifiedAddress.remote.url),
+        };
   const sameId =
     remote?.repositoryId != null &&
     review?.repo === repo.name &&
@@ -107,19 +119,36 @@ function Remote({
     new URL(remote.url).host === "github.com" &&
     new URL(review.verified.remote.url).host === "github.com";
   const submit = async () => {
-    if (!permitted || !token || guide.kind !== "guide" || busy) return;
+    if (
+      !(reviewingAddress
+        ? allowed("update_remote_address") && actions?.reviewAddress !== undefined
+        : permitted) ||
+      !token ||
+      guide.kind !== "guide" ||
+      busy
+    )
+      return;
     setBusy(true);
     const candidate = token;
     setToken("");
     try {
-      const result =
-        remote == null
+      const result = reviewingAddress
+        ? await actions!.reviewAddress!(repo.name, url, candidate)
+        : remote == null
           ? await actions!.connect!(repo.name, url, candidate)
           : await actions!.replaceToken!(repo.name, candidate);
       setAnswer(
-        result.ok ? "Token verified. Waiting for HQ's saved remote record." : result.reason,
+        result.ok
+          ? reviewingAddress
+            ? "Address verified. Review it before updating HQ."
+            : "Token verified. Waiting for HQ's saved remote record."
+          : result.reason,
       );
-      if (result.ok) setEditing(false);
+      if (result.ok) {
+        if (reviewingAddress) setVerifiedAddress(result);
+        setEditing(false);
+        setReviewingAddress(false);
+      }
     } catch {
       setAnswer("HQ couldn't confirm the token change. Check its outcome before trying again.");
     } finally {
@@ -146,9 +175,28 @@ function Remote({
           {remote == null ? "Connect repository" : "Replace token"}
         </Button>
       ) : null}
+      {remote?.repositoryId != null &&
+      new URL(remote.url).hostname === "github.com" &&
+      allowed("update_remote_address") &&
+      actions?.reviewAddress !== undefined &&
+      actions.updateAddress !== undefined &&
+      !editing ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setUrl(remote.url);
+            setVerifiedAddress(undefined);
+            setReviewingAddress(true);
+            setEditing(true);
+          }}
+        >
+          Review address
+        </Button>
+      ) : null}
       {editing ? (
         <div className="flex flex-col gap-2">
-          {remote == null ? (
+          {remote == null || reviewingAddress ? (
             <Input
               nativeInput
               aria-label="Repository HTTPS URL"
@@ -180,12 +228,17 @@ function Remote({
           <div className="flex gap-2">
             <Button
               size="sm"
-              disabled={busy || !permitted || !token || guide.kind !== "guide"}
+              disabled={
+                busy ||
+                !(reviewingAddress ? allowed("update_remote_address") : permitted) ||
+                !token ||
+                guide.kind !== "guide"
+              }
               onClick={() => {
                 void submit();
               }}
             >
-              Verify and keep token
+              {reviewingAddress ? "Verify address" : "Verify and keep token"}
             </Button>
             <Button
               size="sm"
@@ -194,6 +247,7 @@ function Remote({
               onClick={() => {
                 setToken("");
                 setEditing(false);
+                setReviewingAddress(false);
               }}
             >
               Cancel
@@ -223,9 +277,19 @@ function Remote({
               </p>
               <Button
                 size="sm"
-                onClick={() => {
-                  setDisconnecting(false);
-                  void actions.disconnect!(repo.name);
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await actions.disconnect!(repo.name);
+                    setDisconnecting(false);
+                  } catch {
+                    setAnswer(
+                      "HQ couldn't confirm disconnect. Check its outcome before trying again.",
+                    );
+                  } finally {
+                    setBusy(false);
+                  }
                 }}
               >
                 Confirm disconnect
@@ -247,8 +311,19 @@ function Remote({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => {
-              void review!.confirm();
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await review!.confirm();
+                setVerifiedAddress(undefined);
+              } catch {
+                setAnswer(
+                  "HQ couldn't confirm the new address. Check its outcome before trying again.",
+                );
+              } finally {
+                setBusy(false);
+              }
             }}
           >
             Update address

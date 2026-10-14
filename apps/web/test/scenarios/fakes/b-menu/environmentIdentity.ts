@@ -36,10 +36,15 @@ export function environmentIdentityWire(
       (record.tier === "stage" || record.tier === "production") &&
       Array.isArray(record.sources)
     ) {
-      const { id: _id, target: _target, ...legacy } = record;
+      const { id: _id, target, ...rest } = record;
+      const projectId =
+        target !== null && typeof target === "object" && "projectId" in target
+          ? target.projectId
+          : undefined;
+      const legacy = { ...rest, projectId };
       if (wire === "legacy") return legacy;
       if (wire === "partial") return { ...legacy, id: record.id };
-      const binding = typeof record.projectId === "string" ? bindings[record.projectId] : undefined;
+      const binding = typeof projectId === "string" ? bindings[projectId] : undefined;
       return binding === undefined ? record : { ...record, ...binding };
     }
     return Object.fromEntries(

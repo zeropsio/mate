@@ -27,6 +27,7 @@ export interface SidebarChiefRowProps {
   readonly face?: MateMarkState | undefined;
   /** Its second line (`chiefRowLine`), drawn; none, and "Chief" stands alone. */
   readonly line?: ReactNode;
+  readonly title?: string | undefined;
   /** Its conversation, or the Chief page, is the page open now. */
   readonly current: boolean;
   readonly onOpen: () => void;
@@ -36,7 +37,14 @@ export interface SidebarChiefRowProps {
     | undefined;
 }
 
-export function SidebarChiefRow({ face, line, current, onOpen, waiting }: SidebarChiefRowProps) {
+export function SidebarChiefRow({
+  face,
+  line,
+  title,
+  current,
+  onOpen,
+  waiting,
+}: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
   const summary = items.length === 0 ? undefined : waitingSummary(items);
   // The person's own Chief, by their name and with their picture on its mark (the owner,
@@ -92,7 +100,7 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
           </span>
           <span className="menu-chief-words">
             <span className="menu-chief-name" data-waiting-line="">
-              {account === null ? "Chief Mate" : `${account.name}'s Chief Mate`}
+              {title ?? (account === null ? "Chief Mate" : `${account.name}'s Chief Mate`)}
             </span>
             {shown === null ? null : <span className="menu-chief-line">{shown}</span>}
           </span>
@@ -123,7 +131,14 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
  * The Chief on the closed menu's rail, in Overview's old place: its mark as a tile, wearing its
  * state, what waits on the person counted on its corner; its name and line in its card.
  */
-export function SidebarChiefTile({ face, line, current, onOpen, waiting }: SidebarChiefRowProps) {
+export function SidebarChiefTile({
+  face,
+  line,
+  title,
+  current,
+  onOpen,
+  waiting,
+}: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
   const summary = items.length === 0 ? undefined : waitingSummary(items);
   return (
@@ -133,7 +148,7 @@ export function SidebarChiefTile({ face, line, current, onOpen, waiting }: Sideb
           render={
             <button
               aria-current={current ? "page" : undefined}
-              aria-label="Chief Mate"
+              aria-label={title ?? "Chief Mate"}
               className="menu-rail-head"
               data-current={current ? "" : undefined}
               data-zerops-surface="sidebar-chief-row"
@@ -151,7 +166,7 @@ export function SidebarChiefTile({ face, line, current, onOpen, waiting }: Sideb
         </TooltipTrigger>
         <TooltipPopup side="right">
           <span className="menu-rail-tip">
-            <span className="menu-rail-tip-name">Chief Mate</span>
+            <span className="menu-rail-tip-name">{title ?? "Chief Mate"}</span>
             {line === undefined || line === null ? null : (
               <span className="menu-rail-tip-line">{line}</span>
             )}

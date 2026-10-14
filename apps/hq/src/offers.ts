@@ -1,3 +1,4 @@
+import { HQ_GIT_TARGET_VERBS, type HqGitTargetVerb } from "@t3tools/shared/hqOffers";
 /**
  * What HQ offers a person, beside what its structure streams them (`@t3tools/shared/hqOffers`):
  * each verb decided by `can` over the very target its write is enforced with — the builders here,
@@ -15,6 +16,9 @@
  */
 import * as Effect from "effect/Effect";
 import type * as SqlClient from "effect/sql/SqlClient";
+import * as Schema from "effect/Schema";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import { HqEnvironmentAttachment } from "@t3tools/shared/hqEnvironment";
 import type { HqOffersOf } from "@t3tools/shared/hqOffers";
 import { type Decision } from "@t3tools/shared/zeropsPermissions";
 import {
@@ -44,19 +48,30 @@ export const appTarget = (
 
 /** Slot and release verdicts come from environment rows; devstage remains a Mate placement. */
 export interface EnvironmentSlots {
+  readonly productionTarget?: "zerops" | "git";
   readonly stageProjectIds: ReadonlyArray<string>;
   readonly productionProjectId: string | null;
 }
 export const environmentSlots = (
-  environments: ReadonlyArray<{ readonly project_id: string; readonly tier: string }>,
-): EnvironmentSlots => ({
-  stageProjectIds: environments.filter((row) => row.tier === "stage").map((row) => row.project_id),
-  productionProjectId: environments.find((row) => row.tier === "production")?.project_id ?? null,
-});
+  environments: ReadonlyArray<{
+    readonly project_id: string | null;
+    readonly tier: string;
+    readonly target?: string;
+  }>,
+): EnvironmentSlots => {
+  const production = environments.find((row) => row.tier === "production");
+  return {
+    stageProjectIds: environments
+      .filter((row) => row.tier === "stage" && row.project_id !== null)
+      .map((row) => row.project_id!),
+    productionProjectId: production?.project_id ?? null,
+    ...(production?.target === "git" ? { productionTarget: "git" as const } : {}),
+  };
+};
 export const readEnvironmentSlots = (sql: SqlClient.SqlClient, appId: string) =>
   Effect.map(
-    sql<{ readonly project_id: string; readonly tier: string }>`
-    SELECT project_id, tier FROM hq_environment WHERE app_id::text = ${appId}`,
+    sql<{ readonly project_id: string | null; readonly tier: string; readonly target: string }>`
+    SELECT project_id, tier, target FROM hq_environment WHERE app_id::text = ${appId}`,
     environmentSlots,
   );
 export const environmentSlotTaken = (
@@ -65,6 +80,7 @@ export const environmentSlotTaken = (
   slots: EnvironmentSlots,
   facts: Facts,
 ): boolean => {
+  if (tier === "production" && slots.productionTarget === "git") return true;
   const projectIds =
     tier === "production"
       ? slots.productionProjectId === null
@@ -84,6 +100,7 @@ export const releaseTarget = (
 ): ReleaseTarget => ({
   ...appTarget(projects),
   productionProjectId: slots.productionProjectId,
+  ...(slots.productionTarget === undefined ? {} : { productionTarget: slots.productionTarget }),
 });
 
 /**
@@ -97,6 +114,8 @@ export const offer = <V extends Verb>(
   target: Targets[V],
   facts: Facts,
 ): Decision => can({ kind: "person", userId }, verb, target, facts as FactsFor<V>);
+
+const decodeAttachment = Schema.decodeUnknownSync(HqEnvironmentAttachment);
 
 const ORG_VERBS = ["create_app", "rename_app", "delete_app"] as const;
 
@@ -117,7 +136,12 @@ const CHANGE_VERBS = [
   "redeploy",
 ] as const;
 
-export type AppVerb = (typeof CHANGE_VERBS)[number] | "release" | "add_stage" | "add_production";
+export type AppVerb =
+  | (typeof CHANGE_VERBS)[number]
+  | HqGitTargetVerb
+  | "release"
+  | "add_stage"
+  | "add_production";
 
 /** The create flow's prospective project is owned by its creator; this is never write evidence. */
 const newEnvironmentOffer = (
@@ -164,6 +188,9 @@ export const appOffers = (
   ...(Object.fromEntries(
     CHANGE_VERBS.map((verb) => [verb, offer(userId, verb, appTarget(projects), facts)]),
   ) as HqOffersOf<(typeof CHANGE_VERBS)[number]>),
+  ...(Object.fromEntries(
+    HQ_GIT_TARGET_VERBS.map((verb) => [verb, offer(userId, verb, appTarget(projects), facts)]),
+  ) as HqOffersOf<HqGitTargetVerb>),
   release: offer(userId, "release", releaseTarget(projects, slots), facts),
   add_stage: newEnvironmentOffer(userId, projects, facts, "stage", slots),
   add_production: newEnvironmentOffer(userId, projects, facts, "production", slots),
@@ -201,6 +228,17 @@ export const environmentOffers = (
   facts: Facts,
 ): HqOffersOf<"keep_deploy_token"> => ({
   keep_deploy_token: offer(userId, "keep_deploy_token", { projectId }, facts),
+});
+
+/** Git targets reuse the same application write verdicts as their fresh owners. */
+export const gitEnvironmentOffers = (
+  userId: string,
+  projects: ReadonlyArray<AppProjectRow>,
+  facts: Facts,
+) => ({
+  keep_deploy_token: { allow: false as const, reason: "unknown_kind" as const },
+  remove_git_environment: offer(userId, "remove_git_environment", appTarget(projects), facts),
+  redeploy: offer(userId, "redeploy", appTarget(projects), facts),
 });
 
 /** A project placed into an application of `appProjects` as `to`: what a move is decided on. */
@@ -303,3 +341,62 @@ export const recordOffers = (
 ): HqOffersOf<"create_mate_record"> => ({
   create_mate_record: offer(userId, "create_mate_record", { projectId, held: "none" }, facts),
 });
+
+/** The attachment stamp is the destination identity, including ABA remove/add of the same id. */
+export interface ProductionAttachmentRow {
+  readonly id: string | null;
+  readonly created_at: string | null;
+  readonly target: "zerops" | "git" | null;
+  readonly project_id: string | null;
+  readonly branch: string | null;
+  readonly delivery: "direct" | null;
+}
+export const productionAttachmentOf = (
+  row: ProductionAttachmentRow | undefined,
+): HqEnvironmentAttachment | undefined =>
+  row?.id == null
+    ? undefined
+    : decodeAttachment({
+        environmentId: row.id,
+        createdAt: row.created_at,
+        target:
+          row.target === "git"
+            ? { kind: "git", branch: row.branch!, delivery: row.delivery! }
+            : { kind: "zerops", projectId: row.project_id! },
+      });
+export const readProductionAttachment = (sql: SqlClient.SqlClient, appId: string, lock = false) =>
+  Effect.map(
+    sql<ProductionAttachmentRow>`SELECT id,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
+    target,project_id,branch,delivery FROM hq_environment WHERE app_id::text=${appId} AND tier='production'
+    ${lock ? sql`FOR UPDATE` : sql``}`,
+    ([row]) => productionAttachmentOf(row),
+  );
+
+/** Git release units are connected code repositories; the recipe is never a Git release unit. */
+export const gitReleaseRoster = <A extends { readonly name: string; readonly connected: boolean }>(
+  repos: ReadonlyArray<A>,
+) => repos.filter((repo) => repo.name !== RECIPE_REPO && repo.connected);
+
+/** One acceptance/navigation blocker; ended unresolved receipts still need their next actor. */
+export const readGitReleaseBlocker = (
+  sql: SqlClient.SqlClient,
+  appId: string,
+  attachment: HqEnvironmentAttachment,
+) =>
+  Effect.map(
+    sql<{ tag: string | null }>`SELECT r.tag FROM hq_rollout r
+    WHERE r.app_id::text=${appId} AND r.cause='release'
+      AND (r.environment_id IS NULL OR (r.environment_id=${attachment.environmentId}
+        AND r.environment_created_at=${attachment.createdAt}::timestamptz))
+      AND (r.planned_at IS NULL OR EXISTS (SELECT 1 FROM hq_deploy_job j
+        WHERE j.rollout_id=r.id AND j.environment_id=${attachment.environmentId}
+          AND (j.ended_at IS NULL OR j.state='unresolved' OR j.evidence->>'phase'='recovering')))
+    UNION ALL SELECT label AS tag FROM hq_deploy_job WHERE environment_id=${attachment.environmentId}
+      AND (state='unresolved' OR evidence->>'phase'='recovering') LIMIT 1`,
+    ([row]) =>
+      row === undefined
+        ? undefined
+        : row.tag === null
+          ? "The last production hand-over needs to be settled."
+          : `Releasing ${row.tag}…`,
+  );

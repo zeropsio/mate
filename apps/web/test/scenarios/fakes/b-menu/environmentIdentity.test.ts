@@ -59,7 +59,20 @@ it("mixed targets and unequal ids preserve order, jobs and legacy project addres
     stage: { id: "independent", target: { kind: "zerops", projectId: "stage" } },
     prod: { id: "git-production", target: { kind: "git", branch: "release", delivery: "direct" } },
   });
-  const input = rows(wire.map(frame([row, { ...row, id: "prod", projectId: "prod", order: 7 }])));
+  const input = rows(
+    wire.map(
+      frame([
+        row,
+        {
+          ...row,
+          id: "prod",
+          target: { kind: "zerops", projectId: "prod" },
+          projectId: "prod",
+          order: 7,
+        },
+      ]),
+    ),
+  );
   expect(decodeCanonical(input)).toEqual([
     { ...row, id: "independent" },
     {
@@ -71,3 +84,25 @@ it("mixed targets and unequal ids preserve order, jobs and legacy project addres
     },
   ]);
 });
+
+// Current Core frames have no legacy field; old-HQ modes add it only from the target.
+it.each(["navigation", "app-detail"])(
+  "current %s input retains target addressing while legacy fixtures reconstruct it",
+  (kind) => {
+    const { projectId: _projectId, ...current } = row;
+    expect(rows(environmentIdentityWire("modern").map(frame([current], kind)))).toEqual([current]);
+    expect(rows(environmentIdentityWire("legacy").map(frame([current], kind)))).toEqual([
+      Object.fromEntries(Object.entries(row).filter(([key]) => key !== "id" && key !== "target")),
+    ]);
+    expect(rows(environmentIdentityWire("partial").map(frame([current], kind)))).toEqual([
+      Object.fromEntries(Object.entries(row).filter(([key]) => key !== "target")),
+    ]);
+    expect(
+      rows(
+        environmentIdentityWire("modern", {
+          stage: { id: "independent", target: { kind: "zerops", projectId: "stage" } },
+        }).map(frame([current], kind)),
+      ),
+    ).toEqual([{ ...current, id: "independent" }]);
+  },
+);

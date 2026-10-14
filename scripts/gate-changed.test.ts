@@ -24,6 +24,9 @@ import {
 
 const gateRunnerFiles = [
   "gate-changed.ts",
+  "gate-input-scopes.ts",
+  "state-smoke-cases.ts",
+  "gate-file-inputs.ts",
   "chat-gate.ts",
   "gate-log.ts",
   "gate-slots.ts",
@@ -372,6 +375,7 @@ beforeAll(() => {
       "apps/hq/package.json",
       "packages",
       "scripts",
+      "oxlint-plugin-t3code/rules",
       "infra/relay/package.json",
       "apps/mobile/package.json",
       "apps/desktop/package.json",
@@ -618,7 +622,13 @@ it("the CLI and immutable gate graph select identical obligations for a real sou
     expect(
       result.stdout
         .split("\n")
-        .filter((line) => line && !/^(?:Scenario files:|Diff from )/u.test(line)),
+        .filter(
+          (line) =>
+            line &&
+            !/^(?:Scenario files:|Scenario |Related scenario cap:|Deferred scenario |Diff from )/u.test(
+              line,
+            ),
+        ),
       "ASSERTION: the real CLI uses the same owning selection as the immutable graph",
     ).toEqual(
       selection.steps.map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`),
@@ -935,6 +945,35 @@ it("stylesheet imports retain nested url inputs and removed imports", () => {
 });
 
 // Decision: no test deleted or weakened; only lane selection changes; main CI runs everything.
+it("environment row helpers select their rendered group surface through the scenario graph", () => {
+  const scenario = "apps/web/test/scenarios/areas/b-menu/environmentIdentity.scenario.ts";
+  const unrelated = "apps/web/test/scenarios/areas/a-signin/account.scenario.ts";
+  expect(
+    relatedFiles(
+      repositoryFixture,
+      ["apps/web/src/components/zerops/ZeropsGroupDetail.tsx"],
+      [scenario, unrelated],
+    ),
+  ).toEqual([scenario]);
+});
+
+it("Decision: no app-bundle fallback; edges are declared or imported, never inferred from locators at runtime.", () => {
+  const scenario = "apps/web/test/scenarios/areas/b-menu/environmentIdentity.scenario.ts";
+  const graph = buildRelatedFileGraph(repositoryFixture, [scenario]);
+  expect(graph.select(["apps/web/src/main.tsx", "apps/web/index.html"])).toEqual([]);
+  expect(graph.select(["apps/web/src/components/chat/RunChat.tsx"])).toEqual([]);
+});
+
+it('Decision: no "run everything" fallback; selection stays graph-based.', () => {
+  expect(
+    relatedFiles(
+      repositoryFixture,
+      ["apps/web/src/components/zerops/ZeropsGroupDetail.tsx"],
+      ["apps/web/test/scenarios/areas/a-signin/account.scenario.ts"],
+    ),
+  ).toEqual([]);
+});
+
 it("lane scenarios follow their own imports without the bundled app entry", () => {
   const file = NodePath.join(repositoryFixture, "apps/web/src/components/chat/RunChat.tsx");
   const original = NodeFS.readFileSync(file, "utf8");
@@ -1137,9 +1176,23 @@ esac
     expect(failed.status).toBe(9);
     expect(failed.stderr).toContain("Full log:");
     expect(JSON.parse(NodeFS.readFileSync(receiptPath, "utf8")).results.at(-1).status).toBe(9);
+    const checksBeforeRetry = checks();
     const retried = run();
     expect(retried.status, retried.stderr).toBe(0);
     expect(retried.stdout).not.toContain("reused receipt");
+    expect(
+      checks().slice(checksBeforeRetry.length),
+      "ASSERTION: a gate re-run never repeats stages that passed on unchanged files",
+    ).toBe("vp\n");
+    const checksBeforeFull = checks();
+    const full = run(["--full"]);
+    expect(full.status, full.stderr).toBe(0);
+    expect(checks().slice(checksBeforeFull.length).split("\n").filter(Boolean)).toEqual([
+      "check-guard-exceptions.ts",
+      "check-runtime-cycles.ts",
+      "check-test-sentences.ts",
+      "vp",
+    ]);
     expect(run().stdout).toContain("reused receipt");
     // A corrupt or incomplete receipt is evidence to run, never evidence to skip.
     for (const content of [
@@ -1199,6 +1252,7 @@ esac
     // Selection inputs can change on main without changing the lane patch or command list.
     for (const path of [
       "scripts/gate-timing-reporter.ts",
+      "scripts/state-smoke-cases.ts",
       "scripts/gate-changed.ts",
       "pnpm-lock.yaml",
       "vite.config.ts",
@@ -1303,59 +1357,50 @@ const smokeTitles = [
 
 it("L2 runs invariants, touched typechecks, owned units, edited scenarios and fixed state-only smoke in order", () => {
   const path = "packages/contracts/src/engine.ts";
-  const file = NodePath.join(repositoryFixture, path);
-  const original = NodeFS.readFileSync(file, "utf8");
-  const editedFile = NodePath.join(
-    repositoryFixture,
-    "apps/web/test/scenarios/areas/d-change/review.scenario.ts",
+  const selected = selectGateSteps(repositoryGraph, {
+    comparison: "HEAD",
+    existing: [path, "apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
+    paths: [path, "apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
+    typecheckPaths: [path],
+    inventory: ["apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
+    smokeFiles: Object.keys(stateOnlySmoke),
+    slots: 3,
+  });
+  const output = selected.steps
+    .map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`)
+    .join("\n");
+  const lines = output.split("\n");
+  const index = (prefix: string) => lines.findIndex((line) => line.startsWith(prefix));
+  expect(
+    index("repository invariants:"),
+    "ASSERTION: invariants run before typechecks",
+  ).toBeGreaterThan(-1);
+  expect(index("typecheck @t3tools/contracts:")).toBeGreaterThan(index("repository invariants:"));
+  expect(index("related root tests:")).toBeGreaterThan(index("typecheck @t3tools/contracts:"));
+  const smoke = lines.find((line) => line.startsWith("state-only smoke:"));
+  expect(index("state-only smoke:")).toBeGreaterThan(index("related root tests:"));
+  expect(smoke).toContain("chat.scenario.ts");
+  expect(smoke).toContain("engine-secret.scenario.ts");
+  expect(smoke).toContain("engine-page.scenario.ts");
+  expect(smoke, "ASSERTION: fixed approval smoke clicks the person's browser control").toContain(
+    "(?:approve an agent command and see it resolve)$",
   );
-  const editedOriginal = NodeFS.readFileSync(editedFile, "utf8");
-  try {
-    NodeFS.appendFileSync(file, "\nexport const l2Witness = true;\n");
-
-    NodeFS.appendFileSync(editedFile, "\nexport const editedL2Witness = true;\n");
-    const result = NodeChildProcess.spawnSync(
-      process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    const lines = result.stdout.split("\n");
-    const index = (prefix: string) => lines.findIndex((line) => line.startsWith(prefix));
-    expect(
-      index("repository invariants:"),
-      "ASSERTION: invariants run before typechecks",
-    ).toBeGreaterThan(-1);
-    expect(index("typecheck @t3tools/contracts:")).toBeGreaterThan(index("repository invariants:"));
-    expect(index("related root tests:")).toBeGreaterThan(index("typecheck @t3tools/contracts:"));
-    const smoke = lines.find((line) => line.startsWith("state-only smoke:"));
-    expect(index("state-only smoke:")).toBeGreaterThan(index("related root tests:"));
-    expect(smoke).toContain("chat.scenario.ts");
-    expect(smoke).toContain("engine-secret.scenario.ts");
-    expect(smoke).toContain("engine-page.scenario.ts");
-    expect(smoke, "ASSERTION: fixed approval smoke clicks the person's browser control").toContain(
-      "(?:approve an agent command and see it resolve)$",
-    );
-    expect(smoke).toContain(smokeTitles.map((title) => `(?:${title})$`).join("|"));
-    expect(smoke).not.toContain("first open crosses the door and OAuth");
-    expect(lines.some((line) => line.startsWith("state-only oracle smoke:"))).toBe(false);
-    const edited = lines.find((line) => line.startsWith("edited scenario files:"));
-    expect(edited).toBe(
-      "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/d-change/review.scenario.ts",
-    );
-    const typeIndexes = lines.flatMap((line, i) => (line.startsWith("typecheck ") ? [i] : []));
-    const unitIndexes = lines.flatMap((line, i) => (line.startsWith("related ") ? [i] : []));
-    expect(Math.min(...typeIndexes)).toBeGreaterThan(index("repository invariants:"));
-    expect(Math.min(...unitIndexes)).toBeGreaterThan(Math.max(...typeIndexes));
-    expect(index("edited scenario files:")).toBeGreaterThan(Math.max(...unitIndexes));
-    expect(index("state-only smoke:")).toBeGreaterThan(index("edited scenario files:"));
-    for (const guard of ["guard ledgers:", "runtime cycle ratchet:", "test sentence retention:"])
-      expect(index(guard)).toBeLessThan(index("repository invariants:"));
-    expect(result.stdout).not.toContain("scripts/chat-gate.ts --stages");
-  } finally {
-    NodeFS.writeFileSync(file, original);
-    NodeFS.writeFileSync(editedFile, editedOriginal);
-  }
+  expect(smoke).toContain(smokeTitles.map((title) => `(?:${title})$`).join("|"));
+  expect(smoke).not.toContain("first open crosses the door and OAuth");
+  expect(lines.some((line) => line.startsWith("state-only oracle smoke:"))).toBe(false);
+  const edited = lines.find((line) => line.startsWith("edited scenario files:"));
+  expect(edited).toBe(
+    "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/d-change/review.scenario.ts",
+  );
+  const typeIndexes = lines.flatMap((line, i) => (line.startsWith("typecheck ") ? [i] : []));
+  const unitIndexes = lines.flatMap((line, i) => (line.startsWith("related ") ? [i] : []));
+  expect(Math.min(...typeIndexes)).toBeGreaterThan(index("repository invariants:"));
+  expect(Math.min(...unitIndexes)).toBeGreaterThan(Math.max(...typeIndexes));
+  expect(index("edited scenario files:")).toBeGreaterThan(Math.max(...unitIndexes));
+  expect(index("state-only smoke:")).toBeGreaterThan(index("edited scenario files:"));
+  for (const guard of ["guard ledgers:", "runtime cycle ratchet:", "test sentence retention:"])
+    expect(index(guard)).toBeLessThan(index("repository invariants:"));
+  expect(output).not.toContain("scripts/chat-gate.ts --stages");
 });
 
 it.each(["apps/web/package.json", "package.json", "pnpm-lock.yaml"])(
@@ -1741,5 +1786,107 @@ it("Decision: L2 selects changed modules' same-name tests and every importing or
       NodeFS.rmSync(NodePath.join(repositoryFixture, path), { force: true });
     for (const directory of ["packages/gate-hop-consumer", "packages/gate-hop-downstream"])
       NodeFS.rmSync(NodePath.join(repositoryFixture, directory), { recursive: true, force: true });
+  }
+});
+
+it.each([
+  [
+    "packages/client-runtime/src/zerops/hq/client.ts",
+    "oxlint-plugin-t3code/rules/no-remote-io-outside-data-layer.test.ts",
+  ],
+  [
+    "apps/hq/src/environmentNavigation.ts",
+    "test/scenarios/areas/b-menu/environmentIdentity.scenario.ts",
+  ],
+])("the gate lists the real consumer of a changed repository input (%s)", (input, consumer) => {
+  const file = NodePath.join(repositoryFixture, input);
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.writeFileSync(file, original + "\nexport const gateSelectionRegression = true;\n");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout, `ASSERTION: changed ${input} selects its real consumer`).toContain(
+      consumer,
+    );
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
+});
+
+it("related rendering scenarios run nearest first within the cap and log every overflow", () => {
+  const head = fixtureGit("rev-parse", "HEAD");
+  const owner = "apps/web/src/lib/gateScenarioSelection.ts";
+  const helper = "apps/web/src/lib/gateScenarioHelper.ts";
+  const area = "apps/web/test/scenarios/areas/b-menu";
+  const near = Array.from({ length: 8 }, (_, i) => `${area}/gate-near-${i}.scenario.ts`);
+  const far = `${area}/gate-far.scenario.ts`;
+  const files = {
+    [owner]: "export const witness = 1;",
+    [helper]:
+      "import { witness } from './gateScenarioSelection.ts'; export const doubled = witness * 2;",
+    ...Object.fromEntries(
+      near.map((file) => [
+        file,
+        "import { witness } from '../../../../src/lib/gateScenarioSelection.ts';",
+      ]),
+    ),
+    [far]: "import { doubled } from '../../../../src/lib/gateScenarioHelper.ts';",
+  };
+  try {
+    for (const [file, source] of Object.entries(files)) {
+      NodeFS.mkdirSync(NodePath.dirname(NodePath.join(repositoryFixture, file)), {
+        recursive: true,
+      });
+      NodeFS.writeFileSync(NodePath.join(repositoryFixture, file), source);
+    }
+    fixtureGit("add", ...Object.keys(files));
+    fixtureGit("commit", "-qm", "scenario distance fixture");
+    NodeFS.appendFileSync(NodePath.join(repositoryFixture, owner), "\nexport const changed = 2;\n");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const selected = result.stdout
+      .split("\n")
+      .filter((line) => line.startsWith("Scenario apps/"))
+      .map((line) => line.split(";")[0]!.slice("Scenario ".length));
+    expect(
+      selected,
+      "ASSERTION: eight nearest rendering scenarios run, without a full-suite fallback",
+    ).toEqual(near);
+    expect(result.stdout).toContain(`Deferred scenario ${far}; import graph distance 2`);
+    expect(result.stdout).toContain("Related scenario cap: 8; selected 8; overflow 1");
+  } finally {
+    fixtureGit("reset", "--hard", head);
+    for (const file of Object.keys(files))
+      NodeFS.rmSync(NodePath.join(repositoryFixture, file), { force: true });
+  }
+});
+
+it("a filesystem guard without a declaration stops gate selection with its owning path", () => {
+  const file = "scripts/undeclared-source-guard.test.ts";
+  const path = NodePath.join(repositoryFixture, file);
+  try {
+    NodeFS.writeFileSync(
+      path,
+      "import * as fs from 'node:fs'; fs.readFileSync('packages/client-runtime/src/zerops/hq/client.ts');",
+    );
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr, "ASSERTION: undeclared source guards fail before checks run").toContain(
+      `${file}: filesystem reads need a declaration`,
+    );
+  } finally {
+    NodeFS.rmSync(path, { force: true });
   }
 });

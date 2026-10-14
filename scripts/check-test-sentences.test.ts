@@ -46,6 +46,9 @@ function installCli(root: string): void {
   for (const name of [
     "check-test-sentences.ts",
     "gate-changed.ts",
+    "gate-input-scopes.ts",
+    "state-smoke-cases.ts",
+    "gate-file-inputs.ts",
     "chat-gate.ts",
     "gate-log.ts",
     "gate-slots.ts",
@@ -280,7 +283,12 @@ it("GitHub main pushes check every pushed commit even when origin/main equals HE
       {
         cwd: root,
         encoding: "utf8",
-        env: { ...process.env, GITHUB_ACTIONS: "true", GITHUB_EVENT_PATH: event },
+        env: {
+          ...process.env,
+          GITHUB_ACTIONS: "true",
+          GITHUB_EVENT_PATH: event,
+          GITHUB_REF: "refs/heads/main",
+        },
       },
     );
     expect(result.status, result.stderr).toBe(1);
@@ -337,7 +345,12 @@ it("GitHub pull requests compare against their base and missing event history fa
       NodeChildProcess.spawnSync(process.execPath, ["scripts/check-test-sentences.ts"], {
         cwd: root,
         encoding: "utf8",
-        env: { ...process.env, GITHUB_ACTIONS: "true", GITHUB_EVENT_PATH: event },
+        env: {
+          ...process.env,
+          GITHUB_ACTIONS: "true",
+          GITHUB_EVENT_PATH: event,
+          GITHUB_REF: "refs/pull/1/merge",
+        },
       });
     NodeFS.writeFileSync(event, JSON.stringify({ pull_request: { base: { sha } } }));
     const pr = run();
@@ -388,7 +401,12 @@ it.each(["kh-next", "kh-bisect"])(
         {
           cwd: root,
           encoding: "utf8",
-          env: { ...process.env, GITHUB_ACTIONS: "true", GITHUB_EVENT_PATH: event },
+          env: {
+            ...process.env,
+            GITHUB_ACTIONS: "true",
+            GITHUB_EVENT_PATH: event,
+            GITHUB_REF: `refs/heads/${branch}${branch === "kh-next" ? "" : "/candidate"}`,
+          },
         },
       );
       expect(result.status).toBe(1);
@@ -399,3 +417,53 @@ it.each(["kh-next", "kh-bisect"])(
     });
   },
 );
+
+it.each(
+  ["kh-next", "kh-bisect/candidate", "wt/candidate"].flatMap((branch) => [
+    { branch, change: "revert candidate sentence", expected: 0 },
+    { branch, change: "drop main sentence", expected: 1 },
+    { branch, change: "approve main sentence", expected: 0 },
+  ]),
+)("non-main pushes protect main sentences ($branch, $change)", ({ branch, change, expected }) => {
+  fixture(({ root, write, commit, git }) => {
+    if (change === "revert candidate sentence") {
+      write("candidate.test.ts", 'it("candidate-only sentence", () => {});');
+      commit("add candidate sentence");
+    } else {
+      write("old.test.ts", "export {};");
+      commit(
+        change === "approve main sentence"
+          ? "approve removal\n\nDrops-test: routine memory reclaim shows no notice"
+          : "drop main sentence",
+      );
+    }
+    const before = git("rev-parse", "HEAD");
+    if (change === "revert candidate sentence") git("revert", "--no-edit", "HEAD");
+    else commit("another pushed commit");
+    installCli(root);
+    const event = NodePath.join(root, "event.json");
+    // GITHUB_REF owns branch selection, even if the event's ref disagrees.
+    NodeFS.writeFileSync(event, JSON.stringify({ before, ref: "refs/heads/main" }));
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/check-test-sentences.ts"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GITHUB_ACTIONS: "true",
+          GITHUB_EVENT_PATH: event,
+          GITHUB_REF: `refs/heads/${branch}`,
+        },
+      },
+    );
+    expect(
+      result.status,
+      `ASSERTION: ${branch} must ${expected === 0 ? "accept" : "reject"} ${change}\n${result.stderr}`,
+    ).toBe(expected);
+    if (expected === 1)
+      expect(result.stderr).toContain("Needs Drops-test: routine memory reclaim shows no notice");
+    else expect(result.stdout).toContain("Test sentences retained");
+  });
+});

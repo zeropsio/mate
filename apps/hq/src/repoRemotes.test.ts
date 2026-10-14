@@ -1,10 +1,12 @@
 // @effect-diagnostics nodeBuiltinImport:off -- local HTTP host; database is the real custody consumer.
 import * as NodeHttp from "node:http";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { assert, describe, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -15,6 +17,10 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as SqlClient from "effect/sql/SqlClient";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { TEST_KEY_SECRET, testKey } from "../test/harness/deployKeys.ts";
+import { tempDir } from "../test/harness/tempDir.ts";
+import { Changes, changesLayer } from "./changes.ts";
+import { GitHost, gitHostLayer } from "./gitHost.ts";
+import { rolloutsLayer } from "./rollouts.ts";
 import { deployKeysLayer } from "./deployKeys.ts";
 import { githubProbesLayer } from "./githubProbes.ts";
 import { gitTransportLayer } from "./gitTransport.ts";
@@ -181,7 +187,7 @@ const fixture = Effect.gen(function* () {
       write: (effect) => effect,
       nextAttempt: Effect.void,
       finished: Effect.void,
-      changes: Stream.empty,
+      changes: Stream.make({ state: "active" as const, epoch: 1 }),
       release: Effect.void,
       hold: () => Effect.void,
       held: Effect.succeed(null),
@@ -199,8 +205,11 @@ const fixture = Effect.gen(function* () {
       ),
     ),
   ).pipe(Layer.provide(NodeHttpClient.layerNodeHttp));
+  const rootDir = yield* tempDir("hq-remote-");
   const context = yield* Layer.build(
     repoRemotesLayer.pipe(
+      Layer.provideMerge(changesLayer),
+      Layer.provideMerge(gitHostLayer({ rootDir }).pipe(Layer.provide(rolloutsLayer))),
       Layer.provideMerge(deployKeysLayer(testKey(TEST_KEY_SECRET))),
       Layer.provideMerge(PgClient.layer({ url: Redacted.make(url) })),
       Layer.provide(roles),
@@ -210,17 +219,199 @@ const fixture = Effect.gen(function* () {
       ),
     ),
   );
+  const git = yield* Context.get(context, GitHost).opened(Duration.seconds(10));
   const sql = Context.get(context, SqlClient.SqlClient);
   for (const app of [APP, OTHER]) {
     yield* sql`INSERT INTO hq_app(id,name,created_by) VALUES (${app}::uuid,${app},'custodian')`;
     for (const repo of ["web", "worker"])
       yield* sql`INSERT INTO hq_repo(app_id,name,created_by) VALUES (${app}::uuid,${repo},'custodian')`;
   }
-  return { sql, remotes: Context.get(context, Remotes), state };
+  return {
+    sql,
+    git,
+    changes: Context.get(context, Changes),
+    remotes: Context.get(context, Remotes),
+    state,
+  };
 });
 
 describe("repository credential custody", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "Connecting a repository address records the first code repository and creates its Git storage",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes, sql, git, changes } = yield* fixture;
+            yield* sql`DELETE FROM hq_repo WHERE app_id::text=${APP}`;
+            const result = yield* Effect.match(
+              remotes.connect("custodian", { ...input, repo: "fresh" }),
+              {
+                onSuccess: () => "connected",
+                onFailure: (error) => error._tag,
+              },
+            );
+            assert.strictEqual(result, "connected");
+            const repos = yield* changes.listRepos("custodian", APP);
+            assert.deepStrictEqual(
+              repos.map((repo) => repo.name),
+              ["fresh"],
+            );
+            assert.strictEqual(
+              (yield* remotes.get({ appId: APP, repo: "fresh" }))?.url,
+              "https://github.com/krls2020/tst123.git",
+            );
+            const branches = yield* git.branches({ appId: APP, id: "fresh" });
+            assert.strictEqual(branches.items[0]?.ref, "refs/heads/main");
+            assert.strictEqual(branches.items[0]?.sha, repos[0]?.mainHead);
+          }),
+        ),
+    );
+    it.effect(
+      "Testing a repository address before the first connection leaves repository records and Git storage empty",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes, sql, git } = yield* fixture;
+            yield* sql`DELETE FROM hq_repo WHERE app_id::text=${APP}`;
+            const receipt = yield* remotes.write(
+              "custodian",
+              "first-probe",
+              {
+                kind: "probe-git-remote",
+                orgId: "org",
+                hqProjectId: "HQ",
+                ...REF,
+                repo: "fresh",
+                url: input.url,
+                branch: "main",
+              },
+              token,
+            );
+            assert.strictEqual(receipt.acceptance.kind, "accepted");
+            assert.deepStrictEqual(
+              yield* sql`SELECT name FROM hq_repo WHERE app_id::text=${APP}`,
+              [],
+            );
+            assert.deepStrictEqual(yield* git.list(APP), []);
+          }),
+        ),
+    );
+    it.effect(
+      "A repository connection refuses reserved names, unknown applications and missing app write access",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes, sql, git, state } = yield* fixture;
+            for (const repo of [RECIPE_REPO, "../outside", ""]) {
+              const refused = yield* Effect.match(
+                remotes.connect("custodian", { ...input, repo }),
+                {
+                  onSuccess: () => "connected",
+                  onFailure: (error) =>
+                    error._tag === "RemoteRefused" ? error.reason : error._tag,
+                },
+              );
+              assert.strictEqual(refused, "bad_repo");
+            }
+            assert.strictEqual(
+              yield* Effect.match(
+                remotes.connect("custodian", {
+                  ...input,
+                  appId: "33333333-3333-4333-8333-333333333333",
+                  repo: "fresh",
+                }),
+                {
+                  onSuccess: () => "connected",
+                  onFailure: (error) => (error._tag === "ChangeRefused" ? error.code : error._tag),
+                },
+              ),
+              "app_not_found",
+            );
+            state.members = [member("custodian", "ADMIN")];
+            assert.strictEqual(
+              yield* Effect.match(remotes.connect("custodian", { ...input, repo: "fresh" }), {
+                onSuccess: () => "connected",
+                onFailure: (error) => (error._tag === "ChangeRefused" ? error.reason : error._tag),
+              }),
+              "not_app_developer",
+            );
+            assert.deepStrictEqual(yield* sql`SELECT name FROM hq_repo WHERE name='fresh'`, []);
+            assert.deepStrictEqual(yield* git.list(), []);
+          }),
+        ),
+    );
+    it.effect(
+      "Candidate verification leaves custody empty and recovers only the original request without its token",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes, sql, state } = yield* fixture;
+            const intent = {
+              kind: "probe-git-remote",
+              orgId: "org",
+              hqProjectId: "HQ",
+              ...REF,
+              url: input.url,
+              branch: "main",
+            } as const;
+            const receipt = yield* remotes.write("custodian", "candidate-request", intent, token);
+            assert.strictEqual(receipt.acceptance.kind, "accepted");
+            assert.strictEqual(JSON.stringify(receipt).includes("repository-test-secret"), false);
+            assert.strictEqual((yield* sql`SELECT 1 FROM hq_repo_remote`).length, 0);
+            const calls = state.seen.length;
+            assert.deepStrictEqual(
+              yield* remotes.receipt("custodian", "candidate-request", intent),
+              receipt,
+            );
+            assert.deepStrictEqual(
+              yield* remotes.write("custodian", "candidate-request", intent, token),
+              receipt,
+            );
+            assert.strictEqual(state.seen.length, calls);
+            const persisted = yield* sql`SELECT intent,receipt FROM hq_git_target_receipt`;
+            assert.strictEqual(JSON.stringify(persisted).includes("repository-test-secret"), false);
+            state.members = [member("custodian", "READ_ONLY")];
+            assert.strictEqual(
+              yield* Effect.match(remotes.write("custodian", "new-request", intent, token), {
+                onSuccess: () => "accepted",
+                onFailure: (error) => error._tag,
+              }),
+              "RemoteRefused",
+            );
+          }),
+        ),
+    );
+
+    it.effect.each([
+      { label: "the same address", path: "krls2020/tst123" },
+      { label: "the same GitHub repository at a renamed address", path: "krls2020/renamed" },
+    ])(
+      "A connection refused for $label leaves the new application's Git storage empty",
+      ({ path }) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes, sql, git, state } = yield* fixture;
+            yield* remotes.connect("custodian", input);
+            yield* sql`DELETE FROM hq_repo WHERE app_id::text=${OTHER}`;
+            state.path = path;
+            const refused = yield* remotes
+              .connect("custodian", {
+                ...input,
+                appId: OTHER,
+                repo: "fresh",
+                url: `https://github.com/${path}`,
+              })
+              .pipe(Effect.flip);
+            assert.strictEqual(refused.reason, "remote_taken");
+            assert.deepStrictEqual(yield* git.list(OTHER), []);
+            assert.deepStrictEqual(
+              yield* sql`SELECT name FROM hq_repo WHERE app_id::text=${OTHER}`,
+              [],
+            );
+          }),
+        ),
+    );
     it.effect("A remote belongs to one application.", () =>
       Effect.scoped(
         Effect.gen(function* () {

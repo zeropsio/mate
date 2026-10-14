@@ -384,3 +384,38 @@ const slotsOf = (
   stageProjectIds: projects.filter((row) => row.kind === "stage").map((row) => row.project_id),
   productionProjectId: projects.find((row) => row.kind === "production")?.project_id ?? null,
 });
+
+it("the Git release offer consumes the target-dispatched server authority verdict", () => {
+  const slots = {
+    stageProjectIds: [],
+    productionProjectId: null,
+    productionTarget: "git" as const,
+  };
+  expect(appOffers("dev", APP, { ...ORG, freshness: "cached" }, slots).release).toEqual({
+    allow: true,
+  });
+  expect(appOffers("reader", APP, { ...ORG, freshness: "cached" }, slots).release).toEqual({
+    allow: false,
+    reason: "not_releaser",
+  });
+});
+
+it.each(["owner", "admin", "dev", "reader"])(
+  "Git optional offers and fresh gates share one authority for %s",
+  (userId) => {
+    const offers = appOffers(userId, APP, { ...ORG, freshness: "cached" }, slotsOf(APP));
+    for (const verb of [
+      "connect_remote",
+      "replace_remote_token",
+      "update_remote_address",
+      "disconnect_remote",
+      "add_git_environment",
+      "remove_git_environment",
+    ] as const) {
+      expect(offers[verb]).toEqual(
+        can({ kind: "person", userId }, verb, appTarget(APP), { ...ORG, freshness: "fresh" }),
+      );
+      expect(offers[verb].allow).toBe(userId === "owner" || userId === "admin");
+    }
+  },
+);

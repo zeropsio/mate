@@ -494,6 +494,9 @@ const localPushLayer = (
       Layer.succeed(
         Remotes,
         Remotes.of({
+          changes: Stream.empty,
+          write: () => Effect.die("Remote writes are outside this fixture"),
+          receipt: () => Effect.succeed(null),
           get: ({ appId, repo }) =>
             Effect.sync(() => {
               const at = destinations.get(repo);

@@ -182,7 +182,7 @@ describe("the New Mate dialog", () => {
     expect(next(tree).steps[0]).toEqual(["Ada comes up", "about 1½–2 min"]);
     expect(said(tree)).toBe("");
     const html = renderToStaticMarkup(form());
-    expect(html).toContain(">New Mate on Acme Docs<");
+    expect(html).toContain(">Add a project Mate to Acme Docs<");
     expect(html).toContain(">Add Otto to Acme Docs</button>");
   });
 
@@ -433,7 +433,7 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
     const tree = mount(form({ tier: undefined, closed: REVIEW }));
     expect(said(tree)).toBe(REVIEW.reason);
     expect(renderToStaticMarkup(form({ tier: undefined, closed: REVIEW }))).toContain(
-      ">New Mate on Acme Docs<",
+      ">Add a project Mate to Acme Docs<",
     );
     expect(buttons(tree)).toEqual(["Close", "Review the change"]);
     expect(
@@ -519,3 +519,14 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
     expect(made.map((choice) => [choice.name, choice.recipe])).toEqual([["Ada", TIER]]);
   });
 });
+
+it.each(["Mastermate", "Chief"])(
+  "the Add flow keeps project scope explicit for a project named %s",
+  (groupName) => {
+    const html = renderToStaticMarkup(form({ groupName }));
+    expect(html).toContain(`>Add a project Mate to ${groupName}<`);
+    expect(html).toContain(
+      "Works on this project. For your personal Mate across the organization, use Set up your Chief.",
+    );
+  },
+);

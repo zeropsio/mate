@@ -133,6 +133,7 @@ export interface RecipeLandingTarget {
  * production (`null`: none yet).
  */
 export interface ReleaseTarget {
+  readonly productionTarget?: "zerops" | "git";
   readonly projectIds: ReadonlyArray<string>;
   readonly productionProjectId: string | null;
 }
@@ -149,6 +150,12 @@ export interface AttachTarget extends PlacementTarget {
 }
 
 export interface Targets {
+  readonly connect_remote: { readonly projectIds: ReadonlyArray<string> };
+  readonly replace_remote_token: { readonly projectIds: ReadonlyArray<string> };
+  readonly update_remote_address: { readonly projectIds: ReadonlyArray<string> };
+  readonly disconnect_remote: { readonly projectIds: ReadonlyArray<string> };
+  readonly add_git_environment: { readonly projectIds: ReadonlyArray<string> };
+  readonly remove_git_environment: { readonly projectIds: ReadonlyArray<string> };
   readonly read_project: { readonly projectId: string };
   readonly observe_mate: { readonly projectId: string };
   readonly read_app: { readonly projectIds: ReadonlyArray<string> };
@@ -358,10 +365,14 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "redeploy":
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
       return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
-    // A release, and a rollback, by whoever may deploy to the application's production: Basic user
-    // or above there (SPEC §3.3a). Without a production nobody releases, the org writer included.
+    // The target owns release authority: Git uses the application's merge authority; Zerops
+    // uses its production's deploy authority (SPEC §3.3a). Without production nobody releases.
     case "release": {
-      const { projectIds, productionProjectId } = request.target;
+      const { projectIds, productionProjectId, productionTarget } = request.target;
+      if (productionTarget === "git") {
+        if (!seesApp(projectIds)) return deny("app_not_seen");
+        return writesApp(projectIds) ? ALLOW : deny("not_releaser");
+      }
       // Its production is one of its projects, whatever HQ named beside it.
       const app = productionProjectId === null ? projectIds : [...projectIds, productionProjectId];
       if (!seesApp(app)) return deny("app_not_seen");
@@ -379,6 +390,14 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       return roleAtLeast(roleOn(request.target.projectId), "BASIC_USER")
         ? ALLOW
         : deny("not_mate_operator");
+    case "add_git_environment":
+      if (!writer) return deny("not_structure_writer");
+      return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
+    case "connect_remote":
+    case "replace_remote_token":
+    case "update_remote_address":
+    case "disconnect_remote":
+    case "remove_git_environment":
     case "create_app":
     case "rename_app":
     case "delete_app":

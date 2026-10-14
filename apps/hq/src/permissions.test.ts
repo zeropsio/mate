@@ -186,6 +186,12 @@ const redeploy = (...projectIds: ReadonlyArray<string>): Request => ({
 });
 
 const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
+  connect_remote: [],
+  replace_remote_token: [],
+  update_remote_address: [],
+  disconnect_remote: [],
+  add_git_environment: [],
+  remove_git_environment: [],
   push_repo: [
     [
       "developer",
@@ -1793,5 +1799,63 @@ describe("can — over the whole input space", () => {
       const allowed = lowered(point).find((lower) => decide(principal, request, lower).allow);
       if (allowed !== undefined) holds(false, `allowed lowered to ${JSON.stringify(allowed)}`);
     });
+  });
+});
+
+describe("Git release authority", () => {
+  it("Releasing to a git production needs what merging needs: Basic user or above on one of the application's projects.", () => {
+    const target = {
+      projectIds: ["P", "P_DEV"],
+      productionProjectId: null,
+      productionTarget: "git" as const,
+    };
+    for (const [point, projects, expected] of [
+      [BASE, ["P_DEV"], { allow: true }],
+      [{ ...BASE, override: "READ_ONLY" }, ["P"], { allow: false, reason: "not_releaser" }],
+      [BASE, ["P"], { allow: false, reason: "app_not_seen" }],
+      [{ ...BASE, orgRole: "ADMIN" }, [], { allow: false, reason: "not_releaser" }],
+      [{ ...BASE, status: "SUSPENDED" }, ["P_DEV"], { allow: false, reason: "not_active_member" }],
+    ] as const) {
+      expect(can(PERSON, "release", { ...target, projectIds: projects }, factsOf(point))).toEqual(
+        expected,
+      );
+    }
+  });
+});
+
+describe("Git target operations", () => {
+  const verbs = [
+    "connect_remote",
+    "replace_remote_token",
+    "update_remote_address",
+    "disconnect_remote",
+    "add_git_environment",
+    "remove_git_environment",
+  ] as const;
+  it.each(verbs)("%s uses the fresh structure authority and refuses role loss", (verb) => {
+    expect(
+      can(
+        { kind: "person", userId: "U" },
+        verb,
+        { projectIds: ["P"] },
+        factsOf({ ...BASE, orgRole: "OWNER" }),
+      ),
+    ).toEqual({ allow: true });
+    expect(
+      can(
+        { kind: "person", userId: "U" },
+        verb,
+        { projectIds: ["P"] },
+        factsOf({ ...BASE, override: "OWNER" }),
+      ),
+    ).toEqual({ allow: false, reason: "not_structure_writer" });
+    expect(
+      can(
+        { kind: "mate", projectId: "P" },
+        verb,
+        { projectIds: ["P"] },
+        factsOf({ ...BASE, orgRole: "OWNER" }),
+      ),
+    ).toEqual({ allow: false, reason: "wrong_principal" });
   });
 });

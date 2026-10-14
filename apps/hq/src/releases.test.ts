@@ -6,7 +6,11 @@ import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
-import type { Release } from "@t3tools/shared/hqRelease";
+import {
+  HqReleaseTarget,
+  type HqGitReleasePreflight,
+  type Release,
+} from "@t3tools/shared/hqRelease";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -26,8 +30,11 @@ import { GitHost, gitHostLayer, mainOf } from "./gitHost.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { ReleaseRefused, Releases, releasesLayer } from "./releases.ts";
 import { Roles } from "./roles.ts";
+import { GitReleasePreflight } from "./gitReleasePreflight.ts";
 import { rolloutsLayer } from "./rollouts.ts";
 import type { ZeropsMember } from "./zerops/api.ts";
+
+const decodeAttachment = Schema.decodeUnknownEffect(HqReleaseTarget);
 
 const AUTHOR = { name: "Ada", email: "ada@mate.test" };
 
@@ -106,6 +113,10 @@ const productionTier = (
 });
 
 interface Rig {
+  readonly rights: { members: ReadonlyArray<ZeropsMember> };
+  readonly preflightHook: { run: () => void };
+  readonly reviews: Map<string, HqGitReleasePreflight>;
+  readonly checks: string[];
   readonly appId: string;
   readonly root: string;
   readonly tiers: Map<string, RecipeTierResponse>;
@@ -130,15 +141,33 @@ const withReleases = <A, E>(
       (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
     );
     const tiers = new Map<string, RecipeTierResponse>();
+    const reviews = new Map<string, HqGitReleasePreflight>();
+    const checks: string[] = [];
+    const rights = { members: ORG_VIEW.members as ReadonlyArray<ZeropsMember> };
+    const preflightHook = { run: () => {} };
     const context = yield* Layer.build(
       releasesLayer.pipe(
+        Layer.provide(
+          Layer.succeed(GitReleasePreflight, {
+            check: (_appId, repo) =>
+              Effect.sync(() => {
+                checks.push(repo);
+                preflightHook.run();
+                return reviews.get(repo)!;
+              }),
+          }),
+        ),
         Layer.provideMerge(gitHostLayer({ rootDir: root })),
         Layer.provideMerge(rolloutsLayer),
         Layer.provideMerge(activeCoreLayer(url)),
         Layer.provide(
           Layer.succeed(Roles, {
             view: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
-            forWrite: Effect.succeed({ ...ORG_VIEW, freshness: "recent" as const }),
+            forWrite: Effect.sync(() => ({
+              ...ORG_VIEW,
+              members: rights.members,
+              freshness: "recent" as const,
+            })),
             recent: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
             exists: () => Effect.succeed(true),
             answeredAt: Effect.succeed(undefined),
@@ -207,7 +236,17 @@ const withReleases = <A, E>(
           },
         },
       ).trim();
-    return yield* use({ appId, root, tiers, commit, bare }).pipe(Effect.provide(context));
+    return yield* use({
+      appId,
+      root,
+      tiers,
+      commit,
+      bare,
+      reviews,
+      checks,
+      rights,
+      preflightHook,
+    }).pipe(Effect.provide(context));
   });
 
 const isReleaseRefused = Schema.is(ReleaseRefused);
@@ -218,8 +257,300 @@ const refusal = <A, E, R>(asked: Effect.Effect<A, E, R>) =>
     isReleaseRefused(error) ? [error.code, error.reason] : [String(error), null],
   );
 
+const gitProduction = (rig: Rig) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`DELETE FROM hq_environment WHERE id='P_PROD'`;
+    yield* sql`DELETE FROM hq_app_project WHERE project_id='P_PROD'`;
+    const [row] = yield* sql<{ created_at: string }>`INSERT INTO hq_environment
+    (id, app_id, target, tier, name, sources, branch, delivery, created_by)
+    VALUES ('GIT_PROD', ${rig.appId}::uuid, 'git', 'production', 'production', ARRAY['release'], 'main', 'direct', 'owner')
+    RETURNING to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at`;
+    return yield* decodeAttachment({
+      environmentId: "GIT_PROD",
+      createdAt: row!.created_at,
+      target: { kind: "git", branch: "main", delivery: "direct" },
+    });
+  });
+const connected = (rig: Rig, repo: string, sha: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const url = `https://github.com/shop/${repo}.git`;
+    yield* sql`INSERT INTO hq_repo_remote(app_id,repo,url,host,url_key,host_repo_id,kept_at,kept_by)
+    VALUES (${rig.appId}::uuid,${repo},${url},'github.com',${`github.com/shop/${repo}`},${repo},'2026-10-14T00:00:00Z','owner')`;
+    const review: HqGitReleasePreflight = {
+      repo,
+      remote: {
+        url,
+        repositoryId: repo,
+        keptAt: "2026-10-14T00:00:00.000000Z",
+        keptBy: "owner",
+        expiresAt: null,
+        invalidSince: null,
+      },
+      ref: "refs/heads/main",
+      before: null,
+      sha,
+      verdict: "ready",
+      reason: null,
+      checkedAt: "2026-10-14T00:00:00Z",
+    };
+    rig.reviews.set(repo, review);
+    return review;
+  });
+
 describe("an application's releases in HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "A git production releases every repository with a remote, with no production recipe.",
+      () =>
+        withReleases((rig) =>
+          Effect.gen(function* () {
+            const releases = yield* Releases;
+            const sql = yield* SqlClient.SqlClient;
+            const releaseTarget = yield* gitProduction(rig);
+            const groupHead = yield* rig.commit("group", { "README.md": "No production recipe" });
+            const one = yield* rig.commit("api-library", { "api.ts": "one" });
+            const two = yield* rig.commit("web-client", { "web.ts": "two" });
+            const leftout = yield* rig.commit("left-out", { "local.ts": "local" });
+            rig.tiers.clear();
+            const preflight = [
+              yield* connected(rig, "api-library", one),
+              yield* connected(rig, "web-client", two),
+            ];
+            const entries = [
+              { service: "api-library", sha: one },
+              { service: "web-client", sha: two },
+            ];
+            yield* sql`UPDATE hq_repo SET main_head=${groupHead} WHERE name='group'`;
+            yield* sql`UPDATE hq_repo SET main_head=${one} WHERE name='api-library'`;
+            yield* sql`UPDATE hq_repo SET main_head=${two} WHERE name='web-client'`;
+            const source = yield* releases.navigation;
+            const navigation = source.forApp(rig.appId);
+            assert.deepStrictEqual(navigation?.summary, {
+              subjects: ["Change api-library", "Change web-client"],
+              total: 2,
+              more: 0,
+              atLeast: false,
+            });
+            assert.deepStrictEqual(navigation?.releaseTarget, releaseTarget);
+            yield* sql`UPDATE hq_repo_remote SET host_repo_id='moved' WHERE repo='api-library'`;
+            assert.notStrictEqual(
+              (yield* releases.navigation).fingerprints.get(rig.appId),
+              source.fingerprints.get(rig.appId),
+            );
+            yield* sql`UPDATE hq_repo_remote SET host_repo_id='api-library' WHERE repo='api-library'`;
+            const request = {
+              tag: "v0.1.0",
+              groupHead,
+              entries,
+              target: "git" as const,
+              releaseTarget,
+              preflight,
+            };
+            const result = yield* Effect.exit(releases.release("dev", rig.appId, request));
+            assert.strictEqual(
+              result._tag,
+              "Success",
+              "Git release must be accepted without a recipe",
+            );
+            if (result._tag !== "Success") return;
+            const made = result.value;
+            assert.deepStrictEqual(made.entries, entries);
+            assert.deepStrictEqual(made.releaseTarget, releaseTarget);
+            assert.strictEqual(made.target, "git");
+            assert.deepStrictEqual(rig.checks, ["api-library", "web-client"]);
+            assert.strictEqual(
+              rig.bare("group", ["tag", "-l", "--format=%(contents)", "v0.1.0"]),
+              `api-library ${one}\nweb-client ${two}`,
+            );
+            yield* connected(rig, "left-out", leftout);
+            assert.deepStrictEqual((yield* releases.list("dev", rig.appId))[0], made);
+            assert.deepStrictEqual(
+              yield* sql`SELECT r.target,r.environment_id,r.environment_created_at=e.created_at AS same_stamp FROM hq_release r JOIN hq_environment e ON e.id=r.environment_id`,
+              [{ target: "git", environment_id: "GIT_PROD", same_stamp: true }],
+            );
+            assert.deepStrictEqual(
+              yield* sql`SELECT r.environment_id,r.environment_created_at=e.created_at AS same_stamp FROM hq_rollout r JOIN hq_environment e ON e.id=r.environment_id`,
+              [{ environment_id: "GIT_PROD", same_stamp: true }],
+            );
+          }),
+        ),
+    );
+
+    it.effect(
+      "Git acceptance refuses a moved attachment, changed roster, metadata, heads or preflight before making a tag",
+      () =>
+        withReleases((rig) =>
+          Effect.gen(function* () {
+            const releases = yield* Releases;
+            const sql = yield* SqlClient.SqlClient;
+            const releaseTarget = yield* gitProduction(rig);
+            const groupHead = yield* rig.commit("group", { "README.md": "no recipe" });
+            const sha = yield* rig.commit("api-library", { "api.ts": "one" });
+            const review = yield* connected(rig, "api-library", sha);
+            const request = {
+              tag: "v0.1.0",
+              groupHead,
+              entries: [{ service: "api-library", sha }],
+              target: "git" as const,
+              releaseTarget,
+              preflight: [review],
+            };
+            const refused = (reason: string) =>
+              Effect.gen(function* () {
+                assert.deepStrictEqual(
+                  yield* refusal(releases.release("dev", rig.appId, request)),
+                  ["conflict", reason],
+                );
+                assert.strictEqual(rig.bare("group", ["tag", "-l"]), "");
+                assert.deepStrictEqual(yield* sql`SELECT tag FROM hq_release`, []);
+                assert.deepStrictEqual(
+                  yield* sql`SELECT id FROM hq_rollout WHERE cause='release'`,
+                  [],
+                );
+              });
+            yield* sql`UPDATE hq_environment SET created_at=created_at+interval '1 microsecond' WHERE id='GIT_PROD'`;
+            yield* refused("production_moved");
+            yield* sql`UPDATE hq_environment SET created_at=${releaseTarget.createdAt}::timestamptz WHERE id='GIT_PROD'`;
+            const another = yield* rig.commit("new-repository", { "new.ts": "new" });
+            yield* connected(rig, "new-repository", another);
+            yield* refused("unknown_service");
+            yield* sql`DELETE FROM hq_repo_remote WHERE repo='new-repository'`;
+            for (const changed of [
+              sql`UPDATE hq_repo_remote SET host_repo_id='replacement' WHERE repo='api-library'`,
+              sql`UPDATE hq_repo_remote SET url='https://github.com/elsewhere/api-library.git' WHERE repo='api-library'`,
+              sql`UPDATE hq_repo_remote SET kept_at=kept_at+interval '1 microsecond' WHERE repo='api-library'`,
+            ]) {
+              yield* changed;
+              yield* refused("production_moved");
+              yield* sql`UPDATE hq_repo_remote SET host_repo_id='api-library',url=${review.remote.url},kept_at=${review.remote.keptAt}::timestamptz WHERE repo='api-library'`;
+            }
+            const moved = yield* rig.commit("api-library", { "api.ts": "two" });
+            yield* refused("entry_not_on_main");
+            rig.bare("api-library", ["update-ref", "refs/heads/main", sha, moved]);
+            for (const verdict of ["diverged", "credential", "declined", "unknown"] as const) {
+              rig.reviews.set("api-library", { ...review, verdict, reason: "refused evidence" });
+              yield* refused("git_release_blocked");
+            }
+            rig.reviews.set("api-library", { ...review, before: "c".repeat(40) });
+            yield* refused("production_moved");
+          }),
+        ),
+    );
+
+    it.effect(
+      "Git releases check fresh rights again at acceptance and keep revoked membership from tagging",
+      () =>
+        withReleases((rig) =>
+          Effect.gen(function* () {
+            const releases = yield* Releases;
+            const releaseTarget = yield* gitProduction(rig);
+            const groupHead = yield* rig.commit("group", { "README.md": "no recipe" });
+            const sha = yield* rig.commit("api-library", { "api.ts": "one" });
+            const review = yield* connected(rig, "api-library", sha);
+            rig.preflightHook.run = () => {
+              rig.rights.members = ORG_VIEW.members.filter((member) => member.userId !== "dev");
+            };
+            assert.deepStrictEqual(
+              yield* refusal(
+                releases.release("dev", rig.appId, {
+                  tag: "v0.1.0",
+                  groupHead,
+                  entries: [{ service: "api-library", sha }],
+                  target: "git",
+                  releaseTarget,
+                  preflight: [review],
+                }),
+              ),
+              ["forbidden", "not_active_member"],
+            );
+            assert.strictEqual(rig.bare("group", ["tag", "-l"]), "");
+          }),
+        ),
+    );
+
+    it.effect(
+      "Two racing Git release requests have one winner while unresolved hand-over keeps the same blocker",
+      () =>
+        withReleases((rig) =>
+          Effect.gen(function* () {
+            const releases = yield* Releases;
+            const sql = yield* SqlClient.SqlClient;
+            const releaseTarget = yield* gitProduction(rig);
+            const groupHead = yield* rig.commit("group", { "README.md": "no recipe" });
+            const sha = yield* rig.commit("api-library", { "api.ts": "one" });
+            const review = yield* connected(rig, "api-library", sha);
+            const request = {
+              groupHead,
+              entries: [{ service: "api-library", sha }],
+              target: "git" as const,
+              releaseTarget,
+              preflight: [review],
+            };
+            const answers = yield* Effect.all(
+              ["v0.1.0", "v0.1.1"].map((tag) =>
+                Effect.exit(releases.release("dev", rig.appId, { ...request, tag })),
+              ),
+              { concurrency: "unbounded" },
+            );
+            const wins = answers.flatMap((answer) =>
+              answer._tag === "Success" ? [answer.value] : [],
+            );
+            assert.strictEqual(wins.length, 1);
+            assert.strictEqual(answers.filter((answer) => answer._tag === "Failure").length, 1);
+            assert.deepStrictEqual(yield* sql`SELECT tag FROM hq_release`, [{ tag: wins[0]!.tag }]);
+            assert.strictEqual(rig.bare("group", ["tag", "-l"]), wins[0]!.tag);
+            yield* sql`UPDATE hq_rollout SET planned_at=now() WHERE cause='release'`;
+            yield* sql`INSERT INTO hq_deploy_job(rollout_id,environment_id,kind,repo,sha,state,ended_at,evidence,label)
+          SELECT id,'GIT_PROD','push','api-library',${sha},'unresolved',now(),'{"phase":"recovering","writerDrained":true}'::jsonb,${wins[0]!.tag} FROM hq_rollout WHERE cause='release'`;
+            assert.deepStrictEqual(
+              yield* refusal(releases.release("dev", rig.appId, { ...request, tag: "v0.2.0" })),
+              ["conflict", "release_running"],
+            );
+            assert.deepStrictEqual(yield* sql`SELECT tag FROM hq_release`, [{ tag: wins[0]!.tag }]);
+          }),
+        ),
+    );
+
+    it.effect("A rollback to a release made for another kind of production is refused.", () =>
+      withReleases((rig) =>
+        Effect.gen(function* () {
+          const releases = yield* Releases;
+          const sql = yield* SqlClient.SqlClient;
+          const releaseTarget = yield* gitProduction(rig);
+          const groupHead = yield* rig.commit("group", { "README.md": "no recipe" });
+          const sha = yield* rig.commit("api-library", { "api.ts": "one" });
+          const review = yield* connected(rig, "api-library", sha);
+          yield* releases.release("dev", rig.appId, {
+            tag: "v0.1.0",
+            groupHead,
+            entries: [{ service: "api-library", sha }],
+            target: "git",
+            releaseTarget,
+            preflight: [review],
+          });
+          assert.deepStrictEqual(
+            yield* refusal(releases.rollback("dev", rig.appId, "v0.1.0", { groupHead })),
+            ["conflict", "production_moved"],
+          );
+          yield* sql`DELETE FROM hq_environment WHERE id='GIT_PROD'`;
+          yield* sql`INSERT INTO hq_app_project(project_id,app_id,kind,created_by) VALUES('P_PROD',${rig.appId}::uuid,'production','owner')`;
+          yield* sql`INSERT INTO hq_environment(id,project_id,target,app_id,tier,name,sources,created_by)
+          VALUES('P_PROD','P_PROD','zerops',${rig.appId}::uuid,'production','production',ARRAY['release'],'owner')`;
+          assert.deepStrictEqual(
+            yield* refusal(releases.rollback("dev", rig.appId, "v0.1.0", { groupHead })),
+            ["conflict", "production_moved"],
+          );
+          assert.deepStrictEqual(
+            (yield* releases.list("dev", rig.appId))[0]?.releaseTarget,
+            releaseTarget,
+          );
+          assert.strictEqual(rig.bare("group", ["tag", "-l"]), "v0.1.0");
+        }),
+      ),
+    );
+
     it.effect("makes no release without a production, whoever asks, and tags nothing", () =>
       withReleases(({ appId, commit, bare }) =>
         Effect.gen(function* () {
@@ -261,7 +592,9 @@ describe("an application's releases in HQ", () => {
             groupHead,
             entries: [{ service: "app", sha: app }],
           });
-          assert.deepStrictEqual({ ...made, at: typeof made.at }, {
+          assert.strictEqual(made.releaseTarget?.target.kind, "zerops");
+          const { target: _target, releaseTarget: _destination, ...legacyMade } = made;
+          assert.deepStrictEqual({ ...legacyMade, at: typeof made.at }, {
             tag: "v0.1.0",
             sha: groupHead,
             entries: [{ service: "app", sha: app }],
@@ -711,7 +1044,12 @@ describe("an application's releases over HQ's API", () => {
             entries: [{ service: "app", sha: app }],
           });
           assert.strictEqual(made.status, 201);
-          const { deploys, ...madeRelease } = made.body as Record<string, unknown> & {
+          const {
+            deploys,
+            target: _target,
+            releaseTarget: _destination,
+            ...madeRelease
+          } = made.body as Record<string, unknown> & {
             readonly deploys: { readonly jobs: ReadonlyArray<Record<string, unknown>> };
           };
           assert.deepStrictEqual(

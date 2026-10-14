@@ -213,7 +213,7 @@ import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, useMenuProjects, useOverviewKey } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { ownChiefAmong, withoutOwnChief } from "~/zerops/chief";
-import { useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
+import { useChiefSetupEntry, useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
 import { useAccountHq } from "~/zerops/accountHq";
 import { useOwnChief } from "~/zerops/ownChief";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
@@ -1931,6 +1931,7 @@ export default function Sidebar() {
     [zeropsCandidates, ownChief],
   );
   const chiefSetupLine = useChiefSetupLine();
+  const chiefSetupEntry = useChiefSetupEntry();
   const chiefUnfinished = useChiefUnfinished(zeropsChief?.project.id ?? null);
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
@@ -2682,6 +2683,7 @@ export default function Sidebar() {
         onOpenMate={onZeropsSelect}
         onOpenPage={openChiefPage}
         setup={chiefSetupLine}
+        offer={chiefSetupEntry}
         tile={tile}
         timestampFormat={timestampFormat}
         unfinished={chiefUnfinished}

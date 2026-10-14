@@ -8,6 +8,15 @@
  */
 import { slotHolds, type LiveSlot } from "./liveSlot.logic";
 
+/** Sibling rows keep their layout gaps throughout a landing, including after clipping limits travel. */
+export function orderedGlides(travel: ReadonlyArray<number>): ReadonlyArray<number> {
+  let below = Number.POSITIVE_INFINITY;
+  return travel
+    .toReversed()
+    .map((moved) => (below = Math.min(below, moved)))
+    .reverse();
+}
+
 export function slotMoves(
   from: LiveSlot,
   to: LiveSlot,

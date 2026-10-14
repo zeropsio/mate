@@ -1,33 +1,62 @@
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+// @vitest-environment happy-dom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { Dialog } from "../ui/dialog";
 import { ZeropsEnvironmentCreationForm } from "./ZeropsEnvironmentCreationDialog";
 
-function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[0]> = {}) {
+let root: Root | undefined;
+let host: HTMLDivElement;
+beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  host = document.createElement("div");
+  document.body.append(host);
+});
+afterEach(() => {
+  act(() => root?.unmount());
+  root = undefined;
+  host.remove();
+  vi.unstubAllGlobals();
+});
+function render(
+  props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[0]> = {},
+  destination = false,
+) {
   // The title and the way out are Base UI's, and both need the root's context.
-  return renderToStaticMarkup(
-    <Dialog open onOpenChange={() => {}}>
-      <ZeropsEnvironmentCreationForm
-        defaultName="Acme Docs - stage"
-        defaultTintFor={() => "violet"}
-        defaultWithAgent
-        groupName="Acme Docs"
-        onCancel={() => {}}
-        onCreate={() => {}}
-        role="stage"
-        takenBotNames={{ names: ["Fen"], complete: true }}
-        tier={{
-          kind: "tier",
-          tier: "stage",
-          yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
-        }}
-        recipe="present"
-        tierServices={["app", "db"]}
-        {...props}
-      />
-    </Dialog>,
+  root = createRoot(host);
+  act(() =>
+    root!.render(
+      <Dialog open onOpenChange={() => {}}>
+        <ZeropsEnvironmentCreationForm
+          defaultName="Acme Docs - stage"
+          defaultTintFor={() => "violet"}
+          defaultWithAgent
+          groupName="Acme Docs"
+          onCancel={() => {}}
+          onCreate={() => {}}
+          role="stage"
+          takenBotNames={{ names: ["Fen"], complete: true }}
+          tier={{
+            kind: "tier",
+            tier: "stage",
+            yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
+          }}
+          recipe="present"
+          tierServices={["app", "db"]}
+          {...props}
+        />
+      </Dialog>,
+    ),
   );
+  if (props.git === undefined && props.role !== "dev" && !destination) {
+    act(() =>
+      host
+        .querySelector("form")!
+        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+    );
+  }
+  return document.body.innerHTML;
 }
 
 /** Whether the form's submit button is disabled, as the markup draws it. */
@@ -42,15 +71,15 @@ describe("ZeropsEnvironmentCreationForm", () => {
   it("prefills the environment from the role and the group, and asks no agent's name", () => {
     const html = render();
     expect(html).toContain('value="Acme Docs - stage"');
-    expect(html).not.toContain("Agent&#x27;s name");
-    expect(html).not.toContain("Mate&#x27;s name");
+    expect(html).not.toContain("Agent's name");
+    expect(html).not.toContain("Mate's name");
     expect(html).toContain("Add stage to Acme Docs");
   });
 
   it("hands a Mate to a form of its own: who it is, its project named as it is", () => {
     const html = render({ role: "dev", defaultName: "Otto" });
     expect(html).toContain('data-zerops-surface="new-mate-form"');
-    expect(html).toContain(">New Mate on Acme Docs<");
+    expect(html).toContain(">Add a project Mate to Acme Docs<");
     expect(html).toContain("Add Otto to Acme Docs");
     expect(html).not.toContain("Environment");
     expect(html).not.toContain("Application");
@@ -64,7 +93,7 @@ describe("ZeropsEnvironmentCreationForm", () => {
 
   it("offers the project's own recipe, and nothing yet", () => {
     const html = render();
-    expect(html).toContain("The project&#x27;s stage recipe");
+    expect(html).toContain("The project's stage recipe");
     expect(html).toContain("app, db");
     expect(html).toContain("Nothing yet");
   });
@@ -80,7 +109,7 @@ describe("ZeropsEnvironmentCreationForm", () => {
   // main yet" and refused a press, then switched to the recipe by itself.
   it("says it is still reading the recipe, never that there is none, and waits for it", () => {
     const html = render({ tier: undefined, tierServices: [], recipe: "reading" });
-    expect(html).toContain("Reading the project&#x27;s recipe…");
+    expect(html).toContain("Reading the project's recipe…");
     expect(html).not.toContain("no recipe on main yet");
     expect(submitDisabled(html)).toBe(true);
   });
@@ -92,7 +121,7 @@ describe("ZeropsEnvironmentCreationForm", () => {
       recipe: "unreadable",
       onRecipeRetry: () => {},
     });
-    expect(html).toContain("The project&#x27;s recipe can&#x27;t be read right now.");
+    expect(html).toContain("The project's recipe can't be read right now.");
     expect(html).toContain("Try again");
     expect(html).not.toContain("no recipe on main yet");
     expect(submitDisabled(html)).toBe(true);
@@ -125,7 +154,35 @@ it("offers Git without a recipe when HQ authorizes while Zerops stays the defaul
     },
   });
   expect(html).toContain("Where does it go?");
-  expect(html).toContain("Git branch");
+  expect(html).toContain("A branch in your Git repository");
   expect(html).toContain("A new Zerops project");
   expect(html).not.toContain('data-zerops-surface="git-environment-form"');
+});
+
+it("New production starts with only a destination and Continue", () => {
+  const html = render({
+    role: "prod",
+    git: {
+      repos: [],
+      offered: { add: true, connect: true, replace: true },
+      setup: {
+        connect: async () => ({ ok: false, reason: "refused" }),
+        preview: async () => [],
+        add: async () => {},
+      },
+      onAdded: () => {},
+    },
+  });
+  expect(html).toContain("Production is where a release goes");
+  expect(html).toContain(">Continue<");
+  expect(html).not.toContain('data-zerops-surface="environment-creation-form"');
+  expect(html).not.toContain('data-zerops-surface="git-environment-form"');
+  expect(html).not.toContain('value="Acme Docs - stage"');
+});
+
+it("The destination is the first page while HQ authority is still arriving", () => {
+  const html = render({ role: "prod" }, true);
+  expect(html).toContain("Where does it go?");
+  expect(html).toContain(">Continue<");
+  expect(html).not.toContain('data-zerops-surface="environment-creation-form"');
 });
