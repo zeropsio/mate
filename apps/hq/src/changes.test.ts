@@ -712,7 +712,9 @@ describe("a Mate's changes in HQ", () => {
             [before.title, before.ready],
           );
           // The next one replaces it whole: nothing of the first one's parts remains.
-          const next = { at: "2026-10-14T21:20:00Z", parts: [part("web", {}), part("api", {})] };
+          // A preview never deployed has no time of its deploy.
+          const { deployedAt: _never, ...cron } = part("cron", { deploy: "none", verified: false });
+          const next = { at: "2026-10-14T21:20:00Z", parts: [part("web", {}), cron] };
           yield* edit({ receipt: next });
           assert.deepStrictEqual((yield* detail).receipt, next);
           // A commit is a full one; a receipt the contract refuses changes nothing.

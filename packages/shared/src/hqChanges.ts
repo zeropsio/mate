@@ -145,7 +145,8 @@ export const ChangeReceiptPart = Schema.Struct({
   setup: Schema.String,
   previewHostname: Schema.String,
   deploy: Schema.Literals(["ok", "failed", "none"]),
-  deployedAt: Instant,
+  /** That deploy's time; absent for a preview never deployed (`none`). */
+  deployedAt: Schema.optionalKey(Instant),
   workspaceClean: Schema.Boolean,
   deployedCommit: Schema.optionalKey(Sha),
   verified: Schema.Boolean,
