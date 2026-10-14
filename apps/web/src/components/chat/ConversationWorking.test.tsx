@@ -629,19 +629,26 @@ describe("the Mate at work after its turn", () => {
     expect(markup).toContain("Its helper");
   });
 
-  it("names the first of many and counts the rest", () => {
-    const markup = afterWork(
-      after({
-        items: [
-          job("Final batched browser check"),
-          job("Wait for the final check to finish"),
-          job("Wait for the final check to complete"),
-        ],
-        count: 4,
-      }),
-    );
-    expect(markup).toContain("Final batched browser check · and 3 more");
-    expect(markup).not.toContain("Wait for the final check to finish");
+  // Eli, 2026-10-14: five helpers read as one line, "… · and 4 more — Its helpers — 2h 10m".
+  it("lists each item still running on its own row, with whose it is and how long it has run", () => {
+    const items = [
+      { title: "Deeper production chains + drones", of: "helper", since: Date.parse(at(1)) },
+      { title: "Swarm scale toward 500k", of: "helper", since: Date.parse(at(2)) },
+      { title: "Arsenal: mines, arc gates, orbital", of: "helper", since: Date.parse(at(3)) },
+      { title: "Run the test suite", of: "mate", since: Date.parse(at(4)) },
+      { title: "Fog of war, scanning, tech tree", of: "helper", since: Date.parse(at(5)) },
+      { title: "Tone down the strike", of: "mate", since: Date.parse(at(6)) },
+    ] as const;
+    const markup = afterWork(after({ items, count: 7, helpers: 4 }));
+    const rows = markup.match(/<li[ >]/g) ?? [];
+    // Five rows of their own, and how many more run.
+    expect(rows).toHaveLength(6);
+    for (const item of items.slice(0, 5)) expect(markup).toContain(item.title);
+    expect(markup).not.toContain("Tone down the strike");
+    expect(markup).toContain("and 2 more");
+    expect(markup.match(/Its helper</g)).toHaveLength(4);
+    expect(markup.match(/Its own job</g)).toHaveLength(1);
+    expect(markup).not.toContain(" · and ");
   });
 
   it.each([

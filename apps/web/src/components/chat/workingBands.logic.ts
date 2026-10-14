@@ -144,23 +144,25 @@ export interface AfterWorkLine {
   readonly helper: boolean;
   /** When it started; none on the line that names nothing. */
   readonly startedAt: string | null;
+  /** It counts what runs past the rows rather than naming one: no mark of its own. */
+  readonly more?: true;
 }
 
-/** How many lines the card spends on what runs before it says the first and counts the rest. */
-const AFTER_WORK_LINES = 3;
+/** How many rows the card lists of what runs before it counts the rest (the helpers panel's). */
+const AFTER_WORK_ROWS = 5;
 
 const workTitle = (item: BackgroundWork["items"][number]) =>
   item.title ?? (item.of === "helper" ? "A helper" : "A background job");
 
 /**
- * What the Mate's card says still runs after its turn, from its row's named work: a line each
- * while they are few, each saying whether it is a helper or the Mate's own job; one line for
- * many, the first by its title and the rest counted. Never nothing under its head: where nothing
- * names what runs, it finishes the work it started.
+ * What the Mate's card says still runs after its turn, from its row's named work: a row each, as
+ * the helpers panel lists them — its title, whether it is a helper or the Mate's own job, and how
+ * long it has run — the first five, then how many more run. Never one line standing for several,
+ * whose one time would be none of theirs (Eli, 2026-10-14: "· and 4 more — Its helpers — 2h 10m").
+ * Never nothing under its head: where nothing names what runs, it finishes the work it started.
  */
 export function afterWorkLines(work: BackgroundWork | undefined): ReadonlyArray<AfterWorkLine> {
-  const [first] = work?.items ?? [];
-  if (work === undefined || first === undefined || work.count === 0) {
+  if (work === undefined || work.items.length === 0 || work.count === 0) {
     return [
       {
         key: "finishing",
@@ -171,39 +173,25 @@ export function afterWorkLines(work: BackgroundWork | undefined): ReadonlyArray<
       },
     ];
   }
-  const line = (item: BackgroundWork["items"][number], index: number): AfterWorkLine => ({
+  const rows = work.items.slice(0, AFTER_WORK_ROWS).map((item, index): AfterWorkLine => ({
     key: `${String(index)}:${String(item.since)}`,
     title: workTitle(item),
     word: item.of === "helper" ? "Its helper" : "Its own job",
     helper: item.of === "helper",
     startedAt: new Date(item.since).toISOString(),
-  });
-  if (work.count <= Math.min(work.items.length, AFTER_WORK_LINES)) return work.items.map(line);
-  // Many: a line for its helpers and one for its own jobs, each by its first and counted, so
-  // neither reads as the other (Eli, 2026-10-14).
-  const helpers = work.helpers ?? work.items.filter((item) => item.of === "helper").length;
-  const kinds = [
-    { of: "helper" as const, count: helpers, many: "Its helpers" },
-    { of: "mate" as const, count: work.count - helpers, many: "Its own jobs" },
-  ];
-  // The kind started first leads, as the items are in the order they started.
-  const firstOfKind = (of: "helper" | "mate") => work.items.find((item) => item.of === of);
-  const ordered = kinds.toSorted(
-    (left, right) =>
-      work.items.indexOf(firstOfKind(left.of)!) - work.items.indexOf(firstOfKind(right.of)!),
-  );
-  return ordered.flatMap(({ of, count, many }) => {
-    const firstOf = firstOfKind(of);
-    if (count === 0 || firstOf === undefined) return [];
-    if (count === 1) return [line(firstOf, work.items.indexOf(firstOf))];
-    return [
-      {
-        key: `many:${of}`,
-        title: `${workTitle(firstOf)} · and ${String(count - 1)} more`,
-        word: many,
-        helper: of === "helper",
-        startedAt: new Date(firstOf.since).toISOString(),
-      },
-    ];
-  });
+  }));
+  const more = work.count - rows.length;
+  return more <= 0
+    ? rows
+    : [
+        ...rows,
+        {
+          key: "more",
+          title: `and ${String(more)} more`,
+          word: undefined,
+          helper: false,
+          startedAt: null,
+          more: true,
+        },
+      ];
 }
