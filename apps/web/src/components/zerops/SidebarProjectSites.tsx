@@ -22,6 +22,7 @@ import {
   CheckIcon,
   CopyIcon,
   GlobeIcon,
+  LayoutDashboardIcon,
   PlusIcon,
   SearchIcon,
   SlidersHorizontalIcon,
@@ -96,6 +97,8 @@ export interface ProjectSitesInput {
   readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   /** A stop's own page, where one opens. */
   readonly onOpenStop: (projectId: string) => (() => void) | undefined;
+  /** The project's own page; absent, no door to it is drawn. */
+  readonly onOpenPage?: (() => void) | undefined;
 }
 
 /** More addresses than this, and a filter sits under the popover's title. */
@@ -263,7 +266,34 @@ export function ProjectSites(
       open={open}
       triggerId={door === "tag" && shown !== undefined ? tagId : globeId}
     >
-      {children({ tag, globe })}
+      {children({
+        tag,
+        // The project's own page sits beside its addresses, as a link: a row's press may open a
+        // Mate or fold its group, so the page needs a door of its own (the owner, 2026-10-14).
+        globe: (
+          <>
+            {props.onOpenPage === undefined ? null : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      aria-label={`${projectName}'s page`}
+                      className="menu-row-action"
+                      data-zerops-surface="sidebar-project-page"
+                      onClick={props.onOpenPage}
+                      type="button"
+                    />
+                  }
+                >
+                  <LayoutDashboardIcon aria-hidden="true" className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">Project page</TooltipPopup>
+              </Tooltip>
+            )}
+            {globe}
+          </>
+        ),
+      })}
       <ChipPortal>
         <PopoverPrimitive.Positioner
           align="end"

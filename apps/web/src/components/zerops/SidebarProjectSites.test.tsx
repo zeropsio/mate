@@ -190,6 +190,16 @@ const listed = () =>
     ]);
 
 describe("the project's addresses", () => {
+  it("offers the project's own page beside its addresses, and opens it", async () => {
+    const opened = vi.fn();
+    await mount({ onOpenPage: opened });
+    const door = surface("sidebar-project-page");
+    expect(door?.getAttribute("aria-label")).toBe("Quillmark's page");
+    expect(door?.nextElementSibling).toBe(surface("sidebar-project-sites"));
+    await press(door);
+    expect(opened).toHaveBeenCalledTimes(1);
+  });
+
   it("the globe opens a popover that lists production's, each stage's and every Mate's addresses", async () => {
     await mount();
     const globe = surface("sidebar-project-sites");

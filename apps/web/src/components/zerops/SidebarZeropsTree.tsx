@@ -646,6 +646,8 @@ interface ProjectLatest {
   readonly production: ((nowMs: number) => ChipMenuModel) | undefined;
   readonly stages: ((nowMs: number) => ChipMenuModel) | undefined;
   readonly openStop: (projectId: string) => (() => void) | undefined;
+  /** The project's own page. */
+  readonly openPage: () => void;
 }
 
 /** A project's verbs as its rows hold them: one function each, for as long as it is drawn. */
@@ -656,6 +658,8 @@ interface ProjectRefs {
   readonly production: (nowMs: number) => ChipMenuModel;
   readonly stages: (nowMs: number) => ChipMenuModel;
   readonly openStop: (projectId: string) => (() => void) | undefined;
+  /** The project's own page. */
+  readonly openPage: () => void;
 }
 
 /** What a project's rows were last handed, kept while it reads the same. */
@@ -814,6 +818,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       production: (nowMs) => latest()?.production?.(nowMs) ?? NO_PLACES,
       stages: (nowMs) => latest()?.stages?.(nowMs) ?? NO_PLACES,
       openStop: (projectId) => latest()?.openStop(projectId),
+      openPage: () => {
+        latest()?.openPage();
+      },
     };
     projectRefs.set(id, made);
     return made;
@@ -1641,6 +1648,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       production,
       stages: stagesMenu,
       openStop,
+      openPage: () => {
+        (onOpenGroup === undefined ? onBrowseProjects : () => onOpenGroup(id))();
+      },
     });
     const held = projectShared.get(id);
     const review: ProjectReviewData | undefined =
@@ -1695,6 +1705,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               line: sitesRead.line,
               onAskToFix,
               onOpenStop: refs.openStop,
+              onOpenPage: refs.openPage,
             };
     const mateIds = everyOrdered.map(({ item }) => item.project.id);
     projectShared.set(id, {
