@@ -7,6 +7,7 @@ import {
   WsRpcGroup,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as RpcTest from "effect/rpc/RpcTest";
@@ -136,13 +137,13 @@ describe("someone else's Mate", () => {
         !(tested as ReadonlyArray<string>).includes(tag),
     ),
   );
-  const clientFor = (readsAlong: boolean, handled: Array<string>) =>
+  const clientFor = (readsAlong: boolean, ran: Deferred.Deferred<void>) =>
     RpcTest.makeClient(group).pipe(
       Effect.provide(
         Layer.mergeAll(
           group.toLayerHandler(WS_METHODS.serverProbe, () => Effect.succeed({})),
           group.toLayerHandler(WS_METHODS.serverRetryResourceTelemetry, () =>
-            Effect.sync(() => handled.push("retry")),
+            Deferred.succeed(ran, undefined).pipe(Effect.andThen(Effect.never)),
           ),
           rpcScopeAuthorizationLayer(
             [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
@@ -155,13 +156,13 @@ describe("someone else's Mate", () => {
 
   it.effect("the server refuses a colleague's acting call before it runs and lets them read", () =>
     Effect.gen(function* () {
-      const handled: Array<string> = [];
-      const client = yield* clientFor(true, handled);
+      const ran = yield* Deferred.make<void>();
+      const client = yield* clientFor(true, ran);
       expect(yield* client[WS_METHODS.serverProbe]({})).toEqual({});
       const refused = yield* client[WS_METHODS.serverRetryResourceTelemetry]({}).pipe(
         Effect.result,
       );
-      expect(handled).toEqual([]);
+      expect(yield* Deferred.isDone(ran)).toBe(false);
       expect(refused).toMatchObject({
         failure: {
           _tag: "EnvironmentAuthorizationError",
@@ -174,10 +175,10 @@ describe("someone else's Mate", () => {
 
   it.effect("the Mate's owner acts in it", () =>
     Effect.gen(function* () {
-      const handled: Array<string> = [];
-      const client = yield* clientFor(false, handled);
-      yield* client[WS_METHODS.serverRetryResourceTelemetry]({});
-      expect(handled).toEqual(["retry"]);
+      const ran = yield* Deferred.make<void>();
+      const client = yield* clientFor(false, ran);
+      yield* client[WS_METHODS.serverRetryResourceTelemetry]({}).pipe(Effect.forkScoped);
+      yield* Deferred.await(ran);
     }).pipe(Effect.scoped),
   );
 });
