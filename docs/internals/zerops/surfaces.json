@@ -1720,13 +1720,25 @@
       "title": "Team settings",
       "components": [
         "apps/web/src/components/settings/TeamSettings.tsx",
-        "apps/web/src/components/settings/TeamInviteDialog.tsx",
-        "apps/web/src/components/settings/teamSettings.logic.ts"
+        "apps/web/src/components/settings/TeamMemberPage.tsx",
+        "apps/web/src/components/settings/TeamInvitePage.tsx",
+        "apps/web/src/components/settings/TeamRoleEditor.tsx",
+        "apps/web/src/components/settings/MemberProjectAccess.tsx",
+        "apps/web/src/components/settings/teamSettings.logic.ts",
+        "apps/web/src/components/settings/teamMember.logic.ts"
       ],
       "entryPoints": [
         {
           "kind": "route",
           "value": "/settings/team"
+        },
+        {
+          "kind": "route",
+          "value": "/settings/team/$clientUserId"
+        },
+        {
+          "kind": "route",
+          "value": "/settings/team/invite"
         },
         {
           "kind": "settings-section",
@@ -1751,7 +1763,11 @@
         },
         {
           "action": "Change a person's role",
-          "reverse": "none: Choosing their earlier role in the same menu is the way back."
+          "reverse": "none: Choosing their earlier role card on their page is the way back."
+        },
+        {
+          "action": "Set a person's project access",
+          "reverse": "none: Remove override on the project's chip is the way back."
         },
         {
           "action": "Withdraw invite",
@@ -1767,8 +1783,10 @@
       },
       "tests": [
         "apps/web/src/components/settings/TeamSettings.test.tsx",
-        "apps/web/src/components/settings/TeamInviteDialog.test.tsx",
+        "apps/web/src/components/settings/TeamMemberPage.test.tsx",
+        "apps/web/src/components/settings/TeamInvitePage.test.tsx",
         "apps/web/src/components/settings/teamSettings.logic.test.ts",
+        "apps/web/src/components/settings/teamMember.logic.test.ts",
         "packages/client-runtime/src/zerops/teamRoles.test.ts",
         "packages/client-runtime/src/data/operations/executors/team.test.ts",
         "packages/client-runtime/src/data/operations/executors/appAccess.test.ts"
