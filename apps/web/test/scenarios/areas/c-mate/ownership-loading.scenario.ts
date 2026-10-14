@@ -5,6 +5,7 @@ import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.t
 import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { transportGate } from "../../harness/transportGate.ts";
+import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { mateChat } from "./dsl.ts";
 import { ownerViewport } from "./ownerViewport.ts";
 
@@ -29,6 +30,11 @@ describe("owner-reported layout regressions", () => {
         yield* s.given.signedIn;
         yield* chat.when.openReadOnly();
         yield* Effect.promise(async () => {
+          await s.page.waitForSelector('button[data-agent-id="claude-code"]', {
+            visible: true,
+            timeout: 8000,
+          });
+          await waitForStillFrames(s.page);
           await s.page.locator('button[data-agent-id="claude-code"]').setTimeout(8000).click();
           await s.page.waitForSelector(
             '[data-sign-in-open="claude-code"][href^="https://claude.scenario.invalid/oauth/authorize"]',
