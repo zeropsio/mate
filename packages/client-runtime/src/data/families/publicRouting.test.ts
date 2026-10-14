@@ -68,8 +68,18 @@ describe("publicRoutingFamily.decode", () => {
         value: {
           projectId: "p1",
           isSynced: true,
+          isEditable: false,
+          deleteOnSync: false,
+          everSynced: true,
+          lastUpdate: "2026-08-27T16:20:46Z",
           sslEnabled: true,
-          domains: [{ domainName: "buntest-demo-3000.prg1.zerops.app" }],
+          domains: [
+            {
+              domainName: "buntest-demo-3000.prg1.zerops.app",
+              dnsCheckStatus: "OK",
+              sslStatus: "ACTIVE",
+            },
+          ],
           locations: [{ path: "/", port: 3000, serviceStackId: "s1" }],
         },
       },
@@ -82,8 +92,67 @@ describe("publicRoutingFamily.decode", () => {
         version: null,
         value: {
           isSynced: true,
+          isEditable: false,
+          deleteOnSync: false,
+          everSynced: true,
+          lastUpdate: "2026-08-27T16:20:46Z",
           sslEnabled: true,
-          domains: [{ domainName: "buntest-demo-3000.prg1.zerops.app" }],
+          domains: [
+            {
+              domainName: "buntest-demo-3000.prg1.zerops.app",
+              dnsCheckStatus: "OK",
+              sslStatus: "ACTIVE",
+            },
+          ],
+          locations: [{ path: "/", port: 3000, serviceStackId: "s1" }],
+        },
+      },
+    },
+    {
+      name: "keeps how far a domain is from answering: its DNS check, what it found, its certificate",
+      raw: {
+        ...RECORDED,
+        isEditable: true,
+        isSynced: false,
+        lastSync: null,
+        domains: [
+          {
+            domainName: "shop.example.com",
+            dnsCheckStatus: "FAILED",
+            sslStatus: "WAITING_FOR_DNS",
+            lastDnsCheckAt: "2026-10-13T22:25:02Z",
+            lastDnsCheckDetail: {
+              challenges: [],
+              resolvedIpAddresses: ["198.51.100.7"],
+              resolvedNameServers: ["hera.ns.cloudflare.com."],
+              wildcardCnameCheckError: null,
+            },
+            sslCertificateInstallationError: "rate limited",
+          },
+        ],
+      },
+      row: {
+        id: "r1",
+        version: 1,
+        value: {
+          projectId: "p1",
+          isSynced: false,
+          isEditable: true,
+          deleteOnSync: false,
+          everSynced: false,
+          lastUpdate: "2026-08-27T16:20:46Z",
+          sslEnabled: true,
+          domains: [
+            {
+              domainName: "shop.example.com",
+              dnsCheckStatus: "FAILED",
+              sslStatus: "WAITING_FOR_DNS",
+              lastDnsCheckAt: "2026-10-13T22:25:02Z",
+              resolvedIps: ["198.51.100.7"],
+              nameServers: ["hera.ns.cloudflare.com"],
+              sslError: "rate limited",
+            },
+          ],
           locations: [{ path: "/", port: 3000, serviceStackId: "s1" }],
         },
       },

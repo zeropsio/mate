@@ -65,6 +65,8 @@ const Row = Schema.Struct({
         protocol: optionalString,
         scheme: optionalString,
         httpSupport: Schema.optionalKey(Schema.Boolean),
+        httpRouting: Schema.optionalKey(Schema.Boolean),
+        portRouting: Schema.optionalKey(Schema.Boolean),
       }),
     ),
   ),

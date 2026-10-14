@@ -49,6 +49,7 @@ import {
   stopServiceExecutor,
 } from "./serviceWrites.ts";
 import { throwawaySweepExecutor } from "./throwawaySweep.ts";
+import { addressWritesExecutor } from "./addressWrites.ts";
 import { serviceRestartExecutor, vaultWriteExecutor } from "./vaultWrites.ts";
 
 type ZeropsOperationsClient = Pick<
@@ -87,6 +88,15 @@ type ZeropsOperationsClient = Pick<
   | "listPublicHttpRoutings"
   | "createPublicHttpRouting"
   | "syncPublicHttpRouting"
+  | "updatePublicHttpRouting"
+  | "deletePublicHttpRouting"
+  | "checkPublicHttpRoutingDns"
+  | "disableSubdomainAccess"
+  | "createPublicPortRouting"
+  | "updatePublicPortRouting"
+  | "deletePublicPortRouting"
+  | "syncPublicPortRouting"
+  | "requestProjectPublicIp"
   | "listOrganizationMembers"
   | "addProjectVariable"
   | "updateProjectVariable"
@@ -244,6 +254,20 @@ export function makeZeropsExecutor(input: {
     const restartOne = serviceRestartExecutor({
       restartService: (serviceId) => client.restartService(serviceId),
     });
+    const addresses = addressWritesExecutor({
+      createPublicHttpRouting: (projectId, routing) =>
+        client.createPublicHttpRouting(projectId, routing),
+      updatePublicHttpRouting: (id, routing) => client.updatePublicHttpRouting(id, routing),
+      deletePublicHttpRouting: (id) => client.deletePublicHttpRouting(id),
+      checkPublicHttpRoutingDns: (id) => client.checkPublicHttpRoutingDns(id),
+      syncPublicHttpRouting: (projectId) => client.syncPublicHttpRouting(projectId),
+      disableSubdomainAccess: (serviceId) => client.disableSubdomainAccess(serviceId),
+      createPublicPortRouting: (serviceId, port) => client.createPublicPortRouting(serviceId, port),
+      updatePublicPortRouting: (id, port) => client.updatePublicPortRouting(id, port),
+      deletePublicPortRouting: (id) => client.deletePublicPortRouting(id),
+      syncPublicPortRouting: (projectId) => client.syncPublicPortRouting(projectId),
+      requestProjectPublicIp: (projectId) => client.requestProjectPublicIp(projectId),
+    });
     return {
       submit: (requestId, intent) =>
         Effect.suspend(() => {
@@ -296,6 +320,26 @@ export function makeZeropsExecutor(input: {
               return vault(requestId, intent);
             case "service-restart":
               return restartOne(requestId, intent);
+            case "add-domain":
+              return addresses.addDomain(requestId, intent);
+            case "remove-domain":
+              return addresses.removeDomain(requestId, intent);
+            case "check-domain-dns":
+              return addresses.checkDomainDns(requestId, intent);
+            case "publish-domains":
+              return addresses.publishDomains(requestId, intent);
+            case "disable-subdomain-access":
+              return addresses.disableSubdomainAccess(requestId, intent);
+            case "open-port":
+              return addresses.openPort(requestId, intent);
+            case "change-port":
+              return addresses.changePort(requestId, intent);
+            case "close-port":
+              return addresses.closePort(requestId, intent);
+            case "publish-ports":
+              return addresses.publishPorts(requestId, intent);
+            case "request-ipv4":
+              return addresses.requestIpv4(requestId, intent);
             default:
               // HQ's own writes go to HQ's executor; the coordinator never routes one here.
               return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));
@@ -379,6 +423,19 @@ export function makeZeropsExecutor(input: {
         createPublicHttpRouting: (id, routing, signal) =>
           source.createPublicHttpRouting(id, routing, signal, check),
         syncPublicHttpRouting: (id, signal) => source.syncPublicHttpRouting(id, signal, check),
+        updatePublicHttpRouting: (id, routing, signal) =>
+          source.updatePublicHttpRouting(id, routing, signal, check),
+        deletePublicHttpRouting: (id, signal) => source.deletePublicHttpRouting(id, signal, check),
+        checkPublicHttpRoutingDns: (id, signal) =>
+          source.checkPublicHttpRoutingDns(id, signal, check),
+        disableSubdomainAccess: (id) => source.disableSubdomainAccess(id, check),
+        createPublicPortRouting: (id, port, signal) =>
+          source.createPublicPortRouting(id, port, signal, check),
+        updatePublicPortRouting: (id, port, signal) =>
+          source.updatePublicPortRouting(id, port, signal, check),
+        deletePublicPortRouting: (id, signal) => source.deletePublicPortRouting(id, signal, check),
+        syncPublicPortRouting: (id, signal) => source.syncPublicPortRouting(id, signal, check),
+        requestProjectPublicIp: (id, signal) => source.requestProjectPublicIp(id, signal, check),
         deleteIntegrationToken: (target, signal) =>
           source.deleteIntegrationToken(target, signal, check),
         listIntegrationTokens: (...args) => source.listIntegrationTokens(...args),

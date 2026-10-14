@@ -22,7 +22,6 @@ import {
   saveZeropsSession,
   zeropsClientsFromUser,
   type ZeropsOrganization,
-  type ZeropsRegistrationInput,
   type ZeropsRegistrationResponse,
   type ZeropsSession,
   type ZeropsStorageAdapter,
@@ -50,7 +49,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -80,7 +78,6 @@ export interface ZeropsSessionValue {
   readonly organizationStatus: ZeropsOrganizationStatus;
   readonly updateVerifiedMemberships: (verified: ZeropsUser) => void;
   readonly selectOrganization: (membershipId: string) => Promise<void>;
-  readonly signIn: (email: string, password: string) => Promise<void>;
   /**
    * Adopts the bearer the sign-in hand-over delivered after the user signed in
    * on the Zerops app. It is proven before persistence, so an invalid token
@@ -92,8 +89,17 @@ export interface ZeropsSessionValue {
     /** True when the account just claimed a pool project, so the picker is skipped. */
     readonly zcpClaimed: boolean;
   }) => Promise<void>;
-  readonly register: (input: ZeropsRegistrationInput) => Promise<ZeropsRegistrationResponse>;
-  readonly verifyTotp: (code: string) => Promise<void>;
+  /**
+   * Adopts the session a device login collected (`deviceLogin.ts`): proven before it is stored,
+   * like a hand-over's.
+   */
+  readonly adoptDeviceLogin: (session: ZeropsSession) => Promise<void>;
+  /**
+   * The bearer a sudo device login is asked with: the held session's, renewed first when it
+   * expires within fifteen minutes. A renewal during the approval would revoke the token the
+   * request is bound to, so it happens before the request, never during.
+   */
+  readonly sudoBearer: () => Promise<string>;
   readonly signOut: () => Promise<void>;
   readonly verifyAgain?: () => void;
   /** A background retry of a failed check is running: the failure stays, saying it tries again. */
@@ -110,6 +116,12 @@ export interface ZeropsSessionValue {
 
 import { ZeropsSessionContext } from "./sessionContext";
 export { useZeropsSession, useZeropsSessionOptional } from "./sessionContext";
+
+/** How long before its expiry a device-login session renews itself. */
+const RENEW_AHEAD_MS = 24 * 60 * 60_000;
+
+/** A sudo request asked of a session about to expire would die with it: it renews first. */
+const SUDO_RENEWAL_MARGIN_MS = 15 * 60_000;
 
 /** What a page reads of the session machine's state. */
 function statusOf(state: ZeropsSessionState): ZeropsSessionStatus {
@@ -219,13 +231,20 @@ function makeSession(storage: ZeropsStorageAdapter) {
     reauth: browserZeropsReauth.ask,
     reauthSettled: browserZeropsReauth.settled,
   });
+  /**
+   * Forgets the session here at once — storage, the owner record, every tab — then ends it at the
+   * platform in the background. A personal token from the hand-over cannot end itself, so it only
+   * leaves here; it stays in the person's Settings › Token management until they revoke it there.
+   */
   const signOutLocally = async () => {
+    const held = client.session;
     signingOut = true;
     try {
       await client.signOutLocally();
     } finally {
       signingOut = false;
     }
+    if (held !== null) void calls.revoke(held);
   };
   return { calls, client, driver, signOutLocally };
 }
@@ -240,7 +259,6 @@ export function ZeropsSessionProvider({
   const [lastRegistration, setLastRegistration] = useState<ZeropsRegistrationResponse | null>(null);
   const [selectedMembershipId, setSelectedMembershipId] = useState<string | null>(null);
   const [organizationStatus, setOrganizationStatus] = useState<ZeropsOrganizationStatus>("idle");
-  const preferredClientIdRef = useRef<string | null>(null);
 
   const { calls, client, driver, signOutLocally } = useMemo(() => makeSession(storage), [storage]);
   const machine = useSyncExternalStore(driver.subscribe, driver.state);
@@ -299,6 +317,27 @@ export function ZeropsSessionProvider({
     };
   }, [client, driver]);
 
+  // A device-login session renews ahead of its expiry while the tab is in use, so a long-open tab
+  // never meets a refused token first. A personal token from the hand-over never expires.
+  useEffect(() => {
+    if (status !== "signed-in") return;
+    const renewSoon = () => {
+      // A refusal ends the session through the client; a renewal that never reached the platform
+      // leaves it held, and the next wake tries again.
+      void calls.freshBearer(RENEW_AHEAD_MS, Date.now()).catch(() => null);
+    };
+    renewSoon();
+    const onVisible = () => {
+      if (window.document.visibilityState === "visible") renewSoon();
+    };
+    window.document.addEventListener("visibilitychange", onVisible);
+    const hourly = window.setInterval(renewSoon, 60 * 60_000);
+    return () => {
+      window.document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(hourly);
+    };
+  }, [calls, status]);
+
   const organizations = useMemo(() => (user ? zeropsClientsFromUser(user) : []), [user]);
   const activeOrganization = useMemo(
     () =>
@@ -308,8 +347,7 @@ export function ZeropsSessionProvider({
   );
 
   // The platform GUI persists the exact clientUser membership. Restore it per
-  // Zerops user, while letting a registration's clientId override stale
-  // local state. Multiple new memberships deliberately require a choice.
+  // Zerops user. Multiple new memberships deliberately require a choice.
   useEffect(() => {
     if (!user) {
       setSelectedMembershipId(null);
@@ -318,12 +356,10 @@ export function ZeropsSessionProvider({
     }
     let cancelled = false;
     setOrganizationStatus("loading");
-    const preferredClientId = preferredClientIdRef.current;
-    preferredClientIdRef.current = null;
     void loadZeropsSelection(storage, user.id).then(async (selection) => {
       if (cancelled) return;
       const selected = resolveActiveZeropsOrganization(organizations, {
-        preferredClientId,
+        preferredClientId: null,
         storedClientUserId: selection.clientUserId,
         storedClientId: selection.clientId,
       });
@@ -400,26 +436,16 @@ export function ZeropsSessionProvider({
           setLastRegistration({ auth: session, user: adopted, zcpClaimed: true });
         }
       },
-      signIn: async (email, password) => {
-        const signedIn = await calls.signIn(email, password);
-        if (signedIn === null) driver.send({ type: "SECOND_FACTOR_REQUIRED" });
-        else driver.signedIn(signedIn);
+      sudoBearer: async () => {
+        const bearer = await calls.freshBearer(SUDO_RENEWAL_MARGIN_MS, Date.now());
+        if (bearer === null) throw new Error("Sign in to Zerops again.");
+        return bearer;
       },
-      register: async (input) => {
-        const { response, user: registered } = await calls.signUp(input);
-        preferredClientIdRef.current = response.clientId ?? null;
-        driver.signedIn(registered);
-        setLastRegistration(response);
-        return response;
-      },
-      verifyTotp: async (code) => {
-        driver.signedIn((await calls.confirmSecondFactor(code)).user);
+      adoptDeviceLogin: async (session) => {
+        driver.signedIn((await calls.adoptToken(session)).user);
       },
       signOut: async () => {
         setLastRegistration(null);
-        // Local only: `/auth/logout` answers a personal token 200 and revokes
-        // nothing, and the token cannot delete itself. It stays in the
-        // person's Settings › Token management until they revoke it there.
         await signOutLocally();
       },
       lastRegistration,

@@ -183,6 +183,10 @@ export interface ZeropsProject {
    */
   readonly publicIpV4Shared?: boolean;
   readonly maxCreditLimit?: number | null;
+  /** The project's own IPv4 (the paid add-on); `null` once it has none, as Zerops says it. */
+  readonly publicIpV4?: string | null;
+  /** The project's own IPv6: every project has one (read 2026-10-14). */
+  readonly publicIpV6?: string;
 }
 
 /**
@@ -236,6 +240,13 @@ export interface ZeropsServicePort {
   readonly protocol?: string;
   readonly scheme?: string;
   readonly httpSupport?: boolean;
+  /** Whether a domain may point at it: the platform refuses one that is not (read 2026-10-14). */
+  readonly httpRouting?: boolean;
+  /**
+   * Whether it may be opened straight to the internet: a PostgreSQL service's `6432`, never its
+   * `5432` (read 2026-10-14).
+   */
+  readonly portRouting?: boolean;
 }
 
 /** One `used`/`limit` pair of a current-stats item, in the unit its field name says. */
@@ -620,6 +631,8 @@ function errorKindFor(status: number, code: string | null): ZeropsApiErrorKind {
   if (status === 403) return "forbidden";
   if (status === 404) return "not-found";
   if (status === 400) {
+    // A refresh token already spent or revoked: the session is over, whatever the status says.
+    if (code === "refreshTokenInvalid") return "expired-session";
     // The API answers a made-up id with `400 projectNotFound`, so "gone" and
     // "malformed" have to be separated by the code, not the status.
     return code && /notFound$/i.test(code) ? "not-found" : "invalid-input";
@@ -824,6 +837,25 @@ function mateKeyName(projectName: string): string {
  * Owns request serialization so N parallel 401s cause exactly one refresh, and
  * so the caller never has to think about the Authorization header.
  */
+/**
+ * A port opened straight to the internet, as a write sends it: on the project's own IPv6 (free)
+ * or IPv4 (the paid add-on; refused as `publicIpTypeNotSupported` without one), to a port the
+ * service may open (`portRouting`; else `portNotSupported`), never 80 or 443
+ * (`publicPortRoutingReservedPort`) and only in 10–65435 (`portOutOfRange`). The firewall's ranges
+ * are CIDRs of the port's own IP version, each with its mask: an IPv6 port refuses an IPv4 range
+ * or a bare address as `publicPortRoutingInvalidIpFormat` (all read 2026-10-14).
+ */
+export interface ZeropsPortRoutingWrite {
+  readonly publicIpType: "IP_V6" | "IP_V4";
+  readonly publicPort: number;
+  readonly internalPort: number;
+  /** Lowercase: `TCP` is refused. */
+  readonly internalProtocol: "tcp" | "udp";
+  /** `WHITELIST`: only the ranges may connect; `BLACKLIST` with none: everyone may. */
+  readonly firewallPolicy: "WHITELIST" | "BLACKLIST";
+  readonly firewallIpRanges: ReadonlyArray<string>;
+}
+
 /** A routing of a project's own domains (`GET /project/{id}/public-http-routing`). */
 export interface ZeropsPublicHttpRouting {
   readonly id: string;
@@ -983,7 +1015,8 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Adopts a session minted elsewhere: the bearer the sign-in hand-over
+   * Adopts a session minted elsewhere: the full session a device login
+   * collects (`zerops/deviceLogin.ts`), the bearer the sign-in hand-over
    * delivers (`zerops/handover.ts`), with no refresh token, or — dev builds
    * only — a full `/auth/login` session an agent injects.
    *
@@ -991,21 +1024,26 @@ export class ZeropsApiClient {
    * would render a signed-in-looking UI that fails on its first real call. So
    * it is held in memory, spent on one read, and only persisted once that read
    * comes back. Without a refresh token, a later 401 clears the session
-   * instead of trying to refresh it.
+   * instead of trying to refresh it. One that still owes a second factor is
+   * refused: an approval never answers one.
    */
-  async adoptSession(input: {
-    readonly accessToken: string;
-    readonly refreshToken?: string;
-  }): Promise<ZeropsSession> {
+  async adoptSession(input: ZeropsSession): Promise<ZeropsSession> {
     const accessToken = input.accessToken.trim();
-    if (!accessToken) {
+    if (!accessToken || requiresZeropsTwoFactor(input)) {
       throw new ZeropsApiError(
         "That Zerops sign-in carried no credential. Start again.",
         "invalid-input",
       );
     }
     const refreshToken = input.refreshToken?.trim();
-    const session: ZeropsSession = refreshToken ? { accessToken, refreshToken } : { accessToken };
+    const session: ZeropsSession = {
+      accessToken,
+      ...(refreshToken ? { refreshToken } : {}),
+      ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),
+      ...(input.expiresIn === undefined ? {} : { expiresIn: input.expiresIn }),
+      ...(input.userId === undefined ? {} : { userId: input.userId }),
+      ...(input.tokenType === undefined ? {} : { tokenType: input.tokenType }),
+    };
     const generation = this.#nextGeneration();
     this.#session = session;
     try {
@@ -1024,6 +1062,37 @@ export class ZeropsApiClient {
   async signOutLocally(): Promise<void> {
     this.#nextGeneration();
     await this.#setSession(null);
+  }
+
+  /**
+   * Ends `session` at the platform, after it was already forgotten here. One the
+   * platform already refused (its access token expired) is first swapped, with
+   * its own refresh token, for a pair this revoke alone uses. Never fails: the
+   * person is signed out here whatever the platform answers. A personal token
+   * (no refresh token) cannot revoke itself, so nothing is sent for one.
+   */
+  async revokeSession(session: ZeropsSession): Promise<void> {
+    if (session.refreshToken === undefined) return;
+    const logout = (accessToken: string) =>
+      this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: "{}",
+      });
+    try {
+      const first = await logout(session.accessToken);
+      if (first.status !== 401) return;
+      const renewed = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/refresh`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshTokenId: session.refreshToken }),
+      });
+      if (!renewed.ok) return;
+      const fresh: unknown = await renewed.json();
+      if (isZeropsSession(fresh)) await logout(fresh.accessToken);
+    } catch {
+      // Offline, or the platform failing: the session lapses on its own.
+    }
   }
 
   /** `POST /registration` — signs up and returns an immediately usable session. */
@@ -2816,6 +2885,186 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `PUT /public-http-routing/{id}` — the routing's domains and locations, replaced whole. It
+   * serves as before until the project's routings are synced.
+   */
+  async updatePublicHttpRouting(
+    routingId: string,
+    routing: {
+      readonly domains: ReadonlyArray<string>;
+      readonly locations: ReadonlyArray<{
+        readonly path: string;
+        readonly port: number;
+        readonly serviceStackId: string;
+      }>;
+      readonly sslEnabled: boolean;
+    },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/public-http-routing/${routingId}`,
+      { method: "PUT", signal: signal ?? null, body: JSON.stringify(routing) },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
+   * `DELETE /public-http-routing/{id}` — marks the routing removed (`deleteOnSync`): it serves
+   * until the project's routings are synced, and a restore takes it back until then.
+   */
+  async deletePublicHttpRouting(
+    routingId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/public-http-routing/${routingId}`,
+      { method: "DELETE", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /** `PUT /public-http-routing/{id}/trigger-domains-dns-check` — looks its domains up again. */
+  async checkPublicHttpRoutingDns(
+    routingId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/public-http-routing/${routingId}/trigger-domains-dns-check`,
+      { method: "PUT", signal: signal ?? null, body: JSON.stringify({ domains: null }) },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
+   * `POST /service-stack/{id}/public-port-routing` — opens a port of the service on the project's
+   * IP. It serves nothing until the project's port routings are synced.
+   */
+  async createPublicPortRouting(
+    serviceId: string,
+    port: ZeropsPortRoutingWrite,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/service-stack/${serviceId}/public-port-routing`,
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify({ ...port, firewallAllowMyIp: false }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /** `PUT /public-port-routing/{id}` — the port's routing replaced whole, waiting to be synced. */
+  async updatePublicPortRouting(
+    portRoutingId: string,
+    port: ZeropsPortRoutingWrite,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/public-port-routing/${portRoutingId}`,
+      {
+        method: "PUT",
+        signal: signal ?? null,
+        body: JSON.stringify({ ...port, firewallAllowMyIp: false }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /** `DELETE /public-port-routing/{id}` — marks it removed until the project's port routings sync. */
+  async deletePublicPortRouting(
+    portRoutingId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/public-port-routing/${portRoutingId}`,
+      { method: "DELETE", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /** `PUT /project/{id}/sync-public-port-routing` — puts the project's port routings in place. */
+  async syncPublicPortRouting(
+    projectId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{ readonly processId: string | undefined }> {
+    const process = await this.#request<{ readonly id?: unknown }>(
+      `/project/${projectId}/sync-public-port-routing`,
+      { method: "PUT", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    return { processId: typeof process?.id === "string" ? process.id : undefined };
+  }
+
+  /**
+   * `PUT /project/{id}/request-ipv4` — buys the project its own IPv4, the add-on billed every 30
+   * days from purchased credit: a process (`instance.publicIpV4.request`).
+   */
+  async requestProjectPublicIp(
+    projectId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{ readonly processId: string | undefined }> {
+    const process = await this.#request<{ readonly id?: unknown }>(
+      `/project/${projectId}/request-ipv4`,
+      { method: "PUT", signal: signal ?? null, body: "{}" },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    return { processId: typeof process?.id === "string" ? process.id : undefined };
+  }
+
+  /**
+   * `PUT /service-stack/{id}/disable-subdomain-access` — closes the service's zerops.app address:
+   * a process, and its routing leaves the organization's listing.
+   */
+  async disableSubdomainAccess(
+    serviceId: string,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{ readonly processId: string | undefined }> {
+    const process = await this.#request<{ readonly id?: unknown }>(
+      `/service-stack/${serviceId}/disable-subdomain-access`,
+      { method: "PUT" },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    return { processId: typeof process?.id === "string" ? process.id : undefined };
+  }
+
+  /**
    * `GET /project/{id}/process` — the project's newest twenty processes, each with its app version
    * and why it failed: what HQ's update reads of its `hq` service's deploys (`hq/update.ts`).
    */
@@ -3156,11 +3405,9 @@ export class ZeropsApiClient {
     const refresh = async () => {
       const response = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/refresh`, {
         method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${current.accessToken}`,
-        },
+        // No bearer: the refresh token is the credential, and the access token
+        // it replaces may already be refused.
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({ refreshTokenId: current.refreshToken }),
       });
       this.#assertGeneration(generation);

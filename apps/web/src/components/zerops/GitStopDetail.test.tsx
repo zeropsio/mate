@@ -13,6 +13,22 @@ const environment = {
   target: { kind: "git" as const, branch: "main", delivery: "direct" as const },
   jobs: [],
 };
+const repos = [
+  {
+    name: "web",
+    mainHead: null,
+    updatedAt: "2026-10-14T10:00:00Z",
+    remote: {
+      url: "https://github.com/acme/shop.git",
+      repositoryId: "123",
+      keptAt: "2026-10-14T10:00:00Z",
+      keptBy: "ada",
+      expiresAt: null,
+      invalidSince: null,
+    },
+  },
+];
+
 describe("Git environment detail", () => {
   it("A branch production offers no roll back.", () => {
     const html = renderToStaticMarkup(<GitStopDetail environment={environment} />);
@@ -55,6 +71,7 @@ it("removal preserves unknown external leftovers and Cancel leaves the environme
       <GitStopDetail
         environment={environment}
         delivery={delivery}
+        repos={repos}
         can={{ remove_git_environment: { allow: true } }}
         onRemove={remove}
       />,
@@ -90,6 +107,7 @@ it("unresolved removal requires an explicit history-loss confirmation before the
         <GitStopDetail
           environment={environment}
           delivery={delivery}
+          repos={repos}
           can={{ remove_git_environment: { allow: true } }}
           onRemove={remove}
         />,
@@ -105,6 +123,74 @@ it("unresolved removal requires an explicit history-loss confirmation before the
     expect(button("Confirm removal").disabled).toBe(false);
     await act(async () => button("Confirm removal").click());
     expect(remove).toHaveBeenCalledWith(true);
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
+it("Removing Git production names the branch that stays and keeps its remote connected", async () => {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const remove = vi.fn(async () => {});
+  try {
+    await act(async () =>
+      root.render(
+        <GitStopDetail
+          environment={environment}
+          repos={repos}
+          can={{ remove_git_environment: { allow: true } }}
+          onRemove={remove}
+        />,
+      ),
+    );
+    await act(async () =>
+      [...host.querySelectorAll("button")]
+        .find((b) => b.textContent === "Remove environment")!
+        .click(),
+    );
+    expect(host.textContent).toContain(
+      "Removes production. github.com/acme/shop main stays as it is; Mate stops pushing to it.",
+    );
+    expect(host.textContent).toContain(
+      "The remote stays connected. Settings → Repositories manages it.",
+    );
+    await act(async () =>
+      [...host.querySelectorAll("button")]
+        .find((b) => b.textContent === "Confirm removal")!
+        .click(),
+    );
+    expect(remove).toHaveBeenCalledExactlyOnceWith(undefined);
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
+it("Production removal waits for the repository address it will name", async () => {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const remove = vi.fn(async () => {});
+  try {
+    await act(async () =>
+      root.render(
+        <GitStopDetail
+          environment={environment}
+          can={{ remove_git_environment: { allow: true } }}
+          onRemove={remove}
+        />,
+      ),
+    );
+    await act(async () =>
+      [...host.querySelectorAll("button")]
+        .find((b) => b.textContent === "Remove environment")!
+        .click(),
+    );
+    const confirm = [...host.querySelectorAll("button")].find(
+      (b) => b.textContent === "Confirm removal",
+    )!;
+    expect(confirm.disabled).toBe(true);
+    expect(host.textContent).toContain("Read the repository addresses before confirming removal.");
+    await act(async () => confirm.click());
+    expect(remove).not.toHaveBeenCalled();
   } finally {
     await act(async () => root.unmount());
   }

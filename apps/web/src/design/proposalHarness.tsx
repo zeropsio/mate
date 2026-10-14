@@ -3,7 +3,9 @@
  * wide, the left menu at 435, `?menu=` for another): a restart, a secret value, a service's plain
  * value, a message with an attachment to another Mate, and each outcome — running, done, failed,
  * declined, and an approval a reload interrupted. Below them, a project's Mate asking the person's
- * Chief: with a Chief, without one (*Set up your Chief*), sent, and refused by HQ. Every face is
+ * Chief: with a Chief, without one (*Set up your Chief*), sent, and refused by HQ. Then the Chief
+ * putting production on the person's domain: undecided, with another change waiting, and approved
+ * at each step its domain goes through. Every face is
  * the mark there; the receiving Mate keeps its own. Approve answers after 900 ms; `?fail=1`
  * refuses it. `?theme=dark` for dark.
  *
@@ -103,6 +105,18 @@ const ASK_CHIEF: ZeropsProposal = {
   },
 };
 
+const DOMAIN: ZeropsProposal = {
+  id: "domain",
+  kind: "domain.add",
+  summary: "Put Contoso - production on contoso.com and www.contoso.com",
+  reason: "The shop passed its stage checks; it is ready for its own name.",
+  projectId: "p-contoso-prod",
+  projectName: "Contoso - production",
+  serviceId: "s-medusa",
+  serviceName: "medusa",
+  params: { domains: ["contoso.com", "www.contoso.com"], port: 9000 },
+};
+
 const ROSSY: ProposalRecipient = { name: "Rossy", tint: "coral", shape: "gem" };
 
 const STOP: ZeropsProposal = {
@@ -123,6 +137,8 @@ const CARDS: ReadonlyArray<{
   /** HQ did not keep the person's last decision. */
   readonly refusal?: string;
   readonly readOnlyReason?: string;
+  readonly domainAlso?: string;
+  readonly domainState?: ProposalCardProps["domainState"];
 }> = [
   { proposal: RESTART, stage: "open" },
   { proposal: SECRET, stage: "open" },
@@ -158,6 +174,42 @@ const CARDS: ReadonlyArray<{
     refusal: "HQ could not keep your decision, so nothing ran. Try again.",
     chiefTarget: { kind: "chief", projectId: "p-chief" },
   },
+  { proposal: DOMAIN, stage: "open" },
+  {
+    proposal: { ...DOMAIN, id: "domain-also" },
+    stage: "open",
+    domainAlso: "Approving also puts in place: Removing api.contoso.com.",
+  },
+  { proposal: { ...DOMAIN, id: "domain-running" }, stage: "running" },
+  {
+    proposal: { ...DOMAIN, id: "domain-dns" },
+    stage: "done",
+    domainState: {
+      tone: "waiting",
+      words: "Waiting for your DNS. Add contoso.com's records at your DNS provider.",
+    },
+  },
+  {
+    proposal: { ...DOMAIN, id: "domain-elsewhere" },
+    stage: "done",
+    domainState: {
+      tone: "problem",
+      words: "contoso.com points elsewhere. Change its records at your DNS provider.",
+    },
+  },
+  {
+    proposal: { ...DOMAIN, id: "domain-certificate" },
+    stage: "done",
+    domainState: {
+      tone: "working",
+      words: "Your DNS is right. contoso.com's certificate is on its way…",
+    },
+  },
+  {
+    proposal: { ...DOMAIN, id: "domain-live" },
+    stage: "done",
+    domainState: { tone: "live", words: "contoso.com and www.contoso.com are live." },
+  },
 ];
 
 function Card(card: (typeof CARDS)[number]) {
@@ -166,7 +218,10 @@ function Card(card: (typeof CARDS)[number]) {
   return (
     <ProposalCard
       chiefTarget={card.chiefTarget}
+      domainAlso={card.domainAlso}
+      domainState={card.domainState}
       failure={failure}
+      onOpenAddresses={card.proposal.kind === "domain.add" ? () => undefined : undefined}
       readOnlyReason={card.readOnlyReason}
       mateName="Fen"
       onApprove={() => {

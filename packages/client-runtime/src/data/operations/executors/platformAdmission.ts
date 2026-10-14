@@ -73,7 +73,12 @@ export function admitPlatformOperation(input: {
     if (current.kind === "unknown")
       return yield* refused("Your access to this project is still being checked.");
     const requiredRole =
-      intent.kind === "delete-project" || intent.kind === "rename-project" ? "ADMIN" : "BASIC_USER";
+      // Buying the project its own IPv4 spends the organization's credit: an admin's to do.
+      intent.kind === "delete-project" ||
+      intent.kind === "rename-project" ||
+      intent.kind === "request-ipv4"
+        ? "ADMIN"
+        : "BASIC_USER";
     if (current.kind !== "allowed" || !roleAtLeast(current.role, requiredRole))
       return yield* refused("Your role in this project doesn't allow this.");
   });

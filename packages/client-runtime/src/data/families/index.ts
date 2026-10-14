@@ -68,6 +68,8 @@ import { mateLinkFamily } from "./mateLink.ts";
 import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
 import { versionFamily } from "./version.ts";
+import { projectAddonsFamily } from "./projectAddons.ts";
+import { publicPortRoutingFamily } from "./publicPortRouting.ts";
 import { publicRoutingFamily } from "./publicRouting.ts";
 import { serviceAgentsFamily } from "./serviceAgents.ts";
 import { mateVariablesFamily } from "./mateVariables.ts";
@@ -158,6 +160,8 @@ export const FAMILIES = defineFamilies([
   locationLatencyFamily,
   serviceAgentsFamily,
   publicRoutingFamily,
+  publicPortRoutingFamily,
+  projectAddonsFamily,
   hqAppDetailFamily,
   hqVerdictFamily,
   mateVariablesFamily,

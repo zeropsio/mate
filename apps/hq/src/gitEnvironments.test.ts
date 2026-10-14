@@ -21,6 +21,8 @@ import { memoryStore } from "../test/harness/overviews.ts";
 import { fakeOperationWatch } from "../test/harness/operationWatch.ts";
 import { emptyWorld, fakeZeropsApi, fakeZeropsDeploy } from "../test/harness/zeropsFake.ts";
 import { Deploys, deploysLayer } from "./deploys.ts";
+import { readEnvironmentSource } from "./environmentNavigation.ts";
+import { appOffers } from "./offers.ts";
 import { deployKeysLayer } from "./deployKeys.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { gitPushLayer } from "./gitPush.ts";
@@ -61,7 +63,7 @@ const fixture = Effect.gen(function* () {
     (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
   );
   const world = emptyWorld();
-  const state = { role: "OWNER", refused: false };
+  const state = { role: "OWNER", projectRole: undefined as string | undefined, refused: false };
   const view = Effect.sync(
     () =>
       ({
@@ -85,7 +87,10 @@ const fixture = Effect.gen(function* () {
           status: "ACTIVE",
           tags: [],
           publicZone: "fixture.invalid",
-          userRoles: [],
+          userRoles:
+            state.projectRole === undefined
+              ? []
+              : [{ clientUserId: "owner", roleCode: state.projectRole }],
         })),
       }) satisfies OrgView,
   );
@@ -237,11 +242,72 @@ const fixture = Effect.gen(function* () {
     state,
     remoteRows,
     context,
+    view,
   };
 });
 
 describe("Structure Git environments", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("Removing Git production requires the same application access as creating it.", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const production = yield* f.add("production");
+        const stage = yield* f.add("stage", "stage", "stage");
+        f.state.projectRole = "READ_ONLY";
+        const source = yield* readEnvironmentSource(f.sql);
+        const environments = source.forApp("owner", f.app.id, yield* f.view, { allow: true });
+        if ("refused" in environments) throw new Error("Fixture application must be visible");
+        assert.deepStrictEqual(
+          environments.map((environment) => [
+            environment.tier,
+            "remove_git_environment" in environment.can
+              ? environment.can.remove_git_environment
+              : undefined,
+          ]),
+          [
+            ["production", { allow: false, reason: "not_app_developer" }],
+            ["stage", { allow: true }],
+          ],
+        );
+        assert.strictEqual(yield* reason(f.remove(production.environmentId)), "forbidden");
+        assert.deepStrictEqual(
+          yield* f.sql`SELECT tier FROM hq_environment WHERE id=${production.environmentId}`,
+          [{ tier: "production" }],
+        );
+        assert.strictEqual(yield* reason(f.remove(stage.environmentId)), "ok");
+        f.state.projectRole = "BASIC_USER";
+        assert.strictEqual(yield* reason(f.remove(production.environmentId)), "ok");
+        assert.deepStrictEqual(yield* f.sql`SELECT tier FROM hq_environment`, []);
+      }),
+    );
+    it.effect("Removing Git production immediately offers a new production environment.", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const production = yield* f.add("production");
+        const receipt = yield* f.structure
+          .gitTargetWrite("owner", "remove-production", {
+            kind: "remove-git-environment",
+            orgId: "ORG",
+            hqProjectId: "HQ",
+            appId: f.app.id,
+            environmentId: HqEnvironmentId.make(production.environmentId),
+          })
+          .pipe(Effect.provide(f.context));
+        assert.strictEqual(receipt.outcome.kind, "succeeded");
+        const source = yield* readEnvironmentSource(f.sql);
+        const facts = yield* f.view;
+        assert.deepStrictEqual(source.forApp("owner", f.app.id, facts, { allow: true }), []);
+        assert.deepStrictEqual(
+          appOffers(
+            "owner",
+            [{ project_id: "P_MATE", kind: "mate" }],
+            facts,
+            source.slotsForApp(f.app.id),
+          ).add_production,
+          { allow: true },
+        );
+      }),
+    );
     it.effect(
       "Git Run again chooses current wanted code and returns the original queued receipt without replay",
       () =>
