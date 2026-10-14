@@ -862,7 +862,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
           const token = { ...CLAUDE, credPresent: false, flagOAuth: false, flagToken: true };
           // What HQ holds: the full overview, then each identity section sent since.
           const runsWithoutSignIn = Effect.map(
-            Effect.forEach(socket.sent, decodeMateLinkUp),
+            Effect.forEach(socket.sent, (frame) => decodeMateLinkUp(frame)),
             (frames) =>
               frames
                 .map((frame) =>
