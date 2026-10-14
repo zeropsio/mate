@@ -547,8 +547,9 @@ export class Structure extends Context.Service<
     readonly read: (userId: string) => Effect.Effect<StructureRead, SqlError | ZeropsError>;
     /**
      * Follows Zerops: what HQ holds of projects it no longer has (missing from the org's list, and
-     * refused by id) goes, Mate credentials included; answers how many projects. Nothing moves
-     * while Zerops cannot say.
+     * refused by id) goes, Mate credentials included; answers how many projects. A person no
+     * longer an active member loses their sessions and git passwords. Nothing moves while Zerops
+     * cannot say.
      */
     readonly reconcile: Effect.Effect<number, NotLeader | SqlError | ZeropsError>;
     /** A scoped completion handle, authorized while Zerops still holds the project's roles. */
@@ -859,7 +860,24 @@ export const structureLayer = (options: {
       // Over the org as recently read, never forcing a fresh read (the lead, 2026-10-03: forcing
       // one every minute read the organization's member and project lists for nothing).
       const reconcile = Effect.gen(function* () {
-        const listed = new Set((yield* roles.recent).projects.map((project) => project.id));
+        const view = yield* roles.recent;
+        // Removal from the org ends what HQ issued its person: sessions and git passwords.
+        const active = view.members
+          .filter((member) => member.status === "ACTIVE")
+          .map((member) => member.userId);
+        if (active.length > 0) {
+          yield* leader.write(
+            Effect.andThen(
+              sql`UPDATE hq_session SET revoked_at = now()
+                WHERE org_id = ${view.orgId} AND revoked_at IS NULL AND expires_at > now()
+                  AND NOT ${sql.in("user_id", active)}`,
+              sql`UPDATE hq_git_credential SET revoked_at = now()
+                WHERE org_id = ${view.orgId} AND revoked_at IS NULL AND expires_at > now()
+                  AND NOT ${sql.in("user_id", active)}`,
+            ),
+          );
+        }
+        const listed = new Set(view.projects.map((project) => project.id));
         const rows = yield* sql<{ readonly project_id: string }>`
           SELECT project_id FROM hq_app_project
           UNION SELECT project_id FROM hq_mate

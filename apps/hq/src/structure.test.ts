@@ -33,6 +33,9 @@ import {
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import { rolloutsLayer } from "./rollouts.ts";
+import type { Leader } from "./leader.ts";
+import { PersonGitCredentials, personGitCredentialsLayer } from "./personGitCredentials.ts";
+import { Sessions, sessionsLayer } from "./sessions.ts";
 import {
   ZeropsApi,
   type ZeropsMember,
@@ -119,7 +122,7 @@ const withStructure = <A, E, B = never>(
     zerops: FakeWorld,
     /** How each read of the org was asked for, in order. */
     asked: Ref.Ref<ReadonlyArray<string>>,
-  ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient>,
+  ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient | Leader>,
   before?: Effect.Effect<void, B, SqlClient.SqlClient>,
   /** HQ's key; the test key by default. */
   keySecret: KeySecret = testKey(),
@@ -1954,6 +1957,47 @@ describe("structure", () => {
             (yield* Effect.map(structure.read("owner"), (read) => read.presses))["P_STAGE"],
           );
         }),
+      ),
+    );
+
+    it.effect("a person Zerops removed from the org loses their sessions and git passwords", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sessions = yield* Sessions;
+          const git = yield* PersonGitCredentials;
+          const shop = yield* structure.createApp("owner", "Shop");
+          const signIn = (userId: string) =>
+            Effect.map(
+              sessions.issue({ userId, orgId: "ORG" }, `door-${userId}`),
+              (session) => session.token,
+            );
+          const password = (userId: string) =>
+            Effect.map(
+              git.issue({ userId, orgId: "ORG", appId: shop.id }),
+              (credential) => credential.token,
+            );
+          const held = {
+            devSession: yield* signIn("dev"),
+            devPassword: yield* password("dev"),
+            ownerSession: yield* signIn("owner"),
+            ownerPassword: yield* password("owner"),
+          };
+          yield* Ref.update(view, (org) => ({
+            ...org,
+            members: org.members.filter((member) => member.userId !== "dev"),
+          }));
+          yield* structure.reconcile;
+          assert.deepStrictEqual(
+            [
+              Option.isSome(yield* sessions.resolve(held.devSession)),
+              Option.isSome(yield* git.resolve(held.devPassword)),
+              Option.isSome(yield* sessions.resolve(held.ownerSession)),
+              Option.isSome(yield* git.resolve(held.ownerPassword)),
+            ],
+            [false, false, true, true],
+          );
+        }).pipe(Effect.provide(Layer.mergeAll(sessionsLayer, personGitCredentialsLayer))),
       ),
     );
 
