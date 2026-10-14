@@ -227,7 +227,7 @@ describe("zeropsCandidatePresentation", () => {
     candidate({ group: "unavailable", reason: "container is STOPPED", connectable: false }),
   ])("a listed Mate offers no verb, whatever its container is doing", (row) => {
     expect(present(row, { visibility: "listed" })).toMatchObject({
-      label: "Not yours",
+      label: "Read-only",
       tone: "off",
       action: null,
       notice: "Your Zerops access to this Mate is read-only.",

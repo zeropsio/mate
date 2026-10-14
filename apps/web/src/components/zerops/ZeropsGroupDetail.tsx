@@ -18,7 +18,7 @@ import {
 import { Atom } from "effect/reactivity";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
-import { useProjection } from "~/zerops/accountData";
+import { useAccountDataOptional, useProjection } from "~/zerops/accountData";
 import { ReleaseAction, useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { StopVaultSide, StopVaultToggle, useStopVaultOpen } from "./vault/StopVault";
@@ -1278,10 +1278,12 @@ export function ZeropsStopDetailPage({
   const inventory = useZeropsInventory();
   const navigation = useProjection(canonicalHqNavigation, orgId, NO_ROUTE_NAVIGATION);
   const status = useFlowNavigation(orgId);
+  const orgRole = useAccountDataOptional()?.viewer?.roleCode;
   const unread = unreadFlowWords({
     failure: status.readFailure,
     groupsRead: status.groupsRead,
     groupKnown: status.knownGroups.has(groupId),
+    orgRole,
   });
   const crumbs = useCrumbs({
     groupId,
@@ -2872,14 +2874,17 @@ export interface Crumb {
 
 /**
  * A detail page whose flow is not read yet: the boot's wait line past its beat while the app reads
- * it, and its own words where nothing will (`unreadFlowWords`) — HQ is unavailable, a project not here any more, or reads that failed.
+ * it, and its own words where nothing will (`unreadFlowWords`) — HQ is unavailable, a project not here any more or not
+ * the viewer's in Zerops, or reads that failed.
  */
 function UnreadDetail({ groupId }: { readonly groupId: string }) {
   const flows = useProjectFlows(useMemo(() => [groupId], [groupId]));
+  const orgRole = useAccountDataOptional()?.viewer?.roleCode;
   const words = unreadFlowWords({
     failure: flows.readFailure,
     groupsRead: flows.groupsRead,
     groupKnown: flows.knownGroups.has(groupId),
+    orgRole,
   });
   if (words !== null) return <Note>{words}</Note>;
   return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />;

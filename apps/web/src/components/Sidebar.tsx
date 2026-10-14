@@ -178,6 +178,7 @@ import {
   sidebarAccountDestinationIcon,
 } from "./sidebar/SidebarChrome";
 import { newMateView, useAddMate } from "../zerops/newMate";
+import { useAddMateOffer } from "../zerops/useHqOffers";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
 import { useCreations } from "../zerops/creations";
@@ -1769,8 +1770,14 @@ export default function Sidebar() {
   }, [isMobile, router, setOpenMobile]);
   useOverviewKey(zeropsSignedIn ? navigateToZeropsProjects : undefined);
 
-  // The + asks for a Mate in one of the organization's projects, over whatever is on screen.
+  // The + asks for a Mate in one of the organization's projects, over whatever is on screen: only
+  // those HQ offers a new Mate in, as the menu's own rows do.
   const zeropsMenuProjects = useMenuProjects();
+  const addMateOffer = useAddMateOffer();
+  const zeropsMateProjects = useMemo(
+    () => zeropsMenuProjects.filter((project) => addMateOffer(project.id).kind === "allowed"),
+    [addMateOffer, zeropsMenuProjects],
+  );
   const onZeropsNewMate = useCallback(
     (groupId: string) => {
       if (isMobile) setOpenMobile(false);
@@ -2711,7 +2718,7 @@ export default function Sidebar() {
       <SidebarCreateButton
         onNewMate={onZeropsNewMate}
         onNewProject={openNewZeropsProject}
-        projects={zeropsMenuProjects}
+        projects={zeropsMateProjects}
       />
     ) : null;
   // The closed menu on a desktop; the open one stays drawn under it (`SidebarStage`).

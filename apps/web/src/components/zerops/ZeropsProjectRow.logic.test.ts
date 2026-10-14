@@ -910,7 +910,7 @@ describe("a Mate the person may see and not open (D5)", () => {
 
   it("says whose it is in place of the verb", () => {
     expect(deriveZeropsRowPresentation(listed(READY, "Jan"))).toEqual({
-      status: { label: "Not yours", tone: "off" },
+      status: { label: "Read-only", tone: "off" },
       detail: "Jan's Mate — your Zerops access is read-only.",
     });
   });
@@ -929,7 +929,7 @@ describe("a Mate the person may see and not open (D5)", () => {
     ["not answering", READY, "unreachable" as const],
   ])("outranks a row that is %s", (_name, candidate, health) => {
     expect(deriveZeropsRowPresentation({ ...listed(candidate), health }).status.label).toBe(
-      "Not yours",
+      "Read-only",
     );
   });
 

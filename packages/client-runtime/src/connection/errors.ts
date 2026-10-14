@@ -70,9 +70,9 @@ export function mapRemoteEnvironmentError(
           traceId: error.traceId,
         });
       }
-      // The Mate is theirs to see and not to open. Kept apart from the generic
-      // permission error on purpose: that one reads as something to fix, and
-      // this is whose Mate it is.
+      // Their Zerops role reads the Mate and never opens it. Kept apart from the
+      // generic permission error on purpose: that one reads as something to fix,
+      // and this is the role Zerops gives them.
       if (error.reason === ZEROPS_READ_ONLY_DOOR_REASON) {
         return new ConnectionBlockedError({
           reason: "read-only",

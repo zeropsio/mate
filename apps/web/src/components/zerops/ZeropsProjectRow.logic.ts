@@ -449,12 +449,12 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     return { status: { label: NOT_IN_HQ_LINE, tone: "off" }, detail: NOT_IN_HQ_LINE };
   }
 
-  // Whose Mate it is outranks whatever its container is doing. A person who
-  // cannot open it is not waiting for it to start, and telling them it is
-  // "Ready" would be an invitation the door refuses.
+  // A Zerops role that only reads the Mate outranks whatever its container is
+  // doing. A person who cannot open it is not waiting for it to start, and
+  // telling them it is "Ready" would be an invitation the door refuses.
   if (input.visibility === "listed") {
     return {
-      status: { label: "Not yours", tone: "off" },
+      status: { label: "Read-only", tone: "off" },
       detail: mateOnlyOwnerOpensIt(input.ownerName),
     };
   }

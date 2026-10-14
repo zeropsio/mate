@@ -208,7 +208,7 @@ export function zeropsCandidatePresentation(
   const state = stateOf(candidate, nowMs);
   if (options.visibility === "listed") {
     return {
-      label: "Not yours",
+      label: "Read-only",
       tone: "off",
       pulsing: false,
       action: null,
