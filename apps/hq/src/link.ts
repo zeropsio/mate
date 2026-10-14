@@ -45,10 +45,12 @@ import {
   usageRefusalDisposition,
 } from "@t3tools/shared/agentUsage";
 import { Changes } from "./changes.ts";
+import { Chiefs } from "./chief.ts";
 import { Leader } from "./leader.ts";
 import { MateAccess } from "./mateAccess.ts";
 import { MateCredentials } from "./mateCredentials.ts";
 import { MateOverviews } from "./mateOverviews.ts";
+import { Roles } from "./roles.ts";
 import { LiveSockets, socketEnding } from "./stream.ts";
 import { Structure } from "./structure.ts";
 import { AutoUpdatePolicy } from "./autoUpdate.ts";
@@ -102,6 +104,8 @@ export const serveMateLink = (
       const leader = yield* Leader;
       const access = yield* MateAccess;
       const autoUpdate = yield* AutoUpdatePolicy;
+      const chiefs = yield* Chiefs;
+      const roles = yield* Roles;
       const usage = (yield* UsageLane).ledger;
       /** This link's capture lane once it opens; until then, and if it cannot, none. */
       let sender: UsageSender | undefined;
@@ -112,11 +116,19 @@ export const serveMateLink = (
       const link = yield* overviews.connect(projectId);
 
       const sent = yield* Ref.make<string | undefined>(undefined);
-      /** The Mate's state now — its record and its changes — when it differs from the last sent. */
+      /**
+       * The Mate's state now — its record, its owner and its changes — when it differs from the
+       * last sent. An owner HQ cannot read yet is left unsaid rather than holding the state back.
+       */
       const sendState = Effect.gen(function* () {
         const record = yield* structure.mateState(projectId);
         if (Option.isNone(record)) return;
-        const mate: MateState = { ...record.value, ...(yield* changes.mateChanges(projectId)) };
+        const owner = yield* Effect.option(chiefs.ownerOf(projectId));
+        const mate: MateState = {
+          ...record.value,
+          ...(Option.isSome(owner) ? { ownerUserId: owner.value } : {}),
+          ...(yield* changes.mateChanges(projectId)),
+        };
         const frame = encodeDown({
           type: "state",
           mate,
@@ -153,6 +165,9 @@ export const serveMateLink = (
         Stream.mergeAll(
           [
             Stream.filter(structure.mateChanges, (changed) => changed === projectId),
+            // Its owner moves with its signers (its record) and with the org's roles: every view
+            // Zerops answers, at least the official check's each minute.
+            Stream.map(roles.views, () => projectId),
             Stream.map(changes.changes, () => projectId),
             Stream.map(autoUpdate.changes, () => projectId),
           ],

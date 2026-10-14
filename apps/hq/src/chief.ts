@@ -51,7 +51,7 @@ import { can } from "./permissions.ts";
 import { CHIEF_LIMIT, DOOR_LIMIT, DoorRateLimit, TooManyRequests } from "./rateLimit.ts";
 import { Roles } from "./roles.ts";
 import { MateOverviews } from "./mateOverviews.ts";
-import { mateOwner } from "./usageAccess.ts";
+import { mateOwner, recordedMateOwner } from "./usageAccess.ts";
 import { ZeropsApi, type ZeropsError, ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
 
 /** Where HQ serves the proxy, under its own address. */
@@ -105,6 +105,11 @@ export class Chiefs extends Context.Service<
       } | null,
       SqlError | ZeropsError
     >;
+    /**
+     * The person HQ records as the Mate's owner (`recordedMateOwner`) over HQ's last good view of
+     * its org, or none: what the Mate's own link names, so its server refuses everyone else's acts.
+     */
+    readonly ownerOf: (projectId: string) => Effect.Effect<string | null, SqlError | ZeropsError>;
     /** Binds an offer to its authenticated source Mate and current Chief. Sends nothing. */
     readonly propose: (
       projectId: string,
@@ -220,8 +225,31 @@ export const chiefsLayer = (options: {
           );
         });
 
+      const ownerOf = (projectId: string) =>
+        Effect.gen(function* () {
+          const facts = yield* roles.view;
+          const [mate] = yield* sql<{
+            readonly signers: Readonly<Record<string, string>>;
+            readonly madeBy: string | null;
+            readonly standupRequestedBy: string | null;
+            readonly chiefOf: string | null;
+          }>`SELECT m.signers, m.made_by AS "madeBy", m.standup_requested_by AS "standupRequestedBy",
+            (SELECT c.user_id FROM hq_chief c WHERE c.org_id = ${facts.orgId}
+              AND c.project_id = m.project_id AND c.revoked_at IS NULL LIMIT 1) AS "chiefOf"
+          FROM hq_mate m WHERE m.project_id = ${projectId}`;
+          if (mate === undefined) return null;
+          return recordedMateOwner({
+            chiefOf: mate.chiefOf ?? undefined,
+            facts,
+            projectId,
+            mate,
+            overview: (yield* overviews.all).get(projectId)?.overview,
+          });
+        });
+
       return Chiefs.of({
         forMate,
+        ownerOf,
         propose: (projectId) =>
           Effect.gen(function* () {
             const chief = yield* forMate(projectId);
