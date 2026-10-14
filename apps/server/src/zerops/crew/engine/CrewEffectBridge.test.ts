@@ -33,7 +33,7 @@ import {
   exists,
   git,
   read,
-  remoteEnvWithSetsid,
+  remoteEnvWithSupervisor,
   TEST_HOST,
   waitUntil,
   write,
@@ -44,7 +44,7 @@ import { CREW_EFFECT_KINDS, type CrewEffectKind, type CrewEffectPayload } from "
 import { crewDeliveryLayer, CrewDelivery } from "./effects/deliver.ts";
 import { laneKey } from "./effects/shared.ts";
 
-const SETSID = { remoteEnv: remoteEnvWithSetsid() };
+const SUPERVISED = { remoteEnv: remoteEnvWithSupervisor() };
 const BACKEND = ConversationId.make("crew-main-backend-1");
 const ANA: Principal = { kind: "person", subject: "ana" };
 const CREW: Principal = { kind: "crew", startedBy: "ana" };
@@ -1007,7 +1007,7 @@ describe("the crew's effects on the git core", () => {
         Effect.map(row.scene(root, told).pipe(Effect.provide(ports(told))), (actual) => {
           assert.deepStrictEqual(actual, row.expected(root));
         }),
-      SETSID,
+      SUPERVISED,
     );
   });
 
