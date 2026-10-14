@@ -11,7 +11,7 @@
  * @module data/operations/appAccess
  */
 import type { AppAccessChange, AppAccessLevel, AppProjects } from "../../zerops/appAccess.ts";
-import type { ProjectAccessChange } from "../../zerops/projectAccess.ts";
+import type { ProjectAccessChange, ProjectGrant } from "../../zerops/projectAccess.ts";
 import type { OperationKind } from "./kind.ts";
 
 /** Who an address is to Zerops, before it is invited. */
@@ -64,6 +64,12 @@ declare module "../model.ts" {
       /** Each person's grant to set on each project; a project they own is never changed. */
       readonly changes: ReadonlyArray<ProjectAccessChange>;
     };
+    readonly "grant-new-project-access": {
+      readonly orgId: string;
+      /** A project just made from an import document, whose people its creator chose. */
+      readonly projectId: string;
+      readonly userRoles: ReadonlyArray<ProjectGrant>;
+    };
   }
   interface OperationResults {
     readonly "check-invitee": InviteeCheck;
@@ -71,6 +77,7 @@ declare module "../model.ts" {
     readonly "set-app-access": { readonly membershipEnded: boolean };
     /** How many people's lists were written. */
     readonly "set-project-access": { readonly written: number };
+    readonly "grant-new-project-access": { readonly projectId: string };
   }
 }
 

@@ -124,11 +124,11 @@ function fakePlatform(overrides: FakeOverrides = {}) {
       case "harden-project":
         await writes.harden(intent.projectId);
         return { keyNotLowered: null };
-      case "set-project-access":
+      case "grant-new-project-access":
         calls.push(
-          `access:${intent.changes.map(({ clientUserId, projectId, roleCode }) => `${clientUserId}@${projectId}=${roleCode}`).join("|")}`,
+          `access:${intent.projectId}:${intent.userRoles.map(({ clientUserId, roleCode }) => `${clientUserId}=${roleCode}`).join("|")}`,
         );
-        return { written: intent.changes.length };
+        return { projectId: intent.projectId };
       default:
         throw new Error(`No ${intent.kind} in a creation.`);
     }
@@ -356,7 +356,7 @@ describe("runEnvironmentCreation", () => {
         title:
           "A whole-project recipe's environment is given the chosen access once Zerops made it",
         yaml: `project:\n  name: x\n${TIER_YAML}`,
-        calls: [`importProject:${0}`, "access:cu-ada@proj-1=ADMIN|cu-bo@proj-1=READ_ONLY"],
+        calls: [`importProject:${0}`, "access:proj-1:cu-ada=ADMIN|cu-bo=READ_ONLY"],
       },
     ],
   )("$title", async ({ yaml, calls: expected }) => {

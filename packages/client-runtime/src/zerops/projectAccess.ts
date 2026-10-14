@@ -5,10 +5,11 @@
  * removing someone's grant, which hands them back to their organization role.
  *
  * Two shapes of the same record. A creation sends the project's list (`POST /client/{id}/project`
- * with `userRoles`). A change to a project that exists is written on each person's own list
- * (`PUT /client-user/{id}/roles`), never on the project: `PUT /project/{id}` with `userRoles`
- * replaces the whole list, cannot name an integration token and drops a Mate key's own grant
- * (measured 2026-10-03, `zerops/api.ts` `setProjectMemberRole`).
+ * with `userRoles`, or `PUT /project/{id}` right after an import, `writeNewProjectAccess`). A change
+ * to a project that exists is written on each person's own list (`PUT /client-user/{id}/roles`),
+ * never on the project: `PUT /project/{id}` with `userRoles` replaces the whole list, cannot name an
+ * integration token and drops a Mate key's own grant (measured 2026-10-03, `zerops/api.ts`
+ * `setProjectMemberRole`).
  *
  * Pure: the lists arrive read.
  *
@@ -18,19 +19,8 @@ import { asOrgRole } from "@t3tools/shared/zeropsRoles";
 
 import type { ProjectGrantEntry } from "./appAccess.ts";
 
-/**
- * The levels a project grant sets here: full access or read only, as a person's menu gives them,
- * or a developer's, as a creation carries one over from the app's other projects.
- */
-export type ProjectAccessRole = "ADMIN" | "BASIC_USER" | "READ_ONLY";
-
-/** A grant's role as one this module writes; any other is full access's floor, read only. */
-export const asProjectAccessRole = (roleCode: string): ProjectAccessRole =>
-  roleCode === "ADMIN" || roleCode === "OWNER"
-    ? "ADMIN"
-    : roleCode === "BASIC_USER"
-      ? "BASIC_USER"
-      : "READ_ONLY";
+/** The levels Mate gives on a project: full access, or read only. */
+export type ProjectAccessRole = "ADMIN" | "READ_ONLY";
 
 /** One entry of a project's `userRoles`, as `GET /project/{id}` names it. */
 export interface ProjectGrant {

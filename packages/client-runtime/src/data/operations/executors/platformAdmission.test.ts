@@ -213,3 +213,30 @@ describe("operation admission from the account store", () => {
     }),
   );
 });
+
+describe("giving a project just made its people", () => {
+  it.effect.each([
+    { orgRole: "BASIC_USER", canCreateProjects: true, allowed: true },
+    { orgRole: "READ_ONLY", canCreateProjects: false, allowed: false },
+  ] as const)(
+    "Whoever may create projects gives the one they made its people: $orgRole",
+    ({ orgRole, canCreateProjects, allowed }) =>
+      Effect.gen(function* () {
+        const result = yield* Effect.result(
+          admitPlatformOperation({
+            intent: {
+              kind: "grant-new-project-access",
+              orgId: "org",
+              projectId: "p",
+              userRoles: [{ clientUserId: "cu-ada", roleCode: "ADMIN" }],
+            },
+            store: makeAccountStore(AtomRegistry.make()),
+            viewer: { ...viewer, roleCode: orgRole, canCreateProjects },
+            active: () => true,
+            readDetail: async () => false,
+          }),
+        );
+        expect(Result.isSuccess(result)).toBe(allowed);
+      }),
+  );
+});

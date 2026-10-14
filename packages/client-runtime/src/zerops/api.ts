@@ -22,7 +22,7 @@ import {
   zeropsRegionFromPublicZone,
 } from "./containerAddress.ts";
 import { withMateProjectRole } from "./mateAccess.ts";
-import type { ProjectGrant } from "./projectAccess.ts";
+import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
 import {
@@ -1369,6 +1369,52 @@ export class ZeropsApiClient {
             maxCreditLimit: project.maxCreditLimit,
           }),
         ),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
+   * `PUT /project/{id}` with `userRoles` — a project's people, given once, on a project just made
+   * from an import document, which has no room for them. Taken from a project owner as well as an
+   * organization admin, so its creator may give it; a person's own list is not
+   * (`writeMemberProjectRoles`).
+   *
+   * Only on a project just made: the write replaces the whole list, cannot name an integration
+   * token and drops a Mate key's own grant (F7, measured 2026-10-03) — no key holds one yet. The
+   * list read is kept, its creator's `OWNER` with it, the chosen people set in it; the platform
+   * replaces the record too, so its fields go back as they were read (`projectWriteBody`).
+   */
+  async writeNewProjectAccess(
+    projectId: string,
+    userRoles: ReadonlyArray<ProjectGrant>,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<ZeropsProject> {
+    const generation = this.#generation;
+    this.#assertGeneration(generation);
+    const project = await this.fetchProject(projectId);
+    this.#assertGeneration(generation);
+    const list = userRoles.reduce(
+      (held, { clientUserId, roleCode }) => withProjectGrant(held, clientUserId, roleCode),
+      project.userRoles ?? [],
+    );
+    return this.#request<ZeropsProject>(
+      `/project/${projectId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          ...projectWriteBody({
+            name: project.name,
+            description: project.description,
+            tagList: project.tagList ?? [],
+            publicIpV4Shared: project.publicIpV4Shared,
+            maxCreditLimit: project.maxCreditLimit,
+          }),
+          userRoles: creationUserRoles(list),
+        }),
       },
       {
         operationKind: "project-write",

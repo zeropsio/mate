@@ -32,6 +32,8 @@ export type AppAccessPlatform = Pick<
   | "readMemberProjectRoles"
   | "writeMemberProjectRoles"
   | "removeOrganizationMember"
+  | "writeNewProjectAccess"
+  | "fetchProject"
 >;
 
 /** Reads the organization's member list and these places again; settles however the reads end. */
@@ -54,6 +56,7 @@ function inWords(fault: Fault, cause: { readonly forbidden: string }): Fault {
 
 const INVITE = { forbidden: "Only an organization owner or admin can invite." };
 const CHANGE = { forbidden: "Only an organization owner or admin can change who has access." };
+const NEW_PROJECT = { forbidden: "Only the project's owner or an admin can give its access." };
 
 const sameList = (a: ReadonlyArray<ProjectGrantEntry>, b: ReadonlyArray<ProjectGrantEntry>) => {
   const key = (list: ReadonlyArray<ProjectGrantEntry>) =>
@@ -325,5 +328,36 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
       return receiptOf(requestId, intent.orgId, { written });
     });
 
-  return { check, invite, setAccess, setProjectAccess };
+  /** A project just made is given its people; a lost answer is proven by reading the project. */
+  const grantNewProject = (requestId: string, intent: IntentOf<"grant-new-project-access">) =>
+    Effect.gen(function* () {
+      const written = yield* Effect.result(
+        verb(() => platform.writeNewProjectAccess(intent.projectId, intent.userRoles)),
+      );
+      if (Result.isFailure(written) && written.failure.outcome !== "uncertain-acceptance") {
+        yield* Effect.promise(() => readBack(intent.orgId, [intent.projectId]));
+        return yield* Effect.fail(inWords(written.failure, NEW_PROJECT));
+      }
+      if (Result.isFailure(written)) {
+        const read = yield* Effect.result(verb(() => platform.fetchProject(intent.projectId)));
+        const holds =
+          Result.isSuccess(read) &&
+          intent.userRoles.every(({ clientUserId, roleCode }) =>
+            read.success.userRoles?.some(
+              (entry) => entry.clientUserId === clientUserId && entry.roleCode === roleCode,
+            ),
+          );
+        if (!holds) {
+          yield* Effect.promise(() => readBack(intent.orgId, [intent.projectId]));
+          return unobservable("Check who has access on the project's page");
+        }
+      }
+      yield* Effect.promise(() => readBack(intent.orgId, [intent.projectId]));
+      return {
+        ...receiptOf(requestId, intent.orgId, { projectId: intent.projectId }),
+        affected: [{ family: "project", id: intent.projectId }],
+      } satisfies OperationReceipt;
+    });
+
+  return { check, invite, setAccess, setProjectAccess, grantNewProject };
 }

@@ -63,7 +63,9 @@ export function admitPlatformOperation(input: {
     if (
       intent.kind === "create-project" ||
       intent.kind === "import-project" ||
-      intent.kind === "hq-birth"
+      intent.kind === "hq-birth" ||
+      // Its creator gives the project it just made its people, as a creation would have.
+      intent.kind === "grant-new-project-access"
     ) {
       if (!capabilities().createProject)
         return yield* refused("Your role in this organization doesn't allow this.");

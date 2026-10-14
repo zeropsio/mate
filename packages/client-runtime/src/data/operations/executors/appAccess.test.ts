@@ -29,7 +29,33 @@ function organization(
     if (failure === "landed") return Promise.resolve().then(run).then(lost);
     return failure();
   };
+  const projects: Record<
+    string,
+    {
+      id: string;
+      name: string;
+      status: string;
+      userRoles: Array<{ clientUserId: string; roleCode: string }>;
+    }
+  > = {
+    "p-new": {
+      id: "p-new",
+      name: "Shop - stage",
+      status: "ACTIVE",
+      userRoles: [{ clientUserId: "cu-creator", roleCode: "OWNER" }],
+    },
+  };
   const platform: AppAccessPlatform = {
+    writeNewProjectAccess: (projectId, userRoles) =>
+      failing("writeNewProjectAccess", () => {
+        const project = projects[projectId]!;
+        project.userRoles = [
+          ...project.userRoles,
+          ...userRoles.map(({ clientUserId, roleCode }) => ({ clientUserId, roleCode })),
+        ];
+        return project;
+      }),
+    fetchProject: (projectId) => failing("fetchProject", () => projects[projectId]!),
     validateOrganizationUser: (_org, email) =>
       failing("validateOrganizationUser", () => {
         if (members.some((one) => one.user?.email === email))
@@ -81,7 +107,7 @@ function organization(
     expect(orgId).toBe(ORG);
     readBack.push(projectIds);
   });
-  return { executor, calls, readBack, members, grants };
+  return { executor, calls, readBack, members, grants, projects };
 }
 
 const member = (id: string, roleCode: string, status = "ACTIVE"): ZeropsOrganizationMember => ({
@@ -550,6 +576,52 @@ describe("setting who reaches some projects", () => {
         message: "Only an organization owner or admin can change who has access.",
       });
       expect(org.readBack).toEqual([["stage"]]);
+    }),
+  );
+});
+
+describe("giving a project just made its people", () => {
+  const grant = (org: ReturnType<typeof organization>) =>
+    org.executor.grantNewProject("r1", {
+      kind: "grant-new-project-access",
+      orgId: ORG,
+      projectId: "p-new",
+      userRoles: [{ clientUserId: "cu-ada", roleCode: "ADMIN" }],
+    });
+
+  it.effect("A project imported whole is given the people its creator chose, then read again", () =>
+    Effect.gen(function* () {
+      const org = organization([]);
+      const receipt = yield* grant(org);
+      expect(org.projects["p-new"]?.userRoles).toEqual([
+        { clientUserId: "cu-creator", roleCode: "OWNER" },
+        { clientUserId: "cu-ada", roleCode: "ADMIN" },
+      ]);
+      expect(org.readBack).toEqual([["p-new"]]);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+
+  it.effect("A lost answer is proven by the project's own list", () =>
+    Effect.gen(function* () {
+      const org = organization([], {}, { writeNewProjectAccess: "landed" });
+      const receipt = yield* grant(org);
+      expect(org.calls).toEqual(["writeNewProjectAccess", "fetchProject"]);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+
+  it.effect("A lost answer the project doesn't show is the person's to check, never resent", () =>
+    Effect.gen(function* () {
+      const org = organization([], {}, { writeNewProjectAccess: lost });
+      const answer = yield* grant(org);
+      expect(answer).toMatchObject({
+        unobservable: {
+          nextActor: "person",
+          nextAction: "Check who has access on the project's page",
+        },
+      });
+      expect(org.calls.filter((verb) => verb === "writeNewProjectAccess")).toHaveLength(1);
     }),
   );
 });

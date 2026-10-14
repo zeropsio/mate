@@ -35,7 +35,6 @@ import type { Deployment } from "./flow/deployment.ts";
 import { deployedVersion } from "./groupRows.ts";
 import type { Known } from "./knowledge/known.ts";
 import { isUncertainZeropsFailure } from "./errors.ts";
-import { asProjectAccessRole } from "./projectAccess.ts";
 
 /**
  * What a creation acts through: each Zerops write as the account's operation, waited to its end
@@ -261,13 +260,10 @@ export async function runEnvironmentCreation(
             assertCurrent();
             await run(
               {
-                kind: "set-project-access",
+                kind: "grant-new-project-access",
                 orgId,
-                changes: step.userRoles.map(({ clientUserId, roleCode }) => ({
-                  clientUserId,
-                  projectId: imported.projectId,
-                  roleCode: asProjectAccessRole(roleCode),
-                })),
+                projectId: imported.projectId,
+                userRoles: step.userRoles,
               },
               { orgId, unobserved: UNCONFIRMED_WRITE },
             );
