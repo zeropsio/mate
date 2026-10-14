@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import { ZeropsApiError, type ZeropsOrganizationMember } from "../../../zerops/api.ts";
+import { presetMembership } from "../../../zerops/teamRoles.ts";
 import { appAccessExecutor, type AppAccessPlatform } from "./appAccess.ts";
 
 const ORG = "org-1";
@@ -383,11 +384,52 @@ describe("inviting someone to the team", () => {
         email: "eva@example.com",
         invitee: { kind: "new", firstName: "Eva", lastName: "Dvořáková" },
         level,
-        role,
+        membership: presetMembership(role),
         projects: TWO_APPS,
       });
       expect(org.members.at(-1)).toMatchObject(membership);
       expect(org.grants["cu-new"]).toEqual(grants);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+});
+
+describe("inviting someone from the Team page, project by project", () => {
+  it.effect.each([
+    {
+      sentence: "A guest gets each project at the level set for it",
+      role: "guest" as const,
+      grants: [
+        { projectId: "prod", roleCode: "ADMIN" as const },
+        { projectId: "stage", roleCode: "READ_ONLY" as const },
+      ],
+      written: [
+        { projectId: "prod", roleCode: "ADMIN" },
+        { projectId: "stage", roleCode: "READ_ONLY" },
+      ],
+    },
+    {
+      sentence: "An admin invited with a project hidden gets no access written there",
+      role: "admin" as const,
+      grants: [
+        { projectId: "prod", roleCode: "NO_ACCESS" as const },
+        { projectId: "stage", roleCode: "ADMIN" as const },
+      ],
+      written: [{ projectId: "prod", roleCode: "NO_ACCESS" }],
+    },
+  ])("$sentence", ({ role, grants, written }) =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-owner", "OWNER")]);
+      const receipt = yield* org.executor.invite("r1", {
+        kind: "invite-member",
+        orgId: ORG,
+        email: "eva@example.com",
+        invitee: { kind: "new", firstName: "Eva", lastName: "Dvořáková" },
+        membership: presetMembership(role),
+        grants,
+      });
+      expect(org.members.at(-1)).toMatchObject({ roleCode: presetMembership(role).roleCode });
+      expect(org.grants["cu-new"]).toEqual(written);
       expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
     }),
   );

@@ -4,6 +4,7 @@ import * as Result from "effect/Result";
 import { AtomRegistry } from "effect/reactivity";
 import { makeAccountStore } from "../../store.ts";
 import { liveProjects } from "../../__fixtures__/account.ts";
+import { presetMembership } from "../../../zerops/teamRoles.ts";
 import { admitPlatformOperation } from "./platformAdmission.ts";
 import type { OperationIntent } from "../../model.ts";
 
@@ -25,9 +26,19 @@ describe("operation admission from the account store", () => {
         store.dispatch(input);
       const intent: OperationIntent =
         entry.kind === "rename-project"
-          ? { kind: entry.kind, orgId: "org", projectId: "p", name: "New name" }
+          ? {
+              kind: entry.kind,
+              orgId: "org",
+              projectId: "p",
+              name: "New name",
+            }
           : entry.kind === "assign-mate-owner"
-            ? { kind: entry.kind, orgId: "org", projectId: "p", clientUserId: "ada" }
+            ? {
+                kind: entry.kind,
+                orgId: "org",
+                projectId: "p",
+                clientUserId: "ada",
+              }
             : entry.kind === "finish-mate-handover"
               ? {
                   kind: entry.kind,
@@ -65,7 +76,11 @@ describe("operation admission from the account store", () => {
         const projects = { places: ["p"], mates: [] };
         const intent: OperationIntent =
           entry.kind === "check-invitee"
-            ? { kind: entry.kind, orgId: "org", email: "eva@example.com" }
+            ? {
+                kind: entry.kind,
+                orgId: "org",
+                email: "eva@example.com",
+              }
             : entry.kind === "set-project-access"
               ? {
                   kind: entry.kind,
@@ -111,7 +126,12 @@ describe("operation admission from the account store", () => {
     Effect.gen(function* () {
       const intent: OperationIntent =
         entry.kind === "set-org-role"
-          ? { kind: entry.kind, orgId: "org", clientUserId: "cu-eva", role: "guest" }
+          ? {
+              kind: entry.kind,
+              orgId: "org",
+              clientUserId: "cu-eva",
+              membership: presetMembership("guest"),
+            }
           : { kind: entry.kind, orgId: "org", clientUserId: "cu-eva" };
       const result = yield* Effect.result(
         admitPlatformOperation({

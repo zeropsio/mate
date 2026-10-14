@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import { ZeropsApiError, type ZeropsOrganizationMember } from "../../../zerops/api.ts";
+import { presetMembership, type OrgMembership } from "../../../zerops/teamRoles.ts";
 import { teamExecutor, type TeamPlatform } from "./team.ts";
 
 const ORG = "org-1";
@@ -74,10 +75,15 @@ const forbidden = () =>
 
 const setRole = (
   org: ReturnType<typeof organization>,
-  role: "owner" | "admin" | "developer" | "guest",
+  role: "owner" | "admin" | "developer" | "guest" | OrgMembership,
 ) =>
   Effect.result(
-    org.executor.setRole("r1", { kind: "set-org-role", orgId: ORG, clientUserId: "cu-eva", role }),
+    org.executor.setRole("r1", {
+      kind: "set-org-role",
+      orgId: ORG,
+      clientUserId: "cu-eva",
+      membership: typeof role === "string" ? presetMembership(role) : role,
+    }),
   );
 
 describe("changing a person's role on the team", () => {
@@ -98,10 +104,27 @@ describe("changing a person's role on the team", () => {
         expect(Result.isSuccess(answer) && answer.success).toMatchObject({
           outcome: { kind: "succeeded" },
         });
-        // Finances stay Zerops HQ's: sent back as they were.
-        expect(org.sent).toEqual([{ ...written, canViewFinances: true, canEditFinances: false }]);
+        // A preset is a whole membership: only an owner's sees finances.
+        const finances = role === "owner";
+        expect(org.sent).toEqual([
+          { ...written, canViewFinances: finances, canEditFinances: finances },
+        ]);
         expect(org.readBack).toEqual(["cu-eva"]);
       }),
+  );
+
+  it.effect("Advanced writes the role and each flag as chosen", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-eva", "NO_ACCESS")]);
+      const chosen = {
+        roleCode: "READ_ONLY",
+        canCreateProjects: true,
+        canViewFinances: true,
+        canEditFinances: false,
+      } as const;
+      yield* setRole(org, chosen);
+      expect(org.sent).toEqual([chosen]);
+    }),
   );
 
   it.effect("A role they hold already is written nowhere", () =>
@@ -127,6 +150,18 @@ describe("changing a person's role on the team", () => {
       viewerRole: "ADMIN",
       role: "guest" as const,
       message: "Admins can't change an owner's or another admin's role.",
+    },
+    {
+      sentence: "An admin changing someone's finances is refused before it is sent",
+      members: [member("cu-eva", "NO_ACCESS")],
+      viewerRole: "ADMIN",
+      role: {
+        roleCode: "NO_ACCESS",
+        canCreateProjects: false,
+        canViewFinances: true,
+        canEditFinances: false,
+      } as const,
+      message: "Only an organization owner can change who sees finances.",
     },
     {
       sentence: "An admin making someone an admin is refused before it is sent",

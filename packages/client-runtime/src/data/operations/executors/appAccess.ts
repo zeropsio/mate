@@ -15,7 +15,6 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import { planAppGrants, type ProjectGrantEntry } from "../../../zerops/appAccess.ts";
-import { membershipOfTeamRole } from "../../../zerops/teamRoles.ts";
 import { planMemberProjectGrants } from "../../../zerops/projectAccess.ts";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import type { OperationReceipt, OperationResult } from "../../model.ts";
@@ -168,22 +167,21 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
 
   const invite = (requestId: string, intent: IntentOf<"invite-member">) =>
     Effect.gen(function* () {
-      const membership = {
-        ...(intent.role === undefined
-          ? {
-              // The organization opens nothing by itself: the app's grants are what they get.
-              roleCode: "NO_ACCESS",
-              // Someone who works on it adds their own Mate; someone who looks doesn't.
-              canCreateProjects: intent.level === "work",
-            }
-          : membershipOfTeamRole(intent.role)),
-        // Finances are Zerops HQ's.
+      const membership = intent.membership ?? {
+        // The organization opens nothing by itself: the app's grants are what they get.
+        roleCode: "NO_ACCESS",
+        // Someone who works on it adds their own Mate; someone who looks doesn't.
+        canCreateProjects: "level" in intent && intent.level === "work",
         canViewFinances: false,
         canEditFinances: false,
       };
-      // An owner or an admin reaches everything by their role: no project is theirs to be given.
+      // An owner or an admin reaches every app by their role: no app is theirs to be given. Each
+      // project's own level is written as it is set, a hidden one too.
       const projects =
-        membership.roleCode === "NO_ACCESS" ? intent.projects : { places: [], mates: [] };
+        "grants" in intent || membership.roleCode !== "NO_ACCESS"
+          ? { places: [], mates: [] }
+          : intent.projects;
+      const written = "grants" in intent ? intent.grants.map(({ projectId }) => projectId) : [];
       const { invitee } = intent;
       const sent = yield* Effect.result(
         Effect.mapError(
@@ -215,15 +213,23 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
               "Zerops took the invitation, but its member list doesn't show them yet.",
             );
       const plan = (current: ReadonlyArray<ProjectGrantEntry>) =>
-        planAppGrants({
-          current,
-          orgRole: membership.roleCode,
-          projects,
-          owned: [],
-          change: intent.level,
-        });
+        "grants" in intent
+          ? planMemberProjectGrants({
+              current,
+              orgRole: membership.roleCode,
+              changes: intent.grants,
+            })
+          : planAppGrants({
+              current,
+              orgRole: membership.roleCode,
+              projects,
+              owned: [],
+              change: intent.level,
+            });
       const granted = yield* Effect.result(writeGrants(member.id, plan));
-      yield* Effect.promise(() => readBack(intent.orgId, projects.places, [member.id]));
+      yield* Effect.promise(() =>
+        readBack(intent.orgId, [...projects.places, ...written], [member.id]),
+      );
       const result = { clientUserId: member.id };
       if (Result.isFailure(granted))
         return receiptOf(requestId, intent.orgId, result, {

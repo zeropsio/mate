@@ -23,7 +23,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { AppProjects } from "@t3tools/client-runtime/zerops/appAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { TeamRole } from "@t3tools/client-runtime/zerops/teamRoles";
+import { presetMembership, type TeamRole } from "@t3tools/client-runtime/zerops/teamRoles";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { MoreHorizontalIcon, PlusIcon } from "lucide-react";
@@ -225,7 +225,12 @@ export function TeamSettings() {
         .submit(
           intent === "remove"
             ? { kind: "remove-member", orgId: clientId, clientUserId: key }
-            : { kind: "set-org-role", orgId: clientId, clientUserId: key, role: intent },
+            : {
+                kind: "set-org-role",
+                orgId: clientId,
+                clientUserId: key,
+                membership: presetMembership(intent),
+              },
         )
         .then(
           ({ progress, evidence }) => {
@@ -276,7 +281,7 @@ export function TeamSettings() {
           orgId: clientId,
           email,
           invitee,
-          role: choice.role,
+          membership: presetMembership(choice.role),
           level: choice.level,
           projects: projectsOf(choice.groups),
         });
