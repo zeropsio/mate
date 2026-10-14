@@ -161,6 +161,7 @@ jobs:
         env:
           VITE_BASE_PATH: /mate
           VITE_ZEROPS_SIGN_IN: device-login
+          VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
         run: vp run --filter @t3tools/web build
 
       - name: Build server bundle
