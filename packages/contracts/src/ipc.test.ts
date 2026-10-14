@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   DesktopEnvironmentBootstrapSchema,
   DesktopZeropsSignInInputSchema,
+  DesktopZeropsSignInProgressSchema,
   DesktopZeropsSignInResultSchema,
 } from "./ipc.ts";
 
@@ -71,5 +72,54 @@ describe("DesktopZeropsSignInResultSchema", () => {
 
   it("decodes a cancelled outcome", () => {
     expect(decode({ kind: "cancelled" })).toEqual({ kind: "cancelled" });
+  });
+
+  it.each([
+    { title: "decodes a denied device login", result: { kind: "denied" } },
+    { title: "decodes an expired device login", result: { kind: "expired" } },
+    {
+      title: "decodes a device login the platform refused, with its words",
+      result: { kind: "failed", message: "Zerops would not start the sign-in." },
+    },
+    {
+      title: "decodes an approved device login's full session",
+      result: {
+        kind: "session",
+        session: {
+          accessToken: "at-1",
+          refreshToken: "rt-1",
+          expiresAt: "2026-10-14T12:00:00Z",
+          expiresIn: 3600,
+          userId: "user-1",
+          tokenType: "Bearer",
+          twoFAMethods: ["TOTP"],
+          twoFAVerified: true,
+        },
+      },
+    },
+    {
+      title: "decodes an approved device login carrying an access token alone",
+      result: { kind: "session", session: { accessToken: "at-1" } },
+    },
+  ])("$title", ({ result }) => {
+    expect(decode(result)).toEqual(result);
+  });
+
+  it("rejects a session without an access token", () => {
+    expect(() => decode({ kind: "session", session: { accessToken: "" } })).toThrow();
+    expect(() => decode({ kind: "session", session: {} })).toThrow();
+  });
+});
+
+describe("DesktopZeropsSignInProgressSchema", () => {
+  const decode = Schema.decodeUnknownSync(DesktopZeropsSignInProgressSchema);
+
+  it("carries the attempt's nonce and the code the consent page shows", () => {
+    expect(decode({ state: "nonce-1", userCode: "ABCD-EFGH" })).toEqual({
+      state: "nonce-1",
+      userCode: "ABCD-EFGH",
+    });
+    expect(() => decode({ state: "nonce-1", userCode: "" })).toThrow();
+    expect(() => decode({ userCode: "ABCD-EFGH" })).toThrow();
   });
 });

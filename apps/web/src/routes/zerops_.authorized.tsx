@@ -15,7 +15,12 @@ import { useEffect, useState } from "react";
 
 import { ZeropsHandoverFailed } from "../components/zerops/landing/ZeropsHandoverFailed";
 import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
-import { completeZeropsHandover, readHandoverOnce, startZeropsHandover } from "../zerops/handover";
+import {
+  completeZeropsHandover,
+  lastZeropsHandoverIntent,
+  readHandoverOnce,
+  startZeropsHandover,
+} from "../zerops/handover";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 
 export const Route = createFileRoute("/zerops_/authorized")({
@@ -124,7 +129,8 @@ function ZeropsHandoverCallback() {
         void navigate({ to: "/zerops", replace: true });
       }}
       onRetry={() => {
-        window.location.href = startZeropsHandover();
+        const intent = lastZeropsHandoverIntent();
+        window.location.href = startZeropsHandover(intent === undefined ? {} : { intent });
       }}
     />
   );

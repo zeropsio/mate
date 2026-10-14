@@ -95,6 +95,17 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.UPDATE_SET_CHANNEL_CHANNEL, channel),
   checkForUpdate: () => ipcRenderer.invoke(IpcChannels.UPDATE_CHECK_CHANNEL),
   zeropsSignIn: (input) => ipcRenderer.invoke(IpcChannels.ZEROPS_SIGN_IN_CHANNEL, input),
+  onZeropsSignInProgress: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, progress: unknown) => {
+      if (typeof progress !== "object" || progress === null) return;
+      listener(progress as Parameters<typeof listener>[0]);
+    };
+
+    ipcRenderer.on(IpcChannels.ZEROPS_SIGN_IN_PROGRESS_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.ZEROPS_SIGN_IN_PROGRESS_CHANNEL, wrappedListener);
+    };
+  },
   downloadUpdate: () => ipcRenderer.invoke(IpcChannels.UPDATE_DOWNLOAD_CHANNEL),
   installUpdate: () => ipcRenderer.invoke(IpcChannels.UPDATE_INSTALL_CHANNEL),
   onUpdateState: (listener) => {

@@ -39,10 +39,9 @@ export interface ZeropsSessionCalls {
    * A token minted elsewhere — the hand-over's, or one a dev build injects — held and stored only
    * once a read proved it, with the person it names.
    */
-  readonly adoptToken: (input: {
-    readonly accessToken: string;
-    readonly refreshToken?: string;
-  }) => Promise<{ readonly session: ZeropsSession; readonly user: ZeropsUser }>;
+  readonly adoptToken: (
+    input: ZeropsSession,
+  ) => Promise<{ readonly session: ZeropsSession; readonly user: ZeropsUser }>;
   /** A password sign-in: its person, or `null` while its second factor is outstanding. */
   readonly signIn: (email: string, password: string) => Promise<ZeropsUser | null>;
   /** A registration, which signs in at once: the platform's answer and its person. */
@@ -56,6 +55,14 @@ export interface ZeropsSessionCalls {
   ) => Promise<{ readonly session: ZeropsSession; readonly user: ZeropsUser }>;
   /** Ends the session at the platform, and here whatever the platform answers. */
   readonly signOutAtPlatform: () => Promise<void>;
+  /**
+   * The held session's bearer, renewed first when it expires within `withinMs` of `wallNowMs`;
+   * `null` when nothing is held. A personal token from the hand-over never expires and is never
+   * renewed. A refused renewal ends the session; one that never reached the platform throws.
+   */
+  readonly freshBearer: (withinMs: number, wallNowMs: number) => Promise<string | null>;
+  /** Ends a session already forgotten here at the platform too; never fails. */
+  readonly revoke: (session: ZeropsSession) => Promise<void>;
 }
 
 export function makeZeropsSessionCalls(options: ZeropsApiClientOptions): ZeropsSessionCalls {
@@ -89,6 +96,19 @@ export function makeZeropsSessionCalls(options: ZeropsApiClientOptions): ZeropsS
         await client.signOutLocally();
       }
     },
+    freshBearer: async (withinMs, wallNowMs) => {
+      const held = client.session;
+      if (held === null) return null;
+      const expiresAtMs = held.expiresAt === undefined ? Number.NaN : Date.parse(held.expiresAt);
+      if (
+        held.refreshToken !== undefined &&
+        Number.isFinite(expiresAtMs) &&
+        expiresAtMs - wallNowMs < withinMs
+      )
+        await client.renewHeldSession();
+      return client.session?.accessToken ?? null;
+    },
+    revoke: (session) => client.revokeSession(session),
   };
 }
 

@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import type { DesktopBridge } from "@t3tools/contracts";
+import type { DesktopBridge, DesktopZeropsSignInProgress } from "@t3tools/contracts";
 import { readZeropsHandover } from "@t3tools/client-runtime/zerops/handover";
 
 import {
   readZeropsNativeSignInBridge,
+  readZeropsNativeSignInProgress,
   runZeropsNativeSignIn,
   type ZeropsNativeSignInDeps,
   type ZeropsNativeSignInState,
@@ -26,6 +27,7 @@ function fakeDeps(overrides: Partial<ZeropsNativeSignInDeps> = {}): ZeropsNative
   return {
     zeropsSignIn: fakeBridge(async () => ({ kind: "cancelled" })),
     adoptHandover: vi.fn(async () => undefined),
+    adoptDeviceLogin: vi.fn(async () => undefined),
     completeHandover: ({ fragment }) => readZeropsHandover(fragment, STATE),
     ...overrides,
   } satisfies ZeropsNativeSignInDeps;
@@ -61,6 +63,142 @@ describe("readZeropsNativeSignInBridge", () => {
     vi.stubGlobal("window", { desktopBridge: { zeropsSignIn } });
     expect(readZeropsNativeSignInBridge()).toBe(zeropsSignIn);
     vi.unstubAllGlobals();
+  });
+});
+
+describe("readZeropsNativeSignInProgress", () => {
+  it("is null on a desktop build that runs the hand-over only", () => {
+    vi.stubGlobal("window", { desktopBridge: { zeropsSignIn: vi.fn() } });
+    expect(readZeropsNativeSignInProgress()).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the progress subscription when the desktop build offers it", () => {
+    const onZeropsSignInProgress = vi.fn(() => () => undefined);
+    vi.stubGlobal("window", { desktopBridge: { onZeropsSignInProgress } });
+    expect(readZeropsNativeSignInProgress()).toBe(onZeropsSignInProgress);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("runZeropsNativeSignIn: device login", () => {
+  /** A progress push the test fires by hand, and whether anyone still listens. */
+  function fakeProgress() {
+    const listeners = new Set<(progress: DesktopZeropsSignInProgress) => void>();
+    return {
+      onProgress: (listener: (progress: DesktopZeropsSignInProgress) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      push: (progress: DesktopZeropsSignInProgress) =>
+        listeners.forEach((listener) => listener(progress)),
+      listening: () => listeners.size,
+    };
+  }
+
+  it("shows the code Zerops shows, then adopts the approved session", async () => {
+    const progress = fakeProgress();
+    const session = { accessToken: "at-1", refreshToken: "rt-1", expiresIn: 3600 };
+    const adoptDeviceLogin = vi.fn(async () => undefined);
+    const adoptHandover = vi.fn(async () => undefined);
+    const zeropsSignIn = fakeBridge(async () => {
+      progress.push({ state: "someone-elses", userCode: "WXYZ-0000" });
+      progress.push({ state: STATE, userCode: "ABCD-EFGH" });
+      return { kind: "session", session };
+    });
+    const { setState, states } = collectStates();
+
+    await runZeropsNativeSignIn(
+      fakeDeps({ zeropsSignIn, adoptDeviceLogin, adoptHandover, onProgress: progress.onProgress }),
+      {},
+      setState,
+      () => true,
+      mintNonce,
+    );
+
+    expect(states).toEqual([
+      { kind: "busy" },
+      { kind: "busy", userCode: "ABCD-EFGH" },
+      { kind: "idle" },
+    ]);
+    expect(adoptDeviceLogin).toHaveBeenCalledWith(session);
+    expect(adoptHandover).not.toHaveBeenCalled();
+    expect(progress.listening()).toBe(0);
+  });
+
+  it.each([
+    {
+      title: "says the sign-in was cancelled when the person denies it on Zerops",
+      result: { kind: "denied" } as const,
+      message: "Sign-in was cancelled.",
+    },
+    {
+      title: "says the Zerops window timed out when nobody decided in time",
+      result: { kind: "expired" } as const,
+      message: "The Zerops window timed out. Start again.",
+    },
+    {
+      title: "says what Zerops said when it refused the sign-in",
+      result: { kind: "failed", message: "Unknown app." } as const,
+      message: "Unknown app.",
+    },
+  ])("$title", async ({ result, message }) => {
+    const { setState, states } = collectStates();
+
+    await runZeropsNativeSignIn(
+      fakeDeps({ zeropsSignIn: fakeBridge(async () => result) }),
+      {},
+      setState,
+      () => true,
+      mintNonce,
+    );
+
+    expect(states.at(-1)).toEqual({ kind: "error", message });
+  });
+
+  it("surfaces a device-login adoption failure as an error", async () => {
+    const adoptDeviceLogin = vi.fn(async () => {
+      throw new Error("adopt failed");
+    });
+    const { setState, states } = collectStates();
+
+    await runZeropsNativeSignIn(
+      fakeDeps({
+        zeropsSignIn: fakeBridge(async () => ({
+          kind: "session",
+          session: { accessToken: "at-1" },
+        })),
+        adoptDeviceLogin,
+      }),
+      {},
+      setState,
+      () => true,
+      mintNonce,
+    );
+
+    expect(states.at(-1)).toEqual({ kind: "error", message: "adopt failed" });
+  });
+
+  it("shows no code for a run the caller already moved on from", async () => {
+    const progress = fakeProgress();
+    let current = true;
+    const zeropsSignIn = fakeBridge(async () => {
+      current = false;
+      progress.push({ state: STATE, userCode: "ABCD-EFGH" });
+      return { kind: "cancelled" };
+    });
+    const { setState, states } = collectStates();
+
+    await runZeropsNativeSignIn(
+      fakeDeps({ zeropsSignIn, onProgress: progress.onProgress }),
+      {},
+      setState,
+      () => current,
+      mintNonce,
+    );
+
+    expect(states).toEqual([{ kind: "busy" }]);
+    expect(progress.listening()).toBe(0);
   });
 });
 
