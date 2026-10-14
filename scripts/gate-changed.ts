@@ -448,7 +448,11 @@ export function buildRelatedFileGraph(
   const imports = (file: string): string[] => {
     const cached = edges.get(file);
     if (cached) return cached;
-    const dependencies: string[] = [];
+    // These helpers read this page's environment buttons through the browser, not a JS import.
+    const dependencies: string[] =
+      file === "apps/web/test/scenarios/areas/b-menu/dsl.ts"
+        ? ["apps/web/src/components/zerops/ZeropsGroupDetail.tsx"]
+        : [];
     const conditional: string[] = [];
     changedEdges.set(file, conditional);
     // Data assets are terminal graph nodes: matching their path is enough, not reading their bytes.
