@@ -1,6 +1,7 @@
 /**
  * Who works on an app, at Zerops (`operations/appAccess.ts`): an address checked, an invitation
- * with the app's grants on it, a member's access to the app changed, removed or withdrawn.
+ * with the app's grants on it, a member's access to the app changed, removed or withdrawn; and who
+ * reaches some projects, written on each person's own list.
  *
  * Zerops keeps no request ids, so a write whose answer was lost is proven only by reading what it
  * would have changed — the member list, the member's own grants — and never sent again; anything
@@ -15,6 +16,7 @@ import * as Result from "effect/Result";
 
 import { planAppGrants, type ProjectGrantEntry } from "../../../zerops/appAccess.ts";
 import { membershipOfTeamRole } from "../../../zerops/teamRoles.ts";
+import { planMemberProjectGrants } from "../../../zerops/projectAccess.ts";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
@@ -31,6 +33,8 @@ export type AppAccessPlatform = Pick<
   | "readMemberProjectRoles"
   | "writeMemberProjectRoles"
   | "removeOrganizationMember"
+  | "writeNewProjectAccess"
+  | "fetchProject"
 >;
 
 /**
@@ -60,6 +64,7 @@ function inWords(fault: Fault, cause: { readonly forbidden: string }): Fault {
 
 const INVITE = { forbidden: "Only an organization owner or admin can invite." };
 const CHANGE = { forbidden: "Only an organization owner or admin can change who has access." };
+const NEW_PROJECT = { forbidden: "Only the project's owner or an admin can give its access." };
 
 const sameList = (a: ReadonlyArray<ProjectGrantEntry>, b: ReadonlyArray<ProjectGrantEntry>) => {
   const key = (list: ReadonlyArray<ProjectGrantEntry>) =>
@@ -303,5 +308,74 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
       return receiptOf(requestId, intent.orgId, { membershipEnded });
     });
 
-  return { check, invite, setAccess };
+  const setProjectAccess = (requestId: string, intent: IntentOf<"set-project-access">) =>
+    Effect.gen(function* () {
+      const projects = [...new Set(intent.changes.map(({ projectId }) => projectId))];
+      const people = Map.groupBy(intent.changes, ({ clientUserId }) => clientUserId);
+      const members = yield* verb(() => platform.listOrganizationMembers(intent.orgId));
+      const found = [...people.keys()].map((id) => members.find((one) => one.id === id));
+      // Nobody is written while anyone named has gone: the change is judged as a whole.
+      if (found.some((one) => one === undefined))
+        return yield* Effect.fail<StreamFault>({
+          outcome: "definitive-refusal",
+          message: "They're no longer in this organization.",
+        });
+      let written = 0;
+      for (const member of found) {
+        if (member === undefined) continue;
+        const changes = people.get(member.id) ?? [];
+        const granted = yield* Effect.result(
+          Effect.mapError(
+            writeGrants(member.id, (current) =>
+              planMemberProjectGrants({ current, orgRole: member.roleCode, changes }),
+            ),
+            (fault) => inWords(fault, CHANGE),
+          ),
+        );
+        if (Result.isFailure(granted)) {
+          yield* Effect.promise(() => readBack(intent.orgId, projects));
+          return yield* Effect.fail(granted.failure);
+        }
+        if (!granted.success.written) {
+          yield* Effect.promise(() => readBack(intent.orgId, projects));
+          return unobservable("Check their access, then choose again");
+        }
+        written += 1;
+      }
+      yield* Effect.promise(() => readBack(intent.orgId, projects));
+      return receiptOf(requestId, intent.orgId, { written });
+    });
+
+  /** A project just made is given its people; a lost answer is proven by reading the project. */
+  const grantNewProject = (requestId: string, intent: IntentOf<"grant-new-project-access">) =>
+    Effect.gen(function* () {
+      const written = yield* Effect.result(
+        verb(() => platform.writeNewProjectAccess(intent.projectId, intent.userRoles)),
+      );
+      if (Result.isFailure(written) && written.failure.outcome !== "uncertain-acceptance") {
+        yield* Effect.promise(() => readBack(intent.orgId, [intent.projectId]));
+        return yield* Effect.fail(inWords(written.failure, NEW_PROJECT));
+      }
+      if (Result.isFailure(written)) {
+        const read = yield* Effect.result(verb(() => platform.fetchProject(intent.projectId)));
+        const holds =
+          Result.isSuccess(read) &&
+          intent.userRoles.every(({ clientUserId, roleCode }) =>
+            read.success.userRoles?.some(
+              (entry) => entry.clientUserId === clientUserId && entry.roleCode === roleCode,
+            ),
+          );
+        if (!holds) {
+          yield* Effect.promise(() => readBack(intent.orgId, [intent.projectId]));
+          return unobservable("Check who has access on the project's page");
+        }
+      }
+      yield* Effect.promise(() => readBack(intent.orgId, [intent.projectId]));
+      return {
+        ...receiptOf(requestId, intent.orgId, { projectId: intent.projectId }),
+        affected: [{ family: "project", id: intent.projectId }],
+      } satisfies OperationReceipt;
+    });
+
+  return { check, invite, setAccess, setProjectAccess, grantNewProject };
 }

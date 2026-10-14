@@ -111,6 +111,7 @@ type ZeropsOperationsClient = Pick<
   | "connectOrganizationUser"
   | "readMemberProjectRoles"
   | "writeMemberProjectRoles"
+  | "writeNewProjectAccess"
   | "removeOrganizationMember"
   | "updateOrganizationMember"
 >;
@@ -286,6 +287,9 @@ export function makeZeropsExecutor(input: {
         readMemberProjectRoles: (id) => client.readMemberProjectRoles(id),
         writeMemberProjectRoles: (id, list) => client.writeMemberProjectRoles(id, list),
         removeOrganizationMember: (id) => client.removeOrganizationMember(id),
+        writeNewProjectAccess: (projectId, userRoles) =>
+          client.writeNewProjectAccess(projectId, userRoles),
+        fetchProject: (projectId) => client.fetchProject(projectId),
       },
       // The member list, the app's places and the member's own grants, read again before the
       // write is reported done.
@@ -399,6 +403,10 @@ export function makeZeropsExecutor(input: {
               return team.setRole(requestId, intent);
             case "remove-member":
               return team.removeMember(requestId, intent);
+            case "set-project-access":
+              return people.setProjectAccess(requestId, intent);
+            case "grant-new-project-access":
+              return people.grantNewProject(requestId, intent);
             default:
               // HQ's own writes go to HQ's executor; the coordinator never routes one here.
               return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));
@@ -515,6 +523,8 @@ export function makeZeropsExecutor(input: {
         connectOrganizationUser: (orgId, invite) =>
           source.connectOrganizationUser(orgId, invite, check),
         writeMemberProjectRoles: (id, list) => source.writeMemberProjectRoles(id, list, check),
+        writeNewProjectAccess: (id, userRoles) =>
+          source.writeNewProjectAccess(id, userRoles, check),
         removeOrganizationMember: (id) => source.removeOrganizationMember(id, check),
         updateOrganizationMember: (id, membership) =>
           source.updateOrganizationMember(id, membership, check),

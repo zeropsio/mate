@@ -163,7 +163,7 @@ const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
 function render(
   stops: Pick<
     React.ComponentProps<typeof ZeropsGroupPane>,
-    "environments" | "withheldNotice" | "firstDeployOf"
+    "environments" | "withheldNotice" | "firstDeployOf" | "repos"
   > & { readonly slots?: React.ComponentProps<typeof ZeropsGroupPane>["slots"] } = {
     environments: [environment("stage", "stage"), environment("prod", "production", "production")],
   },
@@ -273,6 +273,34 @@ describe("runtime without HQ detail", () => {
 });
 
 describe("ZeropsGroupPane", () => {
+  it("says nothing of repositories until one mirrors somewhere, then names where", () => {
+    const environments = [environment("stage", "stage")];
+    const repo = (name: string, url: string | null) => ({
+      name,
+      mainHead: null,
+      updatedAt: "2026-10-13T10:00:00Z",
+      remote:
+        url === null
+          ? null
+          : {
+              url,
+              repositoryId: "1",
+              keptAt: "2026-10-13T10:00:00Z",
+              keptBy: "Zerops custodian",
+              expiresAt: null,
+              invalidSince: null,
+            },
+    });
+    expect(render({ environments, repos: [repo("mailpit", null)] })).not.toContain("Repositories");
+    const markup = render({
+      environments,
+      repos: [repo("mailpit", null), repo("medusadev", "https://github.com/acme/medusa.git")],
+    });
+    expect(markup).toContain("Repositories");
+    expect(markup).toContain("medusadev → github.com/acme/medusa");
+    expect(markup).not.toContain("mailpit");
+  });
+
   it("draws every line's content", () => {
     const markup = render();
 
@@ -652,6 +680,8 @@ interface StopCase {
     readonly open: boolean;
     readonly onToggle: () => void;
   };
+  /** Who reaches the environment's project, as the page draws it. */
+  readonly access?: React.ReactNode;
 }
 
 /** A stop's page with every read already done — the producers' words, the pane's drawing. */
@@ -719,6 +749,7 @@ function renderStop(input: StopCase): string {
   });
   return renderToStaticMarkup(
     <ZeropsStopPane
+      access={input.access}
       vault={input.vault}
       readAgain={input.readAgain}
       runAgain={
@@ -1107,6 +1138,15 @@ describe("ZeropsStopPane — the environment's vault", () => {
 });
 
 describe("ZeropsStopPane", () => {
+  it.each(["stage", "production"] as const)(
+    "the %s environment's page shows who reaches its project, under its card",
+    (tier) => {
+      const markup = renderStop({ tier, services: [], access: <ul aria-label="Chips" /> });
+      expect(markup).toContain("Project access");
+      expect(markup).toContain('aria-label="Chips"');
+      expect(renderStop({ tier, services: [] })).not.toContain("Project access");
+    },
+  );
   it.each(["stage", "production"] as const)(
     "opens the %s environment's own Zerops project from its menu",
     (tier) => {

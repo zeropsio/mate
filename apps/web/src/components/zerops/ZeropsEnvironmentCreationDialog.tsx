@@ -14,6 +14,7 @@ import type {
   ZeropsEnvironmentRole,
   ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
+import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useId, useMemo, useRef, useState } from "react";
@@ -48,6 +49,7 @@ import {
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ProcessSteps, type ProcessStep } from "./primitives";
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
+import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 
 export interface EnvironmentCreationChoice {
   /** A Mate's own name, which its project's is built from; a stage's or a production's whole project name. */
@@ -56,6 +58,8 @@ export interface EnvironmentCreationChoice {
   readonly recipe: EnvironmentRecipeChoice;
   /** The face its person picked: present for a Mate. */
   readonly face?: ZeropsMateFace;
+  /** Who reaches its project beyond their organization role, as chosen in the form. */
+  readonly userRoles?: ReadonlyArray<ProjectGrant>;
 }
 
 export interface ZeropsEnvironmentCreationFormProps {
@@ -94,6 +98,8 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly onDoorAction?: ((action: NewMateDoorAction) => void) | undefined;
   readonly onCancel: () => void;
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
+  /** Who will reach the new project, as people chips; absent, the form says nothing of access. */
+  readonly access?: ProjectAccessSlot | undefined;
   readonly git?:
     | Omit<GitEnvironmentFormProps, "groupName" | "tier" | "defaultName" | "onCancel" | "onBack">
     | undefined;
@@ -147,9 +153,16 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
       groupName={groupName}
       onCancel={onCancel}
       onDoorAction={onDoorAction}
-      onCreate={({ name, recipe, face }) => {
-        onCreate({ name, withAgent: true, recipe, face });
+      onCreate={({ name, recipe, face, userRoles }) => {
+        onCreate({
+          name,
+          withAgent: true,
+          recipe,
+          face,
+          ...(userRoles === undefined ? {} : { userRoles }),
+        });
       }}
+      access={props.access}
       proposeAnotherName={props.proposeAnotherName}
       takenBotNames={takenBotNames}
       tier={tier}
@@ -250,8 +263,10 @@ function EnvironmentForm({
   onCancel,
   onCreate,
   onBack,
+  access,
 }: ZeropsEnvironmentCreationFormProps & { readonly onBack?: (() => void) | undefined }) {
   const id = useId();
+  const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
   const what = environmentWord(role);
   const options = useMemo(
     () => recipeOptions({ roleLabel: what, tier, services: tierServices, recipe }),
@@ -283,7 +298,12 @@ function EnvironmentForm({
         if (hasCreationErrors(errors)) return;
         const option = options.find((entry) => entry.id === recipeId);
         if (option === undefined) return;
-        onCreate({ name: name.trim(), withAgent, recipe: option.choice });
+        onCreate({
+          name: name.trim(),
+          withAgent,
+          recipe: option.choice,
+          ...(userRoles.length === 0 ? {} : { userRoles }),
+        });
       }}
     >
       <DialogHeader>
@@ -373,6 +393,13 @@ function EnvironmentForm({
             <FieldError>{errors.recipe}</FieldError>
           ) : null}
         </div>
+
+        {access === undefined ? null : (
+          <div className="space-y-2">
+            <span className="text-sm">Project access</span>
+            {access(setUserRoles)}
+          </div>
+        )}
       </DialogPanel>
 
       <DialogFooter>

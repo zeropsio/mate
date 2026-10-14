@@ -28,6 +28,7 @@
  */
 
 import type { ZeropsAgentType } from "./newProject.ts";
+import type { ProjectGrant } from "./projectAccess.ts";
 import { withZeropsMateTag, type ZeropsEnvironmentRole } from "./groups.ts";
 import {
   deployTargetTier,
@@ -94,6 +95,8 @@ export interface EnvironmentCreationInput {
    * project handle is bound to it at HQ before its attach.
    */
   readonly birth?: string;
+  /** Who reaches it beyond their organization role, as its creator chose (`projectAccess.ts`). */
+  readonly userRoles?: ReadonlyArray<ProjectGrant>;
 }
 
 export type EnvironmentCreationStep =
@@ -104,6 +107,8 @@ export type EnvironmentCreationStep =
       readonly tagList: ReadonlyArray<string>;
       readonly birth?: string;
       readonly location: string | undefined;
+      /** Who reaches it from birth, sent with the project. */
+      readonly userRoles?: ReadonlyArray<ProjectGrant>;
     }
   /**
    * `PUT /project/{id}/first-class-recipe/development-container` — the zcp
@@ -180,6 +185,8 @@ export type EnvironmentCreationStep =
       readonly tagList: ReadonlyArray<string>;
       readonly birth?: string;
       readonly yaml: string;
+      /** Who reaches it, given once Zerops made it: an import document has no room for them. */
+      readonly userRoles?: ReadonlyArray<ProjectGrant>;
     }
   /** Poll until the services are up. Measured at ~2 minutes for a two-service recipe. */
   | { readonly kind: "await-ready"; readonly withAgent: boolean };
@@ -251,6 +258,10 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   const wholeProject =
     tier !== null && input.location === undefined && hasProjectBlock(tier.withProject);
 
+  const access =
+    input.userRoles === undefined || input.userRoles.length === 0
+      ? {}
+      : { userRoles: input.userRoles };
   const steps: Array<EnvironmentCreationStep> = wholeProject
     ? [
         {
@@ -259,6 +270,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
           tagList,
           ...(input.birth === undefined ? {} : { birth: input.birth }),
           yaml: recipeProjectImportYaml(tier.withProject, { name, tagList }),
+          ...access,
         },
       ]
     : [
@@ -268,6 +280,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
           tagList,
           location: input.location,
           ...(input.birth === undefined ? {} : { birth: input.birth }),
+          ...access,
         },
       ];
   // Into a project that exists: the platform refuses a project block there,

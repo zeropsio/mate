@@ -39,11 +39,12 @@ export function admitPlatformOperation(input: {
     if (
       intent.kind === "check-invitee" ||
       intent.kind === "invite-member" ||
-      intent.kind === "set-app-access"
+      intent.kind === "set-app-access" ||
+      intent.kind === "set-project-access"
     ) {
       if (viewer.id !== intent.orgId || !capabilities().manageOrganization)
         return yield* refused(
-          intent.kind === "set-app-access"
+          intent.kind === "set-app-access" || intent.kind === "set-project-access"
             ? "Only an organization owner or admin can change who has access."
             : "Only an organization owner or admin can invite.",
         );
@@ -67,7 +68,9 @@ export function admitPlatformOperation(input: {
     if (
       intent.kind === "create-project" ||
       intent.kind === "import-project" ||
-      intent.kind === "hq-birth"
+      intent.kind === "hq-birth" ||
+      // Its creator gives the project it just made its people, as a creation would have.
+      intent.kind === "grant-new-project-access"
     ) {
       if (!capabilities().createProject)
         return yield* refused("Your role in this organization doesn't allow this.");

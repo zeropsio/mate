@@ -5,7 +5,7 @@
  * why, in the form's place, and offers the one thing to do about it.
  */
 import { MATE_SHAPE_IDS, MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
-import { act, type ReactElement } from "react";
+import { act, useEffect, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -16,6 +16,18 @@ import {
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
 import type { NewMateDoorAction, NewMateDoorClosed } from "./ZeropsEnvironmentCreationDialog.logic";
+
+/** A draft standing in for the account's (`ProjectAccessDraft`): it says its list once drawn. */
+function ChosenAccess({
+  list,
+  onChange,
+}: {
+  list: ReadonlyArray<{ clientUserId: string; roleCode: string }>;
+  onChange: (list: ReadonlyArray<{ clientUserId: string; roleCode: string }>) => void;
+}) {
+  useEffect(() => onChange(list), [list, onChange]);
+  return null;
+}
 
 const TIER = {
   kind: "tier" as const,
@@ -312,6 +324,19 @@ describe("the New Mate dialog", () => {
         face: { tint: "amber", shape: "hexagon" },
       },
     ]);
+  });
+
+  it("adds the Mate with the access chosen for its project", () => {
+    const made: EnvironmentCreationChoice[] = [];
+    const chosen = [{ clientUserId: "cu-ada", roleCode: "ADMIN" }];
+    const tree = mount(
+      form({
+        onCreate: (choice) => made.push(choice),
+        access: (onChange) => <ChosenAccess list={chosen} onChange={onChange} />,
+      }),
+    );
+    press(tree);
+    expect(made.map(({ userRoles }) => userRoles)).toEqual([chosen]);
   });
 
   it("waits while the recipe is read, says so, and adds the Mate the moment it arrives", () => {

@@ -7329,6 +7329,242 @@ a.ov-card-site:hover {
   margin-left: -6px;
 }
 
+/* Who reaches a project, as people chips: pills that wrap, a face, a short name over the level they
+   have there, a ⋮ for whoever may change it; *Add access* the last, dashed, chip. */
+.ov-access {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 12px;
+}
+
+.ov-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.ov-chip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  height: 48px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ov-lift);
+}
+
+.ov-chip[data-menu] {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-right: 4px;
+}
+
+/* An invitation is dimmed; its menu stays at full ink. */
+.ov-chip[data-pending] > .ov-chip-who {
+  opacity: 0.55;
+}
+
+.ov-chip-who {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+  min-width: 0;
+  cursor: default;
+}
+
+.ov-chip-text {
+  display: grid;
+  justify-items: start;
+  row-gap: 3px;
+  min-width: 0;
+}
+
+.ov-chip-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-chip-name[data-creator] em {
+  font-style: italic;
+  font-weight: 600;
+}
+
+/* The level: full access green, a developer's blue, read only and mixed grey. */
+.ov-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--zerops-status-off-surface);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.ov-chip-badge[data-level="full"] {
+  background: var(--zerops-status-ok-surface);
+  color: var(--zerops-status-ok-text);
+}
+
+.ov-chip-badge[data-level="basic"] {
+  background: var(--zerops-status-busy-surface);
+  color: var(--zerops-status-busy-text);
+}
+
+.ov-chip-badge[data-level="mixed"] {
+  box-shadow: inset 0 0 0 1px var(--ov-rule);
+  background: transparent;
+}
+
+.ov-chip-slot {
+  display: grid;
+}
+
+.ov-chip-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 48px;
+  border: 1px dashed color-mix(in oklab, var(--foreground) 22%, transparent);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
+}
+
+.ov-chip-add:hover,
+.ov-chip-add[data-popup-open] {
+  background: var(--ov-hover);
+  color: var(--foreground);
+}
+
+.ov-chip-add:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* A chip's hover card: who they are, then each project's level where they differ. */
+.ov-chip-card {
+  display: grid;
+  gap: 2px;
+  min-width: 180px;
+  padding: 4px 2px;
+  text-align: left;
+}
+
+.ov-chip-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.ov-chip-card-line {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ov-chip-card-across {
+  display: grid;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ov-chip-card-across > li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ov-chip-card-across > li > :last-child {
+  color: var(--muted-foreground);
+}
+
+/* *Add access*: a search, the organization's people with Read and Full to tick, *Add people*. */
+.ov-pick {
+  display: grid;
+}
+
+.ov-pick-search {
+  padding: 12px 12px 8px;
+}
+
+.ov-pick-list {
+  display: grid;
+  max-height: 288px;
+  overflow-y: auto;
+  padding: 0 6px 6px;
+}
+
+.ov-pick-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 10px;
+}
+
+.ov-pick-row[data-ticked] {
+  background: var(--ov-hover);
+}
+
+.ov-pick-text {
+  display: grid;
+  min-width: 0;
+}
+
+.ov-pick-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-pick-role {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ov-pick-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.ov-pick-empty {
+  padding: 4px 18px 12px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.ov-pick-foot {
+  display: grid;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--ov-rule);
+}
+
 /* *Add a Mate* at the foot of a project page's Mates: a row the size of a folded one, its plus
    where a face stands. */
 .ov-add {
@@ -8032,6 +8268,10 @@ a.ov-card-site:hover {
   color: var(--muted-foreground);
   font-size: 13px;
   line-height: 18px;
+}
+
+.ov-sec-empty[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
 }
 
 /* A Mate's preview on its name's line, one per service and named by it — `web ↗`, `api ↗` — 12/16

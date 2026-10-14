@@ -42,7 +42,7 @@ export function useRunNewProject(): (held: CreationAsk) => void {
           // else): its press attaches it to its application, then imports its container (F6b). In
           // flight as a press: the background mints no throwaway while it reads the token list.
           // The projection shows acceptance immediately; setup waits for project.create to finish.
-          createProject: (requestId, { name: projectName, location, appId, birth }) =>
+          createProject: (requestId, { name: projectName, location, appId, birth, userRoles }) =>
             whilePressing(async () => {
               let binding: Promise<{ readonly error: unknown } | null> = Promise.resolve(null);
               return operations
@@ -56,6 +56,7 @@ export function useRunNewProject(): (held: CreationAsk) => void {
                         ? [...withZeropsMateTag([]), CHIEF_TAG]
                         : withZeropsMateTag([]),
                     ...(location === undefined ? {} : { location }),
+                    ...(userRoles === undefined ? {} : { userRoles }),
                   },
                   {
                     orgId: organizationId,

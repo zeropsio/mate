@@ -13,7 +13,7 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { hqRefusalWords, HqError } from "@t3tools/client-runtime/zerops/hq";
-import { GitRemoteSettings } from "./GitRemoteSettings";
+import { GitRemoteLines, GitRemoteSettings } from "./GitRemoteSettings";
 const remote = {
   url: "https://github.com/acme/api.git",
   repositoryId: "1",
@@ -24,6 +24,34 @@ const remote = {
 };
 const repos = [{ name: "api", mainHead: "a".repeat(40), updatedAt: remote.keptAt, remote }];
 const actions = { replaceToken: vi.fn(), disconnect: vi.fn(), connect: vi.fn() };
+describe("Repositories in a project page's column", () => {
+  it("names only the repositories that mirror somewhere, one quiet line each", () => {
+    const html = renderToStaticMarkup(
+      <GitRemoteLines
+        now={Date.parse(remote.keptAt)}
+        repos={[
+          ...repos,
+          { name: "mailpit", mainHead: null, updatedAt: remote.keptAt, remote: null },
+        ]}
+      />,
+    );
+    const lines = [
+      ...new DOMParser().parseFromString(html, "text/html").body.querySelectorAll("li"),
+    ];
+    expect(lines.map((line) => line.textContent)).toEqual(["api → github.com/acme/api"]);
+    expect(html).not.toMatch(/<button|No remote connected|Expiry not reported/);
+  });
+
+  it("says when the remote refused the token", () => {
+    const html = renderToStaticMarkup(
+      <GitRemoteLines
+        repos={[{ ...repos[0]!, remote: { ...remote, invalidSince: remote.keptAt } }]}
+      />,
+    );
+    expect(html).toContain("The remote refused Mate&#x27;s token. Replace token.");
+  });
+});
+
 describe("Application repositories", () => {
   it("absent optional offers cannot expose a remote write", () => {
     const html = renderToStaticMarkup(

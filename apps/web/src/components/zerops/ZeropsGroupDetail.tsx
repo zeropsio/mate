@@ -1,11 +1,8 @@
 import { useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
-import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
-import type { GitRemoteActions } from "./GitRemoteSettings";
-import type { HqOffers } from "@t3tools/shared/hqOffers";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { GitStopDetailPage } from "./GitStopDetail";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
-import { GitRemoteSettings } from "./GitRemoteSettings";
+import { connectedRepos, GitRemoteLines } from "./GitRemoteSettings";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import {
@@ -139,7 +136,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { ProjectPeople } from "./projects/ProjectPeople";
+import { ProjectAccess, ProjectPeople } from "./projects/ProjectPeople";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
@@ -499,7 +496,6 @@ function KnownGroupAside({
   readonly flow: ZeropsProjectFlow;
   readonly recipeFailure: ReturnType<typeof useHqRecipeFailure>;
 }) {
-  const gitTargets = useGitTargetOperations(groupId);
   const deployments = useStopDeploymentsShown();
   const environments = flow.environments;
   const repo = groupRepository(environments);
@@ -567,9 +563,6 @@ function KnownGroupAside({
       }
       environments={environments}
       repos={flow.repos}
-      gitActions={gitTargets.actions}
-      gitCan={gitTargets.can}
-      gitLive={gitTargets.live}
       slots={slots}
       onAdd={(tier) => {
         addEnvironment(groupId, tier);
@@ -603,9 +596,6 @@ function KnownGroupAside({
  */
 export function ZeropsGroupPane({
   repos,
-  gitActions,
-  gitCan,
-  gitLive,
   readFailures,
   environments,
   slots,
@@ -625,9 +615,6 @@ export function ZeropsGroupPane({
   firstDeployOf,
 }: {
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
-  readonly gitActions?: GitRemoteActions | undefined;
-  readonly gitCan?: HqOffers | undefined;
-  readonly gitLive?: boolean | undefined;
   readonly readFailures?: React.ReactNode;
   /** What has landed on the repository, as HQ compares it. */
   readonly history: ZeropsHistoryState;
@@ -793,17 +780,12 @@ export function ZeropsGroupPane({
         </SideSection>
       )}
 
-      <SideSection title="Repositories">
-        <GitRemoteSettings
-          appId={groupId}
-          repos={repos}
-          appName={name ?? "Application"}
-          actions={gitActions}
-          can={gitCan}
-          live={gitLive}
-          environments={environments}
-        />
-      </SideSection>
+      {/* Only what mirrors somewhere: connecting one is the project menu's. */}
+      {connectedRepos(repos).length === 0 ? null : (
+        <SideSection title="Repositories">
+          <GitRemoteLines repos={repos} />
+        </SideSection>
+      )}
       <SideSection title={repo === undefined ? "History" : `History · ${repo}`}>
         {repo === undefined ? (
           <Empty
@@ -1105,6 +1087,7 @@ function ZeropsProjectStopDetailPage({
     <>
       <StopPublicAccessStatus access={publicAccess} />
       <ZeropsStopPane
+        access={<ProjectAccess heading={false} kind={stop.tier} projectId={projectId} />}
         vault={orgId === null ? undefined : { orgId, open: vaultOpen, onToggle: toggleVault }}
         readAgain={<StopReadAgain projectId={projectId} />}
         readFailures={
@@ -1379,7 +1362,10 @@ export function ZeropsStopPane({
   view,
   waiting,
   vault,
+  access,
 }: {
+  /** Who reaches the environment's project, as people chips, under its card. */
+  readonly access?: React.ReactNode;
   /** The environment's vault, where the account reads its organization: shown beside the page. */
   readonly vault?:
     | {
@@ -1680,6 +1666,8 @@ export function ZeropsStopPane({
             )}
           </CardGroup>
         )}
+
+        {access === undefined ? null : <CardGroup title="Project access">{access}</CardGroup>}
       </FlatCard>
       {/* A verb that refused says so under the card it was pressed in. */}
       {trouble === null ? null : (

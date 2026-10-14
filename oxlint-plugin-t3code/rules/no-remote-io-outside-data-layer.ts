@@ -209,6 +209,7 @@ export const ZEROPS_CLIENT_VERBS = [
   "verifyTotp",
   "writeMateFlag",
   "writeMemberProjectRoles",
+  "writeNewProjectAccess",
   "writeProject",
   "writeServiceSecret",
 ] as const;

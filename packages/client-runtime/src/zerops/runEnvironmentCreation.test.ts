@@ -43,6 +43,10 @@ interface FakeWrites {
   readonly createProject: (input: {
     readonly name: string;
     readonly tagList: ReadonlyArray<string>;
+    readonly userRoles?: ReadonlyArray<{
+      readonly clientUserId: string;
+      readonly roleCode: string;
+    }>;
   }) => Promise<{ readonly id: string }>;
   /** The created project's own end, after Zerops took it. */
   readonly projectCreated: (projectId: string) => Promise<void>;
@@ -70,7 +74,13 @@ function fakePlatform(overrides: FakeOverrides = {}) {
   const calls: Array<string> = [];
   const writes: FakeWrites = {
     createProject: (input) => {
-      calls.push(`create:${input.name}:${input.tagList.join(",")}`);
+      calls.push(
+        `create:${input.name}:${input.tagList.join(",")}${
+          input.userRoles === undefined
+            ? ""
+            : `:${input.userRoles.map(({ clientUserId, roleCode }) => `${clientUserId}=${roleCode}`).join("|")}`
+        }`,
+      );
       return Promise.resolve({ id: "proj-1" });
     },
     projectCreated: () => Promise.resolve(),
@@ -114,6 +124,11 @@ function fakePlatform(overrides: FakeOverrides = {}) {
       case "harden-project":
         await writes.harden(intent.projectId);
         return { keyNotLowered: null };
+      case "grant-new-project-access":
+        calls.push(
+          `access:${intent.projectId}:${intent.userRoles.map(({ clientUserId, roleCode }) => `${clientUserId}=${roleCode}`).join("|")}`,
+        );
+        return { projectId: intent.projectId };
       default:
         throw new Error(`No ${intent.kind} in a creation.`);
     }
@@ -328,6 +343,42 @@ describe("runEnvironmentCreation", () => {
     ];
     await run(steps, platform);
     expect(asked).toEqual([imported]);
+  });
+
+  it.each<{ readonly title: string; readonly yaml: string; readonly calls: ReadonlyArray<string> }>(
+    [
+      {
+        title: "A new environment is born with the access its creator chose",
+        yaml: TIER_YAML,
+        calls: ["create:Go Hello World - stage::cu-ada=ADMIN|cu-bo=READ_ONLY"],
+      },
+      {
+        title:
+          "A whole-project recipe's environment is given the chosen access once Zerops made it",
+        yaml: `project:\n  name: x\n${TIER_YAML}`,
+        calls: [`importProject:${0}`, "access:proj-1:cu-ada=ADMIN|cu-bo=READ_ONLY"],
+      },
+    ],
+  )("$title", async ({ yaml, calls: expected }) => {
+    const { platform, calls } = fakePlatform();
+    const planned = planEnvironmentCreation({
+      clientId: "client-1",
+      name: "Go Hello World - stage",
+      recipe: { kind: "tier", tier: "stage", yaml },
+      role: "stage",
+      withAgent: false,
+      userRoles: [
+        { clientUserId: "cu-ada", roleCode: "ADMIN" },
+        { clientUserId: "cu-bo", roleCode: "READ_ONLY" },
+      ],
+    });
+    if (!planned.ok) throw new Error(planned.reason);
+    await run(planned.steps, platform);
+    expect(
+      calls
+        .slice(0, expected.length)
+        .map((call) => (call.startsWith("importProject:") ? "importProject:0" : call)),
+    ).toEqual(expected);
   });
 
   it("imports a stage's or a production's tier whole, every runtime empty for HQ", async () => {
