@@ -632,18 +632,6 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_own_new_mate",
     ],
     [
-      "a member who can create projects attaches no Mate on a project where they are only a Basic user",
-      { ...MAKER, override: "BASIC_USER" },
-      place("attach", "mate", "mate", ["P_SEEN"]),
-      "not_own_new_mate",
-    ],
-    [
-      "a member who can create projects attaches a Mate on a project where they have Full access",
-      { ...MAKER, override: "ADMIN" },
-      place("attach", "mate", "mate", ["P_SEEN"]),
-      "allow",
-    ],
-    [
       "org Basic user who can create projects, no grant of their own",
       { orgRole: "BASIC_USER", canCreate: true },
       place("attach", "mate", "mate", ["P_SEEN"]),

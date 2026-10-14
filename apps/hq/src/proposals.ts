@@ -148,13 +148,8 @@ export const proposalDecisionsLayer = Layer.effect(
         Effect.gen(function* () {
           if (ids.length === 0) return [];
           const view = yield* roles.view;
-          // A decision on a Mate's Chief offer is its person's alone, as deciding it is
-          // (`Chiefs.authorizeProposal`).
           const rows = yield* sql<Row>`
-            SELECT ${columns} FROM hq_proposal_decision d WHERE id IN ${sql.in(ids)}
-              AND NOT EXISTS (
-                SELECT 1 FROM hq_chief_proposal offer
-                WHERE offer.id = d.id AND offer.user_id <> ${userId})`;
+            SELECT ${columns} FROM hq_proposal_decision WHERE id IN ${sql.in(ids)}`;
           return rows
             .filter(
               (row) =>

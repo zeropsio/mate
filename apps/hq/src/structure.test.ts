@@ -33,9 +33,6 @@ import {
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import { rolloutsLayer } from "./rollouts.ts";
-import type { Leader } from "./leader.ts";
-import { PersonGitCredentials, personGitCredentialsLayer } from "./personGitCredentials.ts";
-import { Sessions, sessionsLayer } from "./sessions.ts";
 import {
   ZeropsApi,
   type ZeropsMember,
@@ -65,7 +62,7 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
 
 /**
  * owner, admin; dev is NO_ACCESS with a grant on P_MATE; reader is org READ_ONLY; nobody is
- * NO_ACCESS; maker is NO_ACCESS who can create projects, Owner of their new Mate P_OWN, Basic user on
+ * NO_ACCESS; maker is NO_ACCESS who can create projects, Basic user on their new Mate P_OWN and on
  * P_DEV, and Read only on P_TEAM; basic is org Basic user who can create projects, with no grant of their own.
  */
 type Org = Omit<OrgView, "freshness">;
@@ -95,8 +92,7 @@ const VIEW: Org = {
     project("P_STAGE"),
     project("P_PROD"),
     project("P_PROD2"),
-    // maker's new Mate: Zerops leaves its creator OWNER.
-    project("P_OWN", [{ clientUserId: "C-maker", roleCode: "OWNER" }]),
+    project("P_OWN", [{ clientUserId: "C-maker", roleCode: "BASIC_USER" }]),
     project("P_TEAM", [{ clientUserId: "C-maker", roleCode: "READ_ONLY" }]),
     // maker develops it: an application holding it is maker's to add an environment to.
     project("P_DEV", [{ clientUserId: "C-maker", roleCode: "BASIC_USER" }]),
@@ -122,7 +118,7 @@ const withStructure = <A, E, B = never>(
     zerops: FakeWorld,
     /** How each read of the org was asked for, in order. */
     asked: Ref.Ref<ReadonlyArray<string>>,
-  ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient | Leader>,
+  ) => Effect.Effect<A, E, Structure | SqlClient.SqlClient>,
   before?: Effect.Effect<void, B, SqlClient.SqlClient>,
   /** HQ's key; the test key by default. */
   keySecret: KeySecret = testKey(),
@@ -266,20 +262,6 @@ const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A
       onFailure: (error) => ("code" in error ? String(error.code) : error._tag),
     }),
   );
-
-/** dev reads these projects too: Zerops shows them each through a Read only grant. */
-const devReads = (view: Ref.Ref<Org>, ...projectIds: ReadonlyArray<string>) =>
-  Ref.update(view, (org) => ({
-    ...org,
-    projects: org.projects.map((project) =>
-      projectIds.includes(project.id)
-        ? {
-            ...project,
-            userRoles: [...project.userRoles, { clientUserId: "C-dev", roleCode: "READ_ONLY" }],
-          }
-        : project,
-    ),
-  }));
 
 describe("structure", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -1229,39 +1211,6 @@ describe("structure", () => {
     );
 
     it.effect(
-      "a member who can create projects records no Mate on a project they only develop",
-      () =>
-        withStructure(() =>
-          Effect.gen(function* () {
-            const structure = yield* Structure;
-            const sql = yield* SqlClient.SqlClient;
-            const own = yield* structure.createApp("maker", "Own");
-            // maker is a Basic user on P_DEV, someone else's project: Zerops asks Full access
-            // there for a Mate's record (`create_mate_record`), and so does its attach.
-            assert.strictEqual(
-              yield* reasonOf(
-                structure.attachProject("maker", own.id, {
-                  projectId: "P_DEV",
-                  kind: "mate",
-                  mate: { face: "face-1" },
-                }),
-              ),
-              "not_own_new_mate",
-            );
-            const birth = yield* structure.recordBirth("maker", { appId: own.id, face: "face-1" });
-            assert.strictEqual(
-              yield* outcome(structure.bindBirth("maker", birth.id, "P_DEV")),
-              "forbidden",
-            );
-            assert.deepStrictEqual(
-              yield* sql`SELECT project_id FROM hq_mate WHERE project_id = 'P_DEV'`,
-              [],
-            );
-          }),
-        ),
-    );
-
-    it.effect(
       "a devstage project is a Mate by its record and its rules, and a stage beside its application's production",
       () =>
         withStructure(() =>
@@ -1876,45 +1825,6 @@ describe("structure", () => {
       ),
     );
 
-    it.effect(
-      "a press is renewed or ended only by the person holding it, and an application they do not see answers as a missing one",
-      () =>
-        withStructure(() =>
-          Effect.gen(function* () {
-            const structure = yield* Structure;
-            const MATE = { kind: "mate" } as const;
-            const pressOf = Effect.map(structure.read("owner"), (read) => read.presses["P_OWN"]);
-            yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-a" });
-            // Another Basic user of the project who learned the press's name neither takes over,
-            // renews nor ends it.
-            assert.strictEqual(
-              yield* reasonOf(structure.holdPress("basic", "P_OWN", { ...MATE, owner: "press-a" })),
-              "press_held",
-            );
-            assert.strictEqual(
-              yield* reasonOf(
-                structure.holdPress("basic", "P_OWN", { ...MATE, owner: "press-a", renew: true }),
-              ),
-              "press_not_held",
-            );
-            yield* structure.endPress("basic", "P_OWN", { owner: "press-a", finished: true });
-            yield* structure.endPress("basic", "P_OWN", { owner: "press-a", finished: false });
-            const kept = yield* pressOf;
-            assert.isTrue((kept?.heldForMs ?? 0) > PRESS_HOLD_MS - 5_000);
-            // An application the presser does not see answers as one HQ does not hold.
-            const hidden = yield* structure.createApp("owner", "Hidden");
-            const pressFor = (appId: string) =>
-              reasonOf(
-                structure.holdPress("maker", "P_OWN", { owner: "press-a", kind: "stage", appId }),
-              );
-            assert.deepStrictEqual(
-              [yield* pressFor(hidden.id), yield* pressFor("00000000-0000-0000-0000-000000000000")],
-              ["app_not_found", "app_not_found"],
-            );
-          }),
-        ),
-    );
-
     // B5: a stage's press imports first and registers last; one cut short between them leaves a
     // project HQ holds nowhere, whose press record says what it is and where it goes.
     it.effect("keeps a stopped stage press's record, its hold ended, until its project goes", () =>
@@ -1968,119 +1878,6 @@ describe("structure", () => {
           );
         }),
       ),
-    );
-
-    it.effect("a person Zerops removed from the org loses their sessions and git passwords", () =>
-      withStructure((view) =>
-        Effect.gen(function* () {
-          const structure = yield* Structure;
-          const sessions = yield* Sessions;
-          const git = yield* PersonGitCredentials;
-          const shop = yield* structure.createApp("owner", "Shop");
-          const signIn = (userId: string) =>
-            Effect.map(
-              sessions.issue({ userId, orgId: "ORG" }, `door-${userId}`),
-              (session) => session.token,
-            );
-          const password = (userId: string) =>
-            Effect.map(
-              git.issue({ userId, orgId: "ORG", appId: shop.id }),
-              (credential) => credential.token,
-            );
-          const held = {
-            devSession: yield* signIn("dev"),
-            devPassword: yield* password("dev"),
-            ownerSession: yield* signIn("owner"),
-            ownerPassword: yield* password("owner"),
-          };
-          yield* Ref.update(view, (org) => ({
-            ...org,
-            members: org.members.filter((member) => member.userId !== "dev"),
-          }));
-          yield* structure.reconcile;
-          assert.deepStrictEqual(
-            [
-              Option.isSome(yield* sessions.resolve(held.devSession)),
-              Option.isSome(yield* git.resolve(held.devPassword)),
-              Option.isSome(yield* sessions.resolve(held.ownerSession)),
-              Option.isSome(yield* git.resolve(held.ownerPassword)),
-            ],
-            [false, false, true, true],
-          );
-        }).pipe(Effect.provide(Layer.mergeAll(sessionsLayer, personGitCredentialsLayer))),
-      ),
-    );
-
-    it.effect(
-      "a Mate loses its credential once Zerops says the key it named no longer reaches its project",
-      () =>
-        withStructure((view, _down, zerops) =>
-          Effect.gen(function* () {
-            const structure = yield* Structure;
-            const sql = yield* SqlClient.SqlClient;
-            const key = (id: string, projects: ZeropsOwnToken["projects"]) =>
-              zerops.tokens.set(`value-of-${id}`, {
-                id,
-                name: "zerops-zcp-zcp",
-                orgId: "ORG",
-                roleCode: "NO_ACCESS",
-                canCreateProjects: false,
-                canViewFinances: false,
-                canEditFinances: false,
-                projects,
-                createdMs: 0,
-                createdByUser: "maker",
-              });
-            zerops.tokens.set("org-key", {
-              id: "core",
-              name: "Core",
-              orgId: "ORG",
-              roleCode: "READ_ONLY",
-              canCreateProjects: false,
-              canViewFinances: false,
-              canEditFinances: false,
-              projects: [],
-              createdMs: 0,
-              createdByUser: null,
-            });
-            // K-member: an active member of the org, granted its project in the org's list.
-            yield* Ref.update(view, (org) => ({
-              ...org,
-              members: [
-                ...org.members,
-                { ...member("K-member", "NO_ACCESS"), kind: "token" as const },
-              ],
-              projects: org.projects.map((candidate) =>
-                candidate.id === "P_MATE"
-                  ? {
-                      ...candidate,
-                      userRoles: [
-                        ...candidate.userRoles,
-                        { clientUserId: "C-K-member", roleCode: "ADMIN" },
-                      ],
-                    }
-                  : candidate,
-              ),
-            }));
-            // K-own: its own record grants its project; K-moved: another project alone; K-deleted:
-            // Zerops has no such key; and P_TEAM's Mate named none.
-            key("K-own", [{ projectId: "P_STAGE", roleCode: "ADMIN" }]);
-            key("K-moved", [{ projectId: "P_TEAM", roleCode: "ADMIN" }]);
-            yield* sql`
-              INSERT INTO hq_mate_credential (credential_hash, project_id, key_token_id)
-              VALUES ('h-member', 'P_MATE', 'K-member'), ('h-own', 'P_STAGE', 'K-own'),
-                ('h-moved', 'P_DEV', 'K-moved'), ('h-deleted', 'P_OWN', 'K-deleted'),
-                ('h-none', 'P_TEAM', NULL)`;
-            yield* structure.reconcile;
-            const live = yield* sql<{ readonly project_id: string }>`
-              SELECT project_id FROM hq_mate_credential WHERE revoked_at IS NULL
-              ORDER BY project_id`;
-            assert.deepStrictEqual(
-              live.map((row) => row.project_id),
-              ["P_MATE", "P_STAGE", "P_TEAM"],
-            );
-          }),
-        ),
     );
 
     it.effect("reads the tool projects HQ holds", () =>
@@ -2701,14 +2498,13 @@ describe("structure", () => {
 
     // An application's environments and their deploys (SPEC §3.2b, main B26–B36) go to whoever
     // reads its changes, as main's commit statuses and environments.yaml went to whoever read its
-    // repositories — each only where Zerops shows them its project. One who sees the application
-    // through a Read only grant alone reads none of them (Fable round 9). Per service, the newest
-    // deploy and the one live.
+    // repositories — its environment's project unseen or not. One who sees the application through
+    // a Read only grant alone reads none of them (Fable round 9). Per service, the newest deploy and
+    // the one live.
     it.effect("reads an application's environments and deploys to whoever reads its changes", () =>
-      withStructure((view) =>
+      withStructure(() =>
         Effect.gen(function* () {
           const structure = yield* Structure;
-          yield* devReads(view, "P_STAGE");
           const sql = yield* SqlClient.SqlClient;
           const shop = yield* structure.createApp("owner", "Shop");
           yield* structure.attachProject("owner", shop.id, {
@@ -2767,7 +2563,7 @@ describe("structure", () => {
             );
           const seen = [
             {
-              projects: ["P_MATE", "P_STAGE"],
+              projects: ["P_MATE"],
               environments: [
                 {
                   projectId: "P_STAGE",
@@ -2791,8 +2587,8 @@ describe("structure", () => {
               ],
             },
           ];
-          // dev develops Shop through P_MATE (Basic user there) and reads its stage's project;
-          // maker sees Shop only through a Read only grant on P_TEAM.
+          // dev develops Shop through P_MATE (Basic user there), and does not read its stage's
+          // project; maker sees Shop only through a Read only grant on P_TEAM.
           assert.deepStrictEqual(yield* read("dev"), seen);
           // Refused, and said so: never an empty list that reads as "no environments".
           assert.deepStrictEqual(yield* read("maker"), [
@@ -2803,57 +2599,13 @@ describe("structure", () => {
       ),
     );
 
-    it.effect(
-      "an environment whose project Zerops hides from a reader stays out of their snapshot, deploys and all",
-      () =>
-        withStructure(() =>
-          Effect.gen(function* () {
-            const structure = yield* Structure;
-            const sql = yield* SqlClient.SqlClient;
-            const shop = yield* structure.createApp("owner", "Shop");
-            yield* structure.attachProject("owner", shop.id, {
-              projectId: "P_MATE",
-              kind: "mate",
-              mate: { face: "face-1" },
-            });
-            yield* structure.attachProject("owner", shop.id, {
-              projectId: "P_PROD",
-              kind: "production",
-              environment: { name: "production" },
-            });
-            const [rollout] = yield* sql<{ readonly id: string }>`
-              SELECT id::text AS id FROM hq_rollout WHERE project_id = 'P_PROD'`;
-            yield* sql`
-              INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, state,
-                process_id, requested_by, ended_at)
-              VALUES (${rollout!.id}::bigint, 'deploy', 'P_PROD', 'P_PROD', 'secret-api', 'api',
-                ${"4".repeat(40)}, 'live', 'J-PROD', 'owner', now())`;
-            const environmentsOf = (userId: string) =>
-              Effect.map(structure.read(userId), (read) =>
-                read.apps.flatMap((app) =>
-                  shown(app.environments).flatMap((value) =>
-                    value.target.kind === "zerops" ? [value.target.projectId] : [],
-                  ),
-                ),
-              );
-            // dev is org NO_ACCESS with a Basic user grant on P_MATE alone: Zerops hides P_PROD.
-            assert.deepStrictEqual(yield* environmentsOf("dev"), []);
-            const seenByDev = JSON.stringify(yield* structure.read("dev"));
-            for (const secret of ["P_PROD", "secret-api", "J-PROD"])
-              assert.notInclude(seenByDev, secret);
-            assert.deepStrictEqual(yield* environmentsOf("owner"), ["P_PROD"]);
-          }),
-        ),
-    );
-
     // The deploy-jobs design: the view carries an environment's newest jobs, bounded, and each
     // service's newest live one past the bound — what runs there is never cut off by what came
     // after — each naming what asked for it.
     it.effect("carries an environment's newest jobs, and each service's live one past them", () =>
-      withStructure((view) =>
+      withStructure(() =>
         Effect.gen(function* () {
           const structure = yield* Structure;
-          yield* devReads(view, "P_STAGE", "P_PROD", "P_PROD2");
           const sql = yield* SqlClient.SqlClient;
           const shop = yield* structure.createApp("owner", "Shop");
           yield* structure.attachProject("owner", shop.id, {
@@ -2905,10 +2657,9 @@ describe("structure", () => {
     // A production attached after a release carries none of it, however old; a production with no
     // floor (made before it existed) carries the newest approved release as it always did.
     it.effect("carries no release made before the production was attached", () =>
-      withStructure((view) =>
+      withStructure(() =>
         Effect.gen(function* () {
           const structure = yield* Structure;
-          yield* devReads(view, "P_STAGE", "P_PROD", "P_PROD2");
           const sql = yield* SqlClient.SqlClient;
           const shop = yield* structure.createApp("owner", "Shop");
           yield* structure.attachProject("owner", shop.id, {
@@ -2949,10 +2700,9 @@ describe("structure", () => {
     // planned, ended once every job it asked for there ended and every job of a commit it left out
     // as under way ended too — however many jobs came after; a stage carries none.
     it.effect("carries where a production's newest release stands, however many jobs it has", () =>
-      withStructure((view) =>
+      withStructure(() =>
         Effect.gen(function* () {
           const structure = yield* Structure;
-          yield* devReads(view, "P_STAGE", "P_PROD", "P_PROD2");
           const sql = yield* SqlClient.SqlClient;
           const shop = yield* structure.createApp("owner", "Shop");
           yield* structure.attachProject("owner", shop.id, {
@@ -3101,10 +2851,9 @@ describe("structure", () => {
     it.effect(
       "carries whether an environment's birth ended, from the rollout its attach asked",
       () =>
-        withStructure((view) =>
+        withStructure(() =>
           Effect.gen(function* () {
             const structure = yield* Structure;
-            yield* devReads(view, "P_STAGE", "P_PROD", "P_PROD2");
             const sql = yield* SqlClient.SqlClient;
             const shop = yield* structure.createApp("owner", "Shop");
             yield* structure.attachProject("owner", shop.id, {

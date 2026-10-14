@@ -369,9 +369,8 @@ export interface StructureRead {
     /**
      * Its stage and production, in the order they were declared, with their deploys: to whoever
      * reads its changes (`read_change`), as main's commit statuses and `environments.yaml` went to
-     * whoever read its repositories — each Zerops one only where Zerops shows the reader its
-     * project. To one who only sees the application, refused with why — never an empty list,
-     * which would read as none declared.
+     * whoever read its repositories. To one who only sees the application, refused with why —
+     * never an empty list, which would read as none declared.
      */
     readonly environments:
       | ReadonlyArray<
@@ -552,9 +551,8 @@ export class Structure extends Context.Service<
     readonly read: (userId: string) => Effect.Effect<StructureRead, SqlError | ZeropsError>;
     /**
      * Follows Zerops: what HQ holds of projects it no longer has (missing from the org's list, and
-     * refused by id) goes, Mate credentials included; answers how many projects. A person no
-     * longer an active member loses their sessions and git passwords; a Mate whose named key no
-     * longer reaches its project, its credential. Nothing moves while Zerops cannot say.
+     * refused by id) goes, Mate credentials included; answers how many projects. Nothing moves
+     * while Zerops cannot say.
      */
     readonly reconcile: Effect.Effect<number, NotLeader | SqlError | ZeropsError>;
     /** A scoped completion handle, authorized while Zerops still holds the project's roles. */
@@ -867,64 +865,7 @@ export const structureLayer = (options: {
       // Over the org as recently read, never forcing a fresh read (the lead, 2026-10-03: forcing
       // one every minute read the organization's member and project lists for nothing).
       const reconcile = Effect.gen(function* () {
-        const view = yield* roles.recent;
-        // Removal from the org ends what HQ issued its person: sessions and git passwords.
-        const active = view.members
-          .filter((member) => member.status === "ACTIVE")
-          .map((member) => member.userId);
-        if (active.length > 0) {
-          yield* leader.write(
-            Effect.andThen(
-              sql`UPDATE hq_session SET revoked_at = now()
-                WHERE org_id = ${view.orgId} AND revoked_at IS NULL AND expires_at > now()
-                  AND NOT ${sql.in("user_id", active)}`,
-              sql`UPDATE hq_git_credential SET revoked_at = now()
-                WHERE org_id = ${view.orgId} AND revoked_at IS NULL AND expires_at > now()
-                  AND NOT ${sql.in("user_id", active)}`,
-            ),
-          );
-        }
-        const listed = new Set(view.projects.map((project) => project.id));
-        // A Mate's credential lasts while the key it named reaches its project, as Zerops says it:
-        // the org's list shows it granted there, else the key's own record is read — absent, or
-        // with no grant on the project, it is revoked, and zcp enrolls again (`mateCredentials.ts`).
-        const keyed = yield* sql<{
-          readonly credential_hash: string;
-          readonly project_id: string;
-          readonly key_token_id: string;
-        }>`
-          SELECT credential_hash, project_id, key_token_id FROM hq_mate_credential
-          WHERE revoked_at IS NULL AND key_token_id IS NOT NULL`;
-        const keyLost = yield* Effect.forEach(keyed, (row) => {
-          const key = view.members.find(
-            (member) => member.userId === row.key_token_id && member.status === "ACTIVE",
-          );
-          const granted = view.projects
-            .find((project) => project.id === row.project_id)
-            ?.userRoles.some((role) => role.clientUserId === key?.clientUserId);
-          if (!listed.has(row.project_id) || granted === true || Option.isNone(options.credential))
-            return Effect.succeed([]);
-          return zerops
-            .tokenProjects(
-              view.orgId,
-              row.key_token_id,
-            )(options.credential.value)
-            .pipe(
-              Effect.map((grants) => !grants.some((grant) => grant.projectId === row.project_id)),
-              // Zerops not answering, or refusing HQ itself, says nothing about the key.
-              Effect.catchTags({
-                ZeropsRefused: (error) => Effect.succeed(error.reason === "not_found"),
-                ZeropsUnavailable: () => Effect.succeed(false),
-              }),
-              Effect.map((lost) => (lost ? [row.credential_hash] : [])),
-            );
-        }).pipe(Effect.map((found) => found.flat()));
-        if (keyLost.length > 0) {
-          // The credential read, never the project's: an enrollment since keeps its new one.
-          yield* leader.write(sql`
-            UPDATE hq_mate_credential SET revoked_at = now()
-            WHERE revoked_at IS NULL AND ${sql.in("credential_hash", keyLost)}`);
-        }
+        const listed = new Set((yield* roles.recent).projects.map((project) => project.id));
         const rows = yield* sql<{ readonly project_id: string }>`
           SELECT project_id FROM hq_app_project
           UNION SELECT project_id FROM hq_mate
@@ -1517,21 +1458,14 @@ export const structureLayer = (options: {
           Effect.gen(function* () {
             if (press.owner.length < 1 || press.owner.length > 100)
               return yield* refuse("invalid", "press_owner_length");
-            const view = yield* roles.forWrite;
-            yield* allowed(userId, "hold_press", { projectId }, view);
+            yield* allowed(userId, "hold_press", { projectId }, yield* roles.forWrite);
             const importProcessId = press.importProcessId ?? null;
             const appId = press.appId ?? null;
             const rows = yield* leader.write(
               Effect.gen(function* () {
-                // An application the presser does not see answers as one HQ does not hold.
                 if (appId !== null) {
-                  const app = yield* readAppTarget(sql, appId);
-                  if (
-                    app.createdBy === undefined ||
-                    !can({ kind: "person", userId }, "read_app", app, view).allow
-                  ) {
-                    return yield* refuse("app_not_found", "app_not_found");
-                  }
+                  const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
+                  if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
                 }
                 if (press.renew === true) {
                   return yield* sql<PressRow>`
@@ -1539,8 +1473,7 @@ export const structureLayer = (options: {
                 kind = ${press.kind}, app_id = ${appId}::uuid, held_by = ${userId},
                 until = now() + ${`${PRESS_HOLD_MS} milliseconds`}::interval,
                 import_process_id = COALESCE(${importProcessId}, import_process_id)
-              WHERE project_id = ${projectId} AND owner = ${press.owner} AND held_by = ${userId}
-                AND until > now()
+              WHERE project_id = ${projectId} AND owner = ${press.owner} AND until > now()
               RETURNING project_id, kind, app_id::text AS app_id, import_process_id,
                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms,
                 to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until`;
@@ -1556,8 +1489,7 @@ export const structureLayer = (options: {
                   EXCLUDED.import_process_id,
                   CASE WHEN hq_press.owner = EXCLUDED.owner
                     THEN hq_press.import_process_id END)
-              WHERE (hq_press.owner = EXCLUDED.owner AND hq_press.held_by = EXCLUDED.held_by)
-                OR hq_press.until <= now()
+              WHERE hq_press.owner = EXCLUDED.owner OR hq_press.until <= now()
               RETURNING project_id, kind, app_id::text AS app_id, import_process_id,
                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms,
                 to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until`;
@@ -1579,12 +1511,11 @@ export const structureLayer = (options: {
             const ended = yield* leader.write(
               press.finished
                 ? sql`
-                    DELETE FROM hq_press
-                    WHERE project_id = ${projectId} AND owner = ${press.owner} AND held_by = ${userId}
+                    DELETE FROM hq_press WHERE project_id = ${projectId} AND owner = ${press.owner}
                     RETURNING 1`
                 : sql`
                     UPDATE hq_press SET until = LEAST(until, now())
-                    WHERE project_id = ${projectId} AND owner = ${press.owner} AND held_by = ${userId}
+                    WHERE project_id = ${projectId} AND owner = ${press.owner}
                     RETURNING 1`,
             );
             if (ended.length > 0) yield* changed;

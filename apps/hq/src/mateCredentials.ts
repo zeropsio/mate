@@ -11,10 +11,8 @@
  * Both are 256 random bits and HQ keeps only their SHA-256. A challenge is bound to one project,
  * lives two minutes and enrolls once. A credential is bound to its project and does not expire; a
  * project holds one live credential, so issuing the next one revokes it; a project gone from Zerops
- * loses its credential and its challenges, and a Mate whose named key Zerops says no longer reaches
- * its project loses its credential, at the structure's reconcile (`structure.ts`). A revoked
- * credential is refused as an unknown one — `401 { code: "mate_credential_required" }` — on which
- * zcp enrolls again: HQ only revokes. Writes are fenced by the leader.
+ * loses its credential and its challenges at the structure's reconcile (`structure.ts`). Writes are
+ * fenced by the leader.
  *
  * A Mate names its own key's id with its credential — at its enrollment, and again later — so HQ
  * can say which Zerops key is the Mate's to whoever adopts or deletes it: an id, never a value,
