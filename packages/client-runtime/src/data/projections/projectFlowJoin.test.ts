@@ -628,6 +628,17 @@ const GIT_REPOS = [
   { name: "group", mainHead: "9".repeat(40), updatedAt: GIT_AT },
   { name: "not-connected", mainHead: GIT_SHA, updatedAt: GIT_AT, remote: null },
 ];
+/** HQ's ready preflight of what the Git offer lists: each repository's head on its remote branch. */
+const GIT_READY = GIT_REPOS.slice(0, 2).map((repo) => ({
+  repo: repo.name,
+  remote: repo.remote!,
+  ref: "refs/heads/production",
+  before: GIT_OLD,
+  sha: repo.mainHead,
+  verdict: "ready" as const,
+  reason: null,
+  checkedAt: GIT_AT,
+}));
 const GIT_OFFER = {
   head: "9".repeat(40),
   suggestion: "v0.1.1",
@@ -699,7 +710,12 @@ function gitJoin(
           git:
             delivery === undefined
               ? undefined
-              : { attachment: GIT_ATTACHMENT, delivery, replaceTokenPermission: { allowed: true } },
+              : {
+                  attachment: GIT_ATTACHMENT,
+                  delivery,
+                  replaceTokenPermission: { allowed: true },
+                  preflight: GIT_READY,
+                },
         },
       ],
     ]),

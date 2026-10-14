@@ -136,6 +136,16 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
       "conflict",
       "That release was refused, so production cannot go back to it.",
     ],
+    [
+      "git_release_blocked",
+      "conflict",
+      "Mate couldn't confirm the production branch is ready for this release, so nothing was pushed. Review it again.",
+    ],
+    [
+      "release_running",
+      "conflict",
+      "The previous release is still being pushed. Release again once it is pushed.",
+    ],
     ["release_not_found", "release_not_found", "HQ has no such release."],
   ])("says %s as it stands", (reason, code, words) => {
     expect(hqRefusalWords({ code, reason })).toBe(words);

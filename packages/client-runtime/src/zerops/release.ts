@@ -41,7 +41,7 @@ import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { compareReleaseTags, type Release, type ReleaseRollout } from "@t3tools/shared/hqRelease";
 
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
-import type { HqReleaseTarget } from "@t3tools/shared/hqRelease";
+import type { HqGitReleasePreflight, HqReleaseTarget } from "@t3tools/shared/hqRelease";
 import type { GitDelivery } from "./gitDelivery.ts";
 
 import type { ReleaseDeployFailure } from "./groupDeploys.ts";
@@ -124,6 +124,48 @@ export interface GitReleaseReviewFacts {
   readonly delivery: GitDelivery | undefined;
   readonly replaceTokenPermission: ReleaseGate | undefined;
   readonly repositories: ReadonlyArray<GitReleaseRepository> | undefined;
+  /** HQ's ready preflight of every listed repository (`readyGitPreflight`): what a release sends. */
+  readonly preflight?: ReadonlyArray<HqGitReleasePreflight> | undefined;
+  /** Why the review's own preflight run got no answer from HQ, while it has none. */
+  readonly check?: string | undefined;
+}
+
+/** What a Git release says until HQ's preflight vouches for what it lists. */
+export const GIT_PREFLIGHT_PENDING = "Checking the remote branch…";
+
+/**
+ * HQ's preflight of a Git release, once it vouches for exactly what the release lists: a ready
+ * review of each entry's repository at its commit, against the attachment's branch and the remote
+ * HQ holds now. None until every entry has one; HQ checks each again at the press.
+ */
+export function readyGitPreflight(input: {
+  readonly entries: ReadonlyArray<ReleaseEntry>;
+  readonly branch: string;
+  readonly repos: ReadonlyArray<RepoListEntry> | undefined;
+  readonly reviews: Readonly<Record<string, HqGitReleasePreflight>> | undefined;
+}): ReadonlyArray<HqGitReleasePreflight> | undefined {
+  if (input.entries.length === 0) return undefined;
+  const ready: HqGitReleasePreflight[] = [];
+  for (const { service, commit } of input.entries) {
+    const review = input.reviews?.[service];
+    const remote = input.repos?.find((repo) => repo.name === service)?.remote;
+    if (
+      review === undefined ||
+      remote == null ||
+      review.verdict !== "ready" ||
+      review.sha !== commit ||
+      review.ref !== `refs/heads/${input.branch}` ||
+      review.remote.url !== remote.url ||
+      review.remote.repositoryId !== remote.repositoryId ||
+      // The same credential's instant: HQ's repositories trim it, its preflight keeps microseconds.
+      remote.keptAt === null ||
+      review.remote.keptAt === null ||
+      Date.parse(review.remote.keptAt) !== Date.parse(remote.keptAt)
+    )
+      return undefined;
+    ready.push(review);
+  }
+  return ready;
 }
 
 /**

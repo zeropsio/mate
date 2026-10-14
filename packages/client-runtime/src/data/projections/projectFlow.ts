@@ -8,6 +8,7 @@ import {
 import type { CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
 import { flowReleaseOf, appRecipeOf, summarizeEnvironmentServices } from "../../zerops/index.ts";
 import { nameUnderApp } from "../../zerops/groups.ts";
+import { readyGitPreflight } from "../../zerops/release.ts";
 import { knownPresentation } from "../../zerops/knowledge/presentation.ts";
 import { hqRefusalWords } from "../../zerops/hq/index.ts";
 import type { GroupStopProject } from "../../zerops/groupDeploys.ts";
@@ -241,7 +242,22 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
         : stops?.environments.find((entry) => entry.id === git.attachment.environmentId)?.git;
     const canonical: CanonicalProjectFlow = {
       ...flow,
-      release: git === undefined ? flow.release : { ...flow.release, git: { ...git, delivery } },
+      release:
+        git === undefined
+          ? flow.release
+          : {
+              ...flow.release,
+              git: {
+                ...git,
+                delivery,
+                preflight: readyGitPreflight({
+                  entries: flow.release.entries,
+                  branch: git.attachment.target.branch,
+                  repos: detail.repos,
+                  reviews: detail.preflight,
+                }),
+              },
+            },
       declarations: stops?.declarations ?? [],
       environmentInputs: stops?.environments ?? [],
       environments: (stops?.environments ?? []).map((entry) =>

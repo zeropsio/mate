@@ -11,8 +11,9 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type * as SqlClient from "effect/sql/SqlClient";
 import type { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
-import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
+import type { HqReleaseTarget, ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { environmentBirths } from "./births.ts";
+import { releaseTargetOf } from "./gitEvents.ts";
 import {
   environmentOffers,
   gitEnvironmentOffers,
@@ -130,9 +131,12 @@ ORDER BY j.environment_id, j.id DESC`;
     readonly ended_at: string | null;
     readonly landed: boolean;
     readonly left_out: ReleaseRollout["leftOut"];
+    readonly target: "zerops" | "git";
+    readonly release_target: HqReleaseTarget | null;
   }>`
 WITH newest AS (
-  SELECT DISTINCT ON (e.id) e.id AS environment_id, h.app_id, h.tag, h.released_at
+  SELECT DISTINCT ON (e.id) e.id AS environment_id, h.app_id, h.tag, h.released_at, h.target,
+    ${sql.literal(releaseTargetOf("h"))} AS release_target
   FROM hq_environment e
   JOIN hq_release h ON h.app_id = e.app_id AND h.state = 'approved'
     AND (e.release_floor IS NULL OR h.released_at >= e.release_floor)
@@ -162,7 +166,8 @@ ends AS (
   FROM left_out l JOIN hq_deploy_job j ON j.id = l.job::bigint
 ),
 standing AS (
-  SELECT e.id AS environment_id, n.tag, n.released_at, r.id, r.planned_at, r.note,
+  SELECT e.id AS environment_id, n.tag, n.released_at, n.target, n.release_target,
+         r.id, r.planned_at, r.note,
          r.id IS NULL OR (r.planned_at IS NOT NULL AND NOT EXISTS (
            SELECT 1 FROM ends x
            WHERE x.rollout_id = r.id AND x.environment_id = e.id
@@ -180,7 +185,7 @@ standing AS (
 )
 SELECT s.environment_id, s.id::text AS id, s.tag,
        s.id IS NULL OR s.planned_at IS NOT NULL AS planned,
-       s.ended, s.landed,
+       s.ended, s.landed, s.target, s.release_target,
        CASE WHEN s.ended
          THEN ${sql.literal(
            iso("COALESCE(GREATEST(s.planned_at, s.last_ended), s.released_at)"),
@@ -205,6 +210,9 @@ FROM standing s`;
           endedAt: row.ended_at,
           landed: row.landed,
           leftOut: row.left_out,
+          ...(row.release_target === null
+            ? {}
+            : { target: row.target, releaseTarget: row.release_target }),
         };
   };
   const born = yield* environmentBirths(sql);

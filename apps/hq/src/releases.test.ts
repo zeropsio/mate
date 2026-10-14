@@ -26,6 +26,7 @@ import { addProject, mateInApp, remoteOf, rowsWhere } from "../test/harness/mate
 import { groupCheckout, propose, stateBecomes } from "../test/harness/recipe.ts";
 import { sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { readEnvironmentSource } from "./environmentNavigation.ts";
 import { GitHost, gitHostLayer, mainOf } from "./gitHost.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { ReleaseRefused, Releases, releasesLayer } from "./releases.ts";
@@ -376,6 +377,45 @@ describe("an application's releases in HQ", () => {
             );
           }),
         ),
+    );
+
+    it.effect("A Git production's newest release says the Git target it was released to.", () =>
+      withReleases((rig) =>
+        Effect.gen(function* () {
+          const releases = yield* Releases;
+          const sql = yield* SqlClient.SqlClient;
+          const releaseTarget = yield* gitProduction(rig);
+          const groupHead = yield* rig.commit("group", { "README.md": "No production recipe" });
+          const sha = yield* rig.commit("api-library", { "api.ts": "one" });
+          rig.tiers.clear();
+          const preflight = [yield* connected(rig, "api-library", sha)];
+          yield* sql`UPDATE hq_repo SET main_head=${groupHead} WHERE name='group'`;
+          yield* sql`UPDATE hq_repo SET main_head=${sha} WHERE name='api-library'`;
+          yield* releases.release("dev", rig.appId, {
+            tag: "v0.1.0",
+            groupHead,
+            entries: [{ service: "api-library", sha }],
+            target: "git",
+            releaseTarget,
+            preflight,
+          });
+          const source = yield* readEnvironmentSource(sql);
+          const environments = source.forApp(
+            "owner",
+            rig.appId,
+            { ...ORG_VIEW, freshness: "cached" },
+            { allow: true },
+          );
+          if ("refused" in environments) throw new Error("Fixture application must be visible");
+          const rollout = environments.find(
+            (environment) => environment.id === "GIT_PROD",
+          )?.release;
+          assert.deepStrictEqual(
+            [rollout?.tag, rollout?.target, rollout?.releaseTarget],
+            ["v0.1.0", "git", releaseTarget],
+          );
+        }),
+      ),
     );
 
     it.effect(

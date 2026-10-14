@@ -246,6 +246,8 @@ describe("hqRelease", () => {
       "unknown_service",
       "entry_not_on_main",
       "release_not_approved",
+      "git_release_blocked",
+      "release_running",
     ]);
   });
 });

@@ -13,9 +13,12 @@
 import { ProjectId } from "@t3tools/contracts";
 import type { ChangeLink, HqChange } from "@t3tools/shared/hqChanges";
 import type { HqDeliveryAnswer, HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import type { Release } from "@t3tools/shared/hqRelease";
+import type { HqGitReleasePreflight, HqReleaseTarget, Release } from "@t3tools/shared/hqRelease";
 
 import { canonicalEnvironmentsOf, jobsByService } from "../../zerops/hq/environments.ts";
+import { hqRefusalWords } from "../../zerops/hq/refusals.ts";
+import { GIT_PREFLIGHT_PENDING } from "../../zerops/release.ts";
+import type { ZeropsReleaseOffer } from "../projections/projectFlowJoin.ts";
 import type { DetailDemand } from "../demand.ts";
 import type { OperationReceipt } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
@@ -32,6 +35,11 @@ declare module "../model.ts" {
       readonly groupHead: string;
       /** What the offer listed, each production service at its commit. */
       readonly entries: ReadonlyArray<{ readonly service: string; readonly sha: string }>;
+      /** A branch production: the attachment the review showed and HQ's ready preflight of it. */
+      readonly git?: {
+        readonly releaseTarget: HqReleaseTarget;
+        readonly preflight: ReadonlyArray<HqGitReleasePreflight>;
+      };
     };
     readonly "roll-back": {
       readonly orgId: string;
@@ -123,6 +131,42 @@ const jobsOf = (read: ProjectionReads, appId: string, projectId: ProjectId) => {
     (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
   );
 };
+
+/** What a release says while the recipe has nothing on `main` to tag: HQ's own words for it. */
+const NO_GROUP_MAIN = hqRefusalWords({ code: "conflict", reason: "no_group_main" });
+
+/**
+ * What a release of the offer asks HQ — its entries, named `tag` (the offer's suggestion by
+ * default), tagging the `groupHead` read with the offer, and for a branch production the
+ * attachment and HQ's ready preflight HQ accepts it by — or why nothing is sent: what the offer's
+ * gate says, that the preflight has not vouched for it yet, or that the recipe has nothing on
+ * `main`, which the verbs say where they are.
+ */
+export function releaseRequestOf(
+  offer: Pick<ZeropsReleaseOffer, "git" | "gate" | "groupHead" | "suggestion" | "entries">,
+  tag?: string,
+):
+  | Omit<IntentOf<"release">, "orgId" | "appId">
+  | { readonly refused: string; readonly says: boolean } {
+  if (offer.git !== undefined && offer.git.delivery?.release.allowed !== true)
+    return {
+      refused: offer.git.delivery?.release.reason ?? "Checking what can be released…",
+      says: false,
+    };
+  if (!offer.gate.allowed) return { refused: offer.gate.reason, says: false };
+  if (offer.groupHead === undefined) return { refused: NO_GROUP_MAIN, says: true };
+  if (offer.git !== undefined && offer.git.preflight === undefined)
+    return { refused: offer.git.check ?? GIT_PREFLIGHT_PENDING, says: false };
+  return {
+    kind: "release",
+    tag: tag ?? offer.suggestion,
+    groupHead: offer.groupHead,
+    entries: offer.entries.map(({ service, commit }) => ({ service, sha: commit })),
+    ...(offer.git?.preflight === undefined
+      ? {}
+      : { git: { releaseTarget: offer.git.attachment, preflight: offer.git.preflight } }),
+  };
+}
 
 const appDetail = (appId: string): DetailDemand => ({ family: "hqAppDetail", ownerId: appId });
 

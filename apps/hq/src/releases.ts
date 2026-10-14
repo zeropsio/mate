@@ -53,7 +53,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
-import { appendEvent } from "./gitEvents.ts";
+import { appendEvent, releaseTargetOf } from "./gitEvents.ts";
 import { GitHost, mainOf } from "./gitHost.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import {
@@ -79,14 +79,7 @@ import type { ZeropsError } from "./zerops/api.ts";
 /** A person's ask HQ refused: a code, and the reason (a permission's, or the release's own). */
 export class ReleaseRefused extends Schema.TaggedError<ReleaseRefused>()("ReleaseRefused", {
   code: Schema.Literals(["forbidden", "app_not_found", "release_not_found", "conflict"]),
-  reason: Schema.Literals([
-    ...REASONS,
-    ...RELEASE_REFUSALS,
-    "app_not_found",
-    "release_not_found",
-    "release_running",
-    "git_release_blocked",
-  ]),
+  reason: Schema.Literals([...REASONS, ...RELEASE_REFUSALS, "app_not_found", "release_not_found"]),
 }) {}
 
 type Made = Effect.Effect<
@@ -162,9 +155,7 @@ interface ReleaseRow {
 const RELEASE_COLUMNS = `tag, sha, entries, released_by,
   to_char(released_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS released_at,
   state, reason, rollback_of, snapshot, target,
-  (SELECT data->'releaseTarget' FROM hq_git_event
-    WHERE kind='released' AND app_id=hq_release.app_id AND data->>'tag'=hq_release.tag
-    AND data ? 'releaseTarget' ORDER BY seq DESC LIMIT 1) AS release_target`;
+  ${releaseTargetOf("hq_release")} AS release_target`;
 
 const releaseOf = (row: ReleaseRow): Release => ({
   tag: row.tag,

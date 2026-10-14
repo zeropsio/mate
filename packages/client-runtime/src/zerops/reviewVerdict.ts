@@ -32,6 +32,7 @@ import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
 import type { MovedCommits } from "./releaseCompare.ts";
 import {
+  GIT_PREFLIGHT_PENDING,
   releaseNothingReason,
   type ReleaseGate,
   type GitReleaseReviewFacts,
@@ -1035,7 +1036,8 @@ function gitReleaseReview(
       primary: undefined,
     };
   }
-  const ready = input.gate.allowed && git.delivery?.release.allowed === true;
+  const ready =
+    input.gate.allowed && git.delivery?.release.allowed === true && git.preflight !== undefined;
   const primary: ReviewPrimary | undefined = ready
     ? { label: `Release ${input.tag}`, enabled: true, safe: false }
     : git.delivery?.release.actions.includes("replace-token") &&
@@ -1057,7 +1059,9 @@ function gitReleaseReview(
         ? count(input.changes, "change", "changes") + " merged since the last release"
         : (!input.gate.allowed
             ? input.gate.reason
-            : (git.delivery?.release.reason ?? "Checking what can be released…")
+            : git.delivery?.release.allowed !== true
+              ? (git.delivery?.release.reason ?? "Checking what can be released…")
+              : (git.check ?? GIT_PREFLIGHT_PENDING)
           ).replace(/\.$/u, ""),
       fix: undefined,
     },

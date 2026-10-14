@@ -7,7 +7,7 @@
  * next verb. The account holds both, in memory, for every surface that draws the verbs.
  */
 import { RegistryContext } from "@effect/atom-react";
-import { flowAnswer, type FlowWriteIntent } from "@t3tools/client-runtime/data";
+import { flowAnswer, releaseRequestOf, type FlowWriteIntent } from "@t3tools/client-runtime/data";
 import { flowVerbKey, type FlowVerb } from "@t3tools/client-runtime/zerops";
 import { HQ_WRITE_UNCERTAIN, hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import type { ChangeLink } from "@t3tools/shared/hqChanges";
@@ -190,24 +190,12 @@ export function useFlowVerbs(): FlowVerbs {
 
   const release = useCallback(
     (flow: ZeropsProjectFlow, tag?: string): Promise<FlowVerbOutcome> => {
-      const offer = flow.release;
-      if (offer.git !== undefined && offer.git.delivery?.release.allowed !== true)
-        return Promise.resolve(
-          refused(offer.git.delivery?.release.reason ?? "Checking what can be released…"),
-        );
-      if (!offer.gate.allowed) return Promise.resolve(refused(offer.gate.reason));
-      const { groupHead } = offer;
-      if (groupHead === undefined) return Promise.resolve(refuse(NO_GROUP_MAIN));
+      const request = releaseRequestOf(flow.release, tag);
+      if ("refused" in request)
+        return Promise.resolve(request.says ? refuse(request.refused) : refused(request.refused));
       return run(
         { kind: "release", groupId: flow.groupId },
-        (orgId) => ({
-          kind: "release",
-          orgId,
-          appId: flow.groupId,
-          tag: tag ?? offer.suggestion,
-          groupHead,
-          entries: offer.entries.map(({ service, commit }) => ({ service, sha: commit })),
-        }),
+        (orgId) => ({ ...request, orgId, appId: flow.groupId }),
         true,
       );
     },

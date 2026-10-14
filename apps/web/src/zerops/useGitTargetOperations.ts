@@ -66,6 +66,10 @@ export function useGitTargetOperations(appId: string) {
                 options,
               );
             },
+            // HQ reads the release's remote branches now; its answer arrives as the app's preflight.
+            preflight: async () => {
+              await operations.run({ kind: "preflight-git-release", ...scope }, options);
+            },
             runAgain: async (environmentId: HqEnvironmentId, repo: string) => {
               await operations.run(
                 { kind: "run-git-again", ...scope, environmentId, repo },

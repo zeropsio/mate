@@ -18,6 +18,11 @@ export type GitEventKind =
   | "commented"
   | "released";
 
+/** The attachment the `hq_release` row named `release` was accepted for, as its `released` event says. */
+export const releaseTargetOf = (release: string) => `(SELECT data->'releaseTarget' FROM hq_git_event
+    WHERE kind='released' AND app_id=${release}.app_id AND data->>'tag'=${release}.tag
+    AND data ? 'releaseTarget' ORDER BY seq DESC LIMIT 1)`;
+
 /** Appends one event; inside a fenced write (`leader.ts`). */
 export const appendEvent = (
   sql: SqlClient.SqlClient,

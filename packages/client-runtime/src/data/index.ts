@@ -208,7 +208,7 @@ export {
   type HqGitWrites,
 } from "./operations/executors/hq.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
-export { type FlowWriteIntent } from "./operations/flowWrites.ts";
+export { releaseRequestOf, type FlowWriteIntent } from "./operations/flowWrites.ts";
 export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { OperationStopped, runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
