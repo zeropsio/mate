@@ -7,7 +7,8 @@ import { act, createElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { accountReadsAtom } from "@t3tools/client-runtime/data";
+import { accountReadsAtom, type AccountStore } from "@t3tools/client-runtime/data";
+import { membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 
 import { AppAtomRegistryProvider, appAtomRegistry } from "../rpc/atomRegistry";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -16,6 +17,16 @@ import { useDetailDemand, ZeropsAccountData } from "./ZeropsAccountData";
 const shown = vi.hoisted(() => ({
   organization: { id: "org-1", name: "Org", membershipId: "m-1" },
 }));
+// The account's store, so a test can hand it what Zerops answered about the person's memberships.
+const made = vi.hoisted(() => ({ store: undefined as AccountStore | undefined }));
+vi.mock("@t3tools/client-runtime/data", async (actual) => {
+  const data = await actual<typeof import("@t3tools/client-runtime/data")>();
+  return {
+    ...data,
+    makeAccountStore: (...args: Parameters<typeof data.makeAccountStore>) =>
+      (made.store = data.makeAccountStore(...args)),
+  };
+});
 vi.mock("./ZeropsSessionProvider", () => {
   // The session's client: its socket login never answers, so the link stays connecting.
   const client = {
@@ -29,6 +40,7 @@ vi.mock("./ZeropsSessionProvider", () => {
       client,
       status: "signed-in",
       activeOrganization: shown.organization,
+      updateVerifiedMemberships: () => undefined,
     }),
   };
 });
@@ -89,6 +101,8 @@ describe("ZeropsAccountData — another organization shown", () => {
     await act(async () => {
       tree = create(app());
     });
+    for (const input of membershipInputs("DEVELOPER", false, 1, "org-2"))
+      made.store?.dispatch(input);
     const heard: Array<string | null | undefined> = [];
     const stop = appAtomRegistry.subscribe(accountReadsAtom, (reads) => heard.push(reads?.orgId));
     shown.organization = { ...shown.organization, id: "org-2" };
