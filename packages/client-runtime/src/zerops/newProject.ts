@@ -42,6 +42,7 @@
  * generated, sent once inside the import, and forgotten — nothing in this
  * module hands it back, and a user who wants it reads it in the Zerops GUI.
  */
+import { creationUserRoles, type ProjectGrant } from "./projectAccess.ts";
 
 const ZCP_SERVICE_NAME_PREFIX = "zcp";
 
@@ -211,7 +212,7 @@ export interface CreateProjectBody {
   readonly clientId: string;
   readonly mode: "LIGHT" | "SERIOUS";
   readonly maxCreditLimit: number | null;
-  readonly userRoles: ReadonlyArray<unknown>;
+  readonly userRoles: ReadonlyArray<{ readonly id: string; readonly roleCode: string }>;
 }
 
 export function buildCreateProjectBody(input: {
@@ -221,6 +222,8 @@ export function buildCreateProjectBody(input: {
   readonly mode?: "LIGHT" | "SERIOUS";
   /** Tags the project is born with: the Zerops GUI's `mate` marker or none (`groups.ts`). */
   readonly tagList?: ReadonlyArray<string>;
+  /** Who reaches it from birth beyond their organization role; its creator is its own. */
+  readonly userRoles?: ReadonlyArray<ProjectGrant>;
 }): CreateProjectBody {
   return {
     name: input.name.trim(),
@@ -230,7 +233,7 @@ export function buildCreateProjectBody(input: {
     clientId: input.clientId,
     mode: input.mode ?? "LIGHT",
     maxCreditLimit: null,
-    userRoles: [],
+    userRoles: creationUserRoles(input.userRoles ?? []),
   };
 }
 

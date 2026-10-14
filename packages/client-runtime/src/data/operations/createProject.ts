@@ -12,6 +12,7 @@ import {
   projectCreationFailureSentence,
   projectCreationOutcome,
 } from "../../zerops/projectCreation.ts";
+import type { ProjectGrant } from "../../zerops/projectAccess.ts";
 import type { OperationKind } from "./kind.ts";
 
 declare module "../model.ts" {
@@ -22,6 +23,8 @@ declare module "../model.ts" {
       readonly name: string;
       readonly tagList: ReadonlyArray<string>;
       readonly location?: string;
+      /** Who reaches it from birth beyond their organization role; its creator needs no entry. */
+      readonly userRoles?: ReadonlyArray<ProjectGrant>;
     };
   }
   interface OperationResults {

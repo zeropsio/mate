@@ -22,6 +22,7 @@ import {
   zeropsRegionFromPublicZone,
 } from "./containerAddress.ts";
 import { withMateProjectRole } from "./mateAccess.ts";
+import type { ProjectGrant } from "./projectAccess.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
 import {
@@ -1894,6 +1895,8 @@ export class ZeropsApiClient {
       readonly name: string;
       readonly tagList: ReadonlyArray<string>;
       readonly location?: string;
+      /** Who reaches it from birth beyond their organization role (`zerops/projectAccess.ts`). */
+      readonly userRoles?: ReadonlyArray<ProjectGrant>;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
@@ -1909,6 +1912,7 @@ export class ZeropsApiClient {
             name: input.name,
             tagList: BORN_TAGS.filter((tag) => input.tagList.includes(tag)),
             ...(input.location ? { location: input.location } : {}),
+            ...(input.userRoles === undefined ? {} : { userRoles: input.userRoles }),
           }),
         ),
       },
