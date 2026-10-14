@@ -231,13 +231,27 @@ export const environmentOffers = (
 });
 
 /** Git targets reuse the same application write verdicts as their fresh owners. */
+export const gitEnvironmentRemovalOffer = (
+  userId: string,
+  projects: ReadonlyArray<Pick<AppProjectRow, "project_id">>,
+  facts: Facts,
+  tier: "stage" | "production",
+) =>
+  offer(
+    userId,
+    tier === "production" ? "add_git_environment" : "remove_git_environment",
+    appTarget(projects),
+    facts,
+  );
+
 export const gitEnvironmentOffers = (
   userId: string,
   projects: ReadonlyArray<AppProjectRow>,
   facts: Facts,
+  tier: "stage" | "production",
 ) => ({
   keep_deploy_token: { allow: false as const, reason: "unknown_kind" as const },
-  remove_git_environment: offer(userId, "remove_git_environment", appTarget(projects), facts),
+  remove_git_environment: gitEnvironmentRemovalOffer(userId, projects, facts, tier),
   redeploy: offer(userId, "redeploy", appTarget(projects), facts),
 });
 
