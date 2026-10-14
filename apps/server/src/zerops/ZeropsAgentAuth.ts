@@ -731,6 +731,13 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     }
     const initialEnv = yield* readZembedEnv(fs, envStorePath);
     yield* Ref.update(state, (current) => ({ ...current, env: initialEnv }));
+    // A token already set has no credential file to set its check off: checked here, so the
+    // Mate can tell a working token (`mateRunsWithoutSignIn`) from one it never verified.
+    for (const agentId of KNOWN_AGENT_IDS) {
+      if (initialEnv?.[`ZCP_AGENT_TOKEN_${AGENT_OAUTH_SUFFIX[agentId]}`]) {
+        yield* requestProviderCheck(agentId, { fromCredential: false });
+      }
+    }
     yield* publish;
 
     /**

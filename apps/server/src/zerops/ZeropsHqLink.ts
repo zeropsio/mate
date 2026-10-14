@@ -27,7 +27,7 @@
  *
  * @module ZeropsHqLink
  */
-import { isAgentWithoutSignInReady } from "@t3tools/shared/zeropsAgentAuth";
+import { mateRunsWithoutSignIn } from "@t3tools/shared/zeropsAgentAuth";
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import * as NodeDns from "node:dns";
@@ -565,8 +565,9 @@ export const mateOverviewFeed = (
           ...(sources.providers === undefined
             ? {}
             : {
-                runsWithoutSignIn: (yield* sources.providers.latest).some(
-                  isAgentWithoutSignInReady,
+                runsWithoutSignIn: mateRunsWithoutSignIn(
+                  yield* sources.providers.latest,
+                  snapshot.agents,
                 ),
               }),
         },

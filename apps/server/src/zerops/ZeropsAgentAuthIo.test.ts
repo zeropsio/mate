@@ -920,6 +920,38 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           }),
         ),
     );
+
+    // A Mate restarted on an environment token has no credential file to set a check off.
+    it.effect("an environment token already set when the Mate starts is verified", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fs, homeDir, envStorePath } = yield* makeEnv();
+          yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_TOKEN_CLAUDE_CODE":"true"}');
+          const fake = yield* makeFakeCli(() =>
+            Effect.fail(new ZeropsAgentFlagError({ reason: "unavailable" })),
+          );
+          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: makeFakeWatch().watch,
+          });
+          const subscription = yield* feed.subscribe;
+          const claude = agentState(
+            yield* changeWhere(subscription, claudeAuthResolved),
+            "claude-code",
+          );
+          assert.equal(claude?.state, "authorized-token");
+          assert.equal(claude?.providerAuth, "authenticated");
+          // Verifying a token never writes the sign-in flag.
+          assert.deepEqual(yield* Ref.get(fake.calls), []);
+          assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code"]);
+        }),
+      ),
+    );
   },
 );
 

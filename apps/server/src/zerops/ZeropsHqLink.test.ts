@@ -853,6 +853,44 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
     ),
   );
 
+  it.effect(
+    "A Mate whose coding agent runs on a verified environment token counts as signed in",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { socket, auth } = yield* feedRig;
+          const token = { ...CLAUDE, credPresent: false, flagOAuth: false, flagToken: true };
+          // What HQ holds: the full overview, then each identity section sent since.
+          const runsWithoutSignIn = Effect.map(
+            Effect.forEach(socket.sent, (frame) => decodeMateLinkUp(frame)),
+            (frames) =>
+              frames
+                .map((frame) =>
+                  frame.type !== "overview"
+                    ? undefined
+                    : frame.full
+                      ? frame.overview.identity.runsWithoutSignIn
+                      : frame.sections.identity?.runsWithoutSignIn,
+                )
+                .findLast((value) => value !== undefined),
+          );
+          // Set, but its agent's own check has not confirmed it: nothing to count yet.
+          yield* SubscriptionRef.set(auth, {
+            available: true,
+            agents: [{ ...token, providerAuth: "unknown", state: "authorized-token" }],
+          });
+          yield* TestClock.adjust(Duration.seconds(1));
+          assert.strictEqual(yield* runsWithoutSignIn, false);
+          yield* SubscriptionRef.set(auth, {
+            available: true,
+            agents: [{ ...token, state: "authorized-token" }],
+          });
+          yield* TestClock.adjust(Duration.seconds(1));
+          assert.strictEqual(yield* runsWithoutSignIn, true);
+        }),
+      ),
+  );
+
   it.effect("sends an engine Mate's rows as their own section, and a V1 Mate's never", () =>
     Effect.scoped(
       Effect.gen(function* () {
