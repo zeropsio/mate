@@ -811,13 +811,15 @@ export const BackgroundWorkItem = Schema.Struct({
 export type BackgroundWorkItem = typeof BackgroundWorkItem.Type;
 
 /**
- * The background work a conversation's turn left running, as its row names it: the first few,
- * oldest first, and how many run in all. None (`count` 0) while what it started has ended and the
+ * The background work a conversation's turn left running, as its row names it: the first few of
+ * its helpers and of its own jobs, oldest first, and how many run in all. None (`count` 0) while what it started has ended and the
  * agent's own turn on it is due.
  */
 export const BackgroundWork = Schema.Struct({
   items: ForwardCompatibleArray(BackgroundWorkItem),
   count: NonNegativeInt,
+  /** How many of them are its helpers'; the rest are its own jobs. Absent from an older server. */
+  helpers: Schema.optionalKey(NonNegativeInt),
 });
 export type BackgroundWork = typeof BackgroundWork.Type;
 
