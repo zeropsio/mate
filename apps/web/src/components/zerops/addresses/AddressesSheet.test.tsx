@@ -112,8 +112,8 @@ describe("the addresses sheet", () => {
       ["A", "www.blog.com", "93.185.106.128"],
       ["AAAA", "www.blog.com", "2001:db8:4a7:1d::1"],
     ]);
-    expect(text(records)).toContain("Keep both the A and the AAAA");
-    expect(text(records)).toContain("DNS changes usually show within 5–10 minutes");
+    expect(text(records)).toContain("Keep both: the shared IPv4 needs the AAAA.");
+    expect(text(records)).toContain("Changes show within about 10 minutes.");
     // A live domain needs nothing more.
     expect(container.querySelector('[data-addresses-records="rt-shop"]')).toBeNull();
   });
@@ -271,7 +271,7 @@ describe("the addresses sheet", () => {
     const { container } = await mount({ place });
     const ip = text(part(container, "ip"));
     expect(ip).toContain("203.0.113.24");
-    expect(ip).toContain("To stop renewing it, turn it off in Zerops.");
+    expect(ip).toContain("turn it off in Zerops to stop it.");
     expect(container.querySelector('a[href="https://app.zerops.io/project/p1"]')).not.toBeNull();
   });
 
@@ -335,7 +335,7 @@ describe("the addresses sheet", () => {
 
   it("the shared IPv4 is said to be shared across Zerops", async () => {
     const { container } = await mount();
-    expect(text(part(container, "ip"))).toContain("IPv4 · shared across Zerops");
+    expect(text(part(container, "ip"))).toContain("Shared across Zerops");
   });
 
   it("a domain of a routing waits to be removed until the other's removal lands", async () => {
@@ -383,7 +383,7 @@ describe("the addresses sheet", () => {
 
   it("the own IPv4 is not offered again while it is on its way", async () => {
     const enabled = await mount({ ipv4: { state: "known", price: 3, enabled: true } });
-    expect(text(part(enabled.container, "ip"))).toContain("on its way");
+    expect(text(part(enabled.container, "ip"))).toContain("On its way");
     expect(() => button(enabled.container, "Get one")).toThrow();
     await act(async () => root?.unmount());
 

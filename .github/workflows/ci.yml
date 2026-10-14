@@ -20,8 +20,8 @@ env:
 
 concurrency:
   group: ci-${{ github.ref }}
-  # Integration verdicts must finish; diagnostics and PRs keep only their newest run.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
+  # Main verdicts must finish; kh-next, diagnostics and PRs keep only their newest run.
+  cancel-in-progress: ${{ github.ref == 'refs/heads/kh-next' || github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
 
 jobs:
   prepare:
@@ -30,6 +30,7 @@ jobs:
     timeout-minutes: 1
     permissions:
       actions: read
+      contents: read
     outputs:
       skip: ${{ steps.verdict.outputs.skip }}
       jobs: ${{ steps.blame.outputs.jobs }}
@@ -71,7 +72,21 @@ jobs:
               | select(.head_branch == "kh-next")
               | select(.event == "push" and .status == "completed" and .conclusion == "success")
               | .id')
-            if [[ -n "$verified" ]]; then skip=true; fi
+            if [[ -z "$verified" ]]; then
+              # Promotions may change commit metadata without changing a single tree entry.
+              export GITHUB_TREE
+              GITHUB_TREE=$(git rev-parse 'HEAD^{tree}')
+              verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=kh-next&event=push&status=success&per_page=100" --paginate --jq '
+                .workflow_runs[]
+                | select(.head_branch == "kh-next")
+                | select(.event == "push" and .status == "completed" and .conclusion == "success")
+                | select(.head_commit.id == .head_sha and .head_commit.tree_id == env.GITHUB_TREE)
+                | .id')
+            fi
+            if [[ -n "$verified" ]]; then
+              skip=true
+              printf 'Verified kh-next CI run(s): %s\n' "$verified"
+            fi
           fi
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
           echo "Already verified on kh-next: ${skip}"
@@ -219,22 +234,6 @@ jobs:
             !/.repos/
           sparse-checkout-cone-mode: false
 
-      - name: Reject untracked package shells
-        run: |
-          test -z "$(git ls-files packages/ssh packages/tailscale)" &&
-            test ! -d packages/ssh -a ! -d packages/tailscale || {
-            printf '%s\n' 'packages/ssh and packages/tailscale were deleted at the freeze; a directory here means a workspace manifest or script still expects them.'
-            exit 1
-          }
-
-      - name: Reject repository-owned PR assets
-        run: |
-          files="$(git ls-files .github/pr-assets)"
-          if test -n "$files"; then
-            printf 'PR evidence must be uploaded to GitHub, not committed:\n%s\n' "$files" >&2
-            exit 1
-          fi
-
       - name: Restore pnpm metadata
         uses: actions/cache/restore@v4
         with:
@@ -267,6 +266,63 @@ jobs:
           PNPM_CONFIG_TRUST_LOCKFILE: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
         run: *full_dependencies
 
+      - name: Check
+        run: git ls-files -z -- . ':!:apps/desktop/**' ':!:apps/mobile/**' | xargs -0 vp check --no-error-on-unmatched-pattern
+
+  check_guards:
+    name: Check Guards
+    needs: [prepare, changes]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'check_guards') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        env:
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_TRUST_LOCKFILE: "true"
+        run: *full_dependencies
+
+      - name: Reject untracked package shells
+        run: |
+          test -z "$(git ls-files packages/ssh packages/tailscale)" &&
+            test ! -d packages/ssh -a ! -d packages/tailscale || {
+            printf '%s\n' 'packages/ssh and packages/tailscale were deleted at the freeze; a directory here means a workspace manifest or script still expects them.'
+            exit 1
+          }
+
+      - name: Reject repository-owned PR assets
+        run: |
+          files="$(git ls-files .github/pr-assets)"
+          if test -n "$files"; then
+            printf 'PR evidence must be uploaded to GitHub, not committed:\n%s\n' "$files" >&2
+            exit 1
+          fi
+
       - name: Check workflow schema
         working-directory: scripts
         env:
@@ -279,7 +335,6 @@ jobs:
       - name: Check showcase scenes
         run: node scripts/showcase-scenes.ts --check
 
-      # One AST scan reconciles every ledger and checks the identity ratchets.
       - name: Reconcile guard exceptions
         run: node scripts/check-guard-exceptions.ts
 
@@ -298,8 +353,43 @@ jobs:
       - name: Check generated theme tokens
         run: node scripts/generate-theme-tokens.ts --check
 
-      - name: Check
-        run: git ls-files -z -- . ':!:apps/desktop/**' ':!:apps/mobile/**' | xargs -0 vp check --no-error-on-unmatched-pattern
+  check_types:
+    name: Check Types
+    needs: [prepare, changes]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'check_types') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        env:
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_TRUST_LOCKFILE: "true"
+        run: *full_dependencies
 
       - name: Typecheck
         run: vpr typecheck
@@ -307,12 +397,47 @@ jobs:
       - name: Typecheck scenarios
         run: vp exec tsc --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json
 
-      # `t3#build` depends on `@t3tools/web#build`: the production web and server
-      # bundles, built on every run.
+  check_build:
+    name: Check Build
+    needs: [prepare, changes]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'check_build') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        env:
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_TRUST_LOCKFILE: "true"
+        run: *full_dependencies
+
       - name: Build server bundle
         run: vp run --filter t3 build
 
-      # Reuse Check's Ubuntu checkout/install; retain individually named failure steps.
       - name: Setup Rust
         if: needs.changes.outputs.resource_monitor != 'false'
         uses: dtolnay/rust-toolchain@stable
@@ -448,7 +573,7 @@ jobs:
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This SHA passed full CI on kh-next.'
+        run: echo 'This tree passed full CI on kh-next.'
 
       - name: Require every package test job to pass
         if: needs.prepare.outputs.skip != 'true'
@@ -871,22 +996,33 @@ jobs:
             echo "resource_monitor=true" >> "$GITHUB_OUTPUT"
           fi
 
-  # Keep the required Release Smoke context; its commands run in Check's installed workspace.
+  # Keep the required Release Smoke context; its commands run in Check Build's installed workspace.
   release_smoke:
     name: Release Smoke
-    needs: [prepare, check, test_mobile, mobile_native_static_analysis]
+    needs:
+      [
+        prepare,
+        check,
+        check_guards,
+        check_types,
+        check_build,
+        test_mobile,
+        mobile_native_static_analysis,
+      ]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'release_smoke') }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This SHA passed full CI on kh-next.'
+        run: echo 'This tree passed full CI on kh-next.'
 
       - name: Require release smoke to pass
         if: needs.prepare.outputs.skip != 'true'
         run: |
-          test "${{ needs.check.result }}" = success
+          for result in "${{ needs.check.result }}" "${{ needs.check_guards.result }}" "${{ needs.check_types.result }}" "${{ needs.check_build.result }}"; do
+            test "$result" = success || exit 1
+          done
           for result in "${{ needs.test_mobile.result }}" "${{ needs.mobile_native_static_analysis.result }}"; do
             case "$result" in success|skipped) ;; *) exit 1 ;; esac
           done
