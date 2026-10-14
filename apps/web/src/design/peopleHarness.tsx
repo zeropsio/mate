@@ -7,20 +7,18 @@
  * (`?pick`), and the one line a refused member list leaves.
  *
  * Served by the dev server at `/design-people.html` (`?theme=dark`), beside a blank left menu at
- * the owner's 435 px; open it at 1786 × 1000. `?invite=address|name|access` opens the invitation
- * at that step (`&refused` says a refusal in it). Fixtures only: no route imports this module.
+ * the owner's 435 px; open it at 1786 × 1000. Inviting someone new lives on Settings → Team
+ * (`design-team.html?page=invite`). Fixtures only: no route imports this module.
  */
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { ProjectInviteDialog } from "~/components/zerops/projects/ProjectInviteDialog";
 import { draftView } from "~/components/zerops/projects/accessDraft.logic";
 import {
   AddAccessPicker,
   ProjectAccessChips,
 } from "~/components/zerops/projects/ProjectAccessChips";
-import type { InviteStep } from "~/components/zerops/projects/projectInvite.logic";
 import {
   projectPeople,
   type ProjectPeopleInput,
@@ -83,25 +81,6 @@ const input = (members: ProjectPeopleInput["members"]): ProjectPeopleInput => ({
 });
 
 const KNOWN = { known: true, status: "ready", refused: false, list: MEMBERS } as const;
-
-const INVITE = params.get("invite");
-const INVITE_STEP: InviteStep | null =
-  INVITE === "address"
-    ? { step: "address" }
-    : INVITE === "name"
-      ? { step: "name", email: "petra.kralova@example.com" }
-      : INVITE === "access"
-        ? {
-            step: "access",
-            email: "petra.kralova@example.com",
-            invitee: { kind: "existing", userId: "petra" },
-          }
-        : null;
-const ACTIONS = {
-  check: () => new Promise<never>(() => {}),
-  shownHere: () => false,
-  send: () => new Promise<never>(() => {}),
-};
 
 function HarnessPage() {
   return (
@@ -176,20 +155,6 @@ function HarnessPage() {
               )}
             />
           </article>
-          {INVITE_STEP === null ? null : (
-            <ProjectInviteDialog
-              actions={ACTIONS}
-              initial={INVITE_STEP}
-              initialError={
-                params.has("refused")
-                  ? "Already in this organization — change their access in the list."
-                  : null
-              }
-              onOpenChange={() => {}}
-              open
-              projectName="Shop"
-            />
-          )}
         </div>
       </main>
     </div>

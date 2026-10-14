@@ -351,6 +351,21 @@ export const draftGrants = (
     roleCode: roleCode as ProjectAccessRole,
   }));
 
+/** Something with one `@` and a dot after it; Zerops judges the rest. */
+const ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+
+/** What stops an address before Zerops is asked; `null` where nothing does. */
+export function addressProblem(value: string): string | null {
+  const address = value.trim();
+  if (address === "") return "Enter their e-mail address.";
+  return ADDRESS.test(address) ? null : "That isn't an e-mail address.";
+}
+
+/** A new account needs both names: Zerops makes it with them. */
+export function nameProblem(first: string, last: string): string | null {
+  return first.trim() === "" || last.trim() === "" ? "Enter their first and last name." : null;
+}
+
 /** Where an invitation goes once Zerops said who the address is. */
 export type TeamInviteStep =
   /** "Adding <e-mail>": a new account is named first; someone with an account is not. */

@@ -15,11 +15,11 @@ import { useId, useState } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { addressProblem, nameProblem } from "../zerops/projects/projectInvite.logic";
 import { MemberProjectAccess } from "./MemberProjectAccess";
 import { SettingsPageContainer } from "./settingsLayout";
 import { TeamRoleEditor } from "./TeamRoleEditor";
 import {
+  addressProblem,
   draftGrants,
   pickerLevels,
   projectChips,
@@ -28,6 +28,7 @@ import {
   withPicks,
   type AccessDraft,
   type AccessProject,
+  nameProblem,
   type TeamInviteStep,
 } from "./teamMember.logic";
 import { useTeam } from "./useTeam";

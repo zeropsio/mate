@@ -3,9 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   accessProjects,
+  addressProblem,
   advancedChoices,
   draftChanges,
   membershipChanged,
+  nameProblem,
   pickerLevels,
   projectChips,
   roleCards,
@@ -201,6 +203,24 @@ describe("a person's project access, as chips", () => {
 });
 
 describe("an invitation's address, checked", () => {
+  it.each([
+    { value: "eva@example.com", problem: null },
+    { value: "  Eva@Example.com ", problem: null },
+    { value: "", problem: "Enter their e-mail address." },
+    { value: "eva", problem: "That isn't an e-mail address." },
+    { value: "eva@example", problem: "That isn't an e-mail address." },
+  ])("An address is checked before Zerops is asked: $value", ({ value, problem }) => {
+    expect(addressProblem(value)).toBe(problem);
+  });
+
+  it.each([
+    { first: "Eva", last: "Dvořáková", problem: null },
+    { first: " ", last: "Dvořáková", problem: "Enter their first and last name." },
+    { first: "Eva", last: "", problem: "Enter their first and last name." },
+  ])("A new person needs both names: '$first' '$last'", ({ first, last, problem }) => {
+    expect(nameProblem(first, last)).toBe(problem);
+  });
+
   it.each([
     {
       sentence: "An address with no Zerops account is asked for a name",
