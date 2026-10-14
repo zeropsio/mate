@@ -10,6 +10,11 @@ import { useMateReadOnly } from "./useMateReadOnly";
 const facts = vi.hoisted(() => ({
   read: undefined as Known<ZeropsAgentAuthSnapshot> | undefined,
   viewerSubject: undefined as string | undefined,
+  owner: undefined as { readonly userId: string; readonly name: string } | undefined,
+}));
+vi.mock("./useZeropsMateOwners", async (actual) => ({
+  ...(await actual<typeof import("./useZeropsMateOwners")>()),
+  useHqProjectPerson: () => (facts.owner === undefined ? undefined : { owner: facts.owner }),
 }));
 vi.mock("./useZeropsFeeds", () => ({
   useZeropsAgentAuth: () => facts.read,
@@ -28,7 +33,9 @@ const mateReadOnly = (input: {
   snapshot: ZeropsAgentAuthSnapshot | null;
   instanceId: string | undefined;
   viewerSubject: string | undefined;
+  owner?: { readonly userId: string; readonly name: string } | undefined;
 }) => {
+  facts.owner = input.owner;
   facts.read =
     input.snapshot === null
       ? undefined
@@ -97,5 +104,20 @@ describe("mateReadOnly — whether the viewer only reads a Mate's conversation (
     },
   ])("$case: $readOnly", ({ input, readOnly }) => {
     expect(mateReadOnly({ ...base, ...input })).toBe(readOnly);
+  });
+});
+
+// The sidebar quick-send reads this verdict: it must agree with the chat's read-along footer.
+describe("a colleague's Mate is read along from the quick-send as in its chat", () => {
+  const base = {
+    snapshot: snapshot(claude({ authorizedBy: { subject: "ada" } })),
+    instanceId: "claudeAgent",
+    viewerSubject: "ada",
+  } as const;
+  it.each([
+    { case: "HQ records a colleague as its owner", owner: "petra", readOnly: true },
+    { case: "HQ records the viewer as its owner", owner: "ada", readOnly: false },
+  ])("$case: $readOnly", ({ owner, readOnly }) => {
+    expect(mateReadOnly({ ...base, owner: { userId: owner, name: "Petra Malá" } })).toBe(readOnly);
   });
 });
