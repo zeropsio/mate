@@ -11,61 +11,6 @@ const decodeHqFrame = Schema.decodeSync(Schema.fromJsonString(HqStreamMessage));
 
 describe("E: stage, production, release and rollback", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    it.effect(
-      "A Git environment arriving after first paint renders without a project and its mounted removal returns an HQ receipt",
-      () =>
-        Effect.gen(function* () {
-          const f = yield* environmentFixture;
-          const a = environmentActions(f);
-          yield* f.s.given.signedIn;
-          yield* Effect.promise(() => f.s.page.setViewport({ width: 1786, height: 1000 }));
-          yield* f.s.drivers.core
-            .sql`INSERT INTO hq_environment(id,target,app_id,tier,name,sources,branch,delivery,created_by) VALUES ('git-admit','git',${f.appId}::uuid,'stage','git-witness','{main}','staging','direct','owner')`;
-          yield* f.s.drivers.core.call("PATCH", `/api/apps/${f.appId}`, {
-            session: f.s.owner,
-            body: { name: "Shop" },
-          });
-          yield* Effect.promise(() =>
-            f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/git-admit`),
-          );
-          yield* a.then.text(
-            "Nothing pushed yet · pushes on the next merge",
-            '[data-zerops-surface="git-stop-detail"]',
-          );
-          expect(
-            yield* Effect.promise(() =>
-              f.s.page.$eval(
-                '[data-zerops-surface="git-delivery-status"] p',
-                (element) => element.textContent,
-              ),
-            ),
-          ).toBe("Nothing pushed yet · pushes on the next merge");
-          yield* a.when.click("Remove environment");
-          yield* a.then.text("Removing this environment never deletes an external");
-          yield* a.when.click("Confirm removal");
-          yield* Effect.promise(() =>
-            f.s.page.waitForFunction(() => !document.body.innerText.includes("Confirm removal"), {
-              timeout: 15_000,
-              polling: "raf",
-            }),
-          );
-          const accepted = yield* f.s.drivers.core.sql<{
-            readonly receipt: {
-              readonly executor: string;
-              readonly requestId: string;
-              readonly acceptance: { readonly kind: string };
-            };
-          }>`SELECT receipt FROM hq_git_target_receipt WHERE intent->>'kind'='remove-git-environment' AND app_id=${f.appId}::uuid`;
-          expect(accepted).toHaveLength(1);
-          expect(accepted[0]!.receipt.executor).toBe("hq");
-          expect(accepted[0]!.receipt.requestId).not.toBe("");
-          expect(accepted[0]!.receipt.acceptance.kind).toBe("accepted");
-          expect(
-            yield* f.s.drivers.core.sql`SELECT 1 FROM hq_environment WHERE id='git-admit'`,
-          ).toHaveLength(0);
-          yield* f.s.then.noExternalNetwork;
-        }),
-    );
     // Production is releasable from navigation even if stage is absent, still building or failed.
     it.effect.each(["absent", "building", "failed"] as const)(
       "navigation reaches a production release while stage is %s",

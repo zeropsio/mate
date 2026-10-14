@@ -1,13 +1,8 @@
-import * as Stream from "effect/Stream";
-import * as SubscriptionRef from "effect/SubscriptionRef";
-import type { HqGitTargetIntent, HqGitOperationReceipt } from "@t3tools/shared/hqGitTargets";
-import type { HqRepoRemote, HqRemoteProbe } from "@t3tools/shared/hqChanges";
-import { keepGitReceipt, readGitReceipt, GitRequestRefused } from "./gitTargetReceipts.ts";
 /** The only owner of a repository's verified connection and sealed credential custody. */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Redacted from "effect/Redacted";
+import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
@@ -46,18 +41,6 @@ export interface RemoteRecord extends RemoteRef {
   readonly expiryLabel: string;
   readonly credentialState: "kept" | "missing" | "invalid";
 }
-/** Stored custody has one wire projection; neither seal nor token is included. */
-export const remoteForWire = (row: RemoteRecord): HqRepoRemote | null =>
-  row.keptAt === null || row.keptBy === null
-    ? null
-    : {
-        url: row.url,
-        repositoryId: row.hostRepoId,
-        expiresAt: row.expiresAt,
-        invalidSince: row.invalidSince,
-        keptAt: row.keptAt.replace(" ", "T").replace(/\+00$/, "Z"),
-        keptBy: row.keptBy,
-      };
 export class RemoteRefused extends Schema.TaggedError<RemoteRefused>()("RemoteRefused", {
   url: Schema.optionalKey(Schema.String),
   hostRepoId: Schema.optionalKey(Schema.String),
@@ -119,23 +102,9 @@ export class RemoteRefused extends Schema.TaggedError<RemoteRefused>()("RemoteRe
   }
 }
 export type RemoteError = RemoteRefused | ProbeRefused | SqlError | NotLeader;
-export type RemoteRequestError = RemoteError | GitRequestRefused;
-export type RemoteIntent = Extract<HqGitTargetIntent, { readonly repo: string }>;
 export class Remotes extends Context.Service<
   Remotes,
   {
-    readonly changes: Stream.Stream<number>;
-    readonly write: (
-      userId: string,
-      requestId: string,
-      intent: RemoteIntent,
-      candidate?: Redacted.Redacted,
-    ) => Effect.Effect<HqGitOperationReceipt, RemoteRequestError>;
-    readonly receipt: (
-      userId: string,
-      requestId: string,
-      intent: HqGitTargetIntent,
-    ) => Effect.Effect<HqGitOperationReceipt | null, RemoteRequestError>;
     /** Internal readers still apply their own application read gate before presenting these facts. */
     readonly get: (ref: RemoteRef) => Effect.Effect<RemoteRecord | undefined, SqlError>;
     readonly connect: (
@@ -214,7 +183,6 @@ export const repoRemotesLayer = Layer.effect(
   Remotes,
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const ticks = yield* SubscriptionRef.make(0);
     const keys = yield* DeployKeys;
     const leader = yield* Leader;
     const roles = yield* Roles;
@@ -328,90 +296,7 @@ export const repoRemotesLayer = Layer.effect(
           }),
         );
     });
-    const safeProbe = (row: RemoteRecord): HqRemoteProbe => ({
-      ok: true,
-      remote: remoteForWire(row)!,
-    });
-    const remotes: Remotes["Service"] = Remotes.of({
-      changes: SubscriptionRef.changes(ticks),
-      receipt: (userId, requestId, intent) =>
-        decidedFresh(
-          Effect.gen(function* () {
-            yield* authorize(userId);
-            return yield* readGitReceipt(sql, userId, requestId, intent);
-          }),
-        ),
-      write: (userId, requestId, intent, candidate) =>
-        decidedFresh(
-          Effect.gen(function* () {
-            yield* authorize(userId);
-            const view = yield* fresh;
-            if (intent.orgId !== view.orgId)
-              return yield* new RemoteRefused({ reason: "not_structure_writer" });
-            const receipt = yield* keepGitReceipt(
-              sql,
-              leader,
-              userId,
-              requestId,
-              intent,
-              Effect.gen(function* () {
-                const ref = { appId: intent.appId, repo: intent.repo };
-                const branch = "branch" in intent ? (intent.branch ?? "main") : "main";
-                if (intent.kind === "disconnect-git-remote") {
-                  yield* remotes.disconnect(userId, ref);
-                  return undefined;
-                }
-                const old = yield* lookup(ref);
-                if (intent.kind === "update-git-remote-address") {
-                  if (!old) return yield* new RemoteRefused({ reason: "no_remote" });
-                  yield* custody(ref, old);
-                  const token =
-                    old.sealed !== null && old.key_id !== null
-                      ? keys.openRemote(ref.appId, ref.repo, {
-                          sealed: old.sealed,
-                          keyId: old.key_id,
-                        })
-                      : undefined;
-                  if (!token) return yield* new RemoteRefused({ reason: "key_unavailable" });
-                  yield* remotes.updateAddress(userId, { ...ref, url: intent.url, branch, token });
-                  return undefined;
-                }
-                if (intent.kind === "run-git-again")
-                  return yield* new RemoteRefused({ reason: "not_repo" });
-                if (!candidate) return yield* new RemoteRefused({ reason: "credential_invalid" });
-                const url = intent.kind === "replace-git-remote-token" ? old?.url : intent.url;
-                if (!url) return yield* new RemoteRefused({ reason: "no_remote" });
-                if (intent.kind === "probe-git-remote") {
-                  const remote = remoteIdentity(url);
-                  if (!remote) return yield* new RemoteRefused({ reason: "bad_address" });
-                  if (!branchValid(branch))
-                    return yield* new RemoteRefused({ reason: "bad_branch" });
-                  yield* lockRepo(ref);
-                  const checked = yield* probes.verify(remote, candidate, branch);
-                  yield* authorize(userId);
-                  return {
-                    ok: true,
-                    remote: {
-                      url: checked.remote.url,
-                      repositoryId: checked.hostRepoId,
-                      expiresAt: checked.expiresAt,
-                      invalidSince: null,
-                    },
-                  } satisfies HqRemoteProbe;
-                }
-                const saved = yield* remotes.connect(userId, {
-                  ...ref,
-                  url,
-                  branch,
-                  token: candidate,
-                });
-                return { probe: safeProbe(saved) };
-              }),
-            );
-            yield* SubscriptionRef.update(ticks, (n) => n + 1);
-            return receipt;
-          }),
-        ),
+    return Remotes.of({
       get: (ref) => Effect.map(lookup(ref), (row) => (row === undefined ? undefined : record(row))),
       connect: (userId, input) => keep(userId, input, false),
       updateAddress: (userId, input) => keep(userId, input, true),
@@ -481,6 +366,5 @@ export const repoRemotesLayer = Layer.effect(
         );
       }),
     });
-    return remotes;
   }),
 );

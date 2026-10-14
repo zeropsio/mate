@@ -42,7 +42,6 @@ export interface GitEnvironmentSetup {
     url: string,
     token: string,
     replace: boolean,
-    branch?: string,
   ) => Promise<import("@t3tools/shared/hqChanges").HqRemoteProbe>;
   readonly preview: (
     branch: string,
@@ -63,24 +62,13 @@ export function gitEnvironmentSetup(input: {
 }): GitEnvironmentSetup {
   const { operations, ...scope } = input;
   return {
-    connect: (repo, url, token, replace, branch) => {
+    connect: (repo, url, token, replace) => {
       if (operations.runGitCandidate === undefined)
         return Promise.reject(new Error("Update the client to connect a Git remote."));
       return operations.runGitCandidate(
         replace
-          ? {
-              kind: "replace-git-remote-token",
-              ...scope,
-              repo,
-              ...(branch === undefined ? {} : { branch }),
-            }
-          : {
-              kind: "connect-git-remote",
-              ...scope,
-              repo,
-              url,
-              ...(branch === undefined ? {} : { branch }),
-            },
+          ? { kind: "replace-git-remote-token", ...scope, repo }
+          : { kind: "connect-git-remote", ...scope, repo, url },
         token,
       );
     },

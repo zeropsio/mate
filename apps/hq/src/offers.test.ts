@@ -399,23 +399,3 @@ it("the Git release offer consumes the target-dispatched server authority verdic
     reason: "not_releaser",
   });
 });
-
-it.each(["owner", "admin", "dev", "reader"])(
-  "Git optional offers and fresh gates share one authority for %s",
-  (userId) => {
-    const offers = appOffers(userId, APP, { ...ORG, freshness: "cached" }, slotsOf(APP));
-    for (const verb of [
-      "connect_remote",
-      "replace_remote_token",
-      "update_remote_address",
-      "disconnect_remote",
-      "add_git_environment",
-      "remove_git_environment",
-    ] as const) {
-      expect(offers[verb]).toEqual(
-        can({ kind: "person", userId }, verb, appTarget(APP), { ...ORG, freshness: "fresh" }),
-      );
-      expect(offers[verb].allow).toBe(userId === "owner" || userId === "admin");
-    }
-  },
-);

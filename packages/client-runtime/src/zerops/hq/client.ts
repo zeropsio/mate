@@ -1,4 +1,3 @@
-import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
@@ -257,15 +256,6 @@ export interface Asked<T> {
 }
 
 export interface HqApi {
-  readonly gitTargetWrite: (
-    requestId: string,
-    intent: HqGitTargetIntent,
-    candidate?: string,
-  ) => Promise<HqGitOperationReceipt>;
-  readonly gitTargetReceipt: (
-    requestId: string,
-    intent: HqGitTargetIntent,
-  ) => Promise<HqGitOperationReceipt | null>;
   /** The reader's Chief recorded for `projectId` (`chief.ts`): its credential is handed once. */
   readonly setChief: HqChiefCalls["setChief"];
   /** Every decision HQ holds of the proposals named (`chief.ts`). */
@@ -1084,26 +1074,6 @@ export function makeHqApi(input: {
         throw cause;
       }
     },
-    gitTargetWrite: async (requestId, intent, candidate) =>
-      decoded(HqGitOperationReceipt)(
-        await authorized(
-          `/api/git-targets/${encodeURIComponent(requestId)}`,
-          {
-            method: "POST",
-            body: JSON.stringify({ intent, ...(candidate === undefined ? {} : { candidate }) }),
-          },
-          true,
-        ),
-      ),
-    gitTargetReceipt: async (requestId, intent) =>
-      (
-        await decoded(Schema.Struct({ receipt: Schema.NullOr(HqGitOperationReceipt) }))(
-          await authorized(`/api/git-targets/${encodeURIComponent(requestId)}/receipt`, {
-            method: "POST",
-            body: JSON.stringify({ intent }),
-          }),
-        )
-      ).receipt,
     lifecycleWrite: async (requestId, intent) =>
       decoded(HqLifecycleRecord)(
         await authorized(

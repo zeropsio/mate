@@ -185,13 +185,7 @@ export function GitEnvironmentForm({
                 connectOffered={repo.remote == null ? offered.connect : offered.replace}
                 onConnect={(url, token) => {
                   void act(`connect:${repo.name}`, async () => {
-                    const connecting = setup.connect(
-                      repo.name,
-                      url,
-                      token,
-                      repo.remote != null,
-                      branch,
-                    );
+                    const connecting = setup.connect(repo.name, url, token, repo.remote != null);
                     token = "";
                     const result = await connecting;
                     if (!mounted.current) return;

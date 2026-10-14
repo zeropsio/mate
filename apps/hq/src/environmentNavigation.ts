@@ -1,10 +1,3 @@
-import {
-  HqNavigationJob,
-  HqPushNavigationJob,
-  type HqDeliveryNavigationJob,
-} from "@t3tools/shared/hqStream";
-import { pushEvidenceForWire, type PushEvidence } from "./gitPush.ts";
-
 /** Environment navigation facts, computed once and filtered only when delivered. */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -12,19 +5,12 @@ import type * as SqlClient from "effect/sql/SqlClient";
 import type { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { environmentBirths } from "./births.ts";
-import {
-  environmentOffers,
-  gitEnvironmentOffers,
-  environmentSlots,
-  type EnvironmentSlots,
-} from "./offers.ts";
+import { environmentOffers, environmentSlots, type EnvironmentSlots } from "./offers.ts";
 import type { OrgView } from "./roles.ts";
 import type { EnvironmentView, JobView, StructureRead } from "./structure.ts";
 
 /** How many of an environment's newest jobs its view carries. */
 export const JOBS_SHOWN = 20;
-const decodePushJob = Schema.decodeUnknownSync(HqPushNavigationJob);
-const decodeDeployJob = Schema.decodeUnknownSync(HqNavigationJob);
 export interface EnvironmentSource {
   readonly slotsForApp: (appId: string) => EnvironmentSlots;
   readonly fingerprints: ReadonlyMap<string, string>;
@@ -39,10 +25,8 @@ const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 export const readEnvironmentSource = Effect.fnUntraced(function* (sql: SqlClient.SqlClient) {
   const environments = yield* sql<{
     readonly environment_id: string;
-    readonly project_id: string | null;
-    readonly target: "zerops" | "git";
-    readonly branch: string | null;
-    readonly delivery: "direct" | null;
+    readonly project_id: string;
+    readonly target: "zerops";
     readonly app_id: string;
     readonly tier: "stage" | "production";
     readonly name: string;
@@ -50,13 +34,11 @@ export const readEnvironmentSource = Effect.fnUntraced(function* (sql: SqlClient
     readonly order: number;
     readonly key_held: boolean;
     readonly key_invalid: boolean;
-    readonly project_ids: ReadonlyArray<string>;
   }>`
-SELECT e.id AS environment_id, e.project_id, e.target, e.branch, e.delivery, e.app_id::text AS app_id, e.tier, e.name, e.sources,
+SELECT e.id AS environment_id, e.project_id, e.target, e.app_id::text AS app_id, e.tier, e.name, e.sources,
        (rank() OVER (PARTITION BY e.app_id ORDER BY e.declared_seq))::int AS "order",
        t.project_id IS NOT NULL AS key_held,
-       t.invalid_since IS NOT NULL AS key_invalid,
-       ARRAY(SELECT p.project_id FROM hq_app_project p WHERE p.app_id=e.app_id) AS project_ids
+       t.invalid_since IS NOT NULL AS key_invalid
 FROM hq_environment e LEFT JOIN hq_deploy_token t USING (project_id)
 ORDER BY e.declared_seq`;
   const iso = (column: string) =>
@@ -64,17 +46,17 @@ ORDER BY e.declared_seq`;
   const jobs = yield* sql<{
     readonly environment_id: string;
     readonly id: string;
-    readonly kind: HqDeliveryNavigationJob["kind"];
+    readonly kind: JobView["kind"];
     readonly service: string | null;
     readonly sha: string | null;
-    readonly state: HqDeliveryNavigationJob["state"];
+    readonly state: JobView["state"];
     readonly cause: JobView["cause"];
     readonly ref: string | null;
     readonly reason: string | null;
     readonly app_version_id: string | null;
     readonly process_id: string | null;
-    readonly evidence: HqDeployEvidence | PushEvidence | null;
-    readonly steps: ReadonlyArray<HqDeployEvidence | PushEvidence>;
+    readonly evidence: HqDeployEvidence | null;
+    readonly steps: ReadonlyArray<unknown>;
     readonly verified_version_id: string | null;
     readonly requested_by: string | null;
     readonly at: string;
@@ -85,12 +67,12 @@ WITH ranked AS (
   SELECT j.*,
          row_number() OVER (PARTITION BY j.environment_id ORDER BY j.id DESC) AS place,
          row_number() OVER (
-           PARTITION BY j.environment_id, COALESCE(j.service,j.repo), j.state IN ('live','pushed')
+           PARTITION BY j.environment_id, j.service, j.state = 'live'
            ORDER BY j.ended_at DESC NULLS LAST, j.id DESC
          ) AS live_place
   FROM hq_deploy_job j
 )
-SELECT j.environment_id, j.id::text AS id, j.kind, CASE j.kind WHEN 'push' THEN j.repo ELSE j.service END AS service, j.sha, j.state, r.cause,
+SELECT j.environment_id, j.id::text AS id, j.kind, j.service, j.sha, j.state, r.cause,
        CASE r.cause WHEN 'merge' THEN r.sha WHEN 'release' THEN r.tag END AS ref,
        j.reason,
        j.app_version_id, j.process_id, j.evidence, j.steps, j.verified_version_id, j.requested_by,
@@ -99,7 +81,7 @@ SELECT j.environment_id, j.id::text AS id, j.kind, CASE j.kind WHEN 'push' THEN 
        j.superseded_by::text AS superseded_by
 FROM ranked j JOIN hq_rollout r ON r.id = j.rollout_id
 WHERE j.place <= ${JOBS_SHOWN}
-   OR (j.kind IN ('deploy','push') AND j.state IN ('live','pushed') AND j.live_place = 1)
+   OR (j.kind = 'deploy' AND j.state = 'live' AND j.live_place = 1)
 ORDER BY j.environment_id, j.id DESC`;
   // Each production's newest release, as its rollout stands there: ended once every job
   // it asked for there ended, and every job of a commit it left out as under way there.
@@ -153,12 +135,12 @@ standing AS (
          r.id IS NULL OR (r.planned_at IS NOT NULL AND NOT EXISTS (
            SELECT 1 FROM ends x
            WHERE x.rollout_id = r.id AND x.environment_id = e.id
-             AND (x.ended_at IS NULL OR x.state='unresolved'))) AS ended,
+             AND x.ended_at IS NULL)) AS ended,
          r.id IS NOT NULL AND r.planned_at IS NOT NULL AND r.note IS NULL
            AND NOT EXISTS (
              SELECT 1 FROM ends x
              WHERE x.rollout_id = r.id AND x.environment_id = e.id
-               AND x.state NOT IN ('live','pushed')) AS landed,
+               AND x.state <> 'live') AS landed,
          (SELECT max(x.ended_at) FROM ends x
           WHERE x.rollout_id = r.id AND x.environment_id = e.id) AS last_ended
   FROM newest n
@@ -197,21 +179,19 @@ FROM standing s`;
   const born = yield* environmentBirths(sql);
   const birthOf = (environmentId: string): EnvironmentBirth | null =>
     born.get(environmentId) ?? null;
-  const environmentView = (row: (typeof environments)[number]): EnvironmentView => {
-    const common = {
-      id: row.environment_id,
-      tier: row.tier,
-      name: row.name,
-      sources: row.sources,
-      order: row.order,
-      keyHeld: row.key_held,
-      keyInvalid: row.key_invalid,
-      release: releaseOf(row.environment_id),
-      birth: birthOf(row.environment_id),
-    };
-    const values = jobs
+  const environmentView = (row: (typeof environments)[number]): EnvironmentView => ({
+    id: row.environment_id,
+    target: { kind: row.target, projectId: row.project_id },
+    projectId: row.project_id,
+    tier: row.tier,
+    name: row.name,
+    sources: row.sources,
+    order: row.order,
+    keyHeld: row.key_held,
+    keyInvalid: row.key_invalid,
+    jobs: jobs
       .filter((job) => job.environment_id === row.environment_id)
-      .map((job) => ({
+      .map((job): JobView => ({
         id: job.id,
         kind: job.kind,
         service: job.service,
@@ -222,34 +202,17 @@ FROM standing s`;
         reason: job.reason,
         appVersionId: job.app_version_id,
         processId: job.process_id,
-        evidence:
-          job.kind === "push" && job.evidence !== null && "remote" in job.evidence
-            ? pushEvidenceForWire(job.evidence)
-            : job.evidence,
-        steps:
-          job.kind === "push"
-            ? job.steps.map((step) => ("remote" in step ? pushEvidenceForWire(step) : step))
-            : job.steps,
+        evidence: job.evidence,
+        steps: job.steps,
         verifiedVersionId: job.verified_version_id,
         requestedBy: job.requested_by,
         at: job.at,
         endedAt: job.ended_at,
         supersededBy: job.superseded_by,
-      }));
-    if (row.target === "git" && row.branch !== null && row.delivery === "direct")
-      return {
-        ...common,
-        target: { kind: "git", branch: row.branch, delivery: row.delivery },
-        jobs: values.map((job) => decodePushJob(job)),
-      };
-    if (row.project_id === null) throw new Error("Zerops environment requires its project");
-    return {
-      ...common,
-      projectId: row.project_id,
-      target: { kind: "zerops", projectId: row.project_id },
-      jobs: values.map((job) => decodeDeployJob(job)),
-    };
-  };
+      })),
+    release: releaseOf(row.environment_id),
+    birth: birthOf(row.environment_id),
+  });
   const groups = new Map<string, Array<EnvironmentView>>();
   for (const row of environments) {
     const values = groups.get(row.app_id) ?? [];
@@ -263,16 +226,7 @@ FROM standing s`;
       access.allow
         ? (groups.get(appId) ?? []).map((value) => ({
             ...value,
-            can:
-              value.target.kind === "git"
-                ? gitEnvironmentOffers(
-                    userId,
-                    (
-                      environments.find((row) => row.environment_id === value.id)?.project_ids ?? []
-                    ).map((project_id) => ({ project_id, kind: "" })),
-                    facts,
-                  )
-                : environmentOffers(userId, value.target.projectId, facts),
+            can: environmentOffers(userId, value.projectId, facts),
           }))
         : { refused: access.reason },
   } satisfies EnvironmentSource;

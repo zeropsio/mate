@@ -310,26 +310,8 @@ describe("structure", () => {
           assert.deepStrictEqual(yield* sql`SELECT id,project_id FROM hq_environment`, [
             { id: "git-production", project_id: null },
           ]);
-          const pushedEvidence = {
-            remote: "https://github.com/krls2020/tst123",
-            repositoryId: "123",
-            identity: "github",
-            ref: "refs/heads/main",
-            sha: "a".repeat(40),
-            keptAt: "2026-10-14T00:00:00Z",
-            phase: "closed",
-            before: null,
-            writerDrained: true,
-            after: "a".repeat(40),
-            via: "answer",
-            at: "2026-10-14T00:00:00Z",
-            version: null,
-            processes: [],
-            nextActor: "none",
-            nextAction: "",
-          };
-          yield* sql`INSERT INTO hq_deploy_job(rollout_id,environment_id,kind,repo,sha,state,ended_at,ord,evidence)
-          SELECT id,'git-production','push','web',${"a".repeat(40)},'pushed',now(),0,${JSON.stringify(pushedEvidence)}::jsonb FROM hq_rollout WHERE environment_id='git-production'`;
+          yield* sql`INSERT INTO hq_deploy_job(rollout_id,environment_id,kind,repo,sha,state,ended_at,ord)
+          SELECT id,'git-production','push','web',${"a".repeat(40)},'pushed',now(),0 FROM hq_rollout WHERE environment_id='git-production'`;
           yield* sql`UPDATE hq_rollout SET left_out='[{"environment_id":"git-production","repo":"web"},{"project_id":"legacy","environment_id":"old"}]'::jsonb WHERE environment_id='git-production'`;
           assert.strictEqual(
             yield* reconcileEnvironmentIdentity.pipe(

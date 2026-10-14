@@ -1,5 +1,3 @@
-import { Checkbox } from "~/components/ui/checkbox";
-import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import {
   flowReleaseOf,
   type GitDelivery,
@@ -29,7 +27,6 @@ export function GitStopDetailPage({
   readonly environment: GitEnvironment;
   readonly live: boolean;
 }) {
-  const operations = useGitTargetOperations(appId);
   const detail = useHqAppDetail(appId);
   const { flows } = useCompactProjectFlows(useMemo(() => [appId], [appId]));
   const delivery = flows.get(appId)?.environments.find((row) => row.id === environment.id)?.git;
@@ -39,19 +36,7 @@ export function GitStopDetailPage({
       delivery={delivery}
       repos={detail.repos}
       releases={detail.releases}
-      can={environment.can}
-      onRemove={
-        operations.actions === undefined
-          ? undefined
-          : (loseUnresolvedHistory) =>
-              operations.actions!.removeEnvironment(environment.id, loseUnresolvedHistory)
-      }
-      onRunAgain={
-        operations.actions === undefined
-          ? undefined
-          : (repo) => operations.actions!.runAgain(environment.id, repo)
-      }
-      live={live && detail.live && operations.live}
+      live={live && detail.live}
     />
   );
 }
@@ -62,7 +47,6 @@ export function GitStopDetail({
   releases,
   can = environment.can,
   onRemove,
-  onRunAgain,
   live = true,
 }: {
   readonly environment: GitEnvironment;
@@ -70,13 +54,9 @@ export function GitStopDetail({
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
   readonly releases?: ReadonlyArray<Release> | undefined;
   readonly can?: HqOffers | undefined;
-  readonly onRemove?: ((loseUnresolvedHistory?: true) => Promise<void>) | undefined;
-  readonly onRunAgain?: ((repo: string) => Promise<void>) | undefined;
+  readonly onRemove?: (() => Promise<void>) | undefined;
   readonly live?: boolean;
 }) {
-  const [historyLoss, setHistoryLoss] = useState(false);
-  const [notice, setNotice] = useState<string>();
-  const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState(false);
   const remove =
     onRemove !== undefined &&
@@ -88,33 +68,6 @@ export function GitStopDetail({
       {environment.target.kind !== "git" || environment.target.delivery === "direct" ? null : (
         <p className="rv-note">Pull-request delivery is not available here yet.</p>
       )}
-      {notice === undefined ? null : <p className="rv-note">{notice}</p>}
-      {onRunAgain !== undefined &&
-      hqOffer(can, "redeploy", { current: live, unavailableSince: live ? null : 0 }).kind ===
-        "allowed"
-        ? delivery?.repositories.map((repo) => (
-            <Button
-              key={repo.repo}
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await onRunAgain(repo.repo);
-                } catch {
-                  setNotice(
-                    "HQ couldn't confirm Run again. Check its outcome before trying again.",
-                  );
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Run {repo.repo} again
-            </Button>
-          ))
-        : null}
       <h2 className="mt-6 text-sm font-medium">History</h2>
       {releases === undefined ? (
         <p className="rv-note">Reading release history…</p>
@@ -149,31 +102,11 @@ export function GitStopDetail({
               {repo.repo}: {repo.confirmed?.ref ?? "External leftovers could not be confirmed"}
             </p>
           ))}
-          {delivery?.standing === "unresolved" ? (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                aria-label="Confirm unresolved history loss"
-                checked={historyLoss}
-                onCheckedChange={(checked) => setHistoryLoss(checked === true)}
-              />{" "}
-              <span className="rv-note">
-                I understand that the unresolved push history will be lost.
-              </span>
-            </div>
-          ) : null}
           <Button
             size="sm"
-            disabled={busy || (delivery?.standing === "unresolved" && !historyLoss)}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await onRemove?.(historyLoss ? true : undefined);
-                setRemoving(false);
-              } catch {
-                setNotice("HQ couldn't confirm removal. Check its outcome before trying again.");
-              } finally {
-                setBusy(false);
-              }
+            onClick={() => {
+              setRemoving(false);
+              void onRemove?.();
             }}
           >
             Confirm removal

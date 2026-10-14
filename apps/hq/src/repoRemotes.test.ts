@@ -221,48 +221,6 @@ const fixture = Effect.gen(function* () {
 
 describe("repository credential custody", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    it.effect(
-      "Candidate verification leaves custody empty and recovers only the original request without its token",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { remotes, sql, state } = yield* fixture;
-            const intent = {
-              kind: "probe-git-remote",
-              orgId: "org",
-              hqProjectId: "HQ",
-              ...REF,
-              url: input.url,
-              branch: "main",
-            } as const;
-            const receipt = yield* remotes.write("custodian", "candidate-request", intent, token);
-            assert.strictEqual(receipt.acceptance.kind, "accepted");
-            assert.strictEqual(JSON.stringify(receipt).includes("repository-test-secret"), false);
-            assert.strictEqual((yield* sql`SELECT 1 FROM hq_repo_remote`).length, 0);
-            const calls = state.seen.length;
-            assert.deepStrictEqual(
-              yield* remotes.receipt("custodian", "candidate-request", intent),
-              receipt,
-            );
-            assert.deepStrictEqual(
-              yield* remotes.write("custodian", "candidate-request", intent, token),
-              receipt,
-            );
-            assert.strictEqual(state.seen.length, calls);
-            const persisted = yield* sql`SELECT intent,receipt FROM hq_git_target_receipt`;
-            assert.strictEqual(JSON.stringify(persisted).includes("repository-test-secret"), false);
-            state.members = [member("custodian", "READ_ONLY")];
-            assert.strictEqual(
-              yield* Effect.match(remotes.write("custodian", "new-request", intent, token), {
-                onSuccess: () => "accepted",
-                onFailure: (error) => error._tag,
-              }),
-              "RemoteRefused",
-            );
-          }),
-        ),
-    );
-
     it.effect("A remote belongs to one application.", () =>
       Effect.scoped(
         Effect.gen(function* () {

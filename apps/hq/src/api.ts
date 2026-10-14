@@ -1,9 +1,3 @@
-import { HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
-import { gitTargetWrite, gitTargetReceipt } from "./gitTargetsApi.ts";
-import { RemoteRefused } from "./repoRemotes.ts";
-import { ProbeRefused } from "./githubProbes.ts";
-import { GitEnvironmentRefused } from "./gitEnvironments.ts";
-import { GitRequestRefused } from "./gitTargetReceipts.ts";
 import { Chiefs } from "./chief.ts";
 import { HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { Observation } from "./observation.ts";
@@ -301,10 +295,6 @@ const isChangeRefused = Schema.is(ChangeRefused);
 const isMateRefused = Schema.is(MateRefused);
 const isChiefRefused = Schema.is(ChiefRefused);
 const isGitError = Schema.is(GitError);
-const isRemoteRefused = Schema.is(RemoteRefused);
-const isProbeRefused = Schema.is(ProbeRefused);
-const isGitEnvironmentRefused = Schema.is(GitEnvironmentRefused);
-const isGitRequestRefused = Schema.is(GitRequestRefused);
 
 /**
  * A JSON body of at most `limit` bytes. A declared `Content-Length` above it is refused before a
@@ -326,44 +316,6 @@ export const jsonBody = <A, RD>(schema: Schema.Codec<A, unknown, RD>, limit: num
 export const failure = (error: {
   readonly _tag: string;
 }): Effect.Effect<HttpServerResponse.HttpServerResponse> => {
-  if (isRemoteRefused(error))
-    return Effect.succeed(
-      json(
-        {
-          code: "remote_refused",
-          reason: error.reason,
-          ...(error.url === undefined ? {} : { url: error.url }),
-          ...(error.environments === undefined ? {} : { environments: error.environments }),
-        },
-        error.reason === "not_structure_writer"
-          ? 403
-          : error.reason === "bad_address" || error.reason === "bad_branch"
-            ? 400
-            : 409,
-      ),
-    );
-  if (isProbeRefused(error))
-    return Effect.succeed(
-      json(
-        {
-          code: "git_probe_refused",
-          reason: error.reason,
-          tokenState: error.tokenState,
-          ...(error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }),
-          ...(error.resetAt === undefined ? {} : { resetAt: error.resetAt }),
-        },
-        error.reason === "rate_limited" ? 429 : 409,
-      ),
-    );
-  if (isGitEnvironmentRefused(error))
-    return Effect.succeed(
-      json(
-        { code: error.reason === "forbidden" ? "forbidden" : "conflict", reason: error.reason },
-        error.reason === "forbidden" ? 403 : 409,
-      ),
-    );
-  if (isGitRequestRefused(error))
-    return Effect.succeed(json({ code: "conflict", reason: error.reason }, 409));
   if (isReleaseRefused(error)) {
     return Effect.succeed(
       json({ code: error.code, reason: error.reason }, RELEASE_STATUS[error.code]),
@@ -684,7 +636,6 @@ const serveGit = Effect.gen(function* () {
 const routes = (
   options: StreamOptions & {
     readonly link?: LinkOptions;
-    readonly hqProjectId?: string;
   },
 ) =>
   Layer.mergeAll(
@@ -710,53 +661,6 @@ const routes = (
               json(policy, 200),
             ),
           );
-        }),
-      ),
-    ),
-    HttpRouter.add(
-      "POST",
-      "/api/git-targets/:requestId",
-      handle(
-        Effect.gen(function* () {
-          const own = yield* principal;
-          const { intent, candidate } = yield* jsonBody(
-            Schema.Struct({
-              intent: HqGitTargetIntent,
-              candidate: Schema.optionalKey(Schema.String),
-            }),
-            BODY_LIMIT,
-          );
-          if (intent.orgId !== own.orgId || intent.hqProjectId !== options.hqProjectId)
-            return json({ code: "forbidden", reason: "not_this_hq" }, 403);
-          const requestId = (yield* HttpRouter.params)["requestId"] ?? "";
-          return yield* outliving(
-            Effect.map(
-              gitTargetWrite(
-                own.userId,
-                requestId,
-                intent,
-                candidate === undefined ? undefined : Redacted.make(candidate),
-              ),
-              (receipt) => json(receipt, 200),
-            ),
-          );
-        }),
-      ),
-    ),
-    HttpRouter.add(
-      "POST",
-      "/api/git-targets/:requestId/receipt",
-      handle(
-        Effect.gen(function* () {
-          const own = yield* principal;
-          const { intent } = yield* jsonBody(
-            Schema.Struct({ intent: HqGitTargetIntent }),
-            BODY_LIMIT,
-          );
-          if (intent.orgId !== own.orgId || intent.hqProjectId !== options.hqProjectId)
-            return json({ code: "forbidden", reason: "not_this_hq" }, 403);
-          const requestId = (yield* HttpRouter.params)["requestId"] ?? "";
-          return json({ receipt: yield* gitTargetReceipt(own.userId, requestId, intent) }, 200);
         }),
       ),
     ),
@@ -1760,7 +1664,6 @@ const routes = (
 export const apiRoutes = (
   options: StreamOptions & {
     readonly link?: LinkOptions;
-    readonly hqProjectId?: string;
   },
 ) => Layer.mergeAll(routes(options), corsRoutes);
 
