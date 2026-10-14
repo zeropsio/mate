@@ -12,7 +12,8 @@
  * - **the latest envelope**, from every tool that carries one — through either
  *   carrier, the trailing fenced block on a prose result or the top-level
  *   `envelope` key on a JSON one (zcp `docs/spec-mate.md` §1). Latest wins; a
- *   result with no readable envelope leaves the previous one alone.
+ *   result with no readable envelope leaves the previous one alone, and a
+ *   snapshot without `devServers` keeps the last read of that service (§2.8a.3).
  * - **the recent `zerops_*` tool calls**, from ALL of them, carrier or not.
  *   The envelope says where the agent IS; it cannot say what is happening right
  *   now. A tool that has started and not finished has no result to carry an
@@ -101,6 +102,32 @@ const withRecentTool = (
       ? [...recentTools, entry]
       : recentTools.map((tool, position) => (position === index ? entry : tool));
   return next.slice(-ZEROPS_RECENT_TOOLS_LIMIT);
+};
+
+/**
+ * The newest envelope, with each service's last dev-server read carried over
+ * where this call did not read the supervisor: absent `devServers` means "not
+ * read in this call", never "none running" (zcp `docs/spec-mate.md` §2.8a.3).
+ */
+const withLastDevServers = (
+  next: ZeropsStateEnvelope,
+  previous: ZeropsStateEnvelope | undefined,
+): ZeropsStateEnvelope => {
+  const lastRead = new Map(
+    (previous?.services ?? []).flatMap((service) =>
+      service.devServers === undefined ? [] : [[service.hostname, service.devServers] as const],
+    ),
+  );
+  if (lastRead.size === 0) return next;
+  return {
+    ...next,
+    services: next.services.map((service) => {
+      const devServers = lastRead.get(service.hostname);
+      return service.devServers !== undefined || devServers === undefined
+        ? service
+        : { ...service, devServers };
+    }),
+  };
 };
 
 const INGEST_RESTART_FIRST = Duration.seconds(1);
@@ -241,7 +268,7 @@ export const make = (options: ZeropsLifecycleOptions) =>
               ? previous.envelope === undefined
                 ? {}
                 : { envelope: previous.envelope }
-              : { envelope }),
+              : { envelope: withLastDevServers(envelope, previous.envelope) }),
             recentTools: withRecentTool(previous.recentTools, {
               toolName: call.name,
               status:

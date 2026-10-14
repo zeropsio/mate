@@ -66,6 +66,53 @@ export const ZeropsEnvelopeSelfService = Schema.Struct({
 });
 export type ZeropsEnvelopeSelfService = typeof ZeropsEnvelopeSelfService.Type;
 
+/** One stage of a dev service's pair — zcp `docs/spec-mate.md` §2.8a.3. */
+export const ZeropsStageRef = Schema.Struct({
+  hostname: Schema.String,
+  /** Absent while zcp has not resolved the stage's setup. */
+  setup: Schema.optional(Schema.String),
+});
+export type ZeropsStageRef = typeof ZeropsStageRef.Type;
+
+/** The supervisor's own `status`, which zcp passes through verbatim. */
+export const KNOWN_ZEROPS_DEV_SERVER_STATUSES = [
+  "running",
+  "stopped",
+  "crashed",
+  "starting",
+] as const;
+
+/**
+ * One dev server as zcp read it from the dev service's supervisor —
+ * zcp `docs/spec-mate.md` §2.8a.3.
+ */
+export const ZeropsDevServer = Schema.Struct({
+  name: Schema.String,
+  /** Absent for a server without a listener (a worker). */
+  port: Schema.optional(Schema.Number),
+  /** Only when the dev setup's port has HTTP support and the subdomain is enabled. */
+  url: Schema.optional(Schema.String),
+  status: Schema.String,
+  readAt: IsoDateTime,
+  /** zcp's HTTP probe of this port, only when the call that read it probed it. */
+  verify: Schema.optional(
+    Schema.Struct({
+      ok: Schema.Boolean,
+      httpStatus: Schema.optional(Schema.Number),
+      at: IsoDateTime,
+    }),
+  ),
+  /** The supervisor's last process end, when set. */
+  lastExit: Schema.optional(
+    Schema.Struct({
+      code: Schema.optional(Schema.Number),
+      signal: Schema.optional(Schema.String),
+      at: IsoDateTime,
+    }),
+  ),
+});
+export type ZeropsDevServer = typeof ZeropsDevServer.Type;
+
 /** One service's point-in-time lifecycle state — `workflow.ServiceSnapshot`. */
 export const ZeropsServiceSnapshot = Schema.Struct({
   hostname: Schema.String,
@@ -84,6 +131,16 @@ export const ZeropsServiceSnapshot = Schema.Struct({
   stageHostname: Schema.optional(Schema.String),
   setupName: Schema.optional(Schema.String),
   stageSetupName: Schema.optional(Schema.String),
+  /**
+   * The pair's stages, which replace `stageHostname`/`stageSetupName` once zcp
+   * emits them. Mate never pairs from them (§2.8a.3).
+   */
+  stages: Schema.optional(Schema.Array(ZeropsStageRef)),
+  /**
+   * The dev servers zcp read in this call. Absent means not read, never none
+   * running; a server this build cannot read is dropped, not the snapshot.
+   */
+  devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
 });
 export type ZeropsServiceSnapshot = typeof ZeropsServiceSnapshot.Type;
 
