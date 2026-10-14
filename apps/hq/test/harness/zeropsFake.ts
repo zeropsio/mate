@@ -58,8 +58,10 @@ interface FakeJob {
   readonly appVersionId: string | undefined;
   /** The services an import's process brings up; none for any other. */
   readonly imports?: ReadonlyArray<string>;
-  /** A subdomain's: how many more reads it answers RUNNING before it is FINISHED. */
+  /** A subdomain's or a start's: how many more reads it answers RUNNING before it is FINISHED. */
   runningReads?: number;
+  /** A start's: the service it brings up once it is FINISHED. */
+  readonly starts?: string;
 }
 
 export interface FakeWorld {
@@ -91,6 +93,10 @@ export interface FakeWorld {
   importOutcome: () => "FINISHED" | "FAILED" | "RUNNING";
   /** How many reads a subdomain's process answers RUNNING before it is FINISHED; none by default. */
   subdomainRunningReads: number;
+  /** How many reads a service start's process answers RUNNING before it is FINISHED; none by default. */
+  startRunningReads: number;
+  /** What a read of a project's services waits for before it answers, as a test holds it; none by default. */
+  servicesHeld: Effect.Effect<void> | undefined;
   /** Every services import, as asked. */
   imports: Array<{ readonly projectId: string; readonly yaml: string }>;
   /**
@@ -122,6 +128,8 @@ export const emptyWorld = (): FakeWorld => ({
   outcome: () => "ACTIVE",
   importOutcome: () => "FINISHED",
   subdomainRunningReads: 0,
+  startRunningReads: 0,
+  servicesHeld: undefined,
   imports: [],
   lost: new Set(),
   unanswered: new Set(),
@@ -228,11 +236,14 @@ export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
       })),
     services: (projectId) => (credential) =>
       project("services", credential, projectId).pipe(
-        Effect.as(
-          world.services
-            .filter((service) => service.projectId === projectId)
-            .map((service) => ({ ...service })),
+        Effect.andThen(
+          Effect.sync(() =>
+            world.services
+              .filter((service) => service.projectId === projectId)
+              .map((service) => ({ ...service })),
+          ),
         ),
+        Effect.tap(() => world.servicesHeld ?? Effect.void),
       ),
     service: (serviceId) => (credential) =>
       serviceOf(world, "service", credential, serviceId).pipe(
@@ -340,6 +351,8 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
     if (job.runningReads !== undefined) {
       if (job.runningReads === 0) job.status = "FINISHED";
       else job.runningReads -= 1;
+      const service = world.services.find((candidate) => candidate.id === job.starts);
+      if (service !== undefined && job.status === "FINISHED") service.status = "ACTIVE";
       return;
     }
     if (job.status === "RUNNING" && job.imports !== undefined) {
@@ -523,8 +536,15 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
       }),
     startService: (serviceId) => (credential) =>
       Effect.map(deployedBy(world, "startService", credential, serviceId), (service) => {
-        service.status = "ACTIVE";
-        return { processId: id("process") };
+        const processId = id("process");
+        world.jobs.set(processId, {
+          status: "RUNNING",
+          failure: null,
+          appVersionId: undefined,
+          runningReads: world.startRunningReads,
+          starts: service.id,
+        });
+        return { processId };
       }),
   };
 };
