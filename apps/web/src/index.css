@@ -5497,9 +5497,10 @@ code {
   text-align: start;
 }
 
+/* Centred on the heads' mark column: 10px in, 16px wide. */
 .zerops-sites-door > svg {
   position: absolute;
-  inset-inline-start: 12px;
+  inset-inline-start: 11px;
   width: 14px;
   height: 14px;
 }
