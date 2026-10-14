@@ -943,6 +943,35 @@ it("stylesheet imports retain nested url inputs and removed imports", () => {
 });
 
 // Decision: no test deleted or weakened; only lane selection changes; main CI runs everything.
+it("environment row helpers select their rendered group surface through the scenario graph", () => {
+  const scenario = "apps/web/test/scenarios/areas/b-menu/environmentIdentity.scenario.ts";
+  const unrelated = "apps/web/test/scenarios/areas/a-signin/account.scenario.ts";
+  expect(
+    relatedFiles(
+      repositoryFixture,
+      ["apps/web/src/components/zerops/ZeropsGroupDetail.tsx"],
+      [scenario, unrelated],
+    ),
+  ).toEqual([scenario]);
+});
+
+it("Decision: no app-bundle fallback; edges are declared or imported, never inferred from locators at runtime.", () => {
+  const scenario = "apps/web/test/scenarios/areas/b-menu/environmentIdentity.scenario.ts";
+  const graph = buildRelatedFileGraph(repositoryFixture, [scenario]);
+  expect(graph.select(["apps/web/src/main.tsx", "apps/web/index.html"])).toEqual([]);
+  expect(graph.select(["apps/web/src/components/chat/RunChat.tsx"])).toEqual([]);
+});
+
+it('Decision: no "run everything" fallback; selection stays graph-based.', () => {
+  expect(
+    relatedFiles(
+      repositoryFixture,
+      ["apps/web/src/components/zerops/ZeropsGroupDetail.tsx"],
+      ["apps/web/test/scenarios/areas/a-signin/account.scenario.ts"],
+    ),
+  ).toEqual([]);
+});
+
 it("lane scenarios follow their own imports without the bundled app entry", () => {
   const file = NodePath.join(repositoryFixture, "apps/web/src/components/chat/RunChat.tsx");
   const original = NodeFS.readFileSync(file, "utf8");
