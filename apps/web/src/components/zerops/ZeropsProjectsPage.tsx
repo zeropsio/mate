@@ -187,7 +187,11 @@ import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 import { ZeropsReleaseVerb } from "./ZeropsReleaseVerb";
 
 import { environmentRoleLabel, environmentRoleTag, groupNameUnread } from "./ZeropsGroupTree.logic";
-import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
+import {
+  ZeropsProjectsFlow,
+  type ProjectPageSlot,
+  type ProjectsFlowGroup,
+} from "./projects/ZeropsProjectsFlow";
 import {
   overviewKeeps,
   parseProjectsSearch,
@@ -746,12 +750,19 @@ export function useZeropsProjectConnection(): {
 const SHOWS_EVERY_MATE = () => true;
 const NO_ROWS: ReadonlyArray<never> = [];
 
-function ZeropsProjectsContent({
+/**
+ * The overview's body: every project's card, or — on a project's own page (`project`) — that one
+ * project's card at the page's width with the page's column beside it, drawn through the same
+ * slots, so a Mate's row, a place's panel and the release's door are one thing in both.
+ */
+export function ZeropsProjectsContent({
   search,
   onShow,
+  project,
 }: {
   readonly search: ProjectsSearch;
   readonly onShow?: ((show: OverviewShow | undefined) => void) | undefined;
+  readonly project?: ProjectPageSlot | undefined;
 }) {
   const openMate = useOpenMate();
   const authGate = useRouteContext({
@@ -2397,7 +2408,10 @@ function ZeropsProjectsContent({
     // The page's end clears the app's fixed "Open main sidebar" control, so
     // the last row is never under it with the menu closed.
     <div className="space-y-6 pb-12">
-      {status === "signed-in" && activeOrganization !== null && !inventory.isLoading ? (
+      {project === undefined &&
+      status === "signed-in" &&
+      activeOrganization !== null &&
+      !inventory.isLoading ? (
         <>
           {throwawayCleanupSpeaks(throwawayCleanup.state) ? (
             <ZeropsThrowawayCleanup view={throwawayCleanup} />
@@ -2440,7 +2454,7 @@ function ZeropsProjectsContent({
           {notice}
         </p>
       ))}
-      {flowGroups.some((entry) => entry.flow.mates.length > 0) ? (
+      {project === undefined && flowGroups.some((entry) => entry.flow.mates.length > 0) ? (
         <OverviewFilters
           mine={flowGroups.filter((entry) => filterFacts.mine.has(entry.group.groupId)).length}
           onShow={onShow}
@@ -2448,14 +2462,15 @@ function ZeropsProjectsContent({
           waiting={flowGroups.filter((entry) => filterFacts.waits.has(entry.group.groupId)).length}
         />
       ) : null}
-      {search.show !== undefined && keptGroups.length === 0 ? (
+      {project === undefined && search.show !== undefined && keptGroups.length === 0 ? (
         <OverviewFilterEmpty onShow={onShow} show={search.show} />
       ) : null}
       <ZeropsProjectsFlow
         creating={creationRunning}
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
-        groups={keptGroups}
+        groups={project === undefined ? keptGroups : flowGroups}
+        page={project}
         isMate={hasMate}
         onCreateProject={
           hasNoZeropsProject({ listing, creationPending: activeBirths }) ? askNewProject : undefined
@@ -2519,7 +2534,7 @@ function ZeropsProjectsContent({
           !placementStatus.reconnecting
         }
         // Under a filter, the projects it keeps alone: no container outside them.
-        ungrouped={search.show === undefined ? ungroupedRows : NO_ROWS}
+        ungrouped={project === undefined && search.show === undefined ? ungroupedRows : NO_ROWS}
       />
       {mateActions.dialogs}
       {confirmingSetUp === null ? null : (

@@ -26,7 +26,7 @@ import type { ProductionChip } from "../SidebarProductionChip.logic";
 import { PageWaitLine } from "../WaitLine";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { OtherContainers, OtherProjects } from "./ProjectList";
-import { ProjectCards } from "./ProjectCards";
+import { ProjectCards, ProjectPage } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
@@ -70,6 +70,20 @@ export interface ProjectsFlowGroup<T> {
   /** The group's one line about itself — no name yet, or being set up. */
   readonly line: string | undefined;
   readonly placeholder: boolean;
+}
+
+/**
+ * A project's own page: its card at the page's width, every Mate unfolded, and the page's own
+ * column beside it — the people on it, its environments, its repositories and its history.
+ */
+export interface ProjectPageSlot {
+  readonly groupId: string;
+  /** The column beside the card. */
+  readonly aside: ReactNode;
+  /** *Add a Mate*, at the foot of its Mates. */
+  readonly onAddMate?: (() => void) | undefined;
+  /** What the page says while the project is not among the read ones yet. */
+  readonly unread: ReactNode;
 }
 
 export interface ZeropsProjectsFlowProps<T> {
@@ -150,6 +164,8 @@ export interface ZeropsProjectsFlowProps<T> {
     | undefined;
   /** The people on a project, beside its name, where more than one. */
   readonly renderCardPeople?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
+  /** One project's own page in place of the overview (`ProjectPageSlot`). */
+  readonly page?: ProjectPageSlot | undefined;
 }
 
 /**
@@ -190,7 +206,24 @@ const CONTAINER_NEEDS_PERSON: ReadonlySet<ZeropsRowAction["kind"]> = new Set([
 ]);
 
 export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
-  const { groups, ungrouped, creating = false, onCreateProject, focusGroup } = props;
+  const { groups, ungrouped, creating = false, onCreateProject, focusGroup, page } = props;
+  if (page !== undefined) {
+    const entry = groups.find((candidate) => candidate.group.groupId === page.groupId);
+    return (
+      <div
+        aria-label="Project"
+        className="@container/flow flex flex-col gap-4"
+        data-zerops-surface="projects-flow"
+        role="region"
+      >
+        {entry === undefined ? (
+          page.unread
+        ) : (
+          <ProjectPage aside={page.aside} entry={entry} onAddMate={page.onAddMate} props={props} />
+        )}
+      </div>
+    );
+  }
   // The organization's HQ is not a project, so an account holding nothing
   // but its HQ has still not started.
   const started = groups.length > 0 || ungrouped.length > 0;

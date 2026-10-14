@@ -7288,6 +7288,113 @@ a.ov-card-site:hover {
   margin-left: -6px;
 }
 
+/* *Add a Mate* at the foot of a project page's Mates: a row the size of a folded one, its plus
+   where a face stands. */
+.ov-add {
+  display: grid;
+  grid-template-columns: 32px auto;
+  column-gap: 12px;
+  align-items: center;
+  height: 40px;
+  padding: 0 6px;
+  border-radius: 14px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  text-align: left;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
+}
+
+.ov-add:hover {
+  background: var(--ov-hover);
+  color: var(--foreground);
+}
+
+.ov-add:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.ov-add-face {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px dashed color-mix(in oklab, var(--foreground) 18%, transparent);
+  border-radius: 999px;
+}
+
+/* A project's own page: its card — the overview's, at the page's width — and the page's column
+   beside it, each part on the card's own ground. Side by side once both have room, stacked under
+   that. */
+.ov-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+@container flow (min-width: 980px) {
+  .ov-page {
+    grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
+  }
+}
+
+.ov-card[data-page] {
+  padding: 20px 14px 12px;
+  scroll-snap-align: none;
+}
+
+.ov-card[data-page] .ov-card-h1 {
+  height: 32px;
+}
+
+.ov-card[data-page] .ov-card-name {
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.02em;
+}
+
+.ov-page-aside {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+/* One part of the page's column: the card's ground, its name, then what it holds. */
+.ov-side {
+  --ov-ground: var(--card);
+  --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+  --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
+  --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 16px 18px 16px;
+  border-radius: 20px;
+  background: var(--ov-ground);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 4%, transparent),
+    0 8px 24px -12px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
+}
+
+.dark .ov-side {
+  --ov-ground: color-mix(in oklab, var(--foreground) 4%, var(--background));
+  --ov-lift: color-mix(in oklab, var(--foreground) 8%, var(--background));
+  --ov-rule: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+.ov-side-name {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
 /* A release ready to go, lifted; then production's line, at every card's foot. */
 
 .ov-ready-title {

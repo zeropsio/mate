@@ -14,14 +14,12 @@ import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 import {
   deployedVersion,
   environmentSlots,
-  releaseContentsSummary,
   releaseRow,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type EnvironmentServiceState,
   type FlowReleaseRow,
   type Moved,
   type MovedCommits,
-  type ReleaseContentsSummary,
 } from "@t3tools/client-runtime/zerops";
 import {
   serviceRows,
@@ -35,8 +33,6 @@ import {
 } from "@t3tools/client-runtime/zerops/flow";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import type { MateLiveView } from "@t3tools/shared/hqMates";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { Window } from "happy-dom";
@@ -52,12 +48,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
-import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
 import {
   detailTrail,
-  groupMateOf,
   ZeropsStopDetailPage,
   ZeropsGroupPane,
   ZeropsStopPane,
@@ -149,17 +143,6 @@ const environment = (
     versionRepository: undefined,
   }) as EnvironmentRow;
 
-const mate = (projectId: string, name: string, subject: string) => ({
-  projectId,
-  name,
-  tint: "amber" as const,
-  shape: "seal" as const,
-  face: "working" as const,
-  subject,
-  snippet: undefined,
-  when: "1h",
-});
-
 /** The Environments section as it stands for these environments and nothing else. */
 const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
   environmentSlots({
@@ -178,44 +161,27 @@ const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
   });
 
 function render(
-  who: Pick<
-    React.ComponentProps<typeof ZeropsGroupPane>,
-    "mates" | "matesNotice" | "onMatesNoticeAct"
-  > & { readonly name?: string | undefined } = {
-    mates: [
-      mate("theo", "Theo", "Cache the link previews"),
-      mate("iris", "Iris", "Split the checkout"),
-    ],
-  },
   stops: Pick<
     React.ComponentProps<typeof ZeropsGroupPane>,
     "environments" | "withheldNotice" | "firstDeployOf"
   > & { readonly slots?: React.ComponentProps<typeof ZeropsGroupPane>["slots"] } = {
     environments: [environment("stage", "stage"), environment("prod", "production", "production")],
   },
-  waiting: ReleaseContentsSummary = releaseContentsSummary([], 20),
   /** The page's flow; absent, it holds none. */
   flow?: ReadonlyMap<string, Shown<Deployment>>,
 ) {
   const pane = (
     <ZeropsGroupPane
-      attention={[]}
-      crumbs={[{ label: "Projects", onClick: () => {} }]}
       history={{ kind: "reading" }}
       groupId="shop"
       name="Shop"
-      {...who}
       {...stops}
       slots={stops.slots ?? slotsOf(stops.environments)}
       onFinish={() => {}}
       finishing={false}
       onAdd={() => {}}
       names={{ mateNames: new Map() }}
-      onAct={() => {}}
-      onAddMate={() => {}}
-      onOpenMate={() => {}}
       onSetUp={() => {}}
-      pullRequests={[]}
       release={{
         offered: false,
         releasing: false,
@@ -225,7 +191,6 @@ function render(
       }}
       repo={undefined}
       tags={new Map()}
-      waiting={waiting}
     />
   );
   platform.deployments = flow ?? new Map();
@@ -234,12 +199,6 @@ function render(
 
 /** What the platform answered of each stop, as the page reads it. */
 const flowOf = (deployments: ReadonlyMap<string, Shown<Deployment>>) => deployments;
-
-it("an empty open-change list makes no claim about how closed changes ended", () => {
-  const markup = render();
-  expect(markup).toContain("Nothing open.");
-  expect(markup).not.toContain("Every change the Mates made has landed.");
-});
 
 describe("runtime without HQ detail", () => {
   it("keeps the inventory's placed stop identities when HQ has no environment read", () => {
@@ -317,17 +276,15 @@ describe("ZeropsGroupPane", () => {
   it("draws every line's content", () => {
     const markup = render();
 
-    expect(markup).toContain("Split the checkout");
-    expect(markup).toContain("Cache the link previews");
+    expect(markup).toContain("stage");
     expect(markup).toContain("production");
-    // Each Mate in the face its person picked.
-    expect(markup.match(/data-mate-face-shape="seal"/gu)).toHaveLength(2);
+    expect(markup).toContain("3f9c1b2");
   });
 
   // DESIGN §3.4, M7: a stop the grant withholds keeps its place in the list and nothing of its
   // project — neither its name, what it runs, nor a way into it.
   it("draws a stop the grant withholds as its tier and why", () => {
-    const markup = render(undefined, {
+    const markup = render({
       environments: [
         environment("stage", "Shop stage"),
         {
@@ -352,18 +309,6 @@ describe("ZeropsGroupPane", () => {
     expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
   });
 
-  it("says at least how many changes wait for production where HQ stopped counting", () => {
-    const markup = render(undefined, undefined, {
-      subjects: ["Two-step checkout"],
-      more: 9999,
-      total: 10000,
-      atLeast: true,
-    });
-
-    expect(markup).toContain("Merged, waiting for production · 10000+");
-    expect(markup).toContain("+9999+ more");
-  });
-
   describe("the Environments section", () => {
     const slots = (over: Partial<Parameters<typeof environmentSlots>[0]>) =>
       environmentSlots({
@@ -383,20 +328,20 @@ describe("ZeropsGroupPane", () => {
       });
 
     it("is not drawn before HQ's environments are read: nothing is known to be absent", () => {
-      const markup = render(undefined, { environments: [], slots: [] });
+      const markup = render({ environments: [], slots: [] });
       expect(markup).not.toContain("Environments");
       expect(markup).not.toContain("Not added");
     });
 
     it("is there with nothing added: two quiet slots, each with its Add", () => {
-      const markup = render(undefined, { environments: [], slots: slots({}) });
+      const markup = render({ environments: [], slots: slots({}) });
       expect(markup).toContain("Environments");
       expect(markup).toContain("Add stage");
       expect(markup).toContain("Add production");
     });
 
     it("offers no Add HQ does not offer, and says a tier waits for the recipe", () => {
-      const markup = render(undefined, {
+      const markup = render({
         environments: [],
         slots: slots({ offered: { stage: false, production: false }, recipeTiers: ["stage"] }),
       });
@@ -414,7 +359,7 @@ describe("ZeropsGroupPane", () => {
             hq: { appId: "shop", appName: "Shop", kind: "devstage", mate: { face: "" } },
           },
         ]);
-        const markup = render(undefined, { environments: [], slots: slots({ devstages }) });
+        const markup = render({ environments: [], slots: slots({ devstages }) });
         expect(markup).toContain("Ada — deployed by its agent");
         expect(markup).not.toContain("Add stage");
         expect(markup).toContain("Add production");
@@ -422,7 +367,7 @@ describe("ZeropsGroupPane", () => {
     });
 
     it("says a Mate that is the stage is the stage, and asks no second one of the person", () => {
-      const markup = render(undefined, {
+      const markup = render({
         environments: [],
         slots: slots({ devstages: [{ id: "dev", name: "Vera" }] }),
       });
@@ -432,7 +377,7 @@ describe("ZeropsGroupPane", () => {
     });
 
     it("says a production being created is being set up, and offers no second Add for it", () => {
-      const markup = render(undefined, {
+      const markup = render({
         environments: [],
         slots: slots({ pending: [{ id: "p-new", tier: "production" }] }),
       });
@@ -441,7 +386,7 @@ describe("ZeropsGroupPane", () => {
     });
 
     it("says a half-made environment is unfinished, with Finish setup and no Add for its tier", () => {
-      const markup = render(undefined, {
+      const markup = render({
         environments: [],
         slots: slots({ halfMade: [{ id: "p-half", tier: "production", finish: true }] }),
       });
@@ -453,7 +398,7 @@ describe("ZeropsGroupPane", () => {
 
     it("says an empty production waits for its first release, with Review release where offered", () => {
       const prod = environment("prod", "production", "production");
-      const markup = render(undefined, {
+      const markup = render({
         environments: [prod],
         slots: slots({
           environments: [{ id: "prod", tier: "production" }],
@@ -467,22 +412,12 @@ describe("ZeropsGroupPane", () => {
     });
   });
 
-  it("lists nothing as waiting for a production the application does not have", () => {
-    const markup = render(
-      undefined,
-      { environments: [environment("stage", "stage")] },
-      { subjects: ["Two-step checkout"], more: 0, total: 1, atLeast: false },
-    );
-    expect(markup).not.toContain("Two-step checkout");
-    expect(markup).not.toContain("waiting for production");
-  });
-
   it("says an empty stage's first deploy on its line, as its cell does", () => {
     const empty = {
       ...environment("stage", "stage"),
       version: { ...environment("stage", "stage").version, label: undefined, commit: undefined },
     } as EnvironmentRow;
-    const markup = render(undefined, {
+    const markup = render({
       environments: [empty],
       firstDeployOf: (projectId) => (projectId === "stage" ? { kind: "on-its-way" } : undefined),
     });
@@ -528,9 +463,7 @@ describe("ZeropsGroupPane", () => {
       },
     ])("$name", ({ deployment, expected }) => {
       const markup = render(
-        undefined,
         { environments: [unnamed] },
-        undefined,
         flowOf(new Map(deployment === undefined ? [] : [["stage", deployment]])),
       );
       const document = new Window().document;
@@ -540,65 +473,6 @@ describe("ZeropsGroupPane", () => {
       );
       expect(row?.textContent).toContain(expected);
     });
-  });
-
-  it("holds its title's line while the listing has not named the project: no id, no placeholder", () => {
-    const markup = render({ mates: [], name: undefined });
-    const title = markup.slice(markup.indexOf("<h1"), markup.indexOf("</h1>"));
-
-    expect(title).not.toContain("grp7Kq2");
-    expect(title).not.toContain("Project");
-    expect(title.replace(/<[^>]*>/gu, "")).toBe("\u00a0");
-  });
-
-  // SPEC §1: the page stands in the frame /zerops stands in, its trail in the bar.
-  it("stands in the hosted frame with its trail in the bar", () => {
-    const markup = render();
-    const bar = markup.slice(markup.indexOf("data-zerops-frame="), markup.indexOf("<h1"));
-
-    expect(markup).toContain("data-zerops-frame=");
-    expect(bar).toMatch(/<nav aria-label="[^"]*breadcrumb"[\s\S]*Projects[\s\S]*<\/nav>/);
-  });
-
-  const NO_MATE = "No Mate is working on this project yet.";
-
-  it("never says no Mate is on it while the listing is unread: a placeholder instead", () => {
-    const markup = render({
-      mates: [],
-      matesNotice: {
-        region: "placeholder",
-        message: { text: "Checking who is on it…", afterMs: 400, tone: "quiet" },
-        affordance: null,
-      },
-    });
-
-    expect(markup).not.toContain(NO_MATE);
-    expect(markup).toContain("Checking who is on it…");
-    expect(markup).not.toContain("Try again");
-  });
-
-  it("names why the listing's read failed once, with one Try again, and no none", () => {
-    const markup = render({
-      mates: [],
-      matesNotice: {
-        region: "message",
-        message: {
-          text: "Couldn't read who is on this project. Zerops didn't answer.",
-          afterMs: 0,
-          tone: "alert",
-        },
-        affordance: { kind: "retry", label: "Try again" },
-      },
-      onMatesNoticeAct: () => {},
-    });
-
-    expect(markup).not.toContain(NO_MATE);
-    expect(markup.match(/Zerops didn(?:&#x27;|')t answer\./g)).toHaveLength(1);
-    expect(markup.match(/Try again/g)).toHaveLength(1);
-  });
-
-  it("says no Mate is on it only once the listing is complete", () => {
-    expect(render({ mates: [], matesNotice: null })).toContain(NO_MATE);
   });
 });
 
@@ -1671,93 +1545,6 @@ describe("ZeropsStopPane", () => {
   });
 });
 
-describe("groupMateOf — a Mate on the project, as its page draws it", () => {
-  /** Iris's project, listed and not connected: this page holds no socket to her. */
-  const IRIS = {
-    key: "iris:zcp",
-    project: { id: "iris", name: "Shop - Iris", status: "ACTIVE", tagList: ["mate"] },
-    group: "ready",
-    service: { id: "zcp", name: "zcp", status: "ACTIVE" },
-  } as unknown as ZeropsCandidate;
-  const SPLITTING = {
-    kind: "working",
-    face: "working",
-    subject: "Split the checkout",
-    snippet: "Moved the cart into its own module.",
-    at: "2026-09-25T11:00:00.000Z",
-  } as ZeropsAgentActivity;
-  const draw = (read: ZeropsAgentActivity | undefined) =>
-    groupMateOf({
-      item: IRIS,
-      read,
-      tint: "amber",
-      reviewWaits: false,
-      mine: true,
-      update: undefined,
-    });
-
-  it("draws an unopened Mate from HQ's live word: awake, on its task", () => {
-    expect(draw(SPLITTING)).toMatchObject({
-      projectId: "iris",
-      face: "working",
-      subject: "Split the checkout",
-      snippet: "Moved the cart into its own module.",
-    });
-  });
-
-  // Its container runs (ready) though no socket of this page reaches it: awake, as its menu row
-  // draws it (restores 374c9923e's rule over bb04ea183's asleep).
-  it("draws a running Mate awake at rest, saying nothing, where only a word at rest is known", () => {
-    expect(draw({ ...SPLITTING, remembered: true })).toMatchObject({
-      face: "idle",
-      subject: undefined,
-    });
-  });
-
-  it.each([
-    ["its container runs, nothing heard yet", "ready", false, "idle"],
-    ["HQ holds one of its links open, the listing not caught up", "provisioning", true, "idle"],
-    ["its container is not reachable, HQ holds no link", "unavailable", false, "sleep"],
-  ] as const)("%s: %s", (_case, group, online, face) => {
-    const mates = new Map([
-      [
-        "iris",
-        {
-          presence: { online, since: "2026-09-25T10:00:00.000Z", overview: "none" },
-        } as unknown as MateLiveView,
-      ],
-    ]);
-    expect(
-      groupMateOf({
-        item: { ...IRIS, group },
-        read: undefined,
-        mates,
-        tint: "amber",
-        reviewWaits: false,
-        mine: true,
-        update: undefined,
-      }).face,
-    ).toBe(face);
-  });
-
-  it("wakes a newly arriving Mate, then returns to its resting face at the bound", () => {
-    const born = Date.parse("2026-10-03T10:00:00Z");
-    const item = { ...IRIS, project: { ...IRIS.project, created: new Date(born).toISOString() } };
-    const at = (nowMs: number) =>
-      groupMateOf({
-        item,
-        nowMs,
-        read: undefined,
-        tint: "amber",
-        reviewWaits: false,
-        mine: true,
-        update: undefined,
-      });
-    expect(at(born + 60_000).face).toBe("waking");
-    expect(at(born + 31 * 60_000).face).toBe("idle");
-  });
-});
-
 describe("detailTrail: where a detail page sits", () => {
   it.each([
     ["the projects page", undefined, ["Projects"]],
@@ -1972,16 +1759,11 @@ it("Environment navigation keeps its identity when the target's project name cha
           <ZeropsGroupPane
             groupId="shop"
             name="Shop"
-            attention={[]}
-            mates={[]}
             environments={[row]}
             slots={slotsOf([row])}
             history={{ kind: "reading" }}
             tags={new Map()}
-            crumbs={[]}
             repo={undefined}
-            waiting={releaseContentsSummary([], 20)}
-            pullRequests={[]}
             release={{
               offered: false,
               releasing: false,
@@ -1990,9 +1772,6 @@ it("Environment navigation keeps its identity when the target's project name cha
               onReview: () => {},
             }}
             names={{ mateNames: new Map() }}
-            onAct={() => {}}
-            onAddMate={() => {}}
-            onOpenMate={() => {}}
             onFinish={() => {}}
             finishing={false}
             onAdd={() => {}}
