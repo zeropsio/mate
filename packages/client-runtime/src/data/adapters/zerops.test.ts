@@ -25,6 +25,7 @@ import { membersScope } from "../families/organizationMembers.ts";
 import { projectRoutingsScope, routingsScope } from "../families/publicRouting.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { graceOver } from "../__fixtures__/account.ts";
 import { hqNavigation } from "../projections/hqNavigation.ts";
 import { placedMenuRows, placedNames, placementsOf } from "../../zerops/hq/placement.ts";
 import { deriveZeropsCandidates } from "../../zerops/candidates.ts";
@@ -244,6 +245,9 @@ describe("zeropsNavigationLink", () => {
         expect(inventory().trouble).toBeNull();
         yield* supervisor.signal("manual-retry");
         yield* settle;
+        // A failed recovery is reported once the reconnect's grace ran out.
+        expect(inventory().trouble).toBeNull();
+        for (const input of graceOver(store.state())) store.dispatch(input);
         expect(inventory().trouble).toBe("retrying");
         expect(registry.get(visible)?.id).toBe(PROBE_PROJECT_ID);
         stop();

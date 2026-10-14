@@ -7,6 +7,7 @@ import type { Projection } from "../store.ts";
 import { linkKeys } from "../model.ts";
 import { projectsScope } from "../families/project.ts";
 import type { ProjectValue } from "../families/project.ts";
+import { failingPastGrace } from "../streamMachine.ts";
 export interface PlatformInventory {
   readonly projects: ReadonlyArray<ProjectValue>;
   readonly denied: ReadonlyArray<string>;
@@ -40,11 +41,10 @@ export const platformInventory: Projection<
       }
       return access.kind === "allowed";
     });
-    const link = read.stream(linkKeys.zerops(orgId));
-    const scope = read.stream(projectsScope(orgId));
+    // A blink — a first attempt failing once, a reconnect inside its grace — is no trouble.
     const failedRecovery =
-      (link.failures > 0 && link.phase !== "live") ||
-      (scope.failures > 0 && scope.phase !== "live");
+      failingPastGrace(read.stream(linkKeys.zerops(orgId))) ||
+      failingPastGrace(read.stream(projectsScope(orgId)));
     return {
       projects,
       denied: [...denied],

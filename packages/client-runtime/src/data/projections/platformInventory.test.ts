@@ -4,6 +4,8 @@ import { emptyAccount } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { projectsScope } from "../families/project.ts";
 import { readsOfState } from "../store.ts";
+import type { StreamEvent } from "../streamMachine.ts";
+import { pastGrace } from "../__fixtures__/account.ts";
 import { platformInventory } from "./platformInventory.ts";
 
 const viewer = { id: "org", name: "Org", membershipId: "member", roleCode: "ADMIN" };
@@ -71,8 +73,64 @@ const projectBaseline = (restored: boolean): ReadonlyArray<AccountInput> => [
       : [],
   },
 ];
+/** The organization's Zerops link, as its stream machine hears it. */
+const link = (event: StreamEvent, now = 0): AccountInput => ({
+  kind: "stream",
+  key: "zerops:org",
+  now,
+  event,
+});
+const failed = (message = "closed"): AccountInput =>
+  link({ kind: "fault", jitter: 0, fault: { outcome: "transient", message } });
+const firstConnect: ReadonlyArray<AccountInput> = [
+  link({ kind: "demand", demanded: true }),
+  {
+    kind: "stream",
+    key: projectsScope("org"),
+    now: 0,
+    event: { kind: "demand", demanded: true },
+  },
+];
+const lostFromLive: ReadonlyArray<AccountInput> = [
+  ...liveProjects("org", [{ id: "p" }]),
+  failed(),
+  link({ kind: "retry-due" }, 1_000),
+  failed("503"),
+];
 it.each([
   { name: "unread", inputs: [], projects: [], denied: [], read: "unread", trouble: null },
+  {
+    name: "One failed first attempt inside the grace says nothing",
+    inputs: [...firstConnect, failed()],
+    projects: [],
+    denied: [],
+    read: "reading",
+    trouble: null,
+  },
+  {
+    name: "A first connect failing a second time says Zerops is not answering",
+    inputs: [...firstConnect, failed(), link({ kind: "retry-due" }, 1_000), failed()],
+    projects: [],
+    denied: [],
+    read: "reading",
+    trouble: "retrying",
+  },
+  {
+    name: "A first attempt that waited out its deadline says Zerops is not answering",
+    inputs: [...firstConnect, link({ kind: "deadline" }, 10_000)],
+    projects: [],
+    denied: [],
+    read: "reading",
+    trouble: "retrying",
+  },
+  {
+    name: "A reconnect failing inside its grace says nothing",
+    inputs: lostFromLive,
+    projects: ["p"],
+    denied: [],
+    read: "read",
+    trouble: null,
+  },
   {
     name: "complete",
     inputs: liveProjects("org", [{ id: "p" }]),
@@ -179,6 +237,15 @@ it.each([
     trouble: null,
   },
   {
+    name: "A reconnect still failing past its grace says Zerops is not answering",
+    inputs: lostFromLive,
+    pastGrace: true,
+    projects: ["p"],
+    denied: [],
+    read: "read",
+    trouble: "retrying",
+  },
+  {
     name: "definitive refusal retains facts and names manual recovery",
     inputs: [
       ...liveProjects("org", [{ id: "p" }]),
@@ -205,9 +272,11 @@ it.each([
   denied: string[];
   read: string;
   trouble: "retrying" | "refused" | null;
+  pastGrace?: boolean;
 }>)("$name", (entry) => {
   const inputs: ReadonlyArray<AccountInput> = entry.inputs;
-  const state = inputs.reduce((state, input) => reduceAccount(state, input).state, emptyAccount);
+  const reduced = inputs.reduce((state, input) => reduceAccount(state, input).state, emptyAccount);
+  const state = entry.pastGrace === true ? pastGrace(reduced) : reduced;
   const result = platformInventory.derive(readsOfState(state), { orgId: "org", viewer });
   expect(result.projects.map(({ id }) => id)).toEqual(entry.projects);
   expect(result.denied).toEqual(entry.denied);

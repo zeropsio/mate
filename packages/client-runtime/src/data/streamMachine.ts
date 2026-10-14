@@ -287,6 +287,18 @@ export const liveOrHeld = (stream: StreamState): boolean =>
   stream.phase === "live" || stream.held === true;
 
 /**
+ * Failing for longer than a blink, what a surface may call trouble: not live, not held, and an
+ * attempt failed — for a stream lost from live once its grace ran out ({@link liveOrHeld}); on a
+ * first connect after a second failed attempt, or one that waited out a deadline, itself longer
+ * than the grace. One quick failure of a first attempt is retried within a second, unsaid.
+ */
+export function failingPastGrace(stream: StreamState): boolean {
+  if (liveOrHeld(stream) || stream.failures === 0) return false;
+  if (stream.lostAt !== undefined) return true;
+  return stream.failures > 1 || stream.fault?.message === NO_ANSWER_IN_TIME;
+}
+
+/**
  * One rule for every stream: leaving live for a reconnect holds what it read as current for the
  * grace, and dates the loss; live again forgets both; a refusal, a pause or a close ends the hold.
  */
