@@ -5864,6 +5864,13 @@ code {
 
   /* Whose Chief it is: the person's picture on the mark's corner, as on a colleague's Mate, ringed
      in the row's own ground. */
+  /* The unread dot (`MateDot`) on the mark's own corner, ringed by the Chief's ground. */
+  .menu-chief-mark .menu-dot[data-place="corner"] {
+    top: 2px;
+    right: 1px;
+    box-shadow: 0 0 0 2px var(--chief-ground);
+  }
+
   .menu-chief-mark .menu-owner {
     top: auto;
     left: auto;

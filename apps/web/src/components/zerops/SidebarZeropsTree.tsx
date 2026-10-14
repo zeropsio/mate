@@ -3183,6 +3183,8 @@ export function MenuMateLine<T extends RosterCandidate>({
   /** Draws what its reading says: the face's state, and its line where the caller keeps it. */
   readonly children: (read: {
     readonly face: MateMarkState;
+    /** A result not seen (`MateRowView.unseen`). */
+    readonly unseen: boolean;
     readonly state: MateRowState;
     readonly second: MateRowSecond;
     readonly line: ReactNode;
@@ -3205,6 +3207,7 @@ export function MenuMateLine<T extends RosterCandidate>({
   });
   return children({
     face: view.face,
+    unseen: view.unseen,
     state: view.state,
     second,
     line: (
