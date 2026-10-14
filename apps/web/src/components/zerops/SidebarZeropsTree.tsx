@@ -806,8 +806,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const projectLatest = useRef(new Map<string, ProjectLatest>()).current;
   const projectRefs = useRef(new Map<string, ProjectRefs>()).current;
   const projectShared = useRef(new Map<string, ProjectShared>()).current;
-  // The header's Sites and Review open what a row's globe and Review tag open (`projectPartsShown`).
-  useEffect(() => {
+  // The header's Sites and Review open what a row's globe and Review tag open (`projectPartsShown`):
+  // handed over before paint, so the header gains them in the frame the menu draws them.
+  useLayoutEffect(() => {
     showProjectParts(projectShared.values());
   });
   const projectRefsOf = (id: string): ProjectRefs => {

@@ -260,9 +260,18 @@ export function readTimelineFirstLineInset(scroller: Element): number {
 const PLACED_AFTER_FRAMES = 2;
 
 /**
+ * How long a measurable conversation may keep moving before it is shown where it stands: a Mate
+ * streaming its answer moves the end every frame and never stands still.
+ */
+export const TIMELINE_PLACING_DEADLINE_MS = 400;
+
+/**
  * One frame of placing a conversation: wait for the list and the row it
  * lands on, put back a place more than a pixel off, call it placed after two
- * frames standing where it stays. A deadline cannot prove the rows ready.
+ * frames standing where it stays — a place just put back stays hidden while the
+ * rows' late measurements still move it, so the first frame shown is the settled
+ * one. Past the deadline a place still moving is put back once more and shown
+ * (`settle`). A deadline cannot prove the rows ready: one still undrawn waits.
  */
 export function judgeTimelinePlacing(
   frame: {
@@ -270,11 +279,17 @@ export function judgeTimelinePlacing(
     readonly listReady: boolean;
     /** How far the view stands from where it should, in px; null until measurable. */
     readonly offBy: number | null;
+    /** How long this placing has run, in ms. */
+    readonly elapsedMs: number;
   },
   stableFrames: number,
-): { readonly verdict: "wait" | "correct" | "placed"; readonly stableFrames: number } {
+): { readonly verdict: "wait" | "correct" | "settle" | "placed"; readonly stableFrames: number } {
   if (!frame.listReady || frame.offBy === null) return { verdict: "wait", stableFrames: 0 };
-  if (Math.abs(frame.offBy) > 1) return { verdict: "correct", stableFrames: 0 };
+  if (Math.abs(frame.offBy) > 1)
+    return {
+      verdict: frame.elapsedMs >= TIMELINE_PLACING_DEADLINE_MS ? "settle" : "correct",
+      stableFrames: 0,
+    };
   const stable = stableFrames + 1;
   return { verdict: stable >= PLACED_AFTER_FRAMES ? "placed" : "wait", stableFrames: stable };
 }

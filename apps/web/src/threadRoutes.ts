@@ -43,6 +43,32 @@ export function resolveThreadRouteRenderState(input: {
   return input.shell === "live" && !input.serverThreadShellExists ? "missing" : "loading";
 }
 
+/** What a thread's route draws: the Mate's opening, the conversation, its absence, or nothing. */
+export type ThreadRouteStage = "opening" | "conversation" | "missing" | "quiet";
+
+/**
+ * The thread route's stage. Arriving (no conversation on screen yet in this pane), it holds the
+ * Mate's opening until the conversation's messages are read, so the conversation's first frame is
+ * whole — header, messages and composer at once — rather than a header over an empty pane. A pane
+ * already showing a conversation keeps it while the next one's messages are read (it repaints that
+ * thread's last timeline meanwhile). Where nobody lives, there is no Mate's view to hold.
+ */
+export function resolveThreadRouteStage(input: {
+  readonly renderState: ThreadRouteRenderState;
+  readonly serverThreadShellExists: boolean;
+  /** This pane has shown a conversation since the route mounted. */
+  readonly conversationShown: boolean;
+  /** The directory has decided no Mate lives in the route's environment. */
+  readonly nobodyLivesHere: boolean;
+}): ThreadRouteStage {
+  if (input.renderState === "ready") return "conversation";
+  if (input.renderState === "missing") return "missing";
+  if (input.serverThreadShellExists && (input.conversationShown || input.nobodyLivesHere)) {
+    return "conversation";
+  }
+  return input.nobodyLivesHere ? "quiet" : "opening";
+}
+
 export function buildThreadRouteParams(ref: ScopedThreadRef): {
   environmentId: EnvironmentId;
   threadId: ThreadId;

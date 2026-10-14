@@ -1,11 +1,15 @@
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import ChatViewBoundary from "../components/ChatViewBoundary";
 import { threadHasStarted } from "../components/ChatView.logic";
 import { finalizePromotedDraftThreadByRef, useComposerDraftStore } from "../composerDraftStore";
-import { resolveThreadRouteRef, resolveThreadRouteRenderState } from "../threadRoutes";
+import {
+  resolveThreadRouteRef,
+  resolveThreadRouteRenderState,
+  resolveThreadRouteStage,
+} from "../threadRoutes";
 import { resolveThreadSyncPhase } from "../threadSync";
 import { EnvironmentId } from "@t3tools/contracts";
 
@@ -21,7 +25,9 @@ function ChatThreadRoutePending() {
   const threadRef = Route.useParams({ select: (params) => resolveThreadRouteRef(params) });
   const mate = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
   return threadRef === null || mate.kind === "nobody" ? (
-    <SurfaceLoading />
+    <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">
+      <SurfaceLoading />
+    </SidebarInset>
   ) : (
     <MateOpeningView threadRef={threadRef} />
   );
@@ -57,6 +63,15 @@ function ChatThreadRouteView() {
   });
   const serverThreadStarted = threadHasStarted(serverThreadDetail);
   const routeMate = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
+  const [conversationShown, setConversationShown] = useState(false);
+  const stage = resolveThreadRouteStage({
+    renderState,
+    serverThreadShellExists: serverThreadShell !== null,
+    conversationShown,
+    nobodyLivesHere: routeMate.kind === "nobody",
+  });
+  // Once shown, the pane keeps its conversation through a switch to one still being read.
+  if (stage === "conversation" && !conversationShown) setConversationShown(true);
   useEffect(() => {
     if (!threadRef || !serverThreadStarted || !draftThread) {
       return;
@@ -82,18 +97,16 @@ function ChatThreadRouteView() {
     return null;
   }
 
-  // Its thread not read yet (a reload, before the catalog names it): the Mate's own view, its
-  // header's place held until the directory names who lives here, until the conversation takes
-  // over — never a blank pane, never a guessed face.
-  const showsConversation =
-    renderState === "ready" || (renderState === "loading" && serverThreadShell !== null);
-  if (!showsConversation && renderState !== "missing" && routeMate.kind !== "nobody") {
+  // Its conversation not read yet (a reload, before the catalog names its thread or its messages
+  // arrive): the Mate's own view, its header's place held until the directory names who lives
+  // here, until the whole conversation takes over — never a blank pane, never a guessed face.
+  if (stage === "opening") {
     return <MateOpeningView threadRef={threadRef} />;
   }
 
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
-      {renderState === "ready" || (renderState === "loading" && serverThreadShell !== null) ? (
+      {stage === "conversation" ? (
         <ChatViewBoundary
           waiting={<ChatThreadRoutePending />}
           environmentId={threadRef.environmentId}
@@ -101,7 +114,7 @@ function ChatThreadRouteView() {
           routeKind="server"
           threadSyncPhase={threadSyncPhase}
         />
-      ) : renderState === "missing" ? (
+      ) : stage === "missing" ? (
         <div
           role="status"
           className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground"

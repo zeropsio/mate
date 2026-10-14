@@ -22,7 +22,7 @@ import { PageWaitLine } from "~/components/zerops/WaitLine";
 import { MateOpeningView } from "~/components/zerops/MateLinkStage";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
-import { resolveDoor } from "./-door";
+import { doorWaitsForEnvironments, resolveDoor } from "./-door";
 import { environmentIdFromPathname } from "./-environmentRoute";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { loadDoorEnvironmentCount } from "./-doorEnvironments";
@@ -155,24 +155,30 @@ function ChatRoutePending() {
 const NO_ENVIRONMENT = EnvironmentId.make("none");
 
 export const Route = createFileRoute("/_chat")({
-  beforeLoad: async ({ context, location }) => {
-    const door = resolveDoor(context.authGateState, {
-      pathname: location.pathname,
-      environmentCount: await loadDoorEnvironmentCount(),
-    });
-    if (door.redirect !== null) {
-      // The product entry is Zerops account sign-in. Standalone pairing stays
-      // available at `/pair`, but it must not replace the login just because a
-      // fresh browser opened the bare localhost origin.
-      const destination =
-        location.pathname === "/" && door.redirect === "/pair" ? "/zerops" : door.redirect;
-      throw redirect({ to: destination, replace: true });
-    }
+  beforeLoad: ({ context, location }) => {
+    const enter = (environmentCount: number) => {
+      const door = resolveDoor(context.authGateState, {
+        pathname: location.pathname,
+        environmentCount,
+      });
+      if (door.redirect !== null) {
+        // The product entry is Zerops account sign-in. Standalone pairing stays
+        // available at `/pair`, but it must not replace the login just because a
+        // fresh browser opened the bare localhost origin.
+        const destination =
+          location.pathname === "/" && door.redirect === "/pair" ? "/zerops" : door.redirect;
+        throw redirect({ to: destination, replace: true });
+      }
+    };
+    // While a route's guard waits, its parent route waits too and the whole page draws the root's
+    // wait: the catalog is waited on only where the door's answer hangs on it.
+    if (!doorWaitsForEnvironments(context.authGateState, location.pathname)) return enter(0);
+    return loadDoorEnvironmentCount().then(enter);
   },
   component: ChatRouteLayout,
-  // Its guard waits on the environment catalog: meanwhile the layout draws what the reload was
-  // drawing — a conversation's Mate view, its face and name arriving as the directory reads them,
-  // else the page quiet with the boot's one line — and hands over the moment the guard answers.
+  // Its guard (where it waits on the environment catalog) and its code: meanwhile the layout draws
+  // what the reload was drawing — a conversation's Mate view, its face and name arriving as the
+  // directory reads them, else the page quiet with the boot's one line — and hands over at once.
   pendingComponent: ChatRoutePending,
   pendingMs: 0,
   pendingMinMs: 0,
