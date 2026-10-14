@@ -20,6 +20,7 @@ import {
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
 
+import { memberPicture } from "~/zerops/memberPicture";
 import { zeropsInitials } from "../landing/ZeropsAccountControl.logic";
 import {
   levelOf,
@@ -133,11 +134,11 @@ function creatorChip(
     name,
     short: "You",
     initials: zeropsInitials(name),
-    avatarUrl:
-      (userId === undefined ? null : input.pictures[userId]) ||
-      avatar?.smallAvatarUrl ||
-      avatar?.externalAvatarUrl ||
-      null,
+    avatarUrl: memberPicture({
+      hq: userId === undefined ? null : input.pictures[userId],
+      avatar,
+      email: member?.user?.email,
+    }),
     email: member?.user?.email?.trim() || null,
     role: "Project creator",
     you: true,

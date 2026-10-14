@@ -27,6 +27,7 @@ import {
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
 
+import { memberPicture } from "~/zerops/memberPicture";
 import { zeropsInitials } from "../landing/ZeropsAccountControl.logic";
 
 export interface ProjectPeopleInput {
@@ -328,12 +329,11 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
       name,
       short: shortName(name),
       initials: zeropsInitials(name),
-      avatarUrl:
-        (userId === undefined ? null : input.pictures[userId]) ||
-        avatar?.smallAvatarUrl ||
-        avatar?.externalAvatarUrl ||
-        avatar?.largeAvatarUrl ||
-        null,
+      avatarUrl: memberPicture({
+        hq: userId === undefined ? null : input.pictures[userId],
+        avatar,
+        email: member.user?.email,
+      }),
       email: member.user?.email?.trim() || null,
       role: ORG_ROLE_WORDS[role],
     };
