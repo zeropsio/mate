@@ -220,11 +220,11 @@ export const appProjectsOf = (projects: ProjectPeopleInput["projects"]): AppProj
 const listed = (words: ReadonlyArray<string>): string =>
   words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
 
-/** The menu's own words for each level, so a row says what its menu would set. */
+/** The chips' own words for each level — Full, Read, Hidden — so a line says what a badge does. */
 const EXCEPTION_WORDS: Readonly<Record<Access, string>> = {
-  full: "works on",
-  read: "only looks at",
-  none: "no access to",
+  full: "full access on",
+  read: "read only on",
+  none: "hidden on",
 };
 
 /** What a member may do here, in words; `null` where they may touch none of its places. */
@@ -241,7 +241,7 @@ function accessWords(
         ? []
         : [`${EXCEPTION_WORDS[access]} ${listed(differing.map(({ place }) => place.inSentence))}`];
     });
-    // "Admin · only looks at production": an exception stands where "everything" would.
+    // "Admin · read only on production": an exception stands where "everything" would.
     return [
       words.role,
       ...(exceptions.length === 0 && words.reach !== undefined ? [words.reach] : exceptions),
@@ -251,15 +251,15 @@ function accessWords(
   if (reached.length === 0) return null;
   const alike =
     reached.length === onPlaces.length && reached.every((one) => one.access === reached[0]!.access);
-  if (alike) return reached[0]!.access === "full" ? "Can work on it" : "Can only look";
-  // "Works on stage · only looks at production": what they work on first, then what they see.
+  if (alike) return reached[0]!.access === "full" ? "Full access" : "Read only";
+  // "Full access on stage · read only on production": full first, then read only.
   const by = (access: Access) =>
     reached.filter((one) => one.access === access).map(({ place }) => place.inSentence);
   const works = by("full");
   const looks = by("read");
   const said = [
-    ...(works.length === 0 ? [] : [`works on ${listed(works)}`]),
-    ...(looks.length === 0 ? [] : [`only looks at ${listed(looks)}`]),
+    ...(works.length === 0 ? [] : [`${EXCEPTION_WORDS.full} ${listed(works)}`]),
+    ...(looks.length === 0 ? [] : [`${EXCEPTION_WORDS.read} ${listed(looks)}`]),
   ].join(" · ");
   return said.charAt(0).toUpperCase() + said.slice(1);
 }
@@ -461,15 +461,15 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
   };
 }
 
-/** What someone reaching only Mates here may do on them: "Works on Fen · only looks at Juno". */
+/** What someone reaching only Mates here may do on them: "Full access on Fen · read only on Juno". */
 function mateWords(
   onMates: ReadonlyArray<{ readonly label: string; readonly level: AccessLevel }>,
 ): string | null {
   const works = onMates.filter(({ level }) => level !== "read").map(({ label }) => label);
   const looks = onMates.filter(({ level }) => level === "read").map(({ label }) => label);
   const said = [
-    ...(works.length === 0 ? [] : [`works on ${listed(works)}`]),
-    ...(looks.length === 0 ? [] : [`only looks at ${listed(looks)}`]),
+    ...(works.length === 0 ? [] : [`${EXCEPTION_WORDS.full} ${listed(works)}`]),
+    ...(looks.length === 0 ? [] : [`${EXCEPTION_WORDS.read} ${listed(looks)}`]),
   ].join(" · ");
   return said === "" ? null : said.charAt(0).toUpperCase() + said.slice(1);
 }
