@@ -11,6 +11,9 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
+import { changeFixture } from "../../fakes/d-change/changes.ts";
+import { installArea as installChanges, hqFramesFor } from "../d-change/fake.ts";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
@@ -124,7 +127,7 @@ function readEnd() {
     return top === Infinity ? null : { top, bottom };
   };
   // A card the list lays out in slices is one row: its slices touch.
-  const rows: Array<Box & { text: string; person: boolean }> = [];
+  const rows: Array<Box & { text: string; person: boolean; afterWork: boolean }> = [];
   for (const row of [...document.querySelectorAll(".timeline-legend-list [data-timeline-root]")]
     .flatMap((row) => {
       const box = painted(row);
@@ -135,6 +138,7 @@ function readEnd() {
               ...box,
               text: (row.textContent ?? "").slice(0, 240),
               person: row.querySelector('[data-message-role="user"]') !== null,
+              afterWork: row.querySelector('[data-timeline-row-kind="after-work"]') !== null,
             },
           ];
     })
@@ -146,6 +150,7 @@ function readEnd() {
         bottom: Math.max(previous.bottom, row.bottom),
         text: previous.text + row.text,
         person: previous.person || row.person,
+        afterWork: previous.afterWork || row.afterWork,
       };
     else rows.push(row);
   }
@@ -160,7 +165,10 @@ function readEnd() {
   const previousOpener = rows.slice(0, -1).findLastIndex((row) => row.person);
   const rowGap = opensTurn
     ? rows[previousOpener + 1]!.top - rows[previousOpener]!.bottom
-    : last.top - above.bottom;
+    : last.afterWork
+      ? // The bottom wait is its own group (#283), not a row inside the finished turn.
+        above.top - rows.at(-3)!.bottom
+      : last.top - above.bottom;
   const composer = painted(document.querySelector("[data-chat-composer-overlay]")!)!;
   return {
     last,
@@ -204,6 +212,316 @@ async function settledEnd(page: Page) {
 describe("owner-reported layout regressions", () => {
   // Cyd: delayed HQ app detail inserted an old landing above the painted final answer,
   // dropping its words 79 px before the end follower glided back. The source stays unchanged.
+
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("historical landings preserve painted words while live arrivals still follow", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installChanges], { mate: "real" });
+        yield* Effect.promise(async () => {
+          await s.page.setViewport({ width: 1786, height: 1000 });
+          await s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+        });
+        const change = yield* changeFixture(s);
+        const ada = s.drivers.realMates.get("Ada")!;
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => ownerMenu(s.page));
+        yield* s.when.menu.opensMate("Ada");
+        yield* s.then.conversation.appears;
+        const exchange = Effect.fn(function* (
+          question: string,
+          answer: string,
+          providerInput = question,
+        ) {
+          yield* ada.provider.turn([{ kind: "say", text: answer }]);
+          yield* s.when.conversation.sends(question);
+          expect(
+            (yield* ada.provider.received).input.input,
+            "ASSERTION: the provider receives the person's words with the observed landing context",
+          ).toBe(providerInput);
+          yield* s.then.conversation.showsMessage(answer.trim().split("\n\n").at(-1)!);
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(
+              () => !document.querySelector('button[aria-label="Stop generation"]'),
+            ),
+          );
+          yield* Effect.promise(() => waitForStillFrames(s.page));
+        });
+        yield* exchange(
+          "Review the linked work",
+          `Review [the order change](https://hqzone.prg1-zerops.zone${change.direct.replace("/change/", "/changes/")}).\n\n` +
+            "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+              24,
+            ),
+        );
+        yield* change.colleagueMerges;
+        // Core's merge receipt precedes the browser's app-detail reflection. Observe that fact
+        // before sending: the agent hears it as context, while the person's transcript stays bare.
+        yield* Effect.promise(() =>
+          s.page.waitForSelector('[data-timeline-row-id="event:zerops:change-landed:appdev#1"]'),
+        );
+        const answer = "The final contact line stays where it was read.";
+        yield* exchange(
+          "And the contact line?",
+          answer,
+          `<zerops-update>\nappdev #1 landed: ${change.title}\n</zerops-update>\n\nAnd the contact line?`,
+        );
+        const frames = hqFramesFor(s.drivers);
+        frames.hold((frame) => {
+          const input = JSON.parse(frame);
+          return input.scope?.kind === "app-detail";
+        });
+        yield* Effect.promise(() => s.page.reload());
+        yield* s.then.conversation.showsMessage(answer);
+        expect(
+          yield* Effect.promise(() =>
+            s.page.evaluate((answer) => {
+              const timeline = document.querySelector(".timeline-legend-list")!;
+              const person = [...timeline.querySelectorAll("[data-user-message-body]")].at(-1)!;
+              const words = document.createTreeWalker(timeline, NodeFilter.SHOW_TEXT);
+              let reply: Node | null = null;
+              while (words.nextNode()) {
+                if (words.currentNode.textContent === answer) reply = words.currentNode;
+              }
+              return {
+                person: person.textContent,
+                contextVisible: timeline.textContent?.includes("<zerops-update>"),
+                answerFollows:
+                  reply !== null &&
+                  (person.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+              };
+            }, answer),
+          ),
+          "ASSERTION: the reloaded conversation paints the person's exact words before the answer without agent context",
+        ).toEqual({ person: "And the contact line?", contextVisible: false, answerFollows: true });
+        yield* Effect.promise(() => frames.received());
+        yield* Effect.promise(() => waitForStillFrames(s.page));
+        const trace = yield* Effect.promise(async () => {
+          const capture = await s.page.evaluateHandle((answer) => {
+            const readings: { top: number; height: number; scroll: number; count: number }[] = [];
+            let active = true;
+            const read = () => {
+              const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+              const row = [...scroll.querySelectorAll<HTMLElement>("[data-timeline-row-id]")].find(
+                (row) => row.textContent?.includes(answer),
+              )!;
+              readings.push({
+                top: row.getBoundingClientRect().top,
+                height: scroll.scrollHeight,
+                scroll: scroll.scrollTop,
+                count: scroll.querySelectorAll("[data-timeline-row-id]").length,
+              });
+              if (active) requestAnimationFrame(read);
+            };
+            read();
+            return {
+              readings,
+              stop: () => {
+                active = false;
+              },
+            };
+          }, answer);
+          frames.resume();
+          await s.page.waitForFunction(() =>
+            document.querySelector('[data-timeline-row-id^="event:zerops:"]'),
+          );
+          await waitForStillFrames(s.page);
+          const result = await capture.evaluate((capture) => {
+            capture.stop();
+            return capture.readings;
+          });
+          await capture.dispose();
+          return result;
+        });
+        expect(
+          trace.at(-1)!.height - trace[0]!.height,
+          "ASSERTION: the delayed linked historical landing added its real row above the answer",
+        ).toBeGreaterThan(40);
+        const jumps = trace.slice(1).map((frame, index) => Math.abs(frame.top - trace[index]!.top));
+        expect(
+          Math.max(...jumps),
+          `ASSERTION: delayed historical landing moves painted words by at most 1 px: ${trace.map((frame) => frame.top).join(" ")}`,
+        ).toBeLessThanOrEqual(1);
+        yield* exchange("One live update", "A live arrival still follows.\n\n".repeat(12));
+        yield* Effect.promise(() => waitForStillFrames(s.page));
+        const gap = yield* Effect.promise(() =>
+          s.page.evaluate(() => {
+            const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+            return scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop;
+          }),
+        );
+        expect(
+          gap,
+          "ASSERTION: a live arrival is followed to the conversation end",
+        ).toBeLessThanOrEqual(2);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+  });
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("the Chief's first message and composer enter the conversation without a jump", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([], { mate: "real" });
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* s.given.project("Chief", { mate: true });
+        const { zerops, core, owner } = s.drivers;
+        zerops.put("project", {
+          ...zerops.rows("project").find((project) => project.id === "Chief")!,
+          tagList: ["chief"],
+        });
+        zerops.put("user-data", {
+          id: "chief-token",
+          clientId: "ORG",
+          serviceStackId: "service-Chief",
+          projectId: "Chief",
+          key: "ZCP_ORG_TOKEN",
+          type: "USER",
+          sensitive: true,
+          editable: true,
+          content: "scenario-chief-token",
+        });
+        const registered = yield* core.call("POST", "/api/chief", {
+          session: owner,
+          body: { projectId: "Chief" },
+        });
+        expect(registered.status, "ASSERTION: HQ names the person's Chief").toBe(200);
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => ownerMenu(s.page));
+        yield* Effect.promise(() =>
+          s.page
+            .locator('[data-sidebar="sidebar"] [data-zerops-surface="sidebar-chief-row"]')
+            .click(),
+        );
+        yield* Effect.promise(() =>
+          s.page.waitForSelector('[role="textbox"]', { visible: true, timeout: 8000 }),
+        );
+        const question = "Look into my organization.";
+        const answer = "I will look into your organization.";
+        const mate = s.drivers.realMates.get("Chief")!;
+        const answerArrives = yield* Deferred.make<void>();
+        yield* mate.provider.turn([
+          { kind: "wait", until: answerArrives },
+          { kind: "say", text: answer },
+        ]);
+        yield* Effect.promise(async () => {
+          await s.page.locator('[role="textbox"]').fill(question);
+          await waitForStillFrames(s.page);
+        });
+        const slowed = yield* Effect.promise(() => slowAnimations(s.page, 0.2));
+        const trace = yield* Effect.promise(() =>
+          s.page.evaluateHandle(() => {
+            const state = {
+              active: true,
+              frames: [] as Array<{
+                at: number;
+                composer: number;
+                message: number | null;
+                path: string;
+                opacity: number;
+              }>,
+            };
+            const sample = () =>
+              setTimeout(() => {
+                const composer = document.querySelector('[data-slot="composer-shell"]');
+                const message = document.querySelector('[data-message-role="user"]');
+                let opacity = 1;
+                for (let element = message; element !== null; element = element.parentElement)
+                  opacity *= Number(getComputedStyle(element).opacity);
+                if (composer)
+                  state.frames.push({
+                    at: performance.now(),
+                    composer: composer.getBoundingClientRect().top,
+                    message: message?.getBoundingClientRect().top ?? null,
+                    path: location.pathname,
+                    opacity,
+                  });
+                if (state.active) requestAnimationFrame(sample);
+              }, 0);
+            requestAnimationFrame(sample);
+            return state;
+          }),
+        );
+        yield* s.when.conversation.sends(question);
+        expect((yield* mate.provider.received).input.input).toBe(question);
+        // The answer is real server data arriving after the saved conversation's first paint.
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(
+            (state) =>
+              state.frames.some(
+                (frame) =>
+                  !frame.path.includes("/draft/") && frame.opacity === 1 && frame.message !== null,
+              ),
+            { polling: "raf" },
+            trace,
+          ),
+        );
+        yield* Deferred.succeed(answerArrives, undefined);
+        yield* s.then.conversation.showsMessage(answer);
+        yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 24 }));
+        const frames = yield* Effect.promise(() =>
+          trace.evaluate((state) => {
+            state.active = false;
+            return state.frames;
+          }),
+        );
+        yield* Effect.promise(() => trace.dispose());
+        yield* Effect.promise(() => slowed.restore());
+        const steps = (read: (frame: (typeof frames)[number]) => number | null) =>
+          frames.slice(1).flatMap((frame, index) => {
+            const previous = frames[index]!;
+            const [to, from] = [read(frame), read(previous)];
+            return to === null || from === null ? [] : [Math.abs(to - from)];
+          });
+        const draftVisible = frames.filter(
+          (frame) =>
+            frame.path.includes("/draft/") && frame.opacity === 1 && frame.message !== null,
+        );
+        const savedVisible = frames.filter(
+          (frame) =>
+            !frame.path.includes("/draft/") && frame.opacity === 1 && frame.message !== null,
+        );
+        expect(
+          draftVisible.length,
+          "ASSERTION: the draft's message is visibly sampled",
+        ).toBeGreaterThan(0);
+        expect(
+          savedVisible.length,
+          "ASSERTION: the saved conversation's message is visibly sampled",
+        ).toBeGreaterThan(0);
+        const firstMessageLine = draftVisible.at(-1)!.message!;
+        const promotionShift = Math.max(
+          ...savedVisible.map((frame) => Math.abs(frame.message! - firstMessageLine)),
+        );
+        yield* Effect.log("CHIEF GEOMETRY", {
+          firstMessageLine,
+          promotionShift,
+          composerStep: Math.max(0, ...steps((frame) => frame.composer)),
+        });
+        expect(
+          promotionShift,
+          "ASSERTION: promotion keeps the Chief's first message on its visible line",
+        ).toBeLessThanOrEqual(1);
+        if (process.env.MATE_LAYOUT_EVIDENCE)
+          yield* Effect.promise(() =>
+            s.page.screenshot({
+              path: `${process.env.MATE_LAYOUT_EVIDENCE}/chief-first-send-full.png`,
+            }),
+          );
+        expect(
+          frames.length,
+          "ASSERTION: the first send is sampled through its docking",
+        ).toBeGreaterThan(10);
+        expect(
+          Math.max(0, ...steps((frame) => frame.composer)),
+          "ASSERTION: the Chief's composer docks by a glide, never a jump",
+        ).toBeLessThan(60);
+        expect(
+          Math.max(0, ...steps((frame) => frame.message)),
+          "ASSERTION: the Chief's first message settles by a glide, never a jump",
+        ).toBeLessThan(60);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+  });
 
   describe("Decision: geometry relations only; no style pins.", () => {
     const shapes = [
@@ -1301,6 +1619,38 @@ describe("owner-reported layout regressions", () => {
               }),
           },
 
+          {
+            state: "a finished run whose helpers wait at the conversation bottom",
+            arrange: (chat, engine) =>
+              Effect.gen(function* () {
+                const run = engine.personRun("Review the api with a helper");
+                engine.item(run, {
+                  kind: "work",
+                  work: "helper-api",
+                  workKind: "helper",
+                  status: "running",
+                  title: "Review the api",
+                });
+                engine.note(run, "The helper is still reviewing the api.", { kind: "completed" });
+                yield* chat.then.text("Still working in the background");
+              }),
+          },
+          {
+            state: "a finished run whose background command waits at the conversation bottom",
+            arrange: (chat, engine) =>
+              Effect.gen(function* () {
+                const run = engine.personRun("Start the wait in the background");
+                engine.item(run, {
+                  kind: "work",
+                  work: "session.w2",
+                  workKind: "shell",
+                  status: "running",
+                  title: "Wait 45 seconds in the background, then print done",
+                });
+                engine.note(run, "The background wait hasn't printed yet.", { kind: "completed" });
+                yield* chat.then.text("Still working in the background");
+              }),
+          },
           {
             state: "the usage limit holding a message",
             arrange: (chat, engine) =>
@@ -2423,6 +2773,56 @@ describe("owner-reported layout regressions", () => {
         });
 
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect("a live card spends no line on controls", () =>
+          Effect.gen(function* () {
+            const { s, engine, run } = yield* miloAtWork();
+            engine.note(run, "The Mate is reading the live work.");
+            yield* mateChat(s).then.text("The Mate is reading the live work.");
+            const controlsOnTheHead = (what: string) =>
+              Effect.gen(function* () {
+                const read = yield* Effect.promise(() =>
+                  s.page.evaluate(() => {
+                    const card = [
+                      ...document.querySelectorAll<HTMLElement>("[data-run-chat][data-run-live]"),
+                    ].at(-1)!;
+                    const head = card.querySelector<HTMLElement>(":scope > [data-run-head]")!;
+                    const line = head.getBoundingClientRect();
+                    const controls = [...card.querySelectorAll<HTMLButtonElement>("button")]
+                      .filter((button) => button.closest("[data-chat-row]") === null)
+                      .map((button) => {
+                        const rect = button.getBoundingClientRect();
+                        return {
+                          name: button.textContent ?? "",
+                          top: rect.top,
+                          bottom: rect.bottom,
+                        };
+                      });
+                    return {
+                      head: { top: line.top, bottom: line.bottom },
+                      controls,
+                      composerStop:
+                        document.querySelector('button[aria-label="Stop background work"]') !==
+                        null,
+                    };
+                  }),
+                );
+                expect(
+                  read.controls.map((control) => control.name),
+                  `ASSERTION: the card's controls are its head's toggle (${what})`,
+                ).toEqual(["Hide work"]);
+                for (const control of read.controls)
+                  expect(
+                    control.top >= read.head.top - 0.5 && control.bottom <= read.head.bottom + 0.5,
+                    `ASSERTION: ${control.name} stands on the head's line (${what})`,
+                  ).toBe(true);
+                return read;
+              });
+            yield* Effect.promise(() => settledFoot(s.page, ["Hide work"]));
+            yield* controlsOnTheHead("the Mate's words");
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+
         /** Milo's turn ends with its answer, with or without a helper still at work. */
         /** Its answer streamed into the slot first, or arriving whole with the run's end. */
 
@@ -2493,7 +2893,7 @@ describe("owner-reported layout regressions", () => {
          * empty band at its foot that ran under the composer, and the view rested short of its end.
          * After the settle the card and the conversation's end read as a reload draws them.
          */
-        const restsAtItsEnd = (ending: "stopped with its helpers" | "completed") =>
+        const restsAtItsEnd = (ending: "stopped with its helpers" | "completed" | "on its job") =>
           Effect.gen(function* () {
             const { s, engine, run } = yield* miloAtWork();
             const chat = mateChat(s);
@@ -2514,7 +2914,18 @@ describe("owner-reported layout regressions", () => {
             });
             yield* Effect.promise(() => waitForStillFrames(s.page));
             const words = "Both helpers reported their last tick, 90.";
-            if (ending === "stopped with its helpers") {
+            if (ending === "on its job") {
+              for (const helper of helpers) engine.update(helper, { status: "completed" });
+              engine.item(run, {
+                kind: "work",
+                work: "session.rest",
+                workKind: "shell",
+                status: "running",
+                title: "Print done when the job ends",
+              });
+              engine.note(run, "The job is still running.", { kind: "completed" });
+              yield* chat.then.text("Still working in the background");
+            } else if (ending === "stopped with its helpers") {
               // As on Milo: the Stop ends the helpers first, the run a moment after.
               for (const helper of helpers) engine.update(helper, { status: "stopped" });
               yield* Effect.promise(() => waitForStillFrames(s.page));
@@ -2612,6 +3023,11 @@ describe("owner-reported layout regressions", () => {
         it.effect(
           "after a run completes, its card hugs its content and the conversation rests at its end above the composer",
           () => restsAtItsEnd("completed"),
+        );
+
+        it.effect(
+          "after a turn ends on a job still running, its finished card hugs its content and the background wait rests at the conversation end above the composer",
+          () => restsAtItsEnd("on its job"),
         );
 
         // Recheck on 0.15.45: opening a settled card at the conversation's end held the card where
@@ -3094,6 +3510,120 @@ describe("owner-reported layout regressions", () => {
         const LONG =
           "Live stress test 4D: what number is in this picture? Then open example.com in the browser, take a screenshot of the page and describe its layout in twenty lines: the background, the column, the icon at the top, each paragraph and the language it is written in, and the link at the end.";
 
+        it.effect(
+          "a message steered into the running run stands above its card, and the card's head has no step of 60 px or more in a frame",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* createScenario([installArea]);
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Ada", { mate: true });
+              const chat = mateChat(s);
+              for (const round of [1, 2, 3])
+                chat
+                  .fixture()
+                  .exchange(
+                    `How did deploy ${round} go?`,
+                    "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                      12,
+                    ),
+                  );
+              chat.fixture().exchange("And now?", EARLIER);
+              yield* s.given.signedIn;
+              yield* Effect.promise(() => ownerMenu(s.page));
+              yield* chat.when.open();
+              yield* chat.then.text(EARLIER);
+              const engine = chat.fixture().wire.engine;
+              const run = engine.personRun("Check both pages");
+              engine.session();
+              engine.note(run, "Checking the first page now.");
+              yield* chat.then.text("Checking the first page now.");
+              const text = "also tell me the page title";
+              yield* chat.when.send(text);
+              yield* Effect.promise(() => waitForStillFrames(s.page));
+              /** The running card's head and the steered message's row, each frame after its paint. */
+              yield* Effect.promise(() =>
+                s.page.evaluate((text) => {
+                  const frames: Array<{ head: number | null; message: number | null }> = [];
+                  const state = { active: true };
+                  const sample = () =>
+                    setTimeout(() => {
+                      const head = [
+                        ...document.querySelectorAll("[data-run-chat] > [data-run-head]"),
+                      ].at(-1);
+                      const message = [
+                        ...document.querySelectorAll(
+                          '[data-timeline-row-id][data-message-role="user"]',
+                        ),
+                      ].find((row) => row.textContent?.includes(text));
+                      frames.push({
+                        head: head?.getBoundingClientRect().top ?? null,
+                        message: message?.getBoundingClientRect().top ?? null,
+                      });
+                      if (state.active) requestAnimationFrame(sample);
+                    }, 0);
+                  (window as unknown as { steerTrace: unknown }).steerTrace = { frames, state };
+                  requestAnimationFrame(sample);
+                }, text),
+              );
+              yield* chat.when.press("Send now");
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  (text) =>
+                    [
+                      ...document.querySelectorAll(
+                        '[data-timeline-row-id][data-message-role="user"]',
+                      ),
+                    ].filter((row) => row.textContent?.includes(text)).length === 1,
+                  { polling: "raf", timeout: 8000 },
+                  text,
+                ),
+              );
+              expect(
+                yield* Effect.promise(() =>
+                  s.page.$$eval(
+                    '[data-timeline-row-id][data-message-role="user"]',
+                    (rows, text) => rows.filter((row) => row.textContent?.includes(text)).length,
+                    text,
+                  ),
+                ),
+                "ASSERTION: the transcript shows the steered message once",
+              ).toBe(1);
+              const frames = yield* Effect.promise(() =>
+                waitForStillFrames(s.page, { stillFrames: 24 }).then(() =>
+                  s.page.evaluate(() => {
+                    const held = (
+                      window as unknown as {
+                        steerTrace: {
+                          frames: Array<{ head: number | null; message: number | null }>;
+                          state: { active: boolean };
+                        };
+                      }
+                    ).steerTrace;
+                    held.state.active = false;
+                    return held.frames;
+                  }),
+                ),
+              );
+              const last = frames.at(-1);
+              expect(
+                last?.message != null && last.head != null && last.message < last.head,
+                `ASSERTION: the steered message stands above the running card's head: ${quoted({ last })}`,
+              ).toBe(true);
+              // Frame to frame, never by elapsed time: the jump came in the commit's own long frame
+              // (86 ms), where a rate hid it.
+              const steps = frames.slice(1).flatMap((frame, index) => {
+                const before = frames[index]!;
+                if (frame.head === null || before.head === null) return [];
+                return [Math.abs(frame.head - before.head)];
+              });
+              expect(steps.length, "ASSERTION: the steer was sampled").toBeGreaterThan(10);
+              expect(
+                Math.max(0, ...steps),
+                "ASSERTION: the running card's head glides, no frame's step 60 px or more",
+              ).toBeLessThan(60);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
         it.effect.each([
           {
             from: "this composer, one line",
