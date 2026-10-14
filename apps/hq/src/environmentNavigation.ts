@@ -270,6 +270,7 @@ FROM standing s`;
                       environments.find((row) => row.environment_id === value.id)?.project_ids ?? []
                     ).map((project_id) => ({ project_id, kind: "" })),
                     facts,
+                    value.tier,
                   )
                 : environmentOffers(userId, value.target.projectId, facts),
           }))
