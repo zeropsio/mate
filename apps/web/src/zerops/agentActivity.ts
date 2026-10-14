@@ -188,10 +188,10 @@ export interface ZeropsAgentActivity {
   /** The first line of the error the Mate stopped on: a failed row's third line. */
   readonly errorLine?: string | undefined;
   /**
-   * The Mate finished something this device has not looked at since
-   * (`hasUnseenCompletion`, the resolver's own fact): its row's name is at
-   * 600 and a blue dot stands before its age until its conversation is
-   * opened.
+   * Its latest result — finished or failed — is newer than what the person has seen: this
+   * device's visit (`hasUnseenCompletion`), under HQ's count where a Mate publishes its attention
+   * (`mateUnread`). Its row's name is at 600 and a blue dot stands before its age until its
+   * conversation is opened.
    */
   readonly unread: boolean;
   /** When the usage limit pausing it resets; absent while it is not paused. */

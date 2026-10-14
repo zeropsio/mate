@@ -240,12 +240,12 @@ export function attentionActivity(input: {
           ? undefined
           : main.id === threadId
             ? { ...main, environmentId }
-            : wordlessChat(threadId, environmentId, main.updatedAt)));
+            : wordlessChat(threadId, environmentId, main.updatedAt, attention)));
   const heldWords =
     words ??
     (restartQuestion?.interruption?.restart.at == null
       ? undefined
-      : wordlessChat(threadId, environmentId, restartQuestion.interruption.restart.at));
+      : wordlessChat(threadId, environmentId, restartQuestion.interruption.restart.at, attention));
   const limit = input.limits?.get(scopedThreadKey(scopeThreadRef(environmentId, threadId)));
   const read =
     row !== undefined
@@ -254,9 +254,6 @@ export function attentionActivity(input: {
         ? undefined
         : threadAgentActivity(heldWords, visited, undefined, limit);
   if (read === undefined) return undefined;
-  // HQ's count drives a chat off screen; the one on screen is seen before HQ hears so.
-  const unread =
-    input.unseen === null || visited === SEEN_ON_SCREEN ? read.unread : input.unseen > 0;
   const question = attention.questions.find(
     (question) =>
       !(
@@ -265,6 +262,21 @@ export function attentionActivity(input: {
         read.limit?.kind === "expired"
       ),
   );
+  const unreadNow = mateUnread({
+    endedAt:
+      row !== undefined
+        ? row.state.kind === "working" || row.state.kind === "queued"
+          ? null
+          : (row.latestRun?.endedAt ?? null)
+        : heldWords?.latestTurn?.state === "running"
+          ? null
+          : (heldWords?.latestTurn?.completedAt ?? null),
+    visitedAt: visited,
+    unseen: input.unseen,
+    failed:
+      read.kind === "failed" ||
+      (question?.kind === "failed" && question.threadId === read.threadId),
+  });
   const kind: ThreadStatusKind =
     read.limit?.kind === "limited" || read.limit?.kind === "expired"
       ? read.kind
@@ -279,9 +291,10 @@ export function attentionActivity(input: {
           ? UNDER_WAY.has(read.kind)
             ? read.kind
             : "working"
-          : unread
+          : unreadNow
             ? "done"
             : "idle";
+  const unread = unreadNow && !UNDER_WAY.has(kind);
   const {
     liveStep,
     waitsOnHelpers,
@@ -318,13 +331,16 @@ export function attentionActivity(input: {
 
 /**
  * A chat the attention names before HQ's overview does (a new one, the overview a beat behind): no
- * words of it yet, dated at HQ's last word of the Mate — the attention alone says what it does.
+ * words of it yet — the attention alone says what it does — dated by its own last result where
+ * the attention lists one, else at HQ's last word of the Mate.
  */
 function wordlessChat(
   id: ThreadId,
   environmentId: EnvironmentId,
   updatedAt: string,
+  attention: MateAttention,
 ): AgentActivityThread {
+  const result = attention.results.find((each) => each.threadId === id);
   return {
     id,
     environmentId,
@@ -337,7 +353,16 @@ function wordlessChat(
     latestUserMessageAt: null,
     updatedAt,
     session: null,
-    latestTurn: null,
+    latestTurn:
+      result === undefined
+        ? null
+        : {
+            turnId: result.turnId,
+            state: "completed",
+            requestedAt: result.completedAt,
+            startedAt: result.completedAt,
+            completedAt: result.completedAt,
+          },
   };
 }
 
@@ -373,6 +398,59 @@ function legacyActivity(input: {
   }
   if (socket === undefined) return undefined;
   return input.standing.has(input.environmentId) ? socket : restingActivity(socket);
+}
+
+/**
+ * Whether a Mate is unread: its main chat's latest result — a run finished, failed or cut — is
+ * newer than what this person has seen. The one rule of every surface that draws it (its menu
+ * row's dot and name, the rail, the overview's cards, its folded group's line):
+ *
+ * | this device's visit                       | HQ's count  | unread           |
+ * | ----------------------------------------- | ----------- | ---------------- |
+ * | its conversation is on screen             | any         | no               |
+ * | marked unread here (`markThreadUnread`)   | any         | yes              |
+ * | since the result ended                    | any         | no — ahead of HQ |
+ * | before it, on a failed run                | —           | yes              |
+ * | before it, or never                       | said        | HQ's count > 0   |
+ * | before it                                 | not said    | yes              |
+ * | never                                     | not said    | no               |
+ *
+ * HQ counts what the person saw on any device, of finished runs only: a failure waits on its
+ * person as a question there, so this device's visit is the only word of it having been seen. A
+ * chat never opened here while HQ says nothing — HQ not answered yet on a reload, or not counting
+ * for this person — reads seen: a reload paints nothing it takes back, and a new browser does not
+ * light every Mate it has never opened.
+ */
+export function mateUnread(input: {
+  /** When its latest result ended; null while a run is on, or where none is known. */
+  readonly endedAt: string | number | null;
+  readonly visitedAt: string | undefined;
+  /** HQ's count of the Mate's results the person has not seen; null while HQ has not said. */
+  readonly unseen: number | null;
+  /** That result is a failure, which HQ does not count. */
+  readonly failed: boolean;
+}): boolean {
+  if (input.visitedAt === SEEN_ON_SCREEN) return false;
+  const local = localSeen(input.endedAt, input.visitedAt);
+  if (local === "marked") return true;
+  if (local === "seen") return false;
+  if (input.failed) return local === "unseen";
+  if (input.unseen !== null) return input.unseen > 0;
+  return local === "unseen";
+}
+
+/** This device's word of one result: seen since it ended, marked unread, seen before it, or none. */
+function localSeen(
+  endedAt: string | number | null,
+  visitedAt: string | undefined,
+): "seen" | "marked" | "unseen" | "unknown" {
+  if (endedAt === null || visitedAt === undefined) return "unknown";
+  const ended = typeof endedAt === "number" ? endedAt : Date.parse(endedAt);
+  const visited = Date.parse(visitedAt);
+  if (Number.isNaN(ended) || Number.isNaN(visited)) return "unknown";
+  if (visited >= ended) return "seen";
+  // `markThreadUnread` sets the visit a millisecond before the result it marks.
+  return visited === ended - 1 ? "marked" : "unseen";
 }
 
 /**
