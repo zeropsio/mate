@@ -1,3 +1,6 @@
+import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
+
 import { operationClosing, sentenceCase } from "../../operations/phrases.ts";
 import type { ZeropsCall, ZeropsOperationStep } from "../types.ts";
 import type { ZeropsCardPayload } from "../../cards/payloads.ts";
@@ -60,9 +63,10 @@ const SERVER_STATES: Readonly<
 
 /** `21:04`, in the reader's own clock; nothing for a time it cannot read. */
 function clockOf(iso: string): string | undefined {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return undefined;
-  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+  const at = DateTime.make(iso);
+  if (Option.isNone(at)) return undefined;
+  const { hour, minute } = DateTime.toParts(DateTime.setZone(at.value, DateTime.zoneMakeLocal()));
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 type DevServer = NonNullable<Extract<ZeropsCardPayload, { kind: "devServer" }>["servers"]>[number];

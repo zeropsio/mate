@@ -159,10 +159,12 @@ describe("zcp contract fixtures", () => {
         agentInternal: false,
       });
     /** `21:04`, in the reader's own clock. */
-    const clock = (iso: string) => {
-      const at = new Date(iso);
-      return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
-    };
+    const clock = (iso: string) =>
+      new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).format(Date.parse(iso));
 
     it("The dev-server card shows one row per named server with its last known state and when it was read", () => {
       const card = fields("dev-server.three-servers-one-crashed.json");

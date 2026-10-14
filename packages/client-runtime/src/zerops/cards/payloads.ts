@@ -519,9 +519,12 @@ function decodeDevServer(document: Record<string, unknown>): ZeropsCardPayload |
     ...optional("message", readString(document.message)),
     ...optional("reason", readString(document.reason)),
     ...optional("logTail", readString(document.logTail)),
-    ...optional("servers", devServersOf(document.envelope, hostname)),
+    ...servers(devServersOf(document.envelope, hostname)),
   };
 }
+
+const servers = (value: ReadonlyArray<ZeropsDevServer> | undefined) =>
+  value === undefined ? {} : { servers: value };
 
 const decodeDevServerEntry = Schema.decodeUnknownOption(ZeropsDevServer);
 
