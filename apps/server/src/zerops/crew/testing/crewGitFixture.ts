@@ -282,6 +282,18 @@ export const supervise = (root: string, ...args: ReadonlyArray<string>): void =>
   });
 };
 
+/**
+ * zcp deploys the service at `root` from itself: before `zcli push` it runs the crew's save when the
+ * Mate wrote one, and a failing save stops the push.
+ */
+export const zcpDeploys = (root: string): void => {
+  NodeChildProcess.execFileSync(
+    "sh",
+    ["-c", 'save="$(git rev-parse --git-common-dir)/t3-crew-save"; [ ! -x "$save" ] || "$save"'],
+    { cwd: root, env: { ...process.env, ...PERSON }, stdio: "ignore" },
+  );
+};
+
 /** The fixture's dev server: `web`, declared on the dev setup's main port. */
 export const DEV_SERVER = { name: "web", port: 3000, command: "sleep 30" } as const;
 

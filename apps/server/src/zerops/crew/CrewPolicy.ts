@@ -22,7 +22,8 @@
  *   in the copy with `CREW_PORT`, the crewmate's `env:` and a timeout. A
  *   command already in exactly that form runs as it is, so a driver that
  *   cannot rewrite a call (Codex) runs it too. A claim or release turn also
- *   runs its one supervisor command exactly as its card names it.
+ *   runs its one supervisor command exactly as its card names it; no other
+ *   command drives the supervisor (`zcp-devsup`).
  *   `zerops_dev_server` only in the after-land turn, in exactly its shape.
  * - **Readers and the lead:** no `Write`, `Edit` or `Bash`.
  * - **Refused roots:** the workspace's `.zcp` and `.mate`, `~/.claude`,

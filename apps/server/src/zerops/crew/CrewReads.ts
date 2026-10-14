@@ -13,9 +13,6 @@
  *   lane's commits since its task started, for a new stint's seed.
  * - **Your tree**: its dirty paths (*Deliver*'s draft names them) and which
  *   landing commits a remote branch already holds (delivered).
- * - **The dev server** zcp started on the service (`DEV_SERVER_PIDFILE`,
- *   written by `zerops_dev_server` before it execs the command): its command
- *   line, which a shaped turn restarts it with.
  * - **A crewmate's changes** for `crew_diff`, cut to what a tool answer carries.
  *
  * @module CrewReads
