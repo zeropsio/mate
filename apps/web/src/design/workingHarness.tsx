@@ -1464,14 +1464,22 @@ const NAMED_FEW: BackgroundWork = {
   count: 2,
 };
 
-/** Eli's four, 2026-10-14. */
+/** Eli at 21:25Z, 2026-10-14: five helpers and two of its own jobs, each since it started. */
 const NAMED_MANY: BackgroundWork = {
   items: [
-    { title: "Final batched browser check", of: "mate", since: Date.now() - 9 * 60_000 },
-    { title: "Wait for the final check to finish", of: "mate", since: Date.now() - 6 * 60_000 },
-    { title: "Wait for the final check to complete", of: "mate", since: Date.now() - 4 * 60_000 },
+    { title: "Deeper production chains + drones", of: "helper", since: Date.now() - 130 * 60_000 },
+    { title: "Swarm scale toward 500k", of: "helper", since: Date.now() - 52 * 60_000 },
+    {
+      title: "Arsenal: mines, arc gates, orbital, batteries",
+      of: "helper",
+      since: Date.now() - 23 * 60_000,
+    },
+    { title: "Rebuild wasm and rerun balance", of: "mate", since: Date.now() - 9 * 60_000 },
+    { title: "Fog of war, scanning, tech tree", of: "helper", since: Date.now() - 6 * 60_000 },
+    { title: "Wait for balance campaigns to finish", of: "mate", since: Date.now() - 2 * 60_000 },
   ],
-  count: 4,
+  count: 7,
+  helpers: 5,
 };
 
 /** The panel's deploy bars read the platform's pipeline: stand-ins that answer nothing. */

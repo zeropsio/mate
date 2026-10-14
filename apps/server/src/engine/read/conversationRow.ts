@@ -108,8 +108,11 @@ const helperWaitsOn = (request: ViewRequest): boolean =>
   (request.ask.kind === "approval" ||
     (request.ask.kind === "question" && request.ask.dismissible !== true));
 
-/** How many pieces of background work a row names; the rest it counts. */
-export const ROW_WORK_NAMED = 3;
+/**
+ * How many pieces of each kind of background work a row names — the card lists five on rows of
+ * their own, as the helpers panel does; the rest it counts.
+ */
+export const ROW_WORK_NAMED = 5;
 
 /** A row's title of a piece of background work: shorter than a message's, it shares a line. */
 const WORK_TITLE_MAX = 120;
