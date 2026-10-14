@@ -14,12 +14,9 @@ export type SessionEndReason = "expired" | "revoked";
  *
  * Both halves exist because the session is only ever checked at the door:
  * `authenticateWebSocketUpgrade` verifies it once, and the scopes captured
- * there are never re-read for the life of the socket. That makes the Zerops
- * membership window (900s by default) a bound on the NEXT connect only — the
- * continuously connected client, which is exactly who the guarantee is about,
- * was never re-checked at all. Revocation had the same hole: `revoke` and
- * `revokeBySubject` flip a database row and publish a UI event, and nothing
- * consumed it to end the matching connection.
+ * there are never re-read for the life of the socket. A session the Zerops
+ * membership re-check revokes (`ZeropsMembershipWatch`) or that reaches its
+ * deadline ends its open sockets here, not at the next connect.
  *
  * A session with no stored deadline is left alone rather than closed on a
  * guess; a pairing session legitimately has none.
