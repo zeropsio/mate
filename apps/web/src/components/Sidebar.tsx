@@ -1859,6 +1859,13 @@ export default function Sidebar() {
   );
   const activeZeropsProjectId = activeZeropsProject.id;
   const activeZeropsProjectResolving = activeZeropsProject.resolving;
+  // The open conversation as the route names it, found or not: what the menu's reveal keys on.
+  const activeZeropsConversation =
+    comingMateRoute?.params.projectId ??
+    newProjectRoute?.params.birthId ??
+    routeThreadRef?.environmentId ??
+    routeDraftThread?.environmentId ??
+    null;
   // The Mate a press in the menu opens, lit from the press while its route is on its way
   // (`menuLitMate`): the band slides at the click, not once the conversation has loaded.
   const [zeropsPress, setZeropsPress] = useState<MenuPress | null>(null);
@@ -3006,6 +3013,7 @@ export default function Sidebar() {
               onShowEveryone={zeropsMateScope === "mine" ? showEveryoneMates : undefined}
               activeProjectId={litZeropsProjectId}
               activeProjectResolving={activeZeropsProjectResolving && !zeropsPressHeld}
+              activeConversation={activeZeropsConversation}
               births={zeropsPlacedBirths}
               candidates={zeropsListed}
               complete={zeropsMenuComplete}
