@@ -1878,6 +1878,7 @@ export function ZeropsProjectsContent({
   );
   // The cards' places as the menu's chips read them, their panels, and the people on each.
   const overview = useOverviewSlots<ZeropsCandidatePresentation>({
+    onPage: project !== undefined,
     flows: groupDeploys,
     deployments,
     mateFace: (candidate) => {

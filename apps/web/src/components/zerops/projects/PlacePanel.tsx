@@ -81,12 +81,19 @@ export function PlacePanel({
   model,
   groupId,
   actions,
+  roomy = false,
 }: {
   readonly model: PlacePanelModel;
   /** Its application, whose places the addresses sheet's switch offers. */
   readonly groupId: string;
   /** The page's buttons for it (`ov-btn`). */
   readonly actions: ReactNode;
+  /**
+   * Drawn at a project page's width: both doors into the sheet. On a card one door is enough —
+   * *Add your domain* while production has none of its own (the sheet it opens manages the rest),
+   * *Manage addresses* otherwise — and the actions keep to one row.
+   */
+  readonly roomy?: boolean;
 }) {
   const { line } = model;
   const label = placeLabel(line);
@@ -193,7 +200,7 @@ export function PlacePanel({
             Add your domain
           </button>
         )}
-        {manage === undefined ? null : (
+        {manage === undefined || (said.offerDomain && !roomy) ? null : (
           <button
             className="ov-btn"
             onClick={() => {

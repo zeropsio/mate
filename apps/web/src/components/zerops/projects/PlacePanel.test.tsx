@@ -99,13 +99,18 @@ describe("a place's addresses on its panel", () => {
   async function mount(
     kind: "production" | "stage",
     wrap: (children: ReactNode) => ReactNode = (children) => children,
+    roomy = false,
   ) {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(wrap(<PlacePanel actions={null} groupId="shop" model={modelOf(LISTED, kind)} />));
+      root.render(
+        wrap(
+          <PlacePanel actions={null} groupId="shop" model={modelOf(LISTED, kind)} roomy={roomy} />,
+        ),
+      );
     });
     unmounts.push(() => {
       act(() => {
@@ -129,7 +134,7 @@ describe("a place's addresses on its panel", () => {
   ] as const)(
     "Manage addresses on %s's panel opens the addresses sheet on that place, in its application",
     async (kind, projectId) => {
-      const container = await mount(kind, inAccount({ [projectId]: place([]) }));
+      const container = await mount(kind, inAccount({ [projectId]: place([]) }), true);
       await press(button(container, "Manage addresses"));
       expect(useAddressesSheet.getState().target).toEqual({
         orgId: "org",
@@ -138,6 +143,16 @@ describe("a place's addresses on its panel", () => {
       });
     },
   );
+
+  it("offers a card one door into the sheet: Add your domain while production has none of its own", async () => {
+    const card = await mount("production", inAccount({ prod: place([]) }));
+    expect(button(card, "Add your domain")).not.toBeNull();
+    expect(button(card, "Manage addresses")).toBeNull();
+
+    const page = await mount("production", inAccount({ prod: place([]) }), true);
+    expect(button(page, "Add your domain")).not.toBeNull();
+    expect(button(page, "Manage addresses")).not.toBeNull();
+  });
 
   it("offers no Manage addresses outside an account, where no sheet can read a place", async () => {
     const container = await mount("production");
