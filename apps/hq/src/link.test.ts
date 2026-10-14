@@ -134,10 +134,16 @@ describe("a Mate's link", () => {
                 (message["mate"] as { readonly ownerUserId?: string | null }).ownerUserId ===
                   userId,
             );
-          const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
-          project.userRoles = [{ clientUserId: "C-owner", roleCode: "OWNER" }];
+          const index = fake.projects.findIndex((candidate) => candidate.id === "P_MATE");
+          const ownedBy = (clientUserId: string) => {
+            fake.projects[index] = {
+              ...fake.projects[index]!,
+              userRoles: [{ clientUserId, roleCode: "OWNER" }],
+            };
+          };
+          ownedBy("C-owner");
           yield* ownerNamed("owner");
-          project.userRoles = [{ clientUserId: "C-dev", roleCode: "OWNER" }];
+          ownedBy("C-dev");
           yield* ownerNamed("dev");
         }),
     );
