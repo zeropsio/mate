@@ -29,3 +29,13 @@ export function environmentIdFromAddress(pathname: string, basePath: string): st
 export function draftIdFromPathname(pathname: string): string | null {
   return /^\/draft\/([^/]+)\/?$/.exec(pathname)?.[1] ?? null;
 }
+
+/**
+ * Whether the address bar opens a conversation — a thread's or a draft's — under the prefix the
+ * bundle is served at: a reload there fetches the conversation's code at boot, beside the data.
+ */
+export function addressOpensConversation(pathname: string, basePath: string): boolean {
+  if (environmentIdFromAddress(pathname, basePath) !== null) return true;
+  if (basePath !== "" && !pathname.startsWith(`${basePath}/`)) return false;
+  return draftIdFromPathname(pathname.slice(basePath.length)) !== null;
+}

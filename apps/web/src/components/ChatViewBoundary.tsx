@@ -18,6 +18,15 @@ const loadChatView = () =>
   (loading ??= import("./ChatView").then((module) => (loaded = module.default)));
 
 /**
+ * Starts fetching the conversation's code now (a reload on a conversation's address, at boot), so
+ * it arrives with the conversation's data rather than after it. The one shared load: a failure is
+ * met by the boundary, which shows the route's error view.
+ */
+export function preloadChatView(): void {
+  loadChatView().catch(() => undefined);
+}
+
+/**
  * The conversation's lazy code inside the inset. Only its chunk is waited on here — `waiting`
  * stands meanwhile, the thread route's own stage, so one stage hands over to the conversation —
  * and no Suspense boundary sits around the conversation: what it waits on itself still reaches

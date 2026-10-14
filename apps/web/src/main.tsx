@@ -15,6 +15,9 @@ import { keepBootFrame } from "./zerops/bootFrame";
 import { staleChunkRecovery } from "./lib/staleChunk";
 import { pressesInFlight } from "./zerops/matePress";
 import { captureZeropsHqSignIn } from "./zerops/hqSignIn";
+import { appBasePath } from "./basePath";
+import { preloadChatView } from "./components/ChatViewBoundary";
+import { addressOpensConversation } from "./routes/-environmentRoute";
 
 // HQ's card sign-in leaves the address before the router reads it (`zerops/hqSignIn.ts`).
 captureZeropsHqSignIn();
@@ -23,6 +26,18 @@ captureZeropsHqSignIn();
 const history = isElectron ? createHashHistory() : createBrowserHistory();
 
 const router = getRouter(history);
+
+// A reload on a conversation's address fetches the conversation's code beside its data.
+if (
+  addressOpensConversation(
+    isElectron
+      ? window.location.hash.replace(/^#/u, "").split("?")[0] || "/"
+      : window.location.pathname,
+    isElectron ? "" : appBasePath(),
+  )
+) {
+  preloadChatView();
+}
 
 if (isElectron) {
   syncDocumentElectronPlatformClasses(navigator.platform);
