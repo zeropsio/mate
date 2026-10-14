@@ -1,17 +1,39 @@
-import type { HqGitTargetIntent as SharedGitIntent } from "@t3tools/shared/hqGitTargets";
 /** Git intents carry operation identity and reviewed evidence; candidate secrets belong to the executor. */
-import type { HqGitAdoption, HqRemoteProbe } from "@t3tools/shared/hqChanges";
+import type {
+  AddGitEnvironmentRequest,
+  HqGitAdoption,
+  HqRemoteProbe,
+  PreviewGitEnvironmentRequest,
+} from "@t3tools/shared/hqChanges";
+import type { HqEnvironmentId } from "@t3tools/contracts";
 import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
 import type { HqGitReleasePreflight } from "@t3tools/shared/hqRelease";
 import type { OperationReceipt } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind, Settlement } from "./kind.ts";
 
-type GitInputs = {
-  [K in SharedGitIntent["kind"]]: Omit<Extract<SharedGitIntent, { readonly kind: K }>, "kind">;
-};
+interface App {
+  readonly orgId: string;
+  readonly appId: string;
+  readonly hqProjectId: string;
+}
+interface Repo extends App {
+  readonly repo: string;
+}
 declare module "../model.ts" {
-  interface OperationIntents extends GitInputs {}
+  interface OperationIntents {
+    readonly "probe-git-remote": Repo & { readonly url: string };
+    readonly "connect-git-remote": Repo & { readonly url: string };
+    readonly "replace-git-remote-token": Repo;
+    readonly "disconnect-git-remote": Repo;
+    readonly "update-git-remote-address": Repo & { readonly url: string };
+    readonly "preview-git-environment": App & { readonly request: PreviewGitEnvironmentRequest };
+    readonly "add-git-environment": App & { readonly request: AddGitEnvironmentRequest };
+    readonly "remove-git-environment": App & { readonly environmentId: HqEnvironmentId };
+    readonly "preflight-git-release": App;
+    // HQ selects the current wanted sha under its lock; no historical sha can be replayed here.
+    readonly "run-git-again": Repo & { readonly environmentId: HqEnvironmentId };
+  }
   interface OperationResults {
     readonly "probe-git-remote": HqRemoteProbe;
     readonly "connect-git-remote": {

@@ -1,12 +1,10 @@
-import { Remotes, remoteForWire } from "./repoRemotes.ts";
-import { gitTargetValues } from "./gitTargetReceipts.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- scope incarnations are unique to this Core process.
 import * as NodeCrypto from "node:crypto";
+import { ProjectId } from "@t3tools/contracts";
 import {
   HQ_ZEROPS_REFUSED,
   CanonicalHqNavigationEnvironment,
   HqNavigationApp,
-  HqGitNavigationEnvironment,
   HqNavigationProject,
   HqAttentionValue,
   hqScopeKey,
@@ -164,7 +162,6 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const hubScope = yield* Effect.scope;
       const structure = yield* Structure;
       const changes = yield* Changes;
-      const remotes = yield* Effect.serviceOption(Remotes);
       const releases = yield* Releases;
       const deploys = yield* Deploys;
       const overviews = yield* MateOverviews;
@@ -216,7 +213,10 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           ...HqNavigationApp.fields,
           environments: Schema.Union([
             Schema.Array(
-              Schema.Union([CanonicalHqNavigationEnvironment.to, HqGitNavigationEnvironment]),
+              Schema.Struct({
+                ...CanonicalHqNavigationEnvironment.to.fields,
+                projectId: ProjectId,
+              }),
             ),
             Schema.Struct({ refused: Schema.String }),
           ]),
@@ -311,9 +311,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 permission: app.can.release,
                 hasProduction:
                   (environmentSource ?? current.environmentSource).slotsForApp(app.id)
-                    .productionProjectId !== null ||
-                  (environmentSource ?? current.environmentSource).slotsForApp(app.id)
-                    .productionTarget === "git",
+                    .productionProjectId !== null,
                 inFlight: (() => {
                   const environments = (environmentSource ?? current.environmentSource).forApp(
                     userId,
@@ -717,22 +715,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                       GitError: () => Effect.succeed([]),
                     }),
                   );
-                  const repos = yield* changes.listRepos(entry.userId, scope.appId);
-                  const withRemotes = Option.isSome(remotes)
-                    ? yield* Effect.forEach(repos, (repo) =>
-                        Effect.map(
-                          remotes.value.get({ appId: scope.appId, repo: repo.name }),
-                          (remote) =>
-                            remote === undefined
-                              ? repo
-                              : { ...repo, remote: remoteForWire(remote) },
-                        ),
-                      )
-                    : repos;
                   data = [
-                    ...(Option.isSome(remotes) ? yield* gitTargetValues(sql, scope.appId) : []),
                     { key: "releases", value: yield* releases.list(entry.userId, scope.appId) },
-                    { key: "repos", value: withRemotes },
+                    { key: "repos", value: yield* changes.listRepos(entry.userId, scope.appId) },
                     ...mate,
                     {
                       key: "recipe:stage",
@@ -1108,12 +1093,6 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         | { kind: "attention" | "forget"; projectId: string };
       const pulls = yield* Effect.forEach(
         [
-          (Option.isSome(remotes) ? remotes.value.changes : Stream.empty).pipe(
-            Stream.map((): Signal => {
-              releaseFence.invalidate();
-              return { kind: "detail" };
-            }),
-          ),
           autoUpdate.changes.pipe(Stream.map((): Signal => ({ kind: "auto-update" }))),
           (usageReader.changes ?? Stream.empty).pipe(Stream.map((): Signal => ({ kind: "usage" }))),
           structure.changes.pipe(Stream.map((): Signal => ({ kind: "structure" }))),

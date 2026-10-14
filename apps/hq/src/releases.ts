@@ -1,6 +1,3 @@
-import type { HqGitTargetIntent, HqGitOperationReceipt } from "@t3tools/shared/hqGitTargets";
-import { keepGitReceipt, readGitReceipt, type GitRequestRefused } from "./gitTargetReceipts.ts";
-import type { RemoteError } from "./repoRemotes.ts";
 /**
  * An application's releases to production (SPEC §3.2d), where main's client tagged and its broker
  * judged (main C). A person asks for a release of what they were offered — the recipe repository's
@@ -97,22 +94,6 @@ type Made = Effect.Effect<
 export class Releases extends Context.Service<
   Releases,
   {
-    readonly gitReview: (
-      userId: string,
-      requestId: string,
-      intent: Extract<HqGitTargetIntent, { readonly kind: "preflight-git-release" }>,
-    ) => Effect.Effect<
-      HqGitOperationReceipt,
-      ReleaseRefused | SqlError | ZeropsError | RemoteError | GitRequestRefused
-    >;
-    readonly gitReceipt: (
-      userId: string,
-      requestId: string,
-      intent: HqGitTargetIntent,
-    ) => Effect.Effect<
-      HqGitOperationReceipt | null,
-      ReleaseRefused | SqlError | ZeropsError | GitRequestRefused
-    >;
     /** The application's releases, newest first by version, at most `RELEASES_SHOWN`. */
     readonly list: (
       userId: string,
@@ -464,50 +445,7 @@ export const releasesLayer: Layer.Layer<
         return made;
       });
 
-    const reviewAccess = Effect.fnUntraced(function* (userId: string, intent: HqGitTargetIntent) {
-      const facts = yield* roles.view;
-      if (facts.orgId !== intent.orgId) return yield* refuse("forbidden", "app_not_seen");
-      const projects = yield* seenApp(userId, intent.appId, facts);
-      yield* allowed(
-        userId,
-        intent.appId,
-        can(person(userId), "read_change", appTarget(projects), facts),
-      );
-    });
     return Releases.of({
-      gitReceipt: (userId, requestId, intent) =>
-        Effect.gen(function* () {
-          yield* reviewAccess(userId, intent);
-          return yield* readGitReceipt(sql, userId, requestId, intent);
-        }),
-      gitReview: (userId, requestId, intent) =>
-        Effect.gen(function* () {
-          yield* reviewAccess(userId, intent);
-          if (Option.isNone(preflight)) return yield* refuse("conflict", "git_release_blocked");
-          const check = preflight.value;
-          const receipt = yield* keepGitReceipt(
-            sql,
-            leader,
-            userId,
-            requestId,
-            intent,
-            Effect.gen(function* () {
-              const [environment] = yield* sql<{
-                readonly branch: string;
-              }>`SELECT branch FROM hq_environment WHERE app_id::text=${intent.appId} AND tier='production' AND target='git'`;
-              if (!environment) return yield* refuse("conflict", "no_production");
-              const repos = yield* sql<{
-                readonly repo: string;
-                readonly sha: string;
-              }>`SELECT r.name AS repo,r.main_head AS sha FROM hq_repo r JOIN hq_repo_remote m ON m.app_id=r.app_id AND m.repo=r.name WHERE r.app_id::text=${intent.appId} AND r.name<>${RECIPE_REPO} AND r.main_head IS NOT NULL ORDER BY r.name`;
-              return yield* Effect.forEach(repos, ({ repo, sha }) =>
-                check.check(intent.appId, repo, sha, environment.branch),
-              );
-            }),
-          );
-          yield* SubscriptionRef.update(ticks, (n) => n + 1);
-          return receipt;
-        }),
       navigation: makeReleaseNavigationReader<NotLeader | RecipeTierUnreadable>(
         sql,
         gitHost.git,

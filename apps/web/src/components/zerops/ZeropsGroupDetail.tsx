@@ -1,6 +1,3 @@
-import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
-import type { GitRemoteActions } from "./GitRemoteSettings";
-import type { HqOffers } from "@t3tools/shared/hqOffers";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { GitStopDetailPage } from "./GitStopDetail";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
@@ -749,7 +746,6 @@ function KnownGroupDetail({
   readonly flow: ZeropsProjectFlow;
   readonly recipeFailure: ReturnType<typeof useHqRecipeFailure>;
 }) {
-  const gitTargets = useGitTargetOperations(groupId);
   const deployments = useStopDeploymentsShown();
   const verbs = useFlowVerbs();
   const environments = flow.environments;
@@ -834,9 +830,6 @@ function KnownGroupDetail({
       }
       environments={environments}
       repos={flow.repos}
-      gitActions={gitTargets.actions}
-      gitCan={gitTargets.can}
-      gitLive={gitTargets.live}
       slots={slots}
       onAdd={(tier) => {
         addEnvironment(groupId, tier);
@@ -894,9 +887,6 @@ function KnownGroupDetail({
  */
 export function ZeropsGroupPane({
   repos,
-  gitActions,
-  gitCan,
-  gitLive,
   readFailures,
   environments,
   slots,
@@ -929,9 +919,6 @@ export function ZeropsGroupPane({
   firstDeployOf,
 }: {
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
-  readonly gitActions?: GitRemoteActions | undefined;
-  readonly gitCan?: HqOffers | undefined;
-  readonly gitLive?: boolean | undefined;
   readonly readFailures?: React.ReactNode;
   /** What has landed on the repository, as HQ compares it. */
   readonly history: ZeropsHistoryState;
@@ -1054,9 +1041,6 @@ export function ZeropsGroupPane({
         <GitRemoteSettings
           repos={repos}
           appName={name ?? "Application"}
-          actions={gitActions}
-          can={gitCan}
-          live={gitLive}
           environments={environments}
         />
       </Section>

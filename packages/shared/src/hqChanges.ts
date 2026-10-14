@@ -243,16 +243,7 @@ export type UpdateRepoRemoteAddressRequest = typeof UpdateRepoRemoteAddressReque
 
 /** Host probes return proven facts or a named refusal, never host bodies or credential values. */
 export const HqRemoteProbe = Schema.Union([
-  Schema.Struct({
-    ok: Schema.Literal(true),
-    remote: Schema.Struct({
-      ...HqRemoteIdentity.fields,
-      expiresAt: Schema.NullOr(HqTargetTimestamp),
-      invalidSince: Schema.NullOr(HqTargetTimestamp),
-      keptAt: Schema.optionalKey(HqTargetTimestamp),
-      keptBy: Schema.optionalKey(Schema.String),
-    }),
-  }),
+  Schema.Struct({ ok: Schema.Literal(true), remote: HqRepoRemote }),
   Schema.Struct({
     ok: Schema.Literal(false),
     reason: Schema.String,

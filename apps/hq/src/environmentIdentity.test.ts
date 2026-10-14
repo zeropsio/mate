@@ -209,9 +209,6 @@ describe("environment identity expansion", () => {
                   { environment_id: "removed-history" },
                 ],
               );
-              // The current navigation reader runs at the Git expansion floor; the assertions
-              // above isolate the identity migration's preservation of the legacy records.
-              yield* migrate(treeMigrations());
               const source = yield* readEnvironmentSource(sql);
               const viewed = source.forApp(
                 "owner",

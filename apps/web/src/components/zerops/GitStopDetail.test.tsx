@@ -76,36 +76,3 @@ it("removal preserves unknown external leftovers and Cancel leaves the environme
   expect(remove).toHaveBeenCalledTimes(1);
   await act(async () => root.unmount());
 });
-
-it("unresolved removal requires an explicit history-loss confirmation before the account intent", async () => {
-  const host = document.createElement("div");
-  const root = createRoot(host);
-  const remove = vi.fn(async () => {});
-  const projected = gitDeliveryOf(environment, { releases: [], repos: [] });
-  if (projected === undefined) throw new Error("The Git fixture must project a Git delivery");
-  const delivery = { ...projected, standing: "unresolved" as const };
-  try {
-    await act(async () =>
-      root.render(
-        <GitStopDetail
-          environment={environment}
-          delivery={delivery}
-          can={{ remove_git_environment: { allow: true } }}
-          onRemove={remove}
-        />,
-      ),
-    );
-    const button = (label: string) =>
-      [...host.querySelectorAll("button")].find((node) => node.textContent === label)!;
-    await act(async () => button("Remove environment").click());
-    expect(button("Confirm removal").disabled).toBe(true);
-    await act(async () => button("Confirm removal").click());
-    expect(remove).not.toHaveBeenCalled();
-    await act(async () => (host.querySelector('[role="checkbox"]') as HTMLButtonElement).click());
-    expect(button("Confirm removal").disabled).toBe(false);
-    await act(async () => button("Confirm removal").click());
-    expect(remove).toHaveBeenCalledWith(true);
-  } finally {
-    await act(async () => root.unmount());
-  }
-});
