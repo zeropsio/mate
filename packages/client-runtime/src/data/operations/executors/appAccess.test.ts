@@ -573,9 +573,49 @@ describe("setting who reaches some projects", () => {
     changes: ReadonlyArray<{
       clientUserId: string;
       projectId: string;
-      roleCode: "ADMIN" | "READ_ONLY" | null;
+      roleCode: "ADMIN" | "READ_ONLY" | "NO_ACCESS" | null;
     }>,
   ) => org.executor.setProjectAccess("r1", { kind: "set-project-access", orgId: ORG, changes });
+
+  it.effect.each([
+    {
+      sentence: "Zerops keeping a project visible to an admin says so, not that the viewer may not",
+      code: "noAccessRoleInvalid",
+      detail:
+        "'ADMIN' users cannot be given 'NO_ACCESS' on projects - they must retain visibility to all projects.",
+      message: "Zerops keeps every project visible to organization owners and admins.",
+    },
+    {
+      sentence: "A refusal Zerops gives a rule of its own is said in Zerops's words",
+      code: "somethingNew",
+      detail: "Projects can't be changed right now.",
+      message: "Projects can't be changed right now.",
+    },
+    {
+      sentence: "Zerops refusing the viewer's permission says who may change access",
+      code: "insufficientPermissions",
+      detail: "Insufficient permissions",
+      message: "Only an organization owner or admin can change who has access.",
+    },
+  ])("$sentence", ({ code, detail, message }) =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-adm", "ADMIN")],
+        {},
+        {
+          writeMemberProjectRoles: () =>
+            Promise.reject(new ZeropsApiError("Forbidden.", "forbidden", 403, code, detail)),
+        },
+      );
+      const answer = yield* Effect.result(
+        set(org, [{ clientUserId: "cu-adm", projectId: "prod", roleCode: "NO_ACCESS" }]),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        outcome: "definitive-refusal",
+        message,
+      });
+    }),
+  );
 
   it.effect("Each person's change is one write of their own list, their other projects kept", () =>
     Effect.gen(function* () {

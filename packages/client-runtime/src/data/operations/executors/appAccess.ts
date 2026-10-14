@@ -21,7 +21,7 @@ import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OwnerUnobservable, UncertainAcceptance } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
-import { verb } from "./write.ts";
+import { refusedInWords, verb } from "./write.ts";
 
 export type AppAccessPlatform = Pick<
   ZeropsApiClient,
@@ -48,17 +48,23 @@ export type AppAccessReadBack = (
 
 const ALREADY = "Already in this organization — change their access in the list.";
 const ALREADY_CODES = new Set(["userAlreadyConnectedToCompany", "duplicatedUser"]);
+/** Zerops refuses hiding a project from an owner or an admin (measured 2026-10-14). */
+const KEEPS_VISIBLE = "Zerops keeps every project visible to organization owners and admins.";
 
 type Fault = StreamFault | UncertainAcceptance;
 
-/** Zerops's refusal in the words a person needs: who may, someone already here, else Zerops's. */
+/**
+ * Zerops's refusal in the words a person needs: someone already here, a project an owner or admin
+ * must keep, who may — where Zerops said it is a permission — else what Zerops said.
+ */
 function inWords(fault: Fault, cause: { readonly forbidden: string }): Fault {
   if (fault.outcome === "uncertain-acceptance") return fault;
-  if ("code" in fault && fault.code !== undefined && ALREADY_CODES.has(fault.code))
+  const code = "code" in fault ? fault.code : undefined;
+  if (code !== undefined && ALREADY_CODES.has(code))
     return { ...fault, outcome: "definitive-refusal", message: ALREADY };
-  if (fault.outcome === "authoritative-denial")
-    return { ...fault, outcome: "definitive-refusal", message: cause.forbidden };
-  return fault;
+  if (code === "noAccessRoleInvalid")
+    return { ...fault, outcome: "definitive-refusal", message: KEEPS_VISIBLE };
+  return refusedInWords(fault, cause.forbidden);
 }
 
 const INVITE = { forbidden: "Only an organization owner or admin can invite." };

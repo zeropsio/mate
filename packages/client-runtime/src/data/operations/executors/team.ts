@@ -20,7 +20,7 @@ import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OwnerUnobservable, UncertainAcceptance } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
-import { verb } from "./write.ts";
+import { refusedInWords, verb } from "./write.ts";
 
 export type TeamPlatform = Pick<
   ZeropsApiClient,
@@ -35,11 +35,8 @@ const GONE = "They're no longer in this organization.";
 
 type Fault = StreamFault | UncertainAcceptance;
 
-/** Zerops refusing the viewer, in the words of who may. */
-const inWords = (fault: Fault): Fault =>
-  fault.outcome === "authoritative-denial"
-    ? { ...fault, outcome: "definitive-refusal", message: FORBIDDEN }
-    : fault;
+/** Zerops refusing the viewer, in the words of who may; any other refusal in Zerops's own. */
+const inWords = (fault: Fault): Fault => refusedInWords(fault, FORBIDDEN);
 
 const refused = (message: string) =>
   Effect.fail<StreamFault>({ outcome: "definitive-refusal", message });

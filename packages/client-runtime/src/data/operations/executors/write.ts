@@ -34,3 +34,24 @@ function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
 
 /** One Zerops write, its failure classified. */
 export const verb = <A>(call: () => Promise<A>) => Effect.tryPromise({ try: call, catch: faultOf });
+
+/** The codes Zerops answers a missing permission with (`insufficientPermissions`, measured). */
+const PERMISSION_CODES = new Set(["forbidden", "insufficientPermissions"]);
+
+/**
+ * A refusal of the viewer, in the words of who may — only where Zerops said it is a permission. A
+ * refusal with another code (a 403 Zerops gives a rule of its own, `noAccessRoleInvalid`) keeps
+ * what Zerops said, never claims the viewer lacks a right they hold.
+ */
+export function refusedInWords(
+  fault: StreamFault | UncertainAcceptance,
+  permission: string,
+): StreamFault | UncertainAcceptance {
+  if (fault.outcome !== "authoritative-denial") return fault;
+  const code = "code" in fault ? fault.code : undefined;
+  return {
+    ...fault,
+    outcome: "definitive-refusal",
+    message: code === undefined || PERMISSION_CODES.has(code) ? permission : fault.message,
+  };
+}
