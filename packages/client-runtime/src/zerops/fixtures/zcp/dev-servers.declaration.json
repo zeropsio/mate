@@ -13,8 +13,12 @@
       "command": "go build -o app . && exec ./app",
       "cwd": "apps/api",
       "watch": {
-        "paths": ["apps/api"],
-        "ignore": ["apps/api/app"]
+        "paths": [
+          "apps/api"
+        ],
+        "ignore": [
+          "apps/api/app"
+        ]
       }
     },
     {
