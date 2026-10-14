@@ -173,9 +173,26 @@ export const isProviderReadyToRun = (provider: ProviderReadinessFields): boolean
  * Whether an instance is a ready agent Mate signs nobody in to — Cursor, OpenCode, Grok,
  * Antigravity: ready to run, and its sign-in read as signed in. Grok and Cursor can say `ready`
  * with a sign-in they could not read (`unknown`); that one never stands in for a sign-in. Claude
- * Code and Codex never count: the agent-auth feed answers for them, and the person (D6).
+ * Code and Codex never count here: the agent-auth feed answers for them
+ * ({@link mateRunsWithoutSignIn}).
  */
 export const isAgentWithoutSignInReady = (provider: ProviderReadinessFields): boolean =>
   agentIdForDriverKind(provider.driver) === undefined &&
   isProviderReadyToRun(provider) &&
   provider.auth.status === "authenticated";
+
+/**
+ * Whether a Mate waits on nobody's sign-in (the overview's `runsWithoutSignIn`): an agent Mate
+ * signs nobody in to is ready, or a Claude Code or Codex row runs on an environment token its
+ * container verified — the token flag set and the agent's own check signed in. Nobody signed that
+ * token in, so it seats the Mate's maker like the first. A token the check has not confirmed, or
+ * refused, does not count; an interactive sign-in keeps its signer (D6).
+ */
+export const mateRunsWithoutSignIn = (
+  providers: ReadonlyArray<ProviderReadinessFields>,
+  agents: ReadonlyArray<Pick<ZeropsAgentAuth, "state" | "providerAuth">>,
+): boolean =>
+  providers.some(isAgentWithoutSignInReady) ||
+  agents.some(
+    (agent) => agent.state === "authorized-token" && agent.providerAuth === "authenticated",
+  );

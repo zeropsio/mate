@@ -4,6 +4,7 @@ import {
   classifyZeropsAgentAuth,
   isAgentWithoutSignInReady,
   isProviderReadyToRun,
+  mateRunsWithoutSignIn,
   zeropsAgentUnavailableReason,
   zeropsLoginTitle,
   zeropsLoginUnavailableReason,
@@ -201,5 +202,47 @@ describe("isProviderReadyToRun / isAgentWithoutSignInReady", () => {
     const provider = instance(over) as unknown as Parameters<typeof isProviderReadyToRun>[0];
     expect(isProviderReadyToRun(provider)).toBe(ready);
     expect(isAgentWithoutSignInReady(provider)).toBe(other);
+  });
+});
+
+// A token the container set and its agent's own check confirmed is nobody's sign-in to wait for.
+describe("mateRunsWithoutSignIn", () => {
+  const cursor = {
+    driver: "cursor",
+    enabled: true,
+    installed: true,
+    status: "ready",
+    auth: { status: "authenticated" },
+    models: [{ slug: "m" }],
+  } as unknown as Parameters<typeof isProviderReadyToRun>[0];
+  const claude = (state: string, providerAuth: string) =>
+    ({ state, providerAuth }) as Parameters<typeof mateRunsWithoutSignIn>[1][number];
+  it.each([
+    {
+      name: "a verified Claude Code token",
+      agent: claude("authorized-token", "authenticated"),
+      runs: true,
+    },
+    {
+      name: "a token its check has not confirmed",
+      agent: claude("authorized-token", "unknown"),
+      runs: false,
+    },
+    {
+      name: "a token that no longer works",
+      agent: claude("authorized-token", "unauthenticated"),
+      runs: false,
+    },
+    { name: "an interactive sign-in", agent: claude("authorized", "authenticated"), runs: false },
+    { name: "a signed-out agent", agent: claude("not-authorized", "unknown"), runs: false },
+  ])(
+    "A Mate whose coding agent runs on a verified environment token counts as signed in: $name → $runs",
+    ({ agent, runs }) => {
+      expect(mateRunsWithoutSignIn([], [agent])).toBe(runs);
+    },
+  );
+  it("a ready agent Mate signs nobody in to still counts beside any token", () => {
+    expect(mateRunsWithoutSignIn([cursor], [claude("not-authorized", "unknown")])).toBe(true);
+    expect(mateRunsWithoutSignIn([], [])).toBe(false);
   });
 });
