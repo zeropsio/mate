@@ -72,7 +72,7 @@ export function GitRemoteSettings({
       ) : listed.length === 0 ? (
         <p className="rv-note">No code repository yet.</p>
       ) : openedFor !== appId ? (
-        <>
+        <div className="flex flex-col items-start gap-2 py-3">
           <p className="rv-note">
             Connect a GitHub repository to release this project to a Git branch.
           </p>
@@ -81,7 +81,7 @@ export function GitRemoteSettings({
               Connect repository
             </Button>
           ) : null}
-        </>
+        </div>
       ) : (
         listed.map((repo) => (
           <Remote
