@@ -273,7 +273,9 @@ describe("owner-reported layout regressions", () => {
                 opacity: number;
               }>,
             };
-            const sample = () =>
+            // Geometry belongs to the frame's animation clock. A delayed timer's wall clock
+            // charges its wait to one sample and the resulting movement to the next.
+            const sample = (at: number) =>
               setTimeout(() => {
                 const composer = document.querySelector('[data-slot="composer-shell"]');
                 const message = document.querySelector('[data-message-role="user"]');
@@ -282,7 +284,7 @@ describe("owner-reported layout regressions", () => {
                   opacity *= Number(getComputedStyle(element).opacity);
                 if (composer)
                   state.frames.push({
-                    at: performance.now(),
+                    at,
                     composer: composer.getBoundingClientRect().top,
                     message: message?.getBoundingClientRect().top ?? null,
                     path: location.pathname,
