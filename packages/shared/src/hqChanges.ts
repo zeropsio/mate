@@ -269,6 +269,7 @@ export const HqGitAdoption = Schema.Struct({
   branch: HqGitBranch,
   mainHead: Sha,
   remoteHead: Schema.NullOr(Sha),
+  branchRules: Schema.optionalKey(Schema.Literal("none_on_plan")),
   changedFiles: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   seed: Schema.Boolean,
 });

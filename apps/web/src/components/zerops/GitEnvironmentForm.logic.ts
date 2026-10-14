@@ -55,6 +55,8 @@ export function gitSetupReview(
 
 export function gitAdoptionSentence(review: HqGitAdoption): string {
   const where = `${review.remote.url} ${review.branch}`;
+  if (review.remoteHead === null)
+    return `The first push creates ${where} with ${review.changedFiles} files.`;
   return review.changedFiles === 0
     ? `The first push changes nothing on ${where}.`
     : `The first push changes ${review.changedFiles} files on ${where}. Mate's copy wins.`;

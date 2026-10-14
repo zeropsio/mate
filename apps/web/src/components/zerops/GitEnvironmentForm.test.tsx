@@ -173,6 +173,30 @@ describe("Git environment setup's real form", () => {
     expect(branch.value).toBe("production");
     expect(props.setup.preview).toHaveBeenLastCalledWith("production");
   });
+  it("the token test proves repository access before any branch is chosen", async () => {
+    await draw({ repos: [] });
+    await chooseRepository();
+    await enter(field("Token"), "candidate");
+    await click("Test");
+    expect(props.setup.connect).toHaveBeenCalledExactlyOnceWith(
+      "shop",
+      remote.url,
+      "candidate",
+      false,
+    );
+    expect(props.setup.preview).not.toHaveBeenCalled();
+  });
+  it("the chosen branch shows when GitHub's plan enforces no branch rules", async () => {
+    await draw({
+      setup: {
+        ...props.setup,
+        preview: vi.fn(async () => [{ ...review, branchRules: "none_on_plan" as const }]),
+      },
+    });
+    await chooseRepository();
+    expect(host.textContent).toContain("No branch rules on this plan");
+    expect(button("Add production to Shop").disabled).toBe(false);
+  });
   it("a failed candidate probe cannot connect or become an adoption input", async () => {
     await draw({ repos: [] });
     await chooseRepository();
@@ -183,7 +207,6 @@ describe("Git environment setup's real form", () => {
       remote.url,
       "candidate",
       false,
-      "main",
     );
     expect(field("Token").value).toBe("");
     expect(host.textContent).toContain("This token cannot push.");
@@ -209,7 +232,7 @@ describe("Git environment setup's real form", () => {
     await draw({ repos: repositories });
     expect(button("Continue").disabled).toBe(false);
     expect(host.textContent).toContain("Sees acme/shop");
-    expect(host.textContent).toContain("Can push to main");
+    expect(host.textContent).toContain("Can push to acme/shop");
     expect(host.textContent).toContain(
       "A release that changes .github/workflows needs Workflows: Read and write, which Mate can’t test.",
     );
@@ -296,7 +319,6 @@ describe("Git environment setup's real form", () => {
       remote.url,
       "replacement",
       true,
-      "main",
     );
   });
   it("the GitHub token step shows its owner, repository, permissions and expiry checklist", async () => {

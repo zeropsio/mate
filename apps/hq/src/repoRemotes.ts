@@ -33,7 +33,7 @@ export interface RemoteRef {
 export interface ConnectRemote extends RemoteRef {
   readonly url: string;
   readonly token: Redacted.Redacted;
-  readonly branch: string;
+  readonly branch?: string;
 }
 /** Surface-safe facts; the seal and plaintext never leave custody in this shape. */
 export interface RemoteRecord extends RemoteRef {
@@ -58,7 +58,10 @@ export const remoteForWire = (row: RemoteRecord): HqRepoRemote | null =>
         repositoryId: row.hostRepoId,
         expiresAt: row.expiresAt,
         invalidSince: row.invalidSince,
-        keptAt: row.keptAt.replace(" ", "T").replace(/\+00$/, "Z"),
+        keptAt: row.keptAt
+          .replace(" ", "T")
+          .replace(/\+00$/, "Z")
+          .replace(/([+-]\d{2})$/, "$1:00"),
         keptBy: row.keptBy,
       };
 export class RemoteRefused extends Schema.TaggedError<RemoteRefused>()("RemoteRefused", {
@@ -160,7 +163,11 @@ export class Remotes extends Context.Service<
       ref: RemoteRef,
       branch: string,
     ) => Effect.Effect<
-      { readonly remote: RemoteRecord; readonly token: Redacted.Redacted },
+      {
+        readonly remote: RemoteRecord;
+        readonly token: Redacted.Redacted;
+        readonly branchRules?: "none_on_plan";
+      },
       RemoteError
     >;
     readonly invalidate: (
@@ -293,7 +300,8 @@ export const repoRemotesLayer = Layer.effect(
       yield* validateRepo(input.repo);
       const remote = remoteIdentity(input.url);
       if (!remote) return yield* new RemoteRefused({ reason: "bad_address" });
-      if (!branchValid(input.branch)) return yield* new RemoteRefused({ reason: "bad_branch" });
+      if (input.branch !== undefined && !branchValid(input.branch))
+        return yield* new RemoteRefused({ reason: "bad_branch" });
       const old = yield* lookup(input);
       if (review) {
         if (!old) return yield* new RemoteRefused({ reason: "no_remote" });
@@ -390,7 +398,7 @@ export const repoRemotesLayer = Layer.effect(
               intent,
               Effect.gen(function* () {
                 const ref = { appId: intent.appId, repo: intent.repo };
-                const branch = "branch" in intent ? (intent.branch ?? "main") : "main";
+                const branch = "branch" in intent ? intent.branch : undefined;
                 if (intent.kind === "disconnect-git-remote") {
                   yield* remotes.disconnect(userId, ref);
                   return undefined;
@@ -407,7 +415,12 @@ export const repoRemotesLayer = Layer.effect(
                         })
                       : undefined;
                   if (!token) return yield* new RemoteRefused({ reason: "key_unavailable" });
-                  yield* remotes.updateAddress(userId, { ...ref, url: intent.url, branch, token });
+                  yield* remotes.updateAddress(userId, {
+                    ...ref,
+                    url: intent.url,
+                    ...(branch === undefined ? {} : { branch }),
+                    token,
+                  });
                   return undefined;
                 }
                 if (intent.kind === "run-git-again")
@@ -418,7 +431,7 @@ export const repoRemotesLayer = Layer.effect(
                 if (intent.kind === "probe-git-remote") {
                   const remote = remoteIdentity(url);
                   if (!remote) return yield* new RemoteRefused({ reason: "bad_address" });
-                  if (!branchValid(branch))
+                  if (branch !== undefined && !branchValid(branch))
                     return yield* new RemoteRefused({ reason: "bad_branch" });
                   yield* validateRepo(ref.repo);
                   yield* changes.personGit(userId, ref.appId, true).pipe(
@@ -445,7 +458,7 @@ export const repoRemotesLayer = Layer.effect(
                 const saved = yield* remotes.connect(userId, {
                   ...ref,
                   url,
-                  branch,
+                  ...(branch === undefined ? {} : { branch }),
                   token: candidate,
                 });
                 return { probe: safeProbe(saved) };
@@ -518,7 +531,11 @@ export const repoRemotesLayer = Layer.effect(
               // A conditional update keeps an old attempt from replacing a rotation's expiry evidence.
               yield* sql`UPDATE hq_repo_remote SET expires_at=${checked.expiresAt}::timestamptz
           WHERE app_id::text=${ref.appId} AND repo=${ref.repo} AND kept_at=${row.kept_at}::timestamptz`;
-              return { remote: record({ ...current, expires_at: checked.expiresAt }), token };
+              return {
+                remote: record({ ...current, expires_at: checked.expiresAt }),
+                token,
+                ...(checked.branchRules === undefined ? {} : { branchRules: checked.branchRules }),
+              };
             }),
           ),
         );

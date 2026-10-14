@@ -291,7 +291,6 @@ export function GitEnvironmentForm({
                     repository.url,
                     candidate,
                     repository.sameRemote,
-                    branch,
                   );
                   if (!mounted.current) return;
                   setTested(result.ok);
@@ -317,7 +316,7 @@ export function GitEnvironmentForm({
             {connected ? (
               <ul aria-label="Token test results" className="space-y-1 text-sm">
                 <li>Sees {repository.guide.repository}</li>
-                <li>Can push to {branch}</li>
+                <li>Can push to {repository.guide.repository}</li>
                 <li className="text-muted-foreground">
                   A release that changes .github/workflows needs Workflows: Read and write, which
                   Mate can’t test.
@@ -368,10 +367,15 @@ export function GitEnvironmentForm({
             ) : null}
             {review === "ready"
               ? adoption?.map((entry) => (
-                  <p key={entry.repo} className="text-sm">
-                    {gitAdoptionSentence(entry)}
-                    {entry.seed ? " HQ starts from the remote’s files." : ""}
-                  </p>
+                  <div key={entry.repo} className="space-y-1 text-sm">
+                    {entry.branchRules === "none_on_plan" ? (
+                      <p>No branch rules on this plan</p>
+                    ) : null}
+                    <p>
+                      {gitAdoptionSentence(entry)}
+                      {entry.seed ? " HQ starts from the remote’s files." : ""}
+                    </p>
+                  </div>
                 ))
               : null}
             <p className="text-xs text-muted-foreground">

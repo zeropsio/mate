@@ -4,10 +4,11 @@ import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
-import { GithubProbes, githubProbesLayer } from "./githubProbes.ts";
+import { GithubProbes, ProbeRefused, githubProbesLayer } from "./githubProbes.ts";
 import { gitTransportLayer, remoteIdentity } from "./gitTransport.ts";
 
 type Reply = { status?: number; headers?: Record<string, string>; body: unknown };
@@ -18,6 +19,8 @@ const metadata = {
   private: true,
   permissions: { admin: true },
 };
+const planRestriction =
+  "Upgrade to GitHub Pro or make this repository public to enable this feature.";
 const advertisement = "001f# service=git-receive-pack\n00000000";
 const host = (replies: ReadonlyArray<Reply>) =>
   Effect.acquireRelease(
@@ -177,6 +180,70 @@ describe("observed GitHub capabilities", () => {
         }),
       ),
   );
+  it.effect.each([
+    [
+      "No branch rules on a private repository's GitHub Free plan allow production.",
+      { status: 403, body: { message: planRestriction } },
+      "none_on_plan",
+    ],
+    ["A chosen branch is checked for active rules before production.", { body: [] }, undefined],
+  ] as const)("%s", ([, rules, expected]) =>
+    run(
+      [{ body: metadata }, discovery, rules],
+      Effect.gen(function* () {
+        const outcome = yield* verify.pipe(Effect.option);
+        assert.strictEqual(Option.isSome(outcome), true, "The branch rules check succeeds.");
+        const result = Option.getOrThrow(outcome);
+        assert.strictEqual(result.branchRules, expected);
+      }),
+    ),
+  );
+  it.effect.each([undefined, ""] as const)(
+    "A token test without a chosen branch proves repository push access without reading branch rules: %s.",
+    (branch) =>
+      run(
+        [{ body: metadata }, discovery],
+        Effect.gen(function* () {
+          const probes = yield* GithubProbes;
+          const result = yield* probes.verify(
+            remoteIdentity("https://github.com/owner/repo")!,
+            Redacted.make("probe-test-secret"),
+            branch,
+          );
+          assert.strictEqual(result.hostRepoId, "42");
+          assert.strictEqual(result.branchRules, undefined);
+        }),
+      ),
+  );
+  it.effect.each([
+    [
+      "permission refusal",
+      { body: { message: "Resource not accessible by personal access token" } },
+      "could_not_verify",
+    ],
+    ["incomplete plan message", { body: { message: "Upgrade to GitHub Pro" } }, "could_not_verify"],
+    [
+      "rate exhaustion on a plan response",
+      { headers: { "x-ratelimit-remaining": "0" }, body: { message: planRestriction } },
+      "rate_limited",
+    ],
+    [
+      "SSO on a plan response",
+      { headers: { "x-github-sso": "required" }, body: { message: planRestriction } },
+      "sso",
+    ],
+  ] as const)(
+    "A branch rules refusal remains unverified or names its actual blocker: %s.",
+    ([, reply, reason]) =>
+      run(
+        [{ body: metadata }, discovery, { status: 403, ...reply }],
+        Effect.gen(function* () {
+          const refusal = yield* verify.pipe(Effect.flip);
+          assert.strictEqual(refusal.reason, reason);
+          assert.strictEqual(refusal.tokenState, "valid");
+        }),
+      ),
+  );
   const failures: ReadonlyArray<[string, ReadonlyArray<Reply>, string, string]> = [
     [
       "Contents read with no merge fields",
@@ -228,12 +295,6 @@ describe("observed GitHub capabilities", () => {
     [
       "unknown ruleset rule",
       [{ body: metadata }, discovery, { body: [{ arbitrary: true }] }],
-      "could_not_verify",
-      "valid",
-    ],
-    [
-      "plan restricted rules",
-      [{ body: metadata }, discovery, { status: 403, body: { message: "Upgrade to GitHub Pro" } }],
       "could_not_verify",
       "valid",
     ],
@@ -309,5 +370,60 @@ describe("observed GitHub capabilities", () => {
           else assert.strictEqual(refusal.resetAt, "2026-10-12T12:00:00.000Z");
         }),
       ),
+  );
+});
+
+describe("token refusal guidance", () => {
+  it.each([
+    [
+      "token_invalid",
+      "GitHub rejected this token (expired, revoked or mistyped). Create a replacement in GitHub token settings.",
+    ],
+    ["rate_limited", "The repository host asked Mate to wait."],
+    [
+      "sso",
+      "This token needs the organization's SSO authorization. Authorize it in the organization's GitHub SSO settings.",
+    ],
+    [
+      "archived",
+      "owner/repo is archived, so nothing can be pushed to it. Unarchive it in repository settings before testing again.",
+    ],
+    [
+      "push_not_granted",
+      "This token can't push to owner/repo: under Repository access choose Only select repositories → owner/repo with Contents: Read and write. If owner approves tokens, it may still be pending.",
+    ],
+    [
+      "not_visible",
+      "owner/repo doesn't exist, or your account can't see it. Check the repository address and this token's repository access in GitHub token settings.",
+    ],
+    [
+      "classic_scope",
+      "This is a classic token without repo. Create a fine-grained token with the link above, or add repo in GitHub token settings.",
+    ],
+    [
+      "pull_requests_only",
+      "main takes changes only through pull requests. Choose Open a pull request.",
+    ],
+    [
+      "unreachable",
+      "The repository host could not be reached in time. Check the connection, then test this token again.",
+    ],
+    [
+      "could_not_verify",
+      "Mate couldn't verify access to owner/repo. Check the repository address and this token's repository access in GitHub token settings, then test again.",
+    ],
+  ] as const)(
+    "A refused token test gives a concrete next action without a raw reason code: %s.",
+    (reason, expected) => {
+      const refusal = new ProbeRefused({
+        reason,
+        hostKind: "github",
+        remote: "owner/repo",
+        branch: "main",
+        tokenState: "unknown",
+        scope: "repo",
+      });
+      assert.strictEqual(refusal.message, expected);
+    },
   );
 });

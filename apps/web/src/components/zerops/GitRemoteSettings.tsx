@@ -1,4 +1,5 @@
 import { gitRemoteExpiry } from "@t3tools/client-runtime/zerops";
+import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { HqRemoteProbe, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
@@ -149,8 +150,14 @@ function Remote({
         setEditing(false);
         setReviewingAddress(false);
       }
-    } catch {
-      setAnswer("HQ couldn't confirm the token change. Check its outcome before trying again.");
+    } catch (cause) {
+      setAnswer(
+        cause instanceof HqError &&
+          cause.code === "git_probe_refused" &&
+          (cause.kind === "refused" || (cause.kind === "unavailable" && cause.status === 429))
+          ? cause.message
+          : "HQ couldn't confirm the token change. Check its outcome before trying again.",
+      );
     } finally {
       setBusy(false);
     }

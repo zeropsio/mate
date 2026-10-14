@@ -350,6 +350,7 @@ export const failure = (error: {
         {
           code: "git_probe_refused",
           reason: error.reason,
+          message: error.message,
           tokenState: error.tokenState,
           ...(error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }),
           ...(error.resetAt === undefined ? {} : { resetAt: error.resetAt }),
