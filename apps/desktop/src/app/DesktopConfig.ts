@@ -48,3 +48,23 @@ export const DesktopConfig = Config.all({
 
 export const layerTest = (env: Readonly<Record<string, string | undefined>>) =>
   ConfigProvider.layer(ConfigProvider.fromEnv({ env: compactEnv(env) }));
+
+/** How the desktop signs in to Zerops: the hand-over (the default) or device login. */
+export type DesktopZeropsSignInMode = "handover" | "device-login";
+
+/**
+ * The Zerops sign-in's launch settings, under the web bundle's names and with its defaults: the
+ * mode, the consent page's origin when it is not the API's own (a local HQ), and the app code a
+ * device login names. Anything but `device-login` keeps the hand-over.
+ */
+export const DesktopZeropsSignInConfig = Config.all({
+  mode: trimmedString("VITE_ZEROPS_SIGN_IN").pipe(
+    Config.map((mode): DesktopZeropsSignInMode =>
+      Option.getOrUndefined(mode) === "device-login" ? "device-login" : "handover",
+    ),
+  ),
+  consentOrigin: trimmedString("VITE_ZEROPS_CONSENT_ORIGIN"),
+  loginAppCode: trimmedString("VITE_ZEROPS_LOGIN_APP_CODE").pipe(
+    Config.map(Option.getOrElse(() => "mate")),
+  ),
+});

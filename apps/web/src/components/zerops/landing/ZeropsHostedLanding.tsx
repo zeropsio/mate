@@ -11,6 +11,7 @@ import {
 import { startZeropsHandover } from "~/zerops/handover";
 import {
   readZeropsNativeSignInBridge,
+  readZeropsNativeSignInProgress,
   runZeropsNativeSignIn,
   type ZeropsNativeSignInState,
 } from "~/zerops/nativeSignIn";
@@ -125,7 +126,12 @@ export function ZeropsHostedLanding() {
     }
     const attempt = ++generation.current;
     void runZeropsNativeSignIn(
-      { zeropsSignIn, adoptHandover },
+      {
+        zeropsSignIn,
+        onProgress: readZeropsNativeSignInProgress(),
+        adoptHandover,
+        adoptDeviceLogin,
+      },
       intent ? { intent } : {},
       setNativeState,
       () => generation.current === attempt,
@@ -154,6 +160,7 @@ export function ZeropsHostedLanding() {
             readZeropsNativeSignInBridge()
               ? {
                   busy: nativeState.kind === "busy",
+                  userCode: nativeState.kind === "busy" ? (nativeState.userCode ?? null) : null,
                   error: nativeState.kind === "error" ? nativeState.message : null,
                   onCancel: () => {
                     generation.current += 1;
