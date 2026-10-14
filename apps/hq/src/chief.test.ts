@@ -437,6 +437,140 @@ describe("the Chief", () => {
       }),
     );
 
+    it.effect(
+      "a Chief asks HQ who its person is: their name, their org role and what it lets them do",
+      () =>
+        Effect.gen(function* () {
+          const { proxy, upstream } = yield* withChief;
+          const answer = yield* proxy("GET", "chief/person");
+          assert.strictEqual(answer.status, 200);
+          assert.deepStrictEqual(answer.body, {
+            name: "dev",
+            roleCode: "NO_ACCESS",
+            canViewFinances: false,
+            canEditFinances: false,
+            canCreateProjects: false,
+          });
+          assert.deepStrictEqual(upstream.asked, []);
+        }),
+    );
+
+    const costs = {
+      client: { id: "ORG", periodCost: { thisMonth: 10, today: 1 } },
+      project: [
+        { id: "P_IN", periodCost: { thisMonth: 3, today: 0.5 } },
+        { id: "P_OUT", periodCost: { thisMonth: 7, today: 0.5 } },
+      ],
+      stack: [
+        { id: "S_IN", periodCost: { thisMonth: 3, today: 0.5 } },
+        { id: "S_OUT", periodCost: { thisMonth: 7, today: 0.5 } },
+      ],
+    };
+    const answersCosts = (asked: { readonly url: string }) =>
+      asked.url.endsWith("/transaction-debit/cost-search")
+        ? { status: 200, body: JSON.stringify(costs) }
+        : {
+            status: 200,
+            body: JSON.stringify({
+              items: [
+                { id: "S_IN", projectId: "P_IN", clientId: "ORG" },
+                { id: "S_OUT", projectId: "P_OUT", clientId: "ORG" },
+              ],
+            }),
+          };
+
+    it.effect(
+      "a Chief's person outside the org's finances reads only their projects' costs, totalled",
+      () =>
+        Effect.gen(function* () {
+          const { proxy, upstream } = yield* withChief;
+          upstream.answer = answersCosts;
+          const answer = yield* proxy("POST", "transaction-debit/cost-search", {
+            search: [{ name: "clientId", operator: "eq", value: "ORG2" }],
+          });
+          assert.strictEqual(answer.status, 200);
+          assert.deepStrictEqual(answer.body, {
+            client: { id: "ORG", periodCost: { thisMonth: 3, today: 0.5 } },
+            project: [{ id: "P_IN", periodCost: { thisMonth: 3, today: 0.5 } }],
+            stack: [{ id: "S_IN", periodCost: { thisMonth: 3, today: 0.5 } }],
+          });
+          const [asked] = upstream.asked;
+          assert.strictEqual(asked?.url, "/api/rest/public/transaction-debit/cost-search");
+          assert.strictEqual(asked?.authorization, "Bearer hq");
+          assert.deepStrictEqual(JSON.parse(asked?.body ?? ""), {
+            search: [{ name: "clientId", operator: "eq", value: "ORG" }],
+          });
+        }),
+    );
+
+    it.effect("a Chief's person who sees the org's finances reads its costs whole", () =>
+      Effect.gen(function* () {
+        const { proxy, upstream, core } = yield* withChief;
+        const members = core.fake.members.get("ORG") ?? [];
+        core.fake.members.set(
+          "ORG",
+          members.map((member) =>
+            member.name === "dev" ? { ...member, canViewFinances: true } : member,
+          ),
+        );
+        upstream.answer = answersCosts;
+        // HQ's view of its org is at most 30 s old: the flag reads once it is renewed.
+        const answer = yield* proxy("POST", "transaction-debit/cost-search", { search: [] }).pipe(
+          Effect.repeat({
+            until: (each) =>
+              (each.body as { project?: ReadonlyArray<unknown> }).project?.length === 2,
+            schedule: Schedule.spaced(Duration.millis(200)),
+          }),
+          Effect.timeout(Duration.seconds(40)),
+        );
+        assert.deepStrictEqual(answer.body, costs);
+      }),
+    );
+
+    it.effect(
+      "a Chief's resource use goes out pinned with its range, and answers only its person's projects",
+      () =>
+        Effect.gen(function* () {
+          const { proxy, upstream } = yield* withChief;
+          upstream.answer = () => ({
+            status: 200,
+            body: JSON.stringify({
+              items: [
+                { projectId: "P_IN", serviceStackId: "S_IN", ramUsed: 0.3, ramLimit: 1 },
+                { projectId: "P_OUT", serviceStackId: "S_OUT", ramUsed: 0.9, ramLimit: 1 },
+              ],
+              totalHits: 2,
+            }),
+          });
+          const range = {
+            from: "2026-10-13T15:00:00Z",
+            till: "2026-10-14T15:00:00Z",
+            timeZone: "UTC",
+            groupBy: "serviceStackId",
+            timeGroupBy: "1h",
+          };
+          const answer = yield* proxy("POST", "stats-history/group-by-search", {
+            search: [{ name: "projectId", operator: "eq", value: "P_IN" }],
+            ...range,
+            receiverId: "R1",
+          });
+          assert.strictEqual(answer.status, 200);
+          assert.deepStrictEqual(answer.body, {
+            items: [{ projectId: "P_IN", serviceStackId: "S_IN", ramUsed: 0.3, ramLimit: 1 }],
+            totalHits: 1,
+          });
+          const [asked] = upstream.asked;
+          assert.strictEqual(asked?.url, "/api/rest/public/stats-history/group-by-search");
+          assert.deepStrictEqual(JSON.parse(asked?.body ?? ""), {
+            search: [
+              { name: "projectId", operator: "eq", value: "P_IN" },
+              { name: "clientId", operator: "eq", value: "ORG" },
+            ],
+            ...range,
+          });
+        }),
+    );
+
     it.effect("a Chief whose person left the org reads nothing", () =>
       Effect.gen(function* () {
         const { proxy, core, upstream } = yield* withChief;

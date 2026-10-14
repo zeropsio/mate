@@ -126,6 +126,8 @@ describe("makeZeropsApiHttp", () => {
           userId: "T1",
           clientUserId: "C1",
           canCreateProjects: false,
+          canViewFinances: false,
+          canEditFinances: false,
           avatarUrl: "https://avatar.test/member",
         },
       ]);
