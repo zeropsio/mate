@@ -17,9 +17,9 @@ import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import * as SessionStore from "./SessionStore.ts";
 import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
 import {
+  ACCESS_HOLDS,
   ZeropsProjectAccess,
   layer as projectAccessLayer,
-  RELAY_HOLDS,
 } from "../zerops/ZeropsProjectAccess.ts";
 import { ZeropsSessionAdmissionLive } from "../zerops/zeropsFeedsLayer.ts";
 
@@ -307,7 +307,7 @@ it.layer(NodeServices.layer)("current admission for existing sessions", (it) => 
       for (const state of ["missing", "expired", "ordinary"] as const) {
         if (state !== "missing") {
           yield* access.relayed({
-            ageMs: state === "expired" ? Duration.toMillis(RELAY_HOLDS) + 1 : 0,
+            ageMs: state === "expired" ? Duration.toMillis(ACCESS_HOLDS) + 1 : 0,
             chief: state === "ordinary" ? null : { userId: "another-person", ownerName: "Ada" },
             members:
               state === "ordinary" ? [{ userId: "owner", role: "OWNER", visibility: "open" }] : [],

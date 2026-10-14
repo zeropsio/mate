@@ -30,11 +30,13 @@ import {
 import { nextScopeValue, scopeReset } from "../test/harness/scopes.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { Changes } from "./changes.ts";
+import { Chiefs } from "./chief.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { UsageLane, type UsageLedgerService } from "./usageLedger.ts";
 import { MateAccess } from "./mateAccess.ts";
 import { serveMateLink } from "./link.ts";
 import { MateCredentials } from "./mateCredentials.ts";
+import { Roles } from "./roles.ts";
 import { makeMateOverviews, MateOverviews } from "./mateOverviews.ts";
 import { liveSocketsLayer } from "./stream.ts";
 import { Structure } from "./structure.ts";
@@ -68,8 +70,8 @@ const linked = Effect.gen(function* () {
     headers: { authorization: `Mate ${credential}` },
   })).body as { readonly ticket: string };
   const link = yield* core.socket(`/api/mate/link?ticket=${ticket}`);
-  yield* link.next("state");
-  return { ...core, owner, link };
+  const firstState = yield* link.next("state");
+  return { ...core, owner, link, firstState };
 });
 
 describe("a Mate's link", () => {
@@ -114,6 +116,36 @@ describe("a Mate's link", () => {
         )) as unknown as { readonly mate: { readonly closedOff: boolean } };
         assert.isTrue(mate.closedOff);
       }),
+    );
+
+    it.effect(
+      "names the Mate's owner as navigation does, and again when Zerops names another",
+      () =>
+        Effect.gen(function* () {
+          const { link, fake, firstState } = yield* linked;
+          assert.isNull(
+            (firstState["mate"] as { readonly ownerUserId?: string | null }).ownerUserId,
+          );
+          const ownerNamed = (userId: string | null) =>
+            link.takeWhere(
+              `a state naming ${userId}`,
+              (message) =>
+                message.type === "state" &&
+                (message["mate"] as { readonly ownerUserId?: string | null }).ownerUserId ===
+                  userId,
+            );
+          const index = fake.projects.findIndex((candidate) => candidate.id === "P_MATE");
+          const ownedBy = (clientUserId: string) => {
+            fake.projects[index] = {
+              ...fake.projects[index]!,
+              userRoles: [{ clientUserId, roleCode: "OWNER" }],
+            };
+          };
+          ownedBy("C-owner");
+          yield* ownerNamed("owner");
+          ownedBy("C-dev");
+          yield* ownerNamed("dev");
+        }),
     );
 
     it.effect("closes on a frame past 64 KiB counted in bytes", () =>
@@ -371,6 +403,11 @@ describe("serveMateLink: who ended a link, and with what code", () => {
           } as unknown as Leader["Service"]),
         ),
         Layer.succeed(MateAccess, MateAccess.of({ frames: () => Stream.never })),
+        Layer.succeed(
+          Chiefs,
+          Chiefs.of({ ownerOf: () => Effect.succeed(null) } as unknown as Chiefs["Service"]),
+        ),
+        Layer.succeed(Roles, Roles.of({ views: Stream.never } as unknown as Roles["Service"])),
       ),
     ),
   );
@@ -396,7 +433,10 @@ describe("serveMateLink: who ended a link, and with what code", () => {
     });
 
   /** A link to a Mate HQ holds a state for: every state frame it wrote, as JSON. */
-  const statesOf = (opened: ReturnType<UsageLedgerService["open"]>) =>
+  const statesOf = (
+    opened: ReturnType<UsageLedgerService["open"]>,
+    owner: ReturnType<Chiefs["Service"]["ownerOf"]> = Effect.succeed(null),
+  ) =>
     Effect.gen(function* () {
       const written: string[] = [];
       const socket = Socket.make({
@@ -412,10 +452,19 @@ describe("serveMateLink: who ended a link, and with what code", () => {
       const serving = yield* Effect.forkChild(serveMateLink(socket, "P_MATE", "cred", {}));
       const states = () =>
         written
-          .map((frame) => JSON.parse(frame) as { type: string; usage?: unknown })
+          .map(
+            (frame) =>
+              JSON.parse(frame) as {
+                type: string;
+                usage?: unknown;
+                mate?: { ownerUserId?: string | null };
+              },
+          )
           .filter((frame) => frame.type === "state");
       /** The first state `matches` accepts, waited for. */
-      const state = (matches: (frame: { usage?: unknown }) => boolean) =>
+      const state = (
+        matches: (frame: { usage?: unknown; mate?: { ownerUserId?: string | null } }) => boolean,
+      ) =>
         Effect.suspend(() => {
           const found = states().find(matches);
           return found === undefined ? Effect.fail("no such state") : Effect.succeed(found);
@@ -438,6 +487,10 @@ describe("serveMateLink: who ended a link, and with what code", () => {
               changes: Stream.never,
               mateChanges: () => Effect.succeed({}),
             } as unknown as Changes["Service"]),
+          ),
+          Layer.succeed(
+            Chiefs,
+            Chiefs.of({ ownerOf: () => owner } as unknown as Chiefs["Service"]),
           ),
           usageLane(opened),
         ),
@@ -478,6 +531,27 @@ describe("serveMateLink: who ended a link, and with what code", () => {
       const { serving, state } = yield* statesOf(Effect.fail(new NotLeader({ reason: "standby" })));
       yield* state((frame) => frame.usage === undefined);
       assert.isUndefined(serving.pollUnsafe());
+    }),
+  );
+
+  it.live("a link tells the Mate whom HQ records as its owner", () =>
+    Effect.gen(function* () {
+      const { state } = yield* statesOf(Effect.succeed(sender), Effect.succeed("owner-1"));
+      const sent = yield* state(() => true);
+      assert.strictEqual(sent.mate?.ownerUserId, "owner-1");
+    }),
+  );
+
+  it.live("a link whose owner read fails still sends the Mate's state, naming no owner", () =>
+    Effect.gen(function* () {
+      const { state } = yield* statesOf(
+        Effect.succeed(sender),
+        Effect.fail(new NotLeader({ reason: "standby" })) as unknown as ReturnType<
+          Chiefs["Service"]["ownerOf"]
+        >,
+      );
+      const sent = yield* state(() => true);
+      assert.isFalse(sent.mate !== undefined && "ownerUserId" in sent.mate);
     }),
   );
 

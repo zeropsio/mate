@@ -33,7 +33,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import { HqUsageReader, USAGE_REPORT_LIMITS } from "./usageReport.ts";
-import { mateOwner } from "./usageAccess.ts";
+import { mateOwner, recordedMateOwner } from "./usageAccess.ts";
 import { ZeropsRefused, type ZeropsError } from "./zerops/api.ts";
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { AutoUpdatePolicy } from "./autoUpdate.ts";
@@ -565,18 +565,17 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 observable.some((project) => project.projectId === projectId) &&
                 all.get(projectId)?.overview?.identity.runsWithoutSignIn === true;
               const mate = listed.find((project) => project.projectId === projectId)?.mate;
-              const ownerUserId =
-                chiefOwners.get(projectId) ??
-                mateOwner({
-                  facts: current.facts,
-                  projectId,
-                  mate: observable.some((project) => project.projectId === projectId)
-                    ? mate
-                    : undefined,
-                  overview: observable.some((project) => project.projectId === projectId)
-                    ? all.get(projectId)?.overview
-                    : undefined,
-                });
+              const ownerUserId = recordedMateOwner({
+                chiefOf: chiefOwners.get(projectId),
+                facts: current.facts,
+                projectId,
+                mate: observable.some((project) => project.projectId === projectId)
+                  ? mate
+                  : undefined,
+                overview: observable.some((project) => project.projectId === projectId)
+                  ? all.get(projectId)?.overview
+                  : undefined,
+              });
               const chiefProjectId =
                 ownerUserId === entry.userId
                   ? (chiefOfPerson(current.facts, ownerUserId, chiefOwners)?.projectId ?? null)

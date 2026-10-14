@@ -31,14 +31,29 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../config.ts";
-import { MAX_ZEROPS_ROLE_RECHECK_SECONDS, type ZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import {
+  DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS,
+  type ZeropsEnvironment,
+} from "./ZeropsEnvironment.ts";
 import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
 
 /**
- * How long HQ's relay holds from HQ's read of Zerops: one role recheck at its ceiling, the window
- * before current admission needs a fresh answer from HQ or this Mate's own Zerops read.
+ * How long HQ's relay holds from HQ's read of Zerops: as long as this Mate's own read is cached
+ * (`ZeropsOrgRead`), one default re-check, so a relayed answer never keeps a removed person longer
+ * than this Mate's own read would.
  */
-export const RELAY_HOLDS = Duration.seconds(MAX_ZEROPS_ROLE_RECHECK_SECONDS);
+export const RELAY_HOLDS = Duration.seconds(DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS);
+
+/**
+ * How long the last answer holds, from when Zerops gave it, while no read answers: the one
+ * tolerance for a failed read, the session watch's (`ZeropsMembershipWatch`) and a scheduled
+ * turn's (`ZeropsProjectSigners`), as HQ's own view (X7). Past it, nobody is let in on a guess.
+ */
+export const ACCESS_HOLDS = Duration.minutes(5);
+
+/** Whether an answer Zerops gave at `answeredAtMs` still holds at `nowMs` with no read answering. */
+export const accessHolds = (answeredAtMs: number, nowMs: number): boolean =>
+  nowMs - answeredAtMs <= Duration.toMillis(ACCESS_HOLDS);
 
 /** Who the project lets in, and when Zerops answered that; or that nobody could say. */
 export type ProjectAccess =
@@ -66,7 +81,15 @@ export class ZeropsProjectAccess extends Context.Service<
     }) => Effect.Effect<void>;
     /** HQ's relay while it holds ({@link RELAY_HOLDS} from HQ's read); none past that. */
     readonly relay: Effect.Effect<Option.Option<KnownAccess>>;
-    /** HQ's relay while it holds, else this Mate's own read; `ok: false` when neither answers. */
+    /**
+     * HQ's last Chief classification, held {@link ACCESS_HOLDS} from HQ's read: only HQ answers
+     * it, so between HQ's relays it holds as any unanswered answer does; `undefined` past that.
+     */
+    readonly chief: Effect.Effect<ChiefMateOwner | null | undefined>;
+    /**
+     * HQ's relay while it holds, else this Mate's own read narrowed to a held Chief's owner;
+     * `ok: false` when neither answers.
+     */
     readonly read: Effect.Effect<ProjectAccess>;
     /** Fires when HQ relays a different answer: who it lets in, never only its age. */
     readonly changes: Stream.Stream<void>;
@@ -171,18 +194,29 @@ export const make = Effect.gen(function* () {
       : Option.none<KnownAccess>();
   });
 
+  const chief = Effect.gen(function* () {
+    const last = yield* Ref.get(held);
+    const now = yield* Clock.currentTimeMillis;
+    return last !== undefined && accessHolds(last.readAtMs, now) ? last.chief : undefined;
+  });
+
   const read: ZeropsProjectAccess["Service"]["read"] = Effect.gen(function* () {
     const fresh = yield* relay;
     if (Option.isSome(fresh)) return fresh.value;
     if (environment === undefined) return { ok: false } as const;
-    return yield* readOwnAccess({ environment }).pipe(
+    const own = yield* readOwnAccess({ environment }).pipe(
       Effect.provideService(ZeropsOrgRead, orgRead),
     );
+    const owner = yield* chief;
+    return own.ok && owner != null
+      ? { ...own, members: restrictChiefAccess(own.members, owner), chief: owner }
+      : own;
   });
 
   return ZeropsProjectAccess.of({
     relayed,
     relay,
+    chief,
     read,
     changes: Stream.fromPubSub(moved),
   });

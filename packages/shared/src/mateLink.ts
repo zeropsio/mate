@@ -88,6 +88,11 @@ export const MateState = Schema.Struct({
   closedOff: Schema.Boolean,
   /** Who signed in each login (`claude-code`, `codex`), keyed by login id: the port's, then the Mate's own link's. */
   signers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  /**
+   * The Zerops user HQ records as the Mate's owner (`mateOwner`), or none named: everyone else
+   * reads along. Absent from an HQ older than it, and where HQ could not read its org yet.
+   */
+  ownerUserId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   ...MateChanges.fields,
 });
 export type MateState = typeof MateState.Type;

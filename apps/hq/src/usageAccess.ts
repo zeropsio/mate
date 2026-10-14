@@ -80,3 +80,11 @@ export function mateOwner(input: {
     standupRequestedBy: input.mate?.standupRequestedBy ?? null,
   });
 }
+
+/**
+ * The person HQ records as a Mate's owner: the person whose registered Chief it is, else
+ * `mateOwner`. What a reader's navigation says and what the Mate's own link names (`link.ts`).
+ */
+export const recordedMateOwner = (
+  input: Parameters<typeof mateOwner>[0] & { readonly chiefOf: string | undefined },
+) => input.chiefOf ?? mateOwner(input);

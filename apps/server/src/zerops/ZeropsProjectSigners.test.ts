@@ -753,10 +753,10 @@ describe("hasProjectAccess", () => {
         set({ status: 500 });
         yield* relayed({
           members: [{ userId: JAN, role: "BASIC_USER", visibility: "open" }],
-          ageMs: 4 * 60_000,
+          ageMs: 10_000,
         });
         assert.isTrue(yield* signers.hasProjectAccess(JAN));
-        yield* TestClock.adjust(Duration.minutes(1));
+        yield* TestClock.adjust(Duration.seconds(4 * 60 + 50));
         assert.isTrue(yield* signers.hasProjectAccess(JAN));
         yield* TestClock.adjust(Duration.millis(1));
         assert.isUndefined(yield* signers.hasProjectAccess(JAN));

@@ -2129,6 +2129,7 @@ describe("HQ API", () => {
             appId: null,
             appName: null,
             changes: [],
+            ownerUserId: null,
           };
           assert.deepStrictEqual((yield* link.next("state")).mate, {
             ...state,
@@ -2230,6 +2231,7 @@ describe("HQ API", () => {
           appId: null,
           appName: null,
           changes: [],
+          ownerUserId: "U1",
         });
         assert.deepStrictEqual(yield* signers, { "claude-code": "U1" });
         // A later sign-in replaces the earlier one; a login that lost its signer keeps the record.

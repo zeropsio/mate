@@ -51,14 +51,8 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 
 import * as ServerConfig from "../config.ts";
-import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { accessHolds, ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
-
-/**
- * How long the last answer to "may this person use this Mate" holds while reads fail (D7): a
- * person whose access went keeps running turns no longer than this, as HQ's own view (X7).
- */
-export const ACCESS_HOLDS = Duration.minutes(5);
 
 /**
  * Signer key → the Zerops user id of whoever this server saw sign that login
@@ -201,7 +195,7 @@ export class ZeropsProjectSigners extends Context.Service<
      * the org's member list, the answer that keeps a session open (`ZeropsMembershipWatch`) — as
      * `ZeropsProjectAccess` answers it: HQ's relay while it holds, else this Mate's own read. What
      * admits a turn no session stands behind: the crew's, the stand-up's (X3). While nothing
-     * answers, the last answer holds {@link ACCESS_HOLDS} from when Zerops answered it; past that,
+     * answers, the last answer holds `ACCESS_HOLDS` from when Zerops answered it; past that,
      * or with none, `undefined`.
      */
     readonly hasProjectAccess: (userId: string) => Effect.Effect<boolean | undefined>;
@@ -237,7 +231,7 @@ export const make = Effect.gen(function* () {
             return opensFor.has(userId);
           }
           const last = yield* Ref.get(lastAccess);
-          return last !== undefined && now - last.atMs <= Duration.toMillis(ACCESS_HOLDS)
+          return last !== undefined && accessHolds(last.atMs, now)
             ? last.opensFor.has(userId)
             : undefined;
         });

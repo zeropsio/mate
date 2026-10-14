@@ -214,11 +214,47 @@ export const rpcAuthorizationError = (requiredScope: AuthEnvironmentScope) =>
     requiredScope,
   });
 
-/** Authorizes every RPC on one connection against that connection's session scopes. */
-export const rpcScopeAuthorizationLayer = (scopes: ReadonlyArray<AuthEnvironmentScope>) =>
+/** The scopes whose calls act in the Mate: on someone else's Mate, its owner's alone. */
+const OPERATING_SCOPES: ReadonlySet<AuthEnvironmentScope> = new Set([
+  AuthOrchestrationOperateScope,
+  AuthTerminalOperateScope,
+  AuthExecOperateScope,
+]);
+
+/**
+ * The calls under an operating scope that only watch: what a colleague reading along still
+ * subscribes to. Every other operating call acts, so the client's read-along (`agentAdmission`)
+ * holds on the server too.
+ */
+const WATCHING_UNDER_OPERATE: ReadonlySet<string> = new Set([
+  WS_METHODS.providerAuthSubscribe,
+  WS_METHODS.subscribeTerminalEvents,
+  WS_METHODS.subscribeTerminalMetadata,
+]);
+
+/** Whether the RPC acts in the Mate, so only the Mate's owner may call it. */
+export const ownerOnlyRpcMethod = (method: string): boolean =>
+  OPERATING_SCOPES.has(requiredScopeForRpcMethod(method)) && !WATCHING_UNDER_OPERATE.has(method);
+
+export const rpcReadAlongError = (requiredScope: AuthEnvironmentScope) =>
+  new EnvironmentAuthorizationError({
+    message: "Only this Mate's owner can do this here; you can read along.",
+    requiredScope,
+  });
+
+/**
+ * Authorizes every RPC on one connection against that connection's session scopes, and refuses
+ * an acting call while `readsAlong` says the session's person is not the Mate's owner.
+ */
+export const rpcScopeAuthorizationLayer = (
+  scopes: ReadonlyArray<AuthEnvironmentScope>,
+  readsAlong: Effect.Effect<boolean>,
+) =>
   Layer.succeed(RpcScopeAuthorization)((effect, { rpc }) => {
     const requiredScope = requiredScopeForRpcMethod(rpc._tag);
-    return scopes.includes(requiredScope)
-      ? effect
-      : Effect.fail(rpcAuthorizationError(requiredScope));
+    if (!scopes.includes(requiredScope)) return Effect.fail(rpcAuthorizationError(requiredScope));
+    if (!ownerOnlyRpcMethod(rpc._tag)) return effect;
+    return Effect.flatMap(readsAlong, (along) =>
+      along ? Effect.fail(rpcReadAlongError(requiredScope)) : effect,
+    );
   });
