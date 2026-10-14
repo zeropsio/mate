@@ -743,7 +743,7 @@ function AddYourDomain({
           manage(projectId, "add-domain");
         }}
         size="xs"
-        variant="ghost-muted"
+        variant="ghost-primary"
       >
         <PlusIcon aria-hidden="true" />
         Add your domain
