@@ -5,7 +5,7 @@
  */
 import type { WaitingChange } from "@t3tools/client-runtime/data";
 import { CheckIcon, CopyIcon, TriangleAlertIcon } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 
@@ -152,6 +152,18 @@ export function Trouble({ text }: { readonly text: string | undefined }) {
 }
 
 /** A confirm's two presses, the change first; the press's own label says what it does. */
+/**
+ * A form or prompt opened in place, brought whole into the sheet's view as it opens: one opened
+ * from the bottom row would leave its buttons below the fold.
+ */
+export function useRevealed<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView({ block: "nearest" });
+  }, []);
+  return ref;
+}
+
 export function Confirm({
   title,
   icon,
@@ -177,8 +189,9 @@ export function Confirm({
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
 }) {
+  const revealed = useRevealed<HTMLDivElement>();
   return (
-    <div className="mb-3">
+    <div className="mb-3" ref={revealed}>
       <Alert controlAlignment="first-line" variant={tone}>
         {icon ?? <TriangleAlertIcon />}
         <AlertTitle>{title}</AlertTitle>

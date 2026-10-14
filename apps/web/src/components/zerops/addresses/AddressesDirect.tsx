@@ -36,6 +36,7 @@ import {
   SheetRow,
   SheetSection,
   Trouble,
+  useRevealed,
   type SheetContext,
 } from "./AddressesSheetBits";
 import { WaitingNotice } from "./AddressesWeb";
@@ -299,6 +300,7 @@ function PortForm({
   readonly onDone: () => void;
   readonly onTaken: () => void;
 }) {
+  const revealed = useRevealed<HTMLFormElement>();
   const id = useId();
   const [target, setTarget] = useState(() =>
     targetValue(
@@ -419,6 +421,7 @@ function PortForm({
     <form
       className="mt-1 mb-3 grid gap-3 rounded-lg border border-border/60 px-3.5 py-3 text-sm"
       data-addresses-form={port === undefined ? "open-port" : "change-port"}
+      ref={revealed}
       onSubmit={(event) => {
         event.preventDefault();
         submit();
