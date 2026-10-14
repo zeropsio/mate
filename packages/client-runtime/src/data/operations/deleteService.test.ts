@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- the guard reads the repository's source files.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
