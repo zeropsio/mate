@@ -7024,6 +7024,7 @@ a.ov-card-site:hover {
 
 .ov-mate-open {
   border-radius: 4px;
+  cursor: pointer;
   text-decoration: underline 1px transparent;
   text-underline-offset: 3px;
   transition: text-decoration-color 150ms var(--ease-out-strong);
@@ -8684,6 +8685,7 @@ label.tm-advanced-row:not([data-disabled]) {
   color: var(--primary);
   font-size: 13px;
   font-weight: 600;
+  cursor: pointer;
   outline: none;
   transition:
     background-color 150ms var(--ease-out-strong),
@@ -8707,6 +8709,7 @@ label.tm-advanced-row:not([data-disabled]) {
 }
 
 .ov-setup:disabled {
+  cursor: default;
   opacity: 0.5;
 }
 
