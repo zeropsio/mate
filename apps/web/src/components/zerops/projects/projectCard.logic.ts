@@ -9,8 +9,10 @@
  *
  * Pure: no React, no clock of its own.
  */
+import type { PlaceAddresses } from "@t3tools/client-runtime/data";
 import {
   changeState,
+  placeAddresses,
   type FlowPullRequest,
   type FlowReleaseRow,
   type GroupFlow,
@@ -21,6 +23,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
+import { domainFaceWords } from "../addresses/addresses.logic";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import { MATE_DELETING_WORD } from "../ZeropsDeleteMateDialog.logic";
 import type {
@@ -527,6 +530,77 @@ export function siteOf(route: string | undefined): string | undefined {
 /** The one address a place answers at, as a person reads it; none where several services serve. */
 export function soleSite(addresses: ReadonlyArray<GroupFlowAddress>): string | undefined {
   return addresses.length === 1 ? siteOf(addresses[0]?.url) : undefined;
+}
+
+/** A domain of a place's own not answering yet, and how far it is, in the addresses sheet's words. */
+export interface PanelPendingDomain {
+  readonly name: string;
+  readonly word: string;
+  /** Attention where it waits on the person or went wrong; muted while it is on its way. */
+  readonly tone: "muted" | "attention";
+}
+
+/** A place's addresses on its panel, as the addresses sheet and the globe's popover read them. */
+export interface PanelAddresses {
+  /** The address that stands for the place: its own domain where one answers, else its sole service's. */
+  readonly head: { readonly host: string; readonly url: string } | undefined;
+  /** Several services serving: a door each, by its service, at its own domain where it has one. */
+  readonly doors: ReadonlyArray<GroupFlowAddress>;
+  readonly pending: ReadonlyArray<PanelPendingDomain>;
+  /** Production read with no domain of its own: the popover's "Add your domain" (`lacksOwnDomain`). */
+  readonly offerDomain: boolean;
+}
+
+/**
+ * What a place's panel says of its addresses. Read from the place's addresses (the sheet's
+ * projection) once read; until then — or outside an account — as its listing says them. A service
+ * answering at a domain of the place's own is opened there, its zerops.app address otherwise; the
+ * place's own domain heads the panel wherever one answers.
+ */
+export function panelAddresses(input: {
+  readonly kind: PlaceLine["kind"];
+  /** The place's listed doors (`PlaceLine.addresses`). */
+  readonly listed: ReadonlyArray<GroupFlowAddress>;
+  /** The place's addresses as read; `undefined` outside an account. */
+  readonly place: PlaceAddresses | undefined;
+}): PanelAddresses {
+  const { place } = input;
+  if (place?.state !== "ready") {
+    const host = soleSite(input.listed);
+    const first = input.listed[0];
+    return {
+      head: host === undefined || first === undefined ? undefined : { host, url: first.url },
+      doors: input.listed.length < 2 ? [] : input.listed,
+      pending: [],
+      offerDomain: false,
+    };
+  }
+  const live = place.domains.filter((domain) => domain.face === "live");
+  // Each service's own domains before its zerops.app address, services by name as the popover lists them.
+  const routes = [
+    ...live.flatMap((domain) =>
+      domain.targets.map((target) => ({ service: target.serviceName, url: domain.url, own: true })),
+    ),
+    ...place.zerops.flatMap((address) =>
+      address.hosts.map((host) => ({ service: address.serviceName, url: host.url, own: false })),
+    ),
+  ].toSorted((left, right) => left.service.localeCompare(right.service, "en"));
+  const doors = placeAddresses(routes);
+  const own = routes.find((route) => route.own);
+  const headUrl = own?.url ?? (doors.length === 1 ? doors[0]?.url : undefined);
+  const host = siteOf(headUrl);
+  const seen = new Set<string>();
+  return {
+    head: host === undefined || headUrl === undefined ? undefined : { host, url: headUrl },
+    doors: doors.length < 2 ? [] : doors,
+    pending: place.domains.flatMap((domain): ReadonlyArray<PanelPendingDomain> => {
+      if (domain.face === "live" || seen.has(domain.domainName)) return [];
+      seen.add(domain.domainName);
+      const { word, tone } = domainFaceWords(domain.face);
+      return [{ name: domain.domainName, word, tone: tone === "warn" ? "attention" : "muted" }];
+    }),
+    offerDomain: input.kind === "production" && place.domains.length === 0,
+  };
 }
 
 /** The people on a project, once each, in order; drawn only when more than one. */
