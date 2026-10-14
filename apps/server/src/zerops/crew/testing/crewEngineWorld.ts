@@ -313,32 +313,36 @@ const enginePort = (input: {
       );
     });
 
+  /** The crew's first state `holds` for, read again on each of its durable receipts. */
+  const crewWhere = (holds: (state: CrewState) => boolean) =>
+    Effect.gen(function* () {
+      const conversations = yield* run(Conversations);
+      const head = (yield* crewState).headSeq;
+      yield* Stream.concat(
+        Stream.succeed(undefined),
+        conversations
+          .owner(crewDomain)
+          .subscribe(CREW_OWNER_ID, head)
+          .pipe(Stream.map(() => undefined)),
+      ).pipe(
+        Stream.mapEffect(() => crewState),
+        Stream.filter(holds),
+        Stream.runHead,
+        Effect.orDie,
+      );
+    });
+
   /**
    * The crew has taken a step in: its quick effects (a delivery, a reset, a discard) have run, as
    * V1's press returned once its turn was dispatched. Long work (a copy's setup, a check, a
    * landing) goes on; a journey waits for it on the feed. Durable receipts advance this drain;
    * the journey's own timeout bounds a held step instead of silently treating it as settled.
    */
-  const settled = Effect.gen(function* () {
-    const conversations = yield* run(Conversations);
-    const head = (yield* crewState).headSeq;
-    yield* Stream.concat(
-      Stream.succeed(undefined),
-      conversations
-        .owner(crewDomain)
-        .subscribe(CREW_OWNER_ID, head)
-        .pipe(Stream.map(() => undefined)),
-    ).pipe(
-      Stream.mapEffect(() => crewState),
-      Stream.filter(
-        (state) =>
-          !Object.values(state.effects).some((effect) => QUICK_EFFECTS.has(effect.kind)) &&
-          !Object.values(state.tasks).some((task) => task.starting !== null),
-      ),
-      Stream.runHead,
-      Effect.orDie,
-    );
-  });
+  const settled = crewWhere(
+    (state) =>
+      !Object.values(state.effects).some((effect) => QUICK_EFFECTS.has(effect.kind)) &&
+      !Object.values(state.tasks).some((task) => task.starting !== null),
+  );
 
   /** A live-turn read waits for the observer, separately from dispatch settlement. */
   const observed = (chat: CrewChat) =>
@@ -595,11 +599,11 @@ const enginePort = (input: {
     for (const member of membersInOrder(yield* crewState)) {
       if (member.conversationId !== null) yield* observed(member.conversationId);
     }
-    for (let waited = 0; waited < 3_000; waited += 25) {
-      const state = yield* crewState;
-      if (membersInOrder(state).every((member) => member.active?.reached !== false)) return;
-      yield* Effect.sleep("25 millis");
-    }
+    // No bound of its own: a turn slow to reach its agent waits, and one that never does fails
+    // the journey's timeout, instead of a restart silently cutting it before it ran.
+    yield* crewWhere((state) =>
+      membersInOrder(state).every((member) => member.active?.reached !== false),
+    );
   });
 
   return {
