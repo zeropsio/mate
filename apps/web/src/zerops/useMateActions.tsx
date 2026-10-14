@@ -124,7 +124,7 @@ import { useOpenMate } from "./useOpenMate";
 import { useProjectOrderOptions } from "./projectOrderPreference";
 import {
   useTakenBotNames,
-  useZeropsCandidates,
+  useZeropsDetailCandidates,
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
 import { finishSetupContainer } from "./finishSetup.logic";
@@ -280,7 +280,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const atomRegistry = useContext(RegistryContext);
-  const { listing, refresh } = useZeropsCandidates();
+  const { listing, refresh } = useZeropsDetailCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const comingOf = useMateComingOf(candidates);
   const router = useRouter();

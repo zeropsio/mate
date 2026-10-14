@@ -34,7 +34,7 @@ import { beginCreation, tryCreationAgain, useCreation } from "./creations";
 import { useMatePresses } from "./matePress";
 import type { NewProjectAsk } from "./newProjectBirth";
 import { useDetailDemand, useProjection, useProjectServices } from "./accountData";
-import { useHqOwnChief, useKeepOwnChief, useOwnChief } from "./ownChief";
+import { useHqOwnChief, useOwnChief } from "./ownChief";
 import { useOrgOffers } from "./useHqOffers";
 import { useRunNewProject } from "./useRunNewProject";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -144,8 +144,8 @@ export function useChiefSetupRunner(): {
   const hqOpen = accountHq.hq.kind === "official";
   const operations = useAccountOperationsOptional();
   const runNewProject = useRunNewProject();
-  const keep = useKeepOwnChief();
   const { setup, orgId } = useChiefSetupStore();
+  const own = useOwnChief();
   const birthId = setup.phase === "idle" ? null : setup.birthId;
   const creation = useCreation(birthId ?? "");
   const presses = useMatePresses();
@@ -266,12 +266,11 @@ export function useChiefSetupRunner(): {
     });
   }, [chiefProject, hqOpen, operations, orgId, run, serviceId]);
 
-  // Set up: the menu's top row is the Chief, coming up as any new Mate does.
-  const doneProject = setup.phase === "done" ? setup.projectId : null;
   useEffect(() => {
-    if (doneProject === null || orgId === null) return;
-    keep(orgId, doneProject);
-  }, [doneProject, keep, orgId]);
+    if (orgId === activeOrganization?.id && setup.phase === "done" && own === setup.projectId) {
+      dispatch({ type: "observed", projectId: own });
+    }
+  }, [activeOrganization?.id, orgId, own, setup]);
 
   useEffect(() => {
     runnerPresses = { start, again };

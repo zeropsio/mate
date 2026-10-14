@@ -13,7 +13,7 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useZeropsCandidates, useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 
 import { soleSite } from "../projects/projectCard.logic";
 
@@ -43,7 +43,7 @@ const NO_PREVIEWS: ReadonlyArray<ReviewPreview> = [];
  * you know?").
  */
 export function useMatePreviews(mateProjectId: string): ReadonlyArray<ReviewPreview> {
-  const { listing } = useZeropsCandidates();
+  const { listing } = useZeropsDetailCandidates();
   return useMemo(() => {
     const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
     const previews = pairPreviewRoutes(row?.routes ?? [], row?.services?.hostnames ?? []);

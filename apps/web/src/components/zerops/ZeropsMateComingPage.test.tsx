@@ -186,9 +186,9 @@ const environments = { setOnScreen: (projectId: string | null) => app.onScreen(p
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
 vi.mock("~/zerops/usePressesElsewhere", () => ({ usePressesElsewhere: () => () => "stopped" }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
-  useHeldZeropsCandidates: () =>
+  useHeldZeropsDetailCandidates: () =>
     heldCandidates(app.listing as Shown<ReadonlyArray<CandidateRow>>).rows,
-  useZeropsCandidates: () => ({
+  useZeropsDetailCandidates: () => ({
     listing: app.listing,
     wholeForPerson: app.wholeForPerson,
     refresh: app.refresh,

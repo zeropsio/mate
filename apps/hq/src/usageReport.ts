@@ -21,6 +21,7 @@ export interface UsageReportAccess {
 }
 import type { MateOverviewEntry } from "./mateOverviews.ts";
 import { UsageRefused } from "./usageLedger.ts";
+import { chiefProjectIsVisible } from "./chiefOwnership.ts";
 import { mayReadUsage, usageOwner } from "./usageAccess.ts";
 import { zeroUsage } from "./usageAccounting.ts";
 export const USAGE_REPORT_LIMITS = {
@@ -113,8 +114,18 @@ export const readUsageReport = Effect.fnUntraced(function* (
           USAGE_REPORT_LIMITS.exactDays * 24 * 60 * 60 * 1000
       )
         return yield* new UsageRefused({ code: "usage_exact_window_too_large" });
-      const admitted = sources.filter((source) =>
-        mayReadUsage(current.facts, userId, source.project_id, source.deleted),
+      // A shared project history cannot attribute an origin to one of its former Chief owners.
+      const chiefs = new Map(
+        (yield* sql<{ readonly project_id: string; readonly user_id: string | null }>`
+        SELECT project_id, CASE WHEN count(DISTINCT user_id) = 1 THEN min(user_id) ELSE NULL END AS user_id
+        FROM hq_chief WHERE org_id = ${current.facts.orgId} GROUP BY project_id`).map(
+          (row) => [row.project_id, row.user_id] as const,
+        ),
+      );
+      const admitted = sources.filter(
+        (source) =>
+          chiefProjectIsVisible(current.facts, userId, source.project_id, chiefs) &&
+          mayReadUsage(current.facts, userId, source.project_id, source.deleted),
       );
       const scoped = admitted.flatMap((source) => {
         const live = source.current_mate === source.mate_id && !source.deleted;
@@ -126,14 +137,15 @@ export const readUsageReport = Effect.fnUntraced(function* (
           }),
         );
         const owner = live
-          ? usageOwner({
+          ? (chiefs.get(source.project_id) ??
+            usageOwner({
               facts: current.facts,
               projectId: source.project_id,
               everSignedIn: { ...source.signers, ...everSignedIn },
               runsWithoutSignIn: overview?.identity.runsWithoutSignIn === true,
               madeBy: source.made_by,
               standupRequestedBy: source.standup_requested_by,
-            })
+            }))
           : null;
         const app = live ? source.app_id : source.last_app_id;
         if (

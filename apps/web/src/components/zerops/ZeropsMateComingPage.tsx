@@ -133,7 +133,7 @@ import { useOpenMate } from "~/zerops/useOpenMate";
 import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
-import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useProjectServices } from "~/zerops/ZeropsAccountData";
 import {
@@ -200,7 +200,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Which agent this project's other Mates use, read while it comes up: its sign-in is ready in it.
   useUsualAgent(projectId);
   const { organizationRef } = useZeropsData();
-  const { listing, wholeForPerson, refresh: rereadListing } = useZeropsCandidates();
+  const { listing, wholeForPerson, refresh: rereadListing } = useZeropsDetailCandidates();
   const held = useMemo(() => heldCandidates(listing), [listing]);
   const listed = held.rows.find((candidate) => candidate.project.id === projectId);
   // What this tab pressed for it, while it holds it.

@@ -2,13 +2,30 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
+import {
+  shownHqMateDirectoryAtom,
+  shownHqListedMatesAtom,
+  type HqMateDirectory,
+} from "@t3tools/client-runtime/data";
 import { OpenCommandPaletteDialog } from "./CommandPalette";
 const input = vi.hoisted(() => ({
   error: "Listing refused." as string | null,
   pending: false,
   data: null as unknown,
 }));
-vi.mock("@effect/atom-react", () => ({ useAtomValue: () => [] }));
+vi.mock("@effect/atom-react", () => ({
+  useAtomValue: (atom: unknown) =>
+    atom === shownHqMateDirectoryAtom
+      ? ({
+          myChief: { kind: "absent" },
+          mates: {},
+          chiefProjectIds: [],
+          chiefEnvironmentIds: [],
+        } satisfies HqMateDirectory)
+      : atom === shownHqListedMatesAtom
+        ? { mates: {}, live: false }
+        : [],
+}));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => () => {}, useLocation: () => "/" }));
 vi.mock("../hooks/useSettings", () => ({ useClientSettings: () => DEFAULT_SERVER_SETTINGS }));
 vi.mock("../hooks/useTheme", () => ({

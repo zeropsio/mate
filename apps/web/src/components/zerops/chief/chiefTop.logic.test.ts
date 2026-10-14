@@ -122,6 +122,11 @@ describe("chiefPageView", () => {
       { kind: "offer", blocked: "Your organization has no HQ to record a Chief." },
     ],
     [
+      "explains the missing HQ without waiting for a Chief ownership record",
+      { ...ready, hq: "none", own: undefined, setup: { phase: "idle" } },
+      { kind: "offer", blocked: "Your organization has no HQ to record a Chief." },
+    ],
+    [
       "says why where the organization's HQ runs an older Core than this app carries",
       { ...ready, hq: "behind", own: null, setup: { phase: "idle" } },
       {

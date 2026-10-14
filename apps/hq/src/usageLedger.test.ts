@@ -150,6 +150,110 @@ const database = <E>(run: Effect.Effect<void, E, SqlClient.SqlClient | Leader>) 
   });
 describe("HQ immutable usage", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("Usage reports return a Chief's records only to its personal owner", () =>
+      database(
+        Effect.gen(function* () {
+          const { sql, ledger, sender, batch } = yield* setup;
+          yield* ledger.receive(sender, batch([fact("personal-chief", "100")]));
+          yield* sql`INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id)
+          VALUES ('chief-usage-credential', 'ORG', 'chief-owner', 'P')`;
+          const personal: UsageReportAccess = {
+            ...access,
+            facts: {
+              ...access.facts,
+              members: [
+                ...access.facts.members,
+                {
+                  ...access.facts.members[0]!,
+                  userId: "chief-owner",
+                  clientUserId: "C-chief-owner",
+                  roleCode: "BASIC_USER",
+                },
+              ],
+              projects: access.facts.projects.map((project) => ({
+                ...project,
+                tags: ["chief"],
+                userRoles: [
+                  ...project.userRoles,
+                  { clientUserId: "C-chief-owner", roleCode: "ADMIN" },
+                ],
+              })),
+            },
+          };
+          const peer = yield* readUsageReport(
+            sql,
+            "owner",
+            { kind: "agentUsage", query: baseQuery },
+            personal,
+            new Map(),
+          );
+          assert.deepStrictEqual(peer.coverage, []);
+          assert.strictEqual(peer.totals.tokens, "0");
+          assert.deepStrictEqual(peer.groups, []);
+          const own = yield* readUsageReport(
+            sql,
+            "chief-owner",
+            { kind: "agentUsage", query: baseQuery },
+            personal,
+            new Map(),
+          );
+          assert.deepStrictEqual(
+            own.coverage.map((row) => row.projectId),
+            ["P"],
+          );
+          assert.strictEqual(own.totals.tokens, "100");
+          assert.strictEqual(own.coverage[0]!.ownerUserId, "chief-owner");
+          yield* sql`UPDATE hq_chief SET revoked_at = now() WHERE project_id = 'P'`;
+          const revoked = yield* readUsageReport(
+            sql,
+            "chief-owner",
+            { kind: "agentUsage", query: baseQuery },
+            personal,
+            new Map(),
+          );
+          assert.strictEqual(revoked.totals.tokens, "100");
+          yield* sql`DELETE FROM hq_mate WHERE project_id = 'P'`;
+          const historical: UsageReportAccess = {
+            ...personal,
+            facts: {
+              ...personal.facts,
+              projects: [],
+              members: personal.facts.members.map((member) => ({ ...member, roleCode: "OWNER" })),
+            },
+          };
+          const formerOwner = yield* readUsageReport(
+            sql,
+            "chief-owner",
+            { kind: "agentUsage", query: baseQuery },
+            historical,
+            new Map(),
+          );
+          assert.strictEqual(formerOwner.totals.tokens, "100");
+          const otherReader = yield* readUsageReport(
+            sql,
+            "owner",
+            { kind: "agentUsage", query: baseQuery },
+            historical,
+            new Map(),
+          );
+          assert.deepStrictEqual(otherReader.coverage, []);
+          yield* sql`INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id)
+          VALUES ('later-chief-owner', 'ORG', 'owner', 'P')`;
+          for (const viewer of ["owner", "chief-owner"]) {
+            const ambiguous = yield* readUsageReport(
+              sql,
+              viewer,
+              { kind: "agentUsage", query: baseQuery },
+              historical,
+              new Map(),
+            );
+            assert.deepStrictEqual(ambiguous.coverage, []);
+            assert.strictEqual(ambiguous.totals.tokens, "0");
+          }
+        }),
+      ),
+    );
+
     it.effect(
       "The Usage report prices an Opus context variant without changing its recorded model",
       () =>

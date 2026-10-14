@@ -18,6 +18,7 @@ import { HqLifecycleRecord, HqLifecycleIntent } from "@t3tools/shared/hqLifecycl
  * @module structure
  */
 import * as NodeBuffer from "node:buffer";
+import { chiefProjectIsVisible, readsChiefProject } from "./chiefOwnership.ts";
 
 import { type Reason, REASONS } from "@t3tools/shared/zeropsPermissions";
 import { type FactsFor, type Targets, type Verb, can } from "./permissions.ts";
@@ -308,6 +309,7 @@ export interface MateOffers {
 
 export interface StructureSource {
   readonly environmentSource: EnvironmentSource;
+  readonly chiefOwners: ReadonlyMap<string, string>;
   readonly forPerson: (userId: string) => StructureRead;
   readonly facts: OrgView;
   readonly appIds: ReadonlySet<string>;
@@ -778,15 +780,21 @@ export const structureLayer = (options: {
       const dropRows = (gone: ReadonlyArray<string>) =>
         gone.length === 0
           ? Effect.void
-          : Effect.all([
-              sql`DELETE FROM hq_mate WHERE ${sql.in("project_id", gone)}`,
-              sql`DELETE FROM hq_app_project WHERE ${sql.in("project_id", gone)}`,
-              sql`DELETE FROM hq_mate_challenge WHERE ${sql.in("project_id", gone)}`,
-              sql`DELETE FROM hq_press WHERE ${sql.in("project_id", gone)}`,
-              sql`
+          : Effect.gen(function* () {
+              yield* sql`UPDATE hq_chief SET app_id = (
+                  SELECT app_id FROM hq_app_project WHERE hq_app_project.project_id = hq_chief.project_id
+                ) WHERE ${sql.in("project_id", gone)}
+                  AND EXISTS (SELECT 1 FROM hq_app_project WHERE hq_app_project.project_id = hq_chief.project_id)`;
+              yield* Effect.all([
+                sql`DELETE FROM hq_mate WHERE ${sql.in("project_id", gone)}`,
+                sql`DELETE FROM hq_app_project WHERE ${sql.in("project_id", gone)}`,
+                sql`DELETE FROM hq_mate_challenge WHERE ${sql.in("project_id", gone)}`,
+                sql`DELETE FROM hq_press WHERE ${sql.in("project_id", gone)}`,
+                sql`
                 UPDATE hq_mate_credential SET revoked_at = now()
                 WHERE ${sql.in("project_id", gone)} AND revoked_at IS NULL`,
-            ]);
+              ]);
+            });
 
       /** The environments of `projectIds`, read before their projects' rows go. */
       const environmentRows = (projectIds: ReadonlyArray<string>) =>
@@ -961,6 +969,12 @@ export const structureLayer = (options: {
                 to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until
               FROM hq_press ORDER BY project_id`;
               const [retained] = yield* sql<{
+                readonly chiefs: ReadonlyArray<{
+                  readonly project_id: string;
+                  readonly user_id: string;
+                  readonly app_id: string | null;
+                  readonly active: boolean;
+                }>;
                 readonly tools: ReadonlyArray<{
                   readonly projectId: string;
                   readonly kind: "gitea";
@@ -970,6 +984,8 @@ export const structureLayer = (options: {
                   readonly record: unknown;
                 }>;
               }>`SELECT
+                COALESCE((SELECT jsonb_agg(jsonb_build_object('project_id', project_id, 'user_id', user_id,
+                  'app_id', app_id::text, 'active', revoked_at IS NULL)) FROM hq_chief WHERE org_id = ${view.orgId}), '[]'::jsonb) AS chiefs,
                 COALESCE((SELECT jsonb_agg(jsonb_build_object('projectId', project_id, 'kind', kind) ORDER BY project_id) FROM hq_tool), '[]'::jsonb) AS tools,
                 COALESCE((SELECT jsonb_agg(jsonb_build_object('userId', user_id, 'record', record) ORDER BY seq) FROM (
                   SELECT DISTINCT ON (user_id, project_id, kind) user_id, record, seq FROM hq_lifecycle_receipt retained
@@ -983,12 +999,19 @@ export const structureLayer = (options: {
                   Effect.map((record) => ({ userId: row.userId, record })),
                 ),
               );
-              const environmentSource = yield* readEnvironmentSource(sql);
+              const chiefs = new Map(
+                retained!.chiefs
+                  .filter((row) => row.active)
+                  .map((row) => [row.project_id, row.user_id] as const),
+              );
+              const environmentSource = yield* readEnvironmentSource(sql, chiefs);
+              const chiefApplications = retained!.chiefs.filter((row) => row.app_id !== null);
               const names = new Map(view.projects.map((project) => [project.id, project.name]));
               const projects = new Map(view.projects.map((project) => [project.id, project]));
               return {
                 facts: view,
                 environmentSource,
+                chiefOwners: chiefs,
                 appIds: new Set(apps.map((app) => app.id)),
                 pressProjectIds: new Set(presses.map((press) => press.project_id)),
                 projectIds: new Set([
@@ -998,7 +1021,16 @@ export const structureLayer = (options: {
                 forPerson: (userId: string): StructureRead => {
                   const person = { kind: "person", userId } as const;
                   const reads = (projectId: string) =>
-                    can(person, "read_project", { projectId }, view).allow;
+                    readsChiefProject(view, userId, projectId, chiefs);
+                  const hiddenChiefs = new Set(
+                    [
+                      ...new Set([...view.projects.map((project) => project.id), ...chiefs.keys()]),
+                    ].filter(
+                      (projectId) =>
+                        !chiefProjectIsVisible(view, userId, projectId, chiefs) ||
+                        (chiefs.has(projectId) && !reads(projectId)),
+                    ),
+                  );
                   const visible = rows.filter((row) => reads(row.project_id));
                   /** What the reader may do with a Mate held as `held`, and where it may go. */
                   const mateCan = (projectId: string, held: string) => ({
@@ -1039,11 +1071,18 @@ export const structureLayer = (options: {
                         ...mateCan(row.project_id, "mate"),
                       })),
                     apps: apps
+                      .filter((app) => {
+                        const held = rows.filter((row) => row.app_id === app.id);
+                        const owners = chiefApplications.filter((row) => row.app_id === app.id);
+                        return held.length === 0
+                          ? owners.every((owner) => owner.user_id === userId)
+                          : !held.every((row) => hiddenChiefs.has(row.project_id));
+                      })
                       .map((app) => {
                         const held = rows.filter((row) => row.app_id === app.id);
                         const can = appOffers(
                           userId,
-                          held,
+                          held.filter((row) => !hiddenChiefs.has(row.project_id)),
                           view,
                           environmentSource.slotsForApp(app.id),
                         );
@@ -1059,6 +1098,7 @@ export const structureLayer = (options: {
                               .filter(
                                 (row) =>
                                   row.app_id === app.id &&
+                                  !hiddenChiefs.has(row.project_id) &&
                                   (projects.get(row.project_id) === undefined ||
                                     projects.get(row.project_id)?.status === "DELETING" ||
                                     projects.get(row.project_id)?.status === "DELETED"),
@@ -1086,7 +1126,11 @@ export const structureLayer = (options: {
                             can.read_change,
                           ),
                           births: births
-                            .filter((row) => row.app_id === app.id)
+                            .filter(
+                              (row) =>
+                                row.app_id === app.id &&
+                                (row.projectId == null || !hiddenChiefs.has(row.projectId)),
+                            )
                             .map(({ id, face, projectId }) => ({
                               id,
                               face,

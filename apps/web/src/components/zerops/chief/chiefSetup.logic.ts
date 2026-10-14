@@ -46,6 +46,8 @@ export type ChiefSetupEvent =
   | { readonly type: "project-made"; readonly projectId: string }
   | { readonly type: "hq-answered" }
   | { readonly type: "variables-written" }
+  /** HQ now supplies the completed Chief; setup no longer owns its existence. */
+  | { readonly type: "observed"; readonly projectId: string }
   /** The running step stopped. */
   | { readonly type: "failed"; readonly reason: string }
   | { readonly type: "again" }
@@ -72,6 +74,10 @@ export function chiefSetupAfter(setup: ChiefSetup, event: ChiefSetupEvent): Chie
     case "variables-written":
       return setup.phase === "running" && setup.step === "variables" && setup.projectId !== null
         ? { phase: "done", birthId: setup.birthId, projectId: setup.projectId }
+        : setup;
+    case "observed":
+      return setup.phase === "done" && setup.projectId === event.projectId
+        ? CHIEF_SETUP_IDLE
         : setup;
     case "failed":
       return setup.phase === "running"

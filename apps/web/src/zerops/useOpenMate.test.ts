@@ -59,7 +59,7 @@ vi.mock("../state/entities", () => ({
   useProjects: () => app.projects,
 }));
 vi.mock("./useZeropsCandidates", () => ({
-  useZeropsCandidates: () => ({ listing: app.listing }),
+  useZeropsDetailCandidates: () => ({ listing: app.listing }),
 }));
 vi.mock("./useMenuMateReadings", () => ({
   useHqMainChats: () => () => app.toldMain,

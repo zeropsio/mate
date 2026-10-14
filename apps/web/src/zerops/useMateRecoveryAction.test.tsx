@@ -24,7 +24,7 @@ const candidate = vi.hoisted(() => ({
   project: { id: "p", clientId: "org", name: "Wren", status: "ACTIVE" },
   service: { id: "s", status: "STOPPED" },
 }));
-vi.mock("./useZeropsCandidates", () => ({ useHeldZeropsCandidates: () => [candidate] }));
+vi.mock("./useZeropsCandidates", () => ({ useHeldZeropsDetailCandidates: () => [candidate] }));
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSessionOptional: () => ({
     activeOrganization: { id: "org", membershipId: "viewer", roleCode: "OWNER" },

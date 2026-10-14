@@ -6,7 +6,10 @@
  * stopped answering (`menuSourcesSettled`): a first paint is the settled one, never reordered.
  */
 import {
-  shownHqMateIdentitiesAtom,
+  shownHqListedMateIdentitiesAtom,
+  shownCanonicalHqListNavigationAtom,
+  shownHqMateDirectoryAtom,
+  isListedMateProject,
   listedProjectAtom,
   projectGoneAtom,
   shownHqVerdictAtom,
@@ -16,7 +19,7 @@ import { placedMenuRows, placedNames } from "@t3tools/client-runtime/zerops/hq";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { Atom } from "effect/reactivity";
 
-import { hqNavigationAtom, hqPlacementsAtom } from "../state/zerops";
+import { hqPlacementsAtom } from "../state/zerops";
 import { menuRows, menuSourcesSettled } from "./zeropsMenu.logic";
 
 export interface MenuRows<Row extends CandidateRow = CandidateRow> {
@@ -34,7 +37,7 @@ export function menuRowsAtom<Row extends CandidateRow>(
 ): Atom.Atom<MenuRows<Row>> {
   return Atom.make((get): MenuRows<Row> => {
     if (organizationId === undefined) return LOADING;
-    const navigation = get(hqNavigationAtom);
+    const navigation = get(shownCanonicalHqListNavigationAtom);
     const listing = get(shownProjectsAtom);
     if (
       navigation.orgId !== organizationId ||
@@ -42,25 +45,36 @@ export function menuRowsAtom<Row extends CandidateRow>(
       !menuSourcesSettled({ projects: listing, hq: navigation, verdict: get(shownHqVerdictAtom) })
     )
       return LOADING;
-    const placements = get(hqPlacementsAtom);
+    const directory = get(shownHqMateDirectoryAtom);
+    const allPlacements = get(hqPlacementsAtom);
+    const placements =
+      allPlacements === null
+        ? null
+        : new Map([...allPlacements].filter(([id]) => isListedMateProject(directory, { id })));
+    const listedCandidates = candidates.filter((row) =>
+      isListedMateProject(directory, row.project),
+    );
     const { structure } = navigation;
     const gone = new Set(
       candidates.flatMap(({ project }) => (get(projectGoneAtom(project.id)) ? [project.id] : [])),
     );
     if (structure === null || placements === null)
-      return { settled: true, rows: menuRows({ placed: NO_ROWS, candidates, gone }) };
+      return {
+        settled: true,
+        rows: menuRows({ placed: NO_ROWS, candidates: listedCandidates, gone }),
+      };
     const projects = [...placements.keys()].flatMap((id) => {
       if (get(projectGoneAtom(id))) gone.add(id);
       const project = get(listedProjectAtom(id));
       return project === null ? [] : [project];
     });
-    const identities = get(shownHqMateIdentitiesAtom);
+    const identities = get(shownHqListedMateIdentitiesAtom);
     const placed = placedMenuRows({
       organizationId,
       placements,
       names: placedNames(structure),
       projects,
-      candidates,
+      candidates: listedCandidates,
       gone,
     });
     return {
@@ -72,7 +86,7 @@ export function menuRowsAtom<Row extends CandidateRow>(
             ? row
             : { ...row, project: { ...row.project, name: identity.fullName } };
         }),
-        candidates,
+        candidates: listedCandidates,
         gone,
       }),
     };

@@ -43,43 +43,16 @@ import {
   pinSearch,
 } from "./chiefProxy.ts";
 import { ChiefRefused, confirmingChiefRefusal } from "./chiefRefused.ts";
+import { CHIEF_TAG, chiefOfPerson, readsChiefProject } from "./chiefOwnership.ts";
+import { Structure } from "./structure.ts";
 import { lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
 import { CHIEF_LIMIT, DOOR_LIMIT, DoorRateLimit, TooManyRequests } from "./rateLimit.ts";
-import { Roles, type OrgView } from "./roles.ts";
+import { Roles } from "./roles.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import { mateOwner } from "./usageAccess.ts";
 import { ZeropsApi, type ZeropsError, ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
-
-/** The tag a Chief's project carries. */
-export const CHIEF_TAG = "chief";
-
-/** A registered Chief is usable only while its person and project still have access. */
-export const chiefOfPerson = (
-  facts: OrgView,
-  ownerUserId: string | null,
-  chiefs: ReadonlyMap<string, string>,
-) => {
-  if (
-    ownerUserId === null ||
-    !facts.members.some(
-      (member) =>
-        member.kind === "person" &&
-        member.userId === ownerUserId &&
-        member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
-    )
-  )
-    return null;
-  const projectId = [...chiefs].find(([, userId]) => userId === ownerUserId)?.[0];
-  return projectId !== undefined &&
-    facts.projects.some(
-      (project) => project.id === projectId && project.tags.includes(CHIEF_TAG),
-    ) &&
-    can({ kind: "person", userId: ownerUserId }, "observe_mate", { projectId }, facts).allow
-    ? { ownerUserId, projectId }
-    : null;
-};
 
 /** Where HQ serves the proxy, under its own address. */
 export const CHIEF_PROXY_PATH = "/api/chief/zerops";
@@ -166,7 +139,14 @@ export const chiefsLayer = (options: {
 }): Layer.Layer<
   Chiefs,
   never,
-  ChiefUpstream | DoorRateLimit | Leader | Roles | MateOverviews | SqlClient.SqlClient | ZeropsApi
+  | ChiefUpstream
+  | DoorRateLimit
+  | Leader
+  | Roles
+  | Structure
+  | MateOverviews
+  | SqlClient.SqlClient
+  | ZeropsApi
 > =>
   Layer.effect(
     Chiefs,
@@ -174,6 +154,7 @@ export const chiefsLayer = (options: {
       const sql = yield* SqlClient.SqlClient;
       const leader = yield* Leader;
       const roles = yield* Roles;
+      const structure = yield* Structure;
       const api = yield* ZeropsApi;
       const overviews = yield* MateOverviews;
       const upstream = yield* ChiefUpstream;
@@ -275,11 +256,15 @@ export const chiefsLayer = (options: {
           }),
         mine: (userId) =>
           Effect.gen(function* () {
-            const { orgId } = yield* roles.view;
+            const facts = yield* roles.view;
+            const { orgId } = facts;
             const [row] = yield* sql<{ readonly project_id: string; readonly since: string }>`
               SELECT project_id, ${since} AS since FROM hq_chief
               WHERE org_id = ${orgId} AND user_id = ${userId} AND revoked_at IS NULL`;
-            return row === undefined ? null : { projectId: row.project_id, since: row.since };
+            return row === undefined ||
+              chiefOfPerson(facts, userId, new Map([[row.project_id, userId]])) === null
+              ? null
+              : { projectId: row.project_id, since: row.since };
           }),
         register: (userId, projectId) =>
           confirmingChiefRefusal(
@@ -315,13 +300,14 @@ export const chiefsLayer = (options: {
                     UPDATE hq_chief SET revoked_at = now()
                     WHERE org_id = ${view.orgId} AND user_id = ${userId} AND revoked_at IS NULL`;
                   const [row] = yield* sql<{ readonly since: string }>`
-                    INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id)
+                    INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id, app_id)
                     VALUES (${chiefCredentialHash(credential)}, ${view.orgId}, ${userId},
-                      ${projectId})
+                      ${projectId}, (SELECT app_id FROM hq_app_project WHERE project_id = ${projectId}))
                     RETURNING ${since} AS since`;
                   return { projectId, since: row!.since };
                 }),
               );
+              yield* structure.mateTouched(projectId);
               return {
                 chief,
                 credential,
@@ -371,8 +357,14 @@ export const chiefsLayer = (options: {
             if (chiefProject === undefined || !chiefProject.tags.includes(CHIEF_TAG)) {
               return yield* refused("forbidden", "not_chief_project");
             }
+            const chiefs = new Map(
+              (yield* sql<{ readonly project_id: string; readonly user_id: string }>`
+              SELECT project_id, user_id FROM hq_chief WHERE org_id = ${view.orgId} AND revoked_at IS NULL`).map(
+                (row) => [row.project_id, row.user_id] as const,
+              ),
+            );
             const reaches = (projectId: string) =>
-              can({ kind: "person", userId }, "read_project", { projectId }, view).allow;
+              readsChiefProject(view, userId, projectId, chiefs);
             const read = chiefRead(request.method, request.path);
             if ("refused" in read) {
               return yield* read.refused === "method"
