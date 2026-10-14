@@ -112,7 +112,9 @@ const github = <T>(repo: string, endpoint: string): T =>
 
 const sourceOf = (repo: string, ref: string) => {
   const source = Effect.runSync(
-    readReleaseSource(ref, (args) => Effect.sync(() => ({ output: git(repo, ...args), code: 0 }))),
+    readReleaseSource(git(repo, "rev-parse", `${ref}^{commit}`), (args) =>
+      Effect.sync(() => ({ output: git(repo, ...args), code: 0 })),
+    ),
   );
   if (source === undefined) throw new Error(`release ${ref} is not a version-only commit`);
   return source;
@@ -136,23 +138,52 @@ interface Manifest {
   readonly sha256?: string;
 }
 
+interface ReleaseWorkflowRun extends WorkflowRun {
+  readonly id: number;
+  readonly run_attempt: number;
+  readonly html_url: string;
+}
+
 async function waitForManifest(repo: string, version: string, releaseSHA: string): Promise<void> {
   const deadline = Date.now() + 45 * 60_000;
+  let retried: ReleaseWorkflowRun | undefined;
   while (Date.now() < deadline) {
-    const runs = github<{ workflow_runs: WorkflowRun[] }>(
+    const runs = github<{ workflow_runs: ReleaseWorkflowRun[] }>(
       repo,
       `repos/${REPOSITORY}/actions/workflows/release.yml/runs?head_sha=${releaseSHA}&per_page=10`,
     ).workflow_runs;
     const run = runs.find((run) => run.head_sha === releaseSHA);
-    if (run?.status === "completed" && run.conclusion !== "success")
-      throw new Error(`release CI failed for ${releaseSHA}: ${run.conclusion}; nothing published`);
+    // GitHub can return the completed old attempt after accepting the rerun.
+    if (retried && run?.id === retried.id && run.run_attempt <= retried.run_attempt) {
+      await new Promise((resolve) => setTimeout(resolve, 15_000));
+      continue;
+    }
+    if (run?.status === "completed" && run.conclusion !== "success") {
+      const failure = `release CI failed for ${releaseSHA}: ${run.conclusion}; ${run.html_url ?? `https://github.com/${REPOSITORY}/actions`}, attempt ${run.run_attempt ?? "unknown"}`;
+      if (retried || !Number.isInteger(run.id) || !Number.isInteger(run.run_attempt))
+        throw new Error(`${failure}; nothing published`);
+      console.log(`${failure}; retrying the same release workflow once`);
+      try {
+        NodeChildProcess.execFileSync(
+          "gh-mate",
+          ["api", "--method", "POST", `repos/${REPOSITORY}/actions/runs/${run.id}/rerun`],
+          { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+        );
+      } catch (error) {
+        throw new Error(`${failure}; could not retry: ${String(error)}`);
+      }
+      retried = run;
+      continue;
+    }
 
-    const manifest = await fetch(
-      `https://github.com/${REPOSITORY}/releases/latest/download/stable.json`,
-      { cache: "no-store" },
-    )
-      .then((response) => (response.ok ? (response.json() as Promise<Manifest>) : undefined))
-      .catch(() => undefined);
+    const manifest =
+      run?.status === "completed" && run.conclusion === "success"
+        ? await fetch(`https://github.com/${REPOSITORY}/releases/latest/download/stable.json`, {
+            cache: "no-store",
+          })
+            .then((response) => (response.ok ? (response.json() as Promise<Manifest>) : undefined))
+            .catch(() => undefined)
+        : undefined;
     if (
       run?.status === "completed" &&
       run.conclusion === "success" &&
@@ -175,7 +206,7 @@ async function waitForManifest(repo: string, version: string, releaseSHA: string
     await new Promise((resolve) => setTimeout(resolve, 15_000));
   }
   throw new Error(
-    `stable.json did not serve ${version} in 45 minutes: https://github.com/${REPOSITORY}/actions`,
+    `stable.json did not serve ${version} in 45 minutes: ${retried?.html_url ?? `https://github.com/${REPOSITORY}/actions`}${retried ? `; retry requested after attempt ${retried.run_attempt}: ${retried.conclusion}` : ""}`,
   );
 }
 
@@ -224,6 +255,16 @@ async function main(args: ReadonlySet<string>): Promise<void> {
     .toSorted((a, b) => compare(parseVersion(a)!, parseVersion(b)!))
     .at(-1);
   const lastSource = lastTag === undefined ? undefined : sourceOf(repo, lastTag);
+  if (lastSource === source) {
+    if (!args.has("--dry-run"))
+      await waitForManifest(
+        repo,
+        formatVersion(parseVersion(lastTag!)!),
+        git(repo, "rev-parse", `${lastTag}^{commit}`),
+      );
+    console.log(`already released: ${lastTag} includes source ${source}`);
+    return;
+  }
   if (lastSource !== undefined) git(repo, "merge-base", "--is-ancestor", lastSource, source);
   // A throwaway tree: the release never touches a checkout someone is working in.
   const tree = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-release-"));

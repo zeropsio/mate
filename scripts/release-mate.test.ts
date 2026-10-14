@@ -347,3 +347,294 @@ esac
     NodeFS.rmSync(root, { recursive: true });
   }
 });
+
+const releaseDriverFixture = (options: {
+  newSource: boolean;
+  conclusion?: "success" | "failure";
+  initialConclusion?: "success" | "failure" | "startup_failure";
+  emptySource?: boolean;
+  mismatchChecksum?: boolean;
+  staleAttempt?: boolean;
+}) => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "release-published-driver-"));
+  const git = (...args: string[]) =>
+    NodeChildProcess.execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  const files = ["apps/server/package.json", "apps/desktop/package.json", "apps/web/package.json"];
+  git("init", "--quiet", "--initial-branch=main");
+  git("config", "user.name", "Release test");
+  git("config", "user.email", "release@example.invalid");
+  for (const file of files) {
+    const path = NodePath.join(root, file);
+    NodeFS.mkdirSync(NodePath.dirname(path), { recursive: true });
+    NodeFS.writeFileSync(path, '{"version": "0.15.0"}');
+  }
+  NodeFS.mkdirSync(NodePath.join(root, ".github/workflows"), { recursive: true });
+  NodeFS.writeFileSync(
+    NodePath.join(root, ".github/workflows/release.yml"),
+    "  verify:\nneeds: [build, verify]\n",
+  );
+  NodeFS.writeFileSync(NodePath.join(root, "product.ts"), "released product");
+  git("add", ".");
+  git("commit", "--quiet", "-m", "released product");
+  const releasedSource = git("rev-parse", "HEAD");
+  git("checkout", "--quiet", "--detach");
+  for (const file of files) {
+    NodeFS.writeFileSync(NodePath.join(root, file), '{"version": "0.15.1"}');
+  }
+  git("add", ...files);
+  git("commit", "--quiet", "-m", "chore(release): mate 0.15.1");
+  git("tag", "v0.15.1");
+  git("checkout", "--quiet", "main");
+  if (options.newSource) {
+    if (options.emptySource) {
+      git("commit", "--quiet", "--allow-empty", "-m", "green metadata-only commit");
+    } else {
+      NodeFS.writeFileSync(NodePath.join(root, "product.ts"), "new green product");
+      git("add", ".");
+      git("commit", "--quiet", "-m", "new green product");
+    }
+  }
+  const source = git("rev-parse", "HEAD");
+  NodeFS.writeFileSync(NodePath.join(root, "product.ts"), "pending product");
+  git("add", ".");
+  git("commit", "--quiet", "-m", "pending product");
+  const head = git("rev-parse", "HEAD");
+  const version = options.newSource ? "0.15.2" : "0.15.1";
+  const remote = NodePath.join(root, "remote.git");
+  git("init", "--quiet", "--bare", remote);
+  git("remote", "add", "origin", remote);
+  git("push", "--quiet", "origin", "main", "v0.15.1");
+  const bin = NodePath.join(root, "bin");
+  NodeFS.mkdirSync(bin);
+  NodeFS.writeFileSync(
+    NodePath.join(bin, "gh-mate"),
+    `#!/usr/bin/env node
+const fs = require("node:fs");
+const cp = require("node:child_process");
+const root = process.env.RELEASE_TEST_ROOT;
+const args = process.argv.slice(2);
+fs.appendFileSync(root + "/requests.jsonl", JSON.stringify(args) + "\\n");
+const endpoint = args.find((arg) => arg.startsWith("repos/"));
+let answer;
+if (endpoint.includes("ci.yml/runs")) {
+  answer = { workflow_runs: [{head_sha: ${JSON.stringify(source)}, head_branch: "main", status: "completed", conclusion: "success"}] };
+} else if (endpoint.includes("/releases?")) {
+  answer = [{tag_name: "v0.15.1", draft: false, prerelease: false}];
+} else if (endpoint.endsWith("/rerun")) {
+  fs.writeFileSync(root + "/rerun", "1");
+  answer = {};
+} else if (endpoint.includes("release.yml/runs")) {
+  const readsFile = root + "/run-reads";
+  const reads = fs.existsSync(readsFile) ? Number(fs.readFileSync(readsFile, "utf8")) + 1 : 1;
+  fs.writeFileSync(readsFile, String(reads));
+  const retried = fs.existsSync(root + "/rerun");
+  const stale = ${options.staleAttempt === true} && reads === 2;
+  const attempt = retried && !stale ? 2 : 1;
+  answer = { workflow_runs: [{id: 123, html_url: "https://github.com/zeropsio/mate/actions/runs/123", run_attempt: attempt, head_sha: cp.execFileSync("git", ["rev-parse", ${JSON.stringify("v" + version + "^{commit}")}], {encoding:"utf8"}).trim(), status: "completed", conclusion: attempt === 1 ? ${JSON.stringify(options.initialConclusion ?? "failure")} : ${JSON.stringify(options.conclusion ?? "success")}}] };
+} else { throw new Error("Unexpected GitHub endpoint " + endpoint); }
+process.stdout.write(JSON.stringify(answer));
+`,
+    { mode: 0o700 },
+  );
+  const checksum = "a".repeat(64);
+  const fetchMock = NodePath.join(root, "fetch-mock.mjs");
+  NodeFS.writeFileSync(
+    fetchMock,
+    `globalThis.fetch = async (url) => new Response(String(url).endsWith("SHA256SUMS") ? ${JSON.stringify(`${checksum}  mate.tgz\n`)} : ${JSON.stringify(JSON.stringify({ version, asset: "mate.tgz", sha256: options.mismatchChecksum ? "b".repeat(64) : checksum }))});
+const timer = globalThis.setTimeout;
+globalThis.setTimeout = (callback, delay, ...args) => timer(callback, delay === 15000 ? 1 : delay, ...args);
+`,
+  );
+  NodeFS.symlinkSync(
+    NodePath.join(import.meta.dirname, "../node_modules"),
+    NodePath.join(root, "node_modules"),
+    "dir",
+  );
+  return {
+    root,
+    git,
+    source,
+    releasedSource,
+    head,
+    invoke: () =>
+      NodeChildProcess.spawnSync(
+        process.execPath,
+        [
+          "--import",
+          fetchMock,
+          NodePath.join(import.meta.dirname, "release-mate.ts"),
+          "--from-sha",
+          source,
+        ],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, RELEASE_TEST_ROOT: root },
+          timeout: 30_000,
+        },
+      ),
+    requests: () =>
+      NodeFS.readFileSync(NodePath.join(root, "requests.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as string[]),
+    dispose: () => NodeFS.rmSync(root, { recursive: true }),
+  };
+};
+
+it("a green source already included in a published release succeeds without creating another tag", () => {
+  const fixture = releaseDriverFixture({ newSource: false, initialConclusion: "success" });
+  try {
+    const result = fixture.invoke();
+    expect(
+      result.status,
+      "ASSERTION: an already published green source is an idempotent success",
+    ).toBe(0);
+    expect(result.stdout).toContain(`already released: v0.15.1 includes source ${fixture.source}`);
+    expect(fixture.git("tag", "--list")).toBe("v0.15.1");
+    expect(fixture.git("worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(1);
+    expect(
+      fixture.requests().filter((args) => args.some((arg) => arg.includes("release.yml/runs"))),
+    ).toHaveLength(1);
+    expect(fixture.requests().some((args) => args.some((arg) => arg.endsWith("/rerun")))).toBe(
+      false,
+    );
+  } finally {
+    fixture.dispose();
+  }
+});
+
+it("new green product commits after a detached published tag are released even when main has advanced", () => {
+  const fixture = releaseDriverFixture({ newSource: true, initialConclusion: "success" });
+  try {
+    const result = fixture.invoke();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("previous published: v0.15.1");
+    expect(result.stdout).toContain("- new green product");
+    expect(result.stdout).not.toContain("- pending product");
+    expect(result.stdout).not.toContain("- released product");
+    expect(fixture.git("rev-parse", "v0.15.1^")).toBe(fixture.releasedSource);
+    expect(fixture.git("rev-parse", "v0.15.2^")).toBe(fixture.source);
+    expect(fixture.git("rev-parse", "refs/remotes/origin/main")).toBe(fixture.head);
+    expect(fixture.requests().some((args) => args.some((arg) => arg.endsWith("/rerun")))).toBe(
+      false,
+    );
+  } finally {
+    fixture.dispose();
+  }
+});
+
+it("a newer green commit is released even when no product file changed", () => {
+  const fixture = releaseDriverFixture({
+    newSource: true,
+    emptySource: true,
+    initialConclusion: "success",
+  });
+  try {
+    expect(fixture.git("diff", "--name-only", fixture.releasedSource, fixture.source)).toBe("");
+    const result = fixture.invoke();
+    expect(result.status, "ASSERTION: every new green commit is eligible for release").toBe(0);
+    expect(result.stdout).toContain("- green metadata-only commit");
+    expect(fixture.git("tag", "--list").split("\n")).toEqual(["v0.15.1", "v0.15.2"]);
+    expect(fixture.git("rev-parse", "v0.15.2^")).toBe(fixture.source);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+it.each(["failure", "startup_failure"] as const)(
+  "new green product commits after a detached published tag are released and retry only their existing workflow",
+  (initialConclusion) => {
+    const fixture = releaseDriverFixture({
+      newSource: true,
+      staleAttempt: true,
+      initialConclusion,
+    });
+    try {
+      const result = fixture.invoke();
+      expect(
+        result.status,
+        `ASSERTION: a failed release workflow retries the existing tag and publishes its newer green source: ${result.stderr}`,
+      ).toBe(0);
+      expect(result.stdout).toContain("previous published: v0.15.1");
+      expect(result.stdout).toContain("- new green product");
+      expect(result.stdout).not.toContain("- pending product");
+      expect(result.stdout).not.toContain("- released product");
+      expect(result.stdout).toContain("released: stable.json serves 0.15.2");
+      expect(fixture.git("tag", "--list").split("\n")).toEqual(["v0.15.1", "v0.15.2"]);
+      expect(fixture.git("rev-parse", "v0.15.2^")).toBe(fixture.source);
+      expect(fixture.git("rev-parse", "refs/remotes/origin/main")).toBe(fixture.head);
+      const requests = fixture.requests();
+      const retries = requests.filter((args) =>
+        args.includes("repos/zeropsio/mate/actions/runs/123/rerun"),
+      );
+      expect(retries).toEqual([
+        ["api", "--method", "POST", "repos/zeropsio/mate/actions/runs/123/rerun"],
+      ]);
+      expect(
+        requests.filter((args) => args.some((arg) => arg.includes("release.yml/runs"))),
+      ).toHaveLength(3);
+    } finally {
+      fixture.dispose();
+    }
+  },
+);
+
+it("a release workflow that fails its retry reports the cause and run without creating another tag", () => {
+  const fixture = releaseDriverFixture({ newSource: true, conclusion: "failure" });
+  try {
+    const result = fixture.invoke();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("release CI failed");
+    expect(result.stderr, "ASSERTION: exhausted release retries retain the workflow URL").toContain(
+      "https://github.com/zeropsio/mate/actions/runs/123",
+    );
+    expect(result.stderr).toContain("attempt 2");
+    expect(result.stderr).toContain("failure");
+    expect(
+      fixture
+        .requests()
+        .filter((args) => args.includes("repos/zeropsio/mate/actions/runs/123/rerun")),
+    ).toHaveLength(1);
+    expect(fixture.git("tag", "--list").split("\n")).toEqual(["v0.15.1", "v0.15.2"]);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+it("an already tagged green source retries incomplete publication without creating another tag", () => {
+  const fixture = releaseDriverFixture({ newSource: false });
+  try {
+    const result = fixture.invoke();
+    expect(result.status, "ASSERTION: an existing tag still needs successful publication").toBe(0);
+    expect(result.stdout).toContain(`already released: v0.15.1 includes source ${fixture.source}`);
+    expect(fixture.git("tag", "--list")).toBe("v0.15.1");
+    expect(
+      fixture
+        .requests()
+        .filter((args) => args.includes("repos/zeropsio/mate/actions/runs/123/rerun")),
+    ).toHaveLength(1);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+it("an existing tag with a mismatched published checksum is not a successful release", () => {
+  const fixture = releaseDriverFixture({
+    newSource: false,
+    initialConclusion: "success",
+    mismatchChecksum: true,
+  });
+  try {
+    const result = fixture.invoke();
+    expect(
+      result.status,
+      "ASSERTION: an existing tag is successful only when its manifest matches the checksum",
+    ).toBe(1);
+    expect(result.stderr).toContain("stable.json's sha256");
+    expect(result.stdout).not.toContain("already released:");
+    expect(fixture.git("tag", "--list")).toBe("v0.15.1");
+  } finally {
+    fixture.dispose();
+  }
+});
