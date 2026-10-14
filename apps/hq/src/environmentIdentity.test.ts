@@ -135,13 +135,17 @@ describe("environment identity expansion", () => {
             const detail = (yield* core.call("GET", "/api/structure", { session: owner })).body as {
               apps: Array<{
                 id: string;
-                environments: Array<{ id: string; projectId: string; target: unknown }>;
+                environments: Array<{ id: string; target: { kind: "zerops"; projectId: string } }>;
               }>;
             };
             assert.deepStrictEqual(
               detail.apps
                 .find((app) => app.id === appId)!
-                .environments.map(({ id, projectId, target }) => ({ id, projectId, target })),
+                .environments.map(({ id, target }) => ({
+                  id,
+                  projectId: target.projectId,
+                  target,
+                })),
               [
                 {
                   id: "P_MATE",
@@ -221,7 +225,11 @@ describe("environment identity expansion", () => {
               );
               if (!Array.isArray(viewed)) throw new Error("Expected environments");
               assert.deepStrictEqual(
-                viewed.map(({ id, target, projectId }) => ({ id, target, projectId })),
+                viewed.map(({ id, target }) => ({
+                  id,
+                  target,
+                  projectId: target.kind === "zerops" ? target.projectId : undefined,
+                })),
                 [
                   {
                     id: "stage",
@@ -414,13 +422,20 @@ describe("environment identity expansion", () => {
               detail.body as {
                 apps: Array<{
                   id: string;
-                  environments: Array<{ id: string; projectId: string; target: unknown }>;
+                  environments: Array<{
+                    id: string;
+                    target: { kind: "zerops"; projectId: string };
+                  }>;
                 }>;
               }
             ).apps;
             const environment = apps.find((item) => item.id === appId)!.environments[0]!;
             assert.deepStrictEqual(
-              { id: environment.id, projectId: environment.projectId, target: environment.target },
+              {
+                id: environment.id,
+                projectId: environment.target.projectId,
+                target: environment.target,
+              },
               {
                 id: "P_MATE",
                 projectId: "P_MATE",
@@ -537,14 +552,14 @@ describe("environment identity expansion", () => {
               .body as {
               apps: Array<{
                 id: string;
-                environments: Array<{ id: string; projectId: string; target: unknown }>;
+                environments: Array<{ id: string; target: { kind: "zerops"; projectId: string } }>;
               }>;
             };
             const stage = newRead.apps
               .find((app) => app.id === appId)!
               .environments.find((env) => env.id === "P_MATE")!;
             assert.deepStrictEqual(
-              { id: stage.id, projectId: stage.projectId, target: stage.target },
+              { id: stage.id, projectId: stage.target.projectId, target: stage.target },
               {
                 id: "P_MATE",
                 projectId: "P_MATE",
@@ -607,7 +622,10 @@ describe("environment identity expansion", () => {
             );
             if (!Array.isArray(oldView)) throw new Error("Expected old Core environment rows");
             assert.deepStrictEqual(
-              oldView.map(({ projectId, name }) => ({ projectId, name })),
+              oldView.map(({ target, name }) => ({
+                projectId: target.kind === "zerops" ? target.projectId : undefined,
+                name,
+              })),
               [{ projectId: "P_MATE", name: "production" }],
             );
             assert.strictEqual(oldView[0]!.id, "P_MATE");

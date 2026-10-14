@@ -16,10 +16,39 @@ const decodeService = Schema.decodeUnknownSync(
 );
 
 // The compatibility matrix runs these same real consumers with immutable historical browser bundles.
-const compatibility = Effect.fn("environment.compatibility")(function* (mode: EnvironmentWire) {
+const compatibility = Effect.fn("environment.compatibility")(function* (
+  mode: EnvironmentWire | "current",
+) {
   const f = yield* environmentFixtureWith({ signIn: "ui" });
-  const wire = environmentIdentityWire(mode);
-  wire.install(f.s.drivers);
+  const frames: string[] = [];
+  const wire = mode === "current" ? undefined : environmentIdentityWire(mode);
+  f.s.drivers.hq.mapFrames((frame) => {
+    frames.push(frame);
+    return wire?.map(frame) ?? frame;
+  });
+  const assertCurrentFrames = () => {
+    const environments: Record<string, unknown>[] = [];
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        value.forEach(visit);
+      } else if (value !== null && typeof value === "object") {
+        const record = value as Record<string, unknown>;
+        if (
+          (record.tier === "stage" || record.tier === "production") &&
+          Array.isArray(record.sources)
+        ) {
+          environments.push(record);
+        }
+        Object.values(record).forEach(visit);
+      }
+    };
+    frames.forEach((frame) => visit(JSON.parse(frame)));
+    expect(environments.length).toBeGreaterThan(0);
+    for (const environment of environments) {
+      expect(Object.hasOwn(environment, "projectId")).toBe(false);
+      expect(environment.target).toEqual({ kind: "zerops", projectId: environment.id });
+    }
+  };
   const a = environmentActions(f);
   yield* f.s.given.signedIn;
   yield* a.when.openFromNavigation;
@@ -40,6 +69,7 @@ const compatibility = Effect.fn("environment.compatibility")(function* (mode: En
     f.s.page,
     rows.map((row) => row.name),
   );
+  if (mode === "current") assertCurrentFrames();
   // Jobs and service evidence arrive after first paint, through the actual Core and platform.
   const sha = yield* f.merge();
   yield* a.when.finish("stage");
@@ -68,7 +98,8 @@ const compatibility = Effect.fn("environment.compatibility")(function* (mode: En
     apps: {
       id: string;
       environments: {
-        projectId: string;
+        id: string;
+        target: { kind: "zerops"; projectId: string };
         jobs: { sha: string; service: string; state: string }[];
       }[];
     }[];
@@ -76,7 +107,7 @@ const compatibility = Effect.fn("environment.compatibility")(function* (mode: En
   expect(
     structure.apps
       .find((app) => app.id === f.appId)
-      ?.environments.find((environment) => environment.projectId === "Shop-stage")?.jobs[0],
+      ?.environments.find((environment) => environment.target.projectId === "Shop-stage")?.jobs[0],
   ).toMatchObject({ sha, service: "web", state: "live" });
   yield* Effect.logInfo(
     "environment compatibility values",
@@ -85,7 +116,7 @@ const compatibility = Effect.fn("environment.compatibility")(function* (mode: En
       environments: structure.apps
         .find((app) => app.id === f.appId)
         ?.environments.map((environment) => ({
-          projectId: environment.projectId,
+          projectId: environment.target.projectId,
           jobs: environment.jobs.map(({ sha, service, state }) => ({ sha, service, state })),
         })),
       selectedPath: new URL(f.s.page.url()).pathname,
@@ -97,11 +128,29 @@ const compatibility = Effect.fn("environment.compatibility")(function* (mode: En
       },
     }),
   );
+  if (mode === "current") {
+    yield* f.s.when.hq.socket.drops;
+    yield* f.s.then.hq.isUnavailable;
+    yield* f.s.when.hq.socket.returns;
+    yield* Effect.promise(() =>
+      f.s.page.waitForSelector('[data-zerops-surface="sidebar-hq-outage"]', {
+        hidden: true,
+        timeout: 15_000,
+      }),
+    );
+    yield* a.then.text(sha.slice(0, 7));
+    expect(new URL(f.s.page.url()).pathname).toBe(`/group/${f.appId}/Shop-stage`);
+    assertCurrentFrames();
+  }
   yield* f.s.then.noExternalNetwork;
 });
 
 describe("B: environment identity compatibility", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "Current HQ omits redundant environment identity while navigation, late jobs, reload and recovery retain their values.",
+      () => compatibility("current"),
+    );
     it.effect("Old HQ and new hosted web keep sign-in and environment navigation working.", () =>
       compatibility("legacy"),
     );

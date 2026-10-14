@@ -217,7 +217,8 @@ const environmentsOf = (structure: Structure["Service"], appName: string) =>
     return Object.fromEntries(
       (app?.projects ?? []).map((project) => {
         const environment = (app === undefined ? [] : shown(app.environments)).find(
-          (candidate) => candidate.projectId === project.projectId,
+          (candidate) =>
+            candidate.target.kind === "zerops" && candidate.target.projectId === project.projectId,
         );
         return [
           project.projectId,
@@ -237,7 +238,11 @@ const environmentsOf = (structure: Structure["Service"], appName: string) =>
 /** An application's environments as a reader of its changes reads them: never refused here. */
 const shown = (environments: StructureRead["apps"][number]["environments"]) => {
   if ("refused" in environments) throw new Error(`environments refused: ${environments.refused}`);
-  return environments;
+  return environments.map((environment) =>
+    environment.target.kind === "zerops"
+      ? { ...environment, projectId: environment.target.projectId }
+      : environment,
+  );
 };
 
 /** Applications as their records, without what they offer the reader (`offers.test.ts`). */
@@ -536,7 +541,7 @@ describe("structure", () => {
             );
             assert.deepStrictEqual(
               shown((yield* structure.read("owner")).apps[0]!.environments).map((environment) => [
-                environment.projectId,
+                environment.target.kind === "zerops" ? environment.target.projectId : undefined,
                 environment.can,
               ]),
               [["P_PROD", { keep_deploy_token: { allow: true } }]],
@@ -2303,8 +2308,8 @@ describe("structure", () => {
                 environments:
                   "refused" in app.environments
                     ? app.environments
-                    : app.environments.map(({ projectId, jobs }) => ({
-                        projectId,
+                    : app.environments.map(({ target, jobs }) => ({
+                        projectId: target.kind === "zerops" ? target.projectId : undefined,
                         jobs: jobs.map((job) => [
                           job.service,
                           job.sha,
@@ -2510,8 +2515,8 @@ describe("structure", () => {
           const standing = Effect.map(structure.read("dev"), (read) =>
             read.apps
               .flatMap((app) => shown(app.environments))
-              .map(({ projectId, release: rollout }) => [
-                projectId,
+              .map(({ target, release: rollout }) => [
+                target.kind === "zerops" ? target.projectId : undefined,
                 rollout === null
                   ? null
                   : [

@@ -39,7 +39,20 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { ZeropsOwnToken } from "./zerops/api.ts";
 import { corsRoutes, failure } from "./api.ts";
 import { NotLeader } from "./leader.ts";
+import type { StructureRead } from "./structure.ts";
 import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
+
+// Existing value controls compare the outward Zerops address derived from its target.
+const withProjectAddresses = (
+  environments: StructureRead["apps"][number]["environments"],
+): unknown =>
+  "refused" in environments
+    ? environments
+    : environments.map((environment) =>
+        environment.target.kind === "zerops"
+          ? { ...environment, projectId: environment.target.projectId }
+          : environment,
+      );
 
 describe("HQ's failures", () => {
   it.effect("caches a preflight from any origin for two hours, without credentials", () =>
@@ -584,14 +597,9 @@ describe("HQ API", () => {
             ],
           ],
         );
-        const read = (yield* call("GET", "/api/structure", { session })).body as {
-          readonly apps: ReadonlyArray<{
-            readonly projects: ReadonlyArray<unknown>;
-            readonly environments: ReadonlyArray<unknown>;
-          }>;
-        };
+        const read = (yield* call("GET", "/api/structure", { session })).body as StructureRead;
         assert.deepStrictEqual(
-          [read.apps[0]?.projects, read.apps[0]?.environments],
+          [read.apps[0]?.projects, withProjectAddresses(read.apps[0]!.environments)],
           [
             [
               {
@@ -705,11 +713,7 @@ describe("HQ API", () => {
         );
         const read = yield* call("GET", "/api/structure", { session });
         assert.deepStrictEqual(
-          (
-            read.body as {
-              readonly apps: ReadonlyArray<{ readonly environments: ReadonlyArray<unknown> }>;
-            }
-          ).apps[0]?.environments,
+          withProjectAddresses((read.body as StructureRead).apps[0]!.environments),
           [
             {
               id: "P_MATE",
@@ -755,8 +759,8 @@ describe("HQ API", () => {
             Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode }] });
             yield* Effect.sleep(Duration.millis(400));
             const response = yield* call("GET", "/api/structure", { session: dev });
-            return (response.body as { apps: ReadonlyArray<{ environments: unknown }> }).apps.map(
-              (app) => app.environments,
+            return (response.body as StructureRead).apps.map((app) =>
+              withProjectAddresses(app.environments),
             );
           });
         // Refused, and said so: never an empty list that reads as "no environments".

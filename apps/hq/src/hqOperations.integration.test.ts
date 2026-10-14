@@ -6,14 +6,14 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import * as Schema from "effect/Schema";
-import { HqNavigationApp } from "@t3tools/shared/hqStream";
+import { CanonicalHqNavigationApp } from "@t3tools/shared/hqStream";
 import { sealedFor } from "../test/harness/deployKeys.ts";
 import { sessionFor, startCore, ticketFor, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { OperationRecord } from "./operations.ts";
 
-const readApp = Schema.decodeUnknownSync(HqNavigationApp);
-const environmentsOf = (app: HqNavigationApp) =>
+const readApp = Schema.decodeUnknownSync(CanonicalHqNavigationApp);
+const environmentsOf = (app: CanonicalHqNavigationApp) =>
   "refused" in app.environments ? [] : app.environments;
 
 describe("HQ operation scope", () => {
@@ -104,84 +104,83 @@ describe("HQ operation scope", () => {
           const receiving = yield* Effect.forkScoped(
             Effect.promise(
               () =>
-                new Promise<{ operations: Array<OperationRecord>; apps: Array<HqNavigationApp> }>(
-                  (resolve, reject) => {
-                    const timeout = setTimeout(
-                      () => reject(new Error("no operation scope receipt")),
-                      5000,
+                new Promise<{
+                  operations: Array<OperationRecord>;
+                  apps: Array<CanonicalHqNavigationApp>;
+                }>((resolve, reject) => {
+                  const timeout = setTimeout(
+                    () => reject(new Error("no operation scope receipt")),
+                    5000,
+                  );
+                  const values: Array<OperationRecord> = [];
+                  const apps: Array<CanonicalHqNavigationApp> = [];
+                  const jobs = () =>
+                    apps.flatMap((app) =>
+                      environmentsOf(app).flatMap((environment) => environment.jobs),
                     );
-                    const values: Array<OperationRecord> = [];
-                    const apps: Array<HqNavigationApp> = [];
-                    const jobs = () =>
-                      apps.flatMap((app) =>
-                        environmentsOf(app).flatMap((environment) => environment.jobs),
-                      );
-                    const progress = () => {
-                      if (
-                        values.some(
-                          (value) => value.state === "building" && value.handle !== null,
-                        ) &&
-                        jobs().some((job) => job.state === "building")
-                      ) {
-                        if (end === "unresolved") {
-                          service.named = { id: "V-other", name: "another deployment" };
-                          Object.defineProperty(service, "activeVersionId", {
-                            get: () => "V-other",
-                            set: () => {},
-                            configurable: true,
-                          });
-                        }
-                        core.fake.outcome = () => "ACTIVE";
+                  const progress = () => {
+                    if (
+                      values.some((value) => value.state === "building" && value.handle !== null) &&
+                      jobs().some((job) => job.state === "building")
+                    ) {
+                      if (end === "unresolved") {
+                        service.named = { id: "V-other", name: "another deployment" };
+                        Object.defineProperty(service, "activeVersionId", {
+                          get: () => "V-other",
+                          set: () => {},
+                          configurable: true,
+                        });
                       }
-                      if (
-                        values.some((value) => value.state === end) &&
-                        jobs().some((job) => job.state === end)
-                      ) {
-                        clearTimeout(timeout);
-                        resolve({ operations: values, apps });
-                      }
+                      core.fake.outcome = () => "ACTIVE";
+                    }
+                    if (
+                      values.some((value) => value.state === end) &&
+                      jobs().some((job) => job.state === end)
+                    ) {
+                      clearTimeout(timeout);
+                      resolve({ operations: values, apps });
+                    }
+                  };
+                  socket.addEventListener("message", (event) => {
+                    const message = JSON.parse(String(event.data)) as {
+                      type: string;
+                      scope?: { kind: string; appId?: string };
+                      values?: Array<{ key: string; value: OperationRecord }>;
                     };
-                    socket.addEventListener("message", (event) => {
-                      const message = JSON.parse(String(event.data)) as {
-                        type: string;
-                        scope?: { kind: string; appId?: string };
-                        values?: Array<{ key: string; value: OperationRecord }>;
-                      };
-                      if (message.type === "ping") socket.send('{"type":"pong"}');
-                      if (message.type === "scope-error") {
+                    if (message.type === "ping") socket.send('{"type":"pong"}');
+                    if (message.type === "scope-error") {
+                      clearTimeout(timeout);
+                      reject(new Error(String(event.data)));
+                    }
+                    if (message.scope?.kind === "navigation") {
+                      for (const value of message.values ?? [])
+                        if (value.key === `app:${appId}`) apps.push(readApp(value.value));
+                      progress();
+                      return;
+                    }
+                    if (message.scope?.kind !== "operation" || message.scope.appId !== appId)
+                      return;
+                    for (const value of message.values ?? []) {
+                      if (value.value.kind !== "deploy") continue;
+                      if (value.key !== `${appId}:${value.value.id}`) {
                         clearTimeout(timeout);
-                        reject(new Error(String(event.data)));
-                      }
-                      if (message.scope?.kind === "navigation") {
-                        for (const value of message.values ?? [])
-                          if (value.key === `app:${appId}`) apps.push(readApp(value.value));
-                        progress();
+                        reject(new Error(`unexpected operation key ${value.key}`));
                         return;
                       }
-                      if (message.scope?.kind !== "operation" || message.scope.appId !== appId)
-                        return;
-                      for (const value of message.values ?? []) {
-                        if (value.value.kind !== "deploy") continue;
-                        if (value.key !== `${appId}:${value.value.id}`) {
-                          clearTimeout(timeout);
-                          reject(new Error(`unexpected operation key ${value.key}`));
-                          return;
-                        }
-                        values.push(value.value);
-                        progress();
-                      }
-                    });
-                    socket.send(
-                      JSON.stringify({
-                        type: "subscribe",
-                        scopes: [
-                          { scope: { kind: "navigation" } },
-                          { scope: { kind: "operation", appId } },
-                        ],
-                      }),
-                    );
-                  },
-                ),
+                      values.push(value.value);
+                      progress();
+                    }
+                  });
+                  socket.send(
+                    JSON.stringify({
+                      type: "subscribe",
+                      scopes: [
+                        { scope: { kind: "navigation" } },
+                        { scope: { kind: "operation", appId } },
+                      ],
+                    }),
+                  );
+                }),
             ),
           );
           yield* git.commitFiles({ appId, id: "web" }, "refs/heads/main", {

@@ -245,7 +245,6 @@ FROM standing s`;
     if (row.project_id === null) throw new Error("Zerops environment requires its project");
     return {
       ...common,
-      projectId: row.project_id,
       target: { kind: "zerops", projectId: row.project_id },
       jobs: values.map((job) => decodeDeployJob(job)),
     };

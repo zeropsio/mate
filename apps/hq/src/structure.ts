@@ -217,7 +217,6 @@ export interface JobView {
 export interface ZeropsEnvironmentView {
   readonly id: string;
   readonly target: { readonly kind: "zerops"; readonly projectId: string };
-  readonly projectId: string;
   readonly tier: "stage" | "production";
   readonly name: string;
   /** The branches it follows: a stage `main`, a production `release`. */
@@ -248,13 +247,12 @@ export interface ZeropsEnvironmentView {
 
 export type EnvironmentView =
   | ZeropsEnvironmentView
-  | (Omit<ZeropsEnvironmentView, "target" | "projectId" | "jobs"> & {
+  | (Omit<ZeropsEnvironmentView, "target" | "jobs"> & {
       readonly target: {
         readonly kind: "git";
         readonly branch: string;
         readonly delivery: "direct";
       };
-      readonly projectId?: never;
       readonly jobs: ReadonlyArray<HqPushNavigationJob>;
     });
 
