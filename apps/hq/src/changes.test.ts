@@ -184,6 +184,8 @@ describe("a Mate's changes in HQ", () => {
             ready: false,
             // Nothing said on it yet.
             comments: 0,
+            // No receipt from zcp yet.
+            receipt: null,
           });
           // Its open change again, as it is: the title asked for now opens nothing.
           assert.deepStrictEqual((yield* open("Add a login page")).body, {
