@@ -420,6 +420,16 @@ export function recipeTierRepositories(yaml: string): ReadonlyMap<string, string
   return repositories;
 }
 
+/** The setup each runtime builds with, by hostname: its `zeropsSetup` — a preview's part. */
+export function recipeTierSetups(yaml: string): ReadonlyMap<string, string> {
+  const setups = new Map<string, string>();
+  for (const item of parseTier(yaml)?.items ?? []) {
+    const setup = ownScalar(item, "zeropsSetup");
+    if (item.hostname !== undefined && setup !== undefined) setups.set(item.hostname, setup);
+  }
+  return setups;
+}
+
 /**
  * A services document without the services a project already has, so an
  * import asked for again — a reload between the import and the record of it —

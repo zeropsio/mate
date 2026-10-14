@@ -35,6 +35,7 @@ import type { ZeropsLifecycle } from "@t3tools/contracts";
 import type { ZeropsStatPair } from "./api.ts";
 import type { Known } from "./knowledge/index.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
+import { servicePairs } from "./servicePairs.ts";
 import { isZcpServiceType } from "./topology.ts";
 import type {
   ZeropsScalingRange,
@@ -53,9 +54,6 @@ const GROUP_ORDER: ReadonlyArray<{ group: ZeropsTopologyGroup; title: string }> 
   { group: "data", title: "Data" },
   { group: "infrastructure", title: "Infrastructure" },
 ];
-
-const STAGE_SUFFIX = "stage";
-const DEV_SUFFIX = "dev";
 
 /**
  * `"<name> (<projectId>)"`, the shape zcp renders a production launch as
@@ -492,51 +490,6 @@ export function zeropsServiceFacts(
   return facts;
 }
 
-/** `kanbanstage` → `kanbandev`, the hostname its dev partner would have. */
-/**
- * The names a `{name}stage` service's dev partner may carry: `{name}dev`, the
- * pair zcp makes in standard mode, and `{name}` itself, a single service zcp
- * later expanded into a pair (Dara's `todoapp` with `todoappstage`,
- * 2026-09-17) — the dev half keeps its hostname, since a hostname never
- * changes.
- */
-const devPartnersOf = (hostname: string): ReadonlyArray<string> => {
-  if (!hostname.endsWith(STAGE_SUFFIX) || hostname.length <= STAGE_SUFFIX.length) return [];
-  const name = hostname.slice(0, -STAGE_SUFFIX.length);
-  return [`${name}${DEV_SUFFIX}`, name];
-};
-
-/**
- * The stage halves of the dev/stage pairs among `services`: every `{name}stage`
- * whose dev partner — `{name}dev`, or `{name}` when the pair grew out of a
- * single service — is there in the same group. A folded stage holds no
- * checkout and no row of its own — it is where its dev partner's code is
- * deployed, built, unmounted — so the service map nests it under the dev and
- * the Git tab does not list it at all. Pairing is within a group: a
- * `cachestage` managed service is not the stage half of a `cachedev` runtime,
- * whatever the names suggest.
- */
-export function foldedStageHostnames(
-  services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname" | "group">>,
-): ReadonlySet<string> {
-  const byHostname = new Map(services.map((entry) => [entry.hostname, entry]));
-  const folded = new Set<string>();
-  for (const entry of services) {
-    if (devPartnerHostname(entry, byHostname) !== undefined) folded.add(entry.hostname);
-  }
-  return folded;
-}
-
-/** The dev half a `{name}stage` service folds under, when it is there in the same group. */
-export function devPartnerHostname(
-  stage: Pick<ZeropsTopologyService, "hostname" | "group">,
-  byHostname: ReadonlyMap<string, Pick<ZeropsTopologyService, "hostname" | "group">>,
-): string | undefined {
-  return devPartnersOf(stage.hostname).find(
-    (partner) => byHostname.get(partner)?.group === stage.group,
-  );
-}
-
 export function parseZeropsProductionLaunch(entry: string): ZeropsProductionLink {
   const match = PRODUCTION_LAUNCH.exec(entry.trim());
   const label = match?.[1]?.trim();
@@ -578,15 +531,15 @@ export function buildZeropsServiceMap(
     return undefined;
   }
 
-  // A stage folded into its dev row must not also stand on its own.
-  const folded = foldedStageHostnames(topology.services);
-  const byHostname = new Map(topology.services.map((entry) => [entry.hostname, entry]));
+  // A preview folds into its dev row and does not also stand on its own: it holds no checkout
+  // — it is where its dev partner's code is deployed, built, unmounted.
+  const { devOf } = servicePairs({ services: topology.services });
 
   const groups = GROUP_ORDER.map(({ group, title }) => ({
     group,
     title,
     rows: topology.services
-      .filter((entry) => entry.group === group && !folded.has(entry.hostname))
+      .filter((entry) => entry.group === group && !devOf.has(entry.hostname))
       // Total order within a section: the control plane leads Infrastructure
       // (it is not a service the user created), then hostname,
       // locale-aware/case-insensitive/numeric-aware (`compareZeropsHostnames`
@@ -601,9 +554,7 @@ export function buildZeropsServiceMap(
       )
       .map((entry): ZeropsServiceRow => {
         const stage = topology.services.find(
-          (candidate) =>
-            folded.has(candidate.hostname) &&
-            devPartnerHostname(candidate, byHostname) === entry.hostname,
+          (candidate) => devOf.get(candidate.hostname) === entry.hostname,
         );
         const crew = crewPorts?.get(entry.hostname);
         const portLabel = zeropsPortLabel(entry, crew);
