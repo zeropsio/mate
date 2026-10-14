@@ -463,6 +463,25 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: { kind: "live", words: "Waiting for its helpers" },
     },
+    // Eli, 2026-10-14: its own background checks ran, no helper did.
+    {
+      case: "its turn over, its own background job running",
+      input: activity({
+        kind: "working",
+        face: "working",
+        waitsOnHelpers: true,
+        backgroundWork: {
+          items: [{ title: "Final batched browser check", of: "mate", since: 1 }],
+          count: 1,
+        },
+      }),
+      state: "working",
+      rowFace: "working",
+      slot: { kind: "age" },
+      dot: undefined,
+      strong: false,
+      reply: { kind: "live", words: "Final batched browser check" },
+    },
     {
       case: "working, no step relayed",
       input: activity({ kind: "working", face: "working" }),

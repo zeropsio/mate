@@ -6,6 +6,7 @@ import type { ChatMessage } from "../../types";
 import { operation as operationEntry } from "./conversationFixtures";
 import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeline.logic";
 import {
+  backgroundWorkWords,
   CHAT_OPENS_WITH,
   chatOpensAt,
   selectChatItems,
@@ -1658,5 +1659,58 @@ describe("cardHeadWords", () => {
     { name: "once it is over", line: worked, words: "Milo worked 3m 36s" },
   ])("the card's head says what the run is $name", ({ line, words }) => {
     expect(nowLineWords(cardHeadLine(line))).toBe(words);
+  });
+});
+
+// Eli, 2026-10-14: the row read "Waiting for its helpers" for fifteen minutes while four of its
+// own background checks ran, and no helper did.
+describe("what a Mate whose turn is over says it waits on, in its menu row", () => {
+  const job = (title: string | null) => ({ title, of: "mate", since: 1 }) as const;
+  const helper = (title: string | null) => ({ title, of: "helper", since: 1 }) as const;
+  it.each([
+    {
+      name: "its one background job, by its own title",
+      work: { items: [job("Final batched browser check")], count: 1 },
+      words: "Final batched browser check",
+    },
+    {
+      name: "its one background job, untitled",
+      work: { items: [job(null)], count: 1 },
+      words: "Running a background job",
+    },
+    {
+      name: "several of its own jobs, the first by its title",
+      work: {
+        items: [
+          job("Final batched browser check"),
+          job("Wait for the final check to finish"),
+          job("Wait for the final check to complete"),
+        ],
+        count: 4,
+      },
+      words: "Final batched browser check · and 3 more",
+    },
+    {
+      name: "its one helper, by what it was asked",
+      work: { items: [helper("Review the diff")], count: 1 },
+      words: "Waiting for its helper: Review the diff",
+    },
+    {
+      name: "its helpers, only when helpers are what runs",
+      work: { items: [helper("Review the diff"), helper("Audit the api")], count: 2 },
+      words: "Waiting for its helpers",
+    },
+    {
+      name: "its helpers and its own job",
+      work: { items: [helper("Review the diff"), job("Final batched browser check")], count: 2 },
+      words: "Waiting for its helper and a background job",
+    },
+    {
+      name: "nothing still running: the turn on what it started is due",
+      work: { items: [], count: 0 },
+      words: "Finishing work it started",
+    },
+  ])("names $name", ({ work, words }) => {
+    expect(backgroundWorkWords(work)).toBe(words);
   });
 });
