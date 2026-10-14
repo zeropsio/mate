@@ -4,7 +4,11 @@ import { AuthSessionId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as TestClock from "effect/testing/TestClock";
+import { HttpClient, HttpClientResponse } from "effect/http";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import * as ServerConfig from "../config.ts";
@@ -15,7 +19,11 @@ import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import * as SessionStore from "./SessionStore.ts";
-import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
+import { awaitSessionEnd } from "./sessionLifetime.ts";
+import { layer as ZeropsIdentityStatusLayer } from "../zerops/ZeropsIdentityStatus.ts";
+import { snapshotOnlyReader, ZeropsMateKey } from "../zerops/ZeropsMateKey.ts";
+import { layer as ZeropsMembershipWatchLayer } from "../zerops/ZeropsMembershipWatch.ts";
+import { ZeropsOrgRead, layer as ZeropsOrgReadLayer } from "../zerops/ZeropsOrgRead.ts";
 import {
   ACCESS_HOLDS,
   ZeropsProjectAccess,
@@ -368,6 +376,130 @@ it.layer(NodeServices.layer)("current admission for existing sessions", (it) => 
       }).pipe(Effect.provide(makeAdmissionAuthLayer())),
   );
 });
+
+// F1 (permission audit): an open bearer session outlived the person's org role. The bound is two
+// re-checks: a member list or HQ relay read just before the change holds one, the next reads it.
+it.layer(NodeServices.layer)(
+  "a person whose Zerops access ended loses their open session within 60 seconds",
+  (it) => {
+    const PROJECT = "TEST000000000000000023";
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    const listing = (roleCode: string) => ({
+      clientUserList: [
+        { id: "cu-owner", userId: "owner", roleCode: "OWNER", status: "ACTIVE" },
+        { id: "cu-bea", userId: "bea", roleCode, status: "ACTIVE" },
+      ],
+    });
+
+    it.effect.each([
+      { case: "lowered to Developer while the Mate reads Zerops", to: "NO_ACCESS", hq: false },
+      { case: "lowered to Read only while the Mate reads Zerops", to: "READ_ONLY", hq: false },
+      { case: "lowered to Developer just after HQ relayed", to: "NO_ACCESS", hq: true },
+      { case: "lowered to Read only just after HQ relayed", to: "READ_ONLY", hq: true },
+    ])("$case", ({ to, hq }) => {
+      const zerops = { members: listing("ADMIN") };
+      const platform = Layer.mergeAll(
+        Layer.succeed(
+          HttpClient.HttpClient,
+          HttpClient.make((request) =>
+            Effect.succeed(
+              HttpClientResponse.fromWeb(
+                request,
+                request.url.endsWith("/user/list")
+                  ? json(zerops.members)
+                  : json({ id: PROJECT, clientId: "org", userRoles: [] }),
+              ),
+            ),
+          ),
+        ),
+        Layer.succeed(ZeropsMateKey, snapshotOnlyReader("the-mates-own-zerops-key")),
+        ZeropsIdentityStatusLayer,
+      );
+      const layer = ZeropsMembershipWatchLayer.pipe(
+        Layer.provideMerge(
+          EnvironmentAuth.layer.pipe(
+            Layer.provide(ZeropsSessionAdmissionLive),
+            Layer.provideMerge(projectAccessLayer),
+            Layer.provideMerge(ZeropsOrgReadLayer),
+            Layer.provideMerge(platform),
+            Layer.provide(SqlitePersistenceMemory),
+            Layer.provide(ServerSecretStore.layer),
+          ),
+        ),
+        Layer.provide(makeServerConfigLayer({ zerops: zeropsTestEnvironment })),
+      );
+      return Effect.gen(function* () {
+        const auth = yield* EnvironmentAuth.EnvironmentAuth;
+        const sessions = yield* SessionStore.SessionStore;
+        if (hq) {
+          yield* (yield* ZeropsProjectAccess).relayed({
+            ageMs: 0,
+            members: [
+              { userId: "owner", role: "OWNER", visibility: "open" },
+              { userId: "bea", role: "ADMIN", visibility: "open" },
+            ],
+          });
+        }
+        yield* TestClock.adjust(Duration.zero);
+
+        // Bea signs in through the door and holds a bearer session and a live socket.
+        const issued = yield* auth.createPairingLink({
+          method: "zerops-throwaway",
+          subject: "zerops-user:bea",
+        });
+        const access = yield* auth.exchangeBootstrapCredentialForAccessToken(
+          issued.credential,
+          undefined,
+          requestMetadata,
+        );
+        const session = yield* auth.authenticateHttpRequest(makeBearerRequest(access.access_token));
+        const ticket = yield* auth.issueWebSocketTicket(session);
+        const socket = yield* auth.authenticateWebSocketUpgrade(
+          HttpServerRequest.fromWeb(
+            new Request(`http://localhost/ws?wsTicket=${encodeURIComponent(ticket.ticket)}`),
+          ),
+        );
+        const live = yield* Effect.forkChild(
+          awaitSessionEnd({
+            sessionId: socket.sessionId,
+            expiresAt: socket.expiresAt,
+            changes: sessions.streamChanges,
+          }),
+        );
+        const later = yield* auth.issueWebSocketTicket(session);
+
+        zerops.members = listing(to);
+        yield* TestClock.adjust(Duration.seconds(60));
+
+        const http = yield* auth
+          .authenticateHttpRequest(makeBearerRequest(access.access_token))
+          .pipe(Effect.result);
+        const upgrade = yield* auth
+          .authenticateWebSocketUpgrade(
+            HttpServerRequest.fromWeb(
+              new Request(`http://localhost/ws?wsTicket=${encodeURIComponent(later.ticket)}`),
+            ),
+          )
+          .pipe(Effect.result);
+        expect({
+          http: http._tag,
+          websocket: upgrade._tag,
+          liveSocket: Option.fromNullishOr(live.pollUnsafe()).pipe(Option.flatMap(Exit.getSuccess)),
+          sessions: (yield* auth.listSessions()).map((entry) => entry.subject),
+        }).toEqual({
+          http: "Failure",
+          websocket: "Failure",
+          liveSocket: Option.some("revoked"),
+          sessions: [],
+        });
+      }).pipe(Effect.provide(layer));
+    });
+  },
+);
 
 it.layer(NodeServices.layer)("a refused session credential", (it) => {
   // A client tells a session that merely reached the end of its life (its door mints the next)
