@@ -885,7 +885,7 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
 }
 
 /**
- * The one line under a Mate's name (round 5): what needs the viewer in ink, a failure of the
+ * The one line under a Mate's name (round 5): what needs the viewer — and a result not seen — in ink, a failure of the
  * viewer's own Mate in the fail colour, everything else muted — never a status word, the face
  * carries the state.
  *
@@ -902,6 +902,7 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
  * | nobody signed in                         | the sign-in                                |
  * | an unsent draft                          | *Draft* and its words                      |
  * | a colleague's open change                | "<title> · in review", muted               |
+ * | finished, its result unseen               | its last words, in ink                     |
  * | otherwise                                | its last words, muted; else what was asked |
  */
 export type MateRowSecond =
@@ -988,5 +989,6 @@ export function mateRowSecond(input: {
   if (askLine?.kind === "sign-in") return { kind: "sign-in" };
   if (askLine?.kind === "draft") return { kind: "ask", pending: false };
   if (change !== undefined) return { kind: "change", title: change.title, mine: false };
-  return said("muted");
+  // A result the viewer has not seen is for them: in ink, beside the unread dot.
+  return said(view.state === "unread" ? "ink" : "muted");
 }

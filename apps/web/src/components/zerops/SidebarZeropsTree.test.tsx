@@ -3206,7 +3206,7 @@ describe("a Mate's row says more without words", () => {
       activity: live({ kind: "done", face: "done", unread: true }),
       face: "done",
       dot: "unread",
-      third: 'data-zerops-reply-tone="muted"',
+      third: 'data-zerops-reply-tone="ink"',
     },
     {
       case: "stopped on an error",

@@ -1847,9 +1847,9 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
   it.each([
     { case: "at rest: its last words, muted", over: {}, line: { kind: "reply", tone: "muted" } },
     {
-      case: "finished and unseen: its last words, still muted (the name carries it)",
+      case: "finished and unseen: its last words in ink, beside the unread dot",
       over: { view: view("unread", { kind: "words", text: "Done.", tone: "ink-2" }) },
-      line: { kind: "reply", tone: "muted" },
+      line: { kind: "reply", tone: "ink" },
     },
     {
       case: "working: its step",
