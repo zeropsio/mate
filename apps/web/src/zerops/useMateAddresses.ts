@@ -48,13 +48,18 @@ export function useMateAddresses(
               return listed === undefined ? undefined : derivePublicRoutes(entry, listed);
             },
           });
-    // What zcp last read of each service's dev servers; nothing read leaves each service's unread.
-    const snapshots = lifecycle?.state === "known" ? lifecycle.value.envelope?.services : undefined;
     const addresses = mateAddresses({
-      services: topology.services.map((service) => ({
-        ...service,
-        devServers: snapshots?.find((entry) => entry.hostname === service.hostname)?.devServers,
-      })),
+      // Each service with the dev servers zcp last read on it; a service zcp read none of says none.
+      services: topology.services.map((service) =>
+        lifecycle?.state === "known"
+          ? {
+              ...service,
+              devServers: lifecycle.value.envelope?.services.find(
+                (entry) => entry.hostname === service.hostname,
+              )?.devServers,
+            }
+          : service,
+      ),
       ownRole: group?.ownRole,
       environments: group?.environments ?? [],
     });
