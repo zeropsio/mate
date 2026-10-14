@@ -42,18 +42,22 @@ const NO_PREVIEWS: ReadonlyArray<ReviewPreview> = [];
  * change touched (the owner, 2026-10-11: "there are multiple services, backend, frontend, how do
  * you know?").
  */
-export function useMatePreviews(mateProjectId: string): ReadonlyArray<ReviewPreview> {
+export function useMatePreviews(
+  mateProjectId: string,
+  /** The Mate tier on `main` (`ZeropsProjectFlow.mateTier`). */
+  mateTier: string | undefined,
+): ReadonlyArray<ReviewPreview> {
   const { listing } = useZeropsDetailCandidates();
   return useMemo(() => {
     const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
-    const previews = pairPreviewRoutes(row?.routes ?? [], row?.services?.hostnames ?? []);
+    const previews = pairPreviewRoutes(row?.routes ?? [], row?.services?.hostnames ?? [], mateTier);
     return previews.length === 0
       ? NO_PREVIEWS
       : previews.map((preview) => ({
           ...preview,
           host: preview.url.replace(/^[a-z]+:\/\//iu, "").replace(/\/+$/u, ""),
         }));
-  }, [listing, mateProjectId]);
+  }, [listing, mateProjectId, mateTier]);
 }
 
 /**
