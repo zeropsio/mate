@@ -82,6 +82,7 @@ const INVITE_STEP: InviteStep | null =
         : null;
 const ACTIONS = {
   check: () => new Promise<never>(() => {}),
+  shownHere: () => false,
   send: () => new Promise<never>(() => {}),
 };
 

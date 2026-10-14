@@ -16,6 +16,22 @@ export type Invitee =
   | { readonly kind: "existing"; readonly userId: string }
   | { readonly kind: "new"; readonly firstName: string; readonly lastName: string };
 
+/**
+ * Who an address is, as checked: an existing account, a new person — or already a member of the
+ * organization, whose access to an app is then set rather than an invitation sent.
+ */
+export type InviteeCheck =
+  | { readonly kind: "existing"; readonly userId: string }
+  | { readonly kind: "new" }
+  | {
+      readonly kind: "member";
+      /** Their membership (`clientUser`) id. */
+      readonly clientUserId: string;
+      /** Their Zerops user id, where the member list names it. */
+      readonly userId?: string;
+      readonly roleCode: string;
+    };
+
 declare module "../model.ts" {
   interface OperationIntents {
     readonly "check-invitee": {
@@ -42,9 +58,7 @@ declare module "../model.ts" {
     };
   }
   interface OperationResults {
-    readonly "check-invitee":
-      | { readonly kind: "existing"; readonly userId: string }
-      | { readonly kind: "new" };
+    readonly "check-invitee": InviteeCheck;
     readonly "invite-member": { readonly clientUserId: string };
     readonly "set-app-access": { readonly membershipEnded: boolean };
   }

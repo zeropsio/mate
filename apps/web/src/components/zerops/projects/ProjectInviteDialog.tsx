@@ -1,11 +1,12 @@
 /**
  * Inviting someone to a project: their e-mail, checked with Zerops; their name where the address
- * has no Zerops account yet; then how much they may do, and *Send invite*. Each press waits for
+ * has no Zerops account yet; then how much they may do, and *Send invite* — or, for someone in the
+ * organization already but not here, *Give access*. Each press waits for
  * Zerops's answer in the dialog and says a refusal there; the dialog closes once the invitation
  * landed and the project's people show it.
  */
 import type { AppAccessLevel } from "@t3tools/client-runtime/zerops/appAccess";
-import type { Invitee } from "@t3tools/client-runtime/data";
+import type { InviteeCheck } from "@t3tools/client-runtime/data";
 import { useId, useState } from "react";
 
 import { Button } from "../../ui/button";
@@ -27,15 +28,16 @@ import {
   inviteStepAfterCheck,
   nameProblem,
   type InviteStep,
+  type InviteTarget,
 } from "./projectInvite.logic";
 
 export interface ProjectInviteActions {
   /** Asks Zerops who the address is; rejects with what to tell the person. */
-  readonly check: (
-    email: string,
-  ) => Promise<{ readonly kind: "existing"; readonly userId: string } | { readonly kind: "new" }>;
-  /** Sends the invitation; rejects with what to tell the person. */
-  readonly send: (email: string, invitee: Invitee, level: AppAccessLevel) => Promise<void>;
+  readonly check: (email: string) => Promise<InviteeCheck>;
+  /** Whether the project's people show this membership now. */
+  readonly shownHere: (clientUserId: string) => boolean;
+  /** Sends the invitation, or gives a member access; rejects with what to tell the person. */
+  readonly send: (email: string, invitee: InviteTarget, level: AppAccessLevel) => Promise<void>;
 }
 
 const FIRST_STEP: InviteStep = { step: "address" };
@@ -92,9 +94,14 @@ export function ProjectInviteForm({
       case "address": {
         const address = email.trim();
         return press(async () => {
-          const answer = await actions.check(address);
+          const next = inviteStepAfterCheck(
+            address,
+            await actions.check(address),
+            actions.shownHere,
+          );
+          if ("refused" in next) throw new Error(next.refused);
           setSubmitted(false);
-          setStep(inviteStepAfterCheck(address, answer));
+          setStep(next);
         });
       }
       case "name":
@@ -205,7 +212,11 @@ export function ProjectInviteForm({
           Cancel
         </Button>
         <Button aria-busy={pending || undefined} disabled={pending} type="submit">
-          {step.step === "access" ? "Send invite" : "Continue"}
+          {step.step !== "access"
+            ? "Continue"
+            : step.invitee.kind === "member"
+              ? "Give access"
+              : "Send invite"}
         </Button>
       </DialogFooter>
     </form>

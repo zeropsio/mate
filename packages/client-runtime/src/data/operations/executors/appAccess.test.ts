@@ -110,10 +110,35 @@ describe("checking an address before it is invited", () => {
     }),
   );
 
+  it.effect("An address already in the organization is answered as that member", () =>
+    Effect.gen(function* () {
+      const { executor } = organization([member("cu-eva", "NO_ACCESS")]);
+      const receipt = yield* executor.check("r1", {
+        kind: "check-invitee",
+        orgId: ORG,
+        email: "cu-eva@example.com",
+      });
+      expect(receipt).toMatchObject({
+        acceptance: {
+          result: {
+            kind: "member",
+            clientUserId: "cu-eva",
+            userId: "u-cu-eva",
+            roleCode: "NO_ACCESS",
+          },
+        },
+      });
+    }),
+  );
+
   it.effect.each([
     {
-      sentence: "An address already in the organization is said in words",
-      fail: {},
+      sentence:
+        "An address Zerops says is taken, which its member list doesn't show, is said in words",
+      fail: {
+        validateOrganizationUser: () =>
+          Promise.reject(new ZeropsApiError("Dup.", "invalid-input", 400, "duplicatedUser")),
+      },
       message: "Already in this organization — change their access in the list.",
     },
     {
@@ -123,9 +148,9 @@ describe("checking an address before it is invited", () => {
     },
   ])("$sentence", ({ fail, message }) =>
     Effect.gen(function* () {
-      const { executor } = organization([member("cu-eva", "NO_ACCESS")], {}, fail);
+      const { executor } = organization([], {}, fail);
       const answer = yield* Effect.result(
-        executor.check("r1", { kind: "check-invitee", orgId: ORG, email: "cu-eva@example.com" }),
+        executor.check("r1", { kind: "check-invitee", orgId: ORG, email: "eva@example.com" }),
       );
       expect(Result.isFailure(answer) && answer.failure).toMatchObject({ message });
     }),

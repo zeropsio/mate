@@ -76,6 +76,8 @@ function useProjectPeople(groupId: string): {
   readonly name: string;
   readonly app: AppProjects;
   readonly clientId: string | null;
+  /** The group's Mates a person owns, by their Zerops user id. */
+  readonly ownedBy: (userId: string | undefined) => ReadonlyArray<string>;
 } {
   const session = useZeropsSessionOptional();
   const orgId = useAccountOrgId();
@@ -156,12 +158,19 @@ function useProjectPeople(groupId: string): {
     return projectPeople(input);
   }, [grants, hqProjectPeople, members, projects, roster, viewer, viewerUserId]);
   const app = useMemo(() => appProjectsOf(projects), [projects]);
-  return { view, name: group?.name ?? "this project", app, clientId };
+  const ownedBy = useCallback(
+    (userId: string | undefined) =>
+      userId === undefined
+        ? []
+        : app.mates.filter((projectId) => hqProjectPeople[projectId]?.owner?.userId === userId),
+    [app, hqProjectPeople],
+  );
+  return { view, name: group?.name ?? "this project", app, clientId, ownedBy };
 }
 
 /** The People section of a project page, for the group `groupId`. */
 export function ProjectPeople({ groupId }: { groupId: string }) {
-  const { view, name, app, clientId } = useProjectPeople(groupId);
+  const { view, name, app, clientId, ownedBy } = useProjectPeople(groupId);
   const operations = useAccountOperationsOptional();
   const [saving, setSaving] = useState<ReadonlySet<string>>(() => new Set());
   const [troubles, setTroubles] = useState<Readonly<Record<string, string>>>({});
@@ -216,20 +225,26 @@ export function ProjectPeople({ groupId }: { groupId: string }) {
           { kind: "check-invitee", orgId: clientId, email },
           { orgId: clientId, unobserved: "Zerops isn't answering. Try again." },
         ),
+      shownHere: (clientUserId) =>
+        view.kind === "people" && view.people.some((person) => person.key === clientUserId),
       send: async (email, invitee, level) => {
-        const { progress, evidence } = await operations.submit({
-          kind: "invite-member",
-          orgId: clientId,
-          email,
-          invitee,
-          level,
-          projects: app,
-        });
+        const { progress, evidence } = await operations.submit(
+          invitee.kind === "member"
+            ? {
+                kind: "set-app-access",
+                orgId: clientId,
+                clientUserId: invitee.clientUserId,
+                change: level,
+                projects: app,
+                owned: ownedBy(invitee.userId),
+              }
+            : { kind: "invite-member", orgId: clientId, email, invitee, level, projects: app },
+        );
         const trouble = writeTrouble(progress, evidence);
         if (trouble !== null) throw new Error(trouble);
       },
     };
-  }, [app, clientId, operations]);
+  }, [app, clientId, operations, ownedBy, view]);
 
   return (
     <>

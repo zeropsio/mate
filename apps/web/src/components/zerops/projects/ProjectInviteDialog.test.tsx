@@ -45,7 +45,7 @@ function mount(actions: Partial<ProjectInviteActions> = {}) {
   act(() => {
     tree = create(
       <ProjectInviteForm
-        actions={{ check, send }}
+        actions={{ check, send, shownHere: (id) => id === "cu-here" }}
         onCancel={() => {}}
         onDone={onDone}
         projectName="Shop"
@@ -100,6 +100,32 @@ describe("inviting someone to a project", () => {
     form.type("-email", "eva@example.com");
     await form.submit();
     expect(form.pressLabel()).toBe("Send invite");
+  });
+
+  it("Someone in the organization but not in the project is given access, not invited", async () => {
+    const form = mount({
+      check: async () => ({ kind: "member", clientUserId: "cu-out", roleCode: "NO_ACCESS" }),
+    });
+    form.type("-email", "eva@example.com");
+    await form.submit();
+    expect(form.pressLabel()).toBe("Give access");
+    await form.submit();
+    expect(form.send).toHaveBeenCalledWith(
+      "eva@example.com",
+      { kind: "member", clientUserId: "cu-out" },
+      "work",
+    );
+  });
+
+  it("Someone the project's people show already is changed in the list, not invited", async () => {
+    const form = mount({
+      check: async () => ({ kind: "member", clientUserId: "cu-here", roleCode: "NO_ACCESS" }),
+    });
+    form.type("-email", "eva@example.com");
+    await form.submit();
+    expect(form.alerts()).toEqual([
+      "Already in this organization — change their access in the list.",
+    ]);
   });
 
   it("An address that isn't one is said before Zerops is asked", async () => {

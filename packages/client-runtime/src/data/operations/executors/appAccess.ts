@@ -126,15 +126,31 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
 
   const check = (requestId: string, intent: IntentOf<"check-invitee">) =>
     Effect.gen(function* () {
-      const answer = yield* Effect.mapError(
-        verb(() => platform.validateOrganizationUser(intent.orgId, intent.email)),
-        (fault): Fault =>
-          // Asking changes nothing: a lost answer is asked again by the person, as a new check.
-          fault.outcome === "uncertain-acceptance"
-            ? { outcome: "transient", message: "Zerops didn't answer. Try again." }
-            : inWords(fault, INVITE),
+      const answer = yield* Effect.result(
+        Effect.mapError(
+          verb(() => platform.validateOrganizationUser(intent.orgId, intent.email)),
+          (fault): Fault =>
+            // Asking changes nothing: a lost answer is asked again by the person, as a new check.
+            fault.outcome === "uncertain-acceptance"
+              ? { outcome: "transient", message: "Zerops didn't answer. Try again." }
+              : inWords(fault, INVITE),
+        ),
       );
-      return receiptOf(requestId, intent.orgId, answer);
+      if (Result.isSuccess(answer)) return receiptOf(requestId, intent.orgId, answer.success);
+      if (answer.failure.message !== ALREADY) return yield* Effect.fail(answer.failure);
+      // Already a member: someone taken out of an app comes back by being given its access again.
+      const member = yield* Effect.orElseSucceed(
+        memberByAddress(intent.orgId, intent.email),
+        () => undefined,
+      );
+      if (member === undefined) return yield* Effect.fail(answer.failure);
+      const userId = member.user?.id ?? member.userId;
+      return receiptOf(requestId, intent.orgId, {
+        kind: "member",
+        clientUserId: member.id,
+        ...(userId === undefined ? {} : { userId }),
+        roleCode: member.roleCode ?? "NO_ACCESS",
+      });
     });
 
   const invite = (requestId: string, intent: IntentOf<"invite-member">) =>

@@ -28,8 +28,34 @@ describe("inviting someone to a project, step by step", () => {
       answer: { kind: "new" } as const,
       step: { step: "name", email: "eva@example.com" },
     },
+    {
+      sentence: "A member taken out of the project is given its access again",
+      answer: {
+        kind: "member",
+        clientUserId: "cu-out",
+        userId: "u-out",
+        roleCode: "NO_ACCESS",
+      } as const,
+      step: {
+        step: "access",
+        email: "eva@example.com",
+        invitee: { kind: "member", clientUserId: "cu-out", userId: "u-out" },
+      },
+    },
+    {
+      sentence: "A member the project's people show already is changed in the list instead",
+      answer: { kind: "member", clientUserId: "cu-here", roleCode: "BASIC_USER" } as const,
+      step: { refused: "Already in this organization — change their access in the list." },
+    },
+    {
+      sentence: "An owner or admin reaches everything already",
+      answer: { kind: "member", clientUserId: "cu-out", roleCode: "ADMIN" } as const,
+      step: {
+        refused: "Already an owner or admin of this organization: they reach everything.",
+      },
+    },
   ])("$sentence", ({ answer, step }) => {
-    expect(inviteStepAfterCheck("eva@example.com", answer)).toEqual(step);
+    expect(inviteStepAfterCheck("eva@example.com", answer, (id) => id === "cu-here")).toEqual(step);
   });
 
   it.each([
