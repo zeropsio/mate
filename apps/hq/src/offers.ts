@@ -221,13 +221,30 @@ export const environmentSetupOffers = (
   };
 };
 
+/** Removing production requires the role that could create its replacement, without a slot check. */
+export const productionRemovalOffer = (
+  userId: string,
+  projects: ReadonlyArray<AppProjectRow>,
+  facts: Facts,
+): Decision =>
+  newEnvironmentOffer(userId, projects, facts, "production", {
+    stageProjectIds: [],
+    productionProjectId: null,
+  });
+
 /** What the person may do with the environment of `projectId`. */
 export const environmentOffers = (
   userId: string,
   projectId: string,
   facts: Facts,
-): HqOffersOf<"keep_deploy_token"> => ({
+  productionProjects?: ReadonlyArray<AppProjectRow>,
+): HqOffersOf<"keep_deploy_token"> & Partial<HqOffersOf<"remove_production">> => ({
   keep_deploy_token: offer(userId, "keep_deploy_token", { projectId }, facts),
+  ...(productionProjects === undefined
+    ? {}
+    : {
+        remove_production: productionRemovalOffer(userId, productionProjects, facts),
+      }),
 });
 
 /** Git targets reuse the same application write verdicts as their fresh owners. */

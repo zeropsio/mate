@@ -1,7 +1,7 @@
 import { canonicalHqNavigation } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
-import { GitProductionRemoval } from "../zerops/GitStopDetail";
+import { ProductionRemoval } from "../zerops/GitStopDetail";
 import { Link } from "@tanstack/react-router";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 
@@ -19,16 +19,13 @@ export function ConnectionsSettings() {
           app.environments === undefined || "refused" in app.environments
             ? []
             : app.environments
-                .filter(
-                  (environment) =>
-                    environment.tier === "production" && environment.target.kind === "git",
-                )
+                .filter((environment) => environment.tier === "production")
                 .map((environment) => (
                   <div key={environment.id}>
                     <h3>
                       {app.name} · {environment.name}
                     </h3>
-                    <GitProductionRemoval appId={app.id} environmentId={environment.id} />
+                    <ProductionRemoval appId={app.id} environmentId={environment.id} />
                   </div>
                 )),
         )}

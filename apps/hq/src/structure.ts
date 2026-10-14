@@ -71,6 +71,7 @@ import {
   readEnvironmentSlots,
   environmentSlotTaken,
   recordOffers,
+  productionRemovalOffer,
 } from "./offers.ts";
 import { type OrgView, Roles, confirmingRefusal, decidedFresh } from "./roles.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
@@ -217,6 +218,7 @@ export interface JobView {
 export interface ZeropsEnvironmentView {
   readonly id: string;
   readonly target: { readonly kind: "zerops"; readonly projectId: string };
+  readonly deleteProjectOnRemoval?: boolean;
   readonly tier: "stage" | "production";
   readonly name: string;
   /** The branches it follows: a stage `main`, a production `release`. */
@@ -368,7 +370,12 @@ export interface StructureRead {
      * never an empty list, which would read as none declared.
      */
     readonly environments:
-      | ReadonlyArray<EnvironmentView & { readonly can: HqOffersOf<"keep_deploy_token"> }>
+      | ReadonlyArray<
+          EnvironmentView & {
+            readonly can: HqOffersOf<"keep_deploy_token"> &
+              Partial<HqOffersOf<"remove_production">>;
+          }
+        >
       | { readonly refused: Reason };
     /** The Mates on their way into it whose attach has not landed yet, oldest first. */
     readonly births: ReadonlyArray<BirthIntent>;
@@ -811,6 +818,7 @@ export const structureLayer = (options: {
         readonly name: string | undefined;
         readonly projectName: string;
         readonly replaced: EnvironmentRow | undefined;
+        readonly createdForProduction?: boolean;
       }) =>
         Effect.gen(function* () {
           const taken = (yield* sql<{ readonly name: string }>`
@@ -830,13 +838,14 @@ export const structureLayer = (options: {
           const declared = environment.replaced?.declared_seq ?? null;
           yield* sql`
             INSERT INTO hq_environment (id, project_id, target, app_id, tier, name, sources, declared_seq,
-              created_by, release_floor)
+              created_by, release_floor, created_for_production)
             VALUES (${environment.projectId}, ${environment.projectId}, 'zerops', ${environment.appId}::uuid, ${environment.tier},
               ${name}, ARRAY(SELECT jsonb_array_elements_text(${sources}::jsonb)),
               COALESCE(${declared}::bigint, nextval(pg_get_serial_sequence('hq_environment',
                 'declared_seq'))),
               ${environment.userId},
-              ${environment.tier === "production" ? sql`now()` : null})`;
+              ${environment.tier === "production" ? sql`now()` : null},
+              ${environment.createdForProduction === true})`;
           yield* addRollout(sql, {
             cause: "env_added",
             projectId: environment.projectId,
@@ -1175,7 +1184,35 @@ export const structureLayer = (options: {
                   intent,
                   ...(projectName === undefined ? {} : { projectName }),
                 };
-                if (intent.kind === "move-project") {
+                if (intent.kind === "remove-production") {
+                  yield* lockProject(sql, intent.projectId);
+                  yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${intent.appId} FOR NO KEY UPDATE`;
+                  const projects = yield* sql<{
+                    readonly project_id: string;
+                    readonly kind: string;
+                  }>`
+                    SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${intent.appId}`;
+                  const decision = productionRemovalOffer(userId, projects, view);
+                  if (!decision.allow) return yield* refuse("forbidden", decision.reason);
+                  const rows = yield* sql<{ readonly created_for_production: boolean }>`
+                    SELECT created_for_production FROM hq_environment
+                    WHERE id = ${intent.projectId} AND project_id = ${intent.projectId}
+                      AND app_id::text = ${intent.appId} AND target = 'zerops' AND tier = 'production'
+                    FOR UPDATE`;
+                  const environment = rows[0];
+                  if (environment === undefined)
+                    return yield* refuse("environment_not_found", "environment_not_found");
+                  if (intent.projectId === options.hqProjectId)
+                    return yield* refuse("invalid", "hq_project");
+                  if (environment.created_for_production !== intent.deleteProject)
+                    return yield* refuse("conflict", "held_changed");
+                  yield* sql`DELETE FROM hq_press WHERE project_id = ${intent.projectId}`;
+                  yield* sql`DELETE FROM hq_app_project WHERE project_id = ${intent.projectId} AND app_id::text = ${intent.appId}`;
+                  record = {
+                    ...record,
+                    productionRemoval: { deleteProject: environment.created_for_production },
+                  };
+                } else if (intent.kind === "move-project") {
                   // Class-changing moves require platform key/job migration, which this owner cannot prove.
                   if (isMateKind(intent.from.kind) !== isMateKind(intent.to.kind))
                     return yield* refuse("invalid", "class_move_receipt_required");
@@ -1622,6 +1659,7 @@ export const structureLayer = (options: {
                           view.projects.find((project) => project.id === input.projectId)?.name ??
                           "",
                         replaced,
+                        createdForProduction: input.created === true && tier === "production",
                       });
                       if (input.created === true) {
                         yield* sql`

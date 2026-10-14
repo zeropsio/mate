@@ -2,7 +2,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Layer from "effect/Layer";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { assert, describe, it } from "@effect/vitest";
-import { vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Redacted from "effect/Redacted";
@@ -14,14 +13,6 @@ import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { readEnvironmentSource } from "./environmentNavigation.ts";
-// Current-Core fixtures include 0054 rollout provenance.
-vi.mock("./migrationFiles.ts", async (original) => {
-  const module = await original<typeof import("./migrationFiles.ts")>();
-  return {
-    ...module,
-    treeMigrations: () => module.treeMigrations().filter((file) => file.name < "0055_"),
-  };
-});
 const NAME = "0052_environment_identity.sql";
 const APP = "11111111-1111-4111-8111-111111111111";
 const SHA = "a".repeat(40);
@@ -213,8 +204,8 @@ describe("environment identity expansion", () => {
                   { environment_id: "removed-history" },
                 ],
               );
-              // The current navigation reader runs at the Git expansion floor; the assertions
-              // above isolate the identity migration's preservation of the legacy records.
+              // The current navigation reader uses the current schema; the assertions above
+              // isolate the identity migration's preservation of the legacy records.
               yield* migrate(treeMigrations());
               const source = yield* readEnvironmentSource(sql);
               const viewed = source.forApp(

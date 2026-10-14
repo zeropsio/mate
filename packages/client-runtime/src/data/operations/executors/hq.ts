@@ -1,3 +1,4 @@
+import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { canonicalHqNavigation } from "../../projections/hqNavigation.ts";
@@ -45,6 +46,20 @@ import {
   FLOW_WRITE_KINDS,
   type FlowWriteIntent,
 } from "../flowWrites.ts";
+
+/** Only this reviewed removal may authorize deletion of its particular target. */
+function matchingProductionRemoval(intent: OperationIntent, record: HqLifecycleRecord): boolean {
+  return (
+    intent.kind !== "remove-production" ||
+    (record.intent.kind === "remove-production" &&
+      record.intent.orgId === intent.orgId &&
+      record.intent.hqProjectId === intent.hqProjectId &&
+      record.intent.appId === intent.appId &&
+      record.intent.projectId === intent.projectId &&
+      record.intent.deleteProject === intent.deleteProject &&
+      record.productionRemoval?.deleteProject === intent.deleteProject)
+  );
+}
 
 /** The flow's writes HQ executes, as its client sends them. */
 type FlowWrites = Pick<
@@ -531,6 +546,7 @@ export function makeHqExecutor(ports: {
     lookupKinds: new Set([
       ...Object.keys(HQ_GIT_OPERATION_VERBS),
       "move-project",
+      "remove-production",
       "prepare-mate-deletion",
       "complete-mate-deletion",
       "complete-key-retirement",
@@ -593,7 +609,9 @@ export function makeHqExecutor(ports: {
         });
         if (
           record !== null &&
-          (record.intent.orgId !== intent.orgId || record.intent.hqProjectId !== intent.hqProjectId)
+          (record.intent.orgId !== intent.orgId ||
+            record.intent.hqProjectId !== intent.hqProjectId ||
+            !matchingProductionRemoval(intent, record))
         )
           return yield* Effect.fail<StreamFault>({
             outcome: "definitive-refusal",
@@ -616,6 +634,7 @@ export function makeHqExecutor(ports: {
           });
         if (
           intent.kind === "move-project" ||
+          intent.kind === "remove-production" ||
           intent.kind === "prepare-mate-deletion" ||
           intent.kind === "complete-mate-deletion" ||
           intent.kind === "complete-key-retirement"
@@ -643,6 +662,11 @@ export function makeHqExecutor(ports: {
             try: () => api.lifecycleWrite!(requestId, intent),
             catch: (cause) => faultOf(cause, true),
           });
+          if (!matchingProductionRemoval(intent, record))
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "HQ did not confirm the reviewed production target and its fate.",
+            });
           return lifecycleReceipt(record);
         }
         if (FLOW_KINDS.has(intent.kind)) {
