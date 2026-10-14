@@ -9,6 +9,7 @@ import {
   reviewItemByline,
   reviewListWithLeaving,
   reviewPopoverTitle,
+  reviewMarkOf,
   reviewTagLabel,
   type ProjectReviewItem,
 } from "./SidebarProjectReview.logic";
@@ -158,6 +159,39 @@ describe("the Review tag's words", () => {
       mine: true,
     });
     expect(reviewPopoverTitle([item("4"), task], "Orbit")).toBe("2 to review in Orbit");
+  });
+});
+
+// Eli, 2026-10-14: "why is MR not showing up anywhere" — the menu dropped the change for the
+// fifteen minutes its Mate's background checks ran.
+describe("the menu's mark of a project's changes", () => {
+  const working = (key: string, title?: string) => ({
+    ...item(key, title === undefined ? {} : { title }),
+    inProgress: true as const,
+  });
+  it.each([
+    {
+      name: "asks for review while a change waits on it",
+      items: [item("4", { title: "Add a due date" })],
+      mark: { asks: true, count: 1, label: "Review Add a due date" },
+    },
+    {
+      name: "stays, asking for no review, while its Mate still works on its one change",
+      items: [working("4", "Add a due date")],
+      mark: { asks: false, count: 1, label: "In progress: Add a due date" },
+    },
+    {
+      name: "stays, asking for no review, while its Mate still works on several",
+      items: [working("4"), working("5")],
+      mark: { asks: false, count: 2, label: "2 changes in progress in Orbit" },
+    },
+    {
+      name: "counts only what asks for review while some others are in progress",
+      items: [item("4", { title: "Add a due date" }), working("5")],
+      mark: { asks: true, count: 1, label: "Review Add a due date" },
+    },
+  ])("$name", ({ items, mark }) => {
+    expect(reviewMarkOf(items, "Orbit")).toEqual(mark);
   });
 });
 

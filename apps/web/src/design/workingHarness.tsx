@@ -14,7 +14,7 @@ import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
  */
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, TurnId, type BackgroundWork } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { enrollmentRefusalWords } from "@t3tools/client-runtime/zerops/hq";
@@ -1414,11 +1414,65 @@ function Harness() {
             threadRef={null}
           />
         </State>
+        <State
+          label="After the turn, its work named"
+          note="An engine Mate's row names what still runs: a line each, whose it is; many as one line."
+        >
+          <ConversationAfterWork
+            dock={afterNamed(NAMED_FEW)}
+            environmentId={null}
+            onOpenAgents={() => undefined}
+            speaker={SPEAKER}
+            state="working"
+            threadRef={null}
+          />
+          <ConversationAfterWork
+            dock={afterNamed(NAMED_MANY)}
+            environmentId={null}
+            onOpenAgents={() => undefined}
+            speaker={SPEAKER}
+            state="working"
+            threadRef={null}
+          />
+          <ConversationAfterWork
+            dock={afterNamed({ items: [], count: 0 })}
+            environmentId={null}
+            onOpenAgents={() => undefined}
+            speaker={SPEAKER}
+            state="working"
+            threadRef={null}
+          />
+        </State>
         <ResultStates />
       </div>
     </div>
   );
 }
+
+/** An engine Mate's dock after its turn, with what its row names still running. */
+const afterNamed = (work: BackgroundWork): DockModel => ({
+  ...EMPTY_DOCK,
+  afterTurn: "working",
+  afterWork: work,
+});
+
+const NAMED_FEW: BackgroundWork = {
+  items: [
+    { title: "Final batched browser check", of: "mate", since: Date.now() - 4 * 60_000 },
+    { title: "Review the checkout diff", of: "helper", since: Date.now() - 2 * 60_000 },
+  ],
+  count: 2,
+};
+
+/** Eli's four, 2026-10-14. */
+const NAMED_MANY: BackgroundWork = {
+  items: [
+    { title: "Final batched browser check", of: "mate", since: Date.now() - 9 * 60_000 },
+    { title: "Wait for the final check to finish", of: "mate", since: Date.now() - 6 * 60_000 },
+    { title: "Wait for the final check to complete", of: "mate", since: Date.now() - 4 * 60_000 },
+  ],
+  count: 4,
+};
 
 /** The panel's deploy bars read the platform's pipeline: stand-ins that answer nothing. */
 function Standins({ children }: { readonly children: ReactNode }) {

@@ -63,7 +63,13 @@ import { standupBar } from "./standupBar.logic";
 import { OperationDetail, PlanSteps, useHoldReading } from "./RunChat";
 import { drawerEase, stepHeight, type CarriedRow } from "./stepHeight";
 import { useEasedRoom } from "./runRoom";
-import { backgroundBand, helpersBand, TASK_TONE, type BandLine } from "./workingBands.logic";
+import {
+  afterWorkLines,
+  backgroundBand,
+  helpersBand,
+  TASK_TONE,
+  type BandLine,
+} from "./workingBands.logic";
 
 // ---------------------------------------------------------------------------
 // Arriving live
@@ -893,8 +899,13 @@ export function ConversationAfterWork({
   // The server says "monitoring" for any shell; only a watch loop watches.
   const running = dock?.background?.tasks.filter((task) => task.state === "running") ?? [];
   const watching =
+    dock?.afterWork === undefined &&
     (dock?.helpers ?? null) === null &&
     (running.length > 0 ? running.every((task) => task.watch) : state === "monitoring");
+  // What still runs, by name, where the conversation's row names it; else the bars the dock
+  // holds. Never its head over nothing (Eli, 2026-10-14: "what is still working on bg?").
+  const lines =
+    dock?.afterWork !== undefined || !dockDraws(dock) ? afterWorkLines(dock?.afterWork) : null;
   // As what runs comes and goes, its height eases (`useEasedRoom`).
   const roomRef = useEasedRoom<HTMLElement>(true);
   return (
@@ -912,13 +923,28 @@ export function ConversationAfterWork({
           </span>
         </span>
       </div>
-      <Instruments
-        dock={dock}
-        environmentId={environmentId}
-        incidents={EMPTY_INCIDENTS}
-        onOpenAgents={onOpenAgents}
-        threadRef={threadRef}
-      />
+      {lines === null ? (
+        <Instruments
+          dock={dock}
+          environmentId={environmentId}
+          incidents={EMPTY_INCIDENTS}
+          onOpenAgents={onOpenAgents}
+          threadRef={threadRef}
+        />
+      ) : (
+        <ul className="run-band grid" data-after-work-lines>
+          {lines.map((line) => (
+            <DetailRow
+              key={line.key}
+              onOpen={line.helper ? onOpenAgents : undefined}
+              time={line.startedAt === null ? null : spanOf(line.startedAt, null)}
+              title={line.title}
+              tone="busy"
+              word={line.word}
+            />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

@@ -7,6 +7,7 @@
  *
  * Pure: the band draws this.
  */
+import type { BackgroundWork } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
@@ -131,4 +132,63 @@ export function backgroundBand(background: NonNullable<DockModel["background"]>)
       .filter((part) => part !== null)
       .join(", "),
   };
+}
+
+/** A line of what still runs after the Mate's turn, at its card's foot (`afterWorkLines`). */
+export interface AfterWorkLine {
+  readonly key: string;
+  readonly title: string;
+  /** Whose it is, in words; none on the line that names nothing. */
+  readonly word: string | undefined;
+  /** It is one of its helpers': its line opens the helpers' panel. */
+  readonly helper: boolean;
+  /** When it started; none on the line that names nothing. */
+  readonly startedAt: string | null;
+}
+
+/** How many lines the card spends on what runs before it says the first and counts the rest. */
+const AFTER_WORK_LINES = 3;
+
+const workTitle = (item: BackgroundWork["items"][number]) =>
+  item.title ?? (item.of === "helper" ? "A helper" : "A background job");
+
+/**
+ * What the Mate's card says still runs after its turn, from its row's named work: a line each
+ * while they are few, each saying whether it is a helper or the Mate's own job; one line for
+ * many, the first by its title and the rest counted. Never nothing under its head: where nothing
+ * names what runs, it finishes the work it started.
+ */
+export function afterWorkLines(work: BackgroundWork | undefined): ReadonlyArray<AfterWorkLine> {
+  const [first] = work?.items ?? [];
+  if (work === undefined || first === undefined || work.count === 0) {
+    return [
+      {
+        key: "finishing",
+        title: "Finishing work it started",
+        word: undefined,
+        helper: false,
+        startedAt: null,
+      },
+    ];
+  }
+  if (work.count <= Math.min(work.items.length, AFTER_WORK_LINES)) {
+    return work.items.map((item, index) => ({
+      key: `${String(index)}:${String(item.since)}`,
+      title: workTitle(item),
+      word: item.of === "helper" ? "Its helper" : "Its own job",
+      helper: item.of === "helper",
+      startedAt: new Date(item.since).toISOString(),
+    }));
+  }
+  const helpers = work.items.every((item) => item.of === "helper");
+  const jobs = work.items.every((item) => item.of === "mate");
+  return [
+    {
+      key: "many",
+      title: `${workTitle(first)} · and ${String(work.count - 1)} more`,
+      word: helpers ? "Its helpers" : jobs ? "Its own jobs" : "Its helpers and own jobs",
+      helper: helpers,
+      startedAt: new Date(first.since).toISOString(),
+    },
+  ];
 }

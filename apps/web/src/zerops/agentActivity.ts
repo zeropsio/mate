@@ -45,6 +45,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import {
   ThreadId,
+  type BackgroundWork,
   type ConversationRow,
   type EnvironmentId,
   type OrchestrationLatestTurn,
@@ -85,6 +86,7 @@ export type AgentActivityThread = Pick<
   | "hasActionableProposedPlan"
   | "interactionMode"
   | "backgroundLiveness"
+  | "backgroundWork"
   | "latestUserMessageAt"
   | "updatedAt"
 > & {
@@ -169,6 +171,11 @@ export interface ZeropsAgentActivity {
    * card waits on them, and its row says so in the card's words, its clock stopped with its turn.
    */
   readonly waitsOnHelpers?: true;
+  /**
+   * What that work is, by name, where its engine row names it (`backgroundWorkWords`): its own
+   * jobs apart from its helpers. Absent where nothing names it.
+   */
+  readonly backgroundWork?: BackgroundWork;
   /**
    * The question the Mate waits on the person to answer, in its words: what a
    * needs-you row's third line says. The server relays it; absent while
@@ -472,7 +479,10 @@ export function threadAgentActivity(
     ...(thread.latestUserMessageAt === null ? {} : { askedAt: thread.latestUserMessageAt }),
     ...agentActivityLiveStep(thread, resolved.kind),
     ...(agentActivityWaitsOnHelpers(thread, resolved.kind)
-      ? { waitsOnHelpers: true as const }
+      ? {
+          waitsOnHelpers: true as const,
+          ...(thread.backgroundWork === undefined ? {} : { backgroundWork: thread.backgroundWork }),
+        }
       : {}),
     ...agentActivityQuestion(thread, resolved.kind),
     ...(resolved.kind === "input" && thread.pendingAsk === "key"
@@ -583,7 +593,13 @@ export function restingActivity(
   at = activity.at,
 ): ZeropsAgentActivity {
   if (activity.remembered === true) return activity;
-  const { liveStep: _step, waitsOnHelpers: _helpers, errorLine: _error, ...words } = activity;
+  const {
+    liveStep: _step,
+    waitsOnHelpers: _helpers,
+    backgroundWork: _work,
+    errorLine: _error,
+    ...words
+  } = activity;
   return {
     ...words,
     kind: "idle",
@@ -707,7 +723,12 @@ export function rowAgentActivity(
     task: agentActivitySubject(words, "idle"),
     // Engine rows own state and words; their matching overview still owns the live step.
     ...agentActivityLiveStep(main?.id === threadId ? main : {}, kind),
-    ...(state.kind === "working" && state.waitsOnHelpers ? { waitsOnHelpers: true as const } : {}),
+    ...(state.kind === "working" && state.waitsOnHelpers
+      ? {
+          waitsOnHelpers: true as const,
+          ...(state.work === undefined ? {} : { backgroundWork: state.work }),
+        }
+      : {}),
     ...(question === undefined || question.length === 0 ? {} : { question }),
     ...(errorLine === undefined ? {} : { errorLine: maskSecrets(errorLine) }),
     ...(state.kind === "waiting" && state.on === "vault" ? { asksFor: "key" as const } : {}),

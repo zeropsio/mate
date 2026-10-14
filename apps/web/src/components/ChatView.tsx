@@ -5117,6 +5117,8 @@ function ConversationView(props: ChatViewProps) {
   // turn is needed.
   const activeBackgroundLiveness =
     !isWorking && activeThread ? (activeThreadShell?.backgroundLiveness ?? null) : null;
+  // What that work is, by name, where the engine's row names it: the card at the foot lists it.
+  const activeBackgroundWork = activeThreadShell?.backgroundWork;
   // Which background jobs the server holds live: one it does not, unreported,
   // never will report — one judgement for the band and the run cards.
   const shellTaskIds = activeThreadShell?.backgroundTaskIds;
@@ -5586,6 +5588,7 @@ function ConversationView(props: ChatViewProps) {
         plan: activePlan ?? null,
         backgroundTasks,
         backgroundLiveness: afterTurnLiveness,
+        backgroundWork: activeBackgroundWork,
         liveJobs,
         // The server's own pause when it keeps one; the thread's last words otherwise.
         pause: limit.kind === "limited" ? { resetsAt: limit.resetsAt } : null,
@@ -5602,6 +5605,7 @@ function ConversationView(props: ChatViewProps) {
       activePlan,
       backgroundTasks,
       afterTurnLiveness,
+      activeBackgroundWork,
       limit,
     ],
   );

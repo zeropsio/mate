@@ -11,7 +11,11 @@ import type {
   RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { standupRunsOn, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import { INERT_TASK_TYPES, type OrchestrationThreadActivity } from "@t3tools/contracts";
+import {
+  INERT_TASK_TYPES,
+  type BackgroundWork,
+  type OrchestrationThreadActivity,
+} from "@t3tools/contracts";
 
 /** Task types that watch something rather than run once: the Monitor tool's. */
 const WATCH_TASK_TYPES: ReadonlySet<string> = new Set(["monitor", "monitor_mcp"]);
@@ -80,6 +84,11 @@ export interface DockModel {
    * with a way to stop it, until the work ends.
    */
   readonly afterTurn: "working" | "monitoring" | null;
+  /**
+   * After the turn, what still runs by name, where the conversation's row names it: the card at
+   * its foot lists it (`afterWorkLines`).
+   */
+  readonly afterWork?: BackgroundWork;
   readonly pause: { readonly resetsAt: string | null } | null;
   /**
    * The running turn's pipelines and background tasks that ended, as they
@@ -408,6 +417,8 @@ export function deriveDock(input: {
   readonly backgroundTasks?: ReadonlyArray<DockBackgroundTask>;
   /** The server's word on work that outlived the turn. */
   readonly backgroundLiveness?: "working" | "monitoring" | null;
+  /** What that work is, by name, where the conversation's row names it. */
+  readonly backgroundWork?: BackgroundWork | undefined;
   /** The jobs the server holds live (`liveJobs.logic`): a running one it does not is lost. */
   readonly liveJobs?: LiveJobs | null;
   /** The thread is held by a usage limit: when it resets, if known. */
@@ -442,6 +453,7 @@ export function deriveDock(input: {
       // After the turn its card's line is the record of what ended: only what runs.
       background: backgroundGroup(backgroundTasks.filter((task) => task.state === "running")),
       afterTurn,
+      ...(input.backgroundWork === undefined ? {} : { afterWork: input.backgroundWork }),
       pause: null,
     };
   }
