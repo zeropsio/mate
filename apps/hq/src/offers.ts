@@ -22,6 +22,7 @@ import { HqEnvironmentAttachment } from "@t3tools/shared/hqEnvironment";
 import type { HqOffersOf } from "@t3tools/shared/hqOffers";
 import { type Decision } from "@t3tools/shared/zeropsPermissions";
 import {
+  type AppAccessTarget,
   type Facts,
   type FactsFor,
   type Held,
@@ -42,9 +43,22 @@ export interface AppProjectRow {
 /** An application as a change's verbs take it: all of its projects, whoever sees which. */
 export const appTarget = (
   projects: ReadonlyArray<Pick<AppProjectRow, "project_id">>,
-): { readonly projectIds: ReadonlyArray<string> } => ({
+  createdBy?: string,
+): AppAccessTarget => ({
   projectIds: projects.map((row) => row.project_id),
+  ...(createdBy === undefined ? {} : { createdBy }),
 });
+
+export const readAppTarget = (sql: SqlClient.SqlClient, appId: string) =>
+  Effect.gen(function* () {
+    const apps = yield* sql<{
+      readonly created_by: string;
+    }>`SELECT created_by FROM hq_app WHERE id::text = ${appId}`;
+    const projects = yield* sql<{
+      readonly project_id: string;
+    }>`SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
+    return appTarget(projects, apps[0]?.created_by);
+  });
 
 /** Slot and release verdicts come from environment rows; devstage remains a Mate placement. */
 export interface EnvironmentSlots {
@@ -128,17 +142,13 @@ export const orgOffers = (userId: string, facts: Facts): HqOffersOf<OrgVerb> =>
   ) as HqOffersOf<OrgVerb>;
 
 /** The verbs of an application's changes and deploys, asked of all of its projects. */
-const CHANGE_VERBS = [
-  "read_change",
-  "comment_change",
-  "merge_change",
-  "close_change",
-  "redeploy",
-] as const;
+const CHANGE_VERBS = ["read_change", "comment_change", "merge_change", "close_change"] as const;
 
 export type AppVerb =
   | (typeof CHANGE_VERBS)[number]
   | HqGitTargetVerb
+  | "redeploy"
+  | "add_mate"
   | "release"
   | "add_stage"
   | "add_production";
@@ -184,7 +194,18 @@ export const appOffers = (
   projects: ReadonlyArray<AppProjectRow>,
   facts: Facts,
   slots: EnvironmentSlots,
+  createdBy?: string,
 ): HqOffersOf<AppVerb> => ({
+  add_mate: offer(userId, "add_mate", appTarget(projects, createdBy), facts),
+  redeploy: offer(
+    userId,
+    "redeploy",
+    {
+      ...appTarget(projects),
+      projectId: slots.productionTarget === "git" ? null : slots.productionProjectId,
+    },
+    facts,
+  ),
   ...(Object.fromEntries(
     CHANGE_VERBS.map((verb) => [verb, offer(userId, verb, appTarget(projects), facts)]),
   ) as HqOffersOf<(typeof CHANGE_VERBS)[number]>),
@@ -226,7 +247,8 @@ export const environmentOffers = (
   userId: string,
   projectId: string,
   facts: Facts,
-): HqOffersOf<"keep_deploy_token"> => ({
+): HqOffersOf<"keep_deploy_token" | "redeploy"> => ({
+  redeploy: offer(userId, "redeploy", { projectIds: [projectId], projectId }, facts),
   keep_deploy_token: offer(userId, "keep_deploy_token", { projectId }, facts),
 });
 
@@ -252,7 +274,7 @@ export const gitEnvironmentOffers = (
 ) => ({
   keep_deploy_token: { allow: false as const, reason: "unknown_kind" as const },
   remove_git_environment: gitEnvironmentRemovalOffer(userId, projects, facts, tier),
-  redeploy: offer(userId, "redeploy", appTarget(projects), facts),
+  redeploy: offer(userId, "redeploy", { ...appTarget(projects), projectId: null }, facts),
 });
 
 /** A project placed into an application of `appProjects` as `to`: what a move is decided on. */
@@ -261,7 +283,14 @@ export const moveTarget = (
   held: Held,
   to: string,
   appProjects: ReadonlyArray<Pick<AppProjectRow, "project_id">>,
-): PlacementTarget => ({ projectId, held, to, appProjectIds: appTarget(appProjects).projectIds });
+  appCreatedBy?: string,
+): PlacementTarget => ({
+  projectId,
+  held,
+  to,
+  appProjectIds: appTarget(appProjects).projectIds,
+  appCreatedBy,
+});
 
 /**
  * Whether moving `projectId` into an application of `appProjects` as `to` takes a production's
@@ -309,6 +338,7 @@ export const moveDestinations = (
     readonly id: string;
     readonly projects: ReadonlyArray<AppProjectRow>;
     readonly slots: EnvironmentSlots;
+    readonly createdBy?: string;
   }>,
   facts: Facts,
 ): {
@@ -317,18 +347,28 @@ export const moveDestinations = (
 } => {
   const into = [
     ...apps,
-    { id: "new", projects: [], slots: { stageProjectIds: [], productionProjectId: null } },
+    {
+      id: "new",
+      createdBy: userId,
+      projects: [],
+      slots: { stageProjectIds: [], productionProjectId: null },
+    },
   ];
   const refused: Record<string, Record<string, string>> = {};
   const moveTo: Record<string, RoleProjectKind[]> = {};
-  for (const { id, projects, slots } of into) {
+  for (const { id, projects, slots, createdBy } of into) {
     const reasons: Record<string, string> = {};
     const kinds: RoleProjectKind[] = [];
     for (const kind of KINDS) {
       const decision =
         id === "new" && !offer(userId, "create_app", null, facts).allow
           ? offer(userId, "create_app", null, facts)
-          : offer(userId, "move", moveTarget(mate.projectId, mate.held, kind, projects), facts);
+          : offer(
+              userId,
+              "move",
+              moveTarget(mate.projectId, mate.held, kind, projects, createdBy),
+              facts,
+            );
       const reason = !decision.allow
         ? decision.reason
         : !mate.recorded && isMateKind(kind)

@@ -1,6 +1,6 @@
 import type { HqRemoteProbe } from "@t3tools/shared/hqChanges";
 import { captureAccountLifetime } from "./accountLifetime";
-import { zeropsClientsFromUser } from "@t3tools/client-runtime/zerops";
+import { platformMembership, readsOfState } from "@t3tools/client-runtime/data";
 /**
  * The account's operations: one coordinator per account store and session client, with Zerops
  * and the organization's official HQ wired as the owners of their kinds. A verb submits an intent here and reads where it stands through
@@ -124,12 +124,7 @@ export function accountOperations(
       hq: hqExecutor,
       zerops: makeZeropsExecutor({
         client,
-        viewerOf: (orgId) => {
-          const user = client.verifiedUser()?.user;
-          return user === undefined
-            ? undefined
-            : zeropsClientsFromUser(user).find(({ id }) => id === orgId);
-        },
+        viewerOf: (orgId) => platformMembership.derive(readsOfState(store.state()), orgId).viewer,
         active: captureAccountLifetime(),
         readDetail,
         store,

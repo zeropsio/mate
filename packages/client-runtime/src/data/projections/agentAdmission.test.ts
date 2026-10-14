@@ -758,3 +758,30 @@ it.each([
     expect(admission.attention).toBeNull();
   },
 );
+
+it("a native project downgrade closes the composer even while its owner stays signed in", () => {
+  const input = {
+    environmentId: "mate",
+    instanceId: undefined,
+    viewerSubject: "viewer",
+    owner: { mine: true },
+    read: {
+      state: "known",
+      value: { available: true, agents: [] },
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    },
+    providers: [],
+    mateName: "Wren",
+  } as const;
+  expect(agentAdmission({ ...input, operate: true }).canSend).toBe(true);
+  const downgraded = agentAdmission({ ...input, operate: false });
+  expect(
+    downgraded.footer,
+    "ASSERTION: native read-only permission closes the real composer admission",
+  ).toBe("read-only");
+  expect(downgraded.canSend).toBe(false);
+  expect(downgraded.readOnly).toBe(true);
+  expect(downgraded.sendBlockReason).toBe("Your Zerops access to this Mate is read-only.");
+});

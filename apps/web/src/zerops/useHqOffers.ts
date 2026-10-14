@@ -60,3 +60,11 @@ export function useOrgOffers(): (verb: string) => HqOfferState {
   const { structure, state } = useHqOffers();
   return useCallback((verb) => state(structure?.can, verb), [state, structure]);
 }
+
+export function useAddMateOffer(): (groupId: string) => HqOfferState {
+  const { structure, state } = useHqOffers();
+  return useCallback(
+    (groupId) => state(structure?.apps.find((app) => app.id === groupId)?.can, "add_mate"),
+    [state, structure],
+  );
+}

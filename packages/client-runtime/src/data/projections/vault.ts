@@ -15,6 +15,7 @@ import { serviceVariablesScope, type ServiceVariableValue } from "../families/se
 import { servicesScope, type ServiceValue } from "../families/service.ts";
 import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
+import { platformCapabilities, platformMembership } from "./platformCapabilities.ts";
 import { sameValue } from "./equal.ts";
 import type {
   VaultNotLive,
@@ -255,13 +256,18 @@ export const vault: Projection<VaultKey, VaultView> = {
       })),
     });
 
+    const canOperate = platformCapabilities.derive(read, {
+      orgId,
+      projectId,
+      viewer: platformMembership.derive(read, orgId).viewer,
+    }).operate;
     const shared: VaultScope = {
       ref: { kind: "shared" },
       id: "shared",
       hostname: null,
       kind: "shared",
       serviceType: null,
-      editable: true,
+      editable: canOperate,
       values: sharedValues
         .map((row) => valueOf({ kind: "shared" }, row.id, row, false))
         .sort(byKey),
@@ -276,7 +282,7 @@ export const vault: Projection<VaultKey, VaultView> = {
         hostname: ref.hostname,
         kind: ref.kind === "managed" ? "managed" : "runtime",
         serviceType: typeOf(service),
-        editable: ref.kind === "runtime",
+        editable: ref.kind === "runtime" && canOperate,
         values: values.map(({ id, row }) => valueOf(scopeRef, id, row, isSystem(row))).sort(byKey),
         reads: [...ref.entries.keys()].sort().map((key): VaultRead => ({
           key,

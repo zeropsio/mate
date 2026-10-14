@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { membershipInputs } from "../__fixtures__/membership.ts";
 import { liveZerops, ORG, processValue } from "../__fixtures__/account.ts";
 import { historyScope } from "../families/process.ts";
 import { projectVariablesFamily, projectVariablesScope } from "../families/projectVariables.ts";
@@ -229,7 +230,11 @@ const historyAnswer = (
   ];
 };
 
-const base = [...liveZerops({ running: [], services: SERVICES }), ...historyAnswer(PROCESSES)];
+const base = [
+  ...liveZerops({ running: [], projects: [{ id: PROJECT }], services: SERVICES }),
+  ...membershipInputs("ADMIN"),
+  ...historyAnswer(PROCESSES),
+];
 const sharedAnswer = answered(SHARED_SCOPE, "projectVariables", [
   { id: PROJECT, envList: SHARED_ROWS },
 ]);
@@ -413,7 +418,8 @@ describe("vault", () => {
 
   it("calls every value nothing reads unread while no deploy is known", () => {
     const view = viewOf(
-      liveZerops({ running: [], services: SERVICES }),
+      liveZerops({ running: [], projects: [{ id: PROJECT }], services: SERVICES }),
+      membershipInputs("ADMIN"),
       historyAnswer([]),
       sharedAnswer,
       servicesAnswer,
@@ -564,4 +570,9 @@ describe("vault — when services started", () => {
     // Written before that deploy: nothing waits for one.
     expect(view.notLive.filter((each) => each.kind === "unread")).toEqual([]);
   });
+});
+
+it("vault editing follows the current target-project permission after a signed-in downgrade", () => {
+  const view = viewOf(base, sharedAnswer, servicesAnswer, membershipInputs("READ_ONLY", false, 2));
+  expect(view.scopes.map(({ editable }) => editable)).toEqual([false, false, false, false]);
 });

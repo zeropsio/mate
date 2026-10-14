@@ -1,8 +1,7 @@
 /** Write admission belongs to the executor and reads the current access projection. */
 import * as Effect from "effect/Effect";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
+import { platformCapabilities } from "../../projections/platformCapabilities.ts";
 import type { ZeropsOrganization } from "../../../zerops/api.ts";
-import { canCreateProjectsInOrganization } from "../../../zerops/accountScope.ts";
 import { platformAccess } from "../../projections/platformAccess.ts";
 import type { OperationIntent } from "../../model.ts";
 import type { AccountStore } from "../../store.ts";
@@ -24,10 +23,16 @@ export function admitPlatformOperation(input: {
     if (!input.active()) return yield* refused("This Zerops sign-in has ended.");
     const { intent, viewer } = input;
     if (intent.kind === "throwaway-sweep") return;
+    const capabilities = (projectId?: string) =>
+      platformCapabilities.derive(readsOfState(input.store.state()), {
+        orgId: viewer?.id ?? "",
+        projectId,
+        viewer,
+      });
     if (viewer === undefined) return yield* refused("Your Zerops access is still being checked.");
     if (
       (intent.kind === "assign-mate-owner" || intent.kind === "finish-mate-handover") &&
-      !roleAtLeast(viewer.roleCode, "ADMIN")
+      !capabilities().manageOrganization
     )
       return yield* refused("An organization owner or admin must hand over this Mate.");
     if (intent.kind === "retire-mate-key") {
@@ -45,7 +50,7 @@ export function admitPlatformOperation(input: {
       intent.kind === "import-project" ||
       intent.kind === "hq-birth"
     ) {
-      if (!canCreateProjectsInOrganization(viewer))
+      if (!capabilities().createProject)
         return yield* refused("Your role in this organization doesn't allow this.");
       return;
     }
@@ -72,14 +77,15 @@ export function admitPlatformOperation(input: {
     const current = access();
     if (current.kind === "unknown")
       return yield* refused("Your access to this project is still being checked.");
-    const requiredRole =
+    const needsAdmin =
       // Buying the project its own IPv4 spends the organization's credit: an admin's to do.
       intent.kind === "delete-project" ||
       intent.kind === "rename-project" ||
-      intent.kind === "request-ipv4"
-        ? "ADMIN"
-        : "BASIC_USER";
-    if (current.kind !== "allowed" || !roleAtLeast(current.role, requiredRole))
+      intent.kind === "request-ipv4";
+    if (
+      current.kind !== "allowed" ||
+      !(needsAdmin ? capabilities(projectId).administer : capabilities(projectId).operate)
+    )
       return yield* refused("Your role in this project doesn't allow this.");
   });
 }

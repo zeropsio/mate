@@ -1,3 +1,4 @@
+import { useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import type { GitRemoteActions } from "./GitRemoteSettings";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
@@ -1437,7 +1438,7 @@ function ZeropsProjectStopDetailPage({
       ? undefined
       : stopFailedDeploy({ tier: stop.tier, rows: services, releases: flow.releases });
   // *Run again* asks HQ, by its rule for who develops the application.
-  const mayRunAgain = useChangeOffers()(groupId)?.redeploy ?? false;
+  const mayRunAgain = useEnvironmentDeployOffer()(projectId);
   const mayKeepKey = useKeepDeployKeyOffer();
   // Why HQ refused the last *Run again*, until another is pressed.
   const [runAgainRefused, setRunAgainRefused] = useState<string | null>(null);

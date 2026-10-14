@@ -1998,7 +1998,12 @@ export const deploysLayer = (
           if (environment === undefined) {
             return yield* refuse("environment_not_found", "environment_not_found", log);
           }
-          const may = can(person, "redeploy", { projectIds }, view);
+          const may = can(
+            person,
+            "redeploy",
+            { projectIds, projectId: environment.project_id },
+            view,
+          );
           if (!may.allow) return yield* refuse("forbidden", may.reason, log);
           return environment;
         });

@@ -1,4 +1,5 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { showProjectParts } from "~/zerops/projectPartsShown";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
@@ -819,6 +820,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   };
   // Whether *Add stage* and *Add production* stand in a project's menu: HQ's offer of each.
   const environmentOffers = useEnvironmentOffers();
+  const addMateOffer = useAddMateOffer();
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
@@ -2016,9 +2018,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     return projectHeadingMenu({
       collapsed: fold?.open === false,
       onToggle: fold?.toggle,
-      onAddMate: () => {
-        onAddMate?.(group.groupId);
-      },
+      onAddMate:
+        addMateOffer(group.groupId).kind === "allowed"
+          ? () => {
+              onAddMate?.(group.groupId);
+            }
+          : undefined,
       onOpen:
         onOpenGroup === undefined
           ? onBrowseProjects

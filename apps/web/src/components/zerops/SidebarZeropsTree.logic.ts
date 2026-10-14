@@ -98,7 +98,7 @@ export function projectHeadingMenu(input: {
   readonly collapsed: boolean;
   /** Absent where the heading does not fold. */
   readonly onToggle: (() => void) | undefined;
-  readonly onAddMate: () => void;
+  readonly onAddMate: (() => void) | undefined;
   readonly onOpen: () => void;
   /** Opens the addresses sheet for its place (`addressesPlace`); absent while it has none. */
   readonly onAddresses?: (() => void) | undefined;
@@ -125,7 +125,7 @@ export function projectHeadingMenu(input: {
     ...(input.onToggle === undefined
       ? []
       : [item(input.collapsed ? "Unfold" : "Fold", input.onToggle)]),
-    item("Add a project Mate", input.onAddMate),
+    ...(input.onAddMate === undefined ? [] : [item("Add a project Mate", input.onAddMate)]),
     item("Open project", input.onOpen),
     ...(input.onAddresses === undefined ? [] : [item("Addresses", input.onAddresses)]),
     separator,

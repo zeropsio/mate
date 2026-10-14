@@ -16,7 +16,9 @@ import {
   observeAccount,
   repairZeropsSession,
   accountReadsAtom,
+  platformMembership,
 } from "@t3tools/client-runtime/data";
+import { useAtomValue } from "@effect/atom-react";
 import { useContext, useEffect, useMemo, type ReactNode } from "react";
 
 import { MateBrowserFrames } from "./browserStreamLinks";
@@ -33,7 +35,7 @@ import { AccountDataContext, AccountStoreContext } from "./accountData";
 export * from "./accountData";
 
 export function ZeropsAccountData({ children }: { readonly children: ReactNode }) {
-  const { client, status, activeOrganization } = useZeropsSession();
+  const { client, status, activeOrganization, updateVerifiedMemberships } = useZeropsSession();
   const registry = useContext(RegistryContext);
   const store = useMemo(() => makeAccountStore(registry), [registry]);
   useEffect(() => {
@@ -70,6 +72,17 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   const database = useAccountDatabase(store);
   useAccountWorkspace(store);
   const orgId = status === "signed-in" ? (activeOrganization?.id ?? null) : null;
+  const membership = useAtomValue(store.data.fact("organizationUser", orgId ?? ""));
+  useEffect(() => {
+    if (orgId === null) return;
+    return observation.demandDetail({ family: "organizationUser", ownerId: orgId });
+  }, [observation, orgId]);
+  useEffect(() => {
+    if (membership.kind === "known") updateVerifiedMemberships(membership.value);
+  }, [membership, updateVerifiedMemberships]);
+  const currentMembership = useAtomValue(store.data.project(platformMembership, orgId ?? ""));
+  const viewer = currentMembership.viewer;
+
   // The account's lifetime closes (sign-out, another account) before React unmounts this, and
   // disposes the registry right after: the account's data ends first, so what the unmounting
   // screens still release publishes nothing.
@@ -100,7 +113,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
     () => ({
       data: store.data,
       database,
-      viewer: activeOrganization ?? undefined,
+      viewer,
       orgId,
       demandDetail: observation.demandDetail,
       renewHeld: observation.renewHeld,
@@ -115,7 +128,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       reveal,
       compare: observation.compare,
     }),
-    [activeOrganization, database, logs, observation, orgId, reveal, store],
+    [viewer, database, logs, observation, orgId, reveal, store],
   );
   // Each open Mate's attention straight from it, and what the person saw of its results to HQ.
   useOpenMatesAttention(store);

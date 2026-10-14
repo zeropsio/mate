@@ -14,7 +14,8 @@ import {
   readZeropsMembership,
   type GitBlock,
 } from "@t3tools/client-runtime/zerops";
-import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
+import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
+import { useHqProjectPerson, zeropsMateOwnerOf } from "../../zerops/useZeropsMateOwners";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
@@ -56,18 +57,10 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
    * user, so it is the owner's alone — an org admin who can open the Mate is
    * not the person whose agent that is (D11).
    */
-  const isOwner =
-    project !== undefined &&
-    session?.activeOrganization !== null &&
-    session?.activeOrganization !== undefined &&
-    resolveMateProjectRole({
-      project: { id: project.id, clientId: project.clientId, userRoles: project.userRoles },
-      viewer: {
-        id: session.activeOrganization.id,
-        membershipId: session.activeOrganization.membershipId ?? "",
-        roleCode: session.activeOrganization.roleCode,
-      },
-    }) === "OWNER";
+  const capabilities = usePlatformCapabilities(environmentId ?? null);
+  const people = useHqProjectPerson(projectRef?.projectId ?? "");
+  const owner = zeropsMateOwnerOf(people?.owner, session?.user?.id);
+  const isOwner = capabilities.operate && owner?.isViewer === true;
 
   const openReview = useOpenReview();
   const onReviewPullRequest = useCallback(
