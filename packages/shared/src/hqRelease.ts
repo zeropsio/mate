@@ -214,8 +214,9 @@ export type RollbackRequest = typeof RollbackRequest.Type;
 /**
  * Why HQ makes no release: the recipe repository's `main` moved since the offer, or it has none; a
  * release has the name already, or one is newer by version; an entry names no production service of
- * the application, or a commit that is not its repository's `main` nor before it; or the release
- * rolled back to was refused.
+ * the application, or a commit that is not its repository's `main` nor before it; the release
+ * rolled back to was refused; a branch production's release came without a ready preflight of
+ * what it lists, or while its previous push is still under way.
  */
 export const RELEASE_REFUSALS = [
   "group_moved",
@@ -226,6 +227,8 @@ export const RELEASE_REFUSALS = [
   "unknown_service",
   "entry_not_on_main",
   "release_not_approved",
+  "git_release_blocked",
+  "release_running",
 ] as const;
 
 export type ReleaseRefusal = (typeof RELEASE_REFUSALS)[number];

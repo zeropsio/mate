@@ -109,6 +109,9 @@ const RELEASE_WORDS: { readonly [R in ReleaseRefusal]: string } = {
   unknown_service: "It lists a service the project's production does not have.",
   entry_not_on_main: "It lists a commit that is not on main.",
   release_not_approved: "That release was refused, so production cannot go back to it.",
+  git_release_blocked:
+    "Mate couldn't confirm the production branch is ready for this release, so nothing was pushed. Review it again.",
+  release_running: "The previous release is still being pushed. Release again once it is pushed.",
 };
 
 /**
