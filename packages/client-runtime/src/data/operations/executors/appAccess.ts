@@ -324,6 +324,8 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
     Effect.gen(function* () {
       const projects = [...new Set(intent.changes.map(({ projectId }) => projectId))];
       const people = Map.groupBy(intent.changes, ({ clientUserId }) => clientUserId);
+      // Their own grants are read again too: a person's page shows what was saved, never less.
+      const named = [...people.keys()];
       const members = yield* verb(() => platform.listOrganizationMembers(intent.orgId));
       const found = [...people.keys()].map((id) => members.find((one) => one.id === id));
       // Nobody is written while anyone named has gone: the change is judged as a whole.
@@ -345,16 +347,16 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
           ),
         );
         if (Result.isFailure(granted)) {
-          yield* Effect.promise(() => readBack(intent.orgId, projects));
+          yield* Effect.promise(() => readBack(intent.orgId, projects, named));
           return yield* Effect.fail(granted.failure);
         }
         if (!granted.success.written) {
-          yield* Effect.promise(() => readBack(intent.orgId, projects));
+          yield* Effect.promise(() => readBack(intent.orgId, projects, named));
           return unobservable("Check their access, then choose again");
         }
         written += 1;
       }
-      yield* Effect.promise(() => readBack(intent.orgId, projects));
+      yield* Effect.promise(() => readBack(intent.orgId, projects, named));
       return receiptOf(requestId, intent.orgId, { written });
     });
 

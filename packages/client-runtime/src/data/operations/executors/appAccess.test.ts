@@ -22,6 +22,7 @@ function organization(
 ) {
   const calls: Array<string> = [];
   const readBack: Array<ReadonlyArray<string>> = [];
+  const readBackMembers: Array<ReadonlyArray<string>> = [];
   const failing = <A>(verb: Verb, run: () => A | Promise<A>) => {
     calls.push(verb);
     const failure = fail[verb];
@@ -104,11 +105,12 @@ function organization(
         );
       }),
   };
-  const executor = appAccessExecutor(platform, async (orgId, projectIds) => {
+  const executor = appAccessExecutor(platform, async (orgId, projectIds, memberIds = []) => {
     expect(orgId).toBe(ORG);
     readBack.push(projectIds);
+    readBackMembers.push(memberIds);
   });
-  return { executor, calls, readBack, members, grants, projects };
+  return { executor, calls, readBack, readBackMembers, members, grants, projects };
 }
 
 const member = (id: string, roleCode: string, status = "ACTIVE"): ZeropsOrganizationMember => ({
@@ -620,6 +622,14 @@ describe("setting who reaches some projects", () => {
         outcome: "definitive-refusal",
         message,
       });
+    }),
+  );
+
+  it.effect("Setting someone's project access reads their own grants again before it is done", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-ro", "READ_ONLY")]);
+      yield* set(org, [{ clientUserId: "cu-ro", projectId: "stage", roleCode: "NO_ACCESS" }]);
+      expect(org.readBackMembers).toEqual([["cu-ro"]]);
     }),
   );
 
