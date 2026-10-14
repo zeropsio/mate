@@ -507,6 +507,7 @@ export function useProjectFlows(
       values.set(appId, {
         attachment: { ...attachment, target: attachment.target },
         delivery: flow?.release.git?.delivery,
+        preflight: flow?.release.git?.preflight,
         replaceTokenPermission:
           replacement.kind === "allowed"
             ? { allowed: true }

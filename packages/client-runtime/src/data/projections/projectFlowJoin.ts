@@ -460,15 +460,15 @@ function projectFlow(
   // the gate says it is checking.
   const { repos, recipe, permission, live } = offered;
   const projected = live.git;
-  const delivery =
+  // The standing and preflight of this very attachment, never of one it replaced.
+  const sameAttachment =
     gitTarget &&
     projected?.attachment.environmentId === attachment.environmentId &&
     projected.attachment.createdAt === attachment.createdAt &&
     projected.attachment.target.kind === "git" &&
     projected.attachment.target.branch === attachment.target.branch &&
-    projected.attachment.target.delivery === attachment.target.delivery
-      ? projected.delivery
-      : undefined;
+    projected.attachment.target.delivery === attachment.target.delivery;
+  const delivery = sameAttachment ? projected.delivery : undefined;
   const read =
     records === undefined || repos === undefined
       ? undefined
@@ -563,6 +563,7 @@ function projectFlow(
                     delivery,
                     repositories: read?.repositories,
                     replaceTokenPermission: projected?.replaceTokenPermission,
+                    preflight: sameAttachment ? projected.preflight : undefined,
                   },
                 }
               : {}),

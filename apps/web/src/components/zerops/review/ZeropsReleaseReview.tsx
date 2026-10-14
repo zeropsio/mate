@@ -49,7 +49,7 @@ import {
   type ReleaseVersionSuggestion,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Input } from "~/components/ui/input";
 
@@ -58,6 +58,7 @@ import { useFixMates } from "~/zerops/fixMates";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
+import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
@@ -364,6 +365,25 @@ function ReleaseData({
       : undefined,
   );
 
+  // A branch production releases only what HQ just found ready on its remote branch: the review
+  // asks HQ to check it on opening and whenever what goes out changes, until it is pressed.
+  const preflight = useGitTargetOperations(flow.groupId).actions?.preflight;
+  const preflightRef = useRef(preflight);
+  preflightRef.current = preflight;
+  const [check, setCheck] = useState<{ readonly of: string; readonly why: string }>();
+  const checked =
+    flow.release.git === undefined
+      ? undefined
+      : flow.release.entries.map(({ service, commit }) => `${service}@${commit}`).join(" ");
+  const checking = press.kind === "idle" ? checked : undefined;
+  const canCheck = preflight !== undefined;
+  useEffect(() => {
+    if (checking === undefined || !canCheck) return;
+    preflightRef.current?.().catch((error: unknown) => {
+      setCheck({ of: checking, why: error instanceof Error ? error.message : String(error) });
+    });
+  }, [canCheck, checking]);
+
   const release = async () => {
     if (chosen.tag === undefined || chosen.error !== undefined) return;
     // Capture the offer in the press. HQ's stream may change it before React draws "running".
@@ -382,7 +402,14 @@ function ReleaseData({
 
   return (
     <ReleaseReviewView
-      git={flow.release.git}
+      git={
+        flow.release.git === undefined
+          ? undefined
+          : {
+              ...flow.release.git,
+              check: check !== undefined && check.of === checked ? check.why : undefined,
+            }
+      }
       comparisonFailure={flow.release.comparisonFailure}
       fixer={fixer?.name}
       gate={flow.release.gate}

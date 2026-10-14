@@ -1453,6 +1453,18 @@ describe("Git release review evidence", () => {
         },
       ),
       replaceTokenPermission: { allowed: true } as const,
+      preflight: [
+        {
+          repo: "API_v2",
+          remote,
+          ref: "refs/heads/production",
+          before: null,
+          sha,
+          verdict: "ready" as const,
+          reason: null,
+          checkedAt: attachment.createdAt,
+        },
+      ],
       repositories: [
         {
           repository: "API_v2",

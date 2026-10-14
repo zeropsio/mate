@@ -148,6 +148,7 @@ function flowWrite(
             tag: intent.tag,
             groupHead: intent.groupHead,
             entries: intent.entries,
+            ...(intent.git === undefined ? {} : { target: "git", ...intent.git }),
           }),
         ),
         ({ made, deploys, delivery }) =>
