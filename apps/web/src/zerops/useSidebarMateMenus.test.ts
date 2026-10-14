@@ -33,6 +33,19 @@ describe("sidebarMateVerbs — the shared verbs a Mate's own menu carries", () =
     ]);
   });
 
+  it("keeps Project access…: a Mate's project is a project like any other", () => {
+    const verbs = sidebarMateVerbs([
+      entry("assign", "Hand this Mate over"),
+      entry("access", "Project access…"),
+      entry("move", "Change project or role"),
+    ]);
+    expect(verbs.map((verb) => ("label" in verb ? verb.label : "—"))).toEqual([
+      "Hand over…",
+      "Project access…",
+      "Move to project…",
+    ]);
+  });
+
   it("keeps Delete, in its own words and its red", () => {
     const verbs = sidebarMateVerbs([
       entry("restart", "Restart"),
