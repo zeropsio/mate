@@ -96,17 +96,21 @@ fi
 cat > "$scratch/inspect" <<'MATE_INSPECT'
 set -eu
 scratch=$1; max_file=$2; shift 2
+# A stop no refusal below explains still names the file it stopped at.
+told=; p=
+trap 'status=$?; [ "$status" = 0 ] || [ -n "$told" ] || printf "Snapshot refused: inspection stopped at %s\n" "$p" >&2' 0
+refuse() { told=1; printf 'Snapshot refused: %s\n' "$*" >&2; exit 1; }
 for p do
-  case "$p" in ''|/*|../*|*/../*|*/..|./*|*/./*|.git|.git/*) printf 'Snapshot refused: unsupported path\n' >&2; exit 1;; esac
+  case "$p" in ''|/*|../*|*/../*|*/..|./*|*/./*|.git|.git/*) refuse 'unsupported path';; esac
   parent=./$p
   while :; do
-    [ ! -L "$parent" ] || { printf 'Snapshot refused: unsupported symlink: %s\n' "$p" >&2; exit 1; }
+    [ ! -L "$parent" ] || refuse "unsupported symlink: $p"
     case "$parent" in */*) parent=$(dirname "$parent");; *) break;; esac
   done
   if [ ! -e "$p" ]; then continue; fi
-  [ -f "$p" ] || { printf 'Snapshot refused: unsupported nested repository or special file: %s\n' "$p" >&2; exit 1; }
+  [ -f "$p" ] || refuse "unsupported nested repository or special file: $p"
   size=$(stat -c %s -- "./$p" 2>/dev/null || stat -f %z "./$p")
-  [ "$size" -le "$max_file" ] || { printf 'Snapshot refused: file byte limit: %s\n' "$p" >&2; exit 1; }
+  [ "$size" -le "$max_file" ] || refuse "file byte limit: $p"
   printf '%s\n' "$size" >> "$scratch/sizes"
   printf '%s\0' "$p" >> "$scratch/present"
 done
@@ -153,6 +157,18 @@ check_objects "$oid"
 printf '%s\n%s\n' "$oid" "$result"
 }; f`;
 
+/**
+ * Refusals a file changing under the capture explains: a build's or a test's file appearing,
+ * growing or vanishing while helpers work in the background. A moment later the tree has usually
+ * settled, so the capture looks again; a refusal that persists is the run's capture gap. Only the
+ * first refusal line counts: a file the inspection refused by name (a symlink, a file over the byte
+ * limit) is followed by the generic "candidate validation failed", and stays refused.
+ */
+const SETTLING_REFUSAL =
+  /^Snapshot refused: (?:candidate validation failed|candidate changed type|file grew past byte limit|inspection stopped)/u;
+const SETTLE_TRIES = 3;
+const SETTLE_WAIT = "750 millis";
+
 export function makeSnapshotOperations(
   execute: VcsDriver["Service"]["execute"],
 ): Pick<VcsCheckpointOps, "captureSnapshot" | "resolveSnapshot"> {
@@ -184,30 +200,41 @@ export function makeSnapshotOperations(
         });
       }
     }
-    const result = yield* execute({
-      operation: "GitVcsDriver.snapshot",
-      cwd: input.cwd,
-      args: [
-        "-c",
-        "core.fsmonitor=false",
-        "-c",
-        "core.untrackedCache=false",
-        "-c",
-        `alias.mate-snapshot=!${SNAPSHOT_SCRIPT}`,
-        "mate-snapshot",
-        mode,
-        input.checkpointRef,
-        String(policy.maxPaths),
-        String(policy.maxPathBytes),
-        String(policy.maxFileBytes),
-        String(policy.maxTotalBytes),
-        input.baselineOid ?? "",
-        input.expectedOid ?? "",
-      ],
-      timeoutMs: 35_000,
-      maxOutputBytes: 8192,
-      allowNonZeroExit: true,
-    });
+    const attempt = () =>
+      execute({
+        operation: "GitVcsDriver.snapshot",
+        cwd: input.cwd,
+        args: [
+          "-c",
+          "core.fsmonitor=false",
+          "-c",
+          "core.untrackedCache=false",
+          "-c",
+          `alias.mate-snapshot=!${SNAPSHOT_SCRIPT}`,
+          "mate-snapshot",
+          mode,
+          input.checkpointRef,
+          String(policy.maxPaths),
+          String(policy.maxPathBytes),
+          String(policy.maxFileBytes),
+          String(policy.maxTotalBytes),
+          input.baselineOid ?? "",
+          input.expectedOid ?? "",
+        ],
+        timeoutMs: 35_000,
+        maxOutputBytes: 8192,
+        allowNonZeroExit: true,
+      });
+    let result = yield* attempt();
+    const settling = () =>
+      result.exitCode !== 0 &&
+      SETTLING_REFUSAL.test(result.stderr.trimStart().split("\n", 1)[0] ?? "");
+    if (mode === "capture") {
+      for (let tries = 1; tries < SETTLE_TRIES && settling(); tries += 1) {
+        yield* Effect.sleep(SETTLE_WAIT);
+        result = yield* attempt();
+      }
+    }
     if (result.exitCode !== 0) {
       return yield* new VcsProcessExitError({
         operation: "GitVcsDriver.snapshot",
