@@ -17,17 +17,7 @@ interface OwnershipPaints {
 
 describe("owner-reported layout regressions", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    it.effect.each([
-      {
-        title:
-          "a colleague's conversation never paints writable controls while HQ ownership arrives after history",
-        anchor: false,
-      },
-      {
-        title: "resolving ownership keeps already-painted conversation words in place",
-        anchor: true,
-      },
-    ])("$title", ({ anchor }) =>
+    const ownershipArrives = (anchor: boolean) =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });
         yield* s.given.project("Ada", {
@@ -176,6 +166,10 @@ describe("owner-reported layout regressions", () => {
           );
           if (anchor) {
             expect(
+              paints.answers.length - before.count,
+              "ASSERTION: the answer stays painted through ownership resolution",
+            ).toBeGreaterThanOrEqual(60);
+            expect(
               before.count,
               "ASSERTION: the answer has painted before ownership resolves",
             ).toBeGreaterThanOrEqual(60);
@@ -204,7 +198,13 @@ describe("owner-reported layout regressions", () => {
           ).toBe(0);
         });
         yield* s.then.noExternalNetwork;
-      }),
+      });
+    it.effect(
+      "a colleague's conversation never paints writable controls while HQ ownership arrives after history",
+      () => ownershipArrives(false),
+    );
+    it.effect("resolving ownership keeps already-painted conversation words in place", () =>
+      ownershipArrives(true),
     );
   });
 });
