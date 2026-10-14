@@ -1731,11 +1731,16 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
         [WS_METHODS.reviewGetDiffFileContents]: (input) =>
           admit(WS_METHODS.reviewGetDiffFileContents, review.getDiffFileContents(input)),
         [WS_METHODS.terminalOpen]: (input) =>
-          admit(WS_METHODS.terminalOpen, terminalManager.open(input)),
+          admit(
+            WS_METHODS.terminalOpen,
+            terminalManager.open({ ...input, openedBy: currentSessionId }),
+          ),
         [WS_METHODS.terminalAttach]: (input) =>
           Stream.callback<TerminalAttachStreamEvent, TerminalError>((queue) =>
             Effect.acquireRelease(
-              terminalManager.attachStream(input, (event) => Queue.offer(queue, event)),
+              terminalManager.attachStream({ ...input, openedBy: currentSessionId }, (event) =>
+                Queue.offer(queue, event),
+              ),
               (unsubscribe) => Effect.sync(unsubscribe),
             ),
           ),
@@ -1746,7 +1751,10 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
         [WS_METHODS.terminalClear]: (input) =>
           admit(WS_METHODS.terminalClear, terminalManager.clear(input)),
         [WS_METHODS.terminalRestart]: (input) =>
-          admit(WS_METHODS.terminalRestart, terminalManager.restart(input)),
+          admit(
+            WS_METHODS.terminalRestart,
+            terminalManager.restart({ ...input, openedBy: currentSessionId }),
+          ),
         [WS_METHODS.terminalClose]: (input) =>
           admit(WS_METHODS.terminalClose, terminalManager.close(input)),
         [WS_METHODS.subscribeTerminalEvents]: (_input) =>

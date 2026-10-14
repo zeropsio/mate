@@ -78,6 +78,7 @@ import { makeProviderInstanceRegistryHydration } from "./provider/Layers/Provide
 import { BUILT_IN_DRIVERS, type BuiltInDriversEnv } from "./provider/builtInDrivers.ts";
 import type { AnyProviderDriver } from "./provider/ProviderDriver.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
+import * as TerminalsEndWithSession from "./terminal/terminalsEndWithSession.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -480,6 +481,7 @@ export interface ServerLayerOptions {
 const makeRuntimeCoreDependencies = (options: ServerLayerOptions) =>
   AgentAwarenessRelayLive.pipe(
     Layer.provideMerge(AntigravityInstallationRefreshLive),
+    Layer.provideMerge(TerminalsEndWithSession.layer),
     Layer.provideMerge(ReplayMarkers.layer),
     Layer.provideMerge(ProviderAuthServiceLive),
     // Core Services
