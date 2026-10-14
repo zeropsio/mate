@@ -155,9 +155,12 @@ jobs:
 
       # /mate is deliberately baked in: it is the only supported Zerops mount,
       # and Vite's client base path cannot be supplied by the server at runtime.
+      # Containers sign in by Zerops device login, like mate.zerops.io: the
+      # tab polls for its session, so nothing is delivered to the origin.
       - name: Build web client
         env:
           VITE_BASE_PATH: /mate
+          VITE_ZEROPS_SIGN_IN: device-login
         run: vp run --filter @t3tools/web build
 
       - name: Build server bundle
