@@ -130,6 +130,7 @@ const app = vi.hoisted(() => ({
   birthProgress: false,
   observeRefused: false,
   wholeForPerson: false,
+  detailFailure: null as { readonly message: string } | null,
   registration: {
     attempt: 0,
     state: "waiting",
@@ -176,7 +177,7 @@ vi.mock("~/state/entities", () => ({
   useProjects: () => app.projects,
 }));
 vi.mock("~/zerops/accountEnvironments", () => ({
-  useMateDetailRead: () => ({ failure: null, again: () => undefined }),
+  useMateDetailRead: () => ({ failure: app.detailFailure, again: () => undefined }),
   useConnectMate: () => app.connect,
   useAccountEnvironments: () => environments,
   // No Mate here is held for its close-off.
@@ -451,6 +452,7 @@ beforeEach(() => {
   app.processes = [];
   app.birthProgress = false;
   app.wholeForPerson = false;
+  app.detailFailure = null;
 });
 afterEach(async () => {
   const { useComposerDraftStore } = await import("~/composerDraftStore");
@@ -468,6 +470,55 @@ afterEach(async () => {
 // at /zerops page". A Mate's own view waits for its link where it stands, connects it, and hands
 // over to its conversation; nothing in it takes the person to another screen on its own.
 describe("a Mate's own view while its link is made", () => {
+  it("someone else's Chief Mate is not opened by its direct address", () => {
+    app.listing = listingOf([]);
+    app.recovery = liveRecovery({
+      standing: { kind: "denied", name: "Karlos's Chief" },
+      status: undefined,
+      process: undefined,
+    });
+    app.detailFailure = { message: "Zerops refused this project's services." };
+    app.link = {
+      key: KEY,
+      environmentId: undefined,
+      reachability: { kind: "refused-role", chiefOwnerName: "Karlos" },
+    } satisfies MateLink;
+    openView();
+    expect(said()).toContain("This is Karlos's Chief Mate.");
+    expect(said()).not.toContain("Zerops refused this project's services.");
+    expect(said()).not.toContain("no longer have access");
+    expect(tree?.root.findAllByType("textarea")).toHaveLength(0);
+    expect(app.connect).not.toHaveBeenCalled();
+    expect(app.navigate).not.toHaveBeenCalled();
+  });
+
+  it("shows whose Chief Mate it is when the direct-address refusal arrives after first paint", () => {
+    app.listing = listingOf([]);
+    app.link = {
+      key: KEY,
+      environmentId: undefined,
+      reachability: { kind: "connecting", waitingOn: "exchange" },
+    } satisfies MateLink;
+    openView();
+    expect(said()).not.toContain("This is Karlos's Chief Mate.");
+    app.recovery = liveRecovery({
+      standing: { kind: "denied", name: "Karlos's Chief" },
+      status: undefined,
+      process: undefined,
+    });
+    app.detailFailure = { message: "Zerops refused this project's services." };
+    app.link = {
+      key: KEY,
+      environmentId: undefined,
+      reachability: { kind: "refused-role", chiefOwnerName: "Karlos" },
+    } satisfies MateLink;
+    act(() => tree?.update(comingView(PROJECT)));
+    expect(said()).toContain("This is Karlos's Chief Mate.");
+    expect(said()).not.toContain("opening the conversation");
+    expect(tree?.root.findAllByType("textarea")).toHaveLength(0);
+    expect(app.navigate).not.toHaveBeenCalled();
+  });
+
   it("connects it once by its target, says what it waits for, and stays", () => {
     const link: MateLink = {
       key: KEY,

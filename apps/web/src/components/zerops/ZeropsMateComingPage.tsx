@@ -867,7 +867,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // are read, else HQ's last word of it.
   const standInSubject = liveActivity?.subject ?? toldActivity?.subject ?? null;
 
-  if (detailFailure !== null && !projectUnavailable)
+  const chiefRefused =
+    page?.kind === "unreachable" &&
+    page.reachability?.kind === "refused-role" &&
+    page.reachability.chiefOwnerName !== undefined;
+  if (detailFailure !== null && !projectUnavailable && !chiefRefused)
     return <MateDetailFailure mate={mate} message={detailFailure.message} again={readAgain} />;
   return (
     // The person's Chief wears the product's mark here as in its conversation (`chief.ts`).
