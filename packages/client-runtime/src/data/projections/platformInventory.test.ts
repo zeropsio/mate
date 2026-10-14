@@ -108,8 +108,17 @@ it.each([
     trouble: null,
   },
   {
-    name: "A first connect failing a second time says Zerops is not answering",
+    name: "A first connect failing again inside the grace still says nothing",
     inputs: [...firstConnect, failed(), link({ kind: "retry-due" }, 1_000), failed()],
+    projects: [],
+    denied: [],
+    read: "reading",
+    trouble: null,
+  },
+  {
+    name: "A first connect still failing past the grace says Zerops is not answering",
+    inputs: [...firstConnect, failed(), link({ kind: "retry-due" }, 1_000), failed()],
+    pastGrace: true,
     projects: [],
     denied: [],
     read: "reading",
@@ -118,6 +127,7 @@ it.each([
   {
     name: "A first attempt that waited out its deadline says Zerops is not answering",
     inputs: [...firstConnect, link({ kind: "deadline" }, 10_000)],
+    pastGrace: true,
     projects: [],
     denied: [],
     read: "reading",

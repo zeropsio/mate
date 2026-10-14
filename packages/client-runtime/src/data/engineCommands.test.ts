@@ -34,7 +34,7 @@ import {
 import { mateEngineHostAtom, type MateEngineHost } from "./engineHost.ts";
 import { makeMateEngineOperations, type EngineCommand } from "./operations/executors/mateEngine.ts";
 import { makeAccountStore, readsOfState } from "./store.ts";
-import { liveZerops, ORG } from "./__fixtures__/account.ts";
+import { graceOver, liveZerops, ORG } from "./__fixtures__/account.ts";
 import { seedHqNavigation } from "./__fixtures__/hqNavigation.ts";
 import { inventory } from "./projections/inventory.ts";
 import { linkKeys } from "./model.ts";
@@ -778,6 +778,8 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           }
         }
       }
+      // Minutes of retries passed on the stream's clock; the store's grace timer is wall time.
+      for (const input of graceOver(r.store.state())) r.store.dispatch(input);
       expect(menu().trouble).toBe(zeropsDown ? "retrying" : null);
       const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
       expect(result).toEqual({ sequence: 16 });

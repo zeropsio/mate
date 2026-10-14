@@ -1723,7 +1723,7 @@ describe("environment route target dispatch", () => {
           kind: "stream",
           key: "hq:org",
           now: 5001,
-          event: { kind: "grace-over", lostAt: 0 },
+          event: { kind: "grace-over", since: 0 },
         }),
       );
       expect(

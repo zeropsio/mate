@@ -5,8 +5,8 @@
  * `Atom.batch`. A reader never gets a raw record or a writable atom: facts arrive as
  * {@link PublicRead}, withheld payloads never leave.
  *
- * `dispatch` is the adapters' door, never a component's. Its one clock of its own is a held
- * stream's grace (`STREAM_POLICY.reconnectGraceMs`): run out, it tells that stream so.
+ * `dispatch` is the adapters' door, never a component's. Its one clock of its own is a stream's
+ * grace (`STREAM_POLICY.reconnectGraceMs`), held or first trying: run out, it tells that stream so.
  *
  * @module data/store
  */
@@ -30,7 +30,7 @@ import {
   type StreamKey,
 } from "./model.ts";
 import { reduceAccount, streamOf, type AccountInput, type RuntimeDirective } from "./reducer.ts";
-import { STREAM_POLICY, type StreamState } from "./streamMachine.ts";
+import { graceSince, STREAM_POLICY, type StreamState } from "./streamMachine.ts";
 
 /** A scope's membership as a reader sees it: listed ids, unproven departures and owner-proven exclusions. */
 export interface MembershipRead {
@@ -189,7 +189,7 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
     return atom as Atom.Writable<T>;
   };
   let closed = false;
-  /** Each held stream's grace, running: it ends the hold of the loss it was set for. */
+  /** Each stream's grace, running: it ends the hold of the loss, or the patience of the first try, it was set for. */
   const graces = new Map<StreamKey, Fiber.Fiber<void>>();
   const endGrace = (key: StreamKey) => {
     const grace = graces.get(key);
@@ -198,10 +198,10 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
     Effect.runFork(Fiber.interrupt(grace));
   };
   const keepGrace = (key: StreamKey, before: StreamState, after: StreamState, now: number) => {
-    if (after.held === true && before.held === true && before.lostAt === after.lostAt) return;
+    const since = graceSince(after);
+    if (since !== undefined && since === graceSince(before)) return;
     endGrace(key);
-    if (after.held !== true || after.lostAt === undefined) return;
-    const { lostAt } = after;
+    if (since === undefined) return;
     graces.set(
       key,
       Effect.runFork(
@@ -213,7 +213,7 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
                 kind: "stream",
                 key,
                 now: now + STREAM_POLICY.reconnectGraceMs,
-                event: { kind: "grace-over", lostAt },
+                event: { kind: "grace-over", since },
               });
             }),
           ),
