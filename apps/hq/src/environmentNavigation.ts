@@ -1,4 +1,4 @@
-import { chiefProjectIsVisible, readsChiefProject } from "./chiefOwnership.ts";
+import { readsChiefProject } from "./chiefOwnership.ts";
 import {
   HqNavigationJob,
   HqPushNavigationJob,
@@ -275,12 +275,11 @@ FROM standing s`;
     forApp: (userId, appId, facts, access) =>
       access.allow
         ? (groups.get(appId) ?? [])
+            // A Zerops environment shows only where Zerops shows its project to the reader.
             .filter(
               (value) =>
                 value.target.kind === "git" ||
-                (chiefProjectIsVisible(facts, userId, value.target.projectId, owners) &&
-                  (!owners.has(value.target.projectId) ||
-                    readsChiefProject(facts, userId, value.target.projectId, owners))),
+                readsChiefProject(facts, userId, value.target.projectId, owners),
             )
             .map((value) => ({
               ...value,
