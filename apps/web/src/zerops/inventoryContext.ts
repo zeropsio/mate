@@ -57,7 +57,12 @@ export function conversationAccess(inventory: Inventory, projectId: string): Con
 /**
  * What a project's region says while its source withholds content; null while it may be shown.
  */
-export function withheldProjectNotice(inventory: Inventory, projectId: string): string | null {
+export function withheldProjectNotice(
+  inventory: Inventory,
+  projectId: string,
+  name = "This project",
+): string | null {
+  if (inventory.deleted.includes(projectId)) return `${name} was removed.`;
   const authority = projectAuthority(inventory, projectId);
   if (authority.kind !== "withheld") return null;
   return (

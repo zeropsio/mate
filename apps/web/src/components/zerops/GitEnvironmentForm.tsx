@@ -27,6 +27,8 @@ export interface GitEnvironmentFormProps {
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly setup: GitEnvironmentSetup;
   readonly offered: { readonly add: boolean; readonly connect: boolean; readonly replace: boolean };
+  /** HQ’s own reason this person cannot add a Git environment. */
+  readonly unavailableReason?: string | undefined;
   readonly onBack?: () => void;
   readonly onCancel: () => void;
   readonly onAdded: (name: string) => void;
@@ -39,6 +41,7 @@ export function GitEnvironmentForm({
   repos,
   setup,
   offered,
+  unavailableReason,
   onBack,
   onCancel,
   onAdded,
@@ -409,8 +412,7 @@ export function GitEnvironmentForm({
         ) : null}
         {!offered.add ? (
           <p className="text-sm text-muted-foreground">
-            HQ is not offering Git environment setup right now. Zerops remains available where HQ
-            allows it.
+            {unavailableReason ?? "HQ has not said yet."}
           </p>
         ) : null}
       </DialogPanel>

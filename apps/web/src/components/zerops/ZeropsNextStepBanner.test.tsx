@@ -344,6 +344,7 @@ const UNREAD: Inventory = {
   projectRefs: new Map(),
   authority: new Map(),
   lost: new Set(),
+  deleted: [],
 };
 
 const THREAD = scopeThreadRef(EnvironmentId.make("env-nova"), ThreadId.make("thread-1"));

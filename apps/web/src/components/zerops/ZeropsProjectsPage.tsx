@@ -1,5 +1,4 @@
 import { tiersAddable } from "./projects/projectsView.logic";
-import { hqOffer } from "@t3tools/shared/hqOffers";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
 import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
@@ -167,7 +166,7 @@ import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { useHqOffers, useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
@@ -1533,11 +1532,9 @@ function ZeropsProjectsContent({
   const gitSetupCan = hqStructure.structure?.apps.find(
     (app) => app.id === creationRequest?.groupId,
   )?.can;
-  const gitSetupOffered = (verb: string) =>
-    hqOffer(gitSetupCan, verb, {
-      current: hqStructure.live,
-      unavailableSince: hqStructure.live ? null : 0,
-    }).kind === "allowed";
+  const hqOffers = useHqOffers();
+  const gitSetupAdd = hqOffers.state(gitSetupCan, "add_git_environment");
+  const gitSetupOffered = (verb: string) => hqOffers.state(gitSetupCan, verb).kind === "allowed";
   const requestedGroup = useMemo(
     () =>
       creationRequest === null
@@ -2542,16 +2539,22 @@ function ZeropsProjectsContent({
       ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (
         <ZeropsEnvironmentCreationDialog
+          fallbackFocus={() =>
+            document
+              .getElementById(`project-${creationRequest.groupId}`)
+              ?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]') ?? null
+          }
           git={
             activeOrganization === null || activeOrganization === undefined || gitSetupHq === null
               ? undefined
               : {
                   repos: gitSetupDetail.live ? gitSetupDetail.repos : undefined,
                   offered: {
-                    add: gitSetupOffered("add_git_environment"),
+                    add: gitSetupAdd.kind === "allowed",
                     connect: gitSetupOffered("connect_remote"),
                     replace: gitSetupOffered("replace_remote_token"),
                   },
+                  unavailableReason: hqOffers.words(gitSetupAdd),
                   setup: gitEnvironmentSetup({
                     orgId: activeOrganization.id,
                     appId: creationRequest.groupId,

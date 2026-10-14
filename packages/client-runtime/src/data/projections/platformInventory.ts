@@ -10,6 +10,7 @@ import type { ProjectValue } from "../families/project.ts";
 export interface PlatformInventory {
   readonly projects: ReadonlyArray<ProjectValue>;
   readonly denied: ReadonlyArray<string>;
+  readonly deleted: ReadonlyArray<string>;
   readonly read: "unread" | "reading" | "read";
   readonly live: boolean;
   readonly failure: string | null;
@@ -24,14 +25,17 @@ export const platformInventory: Projection<
   derive: (read, { orgId, viewer }) => {
     const roster = organizationProjects.derive(read, orgId);
     const denied = new Set<string>();
+    const deleted = new Set<string>();
     for (const projectId of read.members(projectsScope(orgId)).excluded) {
       const access = platformAccess.derive(read, { orgId, viewer, projectId });
       if (access.kind === "denied" || access.kind === "deleted") denied.add(projectId);
+      if (access.kind === "deleted") deleted.add(projectId);
     }
     const projects = roster.projects.filter((project) => {
       const access = platformAccess.derive(read, { orgId, viewer, projectId: project.id });
       if (access.kind === "denied" || access.kind === "deleted") {
         denied.add(project.id);
+        if (access.kind === "deleted") deleted.add(project.id);
         return false;
       }
       return access.kind === "allowed";
@@ -44,6 +48,7 @@ export const platformInventory: Projection<
     return {
       projects,
       denied: [...denied],
+      deleted: [...deleted],
       read: roster.read,
       live: roster.live,
       failure: roster.unavailableReason === undefined ? null : "Zerops isn't answering.",
