@@ -62,7 +62,7 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
 
 /**
  * owner, admin; dev is NO_ACCESS with a grant on P_MATE; reader is org READ_ONLY; nobody is
- * NO_ACCESS; maker is NO_ACCESS who can create projects, Basic user on their new Mate P_OWN and on
+ * NO_ACCESS; maker is NO_ACCESS who can create projects, Owner of their new Mate P_OWN, Basic user on
  * P_DEV, and Read only on P_TEAM; basic is org Basic user who can create projects, with no grant of their own.
  */
 type Org = Omit<OrgView, "freshness">;
@@ -92,7 +92,8 @@ const VIEW: Org = {
     project("P_STAGE"),
     project("P_PROD"),
     project("P_PROD2"),
-    project("P_OWN", [{ clientUserId: "C-maker", roleCode: "BASIC_USER" }]),
+    // maker's new Mate: Zerops leaves its creator OWNER.
+    project("P_OWN", [{ clientUserId: "C-maker", roleCode: "OWNER" }]),
     project("P_TEAM", [{ clientUserId: "C-maker", roleCode: "READ_ONLY" }]),
     // maker develops it: an application holding it is maker's to add an environment to.
     project("P_DEV", [{ clientUserId: "C-maker", roleCode: "BASIC_USER" }]),
@@ -1195,6 +1196,39 @@ describe("structure", () => {
             assert.strictEqual(
               refused._tag === "StructureRefused" ? refused.reason : refused._tag,
               "not_own_new_mate",
+            );
+          }),
+        ),
+    );
+
+    it.effect(
+      "a member who can create projects records no Mate on a project they only develop",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const own = yield* structure.createApp("maker", "Own");
+            // maker is a Basic user on P_DEV, someone else's project: Zerops asks Full access
+            // there for a Mate's record (`create_mate_record`), and so does its attach.
+            assert.strictEqual(
+              yield* reasonOf(
+                structure.attachProject("maker", own.id, {
+                  projectId: "P_DEV",
+                  kind: "mate",
+                  mate: { face: "face-1" },
+                }),
+              ),
+              "not_own_new_mate",
+            );
+            const birth = yield* structure.recordBirth("maker", { appId: own.id, face: "face-1" });
+            assert.strictEqual(
+              yield* outcome(structure.bindBirth("maker", birth.id, "P_DEV")),
+              "forbidden",
+            );
+            assert.deepStrictEqual(
+              yield* sql`SELECT project_id FROM hq_mate WHERE project_id = 'P_DEV'`,
+              [],
             );
           }),
         ),
