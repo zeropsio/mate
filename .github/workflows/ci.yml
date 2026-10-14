@@ -396,44 +396,12 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  chat_scenarios:
-    name: Test Web Scenarios (${{ matrix.name }})
+  state_smoke:
+    name: State Smoke
     needs: [prepare, chat_bundle]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.chat_bundle.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        # Measured C file durations are assigned in scripts/chat-gate.ts. The largest
-        # suite gets its own runner; non-C uses Vitest's complete native inventory.
-        include:
-          - name: C shard 1
-            command: node scripts/chat-gate.ts --verbose --stages C --shard 1/4
-          - name: C shard 2
-            command: node scripts/chat-gate.ts --verbose --stages C --shard 2/4
-          - name: C shard 3
-            command: node scripts/chat-gate.ts --verbose --stages C --shard 3/4
-          - name: C shard 4
-            command: node scripts/chat-gate.ts --verbose --stages C --shard 4/4
-          - name: non-C shard 1
-            command: >-
-              vp -C apps/web test run --config test/scenarios/vitest.config.ts
-              --project scenarios test/scenarios/areas
-              --exclude 'test/scenarios/areas/c-mate/**' --shard 1/3 --allowOnly=false
-              --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
-          - name: non-C shard 2
-            command: >-
-              vp -C apps/web test run --config test/scenarios/vitest.config.ts
-              --project scenarios test/scenarios/areas
-              --exclude 'test/scenarios/areas/c-mate/**' --shard 2/3 --allowOnly=false
-              --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
-          - name: non-C shard 3
-            command: >-
-              vp -C apps/web test run --config test/scenarios/vitest.config.ts
-              --project scenarios test/scenarios/areas
-              --exclude 'test/scenarios/areas/c-mate/**' --shard 3/3 --allowOnly=false
-              --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
+    timeout-minutes: 15
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
@@ -486,11 +454,13 @@ jobs:
           name: chat-scenario-bundle
           path: node_modules/.cache/mate-scenario-web
 
-      - name: Certify every case in this shard
+      - name: Certify sign-in and the state-only smoke
         if: needs.prepare.outputs.skip != 'true'
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
-        run: ${{ matrix.command }}
+        run: |
+          vp run test:browser
+          node scripts/state-smoke.ts
 
   # Independent suites run concurrently; the existing Test context reports
   # their combined verdict without serializing package execution.

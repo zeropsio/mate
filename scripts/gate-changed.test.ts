@@ -24,6 +24,7 @@ import {
 
 const gateRunnerFiles = [
   "gate-changed.ts",
+  "state-smoke-cases.ts",
   "gate-file-inputs.ts",
   "chat-gate.ts",
   "gate-log.ts",
@@ -1236,6 +1237,7 @@ esac
     // Selection inputs can change on main without changing the lane patch or command list.
     for (const path of [
       "scripts/gate-timing-reporter.ts",
+      "scripts/state-smoke-cases.ts",
       "scripts/gate-changed.ts",
       "pnpm-lock.yaml",
       "vite.config.ts",
