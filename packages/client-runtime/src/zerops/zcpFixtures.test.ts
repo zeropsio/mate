@@ -8,11 +8,13 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 
 import { ZeropsStateEnvelope } from "@t3tools/contracts";
+import { HqChange } from "@t3tools/shared/hqChanges";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import { readZeropsCardSource } from "./cards/decode.ts";
 import { decodeZeropsCard } from "./cards/payloads.ts";
+import { flowChange } from "./projectFlow.ts";
 
 const dir = new URL("./fixtures/zcp/", import.meta.url);
 const raw = (name: string) => NodeFS.readFileSync(new URL(name, dir));
@@ -118,16 +120,18 @@ describe("zcp contract fixtures", () => {
   });
 
   it("reads a receipt whose web preview is older than the change head", () => {
-    const change = json("hq-change.receipt.json") as {
-      head: string;
-      receipt: { parts: ReadonlyArray<{ setup: string; deploy: string; deployedCommit?: string }> };
-    };
-    expect(change.receipt.parts.map((part) => [part.setup, part.deploy])).toEqual([
+    const pull = flowChange(
+      Schema.decodeUnknownSync(HqChange)(json("hq-change.receipt.json")),
+      "https://hq.example",
+    );
+    const parts = pull.receipt?.parts ?? [];
+    expect(parts.map((part) => [part.setup, part.deploy])).toEqual([
       ["web", "ok"],
       ["api", "ok"],
       ["worker", "failed"],
     ]);
-    expect(change.receipt.parts[0]?.deployedCommit).not.toBe(change.head);
-    expect(change.receipt.parts[1]?.deployedCommit).toBeUndefined();
+    expect(parts[0]?.deployedCommit).toBe("a1b2c3d4e5f60718293a4b5c6d7e8f9012345678");
+    expect(parts[0]?.deployedCommit).not.toBe(pull.headSha);
+    expect(parts[1]?.deployedCommit).toBeUndefined();
   });
 });

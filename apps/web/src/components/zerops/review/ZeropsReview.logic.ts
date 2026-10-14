@@ -15,7 +15,7 @@ import {
   type ReviewState,
   type ReviewVerdict,
 } from "@t3tools/client-runtime/zerops";
-import { parseAttachmentUrl, type ChangeLink } from "@t3tools/shared/hqChanges";
+import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
 import { quoteWords } from "@t3tools/shared/messagePreview";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
@@ -539,7 +539,10 @@ export function whySaid(verdict: ReviewVerdict, draft: boolean): boolean {
   return verdict.state !== "ready" || draft;
 }
 
-/** What merging does, said under the buttons: where it lands and what production keeps. */
+/**
+ * What merging does, said under the buttons: where it lands and what production keeps — after the
+ * receipt's warning, while the change waits on its press.
+ */
 export function mergeFoot(input: {
   readonly state: ReviewState;
   readonly consequence: string;
@@ -547,11 +550,69 @@ export function mergeFoot(input: {
   readonly stage: string | undefined;
   /** The release production runs. */
   readonly live: string | undefined;
+  /** {@link changeReceipt}'s warning: parts not tried at the change. */
+  readonly warning?: string | undefined;
 }): string {
-  if (!CHECKS_SAID.has(input.state) || input.stage === undefined) return input.consequence;
+  if (!CHECKS_SAID.has(input.state)) return input.consequence;
   const keeps =
     input.live === undefined ? "" : ` Production keeps ${input.live} until you release.`;
-  return `Merging puts it on ${input.stage}.${keeps}`;
+  const foot =
+    input.stage === undefined ? input.consequence : `Merging puts it on ${input.stage}.${keeps}`;
+  return input.warning === undefined ? foot : `${input.warning} ${foot}`;
+}
+
+/** One part's preview in a change's review, as its receipt left it. */
+export interface ReceiptRow {
+  readonly setup: string;
+  readonly preview: string;
+  /** "from a1b2c3d · verified", "from an uncommitted tree", "deploy failed", "not deployed". */
+  readonly words: string;
+}
+
+const shortSha = (sha: string) => sha.slice(0, 7);
+
+/**
+ * A change's receipt (`HqChange.receipt`) as its review shows it: a row per part, and the warning
+ * Merge carries for each part not tried at the change — its preview failed, deployed from an
+ * uncommitted tree or an older commit, or not verified. A part never deployed may be one the change
+ * does not touch, so it warns of nothing. Nothing for a single-part application. The warning never
+ * blocks a merge.
+ */
+export function changeReceipt(input: {
+  readonly receipt: ChangeReceipt | undefined;
+  /** The change's head, which a preview's commit is compared with. */
+  readonly head: string | undefined;
+}):
+  | { readonly parts: ReadonlyArray<ReceiptRow>; readonly warning: string | undefined }
+  | undefined {
+  const { receipt, head } = input;
+  if (receipt === undefined || receipt.parts.length < 2) return undefined;
+  const gaps: Array<string> = [];
+  const parts = receipt.parts.map((part): ReceiptRow => {
+    const row = (words: string, gap?: string) => {
+      if (gap !== undefined) gaps.push(`${part.setup} (${gap})`);
+      return { setup: part.setup, preview: part.previewHostname, words };
+    };
+    if (part.deploy === "none") return row("not deployed");
+    if (part.deploy === "failed") return row("deploy failed", "failed");
+    const verified = part.verified ? " · verified" : " · not verified";
+    const unverified = part.verified ? undefined : "not verified";
+    const commit = part.workspaceClean ? part.deployedCommit : undefined;
+    if (commit === undefined) {
+      return row(`from an uncommitted tree${verified}`, "uncommitted");
+    }
+    if (head !== undefined && commit !== head) {
+      return row(
+        `from ${shortSha(commit)}, the change is at ${shortSha(head)}${verified}`,
+        "older commit",
+      );
+    }
+    return row(`from ${shortSha(commit)}${verified}`, unverified);
+  });
+  return {
+    parts,
+    warning: gaps.length === 0 ? undefined : `Not tried at this change: ${gaps.join(", ")}.`,
+  };
 }
 
 /** What releasing does, said under its button: how long, and the way back. */

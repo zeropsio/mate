@@ -8,7 +8,12 @@ import {
   RELEASE_NOTHING_NEW_ON_MAIN,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
-import type { ChangeDetailResponse, ChangeFile, HqChange } from "@t3tools/shared/hqChanges";
+import type {
+  ChangeDetailResponse,
+  ChangeFile,
+  ChangeReceiptPart,
+  HqChange,
+} from "@t3tools/shared/hqChanges";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
@@ -446,6 +451,55 @@ describe("ChangeReviewView: an open change", () => {
     const html = render(open, files);
     expect(html).toMatch(/data-safe="true" data-zerops-primary-action="Merge"/u);
     expect(footOf(html)).toContain(">Close without merging…</button>");
+  });
+
+  describe("a change of an application of several parts", () => {
+    const HEAD = "c".repeat(40);
+    const part = (setup: string, more: Partial<ChangeReceiptPart> = {}): ChangeReceiptPart => ({
+      setup,
+      previewHostname: `${setup}stage`,
+      deploy: "ok",
+      deployedAt: "2026-10-14T21:06:00Z",
+      workspaceClean: true,
+      deployedCommit: HEAD,
+      verified: true,
+      ...more,
+    });
+    const at = "2026-10-14T21:10:00Z";
+
+    it("A one-part app shows no part name, no part count and no receipt", () => {
+      const today = render(open, files);
+      for (const pull of [open, { ...open, receipt: { at, parts: [part("app")] } }]) {
+        const html = render(pull, files);
+        expect(html).toBe(today);
+        expect(textOf(html)).not.toContain("Parts");
+        expect(textOf(html)).not.toContain("appstage");
+      }
+    });
+
+    it("Merge warns on a stale, uncommitted or failed preview and never blocks", () => {
+      const { deployedCommit: _commit, ...failed } = part("worker", {
+        deploy: "failed",
+        verified: false,
+      });
+      const html = render(
+        {
+          ...open,
+          receipt: {
+            at,
+            parts: [part("web", { deployedCommit: "a".repeat(40) }), part("api"), failed],
+          },
+        },
+        files,
+      );
+      expect(textOf(html)).toContain(
+        "Parts 3 web · webstage · from aaaaaaa, the change is at ccccccc · verified api · apistage · from ccccccc · verified worker · workerstage · deploy failed",
+      );
+      expect(textOf(footOf(html))).toContain(
+        "Not tried at this change: web (older commit), worker (failed). Squash-merges",
+      );
+      expect(html).toMatch(/data-safe="true" data-zerops-primary-action="Merge"/u);
+    });
   });
 
   // Guide 0.8: a verb this person cannot finish is not offered.

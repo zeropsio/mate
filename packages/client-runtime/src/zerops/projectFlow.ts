@@ -24,7 +24,7 @@
  */
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import { type ChangeReceipt, changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
 import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { isSlashCommand } from "@t3tools/shared/userAsk";
@@ -100,6 +100,11 @@ export interface FlowPullRequest {
    * reachable, and asks nothing. Absent reads as ready, as every change did before drafts.
    */
   readonly ready?: boolean | undefined;
+  /**
+   * What zcp last said of each part's preview (`HqChange.receipt`); absent for a change of a
+   * single-part application, which never carries one.
+   */
+  readonly receipt?: ChangeReceipt | undefined;
 }
 
 /** Whether a change asks for the person's review at all: it is no draft. */
@@ -168,6 +173,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     description: change.body.trim().length === 0 ? undefined : change.body,
     commentCount: change.comments ?? undefined,
     ready: change.ready,
+    ...(change.receipt === undefined || change.receipt === null ? {} : { receipt: change.receipt }),
   };
 }
 

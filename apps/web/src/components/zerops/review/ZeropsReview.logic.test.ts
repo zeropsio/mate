@@ -1,3 +1,4 @@
+import type { ChangeReceiptPart } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -24,6 +25,7 @@ import {
   runWords,
   sizeWords,
   changeChecks,
+  changeReceipt,
   mergeFoot,
   productionNowLine,
   releaseFoot,
@@ -727,5 +729,101 @@ describe("the release sheet's lines", () => {
   it("says nothing of a time it cannot read", () => {
     expect(sinceWords("never", now)).toBeUndefined();
     expect(sinceWords(undefined, now)).toBeUndefined();
+  });
+});
+
+describe("a change's receipt: each part's preview", () => {
+  const HEAD = "d4e5f60718293a4b5c6d7e8f9012345678a1b2c3";
+  const OLDER = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+  const part = (setup: string, more: Partial<ChangeReceiptPart> = {}): ChangeReceiptPart => ({
+    setup,
+    previewHostname: `${setup}stage`,
+    deploy: "ok",
+    deployedAt: "2026-10-14T21:06:00Z",
+    workspaceClean: true,
+    deployedCommit: HEAD,
+    verified: true,
+    ...more,
+  });
+  const noCommit = ({ deployedCommit: _commit, ...rest }: ChangeReceiptPart): ChangeReceiptPart =>
+    rest;
+  const receipt = (...parts: ReadonlyArray<ChangeReceiptPart>) => ({
+    at: "2026-10-14T21:10:00Z",
+    parts,
+  });
+
+  it("A one-part app shows no part name, no part count and no receipt", () => {
+    expect(changeReceipt({ receipt: undefined, head: HEAD })).toBeUndefined();
+    expect(changeReceipt({ receipt: receipt(part("app")), head: HEAD })).toBeUndefined();
+  });
+
+  it("A change's receipt lists each part's preview as from a commit, from an uncommitted tree, failed or not deployed", () => {
+    const said = changeReceipt({
+      receipt: receipt(
+        part("web"),
+        noCommit(part("api", { workspaceClean: false })),
+        noCommit(part("worker", { deploy: "failed", verified: false })),
+        noCommit(part("cron", { deploy: "none", verified: false })),
+      ),
+      head: HEAD,
+    });
+    expect(said?.parts.map((row) => [row.setup, row.preview, row.words])).toEqual([
+      ["web", "webstage", "from d4e5f60 · verified"],
+      ["api", "apistage", "from an uncommitted tree · verified"],
+      ["worker", "workerstage", "deploy failed"],
+      ["cron", "cronstage", "not deployed"],
+    ]);
+  });
+
+  it("A receipt names a commit only for a deploy made with a clean workspace", () => {
+    const said = changeReceipt({
+      receipt: receipt(part("web"), part("api", { workspaceClean: false })),
+      head: HEAD,
+    });
+    expect(said?.parts.map((row) => row.words)).toEqual([
+      "from d4e5f60 · verified",
+      "from an uncommitted tree · verified",
+    ]);
+  });
+
+  it("When the change head moved after a preview, the receipt shows both commits", () => {
+    const said = changeReceipt({
+      receipt: receipt(part("web", { deployedCommit: OLDER }), part("api")),
+      head: HEAD,
+    });
+    expect(said?.parts.map((row) => row.words)).toEqual([
+      "from a1b2c3d, the change is at d4e5f60 · verified",
+      "from d4e5f60 · verified",
+    ]);
+  });
+
+  it("Merge warns on a stale, uncommitted or failed preview and never blocks", () => {
+    const gaps = changeReceipt({
+      receipt: receipt(
+        part("web", { deployedCommit: OLDER }),
+        part("api", { workspaceClean: false }),
+        part("worker", { deploy: "failed", verified: false }),
+        part("auth", { verified: false }),
+        part("cron", { deploy: "none", verified: false }),
+        part("docs"),
+      ),
+      head: HEAD,
+    });
+    expect(gaps?.warning).toBe(
+      "Not tried at this change: web (older commit), api (uncommitted), worker (failed), auth (not verified).",
+    );
+    expect(
+      mergeFoot({
+        state: "ready",
+        consequence: "Squash-merges.",
+        stage: "stage",
+        live: undefined,
+        warning: gaps?.warning,
+      }),
+    ).toBe(
+      "Not tried at this change: web (older commit), api (uncommitted), worker (failed), auth (not verified). Merging puts it on stage.",
+    );
+    const tried = changeReceipt({ receipt: receipt(part("web"), part("api")), head: HEAD });
+    expect(tried?.warning).toBeUndefined();
   });
 });
