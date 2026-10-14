@@ -115,7 +115,10 @@ function domainOf(domain: (typeof Row.Type)["domains"][number]): PublicRoutingDo
     ...(sslStatus == null ? {} : { sslStatus }),
     ...(lastDnsCheckAt == null ? {} : { lastDnsCheckAt }),
     ...(detail?.resolvedIpAddresses == null ? {} : { resolvedIps: detail.resolvedIpAddresses }),
-    ...(detail?.resolvedNameServers == null ? {} : { nameServers: detail.resolvedNameServers }),
+    ...(detail?.resolvedNameServers == null
+      ? {}
+      : // As people write them: DNS answers each with its root's trailing dot.
+        { nameServers: detail.resolvedNameServers.map((name) => name.replace(/\.$/, "")) }),
     ...(sslCertificateInstallationError == null || sslCertificateInstallationError === ""
       ? {}
       : { sslError: sslCertificateInstallationError }),
