@@ -698,9 +698,7 @@ it("CI runs full verification on integration pushes and preserves PR change sele
     expect(job.if).not.toContain("outputs.level");
   }
   expect(
-    workflow.jobs.test_packages.steps.find(
-      (step: { name: string }) => step.name === "Test scenario drivers",
-    ).if,
+    workflow.jobs.test_packages.steps.find((step: { name: string }) => step.name === "Test").if,
   ).toBeUndefined();
   expect(workflow.jobs.state_smoke.if).toContain("needs.changes.outputs.chat != 'false'");
   expect(
