@@ -129,7 +129,8 @@ export const inspectGitRelease = <E, R>(
       return {
         ...evidence,
         verdict: "diverged" as const,
-        reason: "The remote branch has commits Mate doesn't, so this release can't go out.",
+        reason:
+          "The remote branch has commits Mate doesn't, so this release can't go out. Remove them from the branch or bring them into main, then review the release again.",
       };
     const workflows = (sha: string | null) =>
       sha === null
