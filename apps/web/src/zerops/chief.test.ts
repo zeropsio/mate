@@ -4,6 +4,8 @@ import {
   chiefNames,
   chiefQuestion,
   chiefSetupLine,
+  chiefSetupEntry,
+  hqOwnChief,
   isChief,
   othersChiefs,
   ownChiefAmong,
@@ -140,5 +142,24 @@ describe("chiefSetupLine", () => {
     ["says nothing once it is set up", { own: "p", mayCreate: true, setup: "done" }, null],
   ])("%s", (_title, input, line) => {
     expect(chiefSetupLine(input)).toBe(line);
+  });
+});
+
+describe("Chief setup entry", () => {
+  it.each([
+    ["a no-Chief viewer sees the setup entry only after HQ has answered", true, {}, "idle", true],
+    [
+      "a viewer with a Chief never sees the setup entry",
+      true,
+      { chief: { chief: "mine" } },
+      "idle",
+      false,
+    ],
+    ["unknown Chief state shows neither setup entry", false, {}, "idle", false],
+    ["Chief setup keeps its running state", true, {}, "running", false],
+    ["Chief setup keeps its failed state", true, {}, "failed", false],
+    ["Chief setup keeps its coming state", true, {}, "done", false],
+  ] as const)("%s", (_title, read, facts, setup, expected) => {
+    expect(chiefSetupEntry(hqOwnChief(facts, read), setup)).toBe(expected);
   });
 });

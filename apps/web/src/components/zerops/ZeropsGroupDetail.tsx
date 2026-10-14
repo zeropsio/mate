@@ -760,7 +760,7 @@ function KnownGroupDetail({
   const waiting = flow.release.summary ?? releaseContentsSummary(flow.release.contents, 20);
   const groupName = useGroupName(groupId);
   const openProjects = useOpenProjects();
-  // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
+  // The New Mate dialog over this page, as from every "Add a project Mate" (`ZeropsNewMateHost`).
   const addMate = useAddMate();
   const actions = useGroupActions(groupId);
   const mates_ = useMateMenus();
@@ -1008,7 +1008,7 @@ export function ZeropsGroupPane({
         <>
           <Button onClick={onAddMate} size="sm" variant="outline">
             <PlusIcon aria-hidden="true" className="size-3.5" />
-            Add a Mate
+            Add a project Mate
           </Button>
           {menu}
         </>
@@ -1028,7 +1028,7 @@ export function ZeropsGroupPane({
         {mates.length === 0 ? (
           matesNotice === null ? (
             <Empty
-              action="Add a Mate"
+              action="Add a project Mate"
               onAction={onAddMate}
               text="No Mate is working on this project yet."
             />

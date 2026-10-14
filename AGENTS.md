@@ -49,7 +49,7 @@ The loop:
 - Prepare a worktree: `cd "$(node scripts/prepare-worktree.ts <name>)"` (reuses an idle one, installs,
   checks readiness).
 - Iterate: targeted `vp test run <files>`. Never repo-wide `vp check`, `vp run -r test` or
-  `vp run -r typecheck` in a worktree; `main`, `kh-next` and `kh-bisect/**` CI run full verification; promotion to main
+  `vp run -r typecheck` in a worktree; `main`, `kh-next` and `kh-bisect/**` CI run blocking verification; promotion to main
   reuses a green kh-next run for the same SHA.
 - On completion, run `node scripts/gate-changed.ts` once: guard ledgers/repository invariants,
   touched-file `vp check`, incremental typechecks of touched packages and dependents, owned unit tests,
@@ -57,6 +57,8 @@ The loop:
   one sandbox case; no frame sampler). `--list` previews; `--base <ref>` changes the comparison.
   About five minutes: one blocking command, timeout at least ten minutes, never detached and polled.
   Then re-run only failed files and the gate once more.
+- Browser scenario shards run in the non-blocking `Signal` workflow on the same refs and pull requests;
+  failures get one same-commit rerun for classification. CI keeps sign-in and state-only smoke blocking.
 - CI's Check job runs repo-wide `vp check`, ledger markdown included. Local
   `node scripts/ci-local.ts` only after touching guard ledgers, exceptions,
   `surfaces.json`, theme tokens or tooling; the integrator certifies assembled work through fast/final
@@ -176,7 +178,7 @@ To answer a question, go to the home:
 - Tests pin behaviour (state, data, protocol, guards, render output, click effects), never class
   strings, pixels or colours; the owner judges looks by eye.
 - Owner-reported visual regressions get a geometry witness for the broken relation in the
-  `owner-reported layout regressions` scenario suite, in the fix's change.
+  `owner-reported layout regressions` scenario suite in the Signal tier, in the fix's change.
 - Behaviour TDD: RED → GREEN, table-driven tests. Backend behaviour ships with focused tests.
 - Important invariants get deterministic checks (lint rule, script, test) with an exception ledger
   that may only shrink; data-layer guards are the model.

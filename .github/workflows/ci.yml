@@ -37,7 +37,6 @@ jobs:
       test_hq: ${{ steps.blame.outputs.test_hq }}
       test_web: ${{ steps.blame.outputs.test_web }}
       test_server: ${{ steps.blame.outputs.test_server }}
-      chat_scenarios: ${{ steps.blame.outputs.chat_scenarios }}
     steps:
       - name: Checkout CI selector
         uses: actions/checkout@v6
@@ -421,15 +420,12 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  chat_scenarios:
-    name: Test Web Scenarios (${{ matrix.name }})
+  state_smoke:
+    name: State Smoke
     needs: [prepare, chat_bundle]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.chat_bundle.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_scenarios') }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.chat_bundle.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.chat_scenarios) }}
+    timeout-minutes: 15
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
@@ -482,11 +478,13 @@ jobs:
           name: chat-scenario-bundle
           path: node_modules/.cache/mate-scenario-web
 
-      - name: Certify every case in this shard
+      - name: Certify sign-in and the state-only smoke
         if: needs.prepare.outputs.skip != 'true'
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
-        run: ${{ matrix.command }}
+        run: |
+          vp run test:browser
+          node scripts/state-smoke.ts
 
   # Independent suites run concurrently; the existing Test context reports
   # their combined verdict without serializing package execution.

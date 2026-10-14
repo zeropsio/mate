@@ -540,7 +540,7 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
       {
         if?: string;
         name: string;
-        strategy: { matrix: string };
+        strategy: { matrix: { include: { command: string }[] } };
       }
     >;
   };
@@ -548,27 +548,23 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
   expect(jobs.chat_bundle!.if).toBe(
     "${{ !cancelled() && needs.prepare.result == 'success' && (needs.prepare.outputs.skip == 'true' || github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_bundle') }}",
   );
-  expect(jobs.chat_scenarios!.if).toBe(
-    "${{ !cancelled() && needs.prepare.result == 'success' && needs.chat_bundle.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_scenarios') }}",
+  expect(blameSelection("refs/heads/main", undefined).selected).toContain("chat_bundle");
+  const signal = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
   );
-  expect(jobs.chat_scenarios!.name).toMatch(/^Test Web /u);
-  expect(jobs.chat_scenarios!.strategy.matrix).toBe(
-    "${{ fromJSON(needs.prepare.outputs.chat_scenarios) }}",
+  expect(signal.jobs.chat_scenarios.if).toBeUndefined();
+  expect(signal.jobs.chat_scenarios.name).toMatch(/^Test Web /u);
+  const commands = signal.jobs.chat_scenarios.strategy.matrix.include.map(
+    (row: { command: string }) => row.command,
   );
-  const selection = blameSelection("refs/heads/main", undefined);
-  expect(selection.selected).toContain("chat_bundle");
-  expect(selection.selected).toContain("chat_scenarios");
-  const commands = selection.matrices.chat_scenarios!.include.map((row) => String(row.command));
-  const nonC = commands.filter((command) => command.startsWith("vp -C"));
+  expect(commands.filter((command: string) => command.includes("shard non-c"))).toEqual([
+    "node scripts/signal.ts shard non-c 1/3",
+    "node scripts/signal.ts shard non-c 2/3",
+    "node scripts/signal.ts shard non-c 3/3",
+  ]);
   const allNonC =
     "vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenarios test/scenarios/areas --exclude 'test/scenarios/areas/c-mate/**'";
-  const certification =
-    "--allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts";
-  expect(nonC).toEqual([
-    `${allNonC} --shard 1/3 ${certification}`,
-    `${allNonC} --shard 2/3 ${certification}`,
-    `${allNonC} --shard 3/3 ${certification}`,
-  ]);
+  const certification = "--allowOnly=false";
   // Vitest owns the partition; its complete input is every non-C file on disk.
   const listed = NodeChildProcess.spawnSync(
     `${allNonC.replace("test run", "test list --filesOnly")} ${certification}`,

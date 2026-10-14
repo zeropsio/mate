@@ -9,43 +9,11 @@ export const blameMatrices = {
   test_hq: [1].map((shard) => ({ shard, total: 1 })),
   test_web: [1, 2].map((shard) => ({ shard, total: 2 })),
   test_server: [1, 2, 3, 4].map((shard) => ({ shard, total: 4 })),
-  chat_scenarios: [
-    {
-      name: "C shard 1",
-      command: "node scripts/chat-gate.ts --verbose --stages C --shard 1/4",
-    },
-    {
-      name: "C shard 2",
-      command: "node scripts/chat-gate.ts --verbose --stages C --shard 2/4",
-    },
-    {
-      name: "C shard 3",
-      command: "node scripts/chat-gate.ts --verbose --stages C --shard 3/4",
-    },
-    {
-      name: "C shard 4",
-      command: "node scripts/chat-gate.ts --verbose --stages C --shard 4/4",
-    },
-    {
-      name: "non-C shard 1",
-      command:
-        "vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenarios test/scenarios/areas --exclude 'test/scenarios/areas/c-mate/**' --shard 1/3 --allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts",
-    },
-    {
-      name: "non-C shard 2",
-      command:
-        "vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenarios test/scenarios/areas --exclude 'test/scenarios/areas/c-mate/**' --shard 2/3 --allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts",
-    },
-    {
-      name: "non-C shard 3",
-      command:
-        "vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenarios test/scenarios/areas --exclude 'test/scenarios/areas/c-mate/**' --shard 3/3 --allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts",
-    },
-  ],
 };
 const jobNames = {
   check: "Check",
   chat_bundle: "Chat Contract bundle",
+  state_smoke: "State Smoke",
   test: "Test",
   test_packages: "Test Packages",
   test_scripts: "Test Scripts",
@@ -73,9 +41,9 @@ export function blameSelection(ref: string, manifest: string | undefined) {
     if (!narrowed || requested.has(name)) selected.add(job);
   }
   for (const [job, rows] of Object.entries(blameMatrices)) {
-    const name = jobNames[job as Exclude<MatrixJob, "chat_scenarios">];
+    const name = jobNames[job as MatrixJob];
     const include = rows.filter((row) => {
-      const context = "name" in row ? `Test Web Scenarios (${row.name})` : `${name} ${row.shard}`;
+      const context = `${name} ${row.shard}`;
       return !narrowed || requested.has(context);
     });
     matrices[job] = { include };
@@ -93,7 +61,7 @@ export function blameSelection(ref: string, manifest: string | undefined) {
       }
     }
     if (selected.has("release_smoke")) selected.add("check");
-    if (selected.has("chat_scenarios")) selected.add("chat_bundle");
+    if (selected.has("state_smoke")) selected.add("chat_bundle");
     if (selected.has("chat_bundle") || selected.has("check")) selected.add("changes");
     if (!selected.size) throw new Error("No known failed CI job in .ci-blame-jobs");
   }

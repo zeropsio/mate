@@ -139,17 +139,17 @@ describe("projectHeadingMenu — a project heading's ···", () => {
     {
       case: "an open project: Fold, Add a Mate, Open project, then where projects are added",
       over: {},
-      items: ["Fold", "Add a Mate", "Open project", "—", "All projects"],
+      items: ["Fold", "Add a project Mate", "Open project", "—", "All projects"],
     },
     {
       case: "a folded one unfolds",
       over: { collapsed: true },
-      items: ["Unfold", "Add a Mate", "Open project", "—", "All projects"],
+      items: ["Unfold", "Add a project Mate", "Open project", "—", "All projects"],
     },
     {
       case: "a heading that does not fold has no Fold",
       over: { onToggle: undefined },
-      items: ["Add a Mate", "Open project", "—", "All projects"],
+      items: ["Add a project Mate", "Open project", "—", "All projects"],
     },
     {
       case: "moves, the first one up and the last one down off",
@@ -158,7 +158,7 @@ describe("projectHeadingMenu — a project heading's ···", () => {
       },
       items: [
         "Fold",
-        "Add a Mate",
+        "Add a project Mate",
         "Open project",
         "—",
         "Move up (off)",
@@ -170,7 +170,7 @@ describe("projectHeadingMenu — a project heading's ···", () => {
     {
       case: "a missing stage or production to add",
       over: { setUp: [{ label: "Add stage", act: () => {} }] },
-      items: ["Fold", "Add a Mate", "Open project", "—", "Add stage", "All projects"],
+      items: ["Fold", "Add a project Mate", "Open project", "—", "Add stage", "All projects"],
     },
   ])("$case", ({ over, items }) => {
     expect(menu(over)).toEqual(items);

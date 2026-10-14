@@ -160,7 +160,11 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "packages/shared/src/showcaseScenes/v1/scenes.lock",
   ],
   "scripts/build-desktop-artifact.test.ts": ["apps/desktop/resources/dmg/*.svg"],
-  "scripts/chat-gate.test.ts": [".github/workflows/ci.yml", "apps/web/test/scenarios/areas/**"],
+  "scripts/chat-gate.test.ts": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/signal.yml",
+    "apps/web/test/scenarios/areas/**",
+  ],
   "scripts/check-guard-exceptions.test.ts": [],
   "scripts/ci-local.test.ts": [".github/workflows/ci.yml"],
   "scripts/ci-blame.test.ts": [".github/workflows/ci.yml", "scripts/ci-blame.ts"],

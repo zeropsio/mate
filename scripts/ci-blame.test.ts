@@ -32,6 +32,20 @@ it("Bisect CI selects only the failed job and preserves its full partition size"
   ).toContain("--shard ${{ matrix.shard }}/${{ matrix.total }}");
 });
 
+it("Blocking blame runs state smoke with its bundle and never selects Signal jobs", () => {
+  const selection = blameSelection("refs/heads/kh-bisect/abc1234", "State Smoke\n");
+  expect(
+    selection.selected.sort(),
+    "ASSERTION: blocking State Smoke selects only its execution dependencies",
+  ).toEqual(["changes", "chat_bundle", "state_smoke"]);
+  for (const context of ["Test Web Scenarios (C shard 3)", "Signal classification"]) {
+    expect(
+      () => blameSelection("refs/heads/kh-bisect/abc1234", context),
+      "ASSERTION: Signal jobs cannot be selected by blocking CI blame",
+    ).toThrow("No known failed CI job");
+  }
+});
+
 it("Scenario blame builds its bundle and runs exactly the failed scenario shard", () => {
   const selection = blameSelection(
     "refs/heads/kh-bisect/abc1234",
@@ -72,7 +86,7 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(
     expect(selection.matrices.test_server!.include).toEqual(
       [1, 2, 3, 4].map((shard) => ({ shard, total: 4 })),
     );
-    expect(selection.matrices.chat_scenarios!.include).toHaveLength(7);
+    expect(selection.selected).not.toContain("chat_scenarios");
   },
 );
 

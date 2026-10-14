@@ -12,9 +12,7 @@ const parse = (source: string) => {
     if (typeof parsed.jobs?.[job]?.strategy?.matrix === "string") {
       parsed.jobs[job].strategy.matrix = {
         include: matrix,
-        shard: matrix
-          .filter((row) => "shard" in row)
-          .map((row) => ("shard" in row ? row.shard : undefined)),
+        shard: matrix.map((row) => row.shard),
       };
     }
   }
@@ -143,6 +141,60 @@ const { jobs } = parse(
   >;
 };
 
+const signalJobs = parse(
+  NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
+).jobs as typeof jobs;
+
+it("Decision: Signal never blocks merge, promotion or release; the blocking tier keeps the state smoke and sign-in checks", () => {
+  const ci = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
+  );
+  const signal = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
+  );
+  const release = NodeFS.readFileSync(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  expect(signal.name).toBe("Signal");
+  expect(signal.on).toEqual(ci.on);
+  expect(
+    ci.jobs.chat_scenarios,
+    "ASSERTION: browser shards cannot affect the blocking CI verdict",
+  ).toBeUndefined();
+  expect(JSON.stringify(ci)).not.toContain("signal.yml");
+  expect(release).not.toContain("signal.yml");
+  expect(release).not.toContain("chat_scenarios");
+  expect(ci.jobs.state_smoke.steps.at(-1).run).toContain("node scripts/state-smoke.ts");
+  const smoke = NodeFS.readFileSync(new URL("./state-smoke.ts", import.meta.url), "utf8");
+  expect(smoke).toContain("stateOnlySmoke");
+  expect(smoke).toContain("test/scenarios/areas/a-signin");
+  for (const job of Object.values(signal.jobs) as {
+    "continue-on-error"?: boolean;
+    steps: { "continue-on-error"?: boolean }[];
+  }[]) {
+    expect(job["continue-on-error"]).toBeUndefined();
+    expect(job.steps.some((step) => step["continue-on-error"])).toBe(false);
+  }
+  expect(signal.jobs.classify.needs).toEqual(["chat_bundle", "chat_scenarios"]);
+  const policyOwners = Object.entries(signal.jobs)
+    .filter(([, job]) =>
+      (job as { steps: { env?: Record<string, string> }[] }).steps.some(
+        (step) => step.env?.PNPM_CONFIG_TRUST_LOCKFILE === "false",
+      ),
+    )
+    .map(([name]) => name);
+  expect(
+    policyOwners,
+    "ASSERTION: Signal verifies its frozen lockfile once before its consumers install",
+  ).toEqual(["chat_bundle"]);
+  expect(signal.jobs.classify.steps.at(-1).with).toMatchObject({
+    name: "signal-failures",
+    path: "signal-failures.json",
+    "if-no-files-found": "error",
+  });
+});
+
 it("Decision: supersede pending main runs; never cancel a running deploy", () => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
@@ -225,13 +277,13 @@ it("Decision: no test removed from CI coverage", () => {
 });
 
 it("C scenario shards expose every case's timing in the CI log", () => {
-  const commands = jobs.chat_scenarios!.strategy!.matrix.include.map((row) => row.command);
-  const c = commands.filter((command) => command.startsWith("node scripts/chat-gate.ts"));
+  const commands = signalJobs.chat_scenarios!.strategy!.matrix.include.map((row) => row.command);
+  const c = commands.filter((command) => command.includes("shard c "));
   expect(c).toHaveLength(4);
-  for (const command of c)
-    expect(command, "ASSERTION: C shards must expose Vitest per-case timings").toContain(
-      "--verbose",
-    );
+  expect(
+    NodeFS.readFileSync(new URL("./signal.ts", import.meta.url), "utf8"),
+    "ASSERTION: C shards must expose Vitest per-case timings",
+  ).toContain("--reporter=verbose");
 });
 
 it("CI runs the same named gate as local ports", () => {
@@ -253,7 +305,7 @@ it("CI runs the same named gate as local ports", () => {
 
 it("CI builds once and certifies both complete C shards from that artifact", () => {
   const { jobs } = parse(
-    NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
+    NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
   ) as {
     jobs: Record<
       string,
@@ -271,8 +323,10 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
     >;
   };
   const build = jobs.chat_bundle!;
-  const journeys = jobs.chat_scenarios!;
-  expect(build.needs).toEqual(["prepare", "changes"]);
+  const journeys = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
+  ).jobs.chat_scenarios as (typeof jobs)[string];
+  expect(build.needs).toBeUndefined();
   expect(
     build.steps
       .filter(
@@ -282,13 +336,13 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
       )
       .map((step) => step.run),
   ).toEqual(["vp exec node apps/web/test/scenarios/harness/build.ts"]);
-  expect(journeys.needs).toEqual(["prepare", "chat_bundle"]);
+  expect(journeys.needs).toEqual("chat_bundle");
   expect(journeys.strategy?.["fail-fast"]).toBe(false);
   expect(journeys.strategy?.matrix.include.slice(0, 4).map((row) => row.command)).toEqual([
-    "node scripts/chat-gate.ts --verbose --stages C --shard 1/4",
-    "node scripts/chat-gate.ts --verbose --stages C --shard 2/4",
-    "node scripts/chat-gate.ts --verbose --stages C --shard 3/4",
-    "node scripts/chat-gate.ts --verbose --stages C --shard 4/4",
+    "node scripts/signal.ts shard c 1/4",
+    "node scripts/signal.ts shard c 2/4",
+    "node scripts/signal.ts shard c 3/4",
+    "node scripts/signal.ts shard c 4/4",
   ]);
   const uploaded = build.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"))!;
   const downloaded = journeys.steps.find((step) =>
@@ -305,6 +359,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
         step.run &&
         !step.run.includes("$GITHUB_OUTPUT") &&
         !step.run.startsWith("vp install ") &&
+        !step.run.startsWith("vp run test:browser") &&
         step.if !== "needs.prepare.outputs.skip == 'true'",
     ),
   ).toEqual([
@@ -370,7 +425,7 @@ it("hosted suites install their working set while native jobs retain their depen
   const install = (name: string) =>
     workflow.jobs[name].steps.find((step: { name: string }) => step.name === "Install dependencies")
       .run;
-  for (const name of ["chat_bundle", "chat_scenarios", "test_hq", "test_web"]) {
+  for (const name of ["chat_bundle", "state_smoke", "test_hq", "test_web"]) {
     expect(
       install(name),
       "ASSERTION: hosted-only test runners must not install unused native workspaces",
@@ -499,7 +554,7 @@ it("main promotion reports successful required checks without repeating verified
     check: "Check",
     test: "Test",
     test_web: "Test Web ${{ matrix.shard }}",
-    chat_scenarios: "Test Web Scenarios (${{ matrix.name }})",
+    state_smoke: "State Smoke",
     test_server: "Test Server ${{ matrix.shard }}",
     chat_bundle: "Chat Contract bundle",
     release_smoke: "Release Smoke",
