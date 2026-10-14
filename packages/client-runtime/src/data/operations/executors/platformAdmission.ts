@@ -35,6 +35,20 @@ export function admitPlatformOperation(input: {
       !capabilities().manageOrganization
     )
       return yield* refused("An organization owner or admin must hand over this Mate.");
+    // Who works on an app: the organization's to decide, by its owners and admins alone.
+    if (
+      intent.kind === "check-invitee" ||
+      intent.kind === "invite-member" ||
+      intent.kind === "set-app-access"
+    ) {
+      if (viewer.id !== intent.orgId || !capabilities().manageOrganization)
+        return yield* refused(
+          intent.kind === "set-app-access"
+            ? "Only an organization owner or admin can change who has access."
+            : "Only an organization owner or admin can invite.",
+        );
+      return;
+    }
     if (intent.kind === "retire-mate-key") {
       if (
         viewer.id !== intent.orgId ||
