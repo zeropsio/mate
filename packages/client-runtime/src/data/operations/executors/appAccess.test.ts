@@ -313,6 +313,60 @@ describe("inviting someone to an app", () => {
   );
 });
 
+describe("inviting someone to the team", () => {
+  const TWO_APPS = { places: ["prod", "stage", "other-prod"], mates: ["m-1"] };
+
+  it.effect.each([
+    {
+      sentence: "A guest gets only the projects chosen for them, and can't start new ones",
+      role: "guest" as const,
+      level: "work" as const,
+      membership: { roleCode: "NO_ACCESS", canCreateProjects: false },
+      grants: [
+        { projectId: "prod", roleCode: "BASIC_USER" },
+        { projectId: "stage", roleCode: "BASIC_USER" },
+        { projectId: "other-prod", roleCode: "BASIC_USER" },
+        { projectId: "m-1", roleCode: "READ_ONLY" },
+      ],
+    },
+    {
+      sentence: "A developer gets the chosen projects at the level chosen, and can start new ones",
+      role: "developer" as const,
+      level: "look" as const,
+      membership: { roleCode: "NO_ACCESS", canCreateProjects: true },
+      grants: [
+        { projectId: "prod", roleCode: "READ_ONLY" },
+        { projectId: "stage", roleCode: "READ_ONLY" },
+        { projectId: "other-prod", roleCode: "READ_ONLY" },
+        { projectId: "m-1", roleCode: "READ_ONLY" },
+      ],
+    },
+    {
+      sentence: "An admin reaches everything by their role: no project is written for them",
+      role: "admin" as const,
+      level: "work" as const,
+      membership: { roleCode: "ADMIN", canCreateProjects: true },
+      grants: undefined,
+    },
+  ])("$sentence", ({ role, level, membership, grants }) =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-owner", "OWNER")]);
+      const receipt = yield* org.executor.invite("r1", {
+        kind: "invite-member",
+        orgId: ORG,
+        email: "eva@example.com",
+        invitee: { kind: "new", firstName: "Eva", lastName: "Dvořáková" },
+        level,
+        role,
+        projects: TWO_APPS,
+      });
+      expect(org.members.at(-1)).toMatchObject(membership);
+      expect(org.grants["cu-new"]).toEqual(grants);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+});
+
 describe("changing a member's access to an app", () => {
   const set = (
     org: ReturnType<typeof organization>,

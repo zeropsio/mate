@@ -95,6 +95,34 @@ describe("operation admission from the account store", () => {
   );
 
   it.effect.each([
+    { kind: "set-org-role", orgRole: "OWNER", allowed: true },
+    { kind: "remove-member", orgRole: "ADMIN", allowed: true },
+    { kind: "set-org-role", orgRole: "BASIC_USER", allowed: false },
+    { kind: "remove-member", orgRole: "READ_ONLY", allowed: false },
+  ] as const)("Only an organization owner or admin changes the team: $kind as $orgRole", (entry) =>
+    Effect.gen(function* () {
+      const intent: OperationIntent =
+        entry.kind === "set-org-role"
+          ? { kind: entry.kind, orgId: "org", clientUserId: "cu-eva", role: "guest" }
+          : { kind: entry.kind, orgId: "org", clientUserId: "cu-eva" };
+      const result = yield* Effect.result(
+        admitPlatformOperation({
+          intent,
+          store: makeAccountStore(AtomRegistry.make()),
+          viewer: { ...viewer, roleCode: entry.orgRole },
+          active: () => true,
+          readDetail: async () => false,
+        }),
+      );
+      expect(Result.isSuccess(result)).toBe(entry.allowed);
+      if (Result.isFailure(result))
+        expect(result.failure.message).toBe(
+          "Only an organization owner or admin can change the team.",
+        );
+    }),
+  );
+
+  it.effect.each([
     {
       name: "a known project",
       listed: true,

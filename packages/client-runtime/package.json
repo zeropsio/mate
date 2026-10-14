@@ -287,6 +287,10 @@
       "types": "./src/zerops/appAccess.ts",
       "default": "./src/zerops/appAccess.ts"
     },
+    "./zerops/teamRoles": {
+      "types": "./src/zerops/teamRoles.ts",
+      "default": "./src/zerops/teamRoles.ts"
+    },
     "./zerops/mateAccess": {
       "types": "./src/zerops/mateAccess.ts",
       "default": "./src/zerops/mateAccess.ts"

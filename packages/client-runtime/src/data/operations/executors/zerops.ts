@@ -51,6 +51,7 @@ import {
 import { throwawaySweepExecutor } from "./throwawaySweep.ts";
 import { addressWritesExecutor } from "./addressWrites.ts";
 import { appAccessExecutor } from "./appAccess.ts";
+import { teamExecutor } from "./team.ts";
 import { serviceRestartExecutor, vaultWriteExecutor } from "./vaultWrites.ts";
 
 type ZeropsOperationsClient = Pick<
@@ -111,6 +112,7 @@ type ZeropsOperationsClient = Pick<
   | "readMemberProjectRoles"
   | "writeMemberProjectRoles"
   | "removeOrganizationMember"
+  | "updateOrganizationMember"
 >;
 
 export function makeZeropsExecutor(input: {
@@ -285,15 +287,35 @@ export function makeZeropsExecutor(input: {
         writeMemberProjectRoles: (id, list) => client.writeMemberProjectRoles(id, list),
         removeOrganizationMember: (id) => client.removeOrganizationMember(id),
       },
-      // The member list and the app's places, read again before the write is reported done.
-      async (orgId, places) => {
+      // The member list, the app's places and the member's own grants, read again before the
+      // write is reported done.
+      async (orgId, places, members = []) => {
         const demands: ReadonlyArray<DetailDemand> = [
           { family: "organizationMembers", ownerId: orgId },
           ...places.map((ownerId) => ({ family: "project", listing: "project", ownerId }) as const),
+          ...members.map((ownerId) => ({ family: "memberProjectRoles", ownerId }) as const),
         ];
         for (const demand of demands) input.revalidate(orgId, demand);
         await Promise.all(demands.map((demand) => input.readDetail(demand)));
       },
+    );
+    const team = teamExecutor(
+      {
+        listOrganizationMembers: (orgId) => client.listOrganizationMembers(orgId),
+        updateOrganizationMember: (id, membership) =>
+          client.updateOrganizationMember(id, membership),
+        removeOrganizationMember: (id) => client.removeOrganizationMember(id),
+      },
+      // The member list and the member's own grants, read again before the write is reported done.
+      async (orgId, clientUserId) => {
+        const demands: ReadonlyArray<DetailDemand> = [
+          { family: "organizationMembers", ownerId: orgId },
+          { family: "memberProjectRoles", ownerId: clientUserId },
+        ];
+        for (const demand of demands) input.revalidate(orgId, demand);
+        await Promise.all(demands.map((demand) => input.readDetail(demand)));
+      },
+      (orgId) => input.viewerOf(orgId)?.roleCode,
     );
     return {
       submit: (requestId, intent) =>
@@ -373,6 +395,10 @@ export function makeZeropsExecutor(input: {
               return people.invite(requestId, intent);
             case "set-app-access":
               return people.setAccess(requestId, intent);
+            case "set-org-role":
+              return team.setRole(requestId, intent);
+            case "remove-member":
+              return team.removeMember(requestId, intent);
             default:
               // HQ's own writes go to HQ's executor; the coordinator never routes one here.
               return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));
@@ -490,6 +516,8 @@ export function makeZeropsExecutor(input: {
           source.connectOrganizationUser(orgId, invite, check),
         writeMemberProjectRoles: (id, list) => source.writeMemberProjectRoles(id, list, check),
         removeOrganizationMember: (id) => source.removeOrganizationMember(id, check),
+        updateOrganizationMember: (id, membership) =>
+          source.updateOrganizationMember(id, membership, check),
       };
       return admission().pipe(Effect.andThen(assemble(client).submit(requestId, intent)));
     },

@@ -19,6 +19,7 @@ import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ZeropsNewRouteImport } from './routes/zerops_.new'
 import { Route as ZeropsAuthorizedRouteImport } from './routes/zerops_.authorized'
 import { Route as SettingsZeropsRouteImport } from './routes/settings.zerops'
+import { Route as SettingsTeamRouteImport } from './routes/settings.team'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
 import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
@@ -84,6 +85,11 @@ const ZeropsAuthorizedRoute = ZeropsAuthorizedRouteImport.update({
 const SettingsZeropsRoute = SettingsZeropsRouteImport.update({
   id: '/zerops',
   path: '/zerops',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsTeamRoute = SettingsTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsSourceControlRoute = SettingsSourceControlRouteImport.update({
@@ -192,6 +198,7 @@ export interface FileRoutesByFullPath {
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/settings/zerops': typeof SettingsZeropsRoute
   '/zerops/authorized': typeof ZeropsAuthorizedRoute
   '/zerops/new': typeof ZeropsNewRoute
@@ -219,6 +226,7 @@ export interface FileRoutesByTo {
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/settings/zerops': typeof SettingsZeropsRoute
   '/zerops/authorized': typeof ZeropsAuthorizedRoute
   '/zerops/new': typeof ZeropsNewRoute
@@ -249,6 +257,7 @@ export interface FileRoutesById {
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/settings/zerops': typeof SettingsZeropsRoute
   '/zerops_/authorized': typeof ZeropsAuthorizedRoute
   '/zerops_/new': typeof ZeropsNewRoute
@@ -280,6 +289,7 @@ export interface FileRouteTypes {
     | '/settings/keybindings'
     | '/settings/providers'
     | '/settings/source-control'
+    | '/settings/team'
     | '/settings/zerops'
     | '/zerops/authorized'
     | '/zerops/new'
@@ -307,6 +317,7 @@ export interface FileRouteTypes {
     | '/settings/keybindings'
     | '/settings/providers'
     | '/settings/source-control'
+    | '/settings/team'
     | '/settings/zerops'
     | '/zerops/authorized'
     | '/zerops/new'
@@ -336,6 +347,7 @@ export interface FileRouteTypes {
     | '/settings/keybindings'
     | '/settings/providers'
     | '/settings/source-control'
+    | '/settings/team'
     | '/settings/zerops'
     | '/zerops_/authorized'
     | '/zerops_/new'
@@ -431,6 +443,13 @@ declare module '@tanstack/react-router' {
       path: '/zerops'
       fullPath: '/settings/zerops'
       preLoaderRoute: typeof SettingsZeropsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/team': {
+      id: '/settings/team'
+      path: '/team'
+      fullPath: '/settings/team'
+      preLoaderRoute: typeof SettingsTeamRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/source-control': {
@@ -591,6 +610,7 @@ interface SettingsRouteChildren {
   SettingsKeybindingsRoute: typeof SettingsKeybindingsRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
+  SettingsTeamRoute: typeof SettingsTeamRoute
   SettingsZeropsRoute: typeof SettingsZeropsRoute
 }
 
@@ -603,6 +623,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsKeybindingsRoute: SettingsKeybindingsRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,
   SettingsSourceControlRoute: SettingsSourceControlRoute,
+  SettingsTeamRoute: SettingsTeamRoute,
   SettingsZeropsRoute: SettingsZeropsRoute,
 }
 

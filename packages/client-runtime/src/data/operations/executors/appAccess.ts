@@ -14,6 +14,7 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import { planAppGrants, type ProjectGrantEntry } from "../../../zerops/appAccess.ts";
+import { membershipOfTeamRole } from "../../../zerops/teamRoles.ts";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
@@ -32,8 +33,15 @@ export type AppAccessPlatform = Pick<
   | "removeOrganizationMember"
 >;
 
-/** Reads the organization's member list and these places again; settles however the reads end. */
-export type AppAccessReadBack = (orgId: string, places: ReadonlyArray<string>) => Promise<void>;
+/**
+ * Reads the organization's member list, these places and these members' own grants again; settles
+ * however the reads end.
+ */
+export type AppAccessReadBack = (
+  orgId: string,
+  places: ReadonlyArray<string>,
+  members?: ReadonlyArray<string>,
+) => Promise<void>;
 
 const ALREADY = "Already in this organization — change their access in the list.";
 const ALREADY_CODES = new Set(["userAlreadyConnectedToCompany", "duplicatedUser"]);
@@ -156,13 +164,21 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
   const invite = (requestId: string, intent: IntentOf<"invite-member">) =>
     Effect.gen(function* () {
       const membership = {
-        // The organization opens nothing by itself: the app's grants are what they get.
-        roleCode: "NO_ACCESS",
-        // Someone who works on it adds their own Mate; someone who looks doesn't.
-        canCreateProjects: intent.level === "work",
+        ...(intent.role === undefined
+          ? {
+              // The organization opens nothing by itself: the app's grants are what they get.
+              roleCode: "NO_ACCESS",
+              // Someone who works on it adds their own Mate; someone who looks doesn't.
+              canCreateProjects: intent.level === "work",
+            }
+          : membershipOfTeamRole(intent.role)),
+        // Finances are Zerops HQ's.
         canViewFinances: false,
         canEditFinances: false,
       };
+      // An owner or an admin reaches everything by their role: no project is theirs to be given.
+      const projects =
+        membership.roleCode === "NO_ACCESS" ? intent.projects : { places: [], mates: [] };
       const { invitee } = intent;
       const sent = yield* Effect.result(
         Effect.mapError(
@@ -197,12 +213,12 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
         planAppGrants({
           current,
           orgRole: membership.roleCode,
-          projects: intent.projects,
+          projects,
           owned: [],
           change: intent.level,
         });
       const granted = yield* Effect.result(writeGrants(member.id, plan));
-      yield* Effect.promise(() => readBack(intent.orgId, intent.projects.places));
+      yield* Effect.promise(() => readBack(intent.orgId, projects.places, [member.id]));
       const result = { clientUserId: member.id };
       if (Result.isFailure(granted))
         return receiptOf(requestId, intent.orgId, result, {
@@ -244,7 +260,7 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
         inWords(fault, CHANGE),
       );
       if (!granted.written) {
-        yield* Effect.promise(() => readBack(intent.orgId, intent.projects.places));
+        yield* Effect.promise(() => readBack(intent.orgId, intent.projects.places, [member.id]));
         return unobservable("Check their access, then choose again");
       }
       let membershipEnded = false;
@@ -260,14 +276,16 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
           if (Result.isSuccess(listed) && !listed.success.some((one) => one.id === member.id))
             membershipEnded = true;
           else {
-            yield* Effect.promise(() => readBack(intent.orgId, intent.projects.places));
+            yield* Effect.promise(() =>
+              readBack(intent.orgId, intent.projects.places, [member.id]),
+            );
             return unobservable(
               "Check the organization's members in Zerops",
               "Their access here is gone; whether the invitation is too, Zerops didn't say.",
             );
           }
         } else {
-          yield* Effect.promise(() => readBack(intent.orgId, intent.projects.places));
+          yield* Effect.promise(() => readBack(intent.orgId, intent.projects.places, [member.id]));
           return receiptOf(
             requestId,
             intent.orgId,
@@ -281,7 +299,7 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
           );
         }
       }
-      yield* Effect.promise(() => readBack(intent.orgId, intent.projects.places));
+      yield* Effect.promise(() => readBack(intent.orgId, intent.projects.places, [member.id]));
       return receiptOf(requestId, intent.orgId, { membershipEnded });
     });
 

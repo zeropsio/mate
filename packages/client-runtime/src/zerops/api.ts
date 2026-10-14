@@ -133,6 +133,9 @@ export interface ZeropsOrganizationMember {
   readonly status?: string;
   readonly roleCode?: string;
   readonly canCreateProjects?: boolean;
+  /** Finances are Zerops HQ's: a role change sends them back as they were. */
+  readonly canViewFinances?: boolean;
+  readonly canEditFinances?: boolean;
   readonly user?: {
     readonly id?: string;
     readonly fullName?: string;
@@ -1533,6 +1536,28 @@ export class ZeropsApiClient {
     await this.#request(
       `/client-user/${clientUserId}/roles`,
       { method: "PUT", body: JSON.stringify({ projectRoleList }) },
+      {
+        operationKind: "project-write",
+        ignoreAnswer: true,
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
+   * `PUT /client-user/{id}` — a membership's organization role and rights, an invitation's too.
+   * Only an owner or an admin may; an admin sets `BASIC_USER` and below and never changes an
+   * owner's or an admin's membership; only an owner sets finances. The member's project grants
+   * stay as they are (measured 2026-10-14).
+   */
+  async updateOrganizationMember(
+    clientUserId: string,
+    membership: Omit<OrganizationInvite, "email">,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/client-user/${clientUserId}`,
+      { method: "PUT", body: JSON.stringify(membership) },
       {
         operationKind: "project-write",
         ignoreAnswer: true,

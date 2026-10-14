@@ -199,6 +199,7 @@ export const ZEROPS_CLIENT_VERBS = [
   "stopService",
   "syncPublicHttpRouting",
   "syncPublicPortRouting",
+  "updateOrganizationMember",
   "updateProjectVariable",
   "updatePublicHttpRouting",
   "updatePublicPortRouting",

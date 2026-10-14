@@ -49,6 +49,11 @@ export function admitPlatformOperation(input: {
         );
       return;
     }
+    if (intent.kind === "set-org-role" || intent.kind === "remove-member") {
+      if (viewer.id !== intent.orgId || !capabilities().manageOrganization)
+        return yield* refused("Only an organization owner or admin can change the team.");
+      return;
+    }
     if (intent.kind === "retire-mate-key") {
       if (
         viewer.id !== intent.orgId ||
