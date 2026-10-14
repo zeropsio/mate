@@ -10,10 +10,18 @@ if (import.meta.main) {
     .flat()
     .map((title) => `(?:${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")})$`)
     .join("|");
-  for (const [files, selection] of [
+  // CI runs the stages on separate runners (`--shard 1/2`, `--shard 2/2`); the local gate runs both.
+  const shardArg = process.argv.indexOf("--shard");
+  const [index, count] = (shardArg === -1 ? "1/1" : process.argv[shardArg + 1]!)
+    .split("/")
+    .map(Number) as [number, number];
+  if (!(Number.isInteger(index) && Number.isInteger(count) && index >= 1 && index <= count))
+    throw new Error(`--shard expects <index>/<count>, got ${process.argv[shardArg + 1]}`);
+  const stages = [
     [["test/scenarios/areas/a-signin"], undefined],
     [Object.keys(stateOnlySmoke).map((file) => NodePath.join(root, file)), pattern],
-  ] as const) {
+  ] as const;
+  for (const [files, selection] of stages.filter((_, stage) => stage % count === index - 1)) {
     const result = NodeChildProcess.spawnSync(
       "vp",
       [

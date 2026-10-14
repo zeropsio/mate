@@ -17,7 +17,7 @@ it("Bisect CI selects only the failed job and preserves its full partition size"
   expect(selection.selected, "ASSERTION: a single failed shard starts no unrelated job").toEqual([
     "test_web",
   ]);
-  expect(selection.matrices.test_web).toEqual({ include: [{ shard: 2, total: 2 }] });
+  expect(selection.matrices.test_web).toEqual({ include: [{ shard: 2, total: 3 }] });
   for (const [job, definition] of Object.entries(workflow.jobs) as [string, { if?: string }][]) {
     if (job === "prepare" || job === "cache") continue;
     expect(definition.if, `ASSERTION: ${job} consumes the one selected job verdict`).toContain(
@@ -33,11 +33,12 @@ it("Bisect CI selects only the failed job and preserves its full partition size"
 });
 
 it("Blocking blame runs state smoke with its bundle and never selects Signal jobs", () => {
-  const selection = blameSelection("refs/heads/kh-bisect/abc1234", "State Smoke\n");
+  const selection = blameSelection("refs/heads/kh-bisect/abc1234", "State Smoke 2\n");
   expect(
     selection.selected.sort(),
     "ASSERTION: blocking State Smoke selects only its execution dependencies",
-  ).toEqual(["changes", "chat_bundle", "state_smoke"]);
+  ).toEqual(["changes", "state_smoke"]);
+  expect(selection.matrices.state_smoke).toEqual({ include: [{ shard: 2, total: 2 }] });
   for (const context of ["Test Web Scenarios (C shard 3)", "Signal classification"]) {
     expect(
       () => blameSelection("refs/heads/kh-bisect/abc1234", context),
@@ -88,7 +89,7 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(
         .sort(),
     );
     expect(selection.matrices.test_server!.include).toEqual(
-      [1, 2, 3, 4].map((shard) => ({ shard, total: 4 })),
+      [1, 2, 3, 4, 5, 6].map((shard) => ({ shard, total: 6 })),
     );
     expect(selection.selected).not.toContain("chat_scenarios");
   },
@@ -131,7 +132,7 @@ it("CI's real selector command publishes its narrowed job and matrix outputs", (
       JSON.parse(outputs.jobs!),
       "ASSERTION: CI runs the selected job through its real command",
     ).toEqual(["test_server"]);
-    expect(JSON.parse(outputs.test_server!)).toEqual({ include: [{ shard: 4, total: 4 }] });
+    expect(JSON.parse(outputs.test_server!)).toEqual({ include: [{ shard: 4, total: 6 }] });
   } finally {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   }

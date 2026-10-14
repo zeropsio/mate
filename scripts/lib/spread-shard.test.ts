@@ -66,8 +66,9 @@ it("CI keeps the measured crash import from sharing a server runner with other l
     const inventory = await ctx.globTestSpecifications();
     const sequencer = new SpreadShardSequencer(ctx);
     const shards = [];
-    for (const index of [1, 2, 3, 4]) {
-      ctx.config.shard = { index, count: 4 };
+    // CI's test_server matrix (scripts/ci-blame.ts); scripts/lib type-checks without it.
+    for (const index of [1, 2, 3, 4, 5, 6]) {
+      ctx.config.shard = { index, count: 6 };
       shards.push(
         (await sequencer.shard(inventory)).map((spec) => spec.moduleId.slice(root.length + 1)),
       );

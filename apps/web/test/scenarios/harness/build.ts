@@ -64,8 +64,9 @@ export default async function setup(project: TestProject) {
   project.provide("scenarioDist", await buildScenarioBundle());
 }
 
-// CI ships every bundle to the scenario shards; one build at a time shares the source tree safely.
+// CI prebuilds every bundle for the scenario runs. Side by side, the builds emit the same bytes as
+// one after the other and leave the source tree unchanged; the React compiler keeps each mostly on
+// one core, so together they take about the time of the slower one.
 if (import.meta.main) {
-  await buildScenarioBundle("handover");
-  await buildScenarioBundle("device-login");
+  await Promise.all([buildScenarioBundle("handover"), buildScenarioBundle("device-login")]);
 }
