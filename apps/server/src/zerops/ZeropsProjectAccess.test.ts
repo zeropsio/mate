@@ -117,26 +117,49 @@ const accessOver = (
 // R6: HQ relays who the project lets in; a Mate trusts the relay at most five minutes from HQ's
 // read of Zerops, and reads Zerops itself past that, or with no relay.
 describe("ZeropsProjectAccess", () => {
-  it.effect("an enrolled Mate does not guess Chief ownership before HQ answers", () =>
+  it.effect("a Mate admits by today's rules while HQ has not classified it", () =>
     Effect.gen(function* () {
-      const { access } = yield* accessOver({ enrolled: true });
-      assert.deepStrictEqual(yield* access.read, { ok: false });
+      for (const state of ["missing", "expired", "ordinary", "legacy"] as const) {
+        const { access } = yield* accessOver({ enrolled: true, tags: ["mate", "chief"] });
+        if (state === "expired") {
+          yield* access.relayed({
+            members: OWN,
+            ageMs: 0,
+            chief: { userId: JAN, ownerName: "Jan" },
+          });
+          yield* TestClock.adjust(Duration.sum(RELAY_HOLDS, Duration.millis(1)));
+        } else if (state === "ordinary" || state === "legacy") {
+          yield* access.relayed({
+            members: OWN,
+            ageMs: 0,
+            ...(state === "ordinary" ? { chief: null } : {}),
+          });
+        }
+        const read = yield* access.read;
+        assert.deepStrictEqual(read.ok ? [read.members, read.relayed] : read, [
+          OWN,
+          state === "ordinary" || state === "legacy",
+        ]);
+      }
     }),
   );
 
-  it.effect("an enrolled Mate does not replace expired Chief ownership with platform roles", () =>
+  it.effect("an HQ that names a Chief's owner admits only that owner", () =>
     Effect.gen(function* () {
-      const { access } = yield* accessOver({ enrolled: true });
-      yield* access.relayed({ members: OWN, ageMs: 0, chief: { userId: JAN, ownerName: "Jan" } });
-      yield* TestClock.adjust(Duration.sum(RELAY_HOLDS, Duration.millis(1)));
-      assert.deepStrictEqual(yield* access.read, { ok: false });
-    }),
-  );
-
-  it.effect("an unregistered tagged Chief never opens through the platform fallback", () =>
-    Effect.gen(function* () {
-      const { access } = yield* accessOver({ tags: ["mate", "chief"] });
-      assert.deepStrictEqual(yield* access.read, { ok: false });
+      const { access, calls } = yield* accessOver({ enrolled: true });
+      yield* access.relayed({
+        members: [
+          { userId: JAN, role: "OWNER", visibility: "open" },
+          { userId: EVA, role: "ADMIN", visibility: "open" },
+        ],
+        ageMs: 0,
+        chief: { userId: JAN, ownerName: "Jan" },
+      });
+      const read = yield* access.read;
+      assert.deepStrictEqual(read.ok ? read.members : read, [
+        { userId: JAN, role: "OWNER", visibility: "open" },
+      ]);
+      assert.deepStrictEqual(calls, []);
     }),
   );
 

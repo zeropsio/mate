@@ -154,6 +154,36 @@ const scene = (overrides: Scene = {}) =>
   });
 
 describe("verifyThrowawayCaller", () => {
+  it.effect("a Mate admits by today's rules while HQ has not classified it", () => {
+    const { layer } = scene({
+      project: { id: PROJECT_ID, clientId: CLIENT_ID, tagList: ["mate", "chief"] },
+    });
+    return Effect.gen(function* () {
+      const access = yield* ZeropsProjectAccessModule.ZeropsProjectAccess;
+      for (const state of ["missing", "expired", "ordinary", "legacy"] as const) {
+        if (state === "expired") {
+          yield* access.relayed({
+            members: [],
+            ageMs: 24 * 60 * 60_000,
+            chief: { userId: "another-person", ownerName: "Ada" },
+          });
+        } else if (state === "ordinary" || state === "legacy") {
+          yield* access.relayed({
+            members: [],
+            ageMs: 0,
+            ...(state === "ordinary" ? { chief: null } : {}),
+          });
+        }
+        const caller = yield* verifyThrowawayCaller({
+          environment: { ...environment, hqEnrollmentPath: "/test/hq/enrollment.json" },
+          token: PRESENTED,
+        });
+        assert.strictEqual(caller.userId, USER_ID);
+        assert.strictEqual(caller.role, "BASIC_USER");
+      }
+    }).pipe(Effect.provide(layer));
+  });
+
   it.effect.each([
     {
       title: "someone else's Chief Mate is not opened by its direct address",
@@ -207,32 +237,6 @@ describe("verifyThrowawayCaller", () => {
         Effect.match({ onSuccess: () => "admitted", onFailure: (error) => error._tag }),
       );
       assert.strictEqual(answer, outcome);
-    }).pipe(Effect.provide(layer));
-  });
-
-  it.effect(
-    "an enrolled Mate waits for Chief ownership instead of admitting a platform owner",
-    () => {
-      const { layer } = scene();
-      return Effect.gen(function* () {
-        const answer = yield* verifyThrowawayCaller({
-          environment: { ...environment, hqEnrollmentPath: "/test/hq/enrollment.json" },
-          token: PRESENTED,
-        }).pipe(Effect.match({ onSuccess: () => "admitted", onFailure: (error) => error._tag }));
-        assert.strictEqual(answer, "ZeropsApiUnavailableError");
-      }).pipe(Effect.provide(layer));
-    },
-  );
-
-  it.effect("a tagged Chief waits for its registered owner before the first HQ frame", () => {
-    const { layer } = scene({
-      project: { id: PROJECT_ID, clientId: CLIENT_ID, tagList: ["mate", "chief"] },
-    });
-    return Effect.gen(function* () {
-      const answer = yield* verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
-        Effect.match({ onSuccess: () => "admitted", onFailure: (error) => error._tag }),
-      );
-      assert.strictEqual(answer, "ZeropsApiUnavailableError");
     }).pipe(Effect.provide(layer));
   });
 

@@ -49,12 +49,30 @@ const makeEnvironmentAuthLayer = (overrides?: Partial<ServerConfig.ServerConfig[
     Layer.provide(makeServerConfigLayer(overrides)),
   );
 
-const makeAdmissionAuthLayer = () => {
+const makeAdmissionAuthLayer = (platformAnswers = false) => {
   const access = projectAccessLayer.pipe(
     Layer.provide(
       Layer.succeed(ZeropsOrgRead, {
-        project: () => Effect.die("Enrolled admission must not fall back to platform roles"),
-        members: () => Effect.die("Enrolled admission must not fall back to platform roles"),
+        project: () =>
+          platformAnswers
+            ? Effect.succeed({
+                kind: "answered" as const,
+                status: 200,
+                body: { clientId: "org", userRoles: [], tagList: ["mate", "chief"] },
+              })
+            : Effect.die("Enrolled admission must not fall back to platform roles"),
+        members: () =>
+          platformAnswers
+            ? Effect.succeed({
+                kind: "answered" as const,
+                status: 200,
+                body: {
+                  clientUserList: [
+                    { id: "member", userId: "owner", roleCode: "OWNER", status: "ACTIVE" },
+                  ],
+                },
+              })
+            : Effect.die("Enrolled admission must not fall back to platform roles"),
         forgetAccess: () => Effect.void,
       }),
     ),
@@ -281,30 +299,55 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
 });
 
 it.layer(NodeServices.layer)("current admission for existing sessions", (it) => {
+  it.effect("a Mate admits by today's rules while HQ has not classified it", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      const access = yield* ZeropsProjectAccess;
+      const session = yield* auth.issueSession({ subject: "zerops-user:owner" });
+      for (const state of ["missing", "expired", "ordinary"] as const) {
+        if (state !== "missing") {
+          yield* access.relayed({
+            ageMs: state === "expired" ? Duration.toMillis(RELAY_HOLDS) + 1 : 0,
+            chief: state === "ordinary" ? null : { userId: "another-person", ownerName: "Ada" },
+            members:
+              state === "ordinary" ? [{ userId: "owner", role: "OWNER", visibility: "open" }] : [],
+          });
+        }
+        const ticket = yield* auth.issueWebSocketTicket(session);
+        const http = yield* auth.authenticateHttpRequest(makeBearerRequest(session.token));
+        const websocket = yield* auth.authenticateWebSocketUpgrade(
+          HttpServerRequest.fromWeb(
+            new Request(`http://localhost/ws?wsTicket=${encodeURIComponent(ticket.ticket)}`),
+          ),
+        );
+        expect([http.subject, websocket.subject]).toEqual([
+          "zerops-user:owner",
+          "zerops-user:owner",
+        ]);
+      }
+    }).pipe(Effect.provide(makeAdmissionAuthLayer(true))),
+  );
+
   it.effect.each([
     ["another person's", "other", "current", false],
     ["the owner's", "owner", "current", true],
-    ["an unknown", "owner", "missing", false],
-    ["an expired", "owner", "stale", false],
   ] as const)(
     "%s existing session opens its Chief only with current ownership",
-    ([, person, state, allowed]) =>
+    ([, person, , allowed]) =>
       Effect.gen(function* () {
         const auth = yield* EnvironmentAuth.EnvironmentAuth;
         const access = yield* ZeropsProjectAccess;
         const session = yield* auth.issueSession({ subject: `zerops-user:${person}` });
         // Mint the ticket before the current ownership verdict: restored credentials cannot bypass it.
         const ticket = yield* auth.issueWebSocketTicket(session);
-        if (state !== "missing") {
-          yield* access.relayed({
-            ageMs: state === "stale" ? Duration.toMillis(RELAY_HOLDS) + 1 : 0,
-            chief: { userId: "owner", ownerName: "Ada" },
-            members: [
-              { userId: "owner", role: "OWNER", visibility: "open" },
-              { userId: "other", role: "OWNER", visibility: "open" },
-            ],
-          });
-        }
+        yield* access.relayed({
+          ageMs: 0,
+          chief: { userId: "owner", ownerName: "Ada" },
+          members: [
+            { userId: "owner", role: "OWNER", visibility: "open" },
+            { userId: "other", role: "OWNER", visibility: "open" },
+          ],
+        });
         const http = yield* auth
           .authenticateHttpRequest(makeBearerRequest(session.token))
           .pipe(Effect.result);

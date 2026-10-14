@@ -6,16 +6,15 @@
  * `@t3tools/shared/mateLink`): the door's own rule over the same list (`@t3tools/shared/mateAccess`),
  * aged by how long before it was sent Zerops answered HQ's view. HQ relays Zerops's access; this
  * Mate trusts it at most {@link RELAY_HOLDS} from HQ's read of Zerops, then reads Zerops itself —
- * its own project and its org's member list, with its own key (`ZeropsOrgRead`), for ordinary
- * Mates without HQ enrollment. Enrolled Mates require HQ's current classification: generic
- * platform roles cannot establish whether this is someone's personal Chief.
+ * its own project and its org's member list, with its own key (`ZeropsOrgRead`). Chief ownership
+ * applies only while HQ supplies a current explicit classification; missing or expired HQ
+ * classification leaves today's platform-role admission in place during rollout.
  *
  * @module ZeropsProjectAccess
  */
 import {
   type ChiefMateOwner,
   type MateAccessMember,
-  isChiefProject,
   restrictChiefAccess,
   projectAccess,
   readOrgMembers,
@@ -37,8 +36,7 @@ import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
 
 /**
  * How long HQ's relay holds from HQ's read of Zerops: one role recheck at its ceiling, the window
- * before current admission needs a fresh answer. Ordinary unenrolled Mates may read Zerops;
- * enrolled Mates require the HQ classification too.
+ * before current admission needs a fresh answer from HQ or this Mate's own Zerops read.
  */
 export const RELAY_HOLDS = Duration.seconds(MAX_ZEROPS_ROLE_RECHECK_SECONDS);
 
@@ -66,8 +64,6 @@ export class ZeropsProjectAccess extends Context.Service<
       readonly chief?: ChiefMateOwner | null;
       readonly ageMs: number;
     }) => Effect.Effect<void>;
-    /** Last authoritative Chief identity, retained so relay expiry never reopens it by role. */
-    readonly chief: Effect.Effect<ChiefMateOwner | null | undefined>;
     /** HQ's relay while it holds ({@link RELAY_HOLDS} from HQ's read); none past that. */
     readonly relay: Effect.Effect<Option.Option<KnownAccess>>;
     /** HQ's relay while it holds, else this Mate's own read; `ok: false` when neither answers. */
@@ -103,7 +99,6 @@ export const readOwnAccess = Effect.fn("ZeropsProjectAccess.readOwn")(function* 
   const nothing: ProjectAccess = { ok: false };
   const own = yield* orgRead.project({ apiBaseUrl, projectId });
   if (own.kind !== "answered" || own.status !== 200) return nothing;
-  if (isChiefProject(own.body)) return nothing;
   const project = readProjectRoles(own.body);
   if (project === null) return nothing;
   const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });
@@ -178,16 +173,7 @@ export const make = Effect.gen(function* () {
 
   const read: ZeropsProjectAccess["Service"]["read"] = Effect.gen(function* () {
     const fresh = yield* relay;
-    // Enrollment means HQ owns the Chief registry. Absence of a fresh classification is not
-    // evidence that this is an ordinary Mate, including after a restart or a removed tag.
-    if (
-      environment?.hqEnrollmentPath !== undefined &&
-      (Option.isNone(fresh) || fresh.value.chief === undefined)
-    )
-      return { ok: false } as const;
     if (Option.isSome(fresh)) return fresh.value;
-    // Expiry cannot turn a personal Chief back into a generic platform-role door.
-    if ((yield* Ref.get(held))?.chief != null) return { ok: false } as const;
     if (environment === undefined) return { ok: false } as const;
     return yield* readOwnAccess({ environment }).pipe(
       Effect.provideService(ZeropsOrgRead, orgRead),
@@ -196,7 +182,6 @@ export const make = Effect.gen(function* () {
 
   return ZeropsProjectAccess.of({
     relayed,
-    chief: Ref.get(held).pipe(Effect.map((access) => access?.chief)),
     relay,
     read,
     changes: Stream.fromPubSub(moved),
