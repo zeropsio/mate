@@ -94,7 +94,7 @@ function row(
     standing,
     word: "Approved",
     rollBack: false,
-    failedEntry: undefined,
+    failedEntries: [],
     ...over,
   };
 }
@@ -266,7 +266,7 @@ describe("what a release replaces: the first only when nothing was released befo
 
   it("a release after a mixed production: says what is true, and keeps the roll back", () => {
     const earlier = [
-      row("v0.1.1", "deploy-failed", { failedEntry: { service: "app", commit: HEAD } }),
+      row("v0.1.1", "deploy-failed", { failedEntries: [{ service: "app", commit: HEAD }] }),
       row("v0.1.0", undefined),
     ];
     const steps = walk(
@@ -465,7 +465,7 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
 
   it("a failed release whose deploy moved nothing offers no roll back; one that moved some does", () => {
     const failed = row("v0.1.1", "deploy-failed", {
-      failedEntry: { service: "app", commit: HEAD },
+      failedEntries: [{ service: "app", commit: HEAD }],
     });
     const still = walk([tagging, onItsWay, later(5, failed, true)]).at(-1);
     expect(still?.model.verdict.state).toBe("release-failed");
@@ -608,7 +608,7 @@ describe("a release opened on its way follows its own tag to the end", () => {
       ended(
         "failed",
         before,
-        row("v0.1.0", "deploy-failed", { failedEntry: { service: "app", commit: HEAD } }),
+        row("v0.1.0", "deploy-failed", { failedEntries: [{ service: "app", commit: HEAD }] }),
       ),
       { state: "release-failed", title: "v0.1.0 didn't go out", why: "The deploy of app failed" },
       "Production still runs what it ran before.",

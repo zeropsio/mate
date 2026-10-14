@@ -550,7 +550,7 @@ describe("releaseReview", () => {
         outcome: {
           kind: "failed",
           detail: "The build of app failed",
-          service: "app",
+          services: ["app"],
           at: minutesAgo(2),
         },
       },
@@ -653,7 +653,7 @@ describe("releaseReview", () => {
         outcome: {
           kind: "failed",
           detail: "The build of app failed",
-          service: "app",
+          services: ["app"],
           at: minutesAgo(2),
         },
       }),
@@ -792,7 +792,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "HQ refused it, or its deploy failed",
       {
         press: { kind: "done" },
-        outcome: { kind: "failed", detail: "The deploy of app failed", service: "app" },
+        outcome: { kind: "failed", detail: "The deploy of app failed", services: ["app"] },
       },
       {
         state: "rollback-failed",

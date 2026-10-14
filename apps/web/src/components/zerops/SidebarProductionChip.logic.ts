@@ -35,6 +35,7 @@ import {
   type GroupFlowStop,
   type ZeropsPublicRoute,
   firstDeployLine,
+  serviceNames,
 } from "@t3tools/client-runtime/zerops";
 
 import { deployBuilding, type Deployment } from "@t3tools/client-runtime/zerops/flow";
@@ -112,8 +113,8 @@ export interface ReleaseFailure {
   readonly at: string | undefined;
   /** The words for it: the failed deploy's message, as HQ records it, or the broker's recorded refusal reason. */
   readonly error: string | undefined;
-  /** The service whose deploy failed. */
-  readonly service: string | undefined;
+  /** Each service whose deploy failed. */
+  readonly services: ReadonlyArray<string>;
 }
 
 /**
@@ -138,17 +139,19 @@ export function releaseFailureOf(input: {
       kind: "refused",
       at: release.taggedAt,
       error: wordsOf(release.detail),
-      service: undefined,
+      services: [],
     };
   }
-  const entry = release.failedEntry;
-  const failed = entry === undefined ? undefined : failedDeploy(input.environmentInputs, entry);
+  // HQ's words and time of the first failed part it still records; each failed part is named.
+  const failed = release.failedEntries
+    .map((entry) => failedDeploy(input.environmentInputs, entry))
+    .find((job) => job !== undefined);
   return {
     tag: release.tag,
     kind: "deploy-failed",
     at: failed === undefined ? undefined : (failed.endedAt ?? failed.at),
     error: wordsOf(failed?.reason ?? undefined),
-    service: entry?.service,
+    services: release.failedEntries.map((entry) => entry.service),
   };
 }
 
@@ -985,7 +988,9 @@ export function stageMenu(input: {
 /** How a release did not go through: "failed deploying app", "was refused". */
 function failedHow(failure: ReleaseFailure): string {
   if (failure.kind === "refused") return "was refused";
-  return failure.service === undefined ? "failed" : `failed deploying ${failure.service}`;
+  return failure.services.length === 0
+    ? "failed"
+    : `failed deploying ${serviceNames(failure.services)}`;
 }
 
 /**

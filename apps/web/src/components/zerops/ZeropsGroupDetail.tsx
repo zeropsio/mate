@@ -83,7 +83,7 @@ import {
   notInZerops,
   serviceRows,
   stopCardTitle,
-  stopFailedDeploy,
+  stopFailedDeploys,
   stopKeyGap,
   stopMetaLine,
   stopTone,
@@ -1021,10 +1021,10 @@ function ZeropsProjectStopDetailPage({
           age: formatRelativeTimeLabel,
           firstDeploy,
         });
-  const failedDeploy =
+  const failedDeploys =
     flow === undefined || stop === undefined
-      ? undefined
-      : stopFailedDeploy({ tier: stop.tier, rows: services, releases: flow.releases });
+      ? NO_FAILURES
+      : stopFailedDeploys({ tier: stop.tier, rows: services, releases: flow.releases });
   // *Run again* asks HQ, by its rule for who develops the application.
   const mayRunAgain = useEnvironmentDeployOffer()(projectId);
   const mayKeepKey = useKeepDeployKeyOffer();
@@ -1062,7 +1062,6 @@ function ZeropsProjectStopDetailPage({
   const view = stopView({ deployment, row: stop, nowMs });
   const live = flow.releases.find((entry) => entry.standing === "live");
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
-  const redeploy = failedDeploy?.redeploy;
   // How many changes production lacks, at least that many where HQ stopped counting.
   const notLive =
     flow.release.summary === undefined
@@ -1072,7 +1071,7 @@ function ZeropsProjectStopDetailPage({
     tier: stop.tier,
     view,
     releasing: flow.release.inFlight ?? (release.releasing ? release.tag : undefined),
-    failed: failedDeploy === undefined ? undefined : { ...failedDeploy, mayRunAgain },
+    failed: failedDeploys.map((failure) => ({ ...failure, mayRunAgain })),
     waiting: notLive.count,
     waitingAtLeast: notLive.atLeast,
     untold: production ? flow.release.untold : NO_UNTOLD,
@@ -1146,15 +1145,14 @@ function ZeropsProjectStopDetailPage({
         }
         deployAnswer={deployAnswer}
         runAgain={
-          redeploy === undefined || !mayRunAgain
-            ? undefined
-            : {
-                running: verbs.pending.has(
-                  flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
-                ),
+          mayRunAgain
+            ? {
+                running: (service) =>
+                  verbs.pending.has(flowVerbKey({ kind: "redeploy", groupId, projectId, service })),
                 refused: runAgainRefused,
-                onRunAgain: () => said(verbs.redeploy(flow, projectId, redeploy)),
+                onRunAgain: (redeploy) => said(verbs.redeploy(flow, projectId, redeploy)),
               }
+            : undefined
         }
         services={
           declared === undefined ||
@@ -1200,12 +1198,13 @@ interface StopWaiting {
   readonly atLeast: boolean;
 }
 
-/** *Run again* on the verdict: the failed deploy, asked again in HQ. */
+/** *Run again* on the verdict, or on each failed part under it: the failed deploy, asked again in HQ. */
 interface StopRunAgain {
-  readonly running: boolean;
+  /** Whether it is under way for the service. */
+  readonly running: (service: string) => boolean;
   /** Why HQ refused the last one, until another is pressed. */
   readonly refused: string | null;
-  readonly onRunAgain: () => void;
+  readonly onRunAgain: (redeploy: RunAgain) => void;
 }
 
 /**
@@ -1505,17 +1504,47 @@ export function ZeropsStopPane({
           ) : verb?.kind === "run-again" && runAgain !== undefined ? (
             <Button
               data-zerops-primary-action="Run again"
-              disabled={runAgain.running}
-              onClick={runAgain.onRunAgain}
+              disabled={runAgain.running(verb.redeploy.service)}
+              onClick={() => runAgain.onRunAgain(verb.redeploy)}
               size="compact"
               variant="outline"
             >
-              {flowVerbLabel("redeploy", runAgain.running)}
+              {flowVerbLabel("redeploy", runAgain.running(verb.redeploy.service))}
             </Button>
           ) : (
             readAgain
           )}
         </VerdictPanel>
+        {verdict.failedParts === undefined ? null : (
+          <ul className="mt-1.5 flex flex-col px-3" data-zerops-surface="stop-failed-parts">
+            {verdict.failedParts.map((part) => (
+              <li
+                className="flex items-center gap-2 py-1 text-sm"
+                data-zerops-failed-part={part.service}
+                key={part.service}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="text-[var(--zerops-status-failed-text)]">{part.text}</span>
+                  {part.detail === undefined ? null : (
+                    <span className="text-muted-foreground"> · {part.detail}</span>
+                  )}
+                </span>
+                {part.runAgain === undefined || runAgain === undefined ? null : (
+                  <Button
+                    disabled={runAgain.running(part.service)}
+                    onClick={() =>
+                      part.runAgain !== undefined && runAgain.onRunAgain(part.runAgain)
+                    }
+                    size="compact"
+                    variant="outline"
+                  >
+                    {flowVerbLabel("redeploy", runAgain.running(part.service))}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
         {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
           <p className="mt-1.5 px-3 text-sm text-[var(--zerops-status-failed-text)]">
             {runAgain.refused}
@@ -1954,6 +1983,7 @@ const EMPTY_STOPS: ReadonlyArray<EnvironmentRow> = [];
 const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null };
 /** A stop's parts before its flow has been read — the page says it is unread in their place. */
 const NO_SERVICE_ROWS: ReadonlyArray<StopServiceRow> = [];
+const NO_FAILURES: ReturnType<typeof stopFailedDeploys> = [];
 /** What a stage lists in a production's place: it has no releases and waits for none. */
 const NO_RELEASES: ReadonlyArray<FlowReleaseRow> = [];
 /** What a release carried while HQ is asked: nothing is known yet. */

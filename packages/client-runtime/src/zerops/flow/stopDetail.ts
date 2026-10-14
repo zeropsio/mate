@@ -28,7 +28,7 @@ import { type HqJob, jobFailed, jobInFlight } from "../hq/environments.ts";
 import { deployFollowText } from "../hq/deployAnswer.ts";
 import { deployLogTarget, type DeployLogTarget } from "../hq/deployLog.ts";
 import type { Shown } from "../knowledge/known.ts";
-import { cannotTellWhatRuns, changesNotLive } from "../projectAttention.ts";
+import { cannotTellWhatRuns, changesNotLive, serviceNames } from "../projectAttention.ts";
 import { serviceDashboardUrl } from "../serviceMap.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
 import { sameCommit } from "../versionName.ts";
@@ -56,8 +56,22 @@ export interface StopVerdict {
   readonly detail: string | undefined;
   readonly verb:
     | { readonly kind: "release"; readonly tag: string }
-    | { readonly kind: "run-again" }
+    | { readonly kind: "run-again"; readonly redeploy: RunAgain }
     | null;
+  /**
+   * Where several parts failed: each, with its own *Run again* — the sentence names them all and
+   * carries no verb of its own. Absent for one failure, which the sentence and its verb say.
+   */
+  readonly failedParts?: ReadonlyArray<StopFailedPart>;
+}
+
+/** One failed part under a stop's verdict: what failed, why or what still runs, and its verb. */
+export interface StopFailedPart {
+  readonly service: string;
+  readonly text: string;
+  readonly detail: string | undefined;
+  /** What *Run again* asks HQ for; none where it is not this person's to ask, or not asked again. */
+  readonly runAgain: RunAgain | undefined;
 }
 
 /** A deploy of the stop that failed: what it deployed, where, and what runs on instead. */
@@ -91,6 +105,11 @@ export interface StopFailure extends StopFailedDeploy {
   /** Whether this person may ask HQ to run it again (`redeploy`). */
   readonly mayRunAgain: boolean;
 }
+
+/** HQ's words for why a deploy failed, which say more than what still runs — the row says that too. */
+const failureDetail = ({ message, running }: StopFailedDeploy): string | undefined =>
+  message ??
+  (running === undefined ? undefined : withSince(`${running.label} still runs`, running.since));
 
 /** `text · since`, or the text alone while how long is not known. */
 const withSince = (text: string, since: string | undefined): string =>
@@ -130,7 +149,8 @@ export function stopVerdict(input: {
   readonly view: StopView;
   /** The tag in flight; production only. */
   readonly releasing: string | undefined;
-  readonly failed: StopFailure | undefined;
+  /** Every failed part (`stopFailedDeploys`), each with whether this person may run it again. */
+  readonly failed: ReadonlyArray<StopFailure>;
   /** Changes merged to main that production does not run. */
   readonly waiting: number;
   /** Whether that is only how many at least: HQ stopped counting (`movedCount`). */
@@ -186,18 +206,31 @@ export function stopVerdict(input: {
       verb: null,
     };
   }
-  if (input.failed !== undefined) {
-    const { label, service, running, redeploy, message, mayRunAgain } = input.failed;
-    // HQ's words for why say more than what still runs, which the service's row says too.
+  const [first, ...others] = input.failed;
+  if (first !== undefined && others.length === 0) {
+    const { label, service, redeploy, mayRunAgain } = first;
     return {
       tone: "failed",
       text: `The deploy of ${label} failed on ${service}.`,
-      detail:
-        message ??
-        (running === undefined
-          ? undefined
-          : withSince(`${running.label} still runs`, running.since)),
-      verb: redeploy !== undefined && mayRunAgain ? { kind: "run-again" } : null,
+      detail: failureDetail(first),
+      verb: redeploy !== undefined && mayRunAgain ? { kind: "run-again", redeploy } : null,
+    };
+  }
+  if (first !== undefined) {
+    const services = serviceNames(input.failed.map((failure) => failure.service));
+    return {
+      tone: "failed",
+      text: input.failed.every((failure) => failure.label === first.label)
+        ? `The deploy of ${first.label} failed on ${services}.`
+        : `Deploys failed on ${services}.`,
+      detail: undefined,
+      verb: null,
+      failedParts: input.failed.map((failure) => ({
+        service: failure.service,
+        text: `${failure.service}: ${failure.label} failed`,
+        detail: failureDetail(failure),
+        runAgain: failure.mayRunAgain ? failure.redeploy : undefined,
+      })),
     };
   }
   const releaseVerb =
@@ -657,24 +690,24 @@ export function serviceRows(input: {
 }
 
 /**
- * The deploy of the stop that failed, if one did.
+ * Every deploy of the stop that failed — each failed part, never only the first (MODEL §9/5).
  *
- * A production's is the newest release whose deploy failed and that is newer than the one it runs
- * (`FlowReleaseRow.failedEntry`): a release that failed never becomes what a service runs, so its
- * failure sits on a commit none of the stop's rows carries, and the service runs on what it ran.
- * A release that failed before the live one is history.
+ * A production's are those of the newest release whose deploy failed and that is newer than the one
+ * it runs (`FlowReleaseRow.failedEntries`): a release that failed never becomes what a service
+ * runs, so its failure sits on a commit none of the stop's rows carries, and the service runs on
+ * what it ran. A release that failed before the live one is history.
  *
- * Otherwise — and always on a stage — a service whose newest deploy HQ records as failed: it names
- * that commit, and what the service still runs, where that is another one.
+ * Otherwise — and always on a stage — each service whose newest deploy HQ records as failed: it
+ * names that commit, and what the service still runs, where that is another one.
  *
- * Either is asked again (`redeploy`) only while it is the service's newest deploy and failed.
+ * Each is asked again (`redeploy`) only while it is the service's newest deploy and failed.
  */
-export function stopFailedDeploy(input: {
+export function stopFailedDeploys(input: {
   readonly tier: GroupEnvironmentTier;
   readonly rows: ReadonlyArray<StopServiceRow>;
   /** The group's releases, newest first. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
-}): StopFailedDeploy | undefined {
+}): ReadonlyArray<StopFailedDeploy> {
   /** The service's failed deploy HQ records, where it is of `commit`. */
   const recordOf = (service: string, commit: string | undefined) => {
     const failed = input.rows.find((row) => row.hostname === service)?.failed;
@@ -683,32 +716,35 @@ export function stopFailedDeploy(input: {
   if (input.tier === "production") {
     const live = input.releases.findIndex((release) => release.standing === "live");
     const newer = live === -1 ? input.releases : input.releases.slice(0, live);
-    const failed = newer.find((release) => release.failedEntry !== undefined);
-    if (failed?.failedEntry !== undefined) {
-      const { service, commit } = failed.failedEntry;
-      const record = recordOf(service, commit);
-      return {
-        label: failed.tag,
-        service,
-        sha: commit,
-        running: input.rows.find((row) => row.hostname === service)?.runs,
-        redeploy:
-          record === undefined ? undefined : { service, sha: record.sha, after: record.jobId },
-        message: record?.message,
-      };
-    }
+    const failed = newer.find((release) => release.failedEntries.length > 0);
+    if (failed !== undefined)
+      return failed.failedEntries.map(({ service, commit }) => {
+        const record = recordOf(service, commit);
+        return {
+          label: failed.tag,
+          service,
+          sha: commit,
+          running: input.rows.find((row) => row.hostname === service)?.runs,
+          redeploy:
+            record === undefined ? undefined : { service, sha: record.sha, after: record.jobId },
+          message: record?.message,
+        };
+      });
   }
-  const row = input.rows.find((entry) => entry.failed !== undefined);
-  if (row?.failed === undefined) return undefined;
-  const { failed, hostname } = row;
-  return {
-    label: shortCommit(failed.sha),
-    service: hostname,
-    sha: failed.sha,
-    running: sameCommit(row.sha, failed.sha) ? undefined : row.runs,
-    redeploy: { service: hostname, sha: failed.sha, after: failed.jobId },
-    message: failed.message,
-  };
+  return input.rows.flatMap((row) => {
+    const { failed, hostname } = row;
+    if (failed === undefined) return [];
+    return [
+      {
+        label: shortCommit(failed.sha),
+        service: hostname,
+        sha: failed.sha,
+        running: sameCommit(row.sha, failed.sha) ? undefined : row.runs,
+        redeploy: { service: hostname, sha: failed.sha, after: failed.jobId },
+        message: failed.message,
+      },
+    ];
+  });
 }
 
 /** What a stage's deploy history says beside the commit that stage runs. */

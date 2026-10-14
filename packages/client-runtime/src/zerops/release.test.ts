@@ -359,8 +359,8 @@ describe("a release's row", () => {
       runs(API, OLD),
       [failure("v1.3.0", "web", WEB)],
     );
-    expect(failed!.failedEntry).toEqual({ service: "web", commit: WEB });
-    expect(live!.failedEntry).toBeUndefined();
+    expect(failed!.failedEntries).toEqual([{ service: "web", commit: WEB }]);
+    expect(live!.failedEntries).toEqual([]);
   });
 
   it("never names a release that lists nothing as Live", () => {
