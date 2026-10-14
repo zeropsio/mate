@@ -305,6 +305,12 @@ describe("a Mate's addresses", () => {
       ],
     },
     {
+      title: "keeps a stage half's preview while the services list has not shown it yet",
+      routes: [route("todoapp", "todoapp.example.app"), route("todoappstage", "stage.example.app")],
+      hostnames: ["todoapp"],
+      rows: ["todoapp dev todoapp.example.app", "todoappstage preview stage.example.app"],
+    },
+    {
       title: "never lists the control plane",
       routes: [route("zcp", "zcp.example.app"), route("appdev", "appdev.example.app")],
       rows: ["appdev dev appdev.example.app"],

@@ -80,6 +80,7 @@ import { REASONS } from "@t3tools/shared/zeropsPermissions";
 import { can } from "./permissions.ts";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
@@ -103,6 +104,7 @@ import {
   OperationObserver,
   type OperationWatch,
   type OperationSignal,
+  type ProcessEvidence,
 } from "./operationWatch.ts";
 import { makeOperationWire } from "./operationWire.ts";
 import { evidenceOf, stepOf, encodeEvidence, encodePhase, operationRecords } from "./operations.ts";
@@ -141,6 +143,8 @@ import {
 export interface DeploysOptions {
   /** A scoped observer; production uses HQ_ORG_TOKEN and HQ_ZEROPS_API. */
   readonly observer?: OperationWatch;
+  /** How long a release waits for a part HQ starts before asking its deploy; two minutes. */
+  readonly startWait?: Duration.Duration;
   /** External delivery boundary fixtures use the production GitPush with disposable custody. */
   readonly pushLayer?: Layer.Layer<
     GitPush,
@@ -510,6 +514,7 @@ export const deploysLayer = (
                   }),
                 ),
             });
+      const startWait = options.startWait ?? Duration.minutes(2);
       const ticks = yield* SubscriptionRef.make(0);
       const tick = SubscriptionRef.update(ticks, (n) => n + 1);
       /** A list of names as a column of them holds it. */
@@ -661,10 +666,13 @@ export const deploysLayer = (
 
       /**
        * A production brought to what its release's tier names (MODEL §9/8, §9/10), with its
-       * environment's token: a part of the application — a service one of its releases listed —
-       * the tier does not name is stopped, never deleted (deleting a service is a person's act); a
-       * stopped service `targets` deploys to is started first. One the project lacks (`gone`) is its
-       * deploy's to report. Each stopped part's line, and what HQ started or could not do.
+       * environment's token, in the write that plans its release, so one plan acts: a part of the
+       * application — a service one of its releases listed — the tier does not name is stopped,
+       * never deleted (deleting a service is a person's act), and HQ keeps that it stopped it; a
+       * stopped service `targets` deploys to is started first, and its start waited for, only where
+       * HQ stopped it — never one a person stopped. Where nothing is dropped and HQ stopped nothing,
+       * it asks Zerops nothing. One the project lacks (`gone`) is its deploy's to report. Each
+       * stopped part's line, and what HQ started or could not do.
        */
       const tierLifecycle = (
         environment: Environment,
@@ -688,6 +696,13 @@ export const deploysLayer = (
           const dropped = parts
             .map((part) => part.service)
             .filter((service) => !tier.named.has(service));
+          const stoppedByHq = new Set(
+            (yield* sql<{ readonly service_id: string }>`
+              SELECT service_id FROM hq_tier_stop WHERE environment_id = ${environment.id}`).map(
+              (row) => row.service_id,
+            ),
+          );
+          if (dropped.length === 0 && stoppedByHq.size === 0) return { notes, left, gone };
           const listed = new Set(targets.map((target) => target.service));
           const undeclared = `the tier of ${tier.tag} does not declare it`;
           const detail = (error: ZeropsError) =>
@@ -712,6 +727,13 @@ export const deploysLayer = (
             }
             return { notes, left, gone };
           }
+          // HQ's stop holds until the service runs again or is gone: a person took it back.
+          const held = read.success
+            .filter((service) => stoppedByHq.has(service.id) && service.status !== "ACTIVE")
+            .map((service) => service.id);
+          yield* sql`
+            DELETE FROM hq_tier_stop
+            WHERE environment_id = ${environment.id} AND NOT (service_id = ANY(${textArray(held)}))`;
           const started: Array<string> = [];
           const present = new Set(read.success.map((service) => service.name));
           for (const service of listed) if (!present.has(service)) gone.add(service);
@@ -723,6 +745,11 @@ export const deploysLayer = (
                 service.status === "ACTIVE"
                   ? yield* deploy.stopService(service.id)(key.token).pipe(Effect.result)
                   : undefined;
+              if (stop?._tag === "Success") {
+                yield* sql`
+                  INSERT INTO hq_tier_stop (environment_id, service_id)
+                  VALUES (${environment.id}, ${service.id}) ON CONFLICT DO NOTHING`;
+              }
               const [ran] = yield* sql<{ readonly sha: string }>`
                 SELECT sha FROM hq_deploy_job
                 WHERE environment_id = ${environment.id} AND kind = 'deploy'
@@ -741,15 +768,60 @@ export const deploysLayer = (
                       ? `stopped: ${undeclared}`
                       : `stopped by rollback to ${tier.rollbackOf}: ${undeclared}`,
               });
-            } else if (listed.has(service.name) && service.status === "STOPPED") {
+            } else if (
+              listed.has(service.name) &&
+              service.status === "STOPPED" &&
+              held.includes(service.id)
+            ) {
               const start = yield* deploy.startService(service.id)(key.token).pipe(Effect.result);
-              if (start._tag === "Success") started.push(service.name);
-              else notes.push(`HQ could not start ${service.name}: ${detail(start.failure)}`);
+              if (start._tag === "Failure") {
+                notes.push(`HQ could not start ${service.name}: ${detail(start.failure)}`);
+                continue;
+              }
+              yield* sql`
+                DELETE FROM hq_tier_stop
+                WHERE environment_id = ${environment.id} AND service_id = ${service.id}`;
+              const up = yield* startedBy(projectId, start.success.processId);
+              if (up === undefined) started.push(service.name);
+              else notes.push(`HQ started ${service.name}, but ${up}; its deploy was asked anyway`);
             }
           }
           if (started.length > 0) notes.push(`${tier.tag} started ${started.join(", ")}`);
           return { notes, left, gone };
         });
+
+      /**
+       * A service's start, its process followed to its end for at most `startWait`, so its deploy is
+       * asked of a running service: none where it finished, else what kept it.
+       */
+      const startedBy = (projectId: string, processId: string) =>
+        observer.watch({ projectId, processIds: [processId], versionId: null }).pipe(
+          Stream.map((signal) =>
+            signal.phase === "live"
+              ? signal.processes.find((row) => row.id === processId)
+              : undefined,
+          ),
+          Stream.filter(
+            (process): process is ProcessEvidence =>
+              process !== undefined &&
+              ["FINISHED", "FAILED", "CANCELED", "CANCELLED"].includes(process.status),
+          ),
+          Stream.runHead,
+          Effect.timeoutOption(startWait),
+          Effect.map((ended) => {
+            const process = Option.getOrUndefined(Option.flatten(ended));
+            if (process === undefined)
+              return `it had not come up after ${Duration.format(startWait)}`;
+            return process.status === "FINISHED"
+              ? undefined
+              : `its start failed: ${process.error?.message ?? process.error?.code ?? "Zerops gave no reason"}`;
+          }),
+          Effect.catch((error) =>
+            Effect.succeed(
+              `HQ could not follow its start: ${error._tag === "ZeropsRefused" ? error.code : error.message}`,
+            ),
+          ),
+        );
 
       /** What an environment is wanted at now: a stage main's heads, a production its release. */
       const wantedOf = (environment: Environment) =>
@@ -1010,18 +1082,9 @@ export const deploysLayer = (
           /** The jobs `targets` asks for in `environment`, each with why it cannot deploy. */
           const asked: Array<{
             readonly environment: Environment;
-            readonly targets: ReadonlyArray<{
-              readonly target: Target;
-              readonly skip?: string;
-              readonly gone?: boolean;
-            }>;
+            readonly targets: ReadonlyArray<{ readonly target: Target; readonly skip?: string }>;
           }> = [];
-          /** `gone`: services the project no longer has, whose deploys report it (C16). */
-          const ask = (
-            environment: Environment,
-            targets: ReadonlyArray<Target>,
-            gone: ReadonlySet<string> = new Set(),
-          ) =>
+          const ask = (environment: Environment, targets: ReadonlyArray<Target>) =>
             Effect.gen(function* () {
               if (environment.target === "git") {
                 asked.push({ environment, targets: targets.map((target) => ({ target })) });
@@ -1032,25 +1095,28 @@ export const deploysLayer = (
                 environment.tier,
                 targets[0]?.label ?? null,
               );
-              const checked: Array<{
-                readonly target: Target;
-                readonly skip?: string;
-                readonly gone?: boolean;
-              }> = [];
+              const checked: Array<{ readonly target: Target; readonly skip?: string }> = [];
               for (const target of targets) {
                 const skip = yield* codeProblem(
                   environment.app_id,
                   target,
                   setups.get(target.service),
                 );
-                const asked = gone.has(target.service) ? { target, gone: true } : { target };
-                checked.push(skip === undefined ? asked : { ...asked, skip });
+                checked.push(skip === undefined ? { target } : { target, skip });
               }
               asked.push({ environment, targets: checked });
             });
+          /** The productions a release brings to its tier, in the write (`tierLifecycle`). */
+          const lifecycles: Array<{
+            readonly environment: Environment;
+            readonly tier: {
+              readonly tag: string;
+              readonly rollbackOf: string | null;
+              readonly named: ReadonlySet<string>;
+            };
+            readonly targets: ReadonlyArray<Target>;
+          }> = [];
           /** Each tier a recipe merge changed: what it added, and what HQ sees of it now. */
-          /** The services a release's tier no longer names, stopped, each with its line. */
-          const lifecycle: Array<LeftOut> = [];
           const tiers: Array<{
             readonly tier: "stage" | "production";
             readonly digest: string;
@@ -1159,10 +1225,8 @@ export const deploysLayer = (
                   yield* ask(environment, wanted.targets);
                   continue;
                 }
-                const brought = yield* tierLifecycle(environment, wanted.tier, wanted.targets);
-                notes.push(...brought.notes);
-                lifecycle.push(...brought.left);
-                yield* ask(environment, wanted.targets, brought.gone);
+                lifecycles.push({ environment, tier: wanted.tier, targets: wanted.targets });
+                yield* ask(environment, wanted.targets);
               }
               break;
             }
@@ -1200,6 +1264,15 @@ export const deploysLayer = (
                 WHERE id = ${rollout.id}::bigint FOR UPDATE`;
               // Another planned it meanwhile: its plan stands, and says what it left out.
               if (row === undefined || row.planned) return undefined;
+              const leftOut: Array<LeftOut> = [];
+              /** Services each production's project no longer has, whose deploys report it (C16). */
+              const gone = new Map<string, ReadonlySet<string>>();
+              for (const { environment, tier, targets } of lifecycles) {
+                const brought = yield* tierLifecycle(environment, tier, targets);
+                notes.push(...brought.notes);
+                leftOut.push(...brought.left);
+                gone.set(environment.id, brought.gone);
+              }
               let count = 0;
               for (const tier of tiers) {
                 yield* seen(rollout.app_id, tier.tier, tier.digest, tier.services);
@@ -1214,9 +1287,8 @@ export const deploysLayer = (
                   count += 1;
                 }
               }
-              const leftOut: Array<LeftOut> = [...lifecycle];
               for (const { environment, targets } of asked) {
-                for (const { target, skip, gone } of targets) {
+                for (const { target, skip } of targets) {
                   if (environment.target === "git") {
                     yield* makePushJob(rollout.id, environment, target, rollout.by);
                     count += 1;
@@ -1230,7 +1302,7 @@ export const deploysLayer = (
                     rollout.cause,
                     by,
                     skip,
-                    gone,
+                    gone.get(environment.id)?.has(target.service),
                   );
                   if ("left" in job) leftOut.push(job.left);
                   else count += 1;
