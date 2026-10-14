@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import { projectAccess } from "@t3tools/shared/mateAccess";
 import { DOOR_MAX_AGE_MS } from "@t3tools/shared/zeropsDoor";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -153,6 +154,92 @@ const scene = (overrides: Scene = {}) =>
   });
 
 describe("verifyThrowawayCaller", () => {
+  it.effect("a Mate admits by today's rules while HQ has not classified it", () => {
+    const { layer } = scene({
+      project: { id: PROJECT_ID, clientId: CLIENT_ID, tagList: ["mate", "chief"] },
+    });
+    return Effect.gen(function* () {
+      const access = yield* ZeropsProjectAccessModule.ZeropsProjectAccess;
+      for (const state of ["missing", "expired", "ordinary", "legacy"] as const) {
+        if (state === "expired") {
+          yield* access.relayed({
+            members: [],
+            ageMs: 24 * 60 * 60_000,
+            chief: { userId: "another-person", ownerName: "Ada" },
+          });
+        } else if (state === "ordinary" || state === "legacy") {
+          yield* access.relayed({
+            members: [],
+            ageMs: 0,
+            ...(state === "ordinary" ? { chief: null } : {}),
+          });
+        }
+        const caller = yield* verifyThrowawayCaller({
+          environment: { ...environment, hqEnrollmentPath: "/test/hq/enrollment.json" },
+          token: PRESENTED,
+        });
+        assert.strictEqual(caller.userId, USER_ID);
+        assert.strictEqual(caller.role, "BASIC_USER");
+      }
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect.each([
+    {
+      title: "someone else's Chief Mate is not opened by its direct address",
+      role: "BASIC_USER",
+      owner: "another-person",
+      outcome: "ZeropsChiefOwnerRequiredError",
+    },
+    {
+      title: "an org owner does not open another person's Chief Mate",
+      role: "OWNER",
+      owner: "another-person",
+      outcome: "ZeropsChiefOwnerRequiredError",
+    },
+    {
+      title: "the owner opens their own Chief Mate by direct address",
+      role: "BASIC_USER",
+      owner: USER_ID,
+      outcome: "admitted",
+    },
+  ])("$title", ({ role, owner, outcome }) => {
+    const { layer } = scene();
+    const chief = { userId: owner, ownerName: "Ada" };
+    return Effect.gen(function* () {
+      const access = yield* ZeropsProjectAccessModule.ZeropsProjectAccess;
+      yield* access.relayed({
+        ageMs: 0,
+        chief,
+        members: projectAccess({
+          projectId: PROJECT_ID,
+          chief,
+          overrides: {},
+          members: [
+            {
+              userId: USER_ID,
+              clientUserId: CLIENT_USER_ID,
+              orgRole: role,
+              status: "ACTIVE",
+              canCreateProjects: true,
+            },
+            {
+              userId: "another-person",
+              clientUserId: "cu-other",
+              orgRole: "OWNER",
+              status: "ACTIVE",
+              canCreateProjects: true,
+            },
+          ],
+        }),
+      });
+      const answer = yield* verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
+        Effect.match({ onSuccess: () => "admitted", onFailure: (error) => error._tag }),
+      );
+      assert.strictEqual(answer, outcome);
+    }).pipe(Effect.provide(layer));
+  });
+
   it.effect("admits the throwaway's creator and names them", () => {
     const { layer, seen } = scene();
     return verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(

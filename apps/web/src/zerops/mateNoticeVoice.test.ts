@@ -4,6 +4,25 @@ import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import { mateArrivalNotice, mateNoticeVoice } from "./mateNoticeVoice";
 import type { MateArrivalNoticeInput } from "./mateNoticeVoice";
 
+it.each(["Karlos", "another person"])(
+  "a direct Chief refusal names %s and leaves recovery to the header door",
+  (chiefOwnerName) => {
+    expect(
+      mateNoticeVoice({
+        reachability: { kind: "refused-role", chiefOwnerName },
+        conversationShown: false,
+        nowMs: 0,
+        mateName: "Chief",
+      }),
+    ).toMatchObject({
+      headline: `This is ${chiefOwnerName}'s Chief Mate.`,
+      text: `This is ${chiefOwnerName}'s Chief Mate.`,
+      actions: [],
+      face: "sleep",
+    });
+  },
+);
+
 describe("the web Mate's link notice", () => {
   const say = (reachability: Reachability | null) =>
     mateNoticeVoice({ reachability, conversationShown: false, nowMs: 0, mateName: "Rosa" });

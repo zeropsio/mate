@@ -542,7 +542,9 @@ export function hqNavigationLink(options: {
               // Only HQ's authoritative access denial purges facts; a host probe's refusal is data.
               const accessDenied =
                 message.disposition === "refused" &&
-                (message.code === "forbidden" || message.code === "session_required");
+                (message.code === "forbidden" ||
+                  message.code === "session_required" ||
+                  message.code === "chief_owner_required");
               if (accessDenied) {
                 deny(entry.registered.families.map(({ scope }) => scope));
                 const scopeKey = hqScopeKey(message.scope);

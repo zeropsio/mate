@@ -38,6 +38,7 @@ export {
 } from "./projections/hqNavigation.ts";
 export {
   hqMateOverview,
+  hqMateRefusal,
   hqMatePresence,
   hqMateLogins,
   hqMateReady,
@@ -240,6 +241,7 @@ export {
   shownProjectsAtom,
   NOT_READ_HQ,
   hqMateOverviewAtom,
+  hqMateRefusalAtom,
   hqMatePresenceAtom,
   hqMateLoginsAtom,
   hqMateReadyAtom,

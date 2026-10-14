@@ -48,6 +48,7 @@ describe("arrival source evidence", () => {
 import { EnvironmentId } from "@t3tools/contracts";
 import {
   initialEnvironment,
+  reachabilityPhrase,
   selectReachability,
   type MateLink,
 } from "../../zerops/environments/index.ts";
@@ -66,6 +67,75 @@ function link(patch: Partial<MateLink> = {}): MateLink {
     ...patch,
   };
 }
+
+it.each(["denied", "deleted"] as const)(
+  "a named Chief refusal survives generic %s project recovery",
+  (kind) => {
+    const reachability = { kind: "refused-role", chiefOwnerName: "Karlos" } as const;
+    const recovery = { standing: { kind }, status: undefined, process: undefined };
+    const result = mateArrival({
+      press: undefined,
+      candidate,
+      link: link({ reachability }),
+      recovery,
+      listedOnly: true,
+      cameUp: true,
+      conversation: ready,
+    });
+    expect(result).toMatchObject({
+      page: { kind: "unreachable", reachability },
+      projectUnavailable: false,
+      handover: "wait",
+      arrival: undefined,
+    });
+    expect(
+      mateNoticeDecision({
+        reachability,
+        recovery,
+        mateName: "Vera",
+        conversationShown: false,
+        nowMs: 101,
+      }),
+    ).toMatchObject({
+      phase: "reachability",
+      recovery: null,
+      recovering: false,
+      actions: [],
+    });
+    expect(reachabilityPhrase(reachability, { mateName: "Vera", nowMs: 101 }).text).toBe(
+      "This is Karlos's Chief Mate.",
+    );
+  },
+);
+
+it("a Chief owner's name arriving later replaces generic access-loss recovery", () => {
+  const recovery = { standing: { kind: "denied" }, status: undefined, process: undefined } as const;
+  const read = (reachability: MateLink["reachability"]) => {
+    const arrival = mateArrival({
+      press: undefined,
+      candidate,
+      link: link({ reachability }),
+      recovery,
+    });
+    const page = arrival.page;
+    return {
+      arrival,
+      notice: mateNoticeDecision({
+        reachability: page?.kind === "unreachable" ? page.reachability : reachability,
+        recovery,
+        mateName: "Vera",
+        conversationShown: false,
+        nowMs: 101,
+      }),
+    };
+  };
+  expect(read({ kind: "connecting", waitingOn: "access" }).notice.phase).toBe("recovery");
+  const named = { kind: "refused-role", chiefOwnerName: "Karlos" } as const;
+  expect(read(named)).toMatchObject({
+    arrival: { page: { kind: "unreachable", reachability: named }, projectUnavailable: false },
+    notice: { phase: "reachability", recovery: null },
+  });
+});
 
 it("a browser socket loss keeps a ready container out of renewed creation and restart", () => {
   const machine = {

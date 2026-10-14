@@ -101,7 +101,11 @@ export type LinkPhase =
   | { readonly phase: "connecting" }
   | { readonly phase: "connected" }
   | { readonly phase: "backoff"; readonly retryAtMs: number | null }
-  | { readonly phase: "blocked"; readonly reason: ConnectionBlockedReason }
+  | {
+      readonly phase: "blocked";
+      readonly reason: ConnectionBlockedReason;
+      readonly chiefOwnerName?: string;
+    }
   | { readonly phase: "offline" };
 
 /** The mirror. Each connect is stamped, so a connect can be ordered against a restart (§4.5). */
@@ -133,7 +137,7 @@ export type ExchangeCause =
 /** A "no" that retrying does not change; it waits for the user or an input change. */
 export type RefusalReason =
   /** The door refused the role (READ_ONLY / NO_ACCESS), or the link was blocked on it twice. */
-  | { readonly kind: "role" }
+  | { readonly kind: "role"; readonly chiefOwnerName?: string }
   /** The server is below the client floor, or the link was blocked as unsupported. */
   | { readonly kind: "version" }
   /** The Mate at this origin belongs to another project: presence needs a re-read. */
@@ -677,14 +681,14 @@ const probed = (
 
 const onBlocked = (
   machine: EnvironmentMachine,
-  reason: ConnectionBlockedReason,
+  block: Extract<LinkPhase, { phase: "blocked" }>,
   ctx: EnvironmentContext,
   out: Effects,
 ): EnvironmentMachine => {
   const credential = machine.credential;
   // A block while nothing is held belongs to the credential already being replaced.
   if (credential.kind !== "held" || credential.rereading !== null) return machine;
-  switch (reason) {
+  switch (block.reason) {
     case "authentication": {
       const authRejections = [
         ...machine.authRejections.filter((at) => ctx.now.mono - at < AUTH_LOOP_WINDOW_MS),
@@ -707,6 +711,8 @@ const onBlocked = (
       return machine;
     case "permission":
     case "read-only":
+      if (block.chiefOwnerName !== undefined)
+        return refuse(machine, { kind: "role", chiefOwnerName: block.chiefOwnerName });
       if (machine.permissionRetried) return refuse(machine, { kind: "role" });
       return {
         ...machine,
@@ -802,7 +808,7 @@ const onLink = (
     linkLostAt: dropped ? ctx.now : machine.linkLostAt,
     credential,
   };
-  return phase.phase === "blocked" ? onBlocked(next, phase.reason, ctx, out) : next;
+  return phase.phase === "blocked" ? onBlocked(next, phase, ctx, out) : next;
 };
 
 // ── Transition ────────────────────────────────────────────────────────────────────────────────

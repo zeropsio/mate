@@ -154,13 +154,17 @@ export function failEnvironmentScopeRequired(requiredScope: AuthEnvironmentScope
   );
 }
 
-export function failEnvironmentOperationForbidden(reason: EnvironmentOperationForbiddenReason) {
+export function failEnvironmentOperationForbidden(
+  reason: EnvironmentOperationForbiddenReason,
+  chiefOwnerName?: string,
+) {
   return currentEnvironmentTraceId.pipe(
     Effect.flatMap((traceId) =>
       Effect.fail(
         new EnvironmentOperationForbiddenError({
           code: "operation_forbidden",
           reason,
+          ...(chiefOwnerName === undefined ? {} : { chiefOwnerName }),
           traceId,
         }),
       ),

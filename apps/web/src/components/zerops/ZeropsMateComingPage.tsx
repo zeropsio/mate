@@ -1,5 +1,6 @@
 import { useClientSettings } from "~/hooks/useSettings";
 import { useMateRecovery } from "~/zerops/useMateRecovery";
+import { useHqMateRefusal } from "~/zerops/useHqMateRefusal";
 import { recoveryNotice } from "@t3tools/client-runtime/data";
 import { MateStateDetails } from "./MateStateDetails";
 import { ConversationOpeningStage } from "../chat/ConversationOpeningStage";
@@ -255,6 +256,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // What opens it is its machine (`mateLink`): found by its project while its row stands for the
   // project, and before the listing names it at all.
   const recovery = useMateRecovery(projectId, candidate?.service?.id);
+  const admissionRefusal = useHqMateRefusal(projectId);
   const { mateLink } = useEnvironmentLinks();
   const rowKey = candidate?.key ?? projectId;
   const link = useMemo(
@@ -396,6 +398,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     listing: { complete: held.complete, wholeForPerson, lacksCreation: listingLacksIt },
     listedOnly,
     recovery,
+    admissionRefusal,
     cameUp,
     conversation: {
       shell: shellStatus,
@@ -867,7 +870,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // are read, else HQ's last word of it.
   const standInSubject = liveActivity?.subject ?? toldActivity?.subject ?? null;
 
-  if (detailFailure !== null && !projectUnavailable)
+  const chiefRefused =
+    page?.kind === "unreachable" &&
+    page.reachability?.kind === "refused-role" &&
+    page.reachability.chiefOwnerName !== undefined;
+  if (detailFailure !== null && !projectUnavailable && !chiefRefused)
     return <MateDetailFailure mate={mate} message={detailFailure.message} again={readAgain} />;
   return (
     // The person's Chief wears the product's mark here as in its conversation (`chief.ts`).

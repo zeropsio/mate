@@ -58,6 +58,8 @@ const RELAYED: ReadonlyArray<MateAccessMember> = [
 const accessOver = (
   zerops: {
     readonly members?: unknown;
+    readonly tags?: ReadonlyArray<string>;
+    readonly enrolled?: boolean;
     readonly userRoles?: unknown;
     readonly status?: number;
     readonly key?: string | undefined;
@@ -76,7 +78,12 @@ const accessOver = (
           request.url.endsWith("/user/list")
             ? json(zerops.members ?? ORG, status)
             : json(
-                { id: PROJECT_ID, clientId: CLIENT_ID, userRoles: zerops.userRoles ?? [] },
+                {
+                  id: PROJECT_ID,
+                  clientId: CLIENT_ID,
+                  userRoles: zerops.userRoles ?? [],
+                  tagList: zerops.tags ?? [],
+                },
                 status,
               ),
         ),
@@ -96,7 +103,11 @@ const accessOver = (
               ),
             ),
           ),
-          ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+          ServerConfig.layer({
+            zerops: zerops.enrolled
+              ? { ...environment, hqEnrollmentPath: "/test/hq/enrollment.json" }
+              : environment,
+          } as ServerConfig.ServerConfig["Service"]),
         ),
       ),
     );
@@ -106,6 +117,52 @@ const accessOver = (
 // R6: HQ relays who the project lets in; a Mate trusts the relay at most five minutes from HQ's
 // read of Zerops, and reads Zerops itself past that, or with no relay.
 describe("ZeropsProjectAccess", () => {
+  it.effect("a Mate admits by today's rules while HQ has not classified it", () =>
+    Effect.gen(function* () {
+      for (const state of ["missing", "expired", "ordinary", "legacy"] as const) {
+        const { access } = yield* accessOver({ enrolled: true, tags: ["mate", "chief"] });
+        if (state === "expired") {
+          yield* access.relayed({
+            members: OWN,
+            ageMs: 0,
+            chief: { userId: JAN, ownerName: "Jan" },
+          });
+          yield* TestClock.adjust(Duration.sum(RELAY_HOLDS, Duration.millis(1)));
+        } else if (state === "ordinary" || state === "legacy") {
+          yield* access.relayed({
+            members: OWN,
+            ageMs: 0,
+            ...(state === "ordinary" ? { chief: null } : {}),
+          });
+        }
+        const read = yield* access.read;
+        assert.deepStrictEqual(read.ok ? [read.members, read.relayed] : read, [
+          OWN,
+          state === "ordinary" || state === "legacy",
+        ]);
+      }
+    }),
+  );
+
+  it.effect("an HQ that names a Chief's owner admits only that owner", () =>
+    Effect.gen(function* () {
+      const { access, calls } = yield* accessOver({ enrolled: true });
+      yield* access.relayed({
+        members: [
+          { userId: JAN, role: "OWNER", visibility: "open" },
+          { userId: EVA, role: "ADMIN", visibility: "open" },
+        ],
+        ageMs: 0,
+        chief: { userId: JAN, ownerName: "Jan" },
+      });
+      const read = yield* access.read;
+      assert.deepStrictEqual(read.ok ? read.members : read, [
+        { userId: JAN, role: "OWNER", visibility: "open" },
+      ]);
+      assert.deepStrictEqual(calls, []);
+    }),
+  );
+
   it.effect("answers from HQ's relay while it is fresh, reading nothing of Zerops", () =>
     Effect.gen(function* () {
       const { access, calls } = yield* accessOver();

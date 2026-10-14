@@ -19,6 +19,21 @@ import {
   zeropsRoleAnswer,
 } from "./zeropsRoles.ts";
 
+/** HQ's authoritative personal ownership; null user means a Chief awaiting registration. */
+export const ChiefMateOwner = Schema.Struct({
+  userId: Schema.NullOr(Schema.String),
+  ownerName: Schema.NullOr(Schema.String),
+});
+export type ChiefMateOwner = typeof ChiefMateOwner.Type;
+
+/** A personal Chief never inherits someone else's organization authority. */
+export function restrictChiefAccess(
+  members: ReadonlyArray<MateAccessMember>,
+  chief: ChiefMateOwner | null | undefined,
+): ReadonlyArray<MateAccessMember> {
+  return chief == null ? members : members.filter((member) => member.userId === chief.userId);
+}
+
 export interface ZeropsOrgMember {
   /** The `clientUser` id — what a project's `userRoles` names. */
   readonly clientUserId: string;
@@ -124,6 +139,7 @@ export function projectAccess(input: {
   readonly projectId: string;
   readonly members: ReadonlyArray<ZeropsOrgMember>;
   readonly overrides: Readonly<Record<string, string>>;
+  readonly chief?: ChiefMateOwner | null;
 }): ReadonlyArray<MateAccessMember> {
   const access: Array<MateAccessMember> = [];
   for (const member of input.members) {
@@ -137,7 +153,7 @@ export function projectAccess(input: {
     });
     if (visibility !== "hidden") access.push({ userId: member.userId, role, visibility });
   }
-  return access;
+  return restrictChiefAccess(access, input.chief);
 }
 
 /** Every user the project `projectId` opens for: what keeps a session open in its Mate. */
