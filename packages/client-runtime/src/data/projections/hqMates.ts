@@ -6,6 +6,7 @@
  * @module data/projections/hqMates
  */
 import type { MateLiveView } from "@t3tools/shared/hqMates";
+import type { Reachability } from "../../zerops/environments/index.ts";
 
 import { hqMateScope } from "../families/hqMate.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
@@ -54,6 +55,22 @@ export const hqMateOverview: Projection<MateProjectKey, MateLiveView | null> = {
   name: "hqMateOverview",
   keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
   derive: overviewOf,
+  equals: sameValue,
+};
+
+/** A targeted HQ refusal names an inaccessible Chief without adding it to personal navigation. */
+export const hqMateRefusal: Projection<
+  MateProjectKey,
+  Extract<Reachability, { readonly kind: "refused-role" }> | null
+> = {
+  name: "hqMateRefusal",
+  keyOf: hqMateOverview.keyOf,
+  derive: (read, { orgId, projectId }) => {
+    const stream = read.stream(hqMateScope(orgId, projectId));
+    return stream.phase === "refused" && stream.fault?.code === "chief_owner_required"
+      ? { kind: "refused-role", chiefOwnerName: stream.fault.message }
+      : null;
+  },
   equals: sameValue,
 };
 

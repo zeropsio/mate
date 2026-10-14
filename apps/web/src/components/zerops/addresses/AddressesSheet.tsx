@@ -22,6 +22,8 @@ import {
   Confirm,
   CopyButton,
   Face,
+  RowKind,
+  RowMeta,
   SheetRow,
   SheetSection,
   Trouble,
@@ -191,7 +193,9 @@ function SheetHeader({
             ))}
           </MenuPopup>
         </Menu>
-      ) : null}
+      ) : current === projectName ? null : (
+        <span className="truncate text-muted-foreground text-sm">{current}</span>
+      )}
       <span className="grow" />
       <Button aria-label="Close" onClick={onClose} size="icon-sm" variant="ghost">
         <XIcon />
@@ -221,6 +225,7 @@ function IpSection({
   const { ips } = place;
   const price = ipv4.state === "known" ? priceWords(ipv4.price) : undefined;
   const every = price === undefined ? "" : ` · ${price} every 30 days`;
+  const perPeriod = price === undefined ? "" : ` · ${price} / 30 days`;
   const asking = mode.kind === "ipv4";
   // Billing has it on, or our purchase is under way: the address is on its way, never offered again.
   const assigning =
@@ -229,38 +234,68 @@ function IpSection({
   const maybe = ips.ownV4 === undefined && !assigning && unsure;
   return (
     <SheetSection
+      after={
+        <>
+          {ips.ownV4 === undefined ? null : (
+            <p className="flex flex-wrap items-center gap-x-2 text-muted-foreground text-xs">
+              Your own IPv4 renews on its own; turn it off in Zerops to stop it.
+              <OpenInZerops url={zeropsUrl} />
+            </p>
+          )}
+        </>
+      }
       part="ip"
       title="IP addresses"
-      words={`${ctx.placeName}'s own addresses on the internet`}
     >
       {ips.v6 === undefined ? null : (
         <SheetRow
           data="ipv6"
-          end={<CopyButton value={ips.v6} />}
-          name={<span className="truncate font-mono">{ips.v6}</span>}
-          sub={`IPv6 · ${ctx.placeName}'s own · free`}
+          end={
+            <>
+              <RowMeta>Free</RowMeta>
+              <CopyButton value={ips.v6} />
+            </>
+          }
+          name={
+            <>
+              <RowKind>IPv6</RowKind>
+              <span className="truncate font-mono">{ips.v6}</span>
+            </>
+          }
         />
       )}
       {ips.ownV4 === undefined ? null : (
-        <>
-          <SheetRow
-            data="own-ipv4"
-            end={<CopyButton value={ips.ownV4} />}
-            name={<span className="truncate font-mono">{ips.ownV4}</span>}
-            sub={`IPv4 · ${ctx.placeName}'s own${every}${paidUntil(ipv4.state === "known" ? ipv4.validTill : undefined)}`}
-          />
-          <p className="flex flex-wrap items-center gap-x-2 pb-2 text-muted-foreground text-xs">
-            It renews on its own. To stop renewing it, turn it off in Zerops.
-            <OpenInZerops url={zeropsUrl} />
-          </p>
-        </>
+        <SheetRow
+          data="own-ipv4"
+          end={
+            <>
+              <RowMeta>{`Yours${perPeriod}${paidUntil(ipv4.state === "known" ? ipv4.validTill : undefined)}`}</RowMeta>
+              <CopyButton value={ips.ownV4} />
+            </>
+          }
+          name={
+            <>
+              <RowKind>IPv4</RowKind>
+              <span className="truncate font-mono">{ips.ownV4}</span>
+            </>
+          }
+        />
       )}
       {ips.sharedV4 === undefined ? null : (
         <SheetRow
           data="shared-ipv4"
-          end={<CopyButton value={ips.sharedV4} />}
-          name={<span className="truncate font-mono">{ips.sharedV4}</span>}
-          sub="IPv4 · shared across Zerops · free, for web traffic only"
+          end={
+            <>
+              <RowMeta>Shared across Zerops · web only</RowMeta>
+              <CopyButton value={ips.sharedV4} />
+            </>
+          }
+          name={
+            <>
+              <RowKind>IPv4</RowKind>
+              <span className="truncate font-mono">{ips.sharedV4}</span>
+            </>
+          }
         />
       )}
       {ips.ownV4 !== undefined ? null : (
@@ -274,23 +309,31 @@ function IpSection({
             ) : asking ? (
               <Face tone="warn" word="Confirm below" />
             ) : (
-              <Button
-                disabled={ctx.hold}
-                onClick={() => setMode({ kind: "ipv4" })}
-                size="sm"
-                variant="outline"
-              >
-                Get one
-              </Button>
+              <>
+                {price === undefined ? null : <RowMeta>{`${price} / 30 days`}</RowMeta>}
+                <Button
+                  disabled={ctx.hold}
+                  onClick={() => setMode({ kind: "ipv4" })}
+                  size="xs"
+                  variant="outline"
+                >
+                  Get one
+                </Button>
+              </>
             )
           }
-          name="Your own IPv4"
-          sub={
-            assigning
-              ? `It's on its way${every}`
-              : maybe
-                ? "It may be on its way: Zerops's answer was lost. Check in Zerops before you try again."
-                : `For direct access over IPv4, or past the shared address's limits${every}`
+          name={
+            <>
+              <RowKind>IPv4</RowKind>
+              <span className="truncate">Your own</span>
+              {assigning ? (
+                <RowMeta>{`On its way${perPeriod}`}</RowMeta>
+              ) : maybe ? (
+                <RowMeta>It may be on its way: Zerops's answer was lost.</RowMeta>
+              ) : (
+                <RowMeta>For direct IPv4 access</RowMeta>
+              )}
+            </>
           }
         />
       )}

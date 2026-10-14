@@ -692,6 +692,11 @@ export function recoveryNotice(read: MateRecovery, mateName: string): RecoveryNo
   return null;
 }
 
+/** The door's named refusal is more specific than generic loss of project access. */
+function isNamedChiefRefusal(reachability: Reachability | null | undefined): boolean {
+  return reachability?.kind === "refused-role" && typeof reachability.chiefOwnerName === "string";
+}
+
 /** Account evidence is joined here; browser presenters receive the same decision. */
 export function mateArrival(
   input: Omit<MateComingInput, "linkHolds" | "answerAwaited"> & {
@@ -701,6 +706,7 @@ export function mateArrival(
       readonly lacksCreation?: boolean;
     };
     readonly listedOnly?: boolean;
+    readonly admissionRefusal?: Extract<Reachability, { readonly kind: "refused-role" }> | null;
     readonly recovery?: MateRecovery;
     readonly cameUp?: boolean;
     readonly conversation?: Omit<Parameters<typeof conversationArrival>[0], "connected" | "cameUp">;
@@ -715,12 +721,16 @@ export function mateArrival(
     answerAwaited: input.link === undefined ? undefined : arrivalAwaitsAnswer(input.link),
   });
   const standing = input.recovery?.standing.kind;
-  const unavailable = mateProjectUnavailable(input.recovery?.standing);
-  const reachability: Reachability | null = unavailable
-    ? { kind: "gone", because: standing === "deleted" ? "direct-not-found" : "direct-forbidden" }
-    : input.listedOnly === true
-      ? { kind: "refused-role" }
-      : (input.link?.reachability ?? null);
+  const sourceReachability = input.admissionRefusal ?? input.link?.reachability;
+  const namedRefusal = isNamedChiefRefusal(sourceReachability);
+  const unavailable = !namedRefusal && mateProjectUnavailable(input.recovery?.standing);
+  const reachability: Reachability | null = namedRefusal
+    ? sourceReachability!
+    : unavailable
+      ? { kind: "gone", because: standing === "deleted" ? "direct-not-found" : "direct-forbidden" }
+      : input.listedOnly === true
+        ? { kind: "refused-role" }
+        : (sourceReachability ?? null);
   const page = mateComingPage({
     coming: input.listedOnly === true || unavailable ? undefined : coming,
     candidate: input.listedOnly === true || unavailable ? undefined : input.candidate,
@@ -775,19 +785,20 @@ export function mateNoticeDecision(input: {
       : reachability?.kind === "container"
         ? reachability.container
         : null;
-  const recovery =
-    (input.recovery === undefined ? null : recoveryNotice(input.recovery, input.mateName)) ??
-    (notice?.level === "inactive"
-      ? recoveryNotice(
-          {
-            standing: { kind: "unknown" },
-            status: notice.status,
-            process: undefined,
-            lifecycle: readRestartRecovery(NO_RESTARTS, undefined, notice.status),
-          },
-          input.mateName,
-        )
-      : null);
+  const recovery = isNamedChiefRefusal(reachability)
+    ? null
+    : ((input.recovery === undefined ? null : recoveryNotice(input.recovery, input.mateName)) ??
+      (notice?.level === "inactive"
+        ? recoveryNotice(
+            {
+              standing: { kind: "unknown" },
+              status: notice.status,
+              process: undefined,
+              lifecycle: readRestartRecovery(NO_RESTARTS, undefined, notice.status),
+            },
+            input.mateName,
+          )
+        : null));
   const recovering = recovery?.recovering !== undefined;
   const phase =
     input.limit !== undefined

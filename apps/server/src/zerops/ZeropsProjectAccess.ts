@@ -6,13 +6,16 @@
  * `@t3tools/shared/mateLink`): the door's own rule over the same list (`@t3tools/shared/mateAccess`),
  * aged by how long before it was sent Zerops answered HQ's view. HQ relays Zerops's access; this
  * Mate trusts it at most {@link RELAY_HOLDS} from HQ's read of Zerops, then reads Zerops itself —
- * its own project and its org's member list, with its own key (`ZeropsOrgRead`) — as it does with
- * no relay at all: before HQ links, or while HQ is out.
+ * its own project and its org's member list, with its own key (`ZeropsOrgRead`). Chief ownership
+ * applies only while HQ supplies a current explicit classification; missing or expired HQ
+ * classification leaves today's platform-role admission in place during rollout.
  *
  * @module ZeropsProjectAccess
  */
 import {
+  type ChiefMateOwner,
   type MateAccessMember,
+  restrictChiefAccess,
   projectAccess,
   readOrgMembers,
   readProjectRoles,
@@ -33,7 +36,7 @@ import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
 
 /**
  * How long HQ's relay holds from HQ's read of Zerops: one role recheck at its ceiling, the window
- * a removed person keeps their screen for when this Mate reads Zerops itself.
+ * before current admission needs a fresh answer from HQ or this Mate's own Zerops read.
  */
 export const RELAY_HOLDS = Duration.seconds(MAX_ZEROPS_ROLE_RECHECK_SECONDS);
 
@@ -42,6 +45,7 @@ export type ProjectAccess =
   | {
       readonly ok: true;
       readonly members: ReadonlyArray<MateAccessMember>;
+      readonly chief?: ChiefMateOwner | null;
       /** When Zerops answered the read this comes from (wall ms). */
       readonly readAtMs: number;
       /** Relayed by HQ, rather than read by this Mate. */
@@ -57,6 +61,7 @@ export class ZeropsProjectAccess extends Context.Service<
     /** HQ's relay, as the link brings it: its members, and how old HQ's read of Zerops was. */
     readonly relayed: (access: {
       readonly members: ReadonlyArray<MateAccessMember>;
+      readonly chief?: ChiefMateOwner | null;
       readonly ageMs: number;
     }) => Effect.Effect<void>;
     /** HQ's relay while it holds ({@link RELAY_HOLDS} from HQ's read); none past that. */
@@ -142,12 +147,18 @@ export const make = Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       const next: KnownAccess = {
         ok: true,
-        members: access.members,
+        members: restrictChiefAccess(access.members, access.chief),
+        ...(access.chief === undefined ? {} : { chief: access.chief }),
         readAtMs: now - access.ageMs,
         relayed: true,
       };
       const before = yield* Ref.getAndSet(held, next);
-      if (before === undefined || !sameMembers(before.members, next.members)) {
+      if (
+        before === undefined ||
+        !sameMembers(before.members, next.members) ||
+        before.chief?.userId !== next.chief?.userId ||
+        before.chief?.ownerName !== next.chief?.ownerName
+      ) {
         yield* PubSub.publish(moved, undefined);
       }
     });

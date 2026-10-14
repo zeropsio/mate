@@ -33,6 +33,8 @@ import {
   guardPress,
   guardTitle,
   OthersList,
+  RowMeta,
+  SheetEmpty,
   SheetRow,
   SheetSection,
   Trouble,
@@ -71,35 +73,65 @@ export function AddressesDirect({
     [...ctx.busy].some((key) => key.startsWith("port:"));
   const changing =
     mode.kind === "change-port" ? place.ports.find((port) => port.id === mode.portId) : undefined;
+  const opening = mode.kind === "open-port";
+  const read = place.portsState === "ready";
   return (
     <SheetSection
+      action={
+        !read || opening || place.portTargets.length === 0 ? null : (
+          <Button
+            disabled={ctx.hold}
+            onClick={() => setMode({ kind: "open-port" })}
+            size="xs"
+            variant="ghost-primary"
+          >
+            <PlusIcon />
+            Open a port
+          </Button>
+        )
+      }
+      after={
+        opening ? (
+          <PortForm
+            ctx={ctx}
+            onDone={() => setMode({ kind: "list" })}
+            onTaken={() => ctx.settle(mode)}
+            othersWaiting={othersWaiting}
+            ownV4={place.ips.ownV4 !== undefined}
+            port={undefined}
+            ports={place.ports}
+            targets={place.portTargets}
+          />
+        ) : (
+          <Trouble text={ctx.trouble.get("open-port")} />
+        )
+      }
+      notice={
+        read && othersWaiting.length > 0 ? (
+          <WaitingNotice
+            busy={ctx.busy.has("publish-ports")}
+            held={ctx.hold}
+            kind="port"
+            onPublish={
+              oursUnderWay
+                ? undefined
+                : () => void ctx.onWrite({ kind: "publish-ports", projectId: ctx.projectId })
+            }
+            others={othersWaiting}
+            placeName={ctx.placeName}
+            trouble={ctx.trouble.get("publish-ports")}
+          />
+        ) : null
+      }
       part="direct"
       title="Direct access"
-      words="For connections that aren't web pages, like a database client"
     >
       {place.portsState === "failed" ? (
-        <p className="border-t border-border/60 py-3 text-muted-foreground text-sm">
-          You can't see {ctx.placeName}'s open ports.
-        </p>
+        <SheetEmpty>You can't see {ctx.placeName}'s open ports.</SheetEmpty>
       ) : place.portsState === "reading" ? (
-        <p className="border-t border-border/60 py-3 text-muted-foreground text-sm">Reading…</p>
+        <SheetEmpty>Reading…</SheetEmpty>
       ) : (
         <>
-          {othersWaiting.length > 0 ? (
-            <WaitingNotice
-              busy={ctx.busy.has("publish-ports")}
-              held={ctx.hold}
-              kind="port"
-              onPublish={
-                oursUnderWay
-                  ? undefined
-                  : () => void ctx.onWrite({ kind: "publish-ports", projectId: ctx.projectId })
-              }
-              others={othersWaiting}
-              placeName={ctx.placeName}
-              trouble={ctx.trouble.get("publish-ports")}
-            />
-          ) : null}
           {place.ports.map((port) =>
             changing?.id === port.id ? (
               <PortForm
@@ -124,39 +156,12 @@ export function AddressesDirect({
               />
             ),
           )}
-          {place.ports.length === 0 && mode.kind !== "open-port" ? (
-            <p className="border-t border-border/60 py-3 text-muted-foreground text-sm">
-              Nothing opens directly yet.
-            </p>
-          ) : null}
-          {mode.kind === "open-port" ? (
-            <PortForm
-              ctx={ctx}
-              onDone={() => setMode({ kind: "list" })}
-              onTaken={() => ctx.settle(mode)}
-              othersWaiting={othersWaiting}
-              ownV4={place.ips.ownV4 !== undefined}
-              port={undefined}
-              ports={place.ports}
-              targets={place.portTargets}
-            />
-          ) : place.portTargets.length === 0 ? (
-            <p className="text-muted-foreground text-xs">
-              None of {ctx.placeName}'s services can open a port directly.
-            </p>
-          ) : (
-            <div className="border-t border-border/60 pt-2">
-              <Trouble text={ctx.trouble.get("open-port")} />
-              <Button
-                disabled={ctx.hold}
-                onClick={() => setMode({ kind: "open-port" })}
-                size="sm"
-                variant="ghost"
-              >
-                <PlusIcon />
-                Open a port
-              </Button>
-            </div>
+          {place.ports.length > 0 || opening ? null : (
+            <SheetEmpty>
+              {place.portTargets.length === 0
+                ? `None of ${ctx.placeName}'s services can open a port directly.`
+                : "No open ports. Open one to let a database client connect."}
+            </SheetEmpty>
           )}
         </>
       )}
@@ -229,16 +234,13 @@ function PortRow({
           )
         }
         name={
-          <span className="truncate">
-            {port.serviceName} · port {port.internalPort}
-            {udp}
-          </span>
-        }
-        sub={
-          <span className="font-mono">
-            {port.address ?? `port ${port.publicPort}`} → {port.serviceName} · port{" "}
-            {port.internalPort}
-          </span>
+          <>
+            <span className="truncate font-mono">{port.address ?? `port ${port.publicPort}`}</span>
+            <RowMeta>
+              → {port.serviceName} · port {port.internalPort}
+              {udp}
+            </RowMeta>
+          </>
         }
       />
       <Trouble text={ctx.trouble.get(key)} />
@@ -419,7 +421,11 @@ function PortForm({
   const press = port === undefined ? `Open port${number}` : "Save";
   return (
     <form
-      className="mt-1 mb-3 grid gap-3 rounded-lg border border-border/60 px-3.5 py-3 text-sm"
+      className={
+        port === undefined
+          ? "grid gap-3 rounded-xl border border-border/70 bg-card px-3.5 py-3 text-sm"
+          : "grid gap-3 border-t border-border/60 py-3 text-sm first:border-t-0"
+      }
       data-addresses-form={port === undefined ? "open-port" : "change-port"}
       ref={revealed}
       onSubmit={(event) => {

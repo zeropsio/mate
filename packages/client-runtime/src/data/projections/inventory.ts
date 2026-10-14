@@ -118,17 +118,17 @@ export const inventory: Projection<InventoryKey, InventoryRead> = {
 /** Content and access drawn by inventory consumers, independent of transport status. */
 export type InventoryContents = Pick<
   InventoryRead,
-  "projects" | "projectRefs" | "authority" | "lost" | "isLoading" | "error"
+  "projects" | "projectRefs" | "authority" | "lost" | "deleted" | "isLoading" | "error"
 >;
 export const inventoryContents: Projection<InventoryKey, InventoryContents> = {
   name: "inventoryContents",
   keyOf: inventory.keyOf,
   derive: (read, key) => {
-    const { projects, projectRefs, authority, lost, isLoading, error } = inventory.derive(
+    const { projects, projectRefs, authority, lost, deleted, isLoading, error } = inventory.derive(
       read,
       key,
     );
-    return { projects, projectRefs, authority, lost, isLoading, error };
+    return { projects, projectRefs, authority, lost, deleted, isLoading, error };
   },
   equals: (a, b) =>
     sameValue(
@@ -157,6 +157,7 @@ export const inventoryCandidates: Projection<InventoryKey, ReadonlyArray<ZeropsC
 export const NOT_READ_INVENTORY: InventoryRead = {
   projects: [],
   denied: [],
+  deleted: [],
   projectRefs: new Map(),
   authority: new Map(),
   lost: new Set(),

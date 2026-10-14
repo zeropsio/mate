@@ -14,6 +14,12 @@ export class EnvironmentAuthPolicy extends Context.Service<
   }
 >()("t3/auth/EnvironmentAuthPolicy") {}
 
+/** Checks current admission before an existing session exposes this environment. */
+export const SessionAdmission = Context.Reference<(subject: string) => Effect.Effect<boolean>>(
+  "t3/auth/SessionAdmission",
+  { defaultValue: () => () => Effect.succeed(true) },
+);
+
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;

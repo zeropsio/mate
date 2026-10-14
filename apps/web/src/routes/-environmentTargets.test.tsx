@@ -147,6 +147,7 @@ const inventory = (status: string | null): Inventory => ({
   projectRefs: new Map(),
   authority: new Map(),
   lost: new Set(),
+  deleted: [],
 });
 
 let container: TestNode;

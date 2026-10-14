@@ -226,6 +226,7 @@ function Standins({ children }: { readonly children: ReactNode }) {
           projectRefs: new Map(),
           authority: new Map(),
           lost: new Set(),
+          deleted: [],
         }}
       >
         <TimelineRowCtx value={SHARED}>

@@ -16,6 +16,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "../config.ts";
+import { SessionAdmission } from "../auth/EnvironmentAuthPolicy.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -53,6 +54,35 @@ import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
 import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsStandUpRelayModule from "./ZeropsStandUpRelay.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
+
+/** One admission source for the auth boundary, the door, the watch and the linked HQ. */
+export const ZeropsProjectAccessLive = ZeropsProjectAccessModule.layer.pipe(
+  Layer.provideMerge(ZeropsOrgReadModule.layer),
+  Layer.provideMerge(ZeropsMateKeyModule.layer),
+);
+
+/** Existing credentials must still belong here before they expose any protected response. */
+export const ZeropsSessionAdmissionLive = Layer.effect(
+  SessionAdmission,
+  Effect.gen(function* () {
+    const config = yield* ServerConfig;
+    const access = yield* ZeropsProjectAccessModule.ZeropsProjectAccess;
+    return (subject: string) =>
+      config.zerops === undefined || config.zeropsFixtures !== undefined
+        ? Effect.succeed(true)
+        : access.read.pipe(
+            Effect.map(
+              (answer) =>
+                answer.ok &&
+                answer.members.some(
+                  (member) =>
+                    member.userId === ZeropsMembershipWatchModule.zeropsUserIdOf(subject) &&
+                    member.visibility === "open",
+                ),
+            ),
+          );
+  }),
+);
 
 /**
  * `ZeropsAgentAuth.layer` reaches the provider registry only through
@@ -246,25 +276,10 @@ const liveLayer = Layer.mergeAll(
   // platform to re-read.
   ZeropsMembershipWatchModule.layer,
 ).pipe(
-  // Who the project lets in — HQ's relay while it holds, else this Mate's own
-  // read — for the watch, the signers and the door alike, written by the link
-  // to HQ above; it reaches the door the same way the reader below does.
-  Layer.provideMerge(ZeropsProjectAccessModule.layer),
   // Startup's one read of why running turns were interrupted, over the same own-key reader.
   Layer.provideMerge(ZeropsRestartReadModule.layer),
-  // The org's member list, read once for the watch, the signers and the door
-  // alike (`ZeropsOrgRead`), over the one own-key reader below; it reaches
-  // the door the same way that reader does.
-  Layer.provideMerge(ZeropsOrgReadModule.layer),
-  // The process-wide own-key reader: one cache, one invalidation, shared by
-  // the watch and the signers gate above, and (via this layer's own merged
-  // output flowing up through the runtime composition in `server.ts`) by the
-  // door's `verifyThrowawayCaller` too. `ZeropsIdentityStatus` is NOT
-  // provided here — it is provided once, above both this tree and
-  // `ServerEnvironment.layer`, in `server.ts`'s `RuntimeBaseDependenciesLive`
-  // — providing a second instance here would shadow that one for everything
-  // under this tree and break the sharing the descriptor (S4) depends on.
-  Layer.provideMerge(ZeropsMateKeyModule.layer),
+  // Reuse the exact layer the auth boundary reads; a second instance would miss HQ's relay.
+  Layer.provideMerge(ZeropsProjectAccessLive),
   // Who signed each login in, as this server saw it: one store, written by the login walker
   // and read by the gate, the feeds, the setup and the link to HQ.
   Layer.provide(ZeropsSignInsModule.layer),

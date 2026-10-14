@@ -122,9 +122,16 @@ export class ZeropsReadOnlyError extends Schema.TaggedError<ZeropsReadOnlyError>
   {},
 ) {}
 
+/** A verified caller tried to open another person's personal Chief. */
+export class ZeropsChiefOwnerRequiredError extends Schema.TaggedError<ZeropsChiefOwnerRequiredError>()(
+  "ZeropsChiefOwnerRequiredError",
+  { ownerName: Schema.String },
+) {}
+
 export type ZeropsThrowawayError =
   | ZeropsThrowawayRefusedError
   | ZeropsReadOnlyError
+  | ZeropsChiefOwnerRequiredError
   | ZeropsNotAMemberError
   | ZeropsInvalidTokenError
   | ZeropsProjectNotFoundError
@@ -300,10 +307,11 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   const createdByUser = token.createdByUser;
   if (createdByUser === null) return yield* refused("not_member");
   // HQ's relay while it holds (`ZeropsProjectAccess`, R6): a creator it opens for is let in,
-  // and the member list is not read. Whomever it lists or leaves out, the read below decides —
-  // its refusals tell a non-member from one this project hides or only lists.
-  const relayed = Option.getOrUndefined(yield* (yield* ZeropsProjectAccess).relay);
-  const opened = relayed?.members.find(
+  // and the member list is not read. A current explicit Chief refusal stands here; without
+  // that classification the read below retains today's platform-role admission.
+  const projectAccess = yield* ZeropsProjectAccess;
+  const access = Option.getOrUndefined(yield* projectAccess.relay);
+  const opened = access?.members.find(
     (entry) => entry.userId === createdByUser && entry.visibility === "open",
   );
   if (opened !== undefined) {
@@ -312,6 +320,11 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
       clientId: project.clientId,
       role: opened.role,
     } satisfies ZeropsThrowawayCaller;
+  }
+  if (access?.chief != null) {
+    return yield* new ZeropsChiefOwnerRequiredError({
+      ownerName: access.chief.ownerName ?? "another person",
+    });
   }
   const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });
   if (members.kind === "unreachable") return yield* unavailable(members.reason);

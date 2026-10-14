@@ -5,6 +5,7 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import * as ServerConfig from "../config.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
@@ -14,6 +15,13 @@ import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import * as SessionStore from "./SessionStore.ts";
+import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
+import {
+  ZeropsProjectAccess,
+  layer as projectAccessLayer,
+  RELAY_HOLDS,
+} from "../zerops/ZeropsProjectAccess.ts";
+import { ZeropsSessionAdmissionLive } from "../zerops/zeropsFeedsLayer.ts";
 
 /** Pinned so dev-mode cookie tests can assert the port-scoped name. */
 const TEST_SERVER_PORT = 13_773;
@@ -40,6 +48,47 @@ const makeEnvironmentAuthLayer = (overrides?: Partial<ServerConfig.ServerConfig[
     Layer.provide(ServerSecretStore.layer),
     Layer.provide(makeServerConfigLayer(overrides)),
   );
+
+const makeAdmissionAuthLayer = (platformAnswers = false) => {
+  const access = projectAccessLayer.pipe(
+    Layer.provide(
+      Layer.succeed(ZeropsOrgRead, {
+        project: () =>
+          platformAnswers
+            ? Effect.succeed({
+                kind: "answered" as const,
+                status: 200,
+                body: { clientId: "org", userRoles: [], tagList: ["mate", "chief"] },
+              })
+            : Effect.die("Enrolled admission must not fall back to platform roles"),
+        members: () =>
+          platformAnswers
+            ? Effect.succeed({
+                kind: "answered" as const,
+                status: 200,
+                body: {
+                  clientUserList: [
+                    { id: "member", userId: "owner", roleCode: "OWNER", status: "ACTIVE" },
+                  ],
+                },
+              })
+            : Effect.die("Enrolled admission must not fall back to platform roles"),
+        forgetAccess: () => Effect.void,
+      }),
+    ),
+  );
+  return EnvironmentAuth.layer.pipe(
+    Layer.provide(ZeropsSessionAdmissionLive),
+    Layer.provideMerge(access),
+    Layer.provide(SqlitePersistenceMemory),
+    Layer.provide(ServerSecretStore.layer),
+    Layer.provide(
+      makeServerConfigLayer({
+        zerops: { ...zeropsTestEnvironment!, hqEnrollmentPath: "/test/hq/enrollment.json" },
+      }),
+    ),
+  );
+};
 
 const makeCookieRequest = (
   cookieName: string,
@@ -246,6 +295,77 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       expect(yield* serverAuth.revokeBySubject("zerops-user-a")).toBe(1);
       expect(yield* serverAuth.revokeBySubject("zerops-user-a")).toBe(0);
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
+  );
+});
+
+it.layer(NodeServices.layer)("current admission for existing sessions", (it) => {
+  it.effect("a Mate admits by today's rules while HQ has not classified it", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      const access = yield* ZeropsProjectAccess;
+      const session = yield* auth.issueSession({ subject: "zerops-user:owner" });
+      for (const state of ["missing", "expired", "ordinary"] as const) {
+        if (state !== "missing") {
+          yield* access.relayed({
+            ageMs: state === "expired" ? Duration.toMillis(RELAY_HOLDS) + 1 : 0,
+            chief: state === "ordinary" ? null : { userId: "another-person", ownerName: "Ada" },
+            members:
+              state === "ordinary" ? [{ userId: "owner", role: "OWNER", visibility: "open" }] : [],
+          });
+        }
+        const ticket = yield* auth.issueWebSocketTicket(session);
+        const http = yield* auth.authenticateHttpRequest(makeBearerRequest(session.token));
+        const websocket = yield* auth.authenticateWebSocketUpgrade(
+          HttpServerRequest.fromWeb(
+            new Request(`http://localhost/ws?wsTicket=${encodeURIComponent(ticket.ticket)}`),
+          ),
+        );
+        expect([http.subject, websocket.subject]).toEqual([
+          "zerops-user:owner",
+          "zerops-user:owner",
+        ]);
+      }
+    }).pipe(Effect.provide(makeAdmissionAuthLayer(true))),
+  );
+
+  it.effect.each([
+    ["another person's", "other", "current", false],
+    ["the owner's", "owner", "current", true],
+  ] as const)(
+    "%s existing session opens its Chief only with current ownership",
+    ([, person, , allowed]) =>
+      Effect.gen(function* () {
+        const auth = yield* EnvironmentAuth.EnvironmentAuth;
+        const access = yield* ZeropsProjectAccess;
+        const session = yield* auth.issueSession({ subject: `zerops-user:${person}` });
+        // Mint the ticket before the current ownership verdict: restored credentials cannot bypass it.
+        const ticket = yield* auth.issueWebSocketTicket(session);
+        yield* access.relayed({
+          ageMs: 0,
+          chief: { userId: "owner", ownerName: "Ada" },
+          members: [
+            { userId: "owner", role: "OWNER", visibility: "open" },
+            { userId: "other", role: "OWNER", visibility: "open" },
+          ],
+        });
+        const http = yield* auth
+          .authenticateHttpRequest(makeBearerRequest(session.token))
+          .pipe(Effect.result);
+        const websocket = yield* auth
+          .authenticateWebSocketUpgrade(
+            HttpServerRequest.fromWeb(
+              new Request(`http://localhost/ws?wsTicket=${encodeURIComponent(ticket.ticket)}`),
+            ),
+          )
+          .pipe(Effect.result);
+        expect({ http: http._tag, websocket: websocket._tag }).toEqual({
+          http: allowed ? "Success" : "Failure",
+          websocket: allowed ? "Success" : "Failure",
+        });
+        if (http._tag === "Success") expect(http.success.subject).toBe("zerops-user:owner");
+        if (websocket._tag === "Success")
+          expect(websocket.success.subject).toBe("zerops-user:owner");
+      }).pipe(Effect.provide(makeAdmissionAuthLayer())),
   );
 });
 

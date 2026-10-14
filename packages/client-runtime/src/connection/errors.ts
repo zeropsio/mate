@@ -62,6 +62,14 @@ export function mapRemoteEnvironmentError(
             traceId: error.traceId,
           });
     case "EnvironmentOperationForbiddenError":
+      if (error.reason === "zerops_chief_owner_required") {
+        return new ConnectionBlockedError({
+          reason: "permission",
+          detail: "This Chief Mate belongs to another person.",
+          chiefOwnerName: error.chiefOwnerName ?? "another person",
+          traceId: error.traceId,
+        });
+      }
       // Their Zerops role reads the Mate and never opens it. Kept apart from the
       // generic permission error on purpose: that one reads as something to fix,
       // and this is the role Zerops gives them.

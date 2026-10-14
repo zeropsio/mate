@@ -261,7 +261,13 @@ export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null 
       return { phase: "backoff", retryAtMs: state.retryAt };
     case "blocked":
       return isConnectionBlockedError(state.lastFailure)
-        ? { phase: "blocked", reason: state.lastFailure.reason }
+        ? {
+            phase: "blocked",
+            reason: state.lastFailure.reason,
+            ...(state.lastFailure.chiefOwnerName === undefined
+              ? {}
+              : { chiefOwnerName: state.lastFailure.chiefOwnerName }),
+          }
         : null;
   }
 }

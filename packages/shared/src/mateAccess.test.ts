@@ -79,4 +79,17 @@ describe("projectAccess", () => {
     });
     expect(access).toEqual(want === undefined ? [] : [{ userId: row.userId, ...want }]);
   });
+  it.each(["BASIC_USER", "ADMIN", "OWNER"])(
+    "a Chief admits only its registered owner even for %s",
+    (role) => {
+      expect(
+        projectAccess({
+          projectId: "P",
+          members: [member("mine", "BASIC_USER"), member("other", role)],
+          overrides: {},
+          chief: { userId: "mine", ownerName: "Ada" },
+        }),
+      ).toEqual([{ userId: "mine", role: "BASIC_USER", visibility: "open" }]);
+    },
+  );
 });

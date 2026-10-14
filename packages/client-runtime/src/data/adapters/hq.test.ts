@@ -37,7 +37,7 @@ import { factOf, streamOf } from "../reducer.ts";
 import { makeAccountStore, publicRead, readsOfState, type AccountStore } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
 import { hqNavigation } from "../projections/hqNavigation.ts";
-import { hqMateOverview } from "../projections/hqMates.ts";
+import { hqMateOverview, hqMateRefusal } from "../projections/hqMates.ts";
 import { classifyHqClose, HQ_SILENCE_MS, hqNavigationLink } from "./hq.ts";
 
 const ORG = "org";
@@ -708,6 +708,64 @@ describe("hqNavigationLink", () => {
       ]);
       yield* Fiber.interrupt(fiber);
     }),
+  );
+
+  it.effect.each(["forbidden", "session_required", "chief_owner_required"] as const)(
+    "an authoritative %s refusal removes the previously read Mate overview",
+    (code) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* live(store, fixture);
+        const scope = { kind: "attention", projectId: "ada", health: "apart" } as const;
+        yield* fixture.send({
+          type: "scope-reset",
+          scope,
+          incarnation: "a1",
+          revision: 1,
+          values: [
+            {
+              key: "ada",
+              value: {
+                presence: { online: true, since: "2026-10-06T00:00:00Z", overview: "live" },
+                overview: {
+                  identity: { environmentId: "env-ada", serverVersion: "0.14.35", update: null },
+                  main: null,
+                  threads: { list: [], omitted: 0 },
+                  logins: {},
+                  crew: { status: "off" },
+                },
+                attention: null,
+                attentionState: "none",
+              },
+            },
+          ],
+          removals: [],
+        });
+        yield* fixture.send({ type: "scope-ready", scope, incarnation: "a1", revision: 1 });
+        yield* settle;
+        expect(publicRead(factOf(store.state(), "hqMate", "ada")).kind).toBe("known");
+        yield* fixture.send({
+          type: "scope-error",
+          scope,
+          code,
+          reason: "Karlos",
+          disposition: "refused",
+        });
+        yield* settle;
+        expect(factOf(store.state(), "hqMate", "ada")?.content.kind).toBe("purged");
+        expect(
+          hqMateOverview.derive(readsOfState(store.state()), { orgId: ORG, projectId: "ada" }),
+        ).toBeNull();
+        expect(
+          hqMateRefusal.derive(readsOfState(store.state()), { orgId: ORG, projectId: "ada" }),
+        ).toEqual(
+          code === "chief_owner_required"
+            ? { kind: "refused-role", chiefOwnerName: "Karlos" }
+            : null,
+        );
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 
   it.effect("a scope HQ refuses stays refused, its facts kept, until the person tries again", () =>

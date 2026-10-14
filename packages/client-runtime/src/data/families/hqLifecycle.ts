@@ -2,7 +2,6 @@ import { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { OperationReceipt } from "../model.ts";
-import type { PreparedMateDeletion } from "../operations/mateDeletion.ts";
 import type { FamilySpec } from "./spec.ts";
 import { scopeOf } from "./spec.ts";
 
@@ -29,7 +28,7 @@ export const hqLifecycleFamily: FamilySpec<"hqLifecycle"> = {
 export const hqLifecycleScope = (orgId: string) => scopeOf(hqLifecycleFamily, orgId);
 /** Converts HQ's exact retained answer to the existing operation reducer's receipt. */
 export const lifecycleReceipt = (record: HqLifecycleRecord): OperationReceipt => {
-  const result: PreparedMateDeletion | undefined = record.result;
+  const result = record.productionRemoval ?? record.result;
   return {
     requestId: record.requestId,
     operationId: record.requestId,
