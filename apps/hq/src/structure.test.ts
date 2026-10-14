@@ -263,6 +263,20 @@ const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A
     }),
   );
 
+/** dev reads these projects too: Zerops shows them each through a Read only grant. */
+const devReads = (view: Ref.Ref<Org>, ...projectIds: ReadonlyArray<string>) =>
+  Ref.update(view, (org) => ({
+    ...org,
+    projects: org.projects.map((project) =>
+      projectIds.includes(project.id)
+        ? {
+            ...project,
+            userRoles: [...project.userRoles, { clientUserId: "C-dev", roleCode: "READ_ONLY" }],
+          }
+        : project,
+    ),
+  }));
+
 describe("structure", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
@@ -2522,13 +2536,14 @@ describe("structure", () => {
 
     // An application's environments and their deploys (SPEC §3.2b, main B26–B36) go to whoever
     // reads its changes, as main's commit statuses and environments.yaml went to whoever read its
-    // repositories — its environment's project unseen or not. One who sees the application through
-    // a Read only grant alone reads none of them (Fable round 9). Per service, the newest deploy and
-    // the one live.
+    // repositories — each only where Zerops shows them its project. One who sees the application
+    // through a Read only grant alone reads none of them (Fable round 9). Per service, the newest
+    // deploy and the one live.
     it.effect("reads an application's environments and deploys to whoever reads its changes", () =>
-      withStructure(() =>
+      withStructure((view) =>
         Effect.gen(function* () {
           const structure = yield* Structure;
+          yield* devReads(view, "P_STAGE");
           const sql = yield* SqlClient.SqlClient;
           const shop = yield* structure.createApp("owner", "Shop");
           yield* structure.attachProject("owner", shop.id, {
@@ -2587,7 +2602,7 @@ describe("structure", () => {
             );
           const seen = [
             {
-              projects: ["P_MATE"],
+              projects: ["P_MATE", "P_STAGE"],
               environments: [
                 {
                   projectId: "P_STAGE",
@@ -2611,8 +2626,8 @@ describe("structure", () => {
               ],
             },
           ];
-          // dev develops Shop through P_MATE (Basic user there), and does not read its stage's
-          // project; maker sees Shop only through a Read only grant on P_TEAM.
+          // dev develops Shop through P_MATE (Basic user there) and reads its stage's project;
+          // maker sees Shop only through a Read only grant on P_TEAM.
           assert.deepStrictEqual(yield* read("dev"), seen);
           // Refused, and said so: never an empty list that reads as "no environments".
           assert.deepStrictEqual(yield* read("maker"), [
@@ -2623,13 +2638,57 @@ describe("structure", () => {
       ),
     );
 
+    it.effect(
+      "an environment whose project Zerops hides from a reader stays out of their snapshot, deploys and all",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "face-1" },
+            });
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_PROD",
+              kind: "production",
+              environment: { name: "production" },
+            });
+            const [rollout] = yield* sql<{ readonly id: string }>`
+              SELECT id::text AS id FROM hq_rollout WHERE project_id = 'P_PROD'`;
+            yield* sql`
+              INSERT INTO hq_deploy_job (rollout_id, kind, environment_id, project_id, service, repo, sha, state,
+                process_id, requested_by, ended_at)
+              VALUES (${rollout!.id}::bigint, 'deploy', 'P_PROD', 'P_PROD', 'secret-api', 'api',
+                ${"4".repeat(40)}, 'live', 'J-PROD', 'owner', now())`;
+            const environmentsOf = (userId: string) =>
+              Effect.map(structure.read(userId), (read) =>
+                read.apps.flatMap((app) =>
+                  shown(app.environments).flatMap((value) =>
+                    value.target.kind === "zerops" ? [value.target.projectId] : [],
+                  ),
+                ),
+              );
+            // dev is org NO_ACCESS with a Basic user grant on P_MATE alone: Zerops hides P_PROD.
+            assert.deepStrictEqual(yield* environmentsOf("dev"), []);
+            const seenByDev = JSON.stringify(yield* structure.read("dev"));
+            for (const secret of ["P_PROD", "secret-api", "J-PROD"])
+              assert.notInclude(seenByDev, secret);
+            assert.deepStrictEqual(yield* environmentsOf("owner"), ["P_PROD"]);
+          }),
+        ),
+    );
+
     // The deploy-jobs design: the view carries an environment's newest jobs, bounded, and each
     // service's newest live one past the bound — what runs there is never cut off by what came
     // after — each naming what asked for it.
     it.effect("carries an environment's newest jobs, and each service's live one past them", () =>
-      withStructure(() =>
+      withStructure((view) =>
         Effect.gen(function* () {
           const structure = yield* Structure;
+          yield* devReads(view, "P_STAGE", "P_PROD", "P_PROD2");
           const sql = yield* SqlClient.SqlClient;
           const shop = yield* structure.createApp("owner", "Shop");
           yield* structure.attachProject("owner", shop.id, {
@@ -2681,9 +2740,10 @@ describe("structure", () => {
     // A production attached after a release carries none of it, however old; a production with no
     // floor (made before it existed) carries the newest approved release as it always did.
     it.effect("carries no release made before the production was attached", () =>
-      withStructure(() =>
+      withStructure((view) =>
         Effect.gen(function* () {
           const structure = yield* Structure;
+          yield* devReads(view, "P_STAGE", "P_PROD", "P_PROD2");
           const sql = yield* SqlClient.SqlClient;
           const shop = yield* structure.createApp("owner", "Shop");
           yield* structure.attachProject("owner", shop.id, {
@@ -2724,9 +2784,10 @@ describe("structure", () => {
     // planned, ended once every job it asked for there ended and every job of a commit it left out
     // as under way ended too — however many jobs came after; a stage carries none.
     it.effect("carries where a production's newest release stands, however many jobs it has", () =>
-      withStructure(() =>
+      withStructure((view) =>
         Effect.gen(function* () {
           const structure = yield* Structure;
+          yield* devReads(view, "P_STAGE", "P_PROD", "P_PROD2");
           const sql = yield* SqlClient.SqlClient;
           const shop = yield* structure.createApp("owner", "Shop");
           yield* structure.attachProject("owner", shop.id, {
@@ -2875,9 +2936,10 @@ describe("structure", () => {
     it.effect(
       "carries whether an environment's birth ended, from the rollout its attach asked",
       () =>
-        withStructure(() =>
+        withStructure((view) =>
           Effect.gen(function* () {
             const structure = yield* Structure;
+            yield* devReads(view, "P_STAGE", "P_PROD", "P_PROD2");
             const sql = yield* SqlClient.SqlClient;
             const shop = yield* structure.createApp("owner", "Shop");
             yield* structure.attachProject("owner", shop.id, {

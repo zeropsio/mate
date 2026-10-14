@@ -367,8 +367,9 @@ export interface StructureRead {
     /**
      * Its stage and production, in the order they were declared, with their deploys: to whoever
      * reads its changes (`read_change`), as main's commit statuses and `environments.yaml` went to
-     * whoever read its repositories. To one who only sees the application, refused with why —
-     * never an empty list, which would read as none declared.
+     * whoever read its repositories — each Zerops one only where Zerops shows the reader its
+     * project. To one who only sees the application, refused with why — never an empty list,
+     * which would read as none declared.
      */
     readonly environments:
       | ReadonlyArray<
