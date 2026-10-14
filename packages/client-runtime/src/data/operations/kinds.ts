@@ -45,6 +45,7 @@ import { updateProjectTags } from "./updateProjectTags.ts";
 import { vaultWrite } from "./vaultWrite.ts";
 import { ADDRESS_WRITE_KINDS } from "./addressWrites.ts";
 import { APP_ACCESS_KINDS } from "./appAccess.ts";
+import { TEAM_KINDS } from "./team.ts";
 
 /** The registry, checked once at startup: each kind once. */
 export function defineOperationKinds(
@@ -101,6 +102,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   ...FLOW_WRITE_KINDS,
   ...ADDRESS_WRITE_KINDS,
   ...APP_ACCESS_KINDS,
+  ...TEAM_KINDS,
 ]);
 
 /** The kind an intent belongs to, in a registry: the account's, or a test's own. */

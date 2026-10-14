@@ -9,6 +9,7 @@
  * @module data/operations/appAccess
  */
 import type { AppAccessChange, AppAccessLevel, AppProjects } from "../../zerops/appAccess.ts";
+import type { TeamRole } from "../../zerops/teamRoles.ts";
 import type { OperationKind } from "./kind.ts";
 
 /** Who an address is to Zerops, before it is invited. */
@@ -44,7 +45,12 @@ declare module "../model.ts" {
       readonly email: string;
       readonly invitee: Invitee;
       readonly level: AppAccessLevel;
-      /** The app the invitation opens. */
+      /**
+       * Their place on the team, from the Team page. Without it, the organization opens nothing
+       * and only someone who works on the app may start projects of their own.
+       */
+      readonly role?: TeamRole;
+      /** The apps the invitation opens, as one: every chosen app's places and Mates. */
       readonly projects: AppProjects;
     };
     readonly "set-app-access": {
