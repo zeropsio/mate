@@ -29,6 +29,7 @@ import {
   releaseTagTip,
   reviewItemByline,
   reviewListWithLeaving,
+  reviewMarkOf,
   reviewPopoverTitle,
   reviewTagLabel,
   type ProjectReviewItem,
@@ -139,17 +140,20 @@ export function ProjectReviewMarks({
   release,
 }: Parameters<typeof ProjectReviewTags>[0]): ReactNode {
   if (items.length === 0 && release === undefined) return null;
+  const mark = items.length === 0 ? undefined : reviewMarkOf(items, projectName);
   return (
     <span className="menu-marks" data-zerops-surface="sidebar-project-marks">
-      {items.length === 0 ? null : (
+      {mark === undefined ? null : (
         <span
-          aria-label={reviewTagLabel(items, projectName)}
+          aria-label={mark.label}
           className="menu-mark menu-mark-merge"
+          // Its Mate still works on every change it stands for: quieter, asking nothing.
+          data-in-progress={mark.asks ? undefined : ""}
           data-zerops-surface="sidebar-project-review-mark"
           role="img"
         >
           <GitMergeIcon aria-hidden="true" className="menu-mark-icon" />
-          {items.length > 1 ? <span>{items.length}</span> : null}
+          {mark.count > 1 ? <span>{mark.count}</span> : null}
         </span>
       )}
       {release === undefined ? null : (

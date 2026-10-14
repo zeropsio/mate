@@ -3623,6 +3623,11 @@ code {
     color: var(--primary);
   }
 
+  /* Its Mate still works on every change it stands for: there, quieter, asking nothing yet. */
+  .menu-mark-merge[data-in-progress] {
+    color: var(--sidebar-muted-foreground);
+  }
+
   .menu-mark-release {
     color: var(--primary);
   }
