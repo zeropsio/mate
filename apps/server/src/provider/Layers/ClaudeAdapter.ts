@@ -318,7 +318,30 @@ interface AssistantTextBlockState {
   fallbackText: string;
   streamClosed: boolean;
   completionEmitted: boolean;
+  /**
+   * Its streamed words, held while they could still be Claude Code's no-reply placeholder
+   * (`isClaudePlaceholderPrefix`); null once they cannot, and they went out.
+   */
+  heldText: string | null;
 }
+
+/**
+ * The texts Claude Code itself writes for a reply that says nothing — after a turn with no answer
+ * ("No response requested.", which a model also writes on a woken turn it has nothing to say on)
+ * and for a reply with no content — and never shows as one (its `kEe`/`DDr`: the trimmed text
+ * equal to either is no reply, whatever model wrote it).
+ */
+const CLAUDE_PLACEHOLDERS: ReadonlyArray<string> = ["No response requested.", "(no content)"];
+
+/** The whole text is Claude Code's no-reply placeholder. */
+export const isClaudePlaceholder = (text: string): boolean =>
+  CLAUDE_PLACEHOLDERS.includes(text.trim());
+
+/** What streamed so far could still become the placeholder. */
+const isClaudePlaceholderPrefix = (text: string): boolean => {
+  const start = text.trimStart();
+  return CLAUDE_PLACEHOLDERS.some((placeholder) => placeholder.startsWith(start));
+};
 
 interface PendingApproval {
   readonly requestType: CanonicalRequestType;
@@ -2420,6 +2443,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       fallbackText: options?.fallbackText ?? "",
       streamClosed: options?.streamClosed ?? false,
       completionEmitted: false,
+      heldText: "",
     };
     turnState.assistantTextBlocks.set(blockIndex, block);
     turnState.assistantTextBlockOrder.push(block);
@@ -2459,6 +2483,19 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     if (!options?.force && !block.streamClosed) {
       return;
     }
+
+    // What it held is its whole text: Claude Code's placeholder is no reply, so nothing of it goes
+    // out; any other words go as they were.
+    const held = block.heldText ?? "";
+    const whole = held.length > 0 ? held : block.fallbackText;
+    if (!block.emittedTextDelta && isClaudePlaceholder(whole)) {
+      block.completionEmitted = true;
+      if (turnState.assistantTextBlocks.get(block.blockIndex) === block) {
+        turnState.assistantTextBlocks.delete(block.blockIndex);
+      }
+      return;
+    }
+    if (!block.emittedTextDelta && held.length > 0) block.fallbackText = held;
 
     if (!block.emittedTextDelta && block.fallbackText.length > 0) {
       const deltaStamp = yield* makeEventStamp();
@@ -3166,8 +3203,20 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           return;
         }
         const assistantBlockEntry = yield* ensureAssistantTextBlock(context, event.index);
-        if (assistantBlockEntry?.block) {
-          assistantBlockEntry.block.emittedTextDelta = true;
+        const textBlock = assistantBlockEntry?.block;
+        let outText = deltaText;
+        // Words that could still be Claude Code's no-reply placeholder wait for the next ones.
+        if (textBlock !== undefined && textBlock.heldText !== null) {
+          const held = textBlock.heldText + deltaText;
+          if (isClaudePlaceholderPrefix(held)) {
+            textBlock.heldText = held;
+            return;
+          }
+          textBlock.heldText = null;
+          outText = held;
+        }
+        if (textBlock) {
+          textBlock.emittedTextDelta = true;
         }
         const stamp = yield* makeEventStamp();
         yield* offerRuntimeEvent({
@@ -3184,7 +3233,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             : {}),
           payload: {
             streamKind,
-            delta: deltaText,
+            delta: outText,
           },
           providerRefs: nativeProviderRefs(context),
           raw: {
