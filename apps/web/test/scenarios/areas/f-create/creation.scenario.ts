@@ -1,3 +1,4 @@
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { describe, it, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
@@ -20,6 +21,7 @@ describe("F: creation through the hosted client", () => {
           yield* s.given.signedIn;
           const c = creation(s);
           yield* c.openAdd(role);
+          yield* c.chooseDestination("zerops");
           yield* c.fill("Environment", "Shop-b");
           yield* c.withAgent;
           yield* c.click(`Add ${role} to Shop`);
@@ -39,6 +41,7 @@ describe("F: creation through the hosted client", () => {
           yield* s.given.signedIn;
           const c = creation(s);
           yield* c.openAdd(role);
+          yield* c.chooseDestination("zerops");
           yield* c.fill("Environment", "Shop-b");
           yield* c.agentIsOff;
           yield* c.text(`The project's ${role} recipe`);
@@ -51,6 +54,59 @@ describe("F: creation through the hosted client", () => {
         }),
       );
     }
+
+    it.effect(
+      "An application with no code repositories asks for a repository before a branch",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installCreation]);
+          yield* s.given.project("Ada", { mate: true, app: "Shop" });
+          const { core, owner, appIds } = s.drivers;
+          const repositories = yield* core.call("GET", `/api/apps/${appIds.get("Shop")}/repos`, {
+            session: owner,
+          });
+          expect(repositories.status).toBe(200);
+          expect(repositories.body).toEqual({
+            repos: [expect.objectContaining({ name: RECIPE_REPO })],
+          });
+          yield* s.given.signedIn;
+          const c = creation(s);
+          yield* c.openAdd("production");
+          yield* c.text("New production environment");
+          expect(
+            yield* Effect.promise(() =>
+              s.page.$$eval(
+                '[role="dialog"] input:not([type="radio"]):not([type="hidden"])',
+                (nodes) => nodes.length,
+              ),
+            ),
+            "ASSERTION: choosing the destination asks for no repository or branch fields",
+          ).toBe(0);
+          yield* c.chooseDestination("git");
+          yield* c.text("GitHub · a token comes next");
+          const labels = yield* Effect.promise(() =>
+            s.page.$$eval('[data-zerops-surface="git-environment-form"] label', (nodes) =>
+              nodes.map((node) => node.textContent?.trim()),
+            ),
+          );
+          expect(
+            labels,
+            "ASSERTION: an empty application asks for Repository before Branch",
+          ).toEqual(["Repository"]);
+          yield* c.fill("Repository", "https://github.com/acme/app");
+          yield* c.click("Continue");
+          yield* c.text("A token that may write to it");
+          yield* c.text("Create the token on GitHub");
+          expect(
+            yield* Effect.promise(() =>
+              s.page.$$eval('[data-zerops-surface="git-environment-form"] label', (nodes) =>
+                nodes.map((node) => node.textContent?.trim()),
+              ),
+            ),
+          ).toEqual(["Token"]);
+          yield* s.then.noExternalNetwork;
+        }),
+    );
 
     // Catches cleanup targeting a sibling or forgetting a failed birth before its deletion is proved.
     it.effect("Remove cleans up only the failed creation's project", () =>

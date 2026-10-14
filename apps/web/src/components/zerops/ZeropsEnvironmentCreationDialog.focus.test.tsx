@@ -53,6 +53,10 @@ const addStage = (landsElsewhere: boolean | undefined) => {
       }),
     );
   });
+  const destination = tree!.root.findByProps({
+    "data-zerops-surface": "environment-destination-form",
+  });
+  act(() => destination.props.onSubmit({ preventDefault: () => undefined }));
   const form = tree!.root.find((node) => node.type === "form");
   act(() => form.props.onSubmit({ preventDefault: () => undefined }));
 };
@@ -102,6 +106,8 @@ it("A chosen Git target survives the recipe arriving after first paint", () => {
       typeof node.props.onValueChange === "function",
   );
   act(() => choose.props.onValueChange("git"));
+  const chooser = tree!.root.findByProps({ "data-zerops-surface": "environment-destination-form" });
+  act(() => chooser.props.onSubmit({ preventDefault: () => undefined }));
   expect(tree!.root.findByProps({ "data-zerops-surface": "git-environment-form" })).toBeDefined();
   act(() =>
     tree!.update(

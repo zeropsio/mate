@@ -117,6 +117,7 @@ import {
 } from "./deployTokens.ts";
 import { GitHost } from "./gitHost.ts";
 import { GitPush, gitPushLayer, type PushEvidence, pushEvidenceForWire } from "./gitPush.ts";
+import { changesLayer } from "./changes.ts";
 import { repoRemotesLayer } from "./repoRemotes.ts";
 import { githubProbesLayer } from "./githubProbes.ts";
 import { gitTransportLayer } from "./gitTransport.ts";
@@ -2274,6 +2275,7 @@ export const deploysLayer = (
         gitPushLayer.pipe(
           Layer.provide(
             repoRemotesLayer.pipe(
+              Layer.provide(changesLayer),
               Layer.provide(
                 githubProbesLayer.pipe(
                   Layer.provide(
