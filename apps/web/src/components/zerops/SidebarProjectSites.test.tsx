@@ -397,6 +397,24 @@ describe("the addresses sheet's doors", () => {
     },
   );
 
+  it("offers no Manage for a place Git delivers to, which has no Zerops addresses", async () => {
+    await mount(
+      {
+        production: () => ({
+          stops: [
+            // Delivered by Git: only that it is, not how, matters here.
+            stop({ name: "production", git: {} as unknown as NonNullable<ChipMenuStop["git"]> }),
+          ],
+        }),
+      },
+      inAccount({}),
+    );
+    await press(surface("sidebar-project-sites"));
+    expect(sectionOf("Production")).toBeDefined();
+    expect(manageIn("Production")).toBeNull();
+    expect(manageIn("stage")).not.toBeNull();
+  });
+
   it("offers no Manage outside an account, where no sheet can read a place", async () => {
     await mount();
     await press(surface("sidebar-project-sites"));
