@@ -56,6 +56,11 @@ export interface ServicePairing {
   readonly pairs: ReadonlyArray<ServicePair>;
   /** Each preview's dev half, by the preview's hostname. */
   readonly devOf: ReadonlyMap<string, string>;
+  /**
+   * A further dev service of a pair (variant B: one dev service per part, one shared code
+   * volume), by its hostname: the pair's first dev half, the only one that is its repository.
+   */
+  readonly sharesCodeWith: ReadonlyMap<string, string>;
 }
 
 export interface ServicePairsInput {
@@ -101,6 +106,26 @@ function declaredPairs(yaml: string | undefined): ReadonlyMap<string, Declared> 
   return declared;
 }
 
+/** The dev services built from a repository an earlier dev service of the tier is built from. */
+function sharedDevs(
+  yaml: string | undefined,
+  services: ServicePairsInput["services"],
+  groupOf: ReadonlyMap<string, string | undefined>,
+): ReadonlyMap<string, string> {
+  const shared = new Map<string, string>();
+  if (yaml === undefined) return shared;
+  const repositories = recipeTierRepositories(yaml);
+  const first = new Map<string, string>();
+  for (const { hostname, role } of recipeTierServices(yaml) ?? []) {
+    const repository = repositories.get(hostname);
+    if (role !== "dev" || repository === undefined || !groupOf.has(hostname)) continue;
+    const owner = first.get(repository);
+    if (owner === undefined) first.set(repository, hostname);
+    else if (services.some((service) => service.hostname === hostname)) shared.set(hostname, owner);
+  }
+  return shared;
+}
+
 /** The pairs among a project's services, from the tier on `main`, the open recipe change, the stem. */
 export function servicePairs(input: ServicePairsInput): ServicePairing {
   const groupOf = new Map(input.services.map((service) => [service.hostname, service.group]));
@@ -138,11 +163,12 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
     previews.push(paired.preview);
     previewsByDev.set(paired.dev, previews);
   }
+  const sharesCodeWith = sharedDevs(input.tier, input.services, groupOf);
   const pairs = input.services.flatMap(({ hostname }) => {
     const previews = previewsByDev.get(hostname);
     return previews === undefined ? [] : [{ name: pairName(hostname), dev: hostname, previews }];
   });
-  return { pairs, devOf };
+  return { pairs, devOf, sharesCodeWith };
 }
 
 /** A preview's part label: its `zeropsSetup`, only where its pair has more than one preview. */
