@@ -40,6 +40,7 @@ import {
   chiefAsk,
   chiefMessageTarget,
   domainProposalAlso,
+  domainProposalRecords,
   domainProposalState,
   envProposalWrite,
   heldMessageWords,
@@ -309,6 +310,9 @@ function Proposal({
       domainAlso={proposal.kind === "domain.add" ? domainProposalAlso(place) : undefined}
       domainState={
         proposal.kind === "domain.add" ? domainProposalState(place, proposal) : undefined
+      }
+      domainRecords={
+        proposal.kind === "domain.add" ? domainProposalRecords(place, proposal) : undefined
       }
       onOpenAddresses={
         proposal.kind === "domain.add" && domainPlace !== null

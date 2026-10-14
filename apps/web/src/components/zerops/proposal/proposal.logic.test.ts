@@ -25,6 +25,7 @@ import {
   type ProposalDecision,
   type ProposalDecisions,
   type ProposalStage,
+  domainProposalRecords,
 } from "./proposal.logic";
 
 const AT = "2026-10-12T10:00:00.000Z";
@@ -410,6 +411,46 @@ describe("domainProposalState", () => {
     ["nothing while the project holds none of its domains", place([]), undefined],
   ])("%s", (_title, addresses, state) => {
     expect(domainProposalState(addresses, domain)).toEqual(state);
+  });
+});
+
+describe("domainProposalRecords", () => {
+  const ips = {
+    v6: "2001:db8::1",
+    sharedV4: "93.185.106.128",
+    zone: "p1.prg1-zerops.zone",
+    zoneHasSharedV4: false,
+  };
+  it("an approved domain waiting for DNS lists the records still to add, its domains alone", () => {
+    const records = domainProposalRecords(
+      place(
+        [
+          placed({ domainName: "contoso.com", face: "live" }),
+          placed({ domainName: "www.contoso.com", face: "dns" }),
+          placed({ domainName: "other.com", face: "dns" }),
+        ],
+        { ips },
+      ),
+      domain,
+    );
+    expect(records?.records.map((record) => `${record.type} ${record.name}`)).toEqual([
+      "A www.contoso.com",
+      "AAAA www.contoso.com",
+    ]);
+    expect(records?.cnames.map((record) => [record.name, record.ipv4])).toEqual([
+      ["www.contoso.com", false],
+    ]);
+  });
+
+  it.each<[string, PlaceAddresses]>([
+    ["nothing once every domain answers", place([placed({ domainName: "contoso.com" })], { ips })],
+    ["nothing while the addresses are read", place([], { state: "reading" })],
+    [
+      "nothing while the project's IP addresses are unread",
+      place([placed({ domainName: "contoso.com", face: "dns" })]),
+    ],
+  ])("%s", (_title, addresses) => {
+    expect(domainProposalRecords(addresses, domain)).toBeUndefined();
   });
 });
 

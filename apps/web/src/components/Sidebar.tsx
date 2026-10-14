@@ -121,6 +121,7 @@ import {
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   openAddProjectFromSidebar,
+  openMenuMate,
   resolveAdjacentThreadId,
   resolveThreadRowLayoutPresentation,
   resolveThreadProviderIconClassName,
@@ -1832,34 +1833,30 @@ export default function Sidebar() {
   // project's first Mate, before its project exists, by the creation's id.
   const comingMateRoute = useMatch({ from: "/_chat/mate/$projectId", shouldThrow: false });
   const newProjectRoute = useMatch({ from: "/_chat/mate/new/$birthId", shouldThrow: false });
+  // The person's Chief, kept out of the listing for a top of its own.
+  const zeropsChief = useAtomValue(ownChiefCandidateAtom);
   // The row for the environment whose conversation is open. A fresh draft
   // has no thread yet, but it knows its environment — and that is the one
   // the user is about to talk to.
-  const activeZeropsProject = useMemo((): {
-    readonly id: string | null;
-    /** The route names a Mate the listing has not found yet: unknown, not none. */
-    readonly resolving: boolean;
-  } => {
-    if (comingMateRoute !== undefined)
-      return { id: comingMateRoute.params.projectId, resolving: false };
-    if (newProjectRoute !== undefined)
-      return { id: newProjectRoute.params.birthId, resolving: false };
-    const environmentId = routeThreadRef?.environmentId ?? routeDraftThread?.environmentId;
-    if (environmentId === undefined) return { id: null, resolving: false };
-    const open = findCandidate(
+  const activeZeropsProject = useMemo(
+    () =>
+      openMenuMate({
+        comingProjectId: comingMateRoute?.params.projectId,
+        birthId: newProjectRoute?.params.birthId,
+        environmentId: routeThreadRef?.environmentId ?? routeDraftThread?.environmentId,
+        chief: zeropsChief,
+        lookup: (environmentId) =>
+          findCandidate(zeropsListing, (candidate) => candidate.environmentId === environmentId),
+      }),
+    [
+      comingMateRoute,
+      newProjectRoute,
+      routeDraftThread?.environmentId,
+      routeThreadRef?.environmentId,
+      zeropsChief,
       zeropsListing,
-      (candidate) => candidate.environmentId === environmentId,
-    );
-    return open.kind === "found"
-      ? { id: open.row.project.id, resolving: false }
-      : { id: null, resolving: open.kind === "pending" || open.kind === "unknown" };
-  }, [
-    comingMateRoute,
-    newProjectRoute,
-    routeDraftThread?.environmentId,
-    routeThreadRef?.environmentId,
-    zeropsListing,
-  ]);
+    ],
+  );
   const activeZeropsProjectId = activeZeropsProject.id;
   const activeZeropsProjectResolving = activeZeropsProject.resolving;
   // The Mate a press in the menu opens, lit from the press while its route is on its way
@@ -1933,7 +1930,6 @@ export default function Sidebar() {
     if (isMobile) setOpenMobile(false);
     void router.navigate({ to: "/chief" });
   }, [isMobile, router, setOpenMobile]);
-  const zeropsChief = useAtomValue(ownChiefCandidateAtom);
   const zeropsListed = zeropsCandidates;
   const chiefSetupLine = useChiefSetupLine();
   const chiefSetupEntry = useChiefSetupEntry();

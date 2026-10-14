@@ -254,7 +254,7 @@ describe("the records a domain needs at the person's DNS provider", () => {
         { type: "AAAA", name: "shop.com", value: V6 },
       ],
       bothRequired: true,
-      cname: { type: "CNAME", name: "shop.com", value: ZONE },
+      cname: { type: "CNAME", name: "shop.com", value: ZONE, ipv4: true },
     });
   });
 
@@ -264,8 +264,29 @@ describe("the records a domain needs at the person's DNS provider", () => {
     expect(advice.bothRequired).toBe(false);
   });
 
-  it("a zone that does not answer on the shared IPv4 offers no CNAME", () => {
-    expect(dnsAdvice("www.shop.com", { ...IPS, zoneHasSharedV4: false }).cname).toBeUndefined();
+  it("a zone that does not answer on the shared IPv4 offers its CNAME as IPv6's alone until it does", () => {
+    expect(dnsAdvice("www.shop.com", { ...IPS, zoneHasSharedV4: false }).cname).toEqual({
+      type: "CNAME",
+      name: "www.shop.com",
+      value: ZONE,
+      ipv4: false,
+    });
+  });
+
+  it("a wildcard domain's records are its own, beside the certificate's CNAME at zerops.zone", () => {
+    expect(dnsAdvice("*.shop.com", IPS)).toEqual({
+      records: [
+        { type: "A", name: "*.shop.com", value: SHARED },
+        { type: "AAAA", name: "*.shop.com", value: V6 },
+      ],
+      bothRequired: true,
+      cname: { type: "CNAME", name: "*.shop.com", value: ZONE, ipv4: true },
+      certificate: {
+        type: "CNAME",
+        name: "_acme-challenge.shop.com",
+        value: "shop.com.zerops.zone",
+      },
+    });
   });
 
   it("a region this build does not know gives no shared IPv4 to point an A at", () => {

@@ -37,7 +37,6 @@ import {
 } from "./addresses.logic";
 import {
   Confirm,
-  CopyButton,
   Face,
   guardPress,
   guardTitle,
@@ -50,6 +49,7 @@ import {
   useRevealed,
   type SheetContext,
 } from "./AddressesSheetBits";
+import { DnsRecords } from "./DnsRecords";
 
 export type WebMode =
   | { readonly kind: "list" }
@@ -419,7 +419,7 @@ function Records({
   readonly onOwnIpv4: (() => void) | undefined;
 }) {
   const [ways, setWays] = useState(false);
-  const { records, bothRequired, cnames } = recordsOf(domains, ips);
+  const { records, bothRequired, cnames, certificates } = recordsOf(domains, ips);
   const first = domains[0]!;
   const elsewhere = domains.filter((domain) => domain.face === "elsewhere");
   const nameServers = first.nameServers;
@@ -440,36 +440,13 @@ function Records({
           {ctx.placeName}'s IP addresses aren't read yet.
         </p>
       ) : (
-        <table className="w-full table-fixed text-xs">
-          <thead className="text-muted-foreground">
-            <tr>
-              <th className="w-16 pb-1 text-left font-normal">Type</th>
-              <th className="w-[38%] pb-1 text-left font-normal">Name</th>
-              <th className="pb-1 text-left font-normal">Value</th>
-              <th className="w-8" />
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((record) => (
-              <tr
-                className="border-t border-border/50"
-                data-record={record.type}
-                key={`${record.type}:${record.name}`}
-              >
-                <td className="py-1 font-medium">{record.type}</td>
-                <td className="truncate py-1 font-mono">{record.name}</td>
-                <td className="truncate py-1 font-mono">{record.value}</td>
-                <td className="py-0.5 text-right">
-                  <CopyButton value={record.value} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DnsRecords
+          bothRequired={bothRequired}
+          certificates={certificates}
+          cnames={cnames}
+          records={records}
+        />
       )}
-      {bothRequired ? (
-        <p className="text-muted-foreground text-xs">Keep both: the shared IPv4 needs the AAAA.</p>
-      ) : null}
       <div>
         <div className="-ms-2">
           <Button
@@ -484,15 +461,6 @@ function Records({
         </div>
         {ways ? (
           <div className="grid gap-1.5 pt-1.5 text-muted-foreground text-xs">
-            {cnames.map((cname) => (
-              <p key={cname.name}>
-                <b className="font-medium text-foreground">One CNAME instead:</b>{" "}
-                <code>
-                  {cname.name} → {cname.value}
-                </code>
-                , where your DNS provider allows a CNAME there.
-              </p>
-            ))}
             {ips.ownV4 === undefined ? (
               <p>
                 <b className="font-medium text-foreground">Your own IPv4:</b> then the A record
@@ -734,7 +702,7 @@ function AddDomainForm({
               setTyped(event.target.value);
               setGuarding(false);
             }}
-            placeholder="yourshop.com"
+            placeholder="yourshop.com, or *.yourshop.com"
             spellCheck={false}
             value={typed}
           />

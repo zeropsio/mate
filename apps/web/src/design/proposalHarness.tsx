@@ -16,6 +16,7 @@ import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { recordsOf } from "~/components/zerops/addresses/addresses.logic";
 import { MateFaceAsMark } from "~/components/zerops/primitives";
 import {
   ProposalCard,
@@ -139,6 +140,7 @@ const CARDS: ReadonlyArray<{
   readonly readOnlyReason?: string;
   readonly domainAlso?: string;
   readonly domainState?: ProposalCardProps["domainState"];
+  readonly domainRecords?: ProposalCardProps["domainRecords"];
 }> = [
   { proposal: RESTART, stage: "open" },
   { proposal: SECRET, stage: "open" },
@@ -188,6 +190,13 @@ const CARDS: ReadonlyArray<{
       tone: "waiting",
       words: "Waiting for your DNS. Add contoso.com's records at your DNS provider.",
     },
+    // A project whose zone leaves the shared IPv4 out, as most do: the CNAME waits on it.
+    domainRecords: recordsOf([{ domainName: "contoso.com" }, { domainName: "www.contoso.com" }], {
+      v6: "2001:db8:4a7:1d::1",
+      sharedV4: "93.185.106.128",
+      zone: "k3f9x2.prg1-zerops.zone",
+      zoneHasSharedV4: false,
+    }),
   },
   {
     proposal: { ...DOMAIN, id: "domain-elsewhere" },
@@ -220,6 +229,7 @@ function Card(card: (typeof CARDS)[number]) {
       chiefTarget={card.chiefTarget}
       domainAlso={card.domainAlso}
       domainState={card.domainState}
+      domainRecords={card.domainRecords}
       failure={failure}
       onOpenAddresses={card.proposal.kind === "domain.add" ? () => undefined : undefined}
       readOnlyReason={card.readOnlyReason}

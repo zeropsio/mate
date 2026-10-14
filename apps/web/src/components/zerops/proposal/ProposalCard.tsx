@@ -24,6 +24,7 @@ import {
 import { useState } from "react";
 
 import { MateMark } from "../../MateMark";
+import { DnsRecords } from "../addresses/DnsRecords";
 import { Button } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { FlatCard, MateFace } from "../primitives";
@@ -33,6 +34,7 @@ import {
   proposalTitle,
   proposalWhere,
   type DomainProposalState,
+  type domainProposalRecords,
   type ProposalStage,
 } from "./proposal.logic";
 
@@ -70,6 +72,8 @@ export interface ProposalCardProps {
   readonly domainAlso?: string | undefined;
   /** `domain.add`, approved: how far its domains are from answering, once the project shows them. */
   readonly domainState?: DomainProposalState | undefined;
+  /** `domain.add`, approved: the records its domains still need at the DNS provider. */
+  readonly domainRecords?: ReturnType<typeof domainProposalRecords> | undefined;
   /** `domain.add`, approved: opens the project's addresses. */
   readonly onOpenAddresses?: (() => void) | undefined;
 }
@@ -335,36 +339,39 @@ function ProposalFoot(props: ProposalCardProps) {
  * they show it, that it was added — and the way to its records.
  */
 function DomainFoot(props: ProposalCardProps & { readonly stage: "done" | "unseen" }) {
-  const { domainState, proposal, stage } = props;
+  const { domainState, domainRecords, proposal, stage } = props;
   const tone = domainState?.tone ?? (stage === "done" ? "live" : "waiting");
   return (
-    <div
-      className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground"
-      data-proposal-outcome={stage}
-      data-proposal-domain={domainState?.tone}
-      role="status"
-    >
-      <span
-        className={
-          tone === "problem"
-            ? "flex min-w-0 items-start gap-1.5 text-destructive-foreground"
-            : "flex min-w-0 items-center gap-1.5"
-        }
+    <div className="grid gap-3">
+      <div
+        className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground"
+        data-proposal-outcome={stage}
+        data-proposal-domain={domainState?.tone}
+        role="status"
       >
-        {tone === "working" ? <Spinner size="xs" /> : null}
-        {tone === "live" ? (
-          <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok-text" />
-        ) : null}
-        {tone === "problem" ? (
-          <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
-        ) : null}
-        {domainState?.words ?? proposalOutcomeWords(proposal, stage)}
-      </span>
-      {props.onOpenAddresses === undefined ? null : (
-        <Button onClick={props.onOpenAddresses} size="xs" variant="outline">
-          Open addresses
-        </Button>
-      )}
+        <span
+          className={
+            tone === "problem"
+              ? "flex min-w-0 items-start gap-1.5 text-destructive-foreground"
+              : "flex min-w-0 items-center gap-1.5"
+          }
+        >
+          {tone === "working" ? <Spinner size="xs" /> : null}
+          {tone === "live" ? (
+            <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok-text" />
+          ) : null}
+          {tone === "problem" ? (
+            <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
+          ) : null}
+          {domainState?.words ?? proposalOutcomeWords(proposal, stage)}
+        </span>
+        {props.onOpenAddresses === undefined ? null : (
+          <Button onClick={props.onOpenAddresses} size="xs" variant="outline">
+            Open addresses
+          </Button>
+        )}
+      </div>
+      {domainRecords === undefined ? null : <DnsRecords {...domainRecords} />}
     </div>
   );
 }
