@@ -357,6 +357,34 @@ describe("Git standing from the accepted release", () => {
     },
   );
 
+  it("A Git production whose push HQ refused as diverged can be checked again from its review, and a ready preflight after the refusal releases it", () => {
+    const refused = environment([{ ...job("refused"), reason: "diverged" }, job("pushed", "web")]);
+    const ready = (checkedAt: string) => ({
+      api: {
+        repo: "api",
+        remote,
+        ref: "refs/heads/main",
+        before: OLD,
+        sha: SHA,
+        verdict: "ready" as const,
+        reason: null,
+        checkedAt,
+      },
+    });
+    const blocked = {
+      release: {
+        allowed: false,
+        reason: "The remote branch has commits Mate doesn't, so this release can't go out.",
+      },
+      recheck: true,
+    };
+    expect(gitDeliveryOf(refused, facts)).toMatchObject(blocked);
+    expect(gitDeliveryOf(refused, { ...facts, preflight: ready(AT) })).toMatchObject(blocked);
+    expect(
+      gitDeliveryOf(refused, { ...facts, preflight: ready("2026-10-13T11:00:00.123456Z") }),
+    ).toMatchObject({ release: { allowed: true, reason: undefined }, recheck: false });
+  });
+
   it("L1e/L2c: an old token refusal cannot invalidate a verified replacement or infer its GitHub owner", () => {
     const rotated = { ...remote, keptAt: "2026-10-13T11:00:00Z", keptBy: "another-custodian" };
     const answer = gitDeliveryOf(environment([job("pushed"), job("pushed", "web")]), {
