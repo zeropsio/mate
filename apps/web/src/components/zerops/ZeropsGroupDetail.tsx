@@ -1274,6 +1274,7 @@ export function ZeropsStopDetailPage({
     NO_ROUTE_ENVIRONMENT,
   );
   const read = useProjection(canonicalAppEnvironments, key, NO_ROUTE_ENVIRONMENTS);
+  const inventory = useZeropsInventory();
   const navigation = useProjection(canonicalHqNavigation, orgId, NO_ROUTE_NAVIGATION);
   const status = useFlowNavigation(orgId);
   const unread = unreadFlowWords({
@@ -1286,6 +1287,18 @@ export function ZeropsStopDetailPage({
     name: navigation?.structure?.apps.find((app) => app.id === groupId)?.name,
   });
   if (environment?.target.kind === "zerops") {
+    const notice = withheldProjectNotice(
+      inventory,
+      environment.target.projectId,
+      environment.tier === "production" ? "Production" : "Stage",
+    );
+    if (notice !== null) {
+      return (
+        <DetailShell crumbs={crumbs} title={environment.name}>
+          <Note>{notice}</Note>
+        </DetailShell>
+      );
+    }
     return (
       <ZeropsProjectStopDetailPage groupId={groupId} projectId={environment.target.projectId} />
     );

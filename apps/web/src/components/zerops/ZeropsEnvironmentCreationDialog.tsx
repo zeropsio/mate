@@ -202,8 +202,9 @@ function EnvironmentDestinationForm(props: ZeropsEnvironmentCreationFormProps) {
                 <span className="space-y-1">
                   <span className="block font-medium">A branch in your Git repository</span>
                   <span className="block text-muted-foreground">
-                    Mate pushes there. What that repository does with a push is up to how it is set
-                    up.
+                    {props.git?.offered.add === true
+                      ? "Mate pushes there. What that repository does with a push is up to how it is set up."
+                      : (props.git?.unavailableReason ?? "HQ has not said yet.")}
                   </span>
                 </span>
               </label>
@@ -418,6 +419,7 @@ export function ZeropsEnvironmentCreationDialog({
   open,
   onOpenChange,
   landsElsewhere = false,
+  fallbackFocus,
   ...form
 }: ZeropsEnvironmentCreationFormProps & {
   readonly open: boolean;
@@ -428,11 +430,23 @@ export function ZeropsEnvironmentCreationDialog({
    * other caller keeps the person where they were, the focus back where it came from.
    */
   readonly landsElsewhere?: boolean;
+  /** A surviving control for the same project when navigation removed the opener. */
+  readonly fallbackFocus?: (() => HTMLElement | null) | undefined;
 }) {
   const added = useRef(false);
+  const opener = useRef(typeof document === "undefined" ? null : document.activeElement);
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogPopup className="max-w-lg" finalFocus={() => !added.current}>
+      <DialogPopup
+        className="max-w-lg"
+        finalFocus={() => {
+          if (added.current) return false;
+          if (opener.current?.isConnected && opener.current !== document.body) return true;
+          const fallback = fallbackFocus?.();
+          fallback?.scrollIntoView({ block: "nearest", inline: "nearest" });
+          return fallback ?? true;
+        }}
+      >
         <ZeropsEnvironmentCreationForm
           {...form}
           onCreate={(choice) => {

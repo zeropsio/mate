@@ -4138,6 +4138,7 @@ describe("the menu's release offer", () => {
       projectRefs: new Map(["crm-dev", "crm-stage", "crm-prod"].map((id) => [id, project(id)])),
       authority: new Map(),
       lost: new Set(),
+      deleted: [],
       isLoading: false,
       error: null,
     };

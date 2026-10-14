@@ -9,6 +9,9 @@ import {
 import { act, createElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { AtomRegistry } from "effect/reactivity";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
+import { inventory as inventoryProjection, readsOfState } from "@t3tools/client-runtime/data";
 
 import {
   conversationAccess,
@@ -46,9 +49,40 @@ const inventory = (
   projectRefs: new Map([[inventoryProjectRefKey(ref), ref]]),
   authority: authority === null ? new Map() : new Map([[inventoryProjectRefKey(ref), authority]]),
   lost: new Set(lost),
+  deleted: [],
 });
 
 describe("withheldProjectNotice", () => {
+  it("a production whose project was deleted says production was removed", () => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, "org", [
+      { id: "p1", name: "Shop - Production", status: "ACTIVE" },
+    ]);
+    const read = () =>
+      inventoryProjection.derive(readsOfState(store.state()), {
+        organization: ref.organization,
+        viewer: { id: "org", name: "Org", membershipId: "owner", roleCode: "OWNER" },
+      });
+    try {
+      expect(withheldProjectNotice(read(), "p1", "Production")).toBeNull();
+      store.dispatch({
+        kind: "proven-deletion",
+        family: "project",
+        id: "p1",
+        evidence: "projectNotFound",
+      });
+      expect(withheldProjectNotice(read(), "p1", "Production")).toBe("Production was removed.");
+      expect(read().denied).toEqual(["p1"]);
+      expect(projectAuthority(read(), "p1")).toEqual({
+        kind: "withheld",
+        reason: "access-denied",
+        cause: null,
+      });
+      expect(read().lost.has("p1")).toBe(true);
+    } finally {
+      registry.dispose();
+    }
+  });
   it.each([
     ["no authority published yet", null, "p1", null],
     ["an authorized project", { kind: "authorized" }, "p1", null],

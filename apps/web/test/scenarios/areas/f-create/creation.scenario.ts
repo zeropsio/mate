@@ -108,6 +108,48 @@ describe("F: creation through the hosted client", () => {
         }),
     );
 
+    it.effect("Escape from production setup returns focus to its project's surviving menu", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installCreation]);
+        yield* environmentRecipe(s, "production");
+        yield* s.given.signedIn;
+        const c = creation(s);
+        for (const step of ["destination", "repository", "token"] as const) {
+          yield* Effect.promise(() =>
+            s.page.goto(`${s.web.origin}/group/${s.drivers.appIds.get("Shop")}/flow`),
+          );
+          yield* Effect.promise(async () => {
+            const add = await s.page.waitForSelector("::-p-aria(Add production)");
+            await add!.evaluate((element) => (element as HTMLElement).focus());
+            await s.page.keyboard.press("Enter");
+          });
+          yield* c.text("Where does it go?");
+          if (step !== "destination") yield* c.chooseDestination("git");
+          if (step === "token") {
+            yield* c.fill("Repository", "https://github.com/acme/app");
+            yield* c.click("Continue");
+            yield* c.text("A token that may write to it");
+          }
+          yield* Effect.promise(async () => {
+            await s.page.keyboard.press("Escape");
+            await s.page.waitForSelector('[role="dialog"]', { hidden: true });
+            const focused = await s.page.evaluate(() => ({
+              tag: document.activeElement?.tagName,
+              label: document.activeElement?.getAttribute("aria-label"),
+            }));
+            expect(
+              focused,
+              `ASSERTION: Escape from ${step} restores a usable project control`,
+            ).toEqual({
+              tag: "BUTTON",
+              label: "More for Shop",
+            });
+          });
+        }
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches cleanup targeting a sibling or forgetting a failed birth before its deletion is proved.
     it.effect("Remove cleans up only the failed creation's project", () =>
       Effect.gen(function* () {
