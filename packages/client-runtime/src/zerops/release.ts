@@ -414,6 +414,9 @@ function runsAll(release: Pick<FlowRelease, "entries">, running: ReadonlyMap<str
   );
 }
 
+/** `3 parts`: an environment row's count of the parts it runs. */
+export const partsWords = (count: number): string => `${String(count)} parts`;
+
 /**
  * The stop's row named by `tag` ({@link releaseRunBy}): its version's name and label, and the
  * line that spells them.
@@ -431,7 +434,11 @@ export function nameStopByRelease<Row extends Omit<EnvironmentRow, "projectId">>
   return {
     ...row,
     version: { ...row.version, name: tag, label: tag, taggedBy: undefined },
-    line: `${row.source} · ${tag}`,
+    // The release names every part it lists: none differs, and the count stays.
+    line: [
+      `${row.source} · ${tag}`,
+      ...(row.parts === undefined ? [] : [partsWords(row.parts)]),
+    ].join(" · "),
   };
 }
 

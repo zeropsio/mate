@@ -24,7 +24,7 @@ import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import type { HqJob, ServiceJobs } from "./hq/environments.ts";
-import { isReleaseTag, shortCommit } from "./release.ts";
+import { isReleaseTag, partsWords, shortCommit } from "./release.ts";
 import { isWholeSha, parseVersionName } from "./versionName.ts";
 import type { GitDelivery } from "./gitDelivery.ts";
 
@@ -52,6 +52,11 @@ export interface EnvironmentRow {
    */
   readonly versionRepository: string | undefined;
   readonly line: string;
+  /**
+   * How many parts it runs — services its tier builds from the named version's repository — where
+   * more than one; absent for one, whose row reads as it always did.
+   */
+  readonly parts?: number;
   readonly tone: GroupRowTone;
   /** HQ's newest job of each of its services HQ records one for (`ServiceJobs.latest`). */
   readonly deploys: ReadonlyArray<HqJob>;
@@ -229,6 +234,21 @@ function environmentRowDisplay(input: {
     .find((entry) => entry.version.label !== undefined);
   const version = named?.version ?? NO_VERSION;
   const tone = deployTone(input.services);
+  // A monorepo's parts are built from one repository: the row counts them and names each that
+  // runs something else (MODEL §9/5); another repository's service is another codebase, not a part.
+  const repository = named?.service.repository;
+  const parts =
+    repository === undefined
+      ? []
+      : byHostname.filter((service) => service.repository === repository);
+  const differ = parts.flatMap((service) => {
+    const label = deployedVersion(service.appVersionName).label;
+    if (label === version.label) return [];
+    return [
+      label === undefined ? `${service.hostname} runs nothing` : `${service.hostname} ${label}`,
+    ];
+  });
+  const namedLine = version.label === undefined ? source : `${source} · ${version.label}`;
   return {
     kind: "environment",
     name: input.name,
@@ -245,7 +265,9 @@ function environmentRowDisplay(input: {
     versionRepository:
       named?.service.repository ??
       byHostname.find((service) => service.repository !== undefined)?.repository,
-    line: version.label === undefined ? source : `${source} · ${version.label}`,
+    line:
+      parts.length > 1 ? [namedLine, partsWords(parts.length), ...differ].join(" · ") : namedLine,
+    ...(parts.length > 1 ? { parts: parts.length } : {}),
     tone,
     deploys: input.services.flatMap(({ deploy }) => (deploy === undefined ? [] : [deploy.latest])),
     keyGap: input.keyHeld === false || input.keyInvalid === true,
