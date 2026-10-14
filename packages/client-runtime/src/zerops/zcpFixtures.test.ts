@@ -3,8 +3,8 @@
  * consumers. The copy in `fixtures/zcp/` is written only by `scripts/sync-zcp-fixtures.ts`;
  * `SOURCE.json` names the zcp commit and every file's sha256, so a hand edit fails here.
  */
-import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
 
 import { ZeropsStateEnvelope } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -14,7 +14,7 @@ import { readZeropsCardSource } from "./cards/decode.ts";
 import { decodeZeropsCard } from "./cards/payloads.ts";
 
 const dir = new URL("./fixtures/zcp/", import.meta.url);
-const raw = (name: string) => readFileSync(new URL(name, dir));
+const raw = (name: string) => NodeFS.readFileSync(new URL(name, dir));
 const json = (name: string): Record<string, unknown> => JSON.parse(raw(name).toString("utf8"));
 const decodeEnvelope = Schema.decodeUnknownSync(ZeropsStateEnvelope);
 
@@ -38,12 +38,14 @@ describe("zcp contract fixtures", () => {
       files: Record<string, string>;
     };
     expect(source.zcpCommit).toMatch(/^[0-9a-f]{40}$/);
-    const copies = readdirSync(dir)
+    const copies = NodeFS.readdirSync(dir)
       .filter((name) => name.endsWith(".json") && name !== "SOURCE.json")
       .toSorted();
     expect(copies).toEqual(Object.keys(source.files).toSorted());
     for (const name of copies) {
-      expect(createHash("sha256").update(raw(name)).digest("hex"), name).toBe(source.files[name]);
+      expect(NodeCrypto.createHash("sha256").update(raw(name)).digest("hex"), name).toBe(
+        source.files[name],
+      );
     }
   });
 
