@@ -2660,7 +2660,7 @@ describe("a group of Mates folded to its row", () => {
 
   // The owner, 2026-09-29: the + "leaves the conversation". Its ··· asks for the New Mate dialog
   // over whatever is on screen, and goes nowhere.
-  it.each(["Add a Mate"])("asks for a Mate in place from its %s, going nowhere", (verb) => {
+  it.each(["Add a Mate"])("asks for a Mate in place from its %s, going nowhere", () => {
     const asked: Array<string> = [];
     let browsed = 0;
     const entry = projectHeadingMenu({
@@ -2677,7 +2677,7 @@ describe("a group of Mates folded to its row", () => {
       onBrowseProjects: () => {
         browsed += 1;
       },
-    }).find((item) => item.kind === "item" && item.label === verb);
+    }).find((item) => item.kind === "item" && item.label === "Add a project Mate");
     if (entry?.kind === "item") entry.act();
     expect(asked).toEqual(["aaa"]);
     expect(browsed).toBe(0);

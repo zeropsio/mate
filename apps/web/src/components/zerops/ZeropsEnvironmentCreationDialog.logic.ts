@@ -319,7 +319,8 @@ export function newMateWords(input: {
   const { groupName, recipe } = input;
   const name = input.botName.replace(/\s+/g, " ").trim();
   return {
-    button: name.length === 0 ? `Add a Mate to ${groupName}` : `Add ${name} to ${groupName}`,
+    button:
+      name.length === 0 ? `Add a project Mate to ${groupName}` : `Add ${name} to ${groupName}`,
     line:
       input.waitingOn === "names"
         ? CHECKING_NAMES

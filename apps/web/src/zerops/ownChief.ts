@@ -15,7 +15,7 @@ import { useCallback, useContext, useEffect } from "react";
 import { sameValue } from "../lib/sameValue";
 import { mateRowsAtom, zeropsSessionAtom } from "../state/zerops";
 import { useAccountHq } from "./accountHq";
-import { othersChiefs, type OwnChief } from "./chief";
+import { hqOwnChief, othersChiefs, type OwnChief } from "./chief";
 import { readChiefMemory, writeChiefMemory } from "./mateIdentityMemory";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
@@ -31,6 +31,15 @@ export const ownChiefAtom = Atom.make((get): OwnChief => {
   const orgId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
   return orgId === undefined ? undefined : get(ownChiefByOrg(orgId));
 }).pipe(Atom.withLabel("zerops:own-chief"));
+
+/** Current HQ evidence for setup offers; remembered absence cannot offer setup. */
+export const hqOwnChiefAtom = Atom.make((get) =>
+  hqOwnChief(get(shownHqPersonFactsAtom), get(shownHqMenuNavigationAtom).read === "read"),
+);
+
+export function useHqOwnChief(): OwnChief {
+  return useAtomValue(hqOwnChiefAtom);
+}
 
 /** Every project that is someone else's Chief, by its tag or by HQ's word: drawn nowhere. */
 export const othersChiefsAtom = Atom.make((get): ReadonlySet<string> => {
@@ -76,13 +85,11 @@ export function useOwnChiefRead(): void {
   const orgId = session?.activeOrganization?.id;
   const accountHq = useAccountHq(orgId);
   const keep = useKeepOwnChief();
-  const facts = useAtomValue(shownHqPersonFactsAtom);
-  const listRead = useAtomValue(shownHqMenuNavigationAtom).read === "read";
-  const mine = Object.entries(facts).find(([, fact]) => fact.chief === "mine")?.[0] ?? null;
+  const own = useHqOwnChief();
   const noHq = accountHq.status === "ready" && accountHq.hq.kind === "none";
   useEffect(() => {
     if (orgId === undefined) return;
     if (noHq) keep(orgId, null);
-    else if (mine !== null || listRead) keep(orgId, mine);
-  }, [keep, listRead, mine, noHq, orgId]);
+    else if (own !== undefined) keep(orgId, own);
+  }, [keep, own, noHq, orgId]);
 }

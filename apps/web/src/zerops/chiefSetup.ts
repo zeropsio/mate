@@ -28,13 +28,13 @@ import { useVaultWriter } from "../components/zerops/vault/VaultPanelContainer";
 import { officialHq, useAccountHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
-import { chiefNames, chiefSetupLine } from "./chief";
+import { chiefNames, chiefSetupEntry, chiefSetupLine } from "./chief";
 import { takeChiefAccess } from "./chiefAccess";
 import { beginCreation, tryCreationAgain, useCreation } from "./creations";
 import { useMatePresses } from "./matePress";
 import type { NewProjectAsk } from "./newProjectBirth";
 import { useDetailDemand, useProjection, useProjectServices } from "./accountData";
-import { useKeepOwnChief, useOwnChief } from "./ownChief";
+import { useHqOwnChief, useKeepOwnChief, useOwnChief } from "./ownChief";
 import { useOrgOffers } from "./useHqOffers";
 import { useRunNewProject } from "./useRunNewProject";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -103,6 +103,13 @@ export function useChiefSetup(): ChiefSetupState {
   return state.orgId === null || state.orgId === activeOrganization?.id
     ? state
     : { ...state, setup: CHIEF_SETUP_IDLE };
+}
+
+/** Both navigation entries share the same current HQ verdict and setup state. */
+export function useChiefSetupEntry(): boolean {
+  const own = useHqOwnChief();
+  const { setup } = useChiefSetup();
+  return chiefSetupEntry(own, setup.phase);
 }
 
 /** Where setting up a Chief stands, as the menu's top row says it (`chiefSetupLine`). */

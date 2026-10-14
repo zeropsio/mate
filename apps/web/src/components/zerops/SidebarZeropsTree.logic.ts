@@ -111,7 +111,7 @@ export function projectHeadingMenu(input: {
     ...(input.onToggle === undefined
       ? []
       : [item(input.collapsed ? "Unfold" : "Fold", input.onToggle)]),
-    item("Add a Mate", input.onAddMate),
+    item("Add a project Mate", input.onAddMate),
     item("Open project", input.onOpen),
     separator,
     ...(reorder === undefined
