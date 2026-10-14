@@ -2001,6 +2001,78 @@ describe("structure", () => {
       ),
     );
 
+    it.effect(
+      "a Mate loses its credential once Zerops says the key it named no longer reaches its project",
+      () =>
+        withStructure((view, _down, zerops) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const key = (id: string, projects: ZeropsOwnToken["projects"]) =>
+              zerops.tokens.set(`value-of-${id}`, {
+                id,
+                name: "zerops-zcp-zcp",
+                orgId: "ORG",
+                roleCode: "NO_ACCESS",
+                canCreateProjects: false,
+                canViewFinances: false,
+                canEditFinances: false,
+                projects,
+                createdMs: 0,
+                createdByUser: "maker",
+              });
+            zerops.tokens.set("org-key", {
+              id: "core",
+              name: "Core",
+              orgId: "ORG",
+              roleCode: "READ_ONLY",
+              canCreateProjects: false,
+              canViewFinances: false,
+              canEditFinances: false,
+              projects: [],
+              createdMs: 0,
+              createdByUser: null,
+            });
+            // K-member: an active member of the org, granted its project in the org's list.
+            yield* Ref.update(view, (org) => ({
+              ...org,
+              members: [
+                ...org.members,
+                { ...member("K-member", "NO_ACCESS"), kind: "token" as const },
+              ],
+              projects: org.projects.map((candidate) =>
+                candidate.id === "P_MATE"
+                  ? {
+                      ...candidate,
+                      userRoles: [
+                        ...candidate.userRoles,
+                        { clientUserId: "C-K-member", roleCode: "ADMIN" },
+                      ],
+                    }
+                  : candidate,
+              ),
+            }));
+            // K-own: its own record grants its project; K-moved: another project alone; K-deleted:
+            // Zerops has no such key; and P_TEAM's Mate named none.
+            key("K-own", [{ projectId: "P_STAGE", roleCode: "ADMIN" }]);
+            key("K-moved", [{ projectId: "P_TEAM", roleCode: "ADMIN" }]);
+            yield* sql`
+              INSERT INTO hq_mate_credential (credential_hash, project_id, key_token_id)
+              VALUES ('h-member', 'P_MATE', 'K-member'), ('h-own', 'P_STAGE', 'K-own'),
+                ('h-moved', 'P_DEV', 'K-moved'), ('h-deleted', 'P_OWN', 'K-deleted'),
+                ('h-none', 'P_TEAM', NULL)`;
+            yield* structure.reconcile;
+            const live = yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_mate_credential WHERE revoked_at IS NULL
+              ORDER BY project_id`;
+            assert.deepStrictEqual(
+              live.map((row) => row.project_id),
+              ["P_MATE", "P_STAGE", "P_TEAM"],
+            );
+          }),
+        ),
+    );
+
     it.effect("reads the tool projects HQ holds", () =>
       withStructure(() =>
         Effect.gen(function* () {

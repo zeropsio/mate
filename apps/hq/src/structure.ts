@@ -548,8 +548,8 @@ export class Structure extends Context.Service<
     /**
      * Follows Zerops: what HQ holds of projects it no longer has (missing from the org's list, and
      * refused by id) goes, Mate credentials included; answers how many projects. A person no
-     * longer an active member loses their sessions and git passwords. Nothing moves while Zerops
-     * cannot say.
+     * longer an active member loses their sessions and git passwords; a Mate whose named key no
+     * longer reaches its project, its credential. Nothing moves while Zerops cannot say.
      */
     readonly reconcile: Effect.Effect<number, NotLeader | SqlError | ZeropsError>;
     /** A scoped completion handle, authorized while Zerops still holds the project's roles. */
@@ -878,6 +878,46 @@ export const structureLayer = (options: {
           );
         }
         const listed = new Set(view.projects.map((project) => project.id));
+        // A Mate's credential lasts while the key it named reaches its project, as Zerops says it:
+        // the org's list shows it granted there, else the key's own record is read — absent, or
+        // with no grant on the project, it is revoked, and zcp enrolls again (`mateCredentials.ts`).
+        const keyed = yield* sql<{
+          readonly credential_hash: string;
+          readonly project_id: string;
+          readonly key_token_id: string;
+        }>`
+          SELECT credential_hash, project_id, key_token_id FROM hq_mate_credential
+          WHERE revoked_at IS NULL AND key_token_id IS NOT NULL`;
+        const keyLost = yield* Effect.forEach(keyed, (row) => {
+          const key = view.members.find(
+            (member) => member.userId === row.key_token_id && member.status === "ACTIVE",
+          );
+          const granted = view.projects
+            .find((project) => project.id === row.project_id)
+            ?.userRoles.some((role) => role.clientUserId === key?.clientUserId);
+          if (!listed.has(row.project_id) || granted === true || Option.isNone(options.credential))
+            return Effect.succeed([]);
+          return zerops
+            .tokenProjects(
+              view.orgId,
+              row.key_token_id,
+            )(options.credential.value)
+            .pipe(
+              Effect.map((grants) => !grants.some((grant) => grant.projectId === row.project_id)),
+              // Zerops not answering, or refusing HQ itself, says nothing about the key.
+              Effect.catchTags({
+                ZeropsRefused: (error) => Effect.succeed(error.reason === "not_found"),
+                ZeropsUnavailable: () => Effect.succeed(false),
+              }),
+              Effect.map((lost) => (lost ? [row.credential_hash] : [])),
+            );
+        }).pipe(Effect.map((found) => found.flat()));
+        if (keyLost.length > 0) {
+          // The credential read, never the project's: an enrollment since keeps its new one.
+          yield* leader.write(sql`
+            UPDATE hq_mate_credential SET revoked_at = now()
+            WHERE revoked_at IS NULL AND ${sql.in("credential_hash", keyLost)}`);
+        }
         const rows = yield* sql<{ readonly project_id: string }>`
           SELECT project_id FROM hq_app_project
           UNION SELECT project_id FROM hq_mate

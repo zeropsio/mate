@@ -49,7 +49,9 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   `{ nonce, expiresIn }`; `POST /api/mate/credential` `{ projectId, nonce, keyTokenId?,
  *   serviceId? }` → `{ credential }`, refused `409 not_this_projects_mate` to a zcp service other
  *   than the one the Mate's record names (one Mate per project, audit D2); `GET /api/mate/whoami`
- *   with `Authorization: Mate <credential>` → `{ projectId }`; `PUT /api/mate/key` `{ keyTokenId }`,
+ *   with `Authorization: Mate <credential>` → `{ projectId }`, and every `/api/mate/*` with a
+ *   credential missing, unknown or revoked → `401 { code: "mate_credential_required" }`, on which
+ *   zcp enrolls again; `PUT /api/mate/key` `{ keyTokenId }`,
  *   the same → `204`: the id of the key the Mate's container holds, which `GET
  *   /api/mates/:projectId/key` → `{ keyTokenId }` tells the project's admin; a named key that
  *   also reads other projects is never kept, and its Mate's record says `keyWider` — its id told
