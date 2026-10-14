@@ -53,6 +53,11 @@ export interface EnvironmentRow {
    */
   readonly versionRepository: string | undefined;
   readonly line: string;
+  /**
+   * An application of several parts: how many, and each part not running its version —
+   * `3 parts · web on a1a2a3a`. Absent for one part, whose row says its version alone.
+   */
+  readonly parts?: string | undefined;
   readonly tone: GroupRowTone;
   /** HQ's newest job of each of its services HQ records one for (`ServiceJobs.latest`). */
   readonly deploys: ReadonlyArray<HqJob>;
@@ -274,18 +279,17 @@ function environmentRowDisplay(input: {
     repository === undefined
       ? []
       : byHostname.filter((service) => service.repository === repository);
-  const label =
+  const partsLine =
     parts.length < 2
-      ? version.label
+      ? undefined
       : [
-          version.label,
           `${parts.length} parts`,
           ...parts.flatMap(
             (part) => partException(part, version.sha, stopped.get(part.hostname)) ?? [],
           ),
-        ]
-          .filter((entry) => entry !== undefined)
-          .join(" · ");
+        ].join(" · ");
+  const label =
+    [version.label, partsLine].filter((entry) => entry !== undefined).join(" · ") || undefined;
   return {
     kind: "environment",
     name: input.name,
@@ -301,6 +305,7 @@ function environmentRowDisplay(input: {
     // what it runs read "No repository is declared" (F13, 2026-10-03).
     versionRepository: repository,
     line: label === undefined ? source : `${source} · ${label}`,
+    ...(partsLine === undefined ? {} : { parts: partsLine }),
     tone,
     deploys: input.services.flatMap(({ deploy }) => (deploy === undefined ? [] : [deploy.latest])),
     keyGap: input.keyHeld === false || input.keyInvalid === true,

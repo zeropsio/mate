@@ -1848,7 +1848,7 @@ function StopServiceLine({
         </span>
       ) : row.job === undefined ? null : (
         <span
-          className="flex min-w-0 flex-col pb-2 text-xs leading-4 text-muted-foreground"
+          className="flex min-w-0 flex-col items-start pb-2 text-xs leading-4 text-muted-foreground"
           data-zerops-surface="stop-service-job"
           data-zerops-job-state={row.job.state}
         >
@@ -2149,6 +2149,12 @@ function ZeropsStopLine({
         )}
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>
+      {/* An application of several parts: how many, and each that differs from the version. */}
+      {environment.parts === undefined ? null : (
+        <span className="block truncate px-2 pb-2 text-xs text-muted-foreground">
+          {environment.parts}
+        </span>
+      )}
       {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
     </li>
   );

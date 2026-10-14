@@ -532,5 +532,7 @@ describe("an environment of several parts", () => {
   ])("$name", ({ input, tier, line }) => {
     const row = environmentRow({ ...(tier === undefined ? stage : production), ...input });
     expect(row.line).toBe(line);
+    // The parts are the row's own field too, which the group page says under the version.
+    expect(row.parts).toBe(/\d+ parts.*$/u.exec(line)?.[0]);
   });
 });
