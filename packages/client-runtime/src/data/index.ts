@@ -195,6 +195,7 @@ export {
   type CreationStepRead,
 } from "./projections/creationSteps.ts";
 export {
+  membersProjectRoles,
   organizationLocations,
   organizationMembers,
   servicesAgents,

@@ -7,6 +7,7 @@
  * @module data/projections/sampled
  */
 import { locationsScope } from "../families/organizationLocations.ts";
+import { memberRolesScope } from "../families/memberProjectRoles.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 import { agentsScope } from "../families/serviceAgents.ts";
 import type { Coverage, Family, FamilyValues, PublicRead, ScopeKey, StreamKey } from "../model.ts";
@@ -144,6 +145,28 @@ export const servicesAgents: Projection<
       serviceIds.map((serviceId) => [
         serviceId,
         sampledRead(read, "serviceAgents", agentsScope(orgId, serviceId), serviceId),
+      ]),
+    ),
+  equals: sameValue,
+};
+
+/** Each of these members' own grants, by membership id. */
+export const membersProjectRoles: Projection<
+  { readonly orgId: string; readonly clientUserIds: ReadonlyArray<string> },
+  Readonly<Record<string, SampledRead<FamilyValues["memberProjectRoles"]>>>
+> = {
+  name: "membersProjectRoles",
+  keyOf: ({ orgId, clientUserIds }) => `${orgId}/${clientUserIds.join(",")}`,
+  derive: (read, { orgId, clientUserIds }) =>
+    Object.fromEntries(
+      clientUserIds.map((clientUserId) => [
+        clientUserId,
+        sampledRead(
+          read,
+          "memberProjectRoles",
+          memberRolesScope(orgId, clientUserId),
+          clientUserId,
+        ),
       ]),
     ),
   equals: sameValue,

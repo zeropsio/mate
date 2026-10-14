@@ -2871,6 +2871,19 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
     });
   });
 
+  it("A member's role changes their membership alone, its finances as they were", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const membership = {
+      roleCode: "NO_ACCESS",
+      canCreateProjects: true,
+      canViewFinances: true,
+      canEditFinances: false,
+    };
+    await clientWith(stub).updateOrganizationMember("cu-eva", membership);
+    expect(sent(stub)).toEqual(["PUT /client-user/cu-eva"]);
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual(membership);
+  });
+
   it("Removing a membership deletes it, and nothing else", async () => {
     const stub = recordingFetch(() => new Response(null, { status: 204 }));
     await clientWith(stub).removeOrganizationMember("cu-eva");
