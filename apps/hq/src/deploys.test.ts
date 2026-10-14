@@ -3499,6 +3499,170 @@ describe("deploys", () => {
         ),
       );
 
+      it.effect(
+        "A release starts only a part HQ stopped because a tier dropped it: never a service a person stopped, and a one-part tier stops and starts nothing",
+        () =>
+          Effect.forEach(
+            [["web"], ["web", "api"]],
+            (parts) =>
+              withDeploys((rig) =>
+                Effect.gen(function* () {
+                  const { appId, world, commit, until, planned } = rig;
+                  const releases = yield* Releases;
+                  yield* withProduction(appId, world);
+                  for (const part of parts.slice(1)) {
+                    world.services.push(
+                      fakeService(part, { id: `S-${part}-prod`, projectId: "P_PROD" }),
+                    );
+                  }
+                  const entries: Array<{ service: string; sha: string }> = [];
+                  for (const part of parts) {
+                    entries.push({
+                      service: part,
+                      sha: yield* commit(part, {
+                        "zerops.yaml": part === "web" ? ZEROPS_YAML : zeropsYaml(part),
+                      }),
+                    });
+                  }
+                  const one = yield* tierAt(rig, parts);
+                  yield* releases.release("dev", appId, { tag: "v0.1.0", groupHead: one, entries });
+                  yield* until(
+                    (rows) =>
+                      rows.filter((row) => row.project === "P_PROD" && row.state === "live")
+                        .length === parts.length,
+                  );
+                  // A person stopped every part.
+                  for (const service of world.services) {
+                    if (service.projectId === "P_PROD") service.status = "STOPPED";
+                  }
+
+                  const two = yield* tierAt(rig, parts);
+                  yield* releases.release("dev", appId, { tag: "v0.2.0", groupHead: two, entries });
+                  yield* planned;
+                  assert.deepStrictEqual(
+                    production(world),
+                    parts.map((part) => [part, "STOPPED"]),
+                  );
+                  assert.deepStrictEqual(
+                    world.calls.filter((call) => /^(stop|start)Service:/u.test(call)),
+                    [],
+                  );
+                  assert.strictEqual(yield* noteOf("v0.2.0"), null);
+                }),
+              ),
+            { discard: true },
+          ),
+      );
+
+      it.effect("Two plans of one release stop a part its tier drops once", () =>
+        withDeploys((rig) =>
+          Effect.gen(function* () {
+            const { appId, world, commit, until, planned, engine } = rig;
+            const releases = yield* Releases;
+            yield* twoParts(rig);
+            const next = yield* commit("web", { "index.js": "next\n" });
+            const two = yield* tierAt(rig, ["web"]);
+            yield* planned;
+            yield* until((rows) => rows.every((row) => row.state === "live"));
+            // Each plan reads the project's services before either acts on them, where both may.
+            const together = yield* Deferred.make<void>();
+            let reads = 0;
+            world.servicesHeld = Effect.suspend(() => {
+              reads += 1;
+              return reads >= 2
+                ? Effect.asVoid(Deferred.succeed(together, undefined))
+                : Effect.asVoid(
+                    Deferred.await(together).pipe(Effect.timeoutOption(Duration.seconds(1))),
+                  );
+            });
+            const release = yield* releases.release("dev", appId, {
+              tag: "v0.2.0",
+              groupHead: two,
+              entries: [{ service: "web", sha: next }],
+            });
+            const deploys = yield* engine;
+            const event = { cause: "release", appId, tag: release.tag, by: "dev" } as const;
+            yield* Effect.all([deploys.runOf(event), deploys.runOf(event)], {
+              concurrency: "unbounded",
+            });
+            yield* planned;
+            // One stop: the fake logs a stop's write and its read of the service.
+            assert.deepStrictEqual(
+              world.calls.filter((call) => call.startsWith("stopService:")),
+              ["stopService:key-prod", "stopService:key-prod"],
+            );
+            assert.deepStrictEqual(production(world), [
+              ["web", "ACTIVE"],
+              ["api", "STOPPED"],
+            ]);
+            assert.deepStrictEqual(yield* leftOut("v0.2.0"), [
+              { service: "api", reason: "stopped: the tier of v0.2.0 does not declare it" },
+            ]);
+          }),
+        ),
+      );
+
+      it.effect(
+        "A release asks the deploy of a part HQ starts once its start has finished, and says when it did not finish in time",
+        () =>
+          Effect.forEach(
+            [
+              { runningReads: 3, wait: Duration.minutes(2), note: "v0.3.0 started api" },
+              {
+                runningReads: 1_000_000,
+                wait: Duration.millis(300),
+                note: "HQ started api, but it had not come up after 300ms; its deploy was asked anyway",
+              },
+            ],
+            ({ runningReads, wait, note }) =>
+              withDeploys(
+                (rig) =>
+                  Effect.gen(function* () {
+                    const { appId, world, commit, until, planned } = rig;
+                    const releases = yield* Releases;
+                    yield* twoParts(rig);
+                    const next = yield* commit("web", { "index.js": "next\n" });
+                    yield* releases.release("dev", appId, {
+                      tag: "v0.2.0",
+                      groupHead: yield* tierAt(rig, ["web"]),
+                      entries: [{ service: "web", sha: next }],
+                    });
+                    yield* until((rows) =>
+                      rows.some((row) => row.sha === next && row.state === "live"),
+                    );
+                    world.startRunningReads = runningReads;
+                    world.calls.length = 0;
+
+                    const api = yield* commit("api", { "index.js": "next\n" });
+                    yield* releases.release("dev", appId, {
+                      tag: "v0.3.0",
+                      groupHead: yield* tierAt(rig, ["web", "api"]),
+                      entries: [
+                        { service: "web", sha: next },
+                        { service: "api", sha: api },
+                      ],
+                    });
+                    yield* planned;
+                    yield* until((rows) =>
+                      rows.some((row) => row.sha === api && row.state === "live"),
+                    );
+                    assert.strictEqual(yield* noteOf("v0.3.0"), note);
+                    const asked = world.calls.findIndex((call) =>
+                      call.startsWith("createAppVersion:"),
+                    );
+                    const reads = world.calls
+                      .slice(world.calls.indexOf("startService:key-prod"), asked)
+                      .filter((call) => call.startsWith("process:"));
+                    // Its start read RUNNING three times, then FINISHED, before any deploy was asked.
+                    if (runningReads === 3) assert.lengthOf(reads, 4);
+                    else assert.isAtLeast(reads.length, 2);
+                  }),
+                { startWait: wait },
+              ),
+            { discard: true },
+          ),
+      );
+
       it("HQ deletes no service: no release, rollback or tier change holds a path that deletes one", () => {
         const deletes = [
           /HttpClientRequest\.del\b/u,

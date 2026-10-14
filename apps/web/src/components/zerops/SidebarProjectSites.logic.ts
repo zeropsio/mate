@@ -202,7 +202,8 @@ const isDevHostname = (hostname: string) => hostname.length > 3 && hostname.ends
 export function mateLinks(mate: SitesMateFacts): ReadonlyArray<SitesLink> | undefined {
   if (mate.routes === undefined) return undefined;
   const routes = mate.routes.filter((route) => route.service !== mate.controlPlane);
-  const held = mate.hostnames ?? routes.map((route) => route.service);
+  // Routes and list are read separately: a routed service is held even before the list shows it.
+  const held = [...new Set([...(mate.hostnames ?? []), ...routes.map((route) => route.service)])];
   const { devOf } = servicePairs({ services: held.map((hostname) => ({ hostname })) });
   // A pair's dev half is its dev where the pair has a preview to show.
   const devs = new Set(

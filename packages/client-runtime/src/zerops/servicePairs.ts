@@ -24,7 +24,14 @@
  *
  * @module servicePairs
  */
-import { recipeTierRepositories, recipeTierServices, recipeTierSetups } from "./recipeTier.ts";
+import {
+  isStageHostname,
+  recipeTierRepositories,
+  recipeTierServices,
+  recipeTierSetups,
+} from "./recipeTier.ts";
+
+export { isStageHostname };
 
 /** Where a preview's pairing comes from: the tier on `main`, an open recipe change, the stem. */
 export type ServicePairSource = "tier" | "recipe" | "stem";
@@ -62,11 +69,6 @@ export interface ServicePairsInput {
 
 const STAGE_SUFFIX = "stage";
 const DEV_SUFFIX = "dev";
-
-/** zcp's `IsStageHostname`: the stem step's name for a pair's stage half, `…stage`. */
-export function isStageHostname(hostname: string): boolean {
-  return hostname.length > STAGE_SUFFIX.length && hostname.endsWith(STAGE_SUFFIX);
-}
 
 const pairName = (dev: string): string =>
   dev.length > DEV_SUFFIX.length && dev.endsWith(DEV_SUFFIX)
