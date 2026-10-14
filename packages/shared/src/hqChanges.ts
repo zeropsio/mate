@@ -135,6 +135,33 @@ export const ChangePipeline = Schema.Struct({
 });
 export type ChangePipeline = typeof ChangePipeline.Type;
 
+/**
+ * One part's preview as zcp last left it in the Mate's work session (spec-mate §2.8a.6): its
+ * stage service, its last deploy and whether a verify passed after it. `deployedCommit` is the dev
+ * HEAD, written only for an `ok` deploy from a clean workspace.
+ */
+export const ChangeReceiptPart = Schema.Struct({
+  /** The part: its `zeropsSetup`. */
+  setup: Schema.String,
+  previewHostname: Schema.String,
+  deploy: Schema.Literals(["ok", "failed", "none"]),
+  deployedAt: Instant,
+  workspaceClean: Schema.Boolean,
+  deployedCommit: Schema.optionalKey(Sha),
+  verified: Schema.Boolean,
+});
+export type ChangeReceiptPart = typeof ChangeReceiptPart.Type;
+
+/**
+ * What zcp says of each part's preview after a push of the change's branch, only for an
+ * application of more than one part; its `parts` follow the pair's stages.
+ */
+export const ChangeReceipt = Schema.Struct({
+  at: Instant,
+  parts: Schema.Array(ChangeReceiptPart),
+});
+export type ChangeReceipt = typeof ChangeReceipt.Type;
+
 export const HqChange = Schema.Struct({
   pipeline: Schema.optionalKey(ChangePipeline),
   appId: Schema.String,
@@ -181,6 +208,11 @@ export const HqChange = Schema.Struct({
   comments: Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(null)),
   ),
+  /**
+   * The last receipt zcp wrote on it, whole; `null` for a single-part application's change. Added
+   * after the rest: an older HQ's change has no key.
+   */
+  receipt: Schema.optionalKey(Schema.NullOr(ChangeReceipt)),
 });
 export type HqChange = typeof HqChange.Type;
 
@@ -345,15 +377,23 @@ export const OpenChangeResponse = Schema.Union([
 ]);
 export type OpenChangeResponse = typeof OpenChangeResponse.Type;
 
-/** `PATCH /api/mate/changes/:repo/:n`: the Mate's open change's title, description, or both. */
+/**
+ * `PATCH /api/mate/changes/:repo/:n`: the Mate's open change's title, description, its parts'
+ * {@link ChangeReceipt}, or any of them.
+ */
 export const EditChangeRequest = Schema.Struct({
   title: Schema.optionalKey(ChangeTitle),
   body: Schema.optionalKey(ChangeBody),
+  receipt: Schema.optionalKey(ChangeReceipt),
 }).check(
-  Schema.makeFilter((edit: { readonly title?: string; readonly body?: string }) =>
-    edit.title === undefined && edit.body === undefined ? "Expected a title or a body" : undefined,
+  Schema.makeFilter(
+    (edit: { readonly title?: string; readonly body?: string; readonly receipt?: unknown }) =>
+      edit.title === undefined && edit.body === undefined && edit.receipt === undefined
+        ? "Expected a title, a body or a receipt"
+        : undefined,
   ),
 );
+export type EditChangeRequest = typeof EditChangeRequest.Type;
 
 /**
  * `POST /api/mate/changes/:repo/:n/attachments`: a picture for the open change's description, sent

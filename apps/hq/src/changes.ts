@@ -17,12 +17,14 @@ import type { GitError, HqGit, Repo } from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
   ATTACHMENT_MAX_BYTES,
+  ChangeReceipt,
   type ChangeDetailResponse,
   type ChangeDetailQuery,
   type ChangesSnapshot,
   COMPARE_COMMITS_MAX,
   type CompareQuery,
   type CompareResponse,
+  type EditChangeRequest,
   type HqChange,
   type HqChangeComment,
   type HqRepo,
@@ -182,12 +184,15 @@ export class Changes extends Context.Service<
       title: string,
       tree?: string,
     ) => Effect.Effect<OpenChangeResponse, MateError | GitError>;
-    /** The Mate's open change `number` in `repo`, retitled, described, or both. */
+    /**
+     * The Mate's open change `number` in `repo`, retitled, described, its receipt replaced whole,
+     * or any of them.
+     */
     readonly editChange: (
       projectId: string,
       repo: string,
       number: number,
-      edit: { readonly title?: string; readonly body?: string },
+      edit: EditChangeRequest,
     ) => Effect.Effect<HqChange, MateError>;
     /**
      * What the Mate's own state carries of its changes: the application HQ holds it in, by id and
@@ -339,6 +344,8 @@ type Aim<A> = { readonly main: string } | { readonly stop: A };
 const instant = (column: string) =>
   `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ${column}`;
 
+const encodeReceipt = Schema.encodeSync(Schema.fromJsonString(ChangeReceipt));
+
 /** A change's columns as {@link ChangeRow} reads them. */
 const CHANGE_COLUMNS = [
   "app_id::text AS app_id",
@@ -358,6 +365,7 @@ const CHANGE_COLUMNS = [
   "mergeability",
   "behind",
   "first_code_merge",
+  "receipt",
   // A recipe change is whole as proposed: it asks for review undescribed. A Mate's delivery
   // asks at the head it last described.
   `(repo = '${RECIPE_REPO}' OR COALESCE(ready_head = head, false)) AS ready`,
@@ -385,6 +393,7 @@ interface ChangeRow {
   readonly mergeability: HqChange["mergeability"];
   readonly behind: boolean;
   readonly first_code_merge: boolean | null;
+  readonly receipt: ChangeReceipt | null;
   readonly ready: boolean;
   readonly comments: number;
 }
@@ -433,6 +442,7 @@ const changeOf = (row: ChangeRow): HqChange => ({
   ...(row.first_code_merge === null ? {} : { firstCodeMerge: row.first_code_merge }),
   ready: row.ready,
   comments: row.comments,
+  receipt: row.receipt,
 });
 
 export const changesLayer: Layer.Layer<
@@ -1048,13 +1058,21 @@ export const changesLayer: Layer.Layer<
                 UPDATE hq_change
                 SET title = COALESCE(${edit.title ?? null}, title),
                     body = COALESCE(${edit.body ?? null}, body),
+                    receipt = COALESCE(
+                      ${edit.receipt === undefined ? null : encodeReceipt(edit.receipt)}::jsonb,
+                      receipt
+                    ),
                     -- Words describe the head they were written at; a title describes nothing.
                     ready_head = CASE
                       WHEN ${edit.body === undefined} THEN ready_head
                       WHEN ${(edit.body ?? "").trim() === ""} THEN NULL
                       ELSE head
                     END,
-                    updated_at = now()
+                    -- A receipt is no words: it leaves the change's last edit where it was.
+                    updated_at = CASE
+                      WHEN ${edit.title === undefined && edit.body === undefined} THEN updated_at
+                      ELSE now()
+                    END
                 WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}
                 RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
                 return changeOf(row!);

@@ -660,6 +660,71 @@ describe("a Mate's changes in HQ", () => {
     );
 
     it.effect(
+      "a change of several parts keeps the last receipt zcp wrote whole, for every reader of it",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, auth } = yield* mateWithChange(call, fake, owner);
+          const part = (setup: string, more: Record<string, unknown>) => ({
+            setup,
+            previewHostname: `${setup}stage`,
+            deploy: "ok",
+            deployedAt: "2026-10-14T21:06:00Z",
+            workspaceClean: true,
+            verified: true,
+            ...more,
+          });
+          const first = {
+            at: "2026-10-14T21:10:00Z",
+            parts: [
+              part("web", { deployedCommit: "a".repeat(40) }),
+              part("api", { workspaceClean: false }),
+              part("worker", { deploy: "failed", verified: false }),
+            ],
+          };
+          const edit = (body: unknown) =>
+            call("PATCH", "/api/mate/changes/appdev/1", { headers: auth, body });
+          type Read = { title: string; ready: boolean; receipt: unknown };
+          const detail = Effect.map(
+            call("GET", `/api/apps/${appId}/changes/appdev/1`, { session: owner }),
+            (answer) => (answer.body as { change: Read }).change,
+          );
+          const listed = Effect.map(
+            call("GET", `/api/apps/${appId}/changes`, { session: owner }),
+            (answer) => (answer.body as { changes: ReadonlyArray<Read> }).changes,
+          );
+
+          assert.isNull((yield* detail).receipt);
+          const before = yield* detail;
+          const kept = yield* edit({ receipt: first });
+          assert.strictEqual(kept.status, 200);
+          assert.deepStrictEqual((kept.body as Read).receipt, first);
+          assert.deepStrictEqual((yield* detail).receipt, first);
+          assert.deepStrictEqual(
+            (yield* listed).map((change) => change.receipt),
+            [first],
+          );
+          // A receipt is no words: the title stays, and it asks for no review.
+          assert.deepStrictEqual(
+            [(yield* detail).title, (yield* detail).ready],
+            [before.title, before.ready],
+          );
+          // The next one replaces it whole: nothing of the first one's parts remains.
+          const next = { at: "2026-10-14T21:20:00Z", parts: [part("web", {}), part("api", {})] };
+          yield* edit({ receipt: next });
+          assert.deepStrictEqual((yield* detail).receipt, next);
+          // A commit is a full one; a receipt the contract refuses changes nothing.
+          const refused = yield* edit({
+            receipt: { at: next.at, parts: [part("web", { deployedCommit: "a1b2c3" })] },
+          });
+          assert.strictEqual(refused.status, 400);
+          assert.deepStrictEqual((yield* detail).receipt, next);
+        }),
+    );
+
+    it.effect(
       "a Mate reads its changes' outcome in its own state, newest first per repository",
       () =>
         Effect.gen(function* () {
