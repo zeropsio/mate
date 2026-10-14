@@ -263,6 +263,16 @@ describe("buildCreateProjectBody", () => {
       buildCreateProjectBody({ clientId: "org-1", name: "p", location: "prg1" }).location,
     ).toBe("prg1");
   });
+
+  it("names who reaches the project from birth, each by their membership id", () => {
+    expect(
+      buildCreateProjectBody({
+        clientId: "org-1",
+        name: "p",
+        userRoles: [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }],
+      }).userRoles,
+    ).toEqual([{ id: "cu-ada", roleCode: "READ_ONLY" }]);
+  });
 });
 
 describe("buildDevelopmentContainerImportBody", () => {

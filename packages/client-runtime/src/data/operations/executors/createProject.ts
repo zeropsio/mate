@@ -63,6 +63,9 @@ export function createProjectExecutor(platform: {
             name: intent.name,
             tagList: intent.tagList,
             ...(intent.location === undefined ? {} : { location: intent.location }),
+            ...(intent.userRoles === undefined || intent.userRoles.length === 0
+              ? {}
+              : { userRoles: intent.userRoles }),
           }),
         ),
       );

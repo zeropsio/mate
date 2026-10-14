@@ -14,6 +14,7 @@
  * to build. Create hands over at once; the person lands on the first Mate's own view.
  */
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useRef, useState } from "react";
@@ -36,6 +37,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { MateFacePicker } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
+import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import { WhatHappensNext } from "./WhatHappensNext";
 import { newProjectNext } from "./whatHappensNext.logic";
 import {
@@ -51,6 +53,8 @@ export interface NewProjectChoice {
   readonly name: string;
   readonly botName: string;
   readonly face: ZeropsMateFace;
+  /** Who reaches its first Mate's project beyond their organization role, as chosen here. */
+  readonly userRoles?: ReadonlyArray<ProjectGrant>;
 }
 
 export interface ZeropsNewProjectFormProps {
@@ -76,6 +80,8 @@ export interface ZeropsNewProjectFormProps {
   readonly closed?: string | undefined;
   readonly onCancel: () => void;
   readonly onCreate: (choice: NewProjectChoice) => void;
+  /** Who will reach its first Mate's project, as people chips; absent, nothing of access. */
+  readonly access?: ProjectAccessSlot | undefined;
 }
 
 const PROJECT_FIELD = "zerops-new-project";
@@ -96,8 +102,10 @@ export function ZeropsNewProjectForm({
   closed,
   onCancel,
   onCreate,
+  access,
 }: ZeropsNewProjectFormProps) {
   const [name, setName] = useState("");
+  const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
   const [botName, setBotName] = useState(defaultBotName);
   // The last name typed: a blank field keeps the face it had rather than flashing another.
   const [heldName, setHeldName] = useState(defaultBotName);
@@ -140,7 +148,12 @@ export function ZeropsNewProjectForm({
     if (creating || closed !== undefined) return;
     setPressed(true);
     if (submit.kind !== "create" || name.trim().length === 0) return;
-    onCreate({ name: name.trim(), botName: botName.replace(/\s+/g, " ").trim(), face });
+    onCreate({
+      name: name.trim(),
+      botName: botName.replace(/\s+/g, " ").trim(),
+      face,
+      ...(userRoles.length === 0 ? {} : { userRoles }),
+    });
   };
 
   return (
@@ -214,6 +227,12 @@ export function ZeropsNewProjectForm({
                 },
               ]}
             />
+            {access === undefined ? null : (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm">Project access</span>
+                {access(setUserRoles)}
+              </div>
+            )}
           </div>
         </DialogPanel>
       ) : null}

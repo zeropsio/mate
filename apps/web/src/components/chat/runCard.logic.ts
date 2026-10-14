@@ -29,6 +29,7 @@ import {
   type RunStatus,
   type TurnHeaderActivity,
 } from "./MessagesTimeline.logic";
+import type { BackgroundWork } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 
 import { formatTimeRange, spokenUpcomingTimestamp } from "../../timestampFormat";
@@ -719,6 +720,32 @@ export function afterWords(on: AfterWait | undefined): string {
   if (on === undefined || on.commands === 0) return "Waiting for its helpers";
   if (on.helpers === 0) return `Waiting for ${commandsWords(on.commands).replace(/^a /, "its ")}`;
   return `Waiting for its helpers and ${commandsWords(on.commands)}`;
+}
+
+/**
+ * What a Mate whose turn is over waits on, in its menu row's words, where its row names the work
+ * (`BackgroundWork`): its own job by its own title, its helpers as its helpers, both by what they
+ * are; nothing left running, the work it started finishing — never "its helpers" over jobs that
+ * are its own (Eli, 2026-10-14).
+ */
+export function backgroundWorkWords(work: BackgroundWork): string {
+  const [first] = work.items;
+  if (first === undefined || work.count === 0) return "Finishing work it started";
+  const helpers = work.items.filter((item) => item.of === "helper").length;
+  const jobs = work.count - helpers;
+  if (jobs === 0) {
+    if (work.count > 1) return "Waiting for its helpers";
+    return first.title === null
+      ? "Waiting for its helper"
+      : `Waiting for its helper: ${first.title}`;
+  }
+  if (helpers === 0) {
+    if (work.count === 1) return first.title ?? "Running a background job";
+    return `${first.title ?? "A background job"} · and ${work.count - 1} more`;
+  }
+  const helperWords = helpers === 1 ? "its helper" : "its helpers";
+  const jobWords = jobs === 1 ? "a background job" : `${jobs} background jobs`;
+  return `Waiting for ${helperWords} and ${jobWords}`;
 }
 
 /** What a run not started yet waits on, in words: its workspace's snapshot, then its session. */

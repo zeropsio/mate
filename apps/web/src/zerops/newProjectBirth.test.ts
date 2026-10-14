@@ -545,6 +545,16 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       ask: { locationId: "prg1", agents: ["claude-code"] },
       args: { name: "Acme CRM - Vera", location: "prg1", appId: "app-acme", birth: "b-1" },
     },
+    {
+      case: "with the access its creator chose",
+      ask: { userRoles: [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }] },
+      args: {
+        name: "Acme CRM - Vera",
+        appId: "app-acme",
+        birth: "b-1",
+        userRoles: [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }],
+      },
+    },
   ])("creates its first Mate $case", async ({ ask, args }) => {
     const { ports: made, read: now } = ports(
       read({ appId: "app-acme", birthId: "b-1", steps: { app: DONE, birth: DONE } }),

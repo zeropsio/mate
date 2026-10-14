@@ -17,6 +17,7 @@ import {
   queuedBehind,
   STEP_ITEM_KINDS,
   TurnId,
+  WORK_ALIVE,
   type ChatAttachment,
   type ConversationRow,
   type CrewCard,
@@ -1019,12 +1020,6 @@ export interface EngineCardWait {
   readonly commands: number;
 }
 
-/**
- * Background work a card that ended still waits on: what runs, or waits on the person. An idle
- * helper rests, resumable: it reads settled, so its card closes (the helpers' surface says Idle).
- */
-const ALIVE_WORK: ReadonlySet<string> = new Set(["running", "waiting"]);
-
 /** The typed records on each card, in source order; joining identity decides no run state. */
 export const engineRunCards: Projection<
   EngineConversationKey,
@@ -1062,7 +1057,9 @@ export const engineRunCards: Projection<
           const item = read.fact("mateEngineItem", itemId);
           if (item.kind !== "known" || item.value.kind !== "work") continue;
           card.holdsWork = true;
-          if (!ALIVE_WORK.has(item.value.status) || item.value.workKind === "monitor") continue;
+          // What runs, or waits on the person, as the server's row reads it (`WORK_ALIVE`): an idle
+          // helper rests, resumable, so its card closes (the helpers' surface says Idle).
+          if (!WORK_ALIVE.has(item.value.status) || item.value.workKind === "monitor") continue;
           // A helper's own command is its helper's work, never one the Mate sent (Milo's third
           // stress run waited on "its helpers and 2 background commands": the helper's own).
           if (item.value.workKind === "helper" || item.value.by.kind === "helper") helpers += 1;
@@ -1432,6 +1429,9 @@ export function overlayEngineRow(
     ...rowWords(row),
     // Its turn over, its helpers work on: the row says so, never the V1 thread's liveness.
     backgroundLiveness: row.state.kind === "working" && row.state.waitsOnHelpers ? "working" : null,
+    // What that work is, by name, where the row names it.
+    backgroundWork:
+      row.state.kind === "working" && row.state.waitsOnHelpers ? row.state.work : undefined,
     // A conversation the engine started never had a V1 session: the row is its session.
     session: {
       ...(thread.session ?? {

@@ -183,6 +183,19 @@ describe("create-project", () => {
     }),
   );
 
+  it.effect("a project is born with the access its creator chose", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations, calls } = operationsOf(store, async () => ({ id: "p9" }));
+      const userRoles = [{ clientUserId: "cu-ada", roleCode: "ADMIN" }];
+      yield* operations.submit({ ...CREATE, userRoles });
+      expect(calls).toEqual([
+        "list",
+        { clientId: ORG, name: "shop-stage", tagList: ["app"], userRoles },
+      ]);
+    }),
+  );
+
   it.effect("is reflected once the organization's projects hold it", () =>
     Effect.gen(function* () {
       const store = account();

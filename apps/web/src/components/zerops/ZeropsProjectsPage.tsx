@@ -164,6 +164,8 @@ import {
 } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
+import { GitMirrorDialog } from "./GitMirrorDialog";
+import { ProjectAccessDraft, roleProjectKind } from "./projects/ProjectPeople";
 import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
@@ -1138,6 +1140,7 @@ export function ZeropsProjectsContent({
     | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "assign"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "delete-group"; readonly group: Pick<ZeropsGroup, "groupId" | "name"> }
+    | { readonly kind: "mirror-code"; readonly group: Pick<ZeropsGroup, "groupId" | "name"> }
     | null
   >(null);
   // The same write an environment's own page uses, so one way to open a
@@ -2365,6 +2368,18 @@ export function ZeropsProjectsContent({
                 finishing.finish(entry);
               },
             })),
+          // Where its code mirrors to: each repository's remote, connected or changed in a dialog.
+          ...(!groupIsEmpty(group)
+            ? [
+                {
+                  id: "mirror-code",
+                  label: "Mirror code to GitHub or GitLab…",
+                  onSelect: () => {
+                    setRowDialog({ kind: "mirror-code", group });
+                  },
+                },
+              ]
+            : []),
           // A project with nothing in it goes, at whoever writes the structure's word.
           ...(deleteOffered(
             group,
@@ -2563,8 +2578,25 @@ export function ZeropsProjectsContent({
           }}
         />
       ) : null}
+      {rowDialog?.kind === "mirror-code" ? (
+        <GitMirrorDialog
+          appId={rowDialog.group.groupId}
+          appName={rowDialog.group.name}
+          key={`mirror-code:${rowDialog.group.groupId}`}
+          onClose={() => {
+            setRowDialog(null);
+          }}
+        />
+      ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (
         <ZeropsEnvironmentCreationDialog
+          access={(onChange) => (
+            <ProjectAccessDraft
+              groupId={creationRequest.groupId}
+              kind={roleProjectKind(creationRequest.role)}
+              onChange={onChange}
+            />
+          )}
           fallbackFocus={() =>
             document
               .getElementById(`project-${creationRequest.groupId}`)

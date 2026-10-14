@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { IncidentModel } from "./conversation.logic";
 import type { DockModel } from "./conversationDock.logic";
-import { ConversationWorking } from "./ConversationWorking";
+import { ConversationAfterWork, ConversationWorking } from "./ConversationWorking";
 import type { stepHeight } from "./stepHeight";
 
 /** How the panel asked its room to close: the frames are the stepper's own to test. */
@@ -584,5 +584,73 @@ describe("the helpers' and the background's bands", () => {
       return drawn?.body.match(/<(br|div|li)\b/g)?.length ?? 0;
     });
     expect(lines).toEqual([0, 0, 0]);
+  });
+});
+
+// Eli, 2026-10-14: "Still working in the background" stood over nothing while four of its own
+// background checks ran — "what is still working on bg?".
+describe("the Mate at work after its turn", () => {
+  const afterWork = (dock: DockModel | null) =>
+    renderToStaticMarkup(
+      <ConversationAfterWork
+        dock={dock}
+        environmentId={null}
+        onOpenAgents={() => undefined}
+        speaker={{ name: "Eli", tint: "sky" }}
+        state="working"
+        threadRef={null}
+      />,
+    );
+  const after = (work: NonNullable<DockModel["afterWork"]> | undefined): DockModel => ({
+    operations: [],
+    helpers: null,
+    tasks: null,
+    background: null,
+    afterTurn: "working",
+    ...(work === undefined ? {} : { afterWork: work }),
+    pause: null,
+  });
+  const job = (title: string) => ({ title, of: "mate", since: Date.parse(at(1)) }) as const;
+
+  it("names what still runs under its head, and whose it is", () => {
+    const markup = afterWork(
+      after({
+        items: [
+          job("Final batched browser check"),
+          { title: "Review the diff", of: "helper", since: Date.parse(at(2)) },
+        ],
+        count: 2,
+      }),
+    );
+    expect(markup).toContain("Still working in the background");
+    expect(markup).toContain("Final batched browser check");
+    expect(markup).toContain("Its own job");
+    expect(markup).toContain("Review the diff");
+    expect(markup).toContain("Its helper");
+  });
+
+  it("names the first of many and counts the rest", () => {
+    const markup = afterWork(
+      after({
+        items: [
+          job("Final batched browser check"),
+          job("Wait for the final check to finish"),
+          job("Wait for the final check to complete"),
+        ],
+        count: 4,
+      }),
+    );
+    expect(markup).toContain("Final batched browser check · and 3 more");
+    expect(markup).not.toContain("Wait for the final check to finish");
+  });
+
+  it.each([
+    { name: "its row names nothing still running", dock: after({ items: [], count: 0 }) },
+    { name: "nothing names what runs", dock: after(undefined) },
+    { name: "it knows nothing of the conversation's work", dock: null },
+  ])("never stands its head over nothing: $name", ({ dock }) => {
+    const markup = afterWork(dock);
+    expect(markup).toContain("Still working in the background");
+    expect(markup).toContain("Finishing work it started");
   });
 });

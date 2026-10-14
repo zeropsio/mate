@@ -1173,12 +1173,14 @@
         "apps/web/src/components/zerops/projects/OverviewCardMate.tsx",
         "apps/web/src/components/zerops/projects/projectsView.logic.ts",
         "apps/web/src/components/zerops/projects/ProjectPeople.tsx",
+        "apps/web/src/components/zerops/projects/ProjectAccessChips.tsx",
         "apps/web/src/components/zerops/projects/ProjectInviteDialog.tsx",
         "apps/web/src/components/zerops/ZeropsAskDialog.tsx",
         "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
         "apps/web/src/components/zerops/GitStopDetail.tsx",
         "apps/web/src/components/zerops/GitRemoteSettings.tsx",
+        "apps/web/src/components/zerops/GitMirrorDialog.tsx",
         "apps/web/src/components/zerops/GitDeliveryStatus.tsx",
         "apps/web/src/components/zerops/ZeropsProjectLink.tsx",
         "apps/web/src/components/zerops/ZeropsReleaseVerb.tsx",
@@ -1208,6 +1210,7 @@
         "apps/web/src/components/zerops/ZeropsPublicRoutes.logic.ts",
         "apps/web/src/components/zerops/ZeropsStopMenu.tsx",
         "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsProjectAccessDialog.tsx",
         "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
         "apps/web/src/components/zerops/ZeropsRenameProjectDialog.tsx",
         "apps/web/src/components/zerops/ZeropsChangeFaceDialog.tsx",
@@ -1709,6 +1712,66 @@
         "packages/client-runtime/src/data/adapters/hqAutoUpdatePolicy.test.ts",
         "packages/client-runtime/src/data/operations/hqWrites.test.ts",
         "apps/hq/src/autoUpdate.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-team-settings",
+      "title": "Team settings",
+      "components": [
+        "apps/web/src/components/settings/TeamSettings.tsx",
+        "apps/web/src/components/settings/TeamInviteDialog.tsx",
+        "apps/web/src/components/settings/teamSettings.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "/settings/team"
+        },
+        {
+          "kind": "settings-section",
+          "value": "Team"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/zerops", "@t3tools/client-runtime/zerops/teamRoles"],
+      "reverseStates": [
+        {
+          "action": "Invite",
+          "reverse": "Withdraw invite"
+        },
+        {
+          "action": "Change a person's role",
+          "reverse": "none: Choosing their earlier role in the same menu is the way back."
+        },
+        {
+          "action": "Withdraw invite",
+          "reverse": "Invite"
+        },
+        {
+          "action": "Remove from the organization",
+          "reverse": "Invite"
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the team yet."
+      },
+      "tests": [
+        "apps/web/src/components/settings/TeamSettings.test.tsx",
+        "apps/web/src/components/settings/TeamInviteDialog.test.tsx",
+        "apps/web/src/components/settings/teamSettings.logic.test.ts",
+        "packages/client-runtime/src/zerops/teamRoles.test.ts",
+        "packages/client-runtime/src/data/operations/executors/team.test.ts",
+        "packages/client-runtime/src/data/operations/executors/appAccess.test.ts"
       ],
       "captures": []
     },

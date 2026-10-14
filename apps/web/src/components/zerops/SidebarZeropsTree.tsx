@@ -646,6 +646,8 @@ interface ProjectLatest {
   readonly production: ((nowMs: number) => ChipMenuModel) | undefined;
   readonly stages: ((nowMs: number) => ChipMenuModel) | undefined;
   readonly openStop: (projectId: string) => (() => void) | undefined;
+  /** The project's own page. */
+  readonly openPage: () => void;
 }
 
 /** A project's verbs as its rows hold them: one function each, for as long as it is drawn. */
@@ -656,6 +658,8 @@ interface ProjectRefs {
   readonly production: (nowMs: number) => ChipMenuModel;
   readonly stages: (nowMs: number) => ChipMenuModel;
   readonly openStop: (projectId: string) => (() => void) | undefined;
+  /** The project's own page. */
+  readonly openPage: () => void;
 }
 
 /** What a project's rows were last handed, kept while it reads the same. */
@@ -814,6 +818,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       production: (nowMs) => latest()?.production?.(nowMs) ?? NO_PLACES,
       stages: (nowMs) => latest()?.stages?.(nowMs) ?? NO_PLACES,
       openStop: (projectId) => latest()?.openStop(projectId),
+      openPage: () => {
+        latest()?.openPage();
+      },
     };
     projectRefs.set(id, made);
     return made;
@@ -1494,15 +1501,20 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             ...(productionStop === undefined ? [] : [productionStop.projectId]),
           ].map((projectId) => <StopDemand key={projectId} projectId={projectId} />);
     // What waits for the viewer's review, oldest first as the flow lists it: each shown Mate's
-    // change once its Mate rests and it asks (`changeShowsReview`), each change of no Mate here
-    // that asks, then the work its crews have ready for the viewer's Land. A hidden Mate's change
-    // is drawn nowhere, as the jump box finds it nowhere.
+    // change that asks, each change of no Mate here that asks, then the work its crews have ready
+    // for the viewer's Land. A change whose Mate still works asks for no review yet
+    // (`changeShowsReview`) but stays marked, in progress, so it is always findable (Eli,
+    // 2026-10-14: "why is MR not showing up anywhere"). A hidden Mate's change is drawn nowhere,
+    // as the jump box finds it nowhere.
+    const inProgress = new Set<FlowPullRequest>();
     const asking = new Set([
       ...ordered.flatMap(({ item }) => {
         const run = mateRunOf(activityOfNow(getActivity?.(item)));
-        return (grouped.byMate.get(item.project.id) ?? []).filter((pull) =>
-          changeShowsReview(pull, run),
-        );
+        return (grouped.byMate.get(item.project.id) ?? []).filter((pull) => {
+          if (!changeAsksForReview(pull)) return false;
+          if (!changeShowsReview(pull, run)) inProgress.add(pull);
+          return true;
+        });
       }),
       ...grouped.others.filter((pull) => changeAsksForReview(pull)),
     ]);
@@ -1521,7 +1533,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         .filter((pull) => asking.has(pull))
         .map((pull) => {
           const entry = ordered.find((candidate) => candidate.projectId === pull.mateProjectId);
-          return changeReviewItem({
+          const change = changeReviewItem({
             pull,
             among: flowPulls,
             groupId: id,
@@ -1529,6 +1541,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             // Whose review it waits on, as the menu's Mine holds it: unknown reads as theirs.
             mine: entry === undefined || entry.mine,
           });
+          return inProgress.has(pull) ? { ...change, inProgress: true as const } : change;
         }),
       ...ordered.flatMap(({ item, projectId, mine: own }) =>
         (crewRows.get(projectId)?.reviews ?? []).map((review) =>
@@ -1641,6 +1654,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       production,
       stages: stagesMenu,
       openStop,
+      openPage: () => {
+        (onOpenGroup === undefined ? onBrowseProjects : () => onOpenGroup(id))();
+      },
     });
     const held = projectShared.get(id);
     const review: ProjectReviewData | undefined =
@@ -1695,6 +1711,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               line: sitesRead.line,
               onAskToFix,
               onOpenStop: refs.openStop,
+              onOpenPage: refs.openPage,
             };
     const mateIds = everyOrdered.map(({ item }) => item.project.id);
     projectShared.set(id, {

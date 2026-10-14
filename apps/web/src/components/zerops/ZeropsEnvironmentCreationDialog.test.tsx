@@ -1,12 +1,23 @@
 // @vitest-environment happy-dom
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { hqOffer, type HqOffers } from "@t3tools/shared/hqOffers";
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { Dialog } from "../ui/dialog";
-import { ZeropsEnvironmentCreationForm } from "./ZeropsEnvironmentCreationDialog";
+import {
+  ZeropsEnvironmentCreationForm,
+  type EnvironmentCreationChoice,
+} from "./ZeropsEnvironmentCreationDialog";
+
+const CHOSEN = [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }] as const;
+
+/** A draft standing in for the account's (`ProjectAccessDraft`): it says its list once drawn. */
+function Chosen({ onChange }: { onChange: (list: typeof CHOSEN) => void }) {
+  useEffect(() => onChange(CHOSEN), [onChange]);
+  return <ul aria-label="Chosen access" />;
+}
 
 let root: Root | undefined;
 let host: HTMLDivElement;
@@ -132,6 +143,22 @@ describe("ZeropsEnvironmentCreationForm", () => {
   it("says why production usually runs no agent", () => {
     const html = render({ role: "prod", defaultWithAgent: false });
     expect(html).toContain("Production usually does not");
+  });
+
+  it("asks who will reach the stage, and adds it with the access chosen", () => {
+    const made: Array<EnvironmentCreationChoice> = [];
+    const html = render({
+      access: (onChange) => <Chosen onChange={onChange} />,
+      onCreate: (choice) => made.push(choice),
+    });
+    expect(html).toContain("Project access");
+    expect(html).toContain('aria-label="Chosen access"');
+    act(() =>
+      host
+        .querySelector('form[data-zerops-surface="environment-creation-form"]')!
+        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+    );
+    expect(made.map(({ userRoles }) => userRoles)).toEqual([CHOSEN]);
   });
 
   it("shows no errors before the first submit", () => {

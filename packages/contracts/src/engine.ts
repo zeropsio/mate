@@ -12,10 +12,16 @@ import { MateRestart } from "./zeropsAttention.ts";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
-import { CommandId, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  CommandId,
+  ForwardCompatibleOptional,
+  PositiveInt,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { ProviderOptionSelection } from "./model.ts";
 import {
   AgentAdmissionRefusal,
+  BackgroundWork,
   ChatFileAttachment,
   ChatImageAttachment,
   ProviderInteractionMode,
@@ -462,6 +468,13 @@ export const WORK_STATUSES = [
 ] as const;
 /** The states after which background work never reports again. */
 export const WORK_ENDED: ReadonlySet<string> = new Set(["completed", "failed", "stopped", "lost"]);
+/**
+ * The states in which background work keeps its conversation working: it runs, or waits on the
+ * person. An idle helper finished its turn and rests until it is addressed again (Codex's
+ * `collabAgent` idle): it does nothing, so no conversation works on it, and the server and every
+ * client read the same set, so nothing reads as working with nothing to name.
+ */
+export const WORK_ALIVE: ReadonlySet<string> = new Set(["running", "waiting"]);
 
 const itemBodyFields = {
   person: {
@@ -730,6 +743,8 @@ export const ConversationRowState = forwardCompatibleUnion({
        * until that turn opens, or until the engine stops expecting it.
        */
       turnDue: Schema.optionalKey(Schema.Literal(true)),
+      /** What it waits on after its turn, by name (`waitsOnHelpers`); absent from an older server. */
+      work: ForwardCompatibleOptional(BackgroundWork),
     }),
     Schema.Struct({
       kind: Schema.Literal("waiting"),

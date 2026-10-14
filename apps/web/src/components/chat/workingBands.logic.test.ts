@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { DockBackgroundTask, DockHelper } from "./conversationDock.logic";
-import { backgroundBand, helpersBand } from "./workingBands.logic";
+import { afterWorkLines, backgroundBand, helpersBand } from "./workingBands.logic";
 
 const at = (minute: number) => new Date(Date.UTC(2026, 8, 27, 10, minute)).toISOString();
 
@@ -137,5 +137,52 @@ describe("backgroundBand — the background tasks as one line", () => {
     const line = backgroundBand({ tasks, running: 0, done: 0, failed: 0 });
     expect(line).toMatchObject({ count: null, ...band });
     expect(line.label).toBe(label);
+  });
+});
+
+// Eli, 2026-10-14: "Still working in the background" stood over nothing while four of its own
+// background checks ran — "what is still working on bg?".
+describe("what the Mate's card says still runs after its turn", () => {
+  const job = (title: string | null, since = 1) => ({ title, of: "mate", since }) as const;
+  const helper = (title: string | null, since = 1) => ({ title, of: "helper", since }) as const;
+  const lines = (work: Parameters<typeof afterWorkLines>[0]) =>
+    afterWorkLines(work).map(({ title, word }) =>
+      word === undefined ? title : `${title} — ${word}`,
+    );
+  it.each([
+    {
+      name: "a line for each of a few, each saying whose it is",
+      work: { items: [job("Final batched browser check"), helper("Review the diff")], count: 2 },
+      said: ["Final batched browser check — Its own job", "Review the diff — Its helper"],
+    },
+    {
+      name: "one line for many, the first by its title and the rest counted",
+      work: {
+        items: [
+          job("Final batched browser check"),
+          job("Wait for the final check to finish"),
+          job("Wait for the final check to complete"),
+        ],
+        count: 4,
+      },
+      said: ["Final batched browser check · and 3 more — Its own jobs"],
+    },
+    {
+      name: "untitled work by what it is",
+      work: { items: [job(null), helper(null)], count: 2 },
+      said: ["A background job — Its own job", "A helper — Its helper"],
+    },
+    {
+      name: "that it finishes what it started when nothing it names still runs",
+      work: { items: [], count: 0 },
+      said: ["Finishing work it started"],
+    },
+    {
+      name: "that it finishes what it started when nothing names its work",
+      work: undefined,
+      said: ["Finishing work it started"],
+    },
+  ])("says $name", ({ work, said }) => {
+    expect(lines(work)).toEqual(said);
   });
 });

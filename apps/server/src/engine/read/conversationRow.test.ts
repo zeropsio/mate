@@ -71,6 +71,8 @@ const stripeAsk: ViewRequest["ask"] = {
 
 const revision = { environmentId: "env-1", epoch: 7 };
 
+const helperWork = { title: "Review the diff", of: "helper", since: 450 } as const;
+
 describe("the menu row", () => {
   it("reads the person's latest message's first line as its subject and the agent's last words, masked, as its snippet", () => {
     const row = conversationRowOf(view(), revision);
@@ -197,13 +199,24 @@ describe("the menu row", () => {
     ],
     [
       "a helper works on after the turn: working, on helpers",
-      { lastEnded: ended(1, { kind: "completed" }), background: "working" },
-      { kind: "working", since: 500, waitsOnHelpers: true },
+      { lastEnded: ended(1, { kind: "completed" }), background: "working", work: [helperWork] },
+      {
+        kind: "working",
+        since: 500,
+        waitsOnHelpers: true,
+        work: { items: [helperWork], count: 1 },
+      },
     ],
     [
       "its helpers finished and the agent's own turn on them is due: working, on that turn",
       { lastEnded: ended(1, { kind: "completed" }), turnDue: true },
-      { kind: "working", since: 500, waitsOnHelpers: true, turnDue: true },
+      {
+        kind: "working",
+        since: 500,
+        waitsOnHelpers: true,
+        turnDue: true,
+        work: { items: [], count: 0 },
+      },
     ],
     [
       "the last run failed: failed, with its reason",
@@ -251,6 +264,52 @@ describe("the menu row", () => {
   });
 });
 
+// Eli, 2026-10-14: the row read "Waiting for its helpers" over four of its own background checks,
+// and the card at the conversation's end named none of them.
+describe("the menu row while work its turn started runs on", () => {
+  const job = (title: string, since: number) => ({ title, of: "mate", since }) as const;
+  it.each([
+    {
+      name: "names each piece of what it waits on, oldest first, while there are few",
+      work: [job("Final batched browser check", 410), helperWork],
+      expected: { items: [job("Final batched browser check", 410), helperWork], count: 2 },
+    },
+    {
+      name: "names the first three of what it waits on and counts them all",
+      work: [
+        job("Final batched browser check", 410),
+        job("Wait for the final check to finish", 420),
+        job("Wait for the final check to complete", 430),
+        job("Block until final captures are in", 440),
+      ],
+      expected: {
+        items: [
+          job("Final batched browser check", 410),
+          job("Wait for the final check to finish", 420),
+          job("Wait for the final check to complete", 430),
+        ],
+        count: 4,
+      },
+    },
+    {
+      name: "cuts a long title to what shares a line",
+      work: [job(`Check ${"every page ".repeat(20)}`, 410)],
+      expected: { items: [job(`Check ${"every page ".repeat(10)}eve…`, 410)], count: 1 },
+    },
+  ])("$name", ({ work, expected }) => {
+    const row = conversationRowOf(
+      view({ lastEnded: ended(1, { kind: "completed" }), background: "working", work }),
+      revision,
+    );
+    expect(row.state).toEqual({
+      kind: "working",
+      since: 500,
+      waitsOnHelpers: true,
+      work: expected,
+    });
+  });
+});
+
 // Milo's final engine run (seg E +1:32): helpers waited on an approval while the face said
 // "Waiting for its helpers", with nothing to press.
 describe("the menu row while a helper asks", () => {
@@ -270,12 +329,12 @@ describe("the menu row while a helper asks", () => {
           dismissible: true,
         }),
       ],
-      state: { kind: "working", since: 500, waitsOnHelpers: true },
+      state: { kind: "working", since: 500, waitsOnHelpers: true, work: { items: [], count: 0 } },
     },
     {
       name: "an ask nobody can answer any more leaves the helpers working",
       openRequests: [{ ...request(helperAsk), answerable: false }],
-      state: { kind: "working", since: 500, waitsOnHelpers: true },
+      state: { kind: "working", since: 500, waitsOnHelpers: true, work: { items: [], count: 0 } },
     },
   ])("$name", ({ openRequests, state }) => {
     const row = conversationRowOf(

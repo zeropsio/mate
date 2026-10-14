@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { ORG } from "../__fixtures__/account.ts";
 import { locationsScope } from "../families/organizationLocations.ts";
+import { memberRolesScope } from "../families/memberProjectRoles.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 import { agentsScope } from "../families/serviceAgents.ts";
 import {
@@ -15,6 +16,7 @@ import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamOutcome } from "../streamMachine.ts";
 import {
+  membersProjectRoles,
   organizationLocations,
   organizationMembers,
   servicesAgents,
@@ -160,6 +162,25 @@ describe("a sampled read, as a screen reads it", () => {
     expect(agents.s1).toMatchObject({ value: ["codex"], status: "ready" });
     expect(agents.s2).toMatchObject({ value: undefined, status: "failed" });
     expect(agents.s3).toMatchObject({ value: undefined, status: "loading" });
+  });
+
+  it("answers each member's own grants apart: read, refused, and not read yet", () => {
+    const grant = { projectId: "p1", roleCode: "READ_ONLY" };
+    const reads = readsOfState(
+      apply(emptyAccount, [
+        ...begun(memberRolesScope(ORG, "cu1")),
+        ...answered(memberRolesScope(ORG, "cu1"), "memberProjectRoles", [grant]),
+        ...begun(memberRolesScope(ORG, "cu2")),
+        failed(memberRolesScope(ORG, "cu2"), "authoritative-denial"),
+      ]),
+    );
+    const roles = membersProjectRoles.derive(reads, {
+      orgId: ORG,
+      clientUserIds: ["cu1", "cu2", "cu3"],
+    });
+    expect(roles.cu1).toMatchObject({ value: [grant], status: "ready" });
+    expect(roles.cu2).toMatchObject({ value: undefined, status: "failed" });
+    expect(roles.cu3).toMatchObject({ value: undefined, status: "loading" });
   });
 });
 

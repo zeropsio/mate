@@ -97,6 +97,7 @@ import {
   landingAfterDelete,
 } from "../components/zerops/ZeropsDeleteMateDialog.logic";
 import { ZeropsMoveToGroupDialog } from "../components/zerops/ZeropsMoveToGroupDialog";
+import { ZeropsProjectAccessDialog } from "../components/zerops/ZeropsProjectAccessDialog";
 import { emptyApplications } from "../components/zerops/projects/emptyApps.logic";
 import { ZeropsRenameDialog } from "../components/zerops/ZeropsRenameDialog";
 import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
@@ -170,6 +171,7 @@ type MateDialog =
       readonly closing?: true;
     }
   | { readonly kind: "assign"; readonly candidate: ZeropsCandidatePresentation }
+  | { readonly kind: "access"; readonly candidate: ZeropsCandidatePresentation }
   /** Where it may go is HQ's answer as the move opened (`move-offers`), never listed ahead. */
   | {
       readonly kind: "move";
@@ -1393,6 +1395,15 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               },
             ]
           : []),
+        // Who reaches the Mate's project: anyone may look, an owner or admin changes it there.
+        {
+          id: "access",
+          label: "Project access…",
+          disabled: busy,
+          onSelect: () => {
+            setDialog({ kind: "access", candidate });
+          },
+        },
         ...(hqVerbs.move !== "no"
           ? [
               {
@@ -1570,6 +1581,14 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           }}
           open={dialog.closing !== true}
           pending={facePress.pending}
+        />
+      ) : null}
+      {dialog?.kind === "access" ? (
+        <ZeropsProjectAccessDialog
+          key={`access:${dialog.candidate.key}`}
+          name={projectNameInApp(dialog.candidate.project)}
+          onClose={close}
+          projectId={dialog.candidate.project.id}
         />
       ) : null}
       {dialog?.kind === "assign" ? (

@@ -20,6 +20,7 @@
  * so the Mate wears it everywhere from its first moment.
  */
 import type { EnvironmentRecipeChoice, ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useEffect, useEffectEvent, useId, useState } from "react";
@@ -47,6 +48,7 @@ import {
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { MateFacePicker } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
+import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import { WhatHappensNext } from "./WhatHappensNext";
 import { newMateNext } from "./whatHappensNext.logic";
 
@@ -55,6 +57,8 @@ export interface NewMateChoice {
   readonly name: string;
   readonly recipe: EnvironmentRecipeChoice;
   readonly face: ZeropsMateFace;
+  /** Who reaches its project beyond their organization role, as chosen in the form. */
+  readonly userRoles?: ReadonlyArray<ProjectGrant>;
 }
 
 export interface ZeropsNewMateFormProps {
@@ -79,6 +83,8 @@ export interface ZeropsNewMateFormProps {
   readonly onDoorAction?: ((action: NewMateDoorAction) => void) | undefined;
   readonly onCancel: () => void;
   readonly onCreate: (choice: NewMateChoice) => void;
+  /** Who will reach its project, as people chips; absent, the form says nothing of access. */
+  readonly access?: ProjectAccessSlot | undefined;
 }
 
 /** A room that opens and gives itself back in one move: a grid row from 0fr to 1fr. */
@@ -98,8 +104,10 @@ export function ZeropsNewMateForm({
   onDoorAction,
   onCancel,
   onCreate,
+  access,
 }: ZeropsNewMateFormProps) {
   const id = useId();
+  const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
   const [botName, setBotName] = useState(defaultBotName);
   // The last name typed: a blank field keeps the face it had rather than flashing another.
   const [heldName, setHeldName] = useState(defaultBotName);
@@ -152,7 +160,7 @@ export function ZeropsNewMateForm({
     if (named.length > 0) setHeldName(named);
   };
   const create = (choice: EnvironmentRecipeChoice) => {
-    onCreate({ name: bot, recipe: choice, face });
+    onCreate({ name: bot, recipe: choice, face, ...(userRoles.length === 0 ? {} : { userRoles }) });
   };
   const press = () => {
     if (closed !== undefined) return;
@@ -273,6 +281,12 @@ export function ZeropsNewMateForm({
                   },
                 ]}
               />
+              {access === undefined ? null : (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-sm">Project access</span>
+                  {access(setUserRoles)}
+                </div>
+              )}
             </div>
           </DialogPanel>
         </div>

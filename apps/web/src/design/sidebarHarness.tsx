@@ -338,6 +338,8 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   // Signed in, and nobody has asked either anything yet: one says so, one holds a draft.
   candidate("notes-juno", "Juno", NOTES.mate()),
   candidate("notes-rhea", "Rhea", NOTES.mate()),
+  // Its turn over, its own background checks running, its change still marked (Eli, 2026-10-14).
+  candidate("notes-eli", "Eli", NOTES.mate()),
   candidate("notes-prod", "Notes - production", NOTES.stop("production"), {
     container: false,
     routes: routes(["app", "notes.example.com"], ["app", "www.notes.example.com"]),
@@ -462,6 +464,32 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
         kind: "failed",
       }),
       errorLine: "The deploy to stage failed: the build timed out after 120 s.",
+    },
+  ],
+  [
+    "notes-eli",
+    {
+      ...activity({
+        id: "notes-eli",
+        subject: "Check every page of the release in the browser",
+        snippet: "Captures are coming in. I'll report once the final check is done.",
+        hours: 0.2,
+        face: "working",
+        kind: "working",
+      }),
+      waitsOnHelpers: true,
+      backgroundWork: {
+        items: [
+          { title: "Final batched browser check", of: "mate", since: Date.now() - 900_000 },
+          { title: "Wait for the final check to finish", of: "mate", since: Date.now() - 600_000 },
+          {
+            title: "Wait for the final check to complete",
+            of: "mate",
+            since: Date.now() - 300_000,
+          },
+        ],
+        count: 4,
+      },
     },
   ],
   [
@@ -714,7 +742,9 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
   [
     "notes",
     {
-      pullRequests: [],
+      pullRequests: [
+        pull({ number: 7, title: "Release checks for every page", mateProjectId: "notes-eli" }),
+      ],
       environments: new Map([
         [
           "notes-prod",

@@ -285,6 +285,7 @@ export function attentionActivity(input: {
   const {
     liveStep,
     waitsOnHelpers,
+    backgroundWork,
     question: asked,
     errorLine,
     interruption: _interruption,
@@ -302,7 +303,9 @@ export function attentionActivity(input: {
     unread,
     // The words only true of the kind the attention says.
     ...(UNDER_WAY.has(kind) && liveStep !== undefined ? { liveStep } : {}),
-    ...(UNDER_WAY.has(kind) && waitsOnHelpers === true ? { waitsOnHelpers } : {}),
+    ...(UNDER_WAY.has(kind) && waitsOnHelpers === true
+      ? { waitsOnHelpers, ...(backgroundWork === undefined ? {} : { backgroundWork }) }
+      : {}),
     ...(kind === "input" && asked !== undefined ? { question: asked } : {}),
     ...((kind === "failed" || read.usageLimited === true) && errorLine !== undefined
       ? { errorLine }

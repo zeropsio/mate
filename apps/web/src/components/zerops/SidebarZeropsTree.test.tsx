@@ -1688,12 +1688,11 @@ describe("the project's flow under it", () => {
     }
   });
 
-  // A change asks for review only once its Mate described it at its head, and only while the
-  // Mate rests: a draft, or a change its Mate still works on, asks nothing — and rides no row.
+  // A change asks for review only once its Mate described it at its head: a draft asks nothing —
+  // and rides no row.
   it.each([
     { case: "a change described at its head, its Mate at rest", ready: true, busy: false },
     { case: "a draft", ready: false, busy: false },
-    { case: "a described change its Mate still works on", ready: true, busy: true },
   ])("puts $case on its Mate's row only once it asks for review", ({ ready, busy }) => {
     const atWork: ZeropsAgentActivity = {
       threadId: ThreadId.make("thread-1"),
@@ -1714,6 +1713,34 @@ describe("the project's flow under it", () => {
     });
     const asks = ready && !busy;
     expect(reviewTagLabelOf(html)).toBe(asks ? "Review Change 4" : undefined);
+  });
+
+  // While its Mate works, a described change asks for no review (D7) — but it stays on the row,
+  // quieter, so it is always findable (Eli, 2026-10-14: "why is MR not showing up anywhere").
+  it("keeps a described change its Mate still works on marked on its row, in progress, offering no Review until it rests", () => {
+    const atWork: ZeropsAgentActivity = {
+      threadId: ThreadId.make("thread-1"),
+      kind: "working",
+      status: null,
+      face: "working",
+      subject: "Add a size guide",
+      at: "2026-10-05T10:00:00.000Z",
+      snippet: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env:thread-1",
+      task: "Add a size guide",
+    };
+    const html = render([own(), CRM_STAGE], {
+      getFlow: () => flow({ pullRequests: [pull(4)] }),
+      getActivity: () => atWork,
+    });
+    expect(reviewTagLabelOf(html)).toBe("In progress: Change 4");
+    const rested = render([own(), CRM_STAGE], {
+      getFlow: () => flow({ pullRequests: [pull(4)] }),
+      getActivity: () => restingActivity(atWork),
+    });
+    expect(reviewTagLabelOf(rested)).toBe("Review Change 4");
   });
 
   // The owner, 2026-10-12: "I still don't understand why rosa has a different looking merge

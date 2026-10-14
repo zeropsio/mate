@@ -56,6 +56,8 @@ describe("operation admission from the account store", () => {
     { kind: "set-app-access", orgRole: "ADMIN", allowed: true },
     { kind: "invite-member", orgRole: "BASIC_USER", allowed: false },
     { kind: "set-app-access", orgRole: "BASIC_USER", allowed: false },
+    { kind: "set-project-access", orgRole: "OWNER", allowed: true },
+    { kind: "set-project-access", orgRole: "BASIC_USER", allowed: false },
   ] as const)(
     "Only an organization owner or admin invites people or changes their access: $kind as $orgRole",
     (entry) =>
@@ -64,23 +66,29 @@ describe("operation admission from the account store", () => {
         const intent: OperationIntent =
           entry.kind === "check-invitee"
             ? { kind: entry.kind, orgId: "org", email: "eva@example.com" }
-            : entry.kind === "invite-member"
+            : entry.kind === "set-project-access"
               ? {
                   kind: entry.kind,
                   orgId: "org",
-                  email: "eva@example.com",
-                  invitee: { kind: "existing", userId: "u-eva" },
-                  level: "work",
-                  projects,
+                  changes: [{ clientUserId: "cu-eva", projectId: "p", roleCode: "ADMIN" }],
                 }
-              : {
-                  kind: entry.kind,
-                  orgId: "org",
-                  clientUserId: "cu-eva",
-                  change: "look",
-                  projects,
-                  owned: [],
-                };
+              : entry.kind === "invite-member"
+                ? {
+                    kind: entry.kind,
+                    orgId: "org",
+                    email: "eva@example.com",
+                    invitee: { kind: "existing", userId: "u-eva" },
+                    level: "work",
+                    projects,
+                  }
+                : {
+                    kind: entry.kind,
+                    orgId: "org",
+                    clientUserId: "cu-eva",
+                    change: "look",
+                    projects,
+                    owned: [],
+                  };
         const result = yield* Effect.result(
           admitPlatformOperation({
             intent,
@@ -92,6 +100,34 @@ describe("operation admission from the account store", () => {
         );
         expect(Result.isSuccess(result)).toBe(entry.allowed);
       }),
+  );
+
+  it.effect.each([
+    { kind: "set-org-role", orgRole: "OWNER", allowed: true },
+    { kind: "remove-member", orgRole: "ADMIN", allowed: true },
+    { kind: "set-org-role", orgRole: "BASIC_USER", allowed: false },
+    { kind: "remove-member", orgRole: "READ_ONLY", allowed: false },
+  ] as const)("Only an organization owner or admin changes the team: $kind as $orgRole", (entry) =>
+    Effect.gen(function* () {
+      const intent: OperationIntent =
+        entry.kind === "set-org-role"
+          ? { kind: entry.kind, orgId: "org", clientUserId: "cu-eva", role: "guest" }
+          : { kind: entry.kind, orgId: "org", clientUserId: "cu-eva" };
+      const result = yield* Effect.result(
+        admitPlatformOperation({
+          intent,
+          store: makeAccountStore(AtomRegistry.make()),
+          viewer: { ...viewer, roleCode: entry.orgRole },
+          active: () => true,
+          readDetail: async () => false,
+        }),
+      );
+      expect(Result.isSuccess(result)).toBe(entry.allowed);
+      if (Result.isFailure(result))
+        expect(result.failure.message).toBe(
+          "Only an organization owner or admin can change the team.",
+        );
+    }),
   );
 
   it.effect.each([
@@ -203,5 +239,32 @@ describe("operation admission from the account store", () => {
       );
       expect(Result.isFailure(result)).toBe(true);
     }),
+  );
+});
+
+describe("giving a project just made its people", () => {
+  it.effect.each([
+    { orgRole: "BASIC_USER", canCreateProjects: true, allowed: true },
+    { orgRole: "READ_ONLY", canCreateProjects: false, allowed: false },
+  ] as const)(
+    "Whoever may create projects gives the one they made its people: $orgRole",
+    ({ orgRole, canCreateProjects, allowed }) =>
+      Effect.gen(function* () {
+        const result = yield* Effect.result(
+          admitPlatformOperation({
+            intent: {
+              kind: "grant-new-project-access",
+              orgId: "org",
+              projectId: "p",
+              userRoles: [{ clientUserId: "cu-ada", roleCode: "ADMIN" }],
+            },
+            store: makeAccountStore(AtomRegistry.make()),
+            viewer: { ...viewer, roleCode: orgRole, canCreateProjects },
+            active: () => true,
+            readDetail: async () => false,
+          }),
+        );
+        expect(Result.isSuccess(result)).toBe(allowed);
+      }),
   );
 });
