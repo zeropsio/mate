@@ -35,6 +35,8 @@ export interface PublicPortRoutingValue {
   readonly deleteOnSync?: boolean;
   /** Whether it was ever put in place: one never synced serves nothing yet. */
   readonly everSynced?: boolean;
+  /** When Zerops last changed it: a write's end is read only from what came after it. */
+  readonly lastUpdate?: string;
 }
 
 declare module "../model.ts" {
@@ -59,6 +61,7 @@ const Row = Schema.Struct({
   isSynced: Schema.Boolean,
   deleteOnSync: Said(Schema.Boolean),
   lastSync: Said(Schema.String),
+  lastUpdate: Said(Schema.String),
   _version: Schema.optionalKey(Schema.Union([Schema.Finite, Schema.Null])),
 });
 const decodeRow = Schema.decodeUnknownOption(Row);
@@ -102,6 +105,7 @@ export const publicPortRoutingFamily: FamilySpec<"publicPortRouting"> = {
             ...(row.lastSync === undefined
               ? {}
               : { everSynced: row.lastSync !== null && row.lastSync !== "" }),
+            ...(row.lastUpdate == null ? {} : { lastUpdate: row.lastUpdate }),
           },
         }),
       }),

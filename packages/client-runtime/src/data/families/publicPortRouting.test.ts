@@ -46,6 +46,7 @@ describe("publicPortRoutingFamily.decode", () => {
           isSynced: true,
           deleteOnSync: false,
           everSynced: true,
+          lastUpdate: "2026-10-13T22:33:10Z",
         },
       },
     },

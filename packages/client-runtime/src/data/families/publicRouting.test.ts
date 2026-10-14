@@ -71,6 +71,7 @@ describe("publicRoutingFamily.decode", () => {
           isEditable: false,
           deleteOnSync: false,
           everSynced: true,
+          lastUpdate: "2026-08-27T16:20:46Z",
           sslEnabled: true,
           domains: [
             {
@@ -94,6 +95,7 @@ describe("publicRoutingFamily.decode", () => {
           isEditable: false,
           deleteOnSync: false,
           everSynced: true,
+          lastUpdate: "2026-08-27T16:20:46Z",
           sslEnabled: true,
           domains: [
             {
@@ -138,6 +140,7 @@ describe("publicRoutingFamily.decode", () => {
           isEditable: true,
           deleteOnSync: false,
           everSynced: false,
+          lastUpdate: "2026-08-27T16:20:46Z",
           sslEnabled: true,
           domains: [
             {
