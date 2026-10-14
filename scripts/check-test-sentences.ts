@@ -85,7 +85,7 @@ function git(root: string, args: string[]): string {
   return result.stdout;
 }
 
-/** CI's push baseline covers the entire push; origin/main can already be HEAD. */
+/** Non-main pushes protect main's sentences; main pushes and PRs retain their event baseline. */
 export function sentenceComparison(root: string, base?: string): string {
   if (git(root, ["rev-parse", "--is-shallow-repository"]).trim() === "true")
     throw new Error("Test sentence guard needs full Git history; fetch with --unshallow.");
@@ -93,7 +93,14 @@ export function sentenceComparison(root: string, base?: string): string {
   if (base === undefined && process.env.GITHUB_ACTIONS === "true") {
     const path = process.env.GITHUB_EVENT_PATH;
     if (!path) throw new Error("Test sentence guard needs a GitHub push or PR event baseline.");
-    ref = githubRatchetRevision(decodeGitHubEvent(NodeFS.readFileSync(path, "utf8")), ref);
+    const event = decodeGitHubEvent(NodeFS.readFileSync(path, "utf8"));
+    const branch = process.env.GITHUB_REF;
+    if (
+      event.pull_request !== undefined ||
+      !branch?.startsWith("refs/heads/") ||
+      branch === "refs/heads/main"
+    )
+      ref = githubRatchetRevision(event, ref);
   }
   return comparisonBase(root, ref);
 }
