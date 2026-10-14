@@ -48,12 +48,12 @@ export function useMateAddresses(
               return listed === undefined ? undefined : derivePublicRoutes(entry, listed);
             },
           });
-    const snapshots =
-      lifecycle?.state === "known" ? (lifecycle.value.envelope?.services ?? []) : [];
+    // What zcp last read of each service's dev servers; nothing read leaves each service's unread.
+    const snapshots = lifecycle?.state === "known" ? lifecycle.value.envelope?.services : undefined;
     const addresses = mateAddresses({
       services: topology.services.map((service) => ({
         ...service,
-        devServers: snapshots.find((entry) => entry.hostname === service.hostname)?.devServers,
+        devServers: snapshots?.find((entry) => entry.hostname === service.hostname)?.devServers,
       })),
       ownRole: group?.ownRole,
       environments: group?.environments ?? [],
