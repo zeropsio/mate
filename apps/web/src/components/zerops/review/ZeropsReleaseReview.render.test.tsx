@@ -310,6 +310,7 @@ describe("the roll back dialog's press", () => {
 describe("the release dialog's way to a domain of your own", () => {
   const PRODUCTION = {
     projectId: "p-prod",
+    target: { kind: "zerops", projectId: "p-prod" },
     name: "prod",
     tier: "production",
     sources: ["release"],
@@ -318,10 +319,12 @@ describe("the release dialog's way to a domain of your own", () => {
     keyHeld: true,
     keyInvalid: false,
   } as unknown as ZeropsProjectFlow["environmentInputs"][number];
-  const withProduction = (base: ZeropsProjectFlow): ZeropsProjectFlow => ({
-    ...base,
-    environmentInputs: [PRODUCTION],
-  });
+  const withProduction =
+    (production = PRODUCTION) =>
+    (base: ZeropsProjectFlow): ZeropsProjectFlow => ({
+      ...base,
+      environmentInputs: [production],
+    });
   /** The release HQ takes, and production running it by the time the answer is drawn. */
   const lands = (render: () => void) => async (): Promise<FlowVerbOutcome> => {
     const before = state.value.flows.get("xyz")!;
@@ -338,13 +341,16 @@ describe("the release dialog's way to a domain of your own", () => {
       button.textContent?.includes("Put it on your domain"),
     );
 
-  async function released(places: Parameters<typeof withPlaceAddresses>[0]) {
+  async function released(
+    places: Parameters<typeof withPlaceAddresses>[0],
+    production = PRODUCTION,
+  ) {
     let draw = () => {};
     const { container, render } = await mount(
       async () => lands(draw)(),
       undefined,
       undefined,
-      withProduction,
+      withProduction(production),
       withPlaceAddresses(places),
     );
     draw = render;
@@ -373,6 +379,15 @@ describe("the release dialog's way to a domain of your own", () => {
     ["is still being read", placeAddresses("reading")],
   ])("does not offer Put it on your domain while production %s", async (_case, production) => {
     const { container } = await released({ "p-prod": production });
+    expect(domainDoor(container)).toBeUndefined();
+  });
+
+  it("does not offer Put it on your domain where production is a Git destination", async () => {
+    const git = {
+      ...PRODUCTION,
+      target: { kind: "git", branch: "production", delivery: "direct" },
+    } as unknown as typeof PRODUCTION;
+    const { container } = await released({ "p-prod": placeAddresses([]) }, git);
     expect(domainDoor(container)).toBeUndefined();
   });
 });

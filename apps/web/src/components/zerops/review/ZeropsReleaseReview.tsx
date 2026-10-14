@@ -288,9 +288,10 @@ function ReleaseData({
 
   const mainStage = mainStageOf(flow);
   const production = flow.environmentInputs.find((entry) => entry.tier === "production");
-  const productionHost = useProductionHost(
-    production?.target.kind === "zerops" ? production.target.projectId : undefined,
-  );
+  // Production's Zerops project, where it is one: a Git destination has no addresses here.
+  const productionProject =
+    production?.target.kind === "zerops" ? production.target.projectId : undefined;
+  const productionHost = useProductionHost(productionProject);
   const {
     outcome,
     held: keep,
@@ -315,17 +316,16 @@ function ReleaseData({
   // Once it is live, production on a domain of its own where it has none: read only from then.
   const orgId = useAccountOrgId();
   const offersDomain = useLacksOwnDomain(
-    outcome.kind === "released" ? production?.projectId : undefined,
+    outcome.kind === "released" ? productionProject : undefined,
   );
-  const productionId = production?.projectId;
   const onAddDomain =
-    !offersDomain || orgId === null || productionId === undefined
+    !offersDomain || orgId === null || productionProject === undefined
       ? undefined
       : () => {
           onClose();
           useAddressesSheet.getState().open({
             orgId,
-            projectId: productionId,
+            projectId: productionProject,
             groupId: flow.groupId,
             intent: "add-domain",
           });
