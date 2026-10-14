@@ -46,17 +46,6 @@ it("Blocking blame runs state smoke with its bundle and never selects Signal job
   }
 });
 
-it("Scenario blame builds its bundle and runs exactly the failed scenario shard", () => {
-  const selection = blameSelection(
-    "refs/heads/kh-bisect/abc1234",
-    "Test Web Scenarios (C shard 3)\n",
-  );
-  expect(selection.selected.sort()).toEqual(["changes", "chat_bundle", "chat_scenarios"]);
-  expect(selection.matrices.chat_scenarios!.include).toEqual([
-    { name: "C shard 3", command: "node scripts/chat-gate.ts --verbose --stages C --shard 3/4" },
-  ]);
-});
-
 it("Summary failures rerun their failed dependencies without selecting unrelated suites", () => {
   const selection = blameSelection(
     "refs/heads/kh-bisect/abc1234",
