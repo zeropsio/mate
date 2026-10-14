@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - reads and hashes the checked-in fixture bytes.
 /**
  * zcp's monorepo contract fixtures (zcp `docs/spec-mate.md` §2.8a.7), decoded by Mate's
  * consumers. The copy in `fixtures/zcp/` is written only by `scripts/sync-zcp-fixtures.ts`;
