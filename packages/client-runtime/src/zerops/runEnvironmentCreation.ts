@@ -35,6 +35,7 @@ import type { Deployment } from "./flow/deployment.ts";
 import { deployedVersion } from "./groupRows.ts";
 import type { Known } from "./knowledge/known.ts";
 import { isUncertainZeropsFailure } from "./errors.ts";
+import { asProjectAccessRole } from "./projectAccess.ts";
 
 /**
  * What a creation acts through: each Zerops write as the account's operation, waited to its end
@@ -228,6 +229,7 @@ export async function runEnvironmentCreation(
               name: step.name,
               tagList: step.tagList,
               ...(step.location === undefined ? {} : { location: step.location }),
+              ...(step.userRoles === undefined ? {} : { userRoles: step.userRoles }),
             },
             {
               orgId,
@@ -254,6 +256,22 @@ export async function runEnvironmentCreation(
           );
           projectName = step.name;
           await accept(imported.projectId);
+          // An import document names no people: the creator's choice is given to the project made.
+          if (step.userRoles !== undefined && step.userRoles.length > 0) {
+            assertCurrent();
+            await run(
+              {
+                kind: "set-project-access",
+                orgId,
+                changes: step.userRoles.map(({ clientUserId, roleCode }) => ({
+                  clientUserId,
+                  projectId: imported.projectId,
+                  roleCode: asProjectAccessRole(roleCode),
+                })),
+              },
+              { orgId, unobserved: UNCONFIRMED_WRITE },
+            );
+          }
           break;
         }
         case "import-container": {

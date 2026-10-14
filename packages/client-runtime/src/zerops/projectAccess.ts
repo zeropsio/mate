@@ -18,8 +18,19 @@ import { asOrgRole } from "@t3tools/shared/zeropsRoles";
 
 import type { ProjectGrantEntry } from "./appAccess.ts";
 
-/** The levels Mate gives on a project: full access, or read only. */
-export type ProjectAccessRole = "ADMIN" | "READ_ONLY";
+/**
+ * The levels a project grant sets here: full access or read only, as a person's menu gives them,
+ * or a developer's, as a creation carries one over from the app's other projects.
+ */
+export type ProjectAccessRole = "ADMIN" | "BASIC_USER" | "READ_ONLY";
+
+/** A grant's role as one this module writes; any other is full access's floor, read only. */
+export const asProjectAccessRole = (roleCode: string): ProjectAccessRole =>
+  roleCode === "ADMIN" || roleCode === "OWNER"
+    ? "ADMIN"
+    : roleCode === "BASIC_USER"
+      ? "BASIC_USER"
+      : "READ_ONLY";
 
 /** One entry of a project's `userRoles`, as `GET /project/{id}` names it. */
 export interface ProjectGrant {
