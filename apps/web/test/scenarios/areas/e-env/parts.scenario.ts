@@ -1,11 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { ChangeReceipt, type ChangeReceiptPart } from "@t3tools/shared/hqChanges";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "../d-change/fake.ts";
 import { changeFixture, review } from "../d-change/dsl.ts";
 
 const OLDER = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+const encodeReceipt = Schema.encodeSync(Schema.fromJsonString(ChangeReceipt));
 
 describe("E: an application of several parts", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -19,7 +22,7 @@ describe("E: an application of several parts", () => {
           const [row] = yield* s.drivers.core.sql<{ readonly head: string }>`
             SELECT head FROM hq_change WHERE repo = 'appdev' AND number = 1`;
           const head = row!.head;
-          const part = (setup: string, more: Record<string, unknown>) => ({
+          const part = (setup: string, more: Partial<ChangeReceiptPart>): ChangeReceiptPart => ({
             setup,
             previewHostname: `${setup}stage`,
             deploy: "ok",
@@ -36,11 +39,13 @@ describe("E: an application of several parts", () => {
             parts: [
               part("web", {}),
               part("api", { deployedCommit: OLDER }),
-              part("worker", { deploy: "failed", deployedCommit: undefined, verified: false }),
+              (({ deployedCommit: _none, ...failed }) => failed)(
+                part("worker", { deploy: "failed", verified: false }),
+              ),
             ],
           };
           yield* s.drivers.core.sql`
-            UPDATE hq_change SET receipt = ${JSON.stringify(receipt)}::jsonb
+            UPDATE hq_change SET receipt = ${encodeReceipt(receipt)}::jsonb
             WHERE repo = 'appdev' AND number = 1`;
 
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
