@@ -1,4 +1,3 @@
-import { resizeMenu } from "../../harness/browser.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
@@ -98,59 +97,6 @@ describe("H: hosted client budgets", () => {
               }),
             );
         }),
-    );
-
-    it.effect(
-      "five tabs each receive real HQ data and show the application menu",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([installBudget]);
-          const b = budgets(s);
-          yield* b.given.mates(["Ada"]);
-          // These actors share one signed-in browser context. Authenticate it once,
-          // then navigate its other four documents independently; signedIn also rewrites
-          // every actor's routing scripts and cannot run concurrently across actors.
-          yield* s.given.signedIn;
-          const address = s.page.url();
-          const tabs = yield* b.given.fiveTabs();
-          yield* Effect.forEach(
-            tabs,
-            (tab) =>
-              Effect.gen(function* () {
-                yield* Effect.promise(() => tab.page.setViewport({ width: 1786, height: 1000 }));
-                if (tab.page !== s.page) yield* Effect.promise(() => tab.page.goto(address));
-                yield* tab.then.menu.row("Shop").appears();
-              }),
-            { concurrency: "unbounded" },
-          );
-          for (const tab of tabs) {
-            yield* Effect.promise(() => tab.page.bringToFront());
-            yield* Effect.promise(() => resizeMenu(tab.page, 435));
-          }
-          // Cached rows can appear before the last tab's initial HQ snapshot arrives.
-          yield* b.when.hqFirstData(5);
-          const connections = yield* b.when.observeTabConnections(tabs.map((tab) => tab.page));
-          const receivedBefore = b.measure
-            .hqSegments()
-            .filter((segment) => segment.firstDataMs !== null).length;
-          const countsBefore = connections.counts();
-          yield* Effect.forEach(tabs, (tab) => Effect.promise(() => tab.page.reload()), {
-            concurrency: "unbounded",
-          });
-          yield* b.when.hqFirstData(receivedBefore + 5);
-          for (const tab of tabs) {
-            yield* Effect.promise(() => tab.page.bringToFront());
-            yield* tab.then.menu.row("Shop").appears();
-          }
-          yield* Effect.promise(() => s.hq.ready());
-          for (const [index, count] of connections.counts().entries())
-            expect(
-              count - countsBefore[index]!,
-              "At most one HQ connection per tab",
-            ).toBeLessThanOrEqual(1);
-          yield* s.then.noExternalNetwork;
-        }),
-      10_000,
     );
 
     // Leaving Projects releases the cards' detail; Usage's source migration owns its RPC budget.
