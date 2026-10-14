@@ -200,6 +200,7 @@ export {
   type MembersRead,
   type SampledRead,
 } from "./projections/sampled.ts";
+export { projectsGrants, type ProjectGrantsRead } from "./projections/projectGrants.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export {
   makeHqExecutor,
