@@ -5,7 +5,7 @@ import { createHashHistory, createBrowserHistory } from "@tanstack/react-router"
 import "./index.css";
 
 import { isElectron } from "./env";
-import { getRouter } from "./router";
+import { getRouter, warmRouteChunks } from "./router";
 import {
   syncDocumentElectronPlatformClasses,
   syncDocumentWindowControlsOverlayClass,
@@ -38,6 +38,7 @@ if (
 ) {
   preloadChatView();
 }
+warmRouteChunks(router);
 
 if (isElectron) {
   syncDocumentElectronPlatformClasses(navigator.platform);
