@@ -160,17 +160,15 @@ export function TeamMemberView({
           value={membership}
         />
         {roleEditable ? (
-          <div className="tm-section-foot">
+          <div className="tm-actions">
+            {role.trouble === null ? null : <p role="alert">{role.trouble}</p>}
             <Button
               aria-busy={role.pending || undefined}
-              className="w-full"
               disabled={role.pending || !membershipChanged(person.membership, membership)}
               onClick={() => role.press(() => actions.updateMembership(membership))}
-              size="lg"
             >
               {role.pending ? "Updating…" : "Update user"}
             </Button>
-            {role.trouble === null ? null : <p role="alert">{role.trouble}</p>}
           </div>
         ) : null}
       </section>
@@ -178,13 +176,6 @@ export function TeamMemberView({
       <div aria-hidden="true" className="tm-rule" />
 
       <section aria-label="Project access" className="tm-section">
-        <div className="tm-section-head">
-          <h2 className="tm-section-title">Project access</h2>
-          <p className="tm-section-text">
-            Set custom project-specific access for this user. By default, users have access to all
-            projects based on their global team role.
-          </p>
-        </div>
         {grants === null && held === null ? (
           <p className="tm-empty">Reading their projects…</p>
         ) : (
@@ -201,17 +192,15 @@ export function TeamMemberView({
           <p className="tm-empty">Every project as their role gives it.</p>
         ) : null}
         {accessEditable ? (
-          <div className="tm-section-foot">
+          <div className="tm-actions">
+            {access.trouble === null ? null : <p role="alert">{access.trouble}</p>}
             <Button
               aria-busy={access.pending || undefined}
-              className="w-full"
               disabled={access.pending || changes.length === 0}
               onClick={() => (lowersSelf ? setAskingSelf(true) : saveAccess())}
-              size="lg"
             >
               {access.pending ? "Saving…" : "Save project access"}
             </Button>
-            {access.trouble === null ? null : <p role="alert">{access.trouble}</p>}
           </div>
         ) : null}
       </section>
@@ -220,28 +209,31 @@ export function TeamMemberView({
         <>
           <div aria-hidden="true" className="tm-rule" />
           <section aria-label="Danger zone" className="tm-section">
-            <div className="tm-section-head">
-              <h2 className="tm-section-title">Danger zone</h2>
-              <p className="tm-section-text">
-                {end === "withdraw"
-                  ? "The invitation stops working at once; you can invite them again later."
-                  : `They lose access to every project in ${organizationName} at once. Their Mates stay in the organization.`}
-              </p>
-            </div>
-            <div className="tm-section-foot">
+            <div className="tm-block-head">
+              <span className="tm-block-text">
+                <h2 className="tm-block-title">Danger zone</h2>
+                <span className="tm-block-desc">
+                  {end === "withdraw"
+                    ? "The invitation stops working at once; you can invite them again later."
+                    : `They lose access to every project in ${organizationName} at once. Their Mates stay in the organization.`}
+                </span>
+              </span>
               <Button
                 aria-busy={removal.pending || undefined}
-                className="w-full"
                 disabled={removal.pending}
                 onClick={() => setAskingRemove(true)}
-                size="lg"
-                variant="destructive"
+                size="sm"
+                variant="destructive-outline"
               >
                 <Trash2Icon aria-hidden="true" />
                 {end === "withdraw" ? "Withdraw invite" : `Remove from ${organizationName}`}
               </Button>
-              {removal.trouble === null ? null : <p role="alert">{removal.trouble}</p>}
             </div>
+            {removal.trouble === null ? null : (
+              <p className="tm-trouble" role="alert">
+                {removal.trouble}
+              </p>
+            )}
           </section>
         </>
       ) : null}
