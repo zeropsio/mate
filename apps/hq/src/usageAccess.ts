@@ -1,11 +1,7 @@
 import type { OrgView } from "./roles.ts";
 import { can } from "./permissions.ts";
 import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
-/**
- * Retired history never inherits a former project grant: it is read with the org role that
- * observes every Mate by default (Basic user), and where Zerops still has the project, only as it
- * observes it there. An existing hidden project stays live.
- */
+/** Retired history never inherits a former project grant. An existing hidden project stays live. */
 export const mayReadUsage = (
   facts: OrgView,
   userId: string,
@@ -16,13 +12,11 @@ export const mayReadUsage = (
     (value) => value.kind === "person" && value.userId === userId && value.status === "ACTIVE",
   );
   if (member === undefined) return false;
-  const listed = facts.projects.some((project) => project.id === projectId);
-  const observes = () =>
-    can({ kind: "person", userId }, "observe_mate", { projectId }, facts).allow;
-  if (deleted) {
-    return roleAtLeast(asOrgRole(member.roleCode), "BASIC_USER") && (!listed || observes());
-  }
-  return listed && observes();
+  if (deleted) return roleAtLeast(asOrgRole(member.roleCode), "READ_ONLY");
+  return (
+    facts.projects.some((project) => project.id === projectId) &&
+    can({ kind: "person", userId }, "observe_mate", { projectId }, facts).allow
+  );
 };
 /** The same canonical owner rule used for navigation and retained usage grouping. */
 export const usageOwner = (input: {

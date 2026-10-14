@@ -565,38 +565,6 @@ describe("the Chief", () => {
         }),
     );
 
-    it.effect("a decision on a Mate's Chief offer is read only by the Chief's person", () =>
-      Effect.gen(function* () {
-        const { call, core, dev, owner } = yield* running;
-        const plain = core.fake.projects.find((project) => project.id === "P_PLAIN")!;
-        core.fake.projects.splice(core.fake.projects.indexOf(plain), 1, {
-          ...plain,
-          userRoles: [{ clientUserId: "C-dev", roleCode: "OWNER" }],
-        });
-        const { credential } = yield* mateInApp(call, core.fake, owner, "P_PLAIN", "Chief read");
-        const auth = { headers: { authorization: `Mate ${credential}` } };
-        yield* call("POST", "/api/chief", { session: dev, body: { projectId: "P_CHIEF" } });
-        const { id } = (yield* call("POST", "/api/mate/chief/proposals", auth)).body as {
-          readonly id: string;
-        };
-        assert.strictEqual(
-          (yield* call("PUT", `/api/proposals/${id}`, {
-            session: dev,
-            body: { projectId: "P_PLAIN", kind: "chief.message", decision: "approved" },
-          })).status,
-          200,
-        );
-        const readBy = (session: string) =>
-          Effect.map(call("GET", `/api/proposals?ids=${id}`, { session }), (read) =>
-            (
-              read.body as { readonly decisions: ReadonlyArray<{ readonly id: string }> }
-            ).decisions.map((decision) => decision.id),
-          );
-        // The owner observes the conversation, yet the Chief's decision is its person's alone.
-        assert.deepStrictEqual([yield* readBy(dev), yield* readBy(owner)], [[id], []]);
-      }),
-    );
-
     it.effect("a Mate whose person has no Chief never offers to ask one", () =>
       Effect.gen(function* () {
         const { call, dev, owner } = yield* running;

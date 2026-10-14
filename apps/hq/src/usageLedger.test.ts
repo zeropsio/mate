@@ -1064,8 +1064,7 @@ describe("HQ immutable usage", () => {
               ...access,
               facts: {
                 ...access.facts,
-                // An org Basic user: the org role that observes every Mate by default.
-                members: [{ ...access.facts.members[0]!, roleCode: "BASIC_USER" }],
+                members: [{ ...access.facts.members[0]!, roleCode: "READ_ONLY" }],
                 projects: [],
               },
             };

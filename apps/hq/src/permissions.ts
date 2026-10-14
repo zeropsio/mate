@@ -445,10 +445,9 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       if (!KINDS.has(to)) return deny("unknown_kind");
       if (writer) return knownHeld(held) ? exists(projectId) : deny("unknown_kind");
       if (isMateKind(to)) {
-        // A member who can create projects attaches their own new Mate: Zerops leaves its creator
-        // OWNER of the project, so their own Full access grant there — what a Mate's record asks
-        // (`create_mate_record`) — never the org role's fallback (parity B #42, #53).
-        if (!(member.canCreateProjects && roleAtLeast(grantOn(projectId), "ADMIN"))) {
+        // A member who can create projects attaches their own new Mate: their own grant there,
+        // never the org role's fallback (parity B #42, #53).
+        if (!(member.canCreateProjects && roleAtLeast(grantOn(projectId), "BASIC_USER"))) {
           return deny("not_own_new_mate");
         }
         if (!knownHeld(held)) return deny("unknown_kind");
