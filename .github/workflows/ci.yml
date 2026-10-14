@@ -489,7 +489,6 @@ jobs:
         run: *full_dependencies
 
       - name: Ensure Electron runtime is installed
-        if: needs.changes.outputs.native_clients != 'false'
         run: vp run --filter @t3tools/desktop ensure:electron
 
       - name: Test
