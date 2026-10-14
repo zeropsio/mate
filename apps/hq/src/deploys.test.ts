@@ -228,6 +228,7 @@ const withDeploys = <A, E>(
   use: (rig: Rig) => Effect.Effect<A, E, RigServices>,
   options: DeploysOptions = FAST,
   keySecret: KeySecret = testKey(),
+  orgView: typeof ORG_VIEW = ORG_VIEW,
 ) =>
   Effect.gen(function* () {
     const url = yield* (yield* TempPostgres).createMigratedDatabase;
@@ -250,9 +251,9 @@ const withDeploys = <A, E>(
       Layer.provide(Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(world))),
       Layer.provide(
         Layer.succeed(Roles, {
-          view: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
-          forWrite: Effect.succeed({ ...ORG_VIEW, freshness: "recent" as const }),
-          recent: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
+          view: Effect.succeed({ ...orgView, freshness: "cached" as const }),
+          forWrite: Effect.succeed({ ...orgView, freshness: "recent" as const }),
+          recent: Effect.succeed({ ...orgView, freshness: "cached" as const }),
           exists: () => Effect.succeed(true),
           answeredAt: Effect.succeed(undefined),
           views: Stream.never,
@@ -2192,6 +2193,51 @@ describe("deploys", () => {
               Effect.orDie,
             );
           }),
+        ),
+    );
+
+    it.effect(
+      "a sibling project's developer cannot redeploy or add services to a denied production",
+      () =>
+        withDeploys(
+          ({ appId, world, tiers }) =>
+            Effect.gen(function* () {
+              yield* withProduction(appId, world);
+              tiers.set(`${appId}/production`, stageTier(appId, [{ hostname: "web" }]));
+              const deploys = yield* Deploys;
+              const verdict = <A, E>(asked: Effect.Effect<A, E>) =>
+                asked.pipe(
+                  Effect.match({
+                    onSuccess: () => "allowed",
+                    onFailure: (error) =>
+                      typeof error === "object" && error !== null && "reason" in error
+                        ? String(error.reason)
+                        : "unexpected failure",
+                  }),
+                );
+              assert.deepStrictEqual(
+                [
+                  yield* verdict(
+                    deploys.redeploy("dev", appId, "shop-production", "web", "f".repeat(40)),
+                  ),
+                  yield* verdict(deploys.addService("dev", appId, "shop-production", "web")),
+                ],
+                ["not_app_developer", "not_app_developer"],
+              );
+              const sql = yield* SqlClient.SqlClient;
+              assert.deepStrictEqual(yield* sql`SELECT id FROM hq_deploy_job`, []);
+              assert.deepStrictEqual(world.imports, []);
+            }),
+          FAST,
+          testKey(),
+          {
+            ...ORG_VIEW,
+            projects: ORG_VIEW.projects.map((project) =>
+              project.id === "P_PROD"
+                ? { ...project, userRoles: [{ clientUserId: "C-dev", roleCode: "NO_ACCESS" }] }
+                : project,
+            ),
+          },
         ),
     );
 

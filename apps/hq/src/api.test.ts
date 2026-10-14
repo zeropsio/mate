@@ -198,9 +198,13 @@ const each = (verbs: ReadonlyArray<string>, decision: object) =>
 const ORG_VERBS = ["create_app", "rename_app", "delete_app"];
 /** What an org owner may do with the organization, and with each application. */
 const ORG_ALLOWED = each(ORG_VERBS, ALLOW);
-const ORG_REFUSED = each(ORG_VERBS, refusedFor("not_structure_writer"));
+const ORG_REFUSED = {
+  ...each(ORG_VERBS, refusedFor("not_structure_writer")),
+  create_app: refusedFor("cannot_create_projects"),
+};
 const APP_ALLOWED = each(
   [
+    "add_mate",
     "read_change",
     "comment_change",
     "merge_change",
@@ -664,7 +668,7 @@ describe("HQ API", () => {
                 sources: ["release"],
                 order: 1,
                 deleteProjectOnRemoval: false,
-                can: { keep_deploy_token: ALLOW, remove_production: ALLOW },
+                can: { keep_deploy_token: ALLOW, redeploy: ALLOW, remove_production: ALLOW },
                 keyHeld: false,
                 keyInvalid: false,
                 jobs: [],
@@ -768,7 +772,7 @@ describe("HQ API", () => {
               name: "stage",
               sources: ["main"],
               order: 1,
-              can: { keep_deploy_token: ALLOW },
+              can: { keep_deploy_token: ALLOW, redeploy: ALLOW },
               keyHeld: true,
               keyInvalid: false,
               jobs: [],
@@ -820,7 +824,7 @@ describe("HQ API", () => {
               name: "stage",
               sources: ["main"],
               order: 1,
-              can: { keep_deploy_token: refusedFor("not_project_admin") },
+              can: { keep_deploy_token: refusedFor("not_project_admin"), redeploy: ALLOW },
               keyHeld: false,
               keyInvalid: false,
               jobs: [],
@@ -945,7 +949,7 @@ describe("HQ API", () => {
           // The refusal says what and why, nothing of the server's own types.
           assert.deepStrictEqual(
             [refused.status, refused.body],
-            [403, { code: "forbidden", reason: "not_structure_writer" }],
+            [403, { code: "forbidden", reason: "cannot_create_projects" }],
           );
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session: dev })).body, {
             can: ORG_REFUSED,

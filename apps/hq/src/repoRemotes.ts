@@ -204,7 +204,12 @@ export const repoRemotesLayer = Layer.effect(
       ),
     );
     const authorize = Effect.fnUntraced(function* (userId: string) {
-      const verdict = can({ kind: "person", userId }, "create_app", null, yield* fresh);
+      const verdict = can(
+        { kind: "person", userId },
+        "connect_remote",
+        { projectIds: [] },
+        yield* fresh,
+      );
       if (!verdict.allow) return yield* new RemoteRefused({ reason: "not_structure_writer" });
     });
     const lockRepo = Effect.fnUntraced(function* (ref: RemoteRef) {

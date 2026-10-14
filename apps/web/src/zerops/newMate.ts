@@ -12,6 +12,8 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { create } from "zustand";
+import { useCallback } from "react";
+import { useAddMateOffer } from "./useHqOffers";
 
 /**
  * An Add started over: the Mate's own name and the face it was asked with.
@@ -66,7 +68,14 @@ export const useMateHandOver = create<MateHandOverState>((set) => ({
 
 /** Asks for a Mate in a project: the New Mate dialog opens over the view on screen. */
 export function useAddMate(): (groupId: string) => void {
-  return useNewMateDialog((state) => state.ask);
+  const ask = useNewMateDialog((state) => state.ask);
+  const offer = useAddMateOffer();
+  return useCallback(
+    (groupId) => {
+      if (offer(groupId).kind === "allowed") ask(groupId);
+    },
+    [ask, offer],
+  );
 }
 
 /** Where a new Mate lives until it is up: its own view, by the project the platform made for it. */

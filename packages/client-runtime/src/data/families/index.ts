@@ -62,6 +62,7 @@ import { hqMateFamily } from "./hqMate.ts";
 import { mateHealthFamily } from "./mateHealth.ts";
 import { mateAttentionFamily } from "./mateAttention.ts";
 import { organizationLocationsFamily } from "./organizationLocations.ts";
+import { organizationUserFamily } from "./organizationUser.ts";
 import { organizationMembersFamily } from "./organizationMembers.ts";
 import { hqVerdictFamily } from "./hqVerdict.ts";
 import { mateLinkFamily } from "./mateLink.ts";
@@ -156,6 +157,7 @@ export const FAMILIES = defineFamilies([
   usageFamily,
   usageHistoryFamily,
   organizationMembersFamily,
+  organizationUserFamily,
   organizationLocationsFamily,
   locationLatencyFamily,
   serviceAgentsFamily,

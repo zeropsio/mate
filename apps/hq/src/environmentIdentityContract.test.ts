@@ -42,7 +42,11 @@ const currentEnvironment = (raw: Record<string, unknown> | undefined) => {
       order: 1,
       keyHeld: false,
       keyInvalid: false,
-      can: { keep_deploy_token: { allow: true }, remove_production: { allow: true } },
+      can: {
+        keep_deploy_token: { allow: true },
+        redeploy: { allow: true },
+        remove_production: { allow: true },
+      },
       deleteProjectOnRemoval: false,
       release: null,
     },

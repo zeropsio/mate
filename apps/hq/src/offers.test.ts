@@ -87,9 +87,10 @@ const WRITER: Row = {
 /** A developer of the application without production: releasing is refused, not "no production". */
 const DEVELOPER: Row = {
   ...WRITER,
+  redeploy: no("not_app_developer"),
   release: no("not_releaser"),
   keep_deploy_token: no("not_project_admin"),
-  create_app: no("not_structure_writer"),
+  create_app: no("cannot_create_projects"),
 };
 
 const EXPECTED: ReadonlyArray<readonly [string, Row]> = [
@@ -107,7 +108,7 @@ const EXPECTED: ReadonlyArray<readonly [string, Row]> = [
       redeploy: no("not_app_developer"),
       release: no("not_releaser"),
       keep_deploy_token: no("not_project_admin"),
-      create_app: no("not_structure_writer"),
+      create_app: no("cannot_create_projects"),
     },
   ],
   [
@@ -130,10 +131,10 @@ const EXPECTED: ReadonlyArray<readonly [string, Row]> = [
       comment_change: no("app_not_seen"),
       merge_change: no("app_not_seen"),
       close_change: no("app_not_seen"),
-      redeploy: no("app_not_seen"),
+      redeploy: no("not_app_developer"),
       release: no("app_not_seen"),
       keep_deploy_token: no("not_project_admin"),
-      create_app: no("not_structure_writer"),
+      create_app: no("cannot_create_projects"),
     },
   ],
 ];
@@ -152,6 +153,8 @@ describe("HQ's offers", () => {
       switch (verb) {
         case "release":
           return can(person, verb, releaseTarget(APP, slotsOf(APP)), facts);
+        case "redeploy":
+          return can(person, verb, { projectIds: ["P_PROD"], projectId: "P_PROD" }, facts);
         case "keep_deploy_token":
           return can(person, verb, { projectId: "P_PROD" }, facts);
         case "create_app":
@@ -197,7 +200,13 @@ describe("HQ's offers on a Mate", () => {
 
   it.each<[string, string, string, boolean, Record<string, ReadonlyArray<string>>]>([
     // Their own Mate goes as a Mate into an application they see, never as an environment.
-    ["the Mate's maker", "maker", "P_MADE", true, { "app-seen": ["mate", "devstage"] }],
+    [
+      "the Mate's maker",
+      "maker",
+      "P_MADE",
+      true,
+      { "app-seen": ["mate", "devstage"], new: ["mate", "devstage"] },
+    ],
     // A Mate HQ holds no record of takes no Mate kind anywhere.
     ["a Mate without its record", "maker", "P_MADE", false, {}],
     // A writer moves it anywhere, as anything, or into a new application — but into a production

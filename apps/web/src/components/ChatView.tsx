@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../zerops/usePlatformCapabilities";
 import { useBranchAdvice } from "./useBranchAdvice";
 import { isUsageLimitError, mateHealthAtom } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
@@ -3202,6 +3203,7 @@ function ConversationView(props: ChatViewProps) {
   const admissionMate = zeropsMateAt(zeropsMates, environmentId);
   // Its descriptor places a new Mate before HQ's overview can name its environment.
   const admissionProject = useEnvironmentProjectRef(environmentId);
+  const nativeCapabilities = usePlatformCapabilities(environmentId);
   const admissionPeople = useHqProjectPerson(admissionProject?.projectId ?? "");
   const admissionOwner =
     zeropsViewerSubject === undefined
@@ -3228,6 +3230,7 @@ function ConversationView(props: ChatViewProps) {
   }, [composerDraftTarget, composerRef, engineCards, setComposerDraftPrompt]);
   const admission = agentAdmission({
     environmentId,
+    operate: admissionProject === null ? undefined : nativeCapabilities.operate,
     instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
     viewerSubject: zeropsViewerSubject,
     read: zeropsAgentAuthRead,
@@ -3253,12 +3256,17 @@ function ConversationView(props: ChatViewProps) {
           : { mine: admissionOwner.isViewer },
   });
   const colleagueReadOnly =
-    admission.footer === "read-only" && admissionOwner !== undefined
+    admissionOwner?.isViewer === false
       ? colleagueMateReadOnly({
           mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
           ownerName: admissionOwner.name,
         })
-      : null;
+      : admission.readOnly
+        ? {
+            notice: admission.sendBlockReason ?? "Your Zerops access to this Mate is read-only.",
+            waitingLabel: "Waiting for a project operator",
+          }
+        : null;
   const readAlongRoom = nextReadAlongRoom(readAlongRoomState, {
     threadKey: routeThreadKey,
     turnId: activeLatestTurn?.turnId ?? null,
@@ -3278,6 +3286,7 @@ function ConversationView(props: ChatViewProps) {
     composerOverlaySettledFor === routeThreadKey
       ? Math.max(composerOverlayHeight, readAlongRoom.heldHeight)
       : (rememberedInset ?? Math.max(composerOverlayHeight, readAlongRoom.heldHeight));
+
   // The agent the conversation runs on, where it is one the agents card signs in.
   const conversationInstanceId =
     activeProviderInstanceId ?? activeThread?.modelSelection.instanceId;

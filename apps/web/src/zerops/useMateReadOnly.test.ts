@@ -11,7 +11,10 @@ const facts = vi.hoisted(() => ({
   read: undefined as Known<ZeropsAgentAuthSnapshot> | undefined,
   viewerSubject: undefined as string | undefined,
 }));
-vi.mock("./useZeropsFeeds", () => ({ useZeropsAgentAuth: () => facts.read }));
+vi.mock("./useZeropsFeeds", () => ({
+  useZeropsAgentAuth: () => facts.read,
+  useEnvironmentProjectRef: () => null,
+}));
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSessionOptional: () => ({ user: { id: facts.viewerSubject } }),
 }));

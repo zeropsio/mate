@@ -55,7 +55,10 @@ vi.mock("~/zerops/useZeropsGroupRecipe", () => ({
   }),
 }));
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => () => undefined }));
-vi.mock("~/zerops/useZeropsFeeds", () => ({ useZeropsAgentAuth: () => undefined }));
+vi.mock("~/zerops/useZeropsFeeds", () => ({
+  useZeropsAgentAuth: () => undefined,
+  useEnvironmentProjectRef: () => null,
+}));
 vi.mock("./ZeropsEnvironmentCreationDialog", () => ({
   ZeropsEnvironmentCreationDialog: (props: Record<string, unknown>) => {
     app.dialog = props;

@@ -72,6 +72,8 @@ export function agentAdmission(input: {
   readonly read: Known<ZeropsAgentAuthSnapshot> | undefined;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly mateName: string;
+  /** Native project permission, from platformCapabilities; absent outside Zerops projects. */
+  readonly operate?: boolean | undefined;
   readonly refusalSource?: AgentAdmissionRefusal | undefined;
   readonly empty?: boolean;
   readonly standUpHolds?: boolean;
@@ -84,6 +86,7 @@ export function agentAdmission(input: {
   readonly owner?: { readonly mine: boolean } | null | undefined;
 }) {
   const colleagues = input.owner?.mine === false;
+  const readOnly = colleagues || input.operate === false;
   const snapshot = input.read?.state === "known" ? input.read.value : null;
   const provider = input.providers.find((p) => p.instanceId === input.instanceId) ?? null;
   const spent = resolveSpentLogin(input.instanceId, snapshot, input.providers);
@@ -126,7 +129,7 @@ export function agentAdmission(input: {
             ? "sign-in"
             : agentAuthAction(spent.agent);
   const attention =
-    colleagues || cause === null || input.instanceId === undefined
+    readOnly || cause === null || input.instanceId === undefined
       ? null
       : admissionAttention({
           environmentId: input.environmentId,
@@ -148,12 +151,15 @@ export function agentAdmission(input: {
     attention,
     providerStatus: admissionProviderStatus(provider, snapshot, input.providers),
     explainsRefusal: admissionExplainsRefusal(attention, input.refusalSource),
-    footer: colleagues ? ("read-only" as const) : cold ? ("held" as const) : ("composer" as const),
-    canSend: !colleagues && !cold && !holdsComposer && attention === null,
-    sendBlockReason: attention?.text ?? null,
+    footer: readOnly ? ("read-only" as const) : cold ? ("held" as const) : ("composer" as const),
+    canSend: !readOnly && !cold && !holdsComposer && attention === null,
+    sendBlockReason:
+      input.operate === false
+        ? "Your Zerops access to this Mate is read-only."
+        : (attention?.text ?? null),
     // Signer records establish no client permission, including compact HQ records; HQ's recorded
     // owner does.
-    readOnly: colleagues,
+    readOnly,
     holdsComposer,
   };
 }

@@ -72,9 +72,28 @@ export function useKeepDeployKeyOffer(): (projectId: string) => boolean | undefi
         .flatMap((app) =>
           app.environments === undefined || "refused" in app.environments ? [] : app.environments,
         )
-        .find((candidate) => candidate.projectId === projectId);
+        .find(
+          (candidate) =>
+            candidate.target.kind === "zerops" && candidate.target.projectId === projectId,
+        );
       const offer = state(environment?.can, "keep_deploy_token");
       return offer.kind === "allowed" ? true : offer.kind === "refused" ? false : undefined;
+    },
+    [state, structure],
+  );
+}
+
+/** A native environment's own deployment verdict, never a sibling project's grant. */
+export function useEnvironmentDeployOffer(): (projectId: string) => boolean {
+  const { structure, state } = useHqOffers();
+  return useCallback(
+    (projectId) => {
+      const environment = structure?.apps
+        .flatMap((app) =>
+          app.environments === undefined || "refused" in app.environments ? [] : app.environments,
+        )
+        .find((row) => row.target.kind === "zerops" && row.target.projectId === projectId);
+      return state(environment?.can, "redeploy").kind === "allowed";
     },
     [state, structure],
   );

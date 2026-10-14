@@ -12,6 +12,9 @@ import {
 import { type HqOfferState, type HqOffers, hqOffer } from "@t3tools/shared/hqOffers";
 import { useCallback, useMemo } from "react";
 
+import { useAccountDataOptional } from "./accountData";
+import { usePlatformCapabilities } from "./usePlatformCapabilities";
+
 import { useClientSettings } from "../hooks/useSettings";
 import { hqDown, hqDownSinceAtom, hqNavigationAtom, zeropsSessionAtom } from "../state/zerops";
 import { formatShortTimestamp } from "../timestampFormat";
@@ -21,6 +24,8 @@ import { formatShortTimestamp } from "../timestampFormat";
  * state reads in words.
  */
 export function useHqOffers() {
+  const account = useAccountDataOptional();
+  const capabilities = usePlatformCapabilities(null);
   const view = useAtomValue(hqNavigationAtom);
   const downSince = useAtomValue(hqDownSinceAtom);
   const organizationId = useAtomValue(zeropsSessionAtom)?.activeOrganization?.organizationId;
@@ -33,10 +38,18 @@ export function useHqOffers() {
       structure,
       hq,
       at,
-      state: (can: HqOffers | undefined, verb: string) => hqOffer(can, verb, hq),
+      state: (can: HqOffers | undefined, verb: string): HqOfferState => {
+        // The current native membership can revoke creation before HQ streams its next offer.
+        if (account != null && (verb === "create_app" || verb === "add_mate")) {
+          if (account.viewer === undefined) return { kind: "unknown" };
+          if (!capabilities.createProject)
+            return { kind: "refused", reason: "cannot_create_projects" };
+        }
+        return hqOffer(can, verb, hq);
+      },
       words: (state: HqOfferState) => hqOfferWords(state, { at, rolesAnsweredAt: null }),
     };
-  }, [downSince, organizationId, timestampFormat, view]);
+  }, [account, capabilities.createProject, downSince, organizationId, timestampFormat, view]);
 }
 
 /**
@@ -59,4 +72,12 @@ export function useMateOffers(): (projectId: string) => HqMateOfferStates | unde
 export function useOrgOffers(): (verb: string) => HqOfferState {
   const { structure, state } = useHqOffers();
   return useCallback((verb) => state(structure?.can, verb), [state, structure]);
+}
+
+export function useAddMateOffer(): (groupId: string) => HqOfferState {
+  const { structure, state } = useHqOffers();
+  return useCallback(
+    (groupId) => state(structure?.apps.find((app) => app.id === groupId)?.can, "add_mate"),
+    [state, structure],
+  );
 }

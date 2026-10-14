@@ -163,7 +163,7 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (remotes?: Remotes["Servi
         access.allow
           ? environments.map((environment) => ({
               ...environment,
-              can: { keep_deploy_token: { allow: true } },
+              can: { keep_deploy_token: { allow: true }, redeploy: { allow: true } },
             }))
           : { refused: access.reason },
     };

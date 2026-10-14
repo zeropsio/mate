@@ -63,6 +63,7 @@ import {
   type OrgVerb,
   appOffers,
   appTarget,
+  readAppTarget,
   mateOffers,
   moveDestinations,
   moveTarget,
@@ -374,7 +375,7 @@ export interface StructureRead {
     readonly environments:
       | ReadonlyArray<
           EnvironmentView & {
-            readonly can: HqOffersOf<"keep_deploy_token"> &
+            readonly can: HqOffersOf<"keep_deploy_token" | "redeploy"> &
               Partial<HqOffersOf<"remove_production">>;
           }
         >
@@ -922,8 +923,9 @@ export const structureLayer = (options: {
                 readonly id: string;
                 readonly name: string;
                 readonly empty: boolean;
+                readonly created_by: string;
               }>`
-              SELECT a.id::text AS id, a.name, NOT (${appHeld}) AS empty FROM hq_app a ORDER BY a.seq`;
+              SELECT a.id::text AS id, a.name, a.created_by, NOT (${appHeld}) AS empty FROM hq_app a ORDER BY a.seq`;
               const births = yield* sql<BirthIntent & { readonly app_id: string }>`
               SELECT id::text AS id, app_id::text AS app_id, face, project_id AS "projectId"
               FROM hq_birth_intent ORDER BY seq`;
@@ -1087,6 +1089,18 @@ export const structureLayer = (options: {
                           ? owners.every((owner) => owner.user_id === userId)
                           : !held.every((row) => hiddenChiefs.has(row.project_id));
                       })
+                      .filter(
+                        (app) =>
+                          can(
+                            person,
+                            "read_app",
+                            appTarget(
+                              rows.filter((row) => row.app_id === app.id),
+                              app.created_by,
+                            ),
+                            view,
+                          ).allow,
+                      )
                       .map((app) => {
                         const held = rows.filter((row) => row.app_id === app.id);
                         const can = appOffers(
@@ -1094,6 +1108,7 @@ export const structureLayer = (options: {
                           held.filter((row) => !hiddenChiefs.has(row.project_id)),
                           view,
                           environmentSource.slotsForApp(app.id),
+                          app.created_by,
                         );
                         return {
                           id: app.id,
@@ -1146,16 +1161,7 @@ export const structureLayer = (options: {
                               ...(projectId == null ? {} : { projectId }),
                             })),
                         };
-                      })
-                      .filter(
-                        (app) =>
-                          can(
-                            person,
-                            "read_app",
-                            { projectIds: app.projects.map((project) => project.projectId) },
-                            view,
-                          ).allow,
-                      ),
+                      }),
                   };
                 },
               };
@@ -1386,9 +1392,7 @@ export const structureLayer = (options: {
             const view = yield* roles.forWrite;
             // Whether the application has an environment of that name is told only to whoever sees
             // the application.
-            const appProjects = yield* sql<{ readonly project_id: string }>`
-              SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
-            yield* allowed(userId, "read_app", appTarget(appProjects), view);
+            yield* allowed(userId, "read_app", yield* readAppTarget(sql, appId), view);
             const named = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_environment
               WHERE app_id::text = ${appId} AND name = ${name}`;
@@ -1644,6 +1648,7 @@ export const structureLayer = (options: {
                     held: yield* heldOf(sql, input.projectId),
                     to: input.kind,
                     appProjectIds: appProjects.map((row) => row.project_id),
+                    appCreatedBy: (yield* readAppTarget(sql, appId)).createdBy,
                     slotTaken:
                       input.kind === "stage" || input.kind === "production"
                         ? environmentSlotTaken(input.kind, appProjects, slots, view)
@@ -1781,7 +1786,13 @@ export const structureLayer = (options: {
             yield* allowed(
               userId,
               "move",
-              moveTarget(projectId, yield* heldOf(sql, projectId), kind, target),
+              moveTarget(
+                projectId,
+                yield* heldOf(sql, projectId),
+                kind,
+                target,
+                (yield* readAppTarget(sql, appId)).createdBy,
+              ),
               view,
             );
             // A production Zerops still has holds the place, as its offer says (`moveTo`).
@@ -1812,7 +1823,13 @@ export const structureLayer = (options: {
                   yield* allowed(
                     userId,
                     "move",
-                    moveTarget(projectId, held, kind, currentTarget),
+                    moveTarget(
+                      projectId,
+                      held,
+                      kind,
+                      currentTarget,
+                      (yield* readAppTarget(sql, appId)).createdBy,
+                    ),
                     view,
                   );
                   if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
@@ -1877,14 +1894,7 @@ export const structureLayer = (options: {
                 const apps = yield* sql`
                   SELECT 1 FROM hq_app WHERE id::text = ${birth.appId} FOR NO KEY UPDATE`;
                 if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
-                const appProjects = yield* sql<{ readonly project_id: string }>`
-                  SELECT project_id FROM hq_app_project WHERE app_id::text = ${birth.appId}`;
-                yield* allowed(
-                  userId,
-                  "read_app",
-                  { projectIds: appProjects.map((row) => row.project_id) },
-                  view,
-                );
+                yield* allowed(userId, "add_mate", yield* readAppTarget(sql, birth.appId), view);
                 // Theirs a week old never got its attach: it goes with this one's write.
                 yield* sql`
                   DELETE FROM hq_birth_intent
@@ -1926,6 +1936,7 @@ export const structureLayer = (options: {
                     held: yield* heldOf(sql, projectId),
                     to: "mate",
                     appProjectIds: projects.map((row) => row.project_id),
+                    appCreatedBy: (yield* readAppTarget(sql, birth.app_id)).createdBy,
                     slotTaken: false,
                   },
                   view,
@@ -2012,7 +2023,8 @@ export const structureLayer = (options: {
             SELECT app_id::text AS app_id, project_id, kind FROM hq_app_project ORDER BY seq`;
             const apps = yield* sql<{
               readonly id: string;
-            }>`SELECT id::text AS id FROM hq_app ORDER BY seq`;
+              readonly created_by: string;
+            }>`SELECT id::text AS id, created_by FROM hq_app ORDER BY seq`;
             const mate = yield* sql<{
               readonly project_id: string;
             }>`SELECT project_id FROM hq_mate WHERE project_id = ${projectId}`;
@@ -2027,6 +2039,7 @@ export const structureLayer = (options: {
               { projectId, held, recorded: mate.length > 0 },
               apps.map((app) => ({
                 id: app.id,
+                createdBy: app.created_by,
                 projects: rows.filter((row) => row.app_id === app.id),
                 slots: environmentSlotsRows.get(app.id) ?? {
                   stageProjectIds: [],

@@ -182,10 +182,11 @@ const KEEP_TOKEN: Request = { verb: "keep_deploy_token", target: { projectId: "P
 /** A person's "Run again" of a deploy of the application whose projects are `projectIds`. */
 const redeploy = (...projectIds: ReadonlyArray<string>): Request => ({
   verb: "redeploy",
-  target: { projectIds },
+  target: { projectIds, projectId: null },
 });
 
 const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
+  add_mate: [],
   connect_remote: [],
   replace_remote_token: [],
   update_remote_address: [],
@@ -452,19 +453,19 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "org Basic user",
       { orgRole: "BASIC_USER" },
       { verb: "create_app", target: null },
-      "not_structure_writer",
+      "cannot_create_projects",
     ],
     [
       "org none who can create projects",
       { canCreate: true },
       { verb: "create_app", target: null },
-      "not_structure_writer",
+      "allow",
     ],
     [
       "an unknown org role",
       { orgRole: "FUTURE" },
       { verb: "create_app", target: null },
-      "not_structure_writer",
+      "cannot_create_projects",
     ],
     [
       "an invited admin",
@@ -1308,7 +1309,7 @@ describe("can — one table per verb", () => {
     // @ts-expect-error -- and a close.
     can(PERSON, "close_change", { projectIds: [] }, cached);
     // @ts-expect-error -- and asking a deploy again.
-    can(PERSON, "redeploy", { projectIds: [] }, cached);
+    can(PERSON, "redeploy", { projectIds: [], projectId: null }, cached);
     // @ts-expect-error -- and a release.
     can(PERSON, "release", { projectIds: [], productionProjectId: null }, cached);
     // @ts-expect-error -- so is a Mate's change.
@@ -1400,7 +1401,13 @@ const REQUESTS: ReadonlyArray<Request> = [
       "redeploy",
       "push_repo",
     ] as const
-  ).flatMap((verb) => APPS.map((projectIds): Request => ({ verb, target: { projectIds } }))),
+  ).flatMap((verb) =>
+    APPS.map((projectIds): Request =>
+      verb === "redeploy"
+        ? { verb, target: { projectIds, projectId: null } }
+        : { verb, target: { projectIds } },
+    ),
+  ),
   ...APPS.flatMap((projectIds) =>
     [null, "P", "P_SEEN", "P_DEV", "P_HIDDEN"].map((production) =>
       releaseOf(projectIds, production),
@@ -1454,7 +1461,6 @@ const everywhere = (
 /** What placing or holding a project does to the structure's own writing. */
 const writerOnly = (request: Request): boolean => {
   switch (request.verb) {
-    case "create_app":
     case "rename_app":
       return true;
     case "attach": {
@@ -1857,5 +1863,37 @@ describe("Git target operations", () => {
         factsOf({ ...BASE, orgRole: "OWNER" }),
       ),
     ).toEqual({ allow: false, reason: "wrong_principal" });
+  });
+});
+
+// Zerops API POST /project: ADMIN+ or canCreateProjects; project writes: BASIC_USER+.
+it.each([
+  ["OWNER", false, true, true],
+  ["ADMIN", false, true, true],
+  ["BASIC_USER", false, false, true],
+  ["BASIC_USER", true, true, true],
+  ["READ_ONLY", false, false, false],
+  ["READ_ONLY", true, true, false],
+  ["NO_ACCESS", false, false, false],
+  ["NO_ACCESS", true, true, false],
+] as const)(
+  "Zerops %s create flag %s determines application creation and target deployment",
+  (orgRole, canCreate, create, deploy) => {
+    const facts = factsOf({ ...BASE, orgRole, canCreate });
+    expect(can(PERSON, "create_app", null, facts).allow).toBe(create);
+    expect(
+      can(PERSON, "redeploy", { projectIds: ["P", "P_DEV"], projectId: "P" }, facts).allow,
+    ).toBe(deploy);
+  },
+);
+
+it("a project creator sees their own empty application before its first project exists", () => {
+  const facts = factsOf({ ...BASE, canCreate: true });
+  expect(can(PERSON, "read_app", { projectIds: [], createdBy: "U" }, facts)).toEqual({
+    allow: true,
+  });
+  expect(can(PERSON, "read_app", { projectIds: [], createdBy: "OTHER" }, facts)).toEqual({
+    allow: false,
+    reason: "app_not_seen",
   });
 });

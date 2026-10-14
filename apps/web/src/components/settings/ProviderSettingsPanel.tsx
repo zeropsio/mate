@@ -1,3 +1,5 @@
+import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
+import { useEnvironmentProjectRef } from "../../zerops/useZeropsFeeds";
 import { useAtomValue } from "@effect/atom-react";
 import { connectionStatusText } from "@t3tools/client-runtime/connection";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
@@ -439,10 +441,12 @@ function AccessGatedProviderSettings({
   readonly deviceTabs?: ReactNode;
   readonly targetInstanceId?: ProviderInstanceId | undefined;
 }) {
+  const nativeProject = useEnvironmentProjectRef(environment.environmentId);
+  const capabilities = usePlatformCapabilities(environment.environmentId);
   const access = classifyProviderEnvironmentAccess({
     connectionPhase: environment.connection.phase,
     hasServerConfig: environment.serverConfig !== null,
-    operateAccess,
+    operateAccess: nativeProject !== null && !capabilities.operate ? "denied" : operateAccess,
   });
   if (access.kind !== "editable" && access.kind !== "read-only") {
     return (

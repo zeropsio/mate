@@ -40,6 +40,7 @@ import {
   ZEROPS_ACTIVE_MEMBER_STATUS,
   asOrgRole,
   isMateKind,
+  mayCreateProjects,
   roleAtLeast,
 } from "@t3tools/shared/zeropsRoles";
 
@@ -139,7 +140,14 @@ export interface ReleaseTarget {
 }
 
 /** A project placed into an application as `to`, beside the application's projects. */
+export interface AppAccessTarget {
+  readonly projectIds: ReadonlyArray<string>;
+  /** Only an empty application retains its creator’s visibility before project grants exist. */
+  readonly createdBy?: string;
+}
+
 export interface PlacementTarget extends ProjectTarget {
+  readonly appCreatedBy?: string | undefined;
   readonly to: string;
   readonly appProjectIds: ReadonlyArray<string>;
 }
@@ -158,7 +166,8 @@ export interface Targets {
   readonly remove_git_environment: { readonly projectIds: ReadonlyArray<string> };
   readonly read_project: { readonly projectId: string };
   readonly observe_mate: { readonly projectId: string };
-  readonly read_app: { readonly projectIds: ReadonlyArray<string> };
+  readonly read_app: AppAccessTarget;
+  readonly add_mate: AppAccessTarget;
   /** An application's changes, as its projects. */
   readonly read_change: { readonly projectIds: ReadonlyArray<string> };
   /** A comment on one of an application's changes: whoever reads the change. */
@@ -170,7 +179,10 @@ export interface Targets {
   /** A change of an application closed without merging: whoever may merge it, or a writer. */
   readonly close_change: { readonly projectIds: ReadonlyArray<string> };
   /** A deploy of one of an application's environments asked again ("Run again"): whoever develops it. */
-  readonly redeploy: { readonly projectIds: ReadonlyArray<string> };
+  readonly redeploy: {
+    readonly projectIds: ReadonlyArray<string>;
+    readonly projectId: string | null;
+  };
   readonly release: ReleaseTarget;
   readonly create_app: null;
   readonly rename_app: null;
@@ -308,8 +320,10 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       : asOrgRole(grantOn(projectId) ?? member.roleCode);
   const readsProject = (projectId: string) => roleAtLeast(roleOn(projectId), "READ_ONLY");
   /** An application is seen from org Read only up, or through one of its projects (#219). */
-  const seesApp = (projectIds: ReadonlyArray<string>) =>
-    roleAtLeast(member.roleCode, "READ_ONLY") || projectIds.some(readsProject);
+  const seesApp = (projectIds: ReadonlyArray<string>, createdBy?: string) =>
+    roleAtLeast(member.roleCode, "READ_ONLY") ||
+    projectIds.some(readsProject) ||
+    (projectIds.length === 0 && createdBy === principal.userId);
   /**
    * An application is developed with Basic user or above on one of its projects: main's Gitea
    * write team, who may merge its changes.
@@ -342,7 +356,14 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
         ? ALLOW
         : deny("not_mate_operator");
     case "read_app":
-      return seesApp(request.target.projectIds) ? ALLOW : deny("app_not_seen");
+    case "add_mate": {
+      const { projectIds, createdBy } = request.target;
+      const seen = seesApp(projectIds, createdBy);
+      if (!seen) return deny("app_not_seen");
+      return request.verb === "read_app" || mayCreateProjects(member)
+        ? ALLOW
+        : deny("cannot_create_projects");
+    }
     case "read_change":
     case "comment_change":
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
@@ -363,8 +384,15 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     // Main re-ran a deploy's job with write on its repository (B36): whoever develops the
     // application, as a merge.
     case "redeploy":
-      if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
-      return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
+      if (request.target.projectId === null && !seesApp(request.target.projectIds))
+        return deny("app_not_seen");
+      return (
+        request.target.projectId === null
+          ? writesApp(request.target.projectIds)
+          : roleAtLeast(roleOn(request.target.projectId), "BASIC_USER")
+      )
+        ? ALLOW
+        : deny("not_app_developer");
     // The target owns release authority: Git uses the application's merge authority; Zerops
     // uses its production's deploy authority (SPEC §3.3a). Without production nobody releases.
     case "release": {
@@ -390,6 +418,8 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       return roleAtLeast(roleOn(request.target.projectId), "BASIC_USER")
         ? ALLOW
         : deny("not_mate_operator");
+    case "create_app":
+      return mayCreateProjects(member) ? ALLOW : deny("cannot_create_projects");
     case "add_git_environment":
       if (!writer) return deny("not_structure_writer");
       return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
@@ -398,7 +428,6 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "update_remote_address":
     case "disconnect_remote":
     case "remove_git_environment":
-    case "create_app":
     case "rename_app":
     case "delete_app":
       return writer ? ALLOW : deny("not_structure_writer");
@@ -423,7 +452,7 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
         }
         if (!knownHeld(held)) return deny("unknown_kind");
         if (classChange(held, to)) return deny("kind_class_change");
-        if (!seesApp(appProjectIds)) return deny("app_not_seen");
+        if (!seesApp(appProjectIds, request.target.appCreatedBy)) return deny("app_not_seen");
         return exists(projectId);
       }
       // An environment, by Full access on its project (SPEC §3.3a): only a project held nowhere,
@@ -454,7 +483,7 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       // A change between a Mate and an environment is the writers' alone too.
       if (classChange(held, to)) return deny("kind_class_change");
       if (!isMateKind(to)) return deny("not_structure_writer");
-      if (!seesApp(appProjectIds)) return deny("app_not_seen");
+      if (!seesApp(appProjectIds, request.target.appCreatedBy)) return deny("app_not_seen");
       return exists(projectId);
     }
     case "detach": {

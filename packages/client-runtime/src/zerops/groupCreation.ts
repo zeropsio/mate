@@ -9,12 +9,8 @@
  *
  * ## Who may
  *
- * HQ lets only org owners and admins create an application, as main let only
- * them write the registry (D3), and says so beside its structure (`create_app`)
- * — so an offered verb a member cannot finish would be an error message after
- * the fact (guide 0.8). The gate is therefore stricter than Zerops' own *can
- * create projects* (`mayCreateProjects`): a `READ_ONLY` member with the flag
- * may add a **Mate** to a group that exists, and may not make a group.
+ * HQ follows Zerops project creation for applications and streams the resulting create_app offer.
+ * A refusal is displayed with its actual capability reason.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -48,7 +44,13 @@ export function resolveAddProjectVerb(input: {
 }): GroupVerb {
   if (input.offer.kind === "allowed") return OFFERED;
   if (input.offer.kind === "refused") {
-    return { offered: false, reason: onlyTheseCanAddAProject(input.admins ?? []) };
+    return {
+      offered: false,
+      reason:
+        input.offer.reason === "not_structure_writer"
+          ? onlyTheseCanAddAProject(input.admins ?? [])
+          : hqOfferWords(input.offer, { at: input.at, rolesAnsweredAt: null }),
+    };
   }
   return {
     offered: false,

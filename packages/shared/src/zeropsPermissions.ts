@@ -15,6 +15,7 @@ export const REASONS = [
   "not_mate_operator",
   "app_not_seen",
   "not_structure_writer",
+  "cannot_create_projects",
   "not_project_admin",
   "not_own_new_mate",
   "kind_class_change",

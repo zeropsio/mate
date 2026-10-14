@@ -1,4 +1,5 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { tiersAddable } from "./projects/projectsView.logic";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
 import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
@@ -1504,18 +1505,20 @@ function ZeropsProjectsContent({
    */
   // A group is offered more once its first Mate is up (`groupAddsOffered`).
   // This gates another Mate; HQ's own offers decide stage and production.
+  const addMateOffer = useAddMateOffer();
   const addsOfferedFor = useCallback(
     (group: Pick<ZeropsGroup, "groupId">) => {
       const entry = groupTree.groups.find((entry) => entry.group.groupId === group.groupId);
       return (
         entry !== undefined &&
+        addMateOffer(group.groupId).kind === "allowed" &&
         groupAddsOffered(
           entry.environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
           candidateHealth,
         )
       );
     },
-    [candidateHealth, groupTree.groups],
+    [addMateOffer, candidateHealth, groupTree.groups],
   );
 
   // Which tiers HQ offers this person to add to the group (`add_stage` / `add_production`).
@@ -2290,7 +2293,7 @@ function ZeropsProjectsContent({
           })),
           ...(previews.length === 0 ? [] : [{ id: "previews-end", separator: true as const }]),
           // A project with nothing in it is offered its first Mate, and nothing more.
-          ...(groupIsEmpty(group)
+          ...(groupIsEmpty(group) && addMateOffer(group.groupId).kind === "allowed"
             ? [
                 {
                   id: "add-mate",

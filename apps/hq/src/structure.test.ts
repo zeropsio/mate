@@ -733,7 +733,7 @@ describe("structure", () => {
               [
                 { allow: true },
                 { allow: false, reason: "not_releaser" },
-                { allow: false, reason: "not_structure_writer" },
+                { allow: false, reason: "cannot_create_projects" },
               ],
             );
             assert.deepStrictEqual(
@@ -744,7 +744,11 @@ describe("structure", () => {
               [
                 [
                   "P_PROD",
-                  { keep_deploy_token: { allow: true }, remove_production: { allow: true } },
+                  {
+                    keep_deploy_token: { allow: true },
+                    redeploy: { allow: true },
+                    remove_production: { allow: true },
+                  },
                 ],
               ],
             );
@@ -754,7 +758,7 @@ describe("structure", () => {
             });
             assert.strictEqual(
               yield* reasonOf(structure.createApp("dev", "Mine")),
-              "not_structure_writer",
+              "cannot_create_projects",
             );
           }),
         ),
@@ -1007,26 +1011,57 @@ describe("structure", () => {
     );
 
     it.effect(
-      "an org owner or admin creates an application, nobody else; its name is its own",
+      "a Developer creates and sees only their own empty application and records its first Mate birth",
       () =>
         withStructure(() =>
           Effect.gen(function* () {
             const structure = yield* Structure;
-            const created = yield* structure.createApp("owner", "Shop");
-            assert.strictEqual(created.name, "Shop");
+            yield* structure.createApp("owner", "Hidden");
+            const own = yield* structure.createApp("maker", "Own");
+            const read = yield* structure.read("maker");
             assert.deepStrictEqual(
-              yield* Effect.all([
-                outcome(structure.createApp("admin", "Blog")),
-                outcome(structure.createApp("dev", "Dev's")),
-                outcome(structure.createApp("reader", "Reader's")),
-                outcome(structure.createApp("stranger", "Stranger's")),
-                outcome(structure.createApp("owner", "Shop")),
-                outcome(structure.createApp("owner", " ")),
-              ]),
-              ["ok", "forbidden", "forbidden", "forbidden", "conflict", "invalid"],
+              read.apps.map((app) => app.id),
+              [own.id],
+            );
+            assert.strictEqual(read.apps[0]!.can.add_mate.allow, true);
+            const birth = yield* structure.recordBirth("maker", { appId: own.id, face: "face-1" });
+            assert.ok(birth.id);
+            yield* structure.bindBirth("maker", birth.id, "P_OWN");
+            yield* structure.attachProject("maker", own.id, {
+              projectId: "P_OWN",
+              kind: "mate",
+              mate: { face: "face-1" },
+              birth: birth.id,
+            });
+            assert.deepStrictEqual(
+              (yield* structure.read("maker")).apps[0]!.projects.map(
+                (project) => project.projectId,
+              ),
+              ["P_OWN"],
             );
           }),
         ),
+    );
+
+    it.effect("a Zerops project creator creates an application; its name is its own", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const created = yield* structure.createApp("owner", "Shop");
+          assert.strictEqual(created.name, "Shop");
+          assert.deepStrictEqual(
+            yield* Effect.all([
+              outcome(structure.createApp("admin", "Blog")),
+              outcome(structure.createApp("dev", "Dev's")),
+              outcome(structure.createApp("reader", "Reader's")),
+              outcome(structure.createApp("stranger", "Stranger's")),
+              outcome(structure.createApp("owner", "Shop")),
+              outcome(structure.createApp("owner", " ")),
+            ]),
+            ["ok", "forbidden", "forbidden", "forbidden", "conflict", "invalid"],
+          );
+        }),
+      ),
     );
 
     it.effect(
@@ -1158,7 +1193,7 @@ describe("structure", () => {
                 attach("maker", shop.id, "P_OWN", "mate"),
                 attach("maker", team.id, "P_OWN", "mate"),
               ]),
-              ["forbidden", "forbidden", "forbidden", "forbidden", "forbidden", "forbidden", "ok"],
+              ["ok", "forbidden", "forbidden", "forbidden", "forbidden", "forbidden", "ok"],
             );
             const refused = yield* Effect.flip(
               structure.attachProject("basic", team.id, {
@@ -3466,7 +3501,7 @@ describe("original lifecycle receipts", () => {
             };
             assert.strictEqual(
               yield* reasonOf(structure.lifecycleWrite("dev", "denied", intent)),
-              "not_structure_writer",
+              "cannot_create_projects",
             );
             assert.strictEqual(
               yield* reasonOf(
@@ -3480,7 +3515,7 @@ describe("original lifecycle receipts", () => {
             );
             assert.deepStrictEqual(
               shown((yield* structure.read("dev")).apps[0]!.environments)[0]!.can.remove_production,
-              { allow: false, reason: "not_structure_writer" },
+              { allow: false, reason: "cannot_create_projects" },
             );
           }),
         ),

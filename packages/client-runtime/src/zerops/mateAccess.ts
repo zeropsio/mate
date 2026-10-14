@@ -1,30 +1,5 @@
-/**
- * Whose Mate a Mate is, on the client side of the same rule the door applies.
- *
- * ## Listed, not hidden (D5)
- *
- * Every member of the org sees every Mate in the list. Only its owner, and the
- * org's owners and admins, open one: a conversation carries tool output, file
- * contents and whatever the agent printed, and that is the Mate's owner's.
- *
- * The old shape hid what a person could not open, which is worse in both
- * directions — a colleague could not tell a Mate they were not allowed into
- * from one that did not exist, and asking for access meant asking about
- * something they could not name. So a row they cannot open **says so in
- * place**: "Jan's Mate — only Jan opens it".
- *
- * ## One rule, three consumers
- *
- * The answer comes from `@t3tools/shared/zeropsRoles`, the same function the
- * Mate's door runs before it refuses and HQ runs over its structure. A list
- * that invented its own rule would tell a person one thing
- * and the door another.
- *
- * Pure: no clock, no network, no platform types (rule R1). The caller reads
- * the project and the viewer's membership and hands them in.
- *
- * @module mateAccess
- */
+/** Native project role decides whether a Mate is hidden, listed or open.
+ * The same Zerops role resolver is used by the door and HQ; provider ownership is separate. */
 
 import {
   asOrgRole,
@@ -162,14 +137,13 @@ export function resolveMateVerbs(input: {
  * The one line a row the person cannot open carries, in place of the verb.
  *
  * Names the owner when the account can be read for one. Without a name it says
- * the same thing without pretending to know who — "its owner" is honest, and a
- * wrong name would be worse than none.
+ * the same native permission reason without inventing ownership.
  */
 export function mateOnlyOwnerOpensIt(ownerName?: string | undefined): string {
   const owner = ownerName?.trim() ?? "";
   return owner.length === 0
-    ? "Only its owner opens this Mate."
-    : `${owner}'s Mate — only ${owner} opens it.`;
+    ? "Your Zerops access to this Mate is read-only."
+    : `${owner}'s Mate — your Zerops access is read-only.`;
 }
 
 /**

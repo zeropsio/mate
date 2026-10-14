@@ -56,6 +56,7 @@ import {
   newMateRecipeChange,
   recipeChangeView,
 } from "./ZeropsEnvironmentCreationDialog.logic";
+import { useAddMateOffer, useHqOffers } from "../../zerops/useHqOffers";
 import { emptyApplications } from "./projects/emptyApps.logic";
 
 export function ZeropsNewMateHost() {
@@ -156,6 +157,8 @@ function NewMateDialog({
   const operations = useAccountOperations();
   const navigate = useNavigate();
 
+  const addOffer = useAddMateOffer()(groupId);
+  const { words } = useHqOffers();
   if (entry === undefined) return null;
   const { group, environments } = entry;
   const door = newMateDoor({
@@ -171,7 +174,17 @@ function NewMateDialog({
   });
   return (
     <ZeropsEnvironmentCreationDialog
-      closed={door.kind === "closed" ? door : undefined}
+      closed={
+        addOffer.kind !== "allowed"
+          ? {
+              kind: "closed",
+              reason: words(addOffer) ?? "Checking your access…",
+              action: undefined,
+            }
+          : door.kind === "closed"
+            ? door
+            : undefined
+      }
       // The Mate's own name, its project's built from it: started over, the name it was asked with.
       defaultName={defaultBotName}
       defaultTintFor={(name) =>
@@ -184,7 +197,7 @@ function NewMateDialog({
       landsElsewhere
       onCancel={dismiss}
       onCreate={(choice) => {
-        if (activeOrganization === null) return;
+        if (activeOrganization === null || addOffer.kind !== "allowed") return;
         const { name } = choice;
         const face = choice.face ?? { tint: "slate", shape: "squircle" };
         const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
