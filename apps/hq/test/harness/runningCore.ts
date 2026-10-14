@@ -289,7 +289,10 @@ export const startCore = (
           ).pipe(Layer.provide(NodeHttpClient.layerNodeHttp)),
         ),
         Layer.provideMerge(
-          NodeHttpServer.layer(() => given.httpServer ?? NodeHttp.createServer(), { port: 0 }),
+          NodeHttpServer.layer(() => given.httpServer ?? NodeHttp.createServer(), {
+            host: "127.0.0.1",
+            port: 0,
+          }),
         ),
       ),
       scope,
