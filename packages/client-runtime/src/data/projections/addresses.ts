@@ -238,8 +238,15 @@ export interface DnsRecord {
  * The records a domain needs at the person's DNS provider. An A at the project's own IPv4, else
  * at the region's shared one, and an AAAA at its IPv6: the pair works for a domain and for any
  * subdomain of it. On the shared IPv4 the AAAA is required, not only advised: the shared address
- * tells its projects' domains apart by it. `cname` is the one-record way, for a subdomain, while
- * the project's zone answers on IPv4 too.
+ * tells its projects' domains apart by it.
+ *
+ * `cname` is the one-record way, at the project's zone: for a subdomain, or an apex where the DNS
+ * provider flattens CNAMEs. The zone answers on the project's IPv6, and on the shared IPv4 only
+ * while that is included in it (`ipv4`); with an IPv4 of the project's own, whether the zone
+ * answers there is unread, so no CNAME is offered.
+ *
+ * A wildcard (`*.shop.com`) takes the same records under its own name, and its certificate a
+ * CNAME more: `_acme-challenge.shop.com` at `shop.com.zerops.zone`, Zerops' DNS-01 answer.
  */
 export function dnsAdvice(
   domainName: string,
@@ -248,18 +255,36 @@ export function dnsAdvice(
   readonly records: ReadonlyArray<DnsRecord>;
   /** Both records are needed: the A points at the shared IPv4. */
   readonly bothRequired: boolean;
-  readonly cname?: DnsRecord;
+  readonly cname?: DnsRecord & { readonly ipv4: boolean };
+  readonly certificate?: DnsRecord;
 } {
   const v4 = ips.ownV4 ?? ips.sharedV4;
   const records: DnsRecord[] = [];
   if (v4 !== undefined) records.push({ type: "A", name: domainName, value: v4 });
   if (ips.v6 !== undefined) records.push({ type: "AAAA", name: domainName, value: ips.v6 });
+  const wildcardOf = domainName.startsWith("*.") ? domainName.slice(2) : undefined;
   return {
     records,
     bothRequired: ips.ownV4 === undefined && v4 !== undefined,
-    ...(ips.zone !== undefined && ips.zoneHasSharedV4
-      ? { cname: { type: "CNAME" as const, name: domainName, value: ips.zone } }
+    ...(ips.zone !== undefined && (ips.zoneHasSharedV4 || ips.ownV4 === undefined)
+      ? {
+          cname: {
+            type: "CNAME" as const,
+            name: domainName,
+            value: ips.zone,
+            ipv4: ips.zoneHasSharedV4,
+          },
+        }
       : {}),
+    ...(wildcardOf === undefined
+      ? {}
+      : {
+          certificate: {
+            type: "CNAME" as const,
+            name: `_acme-challenge.${wildcardOf}`,
+            value: `${wildcardOf}.zerops.zone`,
+          },
+        }),
   };
 }
 

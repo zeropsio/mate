@@ -450,7 +450,8 @@
         "apps/web/src/components/zerops/addresses/AddressesSheetBits.tsx",
         "apps/web/src/components/zerops/addresses/AddressesSheetContainer.tsx",
         "apps/web/src/components/zerops/addresses/AddressesWeb.tsx",
-        "apps/web/src/components/zerops/addresses/AddressesDirect.tsx"
+        "apps/web/src/components/zerops/addresses/AddressesDirect.tsx",
+        "apps/web/src/components/zerops/addresses/DnsRecords.tsx"
       ],
       "entryPoints": [
         {

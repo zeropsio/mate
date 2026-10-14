@@ -103,7 +103,7 @@ describe("the addresses sheet", () => {
   it("a domain waiting for DNS shows exactly the records it needs", async () => {
     const { container } = await mount();
     const records = container.querySelector('[data-addresses-records="rt-blog"]')!;
-    const rows = [...records.querySelectorAll("tbody tr")].map((row) =>
+    const rows = [...records.querySelector("table")!.querySelectorAll("tbody tr")].map((row) =>
       [...row.querySelectorAll("td")].slice(0, 3).map(text),
     );
     expect(rows).toEqual([
@@ -116,6 +116,21 @@ describe("the addresses sheet", () => {
     expect(text(records)).toContain("Changes show within about 10 minutes.");
     // A live domain needs nothing more.
     expect(container.querySelector('[data-addresses-records="rt-shop"]')).toBeNull();
+  });
+
+  it("offers one CNAME at the project's zone as the other way to point a domain", async () => {
+    const { container } = await mount();
+    const way = container.querySelector(
+      '[data-addresses-records="rt-blog"] [data-dns-way="cname"]',
+    )!;
+    const rows = [...way.querySelectorAll("tbody tr")].map((row) =>
+      [...row.querySelectorAll("td")].slice(0, 3).map(text),
+    );
+    expect(rows).toEqual([
+      ["CNAME", "blog.com", "k3f9x2.prg1-zerops.zone"],
+      ["CNAME", "www.blog.com", "k3f9x2.prg1-zerops.zone"],
+    ]);
+    expect(text(way)).toContain("For a subdomain, or an apex your DNS provider can flatten.");
   });
 
   it("checking a domain's DNS again asks Zerops to look it up", async () => {

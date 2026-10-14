@@ -42,6 +42,7 @@ describe("a typed domain", () => {
     ["www.shop.com", null],
     ["shop", null],
     ["", null],
+    ["*.shop.com", null],
   ])("a two-label domain offers its www twin: %j → %j", (name, twin) => {
     expect(wwwTwin(name)).toBe(twin);
   });
@@ -52,6 +53,11 @@ describe("a typed domain", () => {
     ["shop", [], "Enter a full domain name, like shop.com."],
     ["sh op.com", [], "Enter a full domain name, like shop.com."],
     ["-shop.com", [], "Enter a full domain name, like shop.com."],
+    ["*.shop.com", [], null],
+    ["*.eu.shop.com", [], null],
+    ["*shop.com", [], "Enter a full domain name, like shop.com."],
+    ["shop.*.com", [], "Enter a full domain name, like shop.com."],
+    ["*.com", [], "Enter a full domain name, like shop.com."],
     ["shop.com", ["shop.com"], "shop.com is already one of Production's addresses."],
   ])("%j against %j says %j", (name, existing, problem) => {
     expect(domainProblem(name, existing, "Production")).toBe(problem);
@@ -202,6 +208,19 @@ describe("the records a domain needs", () => {
     ]);
     expect(records.bothRequired).toBe(true);
     expect(records.cnames.map((record) => record.name)).toEqual(["blog.com", "www.blog.com"]);
+  });
+
+  it("gives a wildcard its certificate's CNAME, and keeps whether each CNAME reaches IPv4", () => {
+    const records = recordsOf([{ domainName: "*.blog.com" }], {
+      ...ADDRESSES_FIXTURE.ips,
+      zoneHasSharedV4: false,
+    });
+    expect(records.certificates).toEqual([
+      { type: "CNAME", name: "_acme-challenge.blog.com", value: "blog.com.zerops.zone" },
+    ]);
+    expect(records.cnames.map((record) => [record.name, record.ipv4])).toEqual([
+      ["*.blog.com", false],
+    ]);
   });
 
   it("points the A at the project's own IPv4 where it has one", () => {
