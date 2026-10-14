@@ -10538,7 +10538,7 @@ a.message-file:focus-visible {
   top: 12px;
   right: 12px;
   bottom: 12px;
-  width: min(460px, calc(100% - 24px));
+  width: min(520px, calc(100% - 24px));
   max-height: none;
 }
 .rv[data-starting-style],
