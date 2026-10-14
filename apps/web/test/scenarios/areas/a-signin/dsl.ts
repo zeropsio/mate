@@ -4,6 +4,7 @@ import type { Page } from "puppeteer-core";
 import type { createScenario } from "../../harness/scenario.ts";
 import { openAccountMenu, visibleText } from "../../harness/browser.ts";
 import { deadline } from "../../harness/http.ts";
+import { answerInZerops, openZeropsWindow } from "../../harness/deviceLogin.ts";
 import { secondOrganization, endSessionCheck, handoverCount } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -187,5 +188,71 @@ export function firstHqAnswer(page: Page) {
       });
     },
     ms: Effect.promise(() => deadline(answer, "HQ's first answer to the page")),
+  };
+}
+
+/** Device login from the landing: the Zerops window, what the person does there, what Mate says. */
+export function zeropsWindow(s: Scenario, page: Page = s.page) {
+  const deviceLogin = s.drivers.zerops.deviceLogin;
+  return {
+    /** Clicks `button` on Mate's side; the window it opens, routed and on the consent page. */
+    opens: (button: string) =>
+      Effect.promise(() => openZeropsWindow(s.web, s.drivers.zerops, page, button)),
+    answers: (window: Page, decision: "Approve" | "Deny") =>
+      Effect.promise(() => answerInZerops(window, decision)),
+    /** The consent page the last window was pointed at: the API's link and this client's asks. */
+    lastConsentPage: Effect.sync(() => {
+      const shown = deviceLogin.consentPages.at(-1);
+      if (!shown) throw new Error("No consent page was shown");
+      return shown;
+    }),
+    /** The platform forgets every open request, as it does after five minutes. */
+    expires: Effect.sync(() => deviceLogin.expireRequests()),
+    says: (text: string) =>
+      Effect.promise(() =>
+        page.waitForFunction(
+          (text) => document.body.innerText.includes(text),
+          {
+            polling: "raf",
+            timeout: 10_000,
+          },
+          text,
+        ),
+      ),
+    /** The browser's popup blocker: the page's window opens nothing. */
+    blocksPopups: Effect.promise(() =>
+      page.evaluate(() => {
+        window.open = () => null;
+      }),
+    ),
+  };
+}
+
+/** A Mate's vault, from its conversation's right panel. */
+export function vault(page: Page) {
+  return {
+    opens: Effect.promise(async () => {
+      await page.locator("::-p-aria(Toggle right panel)").click();
+      await page.locator('[aria-label="Open a surface"] ::-p-text(Vault)').click();
+    }),
+    /** Opens the value's row and asks Zerops to show it. */
+    shows: (key: string) =>
+      Effect.promise(async () => {
+        await page.locator(`[data-vault-row="${key}"] > button`).setTimeout(10_000).click();
+        await page.locator(`[data-vault-row="${key}"] ::-p-aria(Show[role="button"])`).click();
+      }),
+    /** The value as the row shows it, once shown in the clear. */
+    showsValue: (key: string, value: string) =>
+      Effect.promise(() =>
+        page.waitForFunction(
+          (key, value) =>
+            [
+              ...document.querySelectorAll<HTMLInputElement>(`[data-vault-row="${key}"] input`),
+            ].some((input) => input.type === "text" && input.value === value),
+          { polling: "raf", timeout: 10_000 },
+          key,
+          value,
+        ),
+      ),
   };
 }

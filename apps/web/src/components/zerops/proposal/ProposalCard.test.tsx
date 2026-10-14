@@ -59,6 +59,18 @@ const askChief: ZeropsProposal = {
   },
 };
 
+const domain: ZeropsProposal = {
+  id: "p5",
+  kind: "domain.add",
+  summary: "Put Contoso - production on contoso.com and www.contoso.com",
+  reason: "The shop is ready for its own name.",
+  projectId: "pProd",
+  projectName: "Contoso - production",
+  serviceId: "sMedusa",
+  serviceName: "medusa",
+  params: { domains: ["contoso.com", "www.contoso.com"], port: 9000 },
+};
+
 async function mount(over: Partial<ProposalCardProps> & { readonly proposal: ZeropsProposal }) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
@@ -218,5 +230,57 @@ describe("ProposalCard", () => {
     );
     await act(async () => open?.click());
     expect(opened).toEqual(["chief"]);
+  });
+
+  it("a domain proposal puts the project on the domain and its www, says where it points, and offers the decision", async () => {
+    const { container } = await mount({ proposal: domain });
+    expect(container.querySelector("[data-proposal-summary]")?.textContent).toBe(
+      "Put Contoso - production on contoso.com and www.contoso.com",
+    );
+    expect(container.querySelector("[data-proposal-where]")?.textContent).toBe(
+      "→ medusa · port 9000",
+    );
+    expect(container.querySelector("q")?.textContent).toBe("The shop is ready for its own name.");
+    expect(buttons(container)).toEqual(["Approve", "Decline"]);
+  });
+
+  it("names the other changes approving a domain puts in place, before the person approves", async () => {
+    const { container } = await mount({
+      proposal: domain,
+      domainAlso: "Approving also puts in place: Removing api.shop.com.",
+    });
+    expect(container.textContent).toContain("Approving also puts in place: Removing api.shop.com.");
+    expect(buttons(container)).toEqual(["Approve", "Decline"]);
+  });
+
+  it.each<[ProposalStage]>([["done"], ["unseen"]])(
+    "an approved domain says how far it is from answering and opens the project's addresses: %s",
+    async (stage) => {
+      let opened = 0;
+      const { container } = await mount({
+        proposal: domain,
+        stage,
+        domainState: {
+          tone: "waiting",
+          words: "Waiting for your DNS. Add contoso.com's records at your DNS provider.",
+        },
+        onOpenAddresses: () => {
+          opened += 1;
+        },
+      });
+      expect(container.querySelector("[role=status]")?.textContent).toContain(
+        "Waiting for your DNS. Add contoso.com's records at your DNS provider.",
+      );
+      expect(buttons(container)).toEqual(["Open addresses"]);
+      await act(async () => container.querySelector("button")?.click());
+      expect(opened).toBe(1);
+    },
+  );
+
+  it("an approved domain whose state is not read yet says it was added", async () => {
+    const { container } = await mount({ proposal: domain, stage: "done" });
+    expect(container.querySelector("[role=status]")?.textContent).toContain(
+      "Added contoso.com and www.contoso.com.",
+    );
   });
 });

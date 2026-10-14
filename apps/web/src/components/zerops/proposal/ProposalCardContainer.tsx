@@ -1,16 +1,20 @@
 /**
  * A Mate's proposal, carried out as the person: an approved restart, start or stop is the
- * account's own operation at Zerops with their token; a value is the vault panel's write; a
- * message goes into the other Mate's conversation — an ask of the Chief into the person's own
+ * account's own operation at Zerops with their token, as is an approved domain — added onto the
+ * service's port and put in place, then followed in the project's addresses; a value is the vault
+ * panel's write; a message goes into the other Mate's conversation — an ask of the Chief into the person's own
  * Chief's — the way every hand-over to a Mate goes (`useAskMate`). What the person decided is kept
  * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
  * Approve twice; an approval is carried out only once HQ kept it.
  */
 import {
   NOT_READ_VAULT,
+  PROJECT_ROUTINGS_LISTING,
+  addresses,
   vaultAtom,
   hqProjectPerson,
   type HqProjectPeople,
+  type PlaceAddresses,
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
@@ -28,12 +32,15 @@ import { useKnownMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { recordVaultWrite } from "~/zerops/vaultTurnNotes";
 import { useProposalDecision } from "~/zerops/proposalRecord";
+import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
 import { ProposalCard } from "./ProposalCard";
 import {
   chiefAsk,
   chiefMessageTarget,
+  domainProposalAlso,
+  domainProposalState,
   envProposalWrite,
   heldMessageWords,
   proposalMessage,
@@ -45,6 +52,20 @@ import {
 const UNKNOWN_PERSON = Atom.make<HqProjectPeople | undefined>(undefined);
 
 const UNREAD = Atom.make(NOT_READ_VAULT);
+
+const UNREAD_ADDRESSES = Atom.make<PlaceAddresses>({
+  state: "reading",
+  domains: [],
+  zerops: [],
+  ips: { zoneHasSharedV4: false },
+  portsState: "reading",
+  ports: [],
+  webTargets: [],
+  portTargets: [],
+  waitingDomains: [],
+  waitingPorts: [],
+  readsProject: false,
+});
 
 const SERVICE_OPERATION = {
   "service.restart": "service-restart",
@@ -116,6 +137,21 @@ function Proposal({
     [home, proposal],
   );
   const { run, write } = useVaultWriter(vaultProject, view);
+  // A domain's project's addresses: what approving it puts in place besides it, then how far it
+  // is from answering.
+  const domainPlace = useMemo(
+    () =>
+      home === undefined || proposal.kind !== "domain.add" || stage === "declined"
+        ? null
+        : { orgId: home.orgId, projectId: proposal.projectId },
+    [home, proposal, stage],
+  );
+  const place = useProjection(addresses, domainPlace, UNREAD_ADDRESSES);
+  useDetailDemand(
+    "publicRouting",
+    PROJECT_ROUTINGS_LISTING,
+    domainPlace !== null && place.readsProject ? domainPlace.projectId : null,
+  );
   const askMate = useAskMate();
   const openMate = useOpenMate();
   const navigate = useNavigate();
@@ -133,7 +169,11 @@ function Proposal({
             ? "Finding this Mate's Chief…"
             : envWrite !== null && "refused" in envWrite
               ? envWrite.refused
-              : undefined;
+              : proposal.kind === "domain.add" && place.state === "reading"
+                ? "Reading the project's addresses…"
+                : proposal.kind === "domain.add" && place.state === "failed"
+                  ? `You can't see ${proposal.projectName ?? "this project"}'s addresses.`
+                  : undefined;
 
   const ended = useCallback(
     (outcome: VaultWriteOutcome) =>
@@ -223,6 +263,18 @@ function Proposal({
             ),
           );
           return;
+        case "domain.add":
+          ended(
+            await run({
+              kind: "add-domain",
+              orgId: home.orgId,
+              projectId: proposal.projectId,
+              domains: proposal.params.domains,
+              serviceId: proposal.serviceId,
+              port: proposal.params.port,
+            }),
+          );
+          return;
         case "chief.message":
           if (chief.kind !== "chief") {
             ended({ ok: false, code: null, message: "You have no Chief to ask." });
@@ -254,6 +306,15 @@ function Proposal({
   return (
     <ProposalCard
       approveBlocked={approveBlocked}
+      domainAlso={proposal.kind === "domain.add" ? domainProposalAlso(place) : undefined}
+      domainState={
+        proposal.kind === "domain.add" ? domainProposalState(place, proposal) : undefined
+      }
+      onOpenAddresses={
+        proposal.kind === "domain.add" && domainPlace !== null
+          ? () => useAddressesSheet.getState().open(domainPlace)
+          : undefined
+      }
       chiefTarget={proposal.kind === "chief.message" ? chief : undefined}
       readOnlyReason={readOnlyReason}
       failure={decision?.state === "failed" ? decision.message : undefined}

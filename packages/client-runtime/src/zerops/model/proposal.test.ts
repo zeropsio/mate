@@ -126,6 +126,22 @@ describe("readZeropsProposal", () => {
         params: { to: { projectId: "p-shop", mateName: "Rossy" }, words: "Write them." },
       },
     ],
+    [
+      "a domain names the project it puts on it, the service and the web port it points at",
+      // zcp's own document, as zerops_org_propose_domain answers it.
+      `{"proposal":{"id":"11111111-2222-3333-4444-555555555555","kind":"domain.add","summary":"Put Contoso - production on contoso.com and www.contoso.com","reason":"the shop is ready for its own name","projectId":"pProd","projectName":"Contoso - production","serviceId":"sMedusa","serviceName":"medusa","params":{"domains":["contoso.com","www.contoso.com"],"port":9000}},"note":"Nothing has run. The person approves or declines it on the card."}`,
+      {
+        id: "11111111-2222-3333-4444-555555555555",
+        kind: "domain.add",
+        summary: "Put Contoso - production on contoso.com and www.contoso.com",
+        reason: "the shop is ready for its own name",
+        projectId: "pProd",
+        projectName: "Contoso - production",
+        serviceId: "sMedusa",
+        serviceName: "medusa",
+        params: { domains: ["contoso.com", "www.contoso.com"], port: 9000 },
+      },
+    ],
   ])("%s", (_title, text, expected) => {
     expect(readZeropsProposal("zerops_org_propose", text)).toEqual(expected);
   });
@@ -242,6 +258,31 @@ describe("readZeropsProposal", () => {
         summary: "Ask Rossy",
         params: { to: { projectId: "p-shop" }, words: "Hi" },
       }),
+    ],
+    [
+      "a domain with no domain name",
+      "zerops_org_propose_domain",
+      result({ ...base, kind: "domain.add", params: { domains: [], port: 9000 } }),
+    ],
+    [
+      "a domain with a blank domain name",
+      "zerops_org_propose_domain",
+      result({ ...base, kind: "domain.add", params: { domains: ["shop.com", " "], port: 9000 } }),
+    ],
+    [
+      "a domain that names no service",
+      "zerops_org_propose_domain",
+      result({
+        ...base,
+        serviceId: undefined,
+        kind: "domain.add",
+        params: { domains: ["shop.com"], port: 9000 },
+      }),
+    ],
+    [
+      "a domain that names no port",
+      "zerops_org_propose_domain",
+      result({ ...base, kind: "domain.add", params: { domains: ["shop.com"], port: 0 } }),
     ],
     ["a proposal that is not an object", "zerops_org_restart", JSON.stringify({ proposal: "x" })],
   ])("ignores %s", (_title, toolName, text) => {

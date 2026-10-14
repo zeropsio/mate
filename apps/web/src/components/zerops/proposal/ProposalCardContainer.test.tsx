@@ -2,13 +2,24 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { NOT_READ_VAULT, type HqProjectPeople } from "@t3tools/client-runtime/data";
+import {
+  NOT_READ_VAULT,
+  type AddressDomain,
+  type HqProjectPeople,
+  type PlaceAddresses,
+} from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
+
+import { useAddressesSheet } from "~/zerops/addressesSheet";
+import type { ProposalDecision } from "./proposal.logic";
 
 const source = vi.hoisted(() => ({
   person: undefined as HqProjectPeople | undefined,
-  record: vi.fn(async () => null),
+  addresses: undefined as PlaceAddresses | undefined,
+  decision: undefined as ProposalDecision | undefined,
+  record: vi.fn(async (_next: ProposalDecision) => null),
+  run: vi.fn(async (_intent: unknown) => ({ ok: true })),
   askMate: vi.fn(),
   navigate: vi.fn(),
   listeners: new Set<() => void>(),
@@ -18,13 +29,13 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => source.navigate })
 vi.mock("~/zerops/ZeropsAccountData", async () => {
   const { useSyncExternalStore } = await import("react");
   return {
-    useProjection: () =>
+    useProjection: (projection: { readonly name: string }) =>
       useSyncExternalStore(
         (listener) => {
           source.listeners.add(listener);
           return () => source.listeners.delete(listener);
         },
-        () => source.person,
+        () => (projection.name === "addresses" ? source.addresses : source.person),
       ),
     useDetailDemand: () => undefined,
   };
@@ -34,7 +45,7 @@ vi.mock("~/zerops/useZeropsEnvironmentProject", () => ({
   useZeropsEnvironmentProject: () => ({ orgId: "org", projectId: "source-mate" }),
 }));
 vi.mock("~/zerops/proposalRecord", () => ({
-  useProposalDecision: () => ({ known: true, record: source.record }),
+  useProposalDecision: () => ({ known: true, decision: source.decision, record: source.record }),
 }));
 vi.mock("~/zerops/useZeropsMates", () => ({
   useKnownMate: () => ({ name: "Skye" }),
@@ -42,7 +53,7 @@ vi.mock("~/zerops/useZeropsMates", () => ({
 }));
 vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => source.askMate }));
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => vi.fn() }));
-vi.mock("../vault/VaultPanelContainer", () => ({ useVaultWriter: () => ({}) }));
+vi.mock("../vault/VaultPanelContainer", () => ({ useVaultWriter: () => ({ run: source.run }) }));
 import { ProposalCardContainer } from "./ProposalCardContainer";
 
 let root: Root | undefined;
@@ -51,12 +62,16 @@ afterEach(async () => {
   root = undefined;
   document.body.innerHTML = "";
   source.person = undefined;
+  source.addresses = undefined;
+  source.decision = undefined;
+  useAddressesSheet.getState().close();
+  source.run.mockClear();
   source.record.mockClear();
   source.askMate.mockClear();
   source.navigate.mockClear();
   vi.unstubAllGlobals();
 });
-const operation = {
+let operation = {
   proposal: {
     id: "offer",
     kind: "chief.message",
@@ -163,5 +178,125 @@ describe("a Mate can ask its Chief only when one exists", () => {
     );
     expect(decisions().map((button) => button.textContent)).toEqual(["Decline"]);
     expect(source.askMate).not.toHaveBeenCalled();
+  });
+});
+
+const domainProposal: ZeropsProposal = {
+  id: "domain-offer",
+  kind: "domain.add",
+  summary: "Put Contoso - production on contoso.com and www.contoso.com",
+  reason: "The shop is ready for its own name.",
+  projectId: "pProd",
+  projectName: "Contoso - production",
+  serviceId: "sMedusa",
+  serviceName: "medusa",
+  params: { domains: ["contoso.com", "www.contoso.com"], port: 9000 },
+};
+const domainOffer = { proposal: domainProposal } as ZeropsOperation;
+
+const production = (
+  domains: ReadonlyArray<Pick<AddressDomain, "domainName" | "face">>,
+  waitingDomains: PlaceAddresses["waitingDomains"] = [],
+): PlaceAddresses => ({
+  state: "ready",
+  domains: domains.map((domain) => ({
+    routingId: "r1",
+    routingDomains: domains.map((each) => each.domainName),
+    targets: [{ serviceId: "sMedusa", serviceName: "medusa", port: 9000, path: "/" }],
+    sslEnabled: true,
+    url: `https://${domain.domainName}`,
+    resolvedIps: [],
+    nameServers: ["ns1.registrar.example"],
+    ...domain,
+  })),
+  zerops: [],
+  ips: { zoneHasSharedV4: false },
+  portsState: "ready",
+  ports: [],
+  webTargets: [],
+  portTargets: [],
+  waitingDomains,
+  waitingPorts: [],
+  readsProject: false,
+});
+
+describe("the Chief's proposal to put a project on a domain", () => {
+  const press = async (label: string) => {
+    const button = [...document.querySelectorAll("button")].find(
+      (each) => each.textContent === label,
+    );
+    expect(button).toBeDefined();
+    await act(async () => button!.click());
+  };
+  const first = operation;
+  afterEach(() => {
+    operation = first;
+  });
+
+  it("approving it adds the domains as the person, onto the service's web port", async () => {
+    operation = domainOffer;
+    source.addresses = production([]);
+    await draw();
+    await press("Approve");
+    expect(source.run).toHaveBeenCalledWith({
+      kind: "add-domain",
+      orgId: "org",
+      projectId: "pProd",
+      domains: ["contoso.com", "www.contoso.com"],
+      serviceId: "sMedusa",
+      port: 9000,
+    });
+    expect(source.record.mock.calls.map(([next]) => next.state)).toEqual(["running", "done"]);
+  });
+
+  it("declining it adds nothing", async () => {
+    operation = domainOffer;
+    source.addresses = production([]);
+    await draw();
+    await press("Decline");
+    expect(source.run).not.toHaveBeenCalled();
+    expect(source.record).toHaveBeenCalledWith(expect.objectContaining({ state: "declined" }));
+  });
+
+  it("offers no Approve until the project's addresses are read", async () => {
+    operation = domainOffer;
+    source.addresses = { ...production([]), state: "reading" };
+    await draw();
+    await press("Approve");
+    expect(source.run).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Reading the project's addresses…");
+  });
+
+  it("offers no Approve for a project whose addresses the person can't see", async () => {
+    operation = domainOffer;
+    source.addresses = { ...production([]), state: "failed" };
+    await draw();
+    await press("Approve");
+    expect(source.run).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("You can't see Contoso - production's addresses.");
+  });
+
+  it("names somebody else's waiting change that approving puts in place too", async () => {
+    operation = domainOffer;
+    source.addresses = production([], [{ id: "w1", label: "Removing api.contoso.com" }]);
+    await draw();
+    expect(document.body.textContent).toContain(
+      "Approving also puts in place: Removing api.contoso.com.",
+    );
+  });
+
+  it("an approved domain waits for the person's DNS, and Open addresses opens that project's addresses", async () => {
+    operation = domainOffer;
+    source.decision = { state: "done", at: "2026-10-14T10:00:00.000Z" };
+    source.addresses = production([
+      { domainName: "contoso.com", face: "dns" },
+      { domainName: "www.contoso.com", face: "dns" },
+    ]);
+    await draw();
+    expect(document.querySelector("[role=status]")?.textContent).toContain(
+      "Waiting for your DNS. Add contoso.com's records at your DNS provider.",
+    );
+    await press("Open addresses");
+    expect(useAddressesSheet.getState().target).toEqual({ orgId: "org", projectId: "pProd" });
   });
 });

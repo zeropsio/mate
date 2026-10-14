@@ -66,6 +66,16 @@ export function gitSetupExpiry(expiresAt: string | null): string {
   return expiresAt === null ? "Expiry not reported" : `Token expires ${expiresAt}`;
 }
 
+/** Explain rejected local input without guessing its host or changing the address. */
+export function gitSetupRepositoryHint(address: string): string {
+  const input = address.trim();
+  if (/^(?:ssh:\/\/|[^/]+@[^/]+:)/i.test(input))
+    return "SSH URLs are not supported. Enter an HTTPS repository address.";
+  if (/^(?:https?:\/\/)?[^/]+@/i.test(input))
+    return "Enter a repository address without credentials.";
+  return "Enter the full address, like github.com/owner/repo.";
+}
+
 /** Resolve the person's address against HQ's code repositories, never the recipe. */
 export function gitSetupRepository(
   repos: ReadonlyArray<RepoListEntry> | undefined,

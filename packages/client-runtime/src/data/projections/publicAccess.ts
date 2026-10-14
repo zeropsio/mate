@@ -45,14 +45,19 @@ export interface PublicAccess {
 const byServiceThenPort = (left: ZeropsPublicRoute, right: ZeropsPublicRoute) =>
   left.service.localeCompare(right.service, "en") || left.port - right.port;
 
-/** Where the project's routings stand: the ones read, or why there are none to show. */
-type Routings =
+/**
+ * Where the project's routings stand: the ones read, by id, or why there are none to show.
+ * `readsProject`: the organization's search is refused to the viewer, so the project's own
+ * listing is what a surface demands.
+ */
+export type ProjectRoutings = (
   | {
       readonly kind: "read";
       readonly complete: boolean;
-      readonly values: ReadonlyArray<PublicRoutingValue>;
+      readonly rows: ReadonlyArray<{ readonly id: string; readonly value: PublicRoutingValue }>;
     }
-  | { readonly kind: "reading" | "failed" };
+  | { readonly kind: "reading" | "failed" }
+) & { readonly readsProject: boolean };
 
 /**
  * Whether the organization's routing search was refused to the viewer alone, its link up: the
@@ -66,35 +71,41 @@ function refusedAlone(read: ProjectionReads, orgId: string): boolean {
   );
 }
 
-function routingsOf(read: ProjectionReads, { orgId, projectId }: ProjectKey): Routings {
-  const values = (ids: Iterable<string>) => {
-    const found: PublicRoutingValue[] = [];
+/** One project's routings, from the organization's listing or, where it is refused, the project's. */
+export function projectRoutings(
+  read: ProjectionReads,
+  { orgId, projectId }: ProjectKey,
+): ProjectRoutings {
+  const rowsOf = (ids: Iterable<string>) => {
+    const found: { id: string; value: PublicRoutingValue }[] = [];
     for (const id of ids) {
       const fact = read.fact("publicRouting", id);
-      if (fact.kind === "known") found.push(fact.value);
+      if (fact.kind === "known") found.push({ id, value: fact.value });
     }
     return found;
   };
   if (refusedAlone(read, orgId)) {
     const own = projectRoutingsScope(orgId, projectId);
-    if (read.stream(own).phase === "refused") return { kind: "failed" };
+    if (read.stream(own).phase === "refused") return { kind: "failed", readsProject: true };
     const coverage = read.coverage(own);
-    if (coverage === "unknown") return { kind: "reading" };
+    if (coverage === "unknown") return { kind: "reading", readsProject: true };
     return {
       kind: "read",
       complete: coverage === "complete",
-      values: values(read.members(own).ids),
+      rows: rowsOf(read.members(own).ids),
+      readsProject: true,
     };
   }
   const freshness = scopeFreshness(read, routingsScope(orgId));
-  if (freshness.unavailableReason !== undefined) return { kind: "failed" };
+  if (freshness.unavailableReason !== undefined) return { kind: "failed", readsProject: false };
   return read.coverage(routingsScope(orgId)) !== "unknown"
     ? {
         kind: "read",
         complete: freshness.complete,
-        values: values(read.index("routingProject", projectId)),
+        rows: rowsOf(read.index("routingProject", projectId)),
+        readsProject: false,
       }
-    : { kind: "reading" };
+    : { kind: "reading", readsProject: false };
 }
 
 function addressesOf(
@@ -153,9 +164,9 @@ export const publicAccess: Projection<ProjectKey, PublicAccess> = {
   name: "publicAccess",
   keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
   derive: (read, key) => {
-    const readsProject = refusedAlone(read, key.orgId);
     const services = projectServices.derive(read, key);
-    const routings = routingsOf(read, key);
+    const routings = projectRoutings(read, key);
+    const readsProject = routings.readsProject;
     if (services.unavailableReason !== undefined || routings.kind === "failed")
       return { state: "failed", ...NOTHING, readsProject };
     const project = read.fact("project", key.projectId);
@@ -163,7 +174,11 @@ export const publicAccess: Projection<ProjectKey, PublicAccess> = {
       return { state: "reading", ...NOTHING, readsProject };
     return {
       state: routings.complete ? "ready" : "reading",
-      ...addressesOf(project.value as ZeropsProject, services.services, routings.values),
+      ...addressesOf(
+        project.value as ZeropsProject,
+        services.services,
+        routings.rows.map(({ value }) => value),
+      ),
       offers: derivePublicRouteOffers(services.services),
       readsProject,
     };

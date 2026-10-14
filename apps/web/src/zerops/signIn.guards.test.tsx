@@ -137,8 +137,9 @@ describe("deep link after sign-in", () => {
   // earlier visit ended on (the owner, 2026-10-02: landing on /zerops and then jumping into some
   // Mate "is very strange and disturbing").
   it("returns a hand-over with no route of its own to /zerops, whatever an earlier visit opened", async () => {
-    const { tab, signInByHandover } = await signedOutTab("/");
-    await tab.run(() => tab.session().signIn("person@example.test", "secret"));
+    const harness = makeAccountHarness({ people: [{ user: person, password: "secret" }] });
+    const { tab, signInByHandover } = await signedOutTab("/", harness);
+    await tab.run(() => tab.session().adoptDeviceLogin(harness.rest.issueSession("user-1")));
     await tab.run(() =>
       window.localStorage.setItem("mate:account:user-1:last-route:v1", DEEP_LINK),
     );
@@ -194,14 +195,14 @@ async function appTab(
   return { tab, router: () => router };
 }
 
-describe("password sign-in in AppRoot", () => {
-  it("keeps a password sign-in on the deep link it was opened at, with that route on screen", async () => {
+describe("device-login sign-in in AppRoot", () => {
+  it("keeps a device-login sign-in on the deep link it was opened at, with that route on screen", async () => {
     const harness = productHarness();
     const { tab, router: currentRouter } = await appTab(harness);
     const router = currentRouter();
     expect(tab.text()).toContain("Sign in to Zerops");
 
-    await tab.run(() => tab.session().signIn("person@example.test", "secret"));
+    await tab.run(() => tab.session().adoptDeviceLogin(harness.rest.issueSession("user-1")));
 
     expect(tab.text()).toContain("Project p1");
     expect(tab.text()).not.toContain("Sign in to Zerops");
@@ -219,7 +220,7 @@ describe("a sign-in in another tab", () => {
     const a = await mountTab(harness, harness.browser.openTab());
     expect(b.tab.text()).toContain("Sign in to Zerops");
 
-    await a.run(() => a.session().signIn("person@example.test", "secret"));
+    await a.run(() => a.session().adoptDeviceLogin(harness.rest.issueSession("user-1")));
     await settle();
 
     expect(b.tab.text()).toContain("Project p1");

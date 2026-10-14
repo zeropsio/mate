@@ -1881,6 +1881,7 @@ export function ZeropsStopPane({
           )}
           {stop.target.kind === "zerops" ? (
             <ZeropsStopMenu
+              groupId={groupId}
               name={title}
               projectId={projectId!}
               onOpenStop={undefined}

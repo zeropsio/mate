@@ -587,10 +587,13 @@ export function serviceWords(scope: VaultScope): {
   return { kind: "app", words: type === null ? null : (RUNTIME_WORDS[type] ?? type) };
 }
 
+/** The refusal a session not in sudo mode gets: the person can confirm it's them in Zerops. */
+export const SUDO_REFUSAL = "notInSudoMode";
+
 /** Why Zerops would not show a secret, in words: its refusal's code, else that it could not. */
 export function revealRefusalWords(code: string | null): string {
   switch (code) {
-    case "notInSudoMode":
+    case SUDO_REFUSAL:
       return "Zerops wants you to confirm it's you before it shows a secret.";
     case "notAuthorized":
     case "forbidden":
