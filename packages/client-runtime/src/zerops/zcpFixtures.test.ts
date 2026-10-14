@@ -172,8 +172,8 @@ describe("zcp contract fixtures", () => {
       expect(
         card.steps.map(({ label, state, stateLabel, note }) => [label, state, stateLabel, note]),
       ).toEqual([
-        ["web :3000", "done", "Running", `HTTP 200 · read ${read}`],
-        ["api :8080", "done", "Running", `HTTP 200 · read ${read}`],
+        ["web :3000", "done", "Running", `read ${read}`],
+        ["api :8080", "done", "Running", `read ${read}`],
         [
           "worker",
           "failed",
