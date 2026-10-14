@@ -21,9 +21,49 @@ const parse = (source: string) => {
 };
 import { expect, it } from "vite-plus/test";
 import { chatGateStages } from "./chat-gate.ts";
+import { checkJobIds } from "./ci-blame.ts";
 import { checkSteps } from "./ci-local.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
+
+it("CI runs lint, guards, types and builds in parallel without losing the release verdict", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const commands = {
+    check: ["Check"],
+    check_guards: ["Reconcile guard exceptions", "Check test sentence retention"],
+    check_types: ["Typecheck", "Typecheck scenarios"],
+    check_build: [
+      "Build server bundle",
+      "Test resource monitor",
+      "Exercise release-only workflow steps",
+    ],
+  };
+  for (const [id, names] of Object.entries(commands)) {
+    const job = workflow.jobs[id];
+    expect(job, `ASSERTION: ${id} is an independent Check worker`).toBeDefined();
+    expect(job.needs).toEqual(["prepare", "changes"]);
+    expect(job.if).toContain(`contains(fromJSON(needs.prepare.outputs.jobs), '${id}')`);
+    expect(job.if).toContain("needs.prepare.outputs.skip != 'true'");
+    for (const name of names)
+      expect(job.steps.some((step: { name: string }) => step.name === name)).toBe(true);
+    expect(workflow.jobs.release_smoke.needs).toContain(id);
+  }
+  const verdict = workflow.jobs.release_smoke.steps.find(
+    (step: { name: string }) => step.name === "Require release smoke to pass",
+  );
+  for (const failed of Object.keys(commands)) {
+    const run = verdict.run.replace(
+      /\$\{\{ needs\.([a-z_]+)\.result \}\}/gu,
+      (_: string, id: string) => (id === failed ? "failure" : "success"),
+    );
+    expect(
+      NodeChildProcess.spawnSync("bash", ["-e", "-c", run]).status,
+      `ASSERTION: ${failed} failure blocks Release Smoke`,
+    ).toBe(1);
+  }
+});
 
 it.each([
   ["refs/heads/main", "push"],
@@ -114,7 +154,7 @@ it("release smoke can regenerate its fixture lockfile without inheriting frozen 
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
-  const job = workflow.jobs.check;
+  const job = workflow.jobs.check_build;
   const step = job.steps.find(
     (step: { name: string }) => step.name === "Exercise release-only workflow steps",
   );
@@ -209,9 +249,9 @@ it("Decision: supersede pending main runs; never cancel a running deploy", () =>
   ).toBe("ci-${{ github.ref }}");
   expect(
     workflow.concurrency["cancel-in-progress"],
-    "ASSERTION: integration runs retain their verdict while PRs and diagnostics supersede older runs",
+    "ASSERTION: main retains its verdict while kh-next, PRs and diagnostics supersede older runs",
   ).toBe(
-    "${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}",
+    "${{ github.ref == 'refs/heads/kh-next' || github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}",
   );
   expect(workflow.concurrency.queue ?? "single").toBe("single");
   const release = parse(
@@ -362,7 +402,7 @@ it.each([
       (step: { name: string }) => step.name === "Require release smoke to pass",
     );
     const run = verdict.run
-      .replace("${{ needs.check.result }}", "success")
+      .replace(/\$\{\{ needs\.check(?:_guards|_types|_build)?\.result \}\}/gu, "success")
       .replace("${{ needs.test_mobile.result }}", mobile)
       .replace("${{ needs.mobile_native_static_analysis.result }}", native);
     expect(
@@ -575,12 +615,15 @@ it("hosted web CI retains native compilation and dedicated native jobs", () => {
     "resource_monitor",
   ]);
   expect(
-    workflow.jobs.check.steps.find(
+    workflow.jobs.check_build.steps.find(
       (step: { name: string }) => step.name === "Test resource monitor",
     ),
   ).toBeDefined();
   expect(workflow.jobs.release_smoke).toBeDefined();
-  const steps = workflow.jobs.check.steps as { name: string; run?: string }[];
+  const steps = checkJobIds.flatMap((id) => workflow.jobs[id].steps) as {
+    name: string;
+    run?: string;
+  }[];
   expect(steps.some((step) => /Electron|mobile/u.test(step.name))).toBe(false);
   const typecheck = steps.find((step) => step.name === "Typecheck")!.run!;
   expect(typecheck, "ASSERTION: CI and local Check delegate the owned hosted-web task").toBe(
@@ -661,7 +704,7 @@ it("CI runs full verification on integration pushes and preserves PR change sele
   ).toBeUndefined();
   expect(workflow.jobs.chat_bundle.if).toContain("needs.changes.outputs.chat != 'false'");
   expect(
-    workflow.jobs.check.steps.find(
+    workflow.jobs.check_build.steps.find(
       (step: { name: string }) => step.name === "Test resource monitor",
     ).if,
   ).toContain("needs.changes.outputs.resource_monitor != 'false'");
@@ -1150,7 +1193,10 @@ it("short Ubuntu checks share installed jobs without losing their commands or fa
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
-  const check = workflow.jobs.check;
+  const check = {
+    ...workflow.jobs.check,
+    steps: checkJobIds.flatMap((id) => workflow.jobs[id].steps),
+  };
   const packages = workflow.jobs.test_packages;
   for (const job of [check, packages]) expect(job["runs-on"]).toBe("ubuntu-latest");
   expect(check.needs).toContain("changes");
@@ -1207,7 +1253,7 @@ it("short Ubuntu checks share installed jobs without losing their commands or fa
   );
   for (const result of ["success", "failure", "cancelled", "skipped"]) {
     const run = verdict.run
-      .replace("${{ needs.check.result }}", result)
+      .replace(/\$\{\{ needs\.check(?:_guards|_types|_build)?\.result \}\}/gu, result)
       .replace("${{ needs.test_mobile.result }}", "skipped")
       .replace("${{ needs.mobile_native_static_analysis.result }}", "skipped");
     expect(NodeChildProcess.spawnSync("bash", ["-e", "-c", run]).status).toBe(
@@ -1498,7 +1544,7 @@ it.each(["ci", "signal"])(
     const expression = workflow.concurrency["cancel-in-progress"].slice(3, -2);
     for (const [ref, event, cancels] of [
       ["refs/heads/main", "push", false],
-      ["refs/heads/kh-next", "push", false],
+      ["refs/heads/kh-next", "push", name === "ci"],
       ["refs/heads/kh-bisect/diag-ci-diag-economy", "push", true],
       ["refs/heads/kh-bisect/signal-ci-diag-economy", "push", true],
       ["refs/pull/42/merge", "pull_request", true],

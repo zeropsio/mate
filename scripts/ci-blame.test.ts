@@ -54,12 +54,27 @@ it("Summary failures rerun their failed dependencies without selecting unrelated
   expect(selection.selected.sort()).toEqual([
     "changes",
     "check",
+    "check_build",
+    "check_guards",
+    "check_types",
     "release_smoke",
     "test",
     "test_scripts",
   ]);
   expect(selection.matrices.test_hq!.include).toEqual([]);
   expect(workflow.jobs.test.steps.at(-1).run).toContain("needs.prepare.outputs.blame == 'true'");
+});
+
+it.each([
+  ["Check", "check"],
+  ["Check Guards", "check_guards"],
+  ["Check Types", "check_types"],
+  ["Check Build", "check_build"],
+])("Bisect CI selects %s with only its execution dependencies", (name, job) => {
+  expect(
+    blameSelection("refs/heads/kh-bisect/abc1234", `${name}\n`).selected.sort(),
+    "ASSERTION: each Check worker selects Changes without its sibling workers",
+  ).toEqual(["changes", job].sort());
 });
 
 it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(

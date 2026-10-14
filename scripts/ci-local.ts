@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off - a thin runner over CI's own job definition.
 /**
- * CI's Check job, run locally with desktop/mobile work deferred during the test phase, read from
+ * CI's parallel Check jobs, run locally with desktop/mobile work deferred during the test phase, read from
  * `.github/workflows/ci.yml` at run time. Browser shards belong to Signal, not Check. One line per step,
  * the first error and a short tail on failure, then stop with its exit code.
  *
- *   node scripts/ci-local.ts              every step of the Check job
+ *   node scripts/ci-local.ts              every step of the Check jobs
  *   node scripts/ci-local.ts css guard    only the steps whose name holds one of the words
  *   node scripts/ci-local.ts --list       the steps, without running them
  */
@@ -13,6 +13,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { parse } from "yaml";
+import { checkJobIds } from "./ci-blame.ts";
 import { failureSummary, gateLogDirectory, runLogged } from "./gate-log.ts";
 
 export interface CheckStep {
@@ -40,40 +41,51 @@ interface Workflow {
 const usesContext = (text: string) => text.includes("${{");
 
 /**
- * The job's `run` steps in order. A `uses` step sets up a runner that a checkout already is; a
+ * The Check jobs' `run` steps in order, sharing one install locally. An explicit job ID selects
+ * that job alone. A `uses` step sets up a runner that a checkout already is; a
  * promotion skip is never available locally. Other conditional steps and `${{ }}` contexts
  * only mean something on CI.
  */
-export function checkSteps(workflowYaml: string, jobId = "check"): ReadonlyArray<CheckStep> {
-  const job = (parse(workflowYaml) as Workflow).jobs?.[jobId];
-  if (!job?.steps) throw new Error(`no job "${jobId}" with steps in the workflow`);
-  return job.steps.flatMap((step) => {
-    if (
-      step.run === undefined ||
-      (step.if !== undefined && step.if !== "needs.prepare.outputs.skip != 'true'") ||
-      usesContext(step.run) ||
-      /\$\{?GITHUB_OUTPUT\b/u.test(step.run)
-    )
-      return [];
-    // The hosted web test phase needs neither native-client generation nor Electron setup.
-    if (
-      /@t3tools\/(?:mobile|desktop)\b/u.test(step.run) ||
-      /^apps\/(?:mobile|desktop)(?:\/|$)/u.test(step["working-directory"] ?? "")
-    )
-      return [];
-    const env = Object.fromEntries(
-      Object.entries({ ...job.env, ...step.env }).filter(
-        ([, value]) => !usesContext(String(value)),
-      ),
-    );
-    return [
-      {
-        name: step.name ?? step.run.split("\n")[0]!,
-        run: step.run,
-        env,
-        workingDirectory: step["working-directory"],
-      },
-    ];
+export function checkSteps(workflowYaml: string, jobId?: string): ReadonlyArray<CheckStep> {
+  const jobs = (parse(workflowYaml) as Workflow).jobs;
+  const selected = jobId === undefined ? checkJobIds.filter((id) => jobs?.[id]?.steps) : [jobId];
+  if (selected.length === 0) throw new Error('no job "check" with steps in the workflow');
+  const installs = new Set<string>();
+  return selected.flatMap((id) => {
+    const job = jobs?.[id];
+    if (!job?.steps) throw new Error(`no job "${id}" with steps in the workflow`);
+    return job.steps.flatMap((step) => {
+      if (
+        step.run === undefined ||
+        (step.if !== undefined && step.if !== "needs.prepare.outputs.skip != 'true'") ||
+        usesContext(step.run) ||
+        /\$\{?GITHUB_OUTPUT\b/u.test(step.run)
+      )
+        return [];
+      // The hosted web test phase needs neither native-client generation nor Electron setup.
+      if (
+        /@t3tools\/(?:mobile|desktop)\b/u.test(step.run) ||
+        /^apps\/(?:mobile|desktop)(?:\/|$)/u.test(step["working-directory"] ?? "")
+      )
+        return [];
+      if (jobId === undefined && step.name === "Install dependencies") {
+        if (installs.has(step.run)) return [];
+        installs.add(step.run);
+      }
+      const env = Object.fromEntries(
+        Object.entries({ ...job.env, ...step.env }).filter(
+          ([, value]) => !usesContext(String(value)),
+        ),
+      );
+      return [
+        {
+          name: step.name ?? step.run.split("\n")[0]!,
+          run: step.run,
+          env,
+          workingDirectory: step["working-directory"],
+        },
+      ];
+    });
   });
 }
 
