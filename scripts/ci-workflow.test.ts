@@ -583,7 +583,7 @@ it("hosted suites install their working set while native jobs retain their depen
   const install = (name: string) =>
     workflow.jobs[name].steps.find((step: { name: string }) => step.name === "Install dependencies")
       .run;
-  for (const name of ["chat_bundle", "state_smoke", "test_hq", "test_web"]) {
+  for (const name of ["state_smoke", "test_hq", "test_web"]) {
     expect(
       install(name),
       "ASSERTION: hosted-only test runners must not install unused native workspaces",
@@ -702,7 +702,7 @@ it("CI runs full verification on integration pushes and preserves PR change sele
       (step: { name: string }) => step.name === "Test scenario drivers",
     ).if,
   ).toBeUndefined();
-  expect(workflow.jobs.chat_bundle.if).toContain("needs.changes.outputs.chat != 'false'");
+  expect(workflow.jobs.state_smoke.if).toContain("needs.changes.outputs.chat != 'false'");
   expect(
     workflow.jobs.check_build.steps.find(
       (step: { name: string }) => step.name === "Test resource monitor",
@@ -719,9 +719,8 @@ it("main promotion reports successful required checks without repeating verified
     check: "Check",
     test: "Test",
     test_web: "Test Web ${{ matrix.shard }}",
-    state_smoke: "State Smoke",
+    state_smoke: "State Smoke ${{ matrix.shard }}",
     test_server: "Test Server ${{ matrix.shard }}",
-    chat_bundle: "Chat Contract bundle",
     release_smoke: "Release Smoke",
   };
   for (const [id, name] of Object.entries(required)) {
@@ -749,8 +748,9 @@ it("main promotion reports successful required checks without repeating verified
       "needs.prepare.outputs.skip != 'true'",
     );
   }
-  expect(workflow.jobs.test_web.strategy.matrix.shard).toEqual([1, 2]);
-  expect(workflow.jobs.test_server.strategy.matrix.shard).toEqual([1, 2, 3, 4]);
+  expect(workflow.jobs.test_web.strategy.matrix.shard).toEqual([1, 2, 3]);
+  expect(workflow.jobs.test_server.strategy.matrix.shard).toEqual([1, 2, 3, 4, 5, 6]);
+  expect(workflow.jobs.state_smoke.strategy.matrix.shard).toEqual([1, 2]);
 });
 
 it("Decision: a SHA is tested once, on kh-next; main only re-verifies that receipt", () => {
@@ -1586,7 +1586,6 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
     prepare: 1,
     changes: 1,
     check: 9,
-    chat_bundle: 3,
     state_smoke: 3,
     test_packages: 7,
     test_scripts: 4,

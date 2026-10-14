@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { createVitest } from "vite-plus/test/node";
 import { describe, expect, it } from "vite-plus/test";
+import { blameMatrices } from "../ci-blame.ts";
 import { spreadShard, SpreadShardSequencer } from "./spread-shard.ts";
 
 const files = [
@@ -66,8 +67,8 @@ it("CI keeps the measured crash import from sharing a server runner with other l
     const inventory = await ctx.globTestSpecifications();
     const sequencer = new SpreadShardSequencer(ctx);
     const shards = [];
-    for (const index of [1, 2, 3, 4]) {
-      ctx.config.shard = { index, count: 4 };
+    for (const { shard: index, total: count } of blameMatrices.test_server) {
+      ctx.config.shard = { index, count };
       shards.push(
         (await sequencer.shard(inventory)).map((spec) => spec.moduleId.slice(root.length + 1)),
       );

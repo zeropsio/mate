@@ -7,15 +7,15 @@ import * as NodeURL from "node:url";
 export const blameMatrices = {
   test_scripts: [1].map((shard) => ({ shard, total: 1 })),
   test_hq: [1].map((shard) => ({ shard, total: 1 })),
-  test_web: [1, 2].map((shard) => ({ shard, total: 2 })),
-  test_server: [1, 2, 3, 4].map((shard) => ({ shard, total: 4 })),
+  test_web: [1, 2, 3].map((shard) => ({ shard, total: 3 })),
+  test_server: [1, 2, 3, 4, 5, 6].map((shard) => ({ shard, total: 6 })),
+  state_smoke: [1, 2].map((shard) => ({ shard, total: 2 })),
 };
 const jobNames = {
   check: "Check",
   check_guards: "Check Guards",
   check_types: "Check Types",
   check_build: "Check Build",
-  chat_bundle: "Chat Contract bundle",
   state_smoke: "State Smoke",
   test: "Test",
   test_packages: "Test Packages",
@@ -67,8 +67,7 @@ export function blameSelection(ref: string, manifest: string | undefined) {
     if (selected.has("release_smoke")) {
       for (const job of checkJobIds) selected.add(job);
     }
-    if (selected.has("state_smoke")) selected.add("chat_bundle");
-    if (selected.has("chat_bundle") || checkJobIds.some((job) => selected.has(job))) {
+    if (selected.has("state_smoke") || checkJobIds.some((job) => selected.has(job))) {
       selected.add("changes");
     }
     if (!selected.size) throw new Error("No known failed CI job in .ci-blame-jobs");
