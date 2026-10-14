@@ -2572,6 +2572,7 @@ function GroupRowWords<T extends RosterCandidate>({
           <MateSlot
             at={lead.activity?.at}
             slot={state.view.slot}
+            unseen={state.view.unseen}
             timestampFormat={timestampFormat}
             tint={lead.tint}
           />
@@ -3921,8 +3922,9 @@ function MateRowView<T extends RosterCandidate>({
           </span>
           {badge === null ? null : <MateOwnerMark seat={badge} />}
         </span>
-        {/* The name 15/21 — 600 while a result is unseen — its crew after it, the time at its end;
-            the one line under it, 14/20. No dot: the face carries the state. */}
+        {/* The name 15/21 — 600 while a result is unseen, the unread dot before its time — its
+            crew after it, the time at its end; the one line under it, 14/20. No other dot: the
+            face carries the state. */}
         <span className="flex min-w-0 flex-col">
           <span className="flex h-5.5 min-w-0 items-center gap-2">
             <span
@@ -3981,6 +3983,7 @@ function MateRowView<T extends RosterCandidate>({
                 <MateSlot
                   at={activity?.at}
                   slot={view.slot}
+                  unseen={view.unseen}
                   timestampFormat={timestampFormat}
                   tint={tint}
                 />
@@ -4312,12 +4315,15 @@ function MateSecondLine({
 function MateSlot({
   slot,
   at,
+  unseen,
   timestampFormat,
   tint,
 }: {
   readonly slot: MateRowSlot;
   /** When it last did something, for the age. */
   readonly at: string | undefined;
+  /** A result not seen (`MateRowView.unseen`): the unread dot hangs before the age. */
+  readonly unseen: boolean;
   readonly timestampFormat: TimestampFormat;
   /** Its Mate's colour: the working clock wears it. */
   readonly tint: MateTintId;
@@ -4359,7 +4365,9 @@ function MateSlot({
       );
     }
     case "age":
-      return <SidebarMateAge at={at} className={cn(TIME_CLASS, fadeIn)} />;
+      return (
+        <SidebarMateAge at={at} className={cn("relative", TIME_CLASS, fadeIn)} unseen={unseen} />
+      );
   }
 }
 

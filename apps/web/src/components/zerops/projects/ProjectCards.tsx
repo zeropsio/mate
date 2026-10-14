@@ -32,6 +32,7 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useNowMs } from "~/zerops/useNowMs";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
+import { MateDot } from "../MateDot";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
@@ -862,7 +863,7 @@ export function CardMateTime({
 }) {
   return (
     <>
-      {dot === undefined ? null : <i aria-hidden="true" className="ov-mate-dot" data-dot={dot} />}
+      {dot === undefined ? null : <MateDot place="inline" tone={dot} />}
       <span data-zerops-surface="card-mate-time">{children}</span>
     </>
   );

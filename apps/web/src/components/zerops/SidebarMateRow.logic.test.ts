@@ -655,6 +655,37 @@ describe("mateRowView — a row's state lives in its right slot and its third li
     expect(view.reply).toEqual(reply);
   });
 
+  // The owner, 2026-10-15: "unread is not highlighted at all". A result not seen — finished or
+  // failed — hangs the unread dot by the row's time and sets its name strong; at work, waiting on
+  // the person or paused, the face and the slot say what is going on instead.
+  it.each([
+    { case: "finished, not seen", input: activity({ face: "done", unread: true }), unseen: true },
+    {
+      case: "stopped on an error not seen",
+      input: activity({ kind: "failed", face: "needs", errorLine: "Build broke", unread: true }),
+      unseen: true,
+    },
+    {
+      case: "stopped on an error seen",
+      input: activity({ kind: "failed", face: "needs", errorLine: "Build broke" }),
+      unseen: false,
+    },
+    {
+      case: "at work",
+      input: activity({ kind: "working", face: "working", unread: true }),
+      unseen: false,
+    },
+    {
+      case: "waiting on its person",
+      input: activity({ kind: "input", face: "needs", unread: true }),
+      unseen: false,
+    },
+    { case: "seen", input: activity(), unseen: false },
+  ])("An unread Mate shows its dot beside the time: $case", ({ input, unseen }) => {
+    const view = mateRowView(input, input.face);
+    expect([view.unseen, view.strongName]).toEqual([unseen, unseen]);
+  });
+
   it("asks the person's last ask, never the plan step the Mate is on", () => {
     const view = mateRowView(
       activity({ kind: "working", face: "working", subject: "Run the build", task: "Tune it" }),
