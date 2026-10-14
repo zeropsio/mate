@@ -16,6 +16,7 @@ import {
   gitSetupBranchValid,
   gitSetupExpiry,
   gitSetupRepository,
+  gitSetupRepositoryHint,
   gitSetupRepositories,
   gitSetupReview,
 } from "./GitEnvironmentForm.logic";
@@ -56,8 +57,7 @@ export function GitEnvironmentForm({
   const [pending, setPending] = useState<"connect" | "add">();
   const [notice, setNotice] = useState<string>();
   const [uncertain, setUncertain] = useState(false);
-  const tokenInput = useRef<HTMLInputElement>(null);
-  const [hasToken, setHasToken] = useState(false);
+  const [token, setToken] = useState("");
   const [tested, setTested] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -194,11 +194,13 @@ export function GitEnvironmentForm({
               }}
             />
             <p className="text-xs text-muted-foreground">
-              {repository?.guide.hostLabel ?? "GitHub"} · a token comes next
+              {repository
+                ? `${repository.guide.hostLabel} · a token comes next`
+                : "A token comes next"}
             </p>
             {address.trim() !== "" && repos !== undefined && repository === undefined ? (
               <p role="alert" className="text-sm text-destructive">
-                Enter a repository address without credentials. SSH URLs are not supported.
+                {gitSetupRepositoryHint(address)}
               </p>
             ) : null}
             {repos === undefined ? (
@@ -265,11 +267,11 @@ export function GitEnvironmentForm({
             <Label htmlFor={`${id}-token`}>Token</Label>
             <Input
               id={`${id}-token`}
-              ref={tokenInput}
               type="password"
+              value={token}
               autoComplete="off"
               disabled={busy || uncertain}
-              onChange={(event) => setHasToken(event.target.value.trim() !== "")}
+              onChange={(event) => setToken(event.target.value)}
             />
             <Button
               type="button"
@@ -277,13 +279,12 @@ export function GitEnvironmentForm({
               disabled={
                 busy ||
                 uncertain ||
-                !hasToken ||
+                token.trim() === "" ||
                 !(repository.sameRemote ? offered.replace : offered.connect)
               }
               onClick={() => {
-                const candidate = tokenInput.current?.value.trim() ?? "";
-                if (tokenInput.current) tokenInput.current.value = "";
-                setHasToken(false);
+                const candidate = token.trim();
+                setToken("");
                 if (candidate === "") return;
                 void act("connect", async () => {
                   const result = await setup.connect(
@@ -424,6 +425,7 @@ export function GitEnvironmentForm({
             variant="outline"
             disabled={busy}
             onClick={() => {
+              setToken("");
               if (step === "repository") onBack?.();
               else setStep("repository");
             }}

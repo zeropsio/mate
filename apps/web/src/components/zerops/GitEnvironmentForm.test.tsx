@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HqGitAdoption, RepoListEntry } from "@t3tools/shared/hqChanges";
+import { makeHqApi } from "@t3tools/client-runtime/zerops/hq";
 import { Dialog } from "../ui/dialog";
 import { GitEnvironmentForm, type GitEnvironmentFormProps } from "./GitEnvironmentForm";
 
@@ -92,6 +93,94 @@ async function chooseRepository() {
 }
 
 describe("Git environment setup's real form", () => {
+  it.each([
+    ["token_invalid", "GitHub rejected this token. Create a replacement in GitHub token settings."],
+    ["push_not_granted", "This token can't push. Choose Contents: Read and write."],
+  ])("a token refusal shows the host's reason and fix: %s", async (reason, message) => {
+    const api = makeHqApi({
+      address: "https://hq.example.test",
+      throughDoor: (use) => use("door"),
+      openSocket: () => {
+        throw new Error("No socket expected");
+      },
+      fetch: async (url) =>
+        Response.json(
+          url.endsWith("/api/door")
+            ? { session: "session", expiresAt: "2099-01-01T00:00:00Z", userId: "viewer" }
+            : { code: "git_probe_refused", reason, message },
+          { status: url.endsWith("/api/door") ? 200 : 409 },
+        ),
+    });
+    await draw({
+      repos: [],
+      setup: {
+        ...props.setup,
+        connect: async (repo, url, candidate) => {
+          await api.gitTargetWrite(
+            "test",
+            {
+              kind: "connect-git-remote",
+              orgId: "org",
+              appId: "app",
+              hqProjectId: "hq",
+              repo,
+              url,
+            },
+            candidate,
+          );
+          throw new Error("Expected the token refusal");
+        },
+      },
+    });
+    await chooseRepository();
+    await enter(field("Token"), "candidate");
+    await click("Test");
+    expect(host.querySelector('[role="status"]')?.textContent).toBe(message);
+    expect(host.textContent).not.toContain(reason);
+    expect(field("Token").value).toBe("");
+    expect(button("Test").disabled).toBe(true);
+    expect(button("Continue").disabled).toBe(true);
+  });
+  it.each(["", "   ", "candidate"])(
+    "Test follows the token field after Back and Continue: %j",
+    async (candidate) => {
+      await draw({ repos: [] });
+      await chooseRepository();
+      await enter(field("Token"), candidate);
+      expect(button("Test").disabled).toBe(candidate.trim() === "");
+      await click("Back");
+      await click("Continue");
+      expect(field("Token").value).toBe("");
+      expect(button("Test").disabled).toBe(true);
+      await enter(field("Token"), candidate);
+      expect(button("Test").disabled).toBe(candidate.trim() === "");
+      expect(props.setup.connect).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    ["krls2020/tst123", "Enter the full address, like github.com/owner/repo."],
+    ["github.com/krls2020", "Enter the full address, like github.com/owner/repo."],
+    [
+      "git@github.com:krls2020/tst123.git",
+      "SSH URLs are not supported. Enter an HTTPS repository address.",
+    ],
+    [
+      "ssh://git@github.com/krls2020/tst123",
+      "SSH URLs are not supported. Enter an HTTPS repository address.",
+    ],
+    [
+      "https://user:secret@github.com/krls2020/tst123",
+      "Enter a repository address without credentials.",
+    ],
+  ])("an invalid repository address explains what to fix: %s", async (address, sentence) => {
+    await draw({ repos: [] });
+    await enter(field("Repository"), address);
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe(sentence);
+    expect(host.textContent).not.toContain("GitHub · a token comes next");
+    expect(field("Repository").value).toBe(address);
+    expect(button("Continue").disabled).toBe(true);
+    expect(props.setup.connect).not.toHaveBeenCalled();
+  });
   it("an application with no recorded repository starts with a Repository field", async () => {
     await draw({ repos: [] });
     expect(Array.from(host.querySelectorAll("label")).map((label) => label.textContent)).toEqual([
