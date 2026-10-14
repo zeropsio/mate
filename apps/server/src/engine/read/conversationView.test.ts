@@ -151,6 +151,45 @@ describe("a conversation's background work after its turn", () => {
         }),
       ),
   );
+
+  it.effect(
+    "names what still runs, oldest first, its own jobs apart from its helpers', never a monitor",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          yield* w.tell({ _tag: "Send", text: "Check the release" });
+          yield* w.agent((agent, thread) =>
+            Effect.gen(function* () {
+              yield* startsWork(agent, thread, "t1", {
+                kind: "shell",
+                title: "Final batched browser check",
+              });
+              yield* startsWork(agent, thread, "t2", { kind: "monitor", title: "Watch the logs" });
+              yield* startsWork(agent, thread, "h1", { kind: "helper", title: "Review the diff" });
+              yield* startsWork(agent, thread, "t3", {
+                kind: "shell",
+                title: "Run the helper's tests",
+                helper: "h1",
+              });
+            }),
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const view = yield* viewOf(w);
+          assert.deepStrictEqual(
+            view?.work?.map(({ title, of }) => ({ title, of })),
+            [
+              { title: "Final batched browser check", of: "mate" },
+              { title: "Review the diff", of: "helper" },
+              { title: "Run the helper's tests", of: "helper" },
+            ],
+          );
+          const row = conversationRowOf(view!, { environmentId: "env", epoch: 1 });
+          assert.strictEqual(row.state.kind === "working" ? row.state.work?.count : null, 3);
+          yield* w.shutdown;
+        }),
+      ),
+  );
 });
 
 describe("a run a restart cut, as a person reads it", () => {

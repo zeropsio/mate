@@ -20,6 +20,7 @@ import {
   RunId,
   RunTrigger,
   WORK_ALIVE,
+  type BackgroundWorkItem,
   type ConversationAgent,
   type RunState,
   type RuntimeMode,
@@ -99,6 +100,11 @@ export interface ConversationView {
   readonly liveCall: ViewCall | null;
   /** Background work alive after its turn: a helper or a shell (`working`), only monitors. */
   readonly background: "working" | "monitoring" | null;
+  /**
+   * The background work that keeps it working (`background`), oldest first: every alive piece but
+   * a monitor, which watches for hours and is never waited on. Absent: none named.
+   */
+  readonly work?: ReadonlyArray<BackgroundWorkItem>;
   /** Its background work ended and the agent's own turn on it is due (`AGENT_TURN_DUE_MS`). */
   readonly turnDue?: true;
   /**
@@ -230,12 +236,31 @@ export const readConversationView = (conversationId: ConversationId) =>
       call === undefined || call.run_id !== activeRun?.id
         ? undefined
         : yield* decodeBody(call.body_json);
-    const work = yield* sql<{ readonly body_json: string }>`
-      SELECT body_json FROM engine_item
+    const work = yield* sql<{
+      readonly body_json: string;
+      readonly by_kind: string | null;
+      readonly at: number;
+    }>`
+      SELECT body_json, json_extract(by_json, '$.kind') AS by_kind, at FROM engine_item
       WHERE conversation_id = ${conversationId} AND kind = 'work' AND state = 'open'
+      ORDER BY opened_seq
     `;
-    const alive = (yield* Effect.forEach(work, (row) => decodeBody(row.body_json))).flatMap(
-      (body) => (body.kind === "work" && WORK_ALIVE.has(body.status) ? [body] : []),
+    const alive = (yield* Effect.forEach(work, (row) =>
+      Effect.map(decodeBody(row.body_json), (body) => ({ body, row })),
+    )).flatMap(({ body, row }) =>
+      body.kind === "work" && WORK_ALIVE.has(body.status) ? [{ body, row }] : [],
+    );
+    // A helper's own job is its helper's work, never the Mate's own.
+    const named = alive.flatMap(({ body, row }): ReadonlyArray<BackgroundWorkItem> =>
+      body.workKind === "monitor"
+        ? []
+        : [
+            {
+              title: body.title,
+              of: body.workKind === "helper" || row.by_kind === "helper" ? "helper" : "mate",
+              since: row.at,
+            },
+          ],
     );
     const view: ConversationView = {
       conversationId,
@@ -264,12 +289,8 @@ export const readConversationView = (conversationId: ConversationId) =>
         callBody?.kind === "call" && call !== undefined
           ? { step: callBody.step, tool: callBody.tool.name, words: callBody.words, at: call.at }
           : null,
-      background:
-        alive.length === 0
-          ? null
-          : alive.every((body) => body.workKind === "monitor")
-            ? "monitoring"
-            : "working",
+      background: alive.length === 0 ? null : named.length === 0 ? "monitoring" : "working",
+      ...(named.length === 0 ? {} : { work: named }),
       ...(Object.values(state.wakes).some((wake) => wake.kind === "agent-turn-due")
         ? { turnDue: true as const }
         : {}),

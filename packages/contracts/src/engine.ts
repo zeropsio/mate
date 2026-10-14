@@ -12,10 +12,16 @@ import { MateRestart } from "./zeropsAttention.ts";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
-import { CommandId, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  CommandId,
+  ForwardCompatibleOptional,
+  PositiveInt,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { ProviderOptionSelection } from "./model.ts";
 import {
   AgentAdmissionRefusal,
+  BackgroundWork,
   ChatFileAttachment,
   ChatImageAttachment,
   ProviderInteractionMode,
@@ -737,6 +743,8 @@ export const ConversationRowState = forwardCompatibleUnion({
        * until that turn opens, or until the engine stops expecting it.
        */
       turnDue: Schema.optionalKey(Schema.Literal(true)),
+      /** What it waits on after its turn, by name (`waitsOnHelpers`); absent from an older server. */
+      work: ForwardCompatibleOptional(BackgroundWork),
     }),
     Schema.Struct({
       kind: Schema.Literal("waiting"),

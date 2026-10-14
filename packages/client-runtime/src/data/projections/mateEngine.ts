@@ -1429,6 +1429,9 @@ export function overlayEngineRow(
     ...rowWords(row),
     // Its turn over, its helpers work on: the row says so, never the V1 thread's liveness.
     backgroundLiveness: row.state.kind === "working" && row.state.waitsOnHelpers ? "working" : null,
+    // What that work is, by name, where the row names it.
+    backgroundWork:
+      row.state.kind === "working" && row.state.waitsOnHelpers ? row.state.work : undefined,
     // A conversation the engine started never had a V1 session: the row is its session.
     session: {
       ...(thread.session ?? {

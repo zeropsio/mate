@@ -6,7 +6,12 @@
  *
  * @module engine/read/conversationRow
  */
-import type { ConversationRow, ConversationRowState, RunEnd } from "@t3tools/contracts";
+import type {
+  BackgroundWork,
+  ConversationRow,
+  ConversationRowState,
+  RunEnd,
+} from "@t3tools/contracts";
 import { maskSecrets, messagePreviewText } from "@t3tools/shared/messagePreview";
 import { attachmentsLabel, userAskOf, type UserAskSource } from "@t3tools/shared/userAsk";
 
@@ -103,6 +108,26 @@ const helperWaitsOn = (request: ViewRequest): boolean =>
   (request.ask.kind === "approval" ||
     (request.ask.kind === "question" && request.ask.dismissible !== true));
 
+/** How many pieces of background work a row names; the rest it counts. */
+export const ROW_WORK_NAMED = 3;
+
+/** A row's title of a piece of background work: shorter than a message's, it shares a line. */
+const WORK_TITLE_MAX = 120;
+
+/**
+ * What the conversation waits on after its turn, by name: the first few pieces, oldest first —
+ * the one it started first is what the others wait on — and how many in all.
+ */
+const workOf = (view: ConversationView): BackgroundWork => {
+  const work = view.work ?? [];
+  return {
+    items: work
+      .slice(0, ROW_WORK_NAMED)
+      .map((item) => ({ ...item, title: rowText(item.title, WORK_TITLE_MAX) })),
+    count: work.length,
+  };
+};
+
 /**
  * The row's state: a question first, then the run on, a value asked of the person, the queue, a
  * pause, a failure, rest.
@@ -131,7 +156,13 @@ export const rowStateOf = (view: ConversationView): ConversationRowState => {
   // (Milo's run 9). It reads as the turn a finished job is due, the one way every reader takes as
   // going on with no run on: one that read "not waiting" flashed idle for a frame (recheck).
   if (view.runDue === true) {
-    return { kind: "working", since: view.updatedAt, waitsOnHelpers: true, turnDue: true };
+    return {
+      kind: "working",
+      since: view.updatedAt,
+      waitsOnHelpers: true,
+      turnDue: true,
+      work: workOf(view),
+    };
   }
   if (view.background === "working" || view.turnDue === true) {
     return {
@@ -139,6 +170,7 @@ export const rowStateOf = (view: ConversationView): ConversationRowState => {
       since: view.lastEnded?.endedAt ?? view.updatedAt,
       waitsOnHelpers: true,
       ...(view.background !== "working" ? { turnDue: true as const } : {}),
+      work: workOf(view),
     };
   }
   const brokeOff = brokeOffLine(view.lastEnded?.end ?? null);

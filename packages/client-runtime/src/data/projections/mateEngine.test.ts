@@ -1361,6 +1361,28 @@ describe("an engine conversation's row in the menu", () => {
     });
   });
 
+  it("names the background work its row waits on on its shell, and none once it works on a turn", () => {
+    const work = {
+      items: [{ title: "Final batched browser check", of: "mate", since: 1 }],
+      count: 4,
+    } as const;
+    const after = overlayEngineRow(
+      shellThread,
+      engineRow(ENV, "thread-ada", {
+        state: { kind: "working", since: 1 as never, waitsOnHelpers: true, work },
+      }),
+    );
+    expect(after.backgroundWork).toEqual(work);
+    const turn = overlayEngineRow(
+      { ...shellThread, backgroundWork: work },
+      engineRow(ENV, "thread-ada", {
+        state: { kind: "working", since: 1 as never, waitsOnHelpers: false },
+        activeRunId: run1 as never,
+      }),
+    );
+    expect(turn.backgroundWork).toBeUndefined();
+  });
+
   it("starts a working row's turn at its run's start, never at the row's last change", () => {
     const start = Date.parse("2026-10-10T08:27:44.600Z");
     const overlaid = overlayEngineRow(
