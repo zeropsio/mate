@@ -10,7 +10,7 @@
  */
 import type { ProjectGrantsRead } from "@t3tools/client-runtime/data";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import { mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
+import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   asOrgRole,
   isMateKind,
@@ -177,6 +177,8 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
   });
 
   const ranked = members.list.flatMap((member) => {
+    // Every integration token is a membership too; tokens are HQ's, never people here.
+    if (isTokenMember(member)) return [];
     const role = asOrgRole(member.roleCode);
     const onPlaces = places.map((place) => {
       const grant = input.grants[place.projectId]?.grants?.find(

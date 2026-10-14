@@ -189,6 +189,14 @@ describe("what each person may do on the project, in words", () => {
       line: "Dev / Stage: full",
     },
     {
+      name: "An integration token in the member list is not a person on the project",
+      member: member("ada", "Ada", "ADMIN", {
+        user: { id: "u-ada", fullName: "Ada", email: "token-AbCdEfGhIjKlMnOpQrStUv@zerops.io" },
+      }),
+      places: PROD_AND_STAGE(),
+      line: undefined,
+    },
+    {
       name: "A member not yet joined is listed as invited, with what they would get",
       member: member("ada", "Ada", "ADMIN", { status: "WAITING_AUTHORIZATION" }),
       places: PROD_AND_STAGE(),
