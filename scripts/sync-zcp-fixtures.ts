@@ -8,34 +8,37 @@
  *
  * Usage: node scripts/sync-zcp-fixtures.ts [--zcp <zcp checkout>]   (default ../zcp)
  */
-import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
-const root = resolve(import.meta.dirname, "..");
+const root = NodePath.resolve(import.meta.dirname, "..");
 const flag = process.argv.indexOf("--zcp");
-const zcp = resolve(root, flag === -1 ? "../zcp" : (process.argv[flag + 1] ?? ""));
-const from = join(zcp, "internal/tools/testdata/mate-contract");
-const to = join(root, "packages/client-runtime/src/zerops/fixtures/zcp");
+const zcp = NodePath.resolve(root, flag === -1 ? "../zcp" : (process.argv[flag + 1] ?? ""));
+const from = NodePath.join(zcp, "internal/tools/testdata/mate-contract");
+const to = NodePath.join(root, "packages/client-runtime/src/zerops/fixtures/zcp");
 
-const names = readdirSync(from)
+const names = NodeFS.readdirSync(from)
   .filter((name) => name.endsWith(".json"))
   .toSorted();
-mkdirSync(to, { recursive: true });
-for (const name of readdirSync(to)) {
+NodeFS.mkdirSync(to, { recursive: true });
+for (const name of NodeFS.readdirSync(to)) {
   if (name.endsWith(".json") && name !== "SOURCE.json" && !names.includes(name)) {
-    rmSync(join(to, name));
+    NodeFS.rmSync(NodePath.join(to, name));
   }
 }
 const files: Record<string, string> = {};
 for (const name of names) {
-  const bytes = readFileSync(join(from, name));
-  writeFileSync(join(to, name), bytes);
-  files[name] = createHash("sha256").update(bytes).digest("hex");
+  const bytes = NodeFS.readFileSync(NodePath.join(from, name));
+  NodeFS.writeFileSync(NodePath.join(to, name), bytes);
+  files[name] = NodeCrypto.createHash("sha256").update(bytes).digest("hex");
 }
-const zcpCommit = execFileSync("git", ["-C", zcp, "rev-parse", "HEAD"], {
+const zcpCommit = NodeChildProcess.execFileSync("git", ["-C", zcp, "rev-parse", "HEAD"], {
   encoding: "utf8",
 }).trim();
-writeFileSync(join(to, "SOURCE.json"), `${JSON.stringify({ zcpCommit, files }, null, 2)}\n`);
+NodeFS.writeFileSync(
+  NodePath.join(to, "SOURCE.json"),
+  `${JSON.stringify({ zcpCommit, files }, null, 2)}\n`,
+);
 console.log(`Synced ${names.length} zcp fixtures from ${zcpCommit}.`);
