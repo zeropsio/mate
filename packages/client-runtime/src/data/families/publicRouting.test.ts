@@ -149,7 +149,7 @@ describe("publicRoutingFamily.decode", () => {
               sslStatus: "WAITING_FOR_DNS",
               lastDnsCheckAt: "2026-10-13T22:25:02Z",
               resolvedIps: ["198.51.100.7"],
-              nameServers: ["hera.ns.cloudflare.com."],
+              nameServers: ["hera.ns.cloudflare.com"],
               sslError: "rate limited",
             },
           ],
