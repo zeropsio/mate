@@ -45,6 +45,7 @@ import {
   SheetRow,
   SheetSection,
   Trouble,
+  useRevealed,
   type SheetContext,
 } from "./AddressesSheetBits";
 
@@ -685,6 +686,7 @@ function AddDomainForm({
   readonly onDone: () => void;
   readonly onTaken: () => void;
 }) {
+  const revealed = useRevealed<HTMLFormElement>();
   const id = useId();
   const [typed, setTyped] = useState("");
   const [twin, setTwin] = useState(true);
@@ -721,6 +723,7 @@ function AddDomainForm({
     <form
       className="mt-1 grid gap-3 rounded-lg border border-border/60 px-3.5 py-3"
       data-addresses-form="add-domain"
+      ref={revealed}
       onSubmit={(event) => {
         event.preventDefault();
         add();
