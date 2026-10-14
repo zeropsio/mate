@@ -1,7 +1,8 @@
 import { NO_RESTARTS, readRestartRecovery, type MateRecovery } from "@t3tools/client-runtime/data";
 import { describe, expect, it } from "vite-plus/test";
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
-import { mateNoticeVoice } from "./mateNoticeVoice";
+import { mateArrivalNotice, mateNoticeVoice } from "./mateNoticeVoice";
+import type { MateArrivalNoticeInput } from "./mateNoticeVoice";
 
 describe("the web Mate's link notice", () => {
   const say = (reachability: Reachability | null) =>
@@ -328,3 +329,34 @@ function liveRecovery(read: MateRecovery): MateRecovery {
     ),
   };
 }
+
+describe("the missing-deployment notice", () => {
+  it.each<{ readonly sentence: string; readonly oldSetup: Partial<MateArrivalNoticeInput> }>([
+    {
+      sentence: "A missing deployment keeps its current line over an old setup failure",
+      oldSetup: { failureReason: "Setup stopped." },
+    },
+    {
+      sentence: "A missing deployment keeps its current line over a stopped setup step",
+      oldSetup: {
+        progress: { press: [{ id: "setup", label: "Setup", state: "failed", why: "Old failure" }] },
+      },
+    },
+    {
+      sentence: "A missing deployment does not show an old setup retry refusal as its recovery",
+      oldSetup: {
+        attemptId: "old",
+        refusal: { kind: "retry", attemptId: "old", details: "Old retry refusal" },
+      },
+    },
+  ])("$sentence", ({ oldSetup }) => {
+    expect(
+      mateArrivalNotice({
+        coming: { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" },
+        progress: undefined,
+        nowMs: 0,
+        ...oldSetup,
+      }).secondary,
+    ).toBe("Nothing is deployed yet.");
+  });
+});

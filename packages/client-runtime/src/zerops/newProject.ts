@@ -163,7 +163,6 @@ export function buildZcpServiceImportYaml(input: {
   if (!input.vscodePassword) {
     throw new Error("A zcp container with a public subdomain needs a VSCODE_PASSWORD.");
   }
-  const versionArg = input.zcpVersion ? ` -s ${input.zcpVersion}` : "";
   const selected = new Set(input.agents ?? []);
   const orderedAgents = ZEROPS_AGENT_TYPE_CANONICAL_ORDER.filter((agentType) =>
     selected.has(agentType),
@@ -197,22 +196,10 @@ export function buildZcpServiceImportYaml(input: {
       ZCP_VSCODE: "true"
 ${agentsLine}${agentAuthSecrets}      ZCP_MATE_ENABLED: "1"
 ${keyLine}${runtimesLine}${chiefLines}    zeropsYaml:
-      zerops:
-        - setup: ${input.serviceName}
-          run:
-            base: zcp@1
-            initCommands:
-              - curl -sSfL https://zerops.io/zcp/install.sh | sudo sh${versionArg}
-              - zcp init
-              - sudo -E zcp init nginx
-            ports:
-              - port: 8080
-                httpSupport: true
-            startCommands:
-              - command: zcp service start nginx
-                name: nginx
-              - command: zcp service start vscode
-                name: vscode`;
+${buildZcpDeploymentYaml(input.serviceName, zcpRunConfig(input.zcpVersion))
+  .split("\n")
+  .map((line) => `      ${line}`)
+  .join("\n")}`;
 }
 
 export interface CreateProjectBody {
@@ -265,4 +252,43 @@ export function buildDevelopmentContainerImportBody(input: {
     // afterwards, from a browser that may have gone by then.
     createIntegrationToken: false,
   };
+}
+
+/** The run-only container recipe used for a new Mate and for a missing deployment. */
+function zcpRunConfig(version?: string): string {
+  const versionArg = version ? ` -s ${version}` : "";
+  return `run:
+  base: zcp@1
+  initCommands:
+    - curl -sSfL https://zerops.io/zcp/install.sh | sudo sh${versionArg}
+    - zcp init
+    - sudo -E zcp init nginx
+  ports:
+    - port: 8080
+      httpSupport: true
+  startCommands:
+    - command: zcp service start nginx
+      name: nginx
+    - command: zcp service start vscode
+      name: vscode`;
+}
+
+/**
+ * ZEROPS_YAML stores one setup block. Preserve its run section verbatim and leave behind the
+ * retired empty-artifact build section. No env values or other service settings are regenerated.
+ */
+export function buildZcpDeploymentYaml(serviceName: string, savedSetup: string): string {
+  const lines = savedSetup.trimEnd().split(/\r?\n/);
+  const start = lines.findIndex((line) => /^run:\s*$/.test(line));
+  if (start < 0) throw new Error("The Mate's saved run configuration is unavailable.");
+  const after = lines.findIndex((line, index) => index > start && /^[^\s#]/.test(line));
+  const run = lines
+    .slice(start, after < 0 ? undefined : after)
+    .join("\n")
+    .trimEnd();
+  if (!run.includes("\n")) throw new Error("The Mate's saved run configuration is unavailable.");
+  return `zerops:\n  - setup: ${serviceName}\n${run
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n")}`;
 }

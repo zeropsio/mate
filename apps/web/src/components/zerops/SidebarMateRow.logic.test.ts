@@ -1939,3 +1939,18 @@ describe("mateRowHeldLines — the lines a row holds while a reload reads it", (
     expect(mateRowHeldLines({ second, read })).toBe(held);
   });
 });
+
+it("A sidebar Mate with no deployment says nothing is deployed rather than setup stopped", () => {
+  const coming = mateComing({
+    press: undefined,
+    candidate: {
+      group: "provisioning",
+      service: { status: "READY_TO_DEPLOY", activeAppVersion: null },
+    },
+  });
+  expect(coming).toBeDefined();
+  if (coming === undefined) throw new Error("Missing deployment verdict");
+  const view = mateComingRowView(mateRowView(undefined, "sleep"), coming);
+  expect(view.coming).toEqual(coming);
+  expect(mateBornLineText(mateBornLine(coming), 0)).toBe("Nothing is deployed yet.");
+});

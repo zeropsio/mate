@@ -82,18 +82,20 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
   const startedAt = Date.parse(progress?.startedAt ?? "");
   const elapsed = nowMs === undefined || Number.isNaN(startedAt) ? undefined : nowMs - startedAt;
   const secondary =
-    refusalText ??
-    (coming === undefined
-      ? undefined
-      : coming.kind === "failed"
-        ? (input.failureReason ??
-          (coming.verb === "go-to-projects"
-            ? coming.line
-            : note?.kind === "stopped"
-              ? NOT_SET_UP_LINE
-              : coming.line))
-        : (input.finish ??
-          (pressRuns(progress?.press) ? KEEP_TAB_OPEN_LINE : comingSentence(elapsed))));
+    coming?.kind === "failed" && coming.verb === "redeploy"
+      ? coming.line
+      : (refusalText ??
+        (coming === undefined
+          ? undefined
+          : coming.kind === "failed"
+            ? (input.failureReason ??
+              (coming.verb === "go-to-projects"
+                ? coming.line
+                : note?.kind === "stopped"
+                  ? NOT_SET_UP_LINE
+                  : coming.line))
+            : (input.finish ??
+              (pressRuns(progress?.press) ? KEEP_TAB_OPEN_LINE : comingSentence(elapsed)))));
   const details = [
     ...new Set(
       [

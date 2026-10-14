@@ -162,3 +162,85 @@ it.each([0, 1, 2, 3, 4, 5])(
     );
   },
 );
+
+describe("missing deployment arrival", () => {
+  const undeployed = {
+    group: "provisioning",
+    service: { status: "READY_TO_DEPLOY", activeAppVersion: null },
+  } as const;
+  const missing = { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" } as const;
+  it.each([
+    {
+      sentence: "A Mate page with no deployment offers Redeploy before a link is known",
+      heldLink: undefined,
+    },
+    {
+      sentence: "A retained environment cannot turn a missing deployment into an opening Mate",
+      heldLink: link({ reachability: { kind: "not-answering", overdue: true }, answered: false }),
+    },
+  ])("$sentence", ({ heldLink }) => {
+    const result = mateArrival({
+      press: undefined,
+      candidate: undeployed,
+      ...(heldLink === undefined ? {} : { link: heldLink }),
+      cameUp: true,
+    });
+    expect(result.coming).toEqual(missing);
+    expect(result.page).toEqual({ kind: "coming", coming: missing });
+    expect(result.arrival).toEqual(missing);
+    expect(result.handover).toBe("wait");
+  });
+
+  it("A deployment read after first paint replaces the starting message with Redeploy", () => {
+    const unread = mateArrival({
+      press: undefined,
+      candidate: { group: "provisioning", service: { status: "READY_TO_DEPLOY" } },
+    });
+    expect(unread.arrival).toEqual({ kind: "coming", line: "Coming up. A few minutes." });
+    const read = mateArrival({ press: undefined, candidate: undeployed });
+    expect(read.arrival).toEqual(missing);
+  });
+
+  it.each(["deleted", "denied"] as const)(
+    "%s owner evidence withholds a missing-deployment recovery",
+    (kind) => {
+      const result = mateArrival({
+        press: undefined,
+        candidate: undeployed,
+        recovery: { standing: { kind }, status: undefined, process: undefined },
+      });
+      expect(result.coming).toBeUndefined();
+      expect(result.arrival).toBeUndefined();
+      expect(result.page?.kind).toBe("unreachable");
+    },
+  );
+});
+
+it.each(["process history", "setup projection"] as const)(
+  "A missing deployment offers Redeploy despite an old failure in %s",
+  (source) => {
+    const oldFailure = {
+      id: "old-setup",
+      projectId: "p",
+      serviceStackIds: ["s"],
+      status: "FAILED",
+      actionName: "stack.deploy",
+      created: "2026-10-01T00:00:00Z",
+    };
+    const result = mateArrival({
+      press: undefined,
+      candidate: {
+        group: "provisioning",
+        service: { id: "s", status: "READY_TO_DEPLOY", activeAppVersion: null },
+      },
+      ...(source === "process history"
+        ? { processes: [oldFailure] }
+        : { setupFailure: oldFailure }),
+    });
+    expect(result.arrival).toEqual({
+      kind: "failed",
+      line: "Nothing is deployed yet.",
+      verb: "redeploy",
+    });
+  },
+);

@@ -111,6 +111,8 @@ const mock = vi.hoisted(() => ({
   runReceipts: new Map<string, unknown>(),
   createApp: vi.fn(),
   restartContainer: vi.fn(),
+  coming: undefined as import("@t3tools/client-runtime/data").MateComing | undefined,
+  deployDialog: null as { candidate: ZeropsCandidatePresentation; onClose: () => void } | null,
   threads: [] as Array<{
     environmentId: string;
     title: string;
@@ -235,6 +237,13 @@ vi.mock("./ZeropsAccountData", () => ({
 }));
 vi.mock("./deleteProject", () => ({
   useDeleteProject: () => mock.deleteProject,
+}));
+vi.mock("./useMenuMateReadings", () => ({ useMateComingOf: () => () => mock.coming }));
+vi.mock("./MateDeployConfirmation", () => ({
+  MateDeployConfirmation: (props: NonNullable<typeof mock.deployDialog>) => {
+    mock.deployDialog = props;
+    return null;
+  },
 }));
 vi.mock("./mateRestart", () => ({
   useRestartMate: () => mock.restartContainer,
@@ -551,6 +560,8 @@ const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
   openAccountLifetime("user-ada");
   appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
+  mock.coming = undefined;
+  mock.deployDialog = null;
   mock.restartContainer.mockReset();
   mock.restartContainer.mockResolvedValue(undefined);
   mock.threads = [];
@@ -2389,4 +2400,20 @@ describe("B: Mate menu access", () => {
       expect(tag).not.toContain('data-disabled=""');
     }
   });
+});
+
+it("a Mate with no deployment opens its Redeploy recovery from the shared menu", () => {
+  mock.coming = { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" };
+  const candidate: ZeropsCandidatePresentation = {
+    ...FEN,
+    group: "provisioning",
+    service: { ...FEN.service!, status: "READY_TO_DEPLOY", activeAppVersion: null },
+  };
+  mount();
+  expect(verbs(candidate).map((verb) => verb.id)).not.toContain("restart");
+  const redeploy = verbs(candidate).find((verb) => verb.id === "redeploy");
+  expect(redeploy?.label).toBe("Redeploy");
+  act(() => redeploy!.onSelect());
+  expect(mock.deployDialog?.candidate).toEqual(candidate);
+  expect(mock.restartContainer).not.toHaveBeenCalled();
 });

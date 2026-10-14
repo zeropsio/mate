@@ -1177,3 +1177,25 @@ describe("mateRowCan — a row's verbs, unless HQ refuses following its Mate", (
     expect(mateRowCan({ held: false, createRecord }).setUpPlainProject).toBe(want);
   });
 });
+
+it("a Mate with no deployment offers Redeploy and never Restart", () => {
+  const row = {
+    ...input(
+      {
+        ...READY,
+        group: "provisioning",
+        service: { ...READY.service!, status: "READY_TO_DEPLOY", activeAppVersion: null },
+      },
+      undefined,
+    ),
+    coming: { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" } as const,
+  };
+  expect(deriveZeropsRowAction(row)).toEqual({ kind: "redeploy", label: "Redeploy" });
+  expect(deriveZeropsRestartAction(row)).toEqual({ kind: "none" });
+  expect(deriveZeropsRowPresentation(row)).toEqual({
+    status: { label: "Not deployed", tone: "attention" },
+    detail: "Nothing is deployed yet.",
+    detailIsError: true,
+  });
+  expect(deriveZeropsRowAction({ ...row, can: NONE })).toEqual({ kind: "none" });
+});

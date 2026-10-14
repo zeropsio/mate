@@ -5,7 +5,13 @@ import type { OperationProgress } from "./operation.ts";
 import { runningScope } from "../families/process.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { projectRestarts } from "./restartEvidence.ts";
-import { readRestart, restartReadout, readRestartRecovery, NO_RESTARTS } from "./restart.ts";
+import {
+  readRestart,
+  restartReadout,
+  readRestartRecovery,
+  readRecoveryOutcome,
+  NO_RESTARTS,
+} from "./restart.ts";
 
 const key = { orgId: ORG, projectId: "p" };
 const source = {
@@ -340,4 +346,35 @@ it("recovery names the selected retry's final start rather than the original res
     cause: "Zerops returned an error while starting.",
     actions: ["restart", "open-in-zerops"],
   });
+});
+
+it.each([
+  [{ stage: "submitting" }, "Asking Zerops to redeploy…", false],
+  [
+    { stage: "accepted", operationId: "deploy" },
+    "Zerops accepted the redeploy. Its outcome is not confirmed yet.",
+    false,
+  ],
+  [{ stage: "done", operationId: "deploy", outcome: "succeeded" }, "Redeploy completed.", true],
+  [
+    { stage: "done", operationId: "deploy", outcome: "failed", reason: "Build failed" },
+    "Redeploy failed.",
+    true,
+  ],
+  [
+    {
+      stage: "unresolved",
+      operationId: "deploy",
+      reason: "Lost receipt",
+      nextActor: "person",
+      nextAction: "Check Zerops",
+    },
+    "Redeploy outcome is unconfirmed.",
+    false,
+  ],
+] as const)("a redeployment displays its receipt outcome: %s", (progress, text, terminal) => {
+  const outcome = readRecoveryOutcome("redeploy", "redeploy", progress);
+  expect(outcome.text).toBe(text);
+  expect(outcome.terminal).toBe(terminal);
+  expect(outcome.retry.label).not.toMatch(/restart/i);
 });

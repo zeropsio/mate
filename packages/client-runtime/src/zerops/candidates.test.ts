@@ -161,6 +161,25 @@ describe("zeropsMateBaseUrl", () => {
 });
 
 describe("deriveZeropsCandidates", () => {
+  it.each([
+    { label: "absent", activeAppVersion: null },
+    { label: "unread", activeAppVersion: undefined },
+    { label: "deployed", activeAppVersion: { id: "deployed-version", status: "ACTIVE" } },
+  ])("A candidate preserves the platform's $label deployment evidence", ({ activeAppVersion }) => {
+    const candidate = deriveZeropsCandidates(
+      PROJECT,
+      [
+        service({
+          id: "s1",
+          status: "READY_TO_DEPLOY",
+          ...(activeAppVersion === undefined ? {} : { activeAppVersion }),
+        }),
+      ],
+      NO_CONNECTIONS,
+    )[0];
+    expect(candidate?.service?.activeAppVersion).toEqual(activeAppVersion);
+  });
+
   it("finds a zcp container by service type, whatever its hostname is", () => {
     const candidates = deriveZeropsCandidates(
       PROJECT,

@@ -147,6 +147,7 @@ export const ZEROPS_CLIENT_VERBS = [
   "deletePublicHttpRouting",
   "deletePublicPortRouting",
   "deleteThrowaway",
+  "deployMate",
   "disableSubdomainAccess",
   "enableSubdomainAccess",
   "exchangeWebSocketToken",
