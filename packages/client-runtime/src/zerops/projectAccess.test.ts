@@ -58,8 +58,9 @@ describe("one person's access to some projects, merged into their whole list", (
       next: { "their-mate": "OWNER" },
     },
     {
-      sentence: "Hiding a project from an admin writes no access there, every other grant kept",
-      orgRole: "ADMIN",
+      sentence:
+        "Hiding a project from a read-only member writes no access there, every other grant kept",
+      orgRole: "READ_ONLY",
       current: { elsewhere: "READ_ONLY" },
       changes: [{ projectId: "prod", roleCode: "NO_ACCESS" as const }],
       next: { elsewhere: "READ_ONLY", prod: "NO_ACCESS" },

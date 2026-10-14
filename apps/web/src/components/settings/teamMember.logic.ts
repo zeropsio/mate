@@ -30,6 +30,7 @@ import { asOrgRole, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
 import {
   defaultAccessMenu,
   levelOf,
+  mayHide,
   type DefaultAccessAction,
   type GivenLevel,
 } from "../zerops/projects/projectPeople.logic";
@@ -301,7 +302,7 @@ export function withChoice(
 /**
  * The levels the picker offers for someone with this role, each besides *Unset*: read only and
  * full for someone the organization gives nothing; for anyone else the levels their role doesn't
- * give, and hiding — never from an owner.
+ * give, and hiding for someone who works on or sees every project — never an owner or admin.
  */
 export function pickerLevels(memberRole: string | undefined): ReadonlyArray<GivenLevel> {
   const role: ZeropsOrgRole = asOrgRole(memberRole);
@@ -310,7 +311,7 @@ export function pickerLevels(memberRole: string | undefined): ReadonlyArray<Give
   return [
     ...(base === "read" ? [] : (["read"] as const)),
     ...(base === "full" ? [] : (["full"] as const)),
-    ...(role === "OWNER" ? [] : (["none"] as const)),
+    ...(mayHide(role) ? (["none"] as const) : []),
   ];
 }
 

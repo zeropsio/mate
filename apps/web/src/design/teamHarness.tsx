@@ -130,7 +130,7 @@ function Page() {
         actions={{ updateMembership: never, saveAccess: never, remove: never }}
         grants={
           who === "cu-karel"
-            ? { "shop-prod": "NO_ACCESS" }
+            ? { "shop-prod": "READ_ONLY" }
             : { "snap-prod": "ADMIN", "beviro-prod": "READ_ONLY", "snap-fen": "OWNER" }
         }
         organizationName="Acme"

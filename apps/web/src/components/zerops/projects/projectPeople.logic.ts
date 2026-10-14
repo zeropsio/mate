@@ -59,10 +59,14 @@ export interface ProjectPeopleInput {
 
 /** A level a chip shows: full access, a developer's, read only — or different from place to place. */
 export type AccessLevel = "full" | "basic" | "read";
-/** `hidden`: a project kept from someone whose role reaches every project. */
+/** `hidden`: a project kept from someone who works on or sees every project. */
 export type ChipLevel = AccessLevel | "mixed" | "hidden";
 
-/** The levels a person can be given here: full, read only — or, `none`, hidden from them. */
+/**
+ * The levels a person can be given here: full, read only — or, `none`, hidden from someone who
+ * works on or sees every project. Zerops keeps every project visible to an owner or an admin
+ * (`noAccessRoleInvalid`, measured 2026-10-14).
+ */
 export type GivenLevel = "full" | "read" | "none";
 
 /** What the viewer may change of one person's access here. */
@@ -439,7 +443,7 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
       ].join(" · "),
       level,
       across,
-      note: level === "hidden" || level === "mixed" ? hiddenNote(role, judged) : null,
+      note: level === "hidden" || level === "mixed" ? hiddenNote(judged) : null,
       change,
     };
     return [{ person, rank: [person.you ? 0 : 1, pending ? 1 : 0, best, -roleRank(role)] }];
@@ -557,7 +561,8 @@ const REMOVE_OVERRIDE: DefaultAccessAction = { choice: "remove", label: "Remove 
  * The menu of someone whose organization role reaches every project — an owner, an admin, someone
  * who works on or sees every project — as Zerops lets the viewer change it: each level they don't
  * hold, where landing back on their role's own level reads *Remove override*; *Hide this project*
- * for all but an owner, whom Zerops refuses it; and *Remove override* on its own where no entry
+ * for someone who works on or sees every project — never an owner or admin, whom Zerops keeps every
+ * project visible to; and *Remove override* on its own where no entry
  * lands back on their role's level. `null` where the viewer may change none of it: not an owner
  * or admin, or an admin looking at another owner or admin (Zerops refuses those writes).
  */
@@ -586,13 +591,17 @@ export function defaultAccessMenu(input: {
   return [
     ...offer("full"),
     ...offer("read"),
-    ...(input.held === "hidden" || input.memberRole === "OWNER"
-      ? []
-      : [{ choice: "none" as const, label: LEVEL_WORDS.none }]),
+    ...(input.held !== "hidden" && mayHide(input.memberRole)
+      ? [{ choice: "none" as const, label: LEVEL_WORDS.none }]
+      : []),
     // A developer's own level is neither entry's: their way back is its own.
     ...(input.override && base === "basic" ? [REMOVE_OVERRIDE] : []),
   ];
 }
+
+/** Whether a project can be hidden from someone: only one who works on or sees every project. */
+export const mayHide = (role: string | undefined): boolean =>
+  asOrgRole(role) === "BASIC_USER" || asOrgRole(role) === "READ_ONLY";
 
 /** Whether a choice gives up the viewer's own full access here, which asks first. */
 export const asksFirst = (change: PersonChange, choice: AccessChoiceLike): boolean =>
@@ -615,12 +624,11 @@ export function selfLowerWords(viewerRole: string | undefined): {
   };
 }
 
-/** Who can show a hidden project again: an admin themselves, anyone else an owner or admin. */
-function hiddenNote(role: ZeropsOrgRole, levels: ReadonlyArray<ChipLevel | null>): string | null {
-  if (!levels.includes("hidden")) return null;
-  return roleAtLeast(role, "ADMIN")
-    ? "Hidden from them here. Their role lets them show it again themselves."
-    : "Hidden from them here. An owner or admin can show it again.";
+/** Who can show a hidden project again: an owner or admin, never the hidden member themselves. */
+function hiddenNote(levels: ReadonlyArray<ChipLevel | null>): string | null {
+  return levels.includes("hidden")
+    ? "Hidden from them here. An owner or admin can show it again."
+    : null;
 }
 
 /**

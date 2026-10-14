@@ -398,7 +398,7 @@ describe("inviting someone from the Team page, project by project", () => {
   it.effect.each([
     {
       sentence: "A guest gets each project at the level set for it",
-      role: "guest" as const,
+      membership: presetMembership("guest"),
       grants: [
         { projectId: "prod", roleCode: "ADMIN" as const },
         { projectId: "stage", roleCode: "READ_ONLY" as const },
@@ -409,15 +409,21 @@ describe("inviting someone from the Team page, project by project", () => {
       ],
     },
     {
-      sentence: "An admin invited with a project hidden gets no access written there",
-      role: "admin" as const,
+      sentence:
+        "A member who sees every project, invited with one hidden, gets no access written there",
+      membership: {
+        roleCode: "READ_ONLY",
+        canCreateProjects: false,
+        canViewFinances: false,
+        canEditFinances: false,
+      } as const,
       grants: [
         { projectId: "prod", roleCode: "NO_ACCESS" as const },
-        { projectId: "stage", roleCode: "ADMIN" as const },
+        { projectId: "stage", roleCode: "READ_ONLY" as const },
       ],
       written: [{ projectId: "prod", roleCode: "NO_ACCESS" }],
     },
-  ])("$sentence", ({ role, grants, written }) =>
+  ])("$sentence", ({ membership, grants, written }) =>
     Effect.gen(function* () {
       const org = organization([member("cu-owner", "OWNER")]);
       const receipt = yield* org.executor.invite("r1", {
@@ -425,10 +431,10 @@ describe("inviting someone from the Team page, project by project", () => {
         orgId: ORG,
         email: "eva@example.com",
         invitee: { kind: "new", firstName: "Eva", lastName: "Dvořáková" },
-        membership: presetMembership(role),
+        membership,
         grants,
       });
-      expect(org.members.at(-1)).toMatchObject({ roleCode: presetMembership(role).roleCode });
+      expect(org.members.at(-1)).toMatchObject({ roleCode: membership.roleCode });
       expect(org.grants["cu-new"]).toEqual(written);
       expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
     }),

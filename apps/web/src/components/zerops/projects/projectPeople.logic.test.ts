@@ -551,19 +551,26 @@ describe("an owner's, admin's or every-project member's chip menu, as legacy off
       offered: ["Make read only"],
     },
     {
-      sentence: "offers an admin read only or hidden; back to full is removing the override",
+      sentence: "offers an admin read only; back to full is removing the override",
       viewer: "OWNER",
       member: "ADMIN",
       held: "read",
       override: true,
-      offered: ["Remove override", "Hide this project"],
+      offered: ["Remove override"],
     },
     {
-      sentence: "offers an admin at full read only or hidden",
+      sentence: "never offers to hide a project from an organization admin or owner",
       viewer: "OWNER",
       member: "ADMIN",
       held: "full",
-      offered: ["Make read only", "Hide this project"],
+      offered: ["Make read only"],
+    },
+    {
+      sentence: "offers to hide a project from a basic or read-only member",
+      viewer: "OWNER",
+      member: "READ_ONLY",
+      held: "read",
+      offered: ["Give full access", "Hide this project"],
     },
     {
       sentence:
@@ -592,12 +599,12 @@ describe("an owner's, admin's or every-project member's chip menu, as legacy off
       offered: ["Give full access", "Make read only", "Hide this project"],
     },
     {
-      sentence: "a hidden admin's way back is removing the override",
+      sentence: "a hidden member's way back is removing the override",
       viewer: "OWNER",
-      member: "ADMIN",
+      member: "READ_ONLY",
       held: "hidden",
       override: true,
-      offered: ["Remove override", "Make read only"],
+      offered: ["Give full access", "Remove override"],
     },
     {
       sentence: "an admin viewer changes no owner",
@@ -619,7 +626,7 @@ describe("an owner's, admin's or every-project member's chip menu, as legacy off
       member: "ADMIN",
       held: "full",
       self: true,
-      offered: ["Make read only", "Hide this project"],
+      offered: ["Make read only"],
     },
     {
       sentence: "someone who isn't an owner or admin changes nothing",
@@ -813,21 +820,21 @@ describe("each person as a chip", () => {
     expect(removes("Rob")).toBe(true);
   });
 
-  it("A project hidden from an admin shows as hidden, and says they can show it again themselves", () => {
+  it("A project hidden from a read-only member shows as hidden, and says an owner or admin can show it again", () => {
     const view = projectPeople(
       input({
-        members: known([member("adm", "Adam", "ADMIN")]),
-        projects: PROD_AND_STAGE([["adm", "NO_ACCESS"]], [["adm", "NO_ACCESS"]]),
+        members: known([member("ro", "Rita", "READ_ONLY")]),
+        projects: PROD_AND_STAGE([["ro", "NO_ACCESS"]], [["ro", "NO_ACCESS"]]),
         viewer: { roleCode: "OWNER", membershipId: "cu-me" },
       }),
     );
-    expect(chip(view, "Adam")?.level).toBe("hidden");
-    expect(chip(view, "Adam")?.note).toBe(
-      "Hidden from them here. Their role lets them show it again themselves.",
+    expect(chip(view, "Rita")?.level).toBe("hidden");
+    expect(chip(view, "Rita")?.note).toBe(
+      "Hidden from them here. An owner or admin can show it again.",
     );
-    expect(chip(view, "Adam")?.change?.actions).toEqual([
+    expect(chip(view, "Rita")?.change?.actions).toEqual([
+      { choice: "full", label: "Give full access" },
       { choice: "remove", label: "Remove override" },
-      { choice: "read", label: "Make read only" },
     ]);
   });
 

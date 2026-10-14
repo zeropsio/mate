@@ -1,6 +1,6 @@
 /**
  * People chips (`ProjectAccessChips`), from a made-up organization: an owner, you as a developer
- * with two Mates, an admin lowered on production, an admin the app is hidden from, a guest with a
+ * with two Mates, an admin lowered on production, a read-only member the app is hidden from, a guest with a
  * grant per place, an invitation not accepted yet and two members with no access — an app's People as you see them, then as an
  * organization owner (a ⋮ per person, one change saving, one refused, *Add access* last), one
  * environment's *Project access*, a new stage's draft with its creator pinned, *Add access* open
@@ -41,7 +41,7 @@ const MEMBERS = [
   member("ada", "Ada Lovelace", "OWNER"),
   member("me", "Tomáš Beneš", "BASIC_USER"),
   member("karel", "Karel Novák", "ADMIN"),
-  member("lucie", "Lucie Horáková", "ADMIN"),
+  member("lucie", "Lucie Horáková", "READ_ONLY"),
   member("jan", "Jan Svoboda", "NO_ACCESS"),
   member("eva", "Eva Dvořáková", "NO_ACCESS"),
   member("iva", "Iva Malá", "BASIC_USER", "WAITING_AUTHORIZATION"),

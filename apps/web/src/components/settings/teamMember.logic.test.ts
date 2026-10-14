@@ -159,10 +159,11 @@ describe("a person's project access, as chips", () => {
       shown: [["Snap · production", "full", ["Make read only", "Remove"]]],
     },
     {
-      sentence: "An admin's hidden project shows hidden, its way back removing the override",
-      memberRole: "ADMIN",
+      sentence:
+        "A read-only member's hidden project shows hidden, its way back removing the override",
+      memberRole: "READ_ONLY",
       draft: { s: "NO_ACCESS" },
-      shown: [["Snap · stage", "hidden", ["Remove override", "Make read only"]]],
+      shown: [["Snap · stage", "hidden", ["Give full access", "Remove override"]]],
     },
     {
       sentence: "A Mate they own is theirs: shown, never changed here",
@@ -176,7 +177,7 @@ describe("a person's project access, as chips", () => {
 
   it.each([
     { role: "NO_ACCESS", levels: ["read", "full"] },
-    { role: "ADMIN", levels: ["read", "none"] },
+    { role: "ADMIN", levels: ["read"] },
     { role: "READ_ONLY", levels: ["full", "none"] },
     { role: "BASIC_USER", levels: ["read", "full", "none"] },
     { role: "OWNER", levels: ["read"] },

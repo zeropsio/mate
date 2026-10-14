@@ -2,9 +2,9 @@
  * Who reaches a Zerops project, as Zerops keeps it: the organization role, unless the project names
  * its own grant for the member (`userRoles`), which wins in both directions. Mate offers the two
  * levels a person can be given on a project — full access (`ADMIN`) or read only (`READ_ONLY`) —,
- * hiding it from someone whose role reaches every project (`NO_ACCESS`; never an owner, whom Zerops
- * refuses it: `noAccessRoleInvalid`, measured 2026-10-14), and removing someone's grant, which hands
- * them back to their organization role.
+ * hiding it from someone who works on or sees every project (`NO_ACCESS`; never an owner or an
+ * admin, whom Zerops refuses it: `noAccessRoleInvalid`, measured 2026-10-14), and removing
+ * someone's grant, which hands them back to their organization role.
  *
  * Two shapes of the same record. A creation sends the project's list (`POST /client/{id}/project`
  * with `userRoles`, or `PUT /project/{id}` right after an import, `writeNewProjectAccess`). A change
