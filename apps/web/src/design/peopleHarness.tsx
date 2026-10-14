@@ -1,26 +1,24 @@
 /**
  * People chips (`ProjectAccessChips`), from a made-up organization: an owner, you as a developer
- * with two Mates, an admin lowered on production, a guest with a grant per place, an invitation not
- * accepted yet and two members with no access — an app's People as you see them, then as an
+ * with two Mates, an admin lowered on production, a read-only member the app is hidden from, a guest with a
+ * grant per place, an invitation not accepted yet and two members with no access — an app's People as you see them, then as an
  * organization owner (a ⋮ per person, one change saving, one refused, *Add access* last), one
  * environment's *Project access*, a new stage's draft with its creator pinned, *Add access* open
  * (`?pick`), and the one line a refused member list leaves.
  *
  * Served by the dev server at `/design-people.html` (`?theme=dark`), beside a blank left menu at
- * the owner's 435 px; open it at 1786 × 1000. `?invite=address|name|access` opens the invitation
- * at that step (`&refused` says a refusal in it). Fixtures only: no route imports this module.
+ * the owner's 435 px; open it at 1786 × 1000. Inviting someone new lives on Settings → Team
+ * (`design-team.html?page=invite`). Fixtures only: no route imports this module.
  */
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { ProjectInviteDialog } from "~/components/zerops/projects/ProjectInviteDialog";
 import { draftView } from "~/components/zerops/projects/accessDraft.logic";
 import {
   AddAccessPicker,
   ProjectAccessChips,
 } from "~/components/zerops/projects/ProjectAccessChips";
-import type { InviteStep } from "~/components/zerops/projects/projectInvite.logic";
 import {
   projectPeople,
   type ProjectPeopleInput,
@@ -43,6 +41,7 @@ const MEMBERS = [
   member("ada", "Ada Lovelace", "OWNER"),
   member("me", "Tomáš Beneš", "BASIC_USER"),
   member("karel", "Karel Novák", "ADMIN"),
+  member("lucie", "Lucie Horáková", "READ_ONLY"),
   member("jan", "Jan Svoboda", "NO_ACCESS"),
   member("eva", "Eva Dvořáková", "NO_ACCESS"),
   member("iva", "Iva Malá", "BASIC_USER", "WAITING_AUTHORIZATION"),
@@ -65,9 +64,16 @@ const input = (members: ProjectPeopleInput["members"]): ProjectPeopleInput => ({
       grants: [
         { clientUserId: "cu-karel", roleCode: "READ_ONLY" },
         { clientUserId: "cu-jan", roleCode: "READ_ONLY" },
+        { clientUserId: "cu-lucie", roleCode: "NO_ACCESS" },
       ],
     },
-    stage: { status: "ready", grants: [{ clientUserId: "cu-jan", roleCode: "ADMIN" }] },
+    stage: {
+      status: "ready",
+      grants: [
+        { clientUserId: "cu-jan", roleCode: "ADMIN" },
+        { clientUserId: "cu-lucie", roleCode: "NO_ACCESS" },
+      ],
+    },
   },
   owners: { m1: "me", m2: "me", m3: "karel" },
   pictures: {},
@@ -75,25 +81,6 @@ const input = (members: ProjectPeopleInput["members"]): ProjectPeopleInput => ({
 });
 
 const KNOWN = { known: true, status: "ready", refused: false, list: MEMBERS } as const;
-
-const INVITE = params.get("invite");
-const INVITE_STEP: InviteStep | null =
-  INVITE === "address"
-    ? { step: "address" }
-    : INVITE === "name"
-      ? { step: "name", email: "petra.kralova@example.com" }
-      : INVITE === "access"
-        ? {
-            step: "access",
-            email: "petra.kralova@example.com",
-            invitee: { kind: "existing", userId: "petra" },
-          }
-        : null;
-const ACTIONS = {
-  check: () => new Promise<never>(() => {}),
-  shownHere: () => false,
-  send: () => new Promise<never>(() => {}),
-};
 
 function HarnessPage() {
   return (
@@ -168,20 +155,6 @@ function HarnessPage() {
               )}
             />
           </article>
-          {INVITE_STEP === null ? null : (
-            <ProjectInviteDialog
-              actions={ACTIONS}
-              initial={INVITE_STEP}
-              initialError={
-                params.has("refused")
-                  ? "Already in this organization — change their access in the list."
-                  : null
-              }
-              onOpenChange={() => {}}
-              open
-              projectName="Shop"
-            />
-          )}
         </div>
       </main>
     </div>

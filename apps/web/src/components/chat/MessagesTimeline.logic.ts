@@ -2137,6 +2137,23 @@ const WOKE_LAG_MS = 10_000;
  * A run of background work, by task: a watch that reported three times and
  * then finished is one task, and it failed if its last word was a failure.
  */
+/** The gathered helper whose finish woke a run, as its line says it. */
+function helperFinishedSummary(finish: HelperFinish): {
+  tasks: number;
+  failed: number;
+  lost?: number;
+  helpers: true;
+  title: string;
+} {
+  return {
+    tasks: 1,
+    failed: finish.failed ? 1 : 0,
+    ...(finish.lost ? { lost: 1 } : {}),
+    helpers: true,
+    title: finish.title,
+  };
+}
+
 function backgroundRunSummary(run: ReadonlyArray<WorkLogEntry>): {
   tasks: number;
   failed: number;
@@ -2696,17 +2713,33 @@ export function deriveMessagesTimelineRows(input: {
   const helperQueue = (input.helperFinishes ?? [])
     .filter((finish) => gathered.has(finish.id) && !reported.has(finish.id))
     .toSorted((left, right) => Date.parse(left.finishedAt) - Date.parse(right.finishedAt));
+  // When each person's message started a run or a turn of one: a finish before it went to the
+  // agent with that message, never what woke a later run.
+  const ledStarts = structure.turns
+    .flatMap((turn) =>
+      turn.stretches.flatMap((stretch) =>
+        stretch.lead === null ? [] : [Date.parse(stretch.startedAt)],
+      ),
+    )
+    .filter((ms) => !Number.isNaN(ms))
+    .toSorted((left, right) => left - right);
   /**
    * The gathered helper that woke a run nothing else woke, taken: the first
    * that finished between runs, before it began — else, `lagging`, the
-   * first whose word landed in its first moments (`WOKE_LAG_MS`). Only the
-   * one taken is spared from having been taken in by the run it landed in.
+   * first whose word landed in its first moments (`WOKE_LAG_MS`). Never one
+   * that finished before a person's message started a run since: it reached
+   * the agent with that message (Eli, 2026-10-14: a wake titled by a helper
+   * done three hours and a dozen messages before). Only the one taken is
+   * spared from having been taken in by the run it landed in.
    */
   const helperWoke = (startedAt: string, lagging: boolean): HelperFinish | null => {
     const startMs = Date.parse(startedAt);
+    const sinceMs = ledStarts.findLast((ms) => ms < startMs) ?? -Infinity;
     const at = helperQueue.findIndex((finish) => {
       const ms = Date.parse(finish.finishedAt);
-      return lagging ? ms > startMs && ms <= startMs + WOKE_LAG_MS : ms <= startMs && !takenIn(ms);
+      return lagging
+        ? ms > startMs && ms <= startMs + WOKE_LAG_MS
+        : ms > sinceMs && ms <= startMs && !takenIn(ms);
     });
     if (at < 0) return null;
     return helperQueue.splice(at, 1)[0] ?? null;
@@ -2891,13 +2924,7 @@ export function deriveMessagesTimelineRows(input: {
             type: "woke",
             ...(wake.woke.length > 0
               ? backgroundRunSummary(wake.woke)
-              : {
-                  tasks: 1,
-                  failed: wake.helper!.failed ? 1 : 0,
-                  ...(wake.helper!.lost ? { lost: 1 } : {}),
-                  helpers: true,
-                  title: wake.helper!.title,
-                }),
+              : helperFinishedSummary(wake.helper!)),
           },
         });
       }
@@ -3043,15 +3070,7 @@ export function deriveMessagesTimelineRows(input: {
         woke.length > 0
           ? { key: `woke:${first.key}`, entries: woke, ...backgroundRunSummary(woke) }
           : helper !== null
-            ? {
-                key: `woke:${first.key}`,
-                entries: [],
-                tasks: 1,
-                failed: helper.failed ? 1 : 0,
-                ...(helper.lost ? { lost: 1 } : {}),
-                helpers: true,
-                title: helper.title,
-              }
+            ? { key: `woke:${first.key}`, entries: [], ...helperFinishedSummary(helper) }
             : null;
       // What woke it is its card's title where the card holds its lines and nothing was sent into
       // the run before it (the owner, 2026-10-14: the line "floating in space" over its card).

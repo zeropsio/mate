@@ -11,8 +11,12 @@
  * @module data/operations/appAccess
  */
 import type { AppAccessChange, AppAccessLevel, AppProjects } from "../../zerops/appAccess.ts";
-import type { TeamRole } from "../../zerops/teamRoles.ts";
-import type { ProjectAccessChange, ProjectGrant } from "../../zerops/projectAccess.ts";
+import type { OrgMembership } from "../../zerops/teamRoles.ts";
+import type {
+  ProjectAccessChange,
+  ProjectAccessRole,
+  ProjectGrant,
+} from "../../zerops/projectAccess.ts";
 import type { OperationKind } from "./kind.ts";
 
 /** Who an address is to Zerops, before it is invited. */
@@ -36,6 +40,34 @@ export type InviteeCheck =
       readonly roleCode: string;
     };
 
+/**
+ * An invitation: to an app, at one level on all of its projects — or, from the Team page, with a
+ * membership and each project's own level.
+ */
+export type InviteMemberIntent = {
+  readonly orgId: string;
+  readonly email: string;
+  readonly invitee: Invitee;
+  /**
+   * Their whole membership, from the Team page. Without it, the organization opens nothing and
+   * only someone who works on the app may start projects of their own.
+   */
+  readonly membership?: OrgMembership;
+} & (
+  | {
+      readonly level: AppAccessLevel;
+      /** The apps the invitation opens, as one: every chosen app's places and Mates. */
+      readonly projects: AppProjects;
+    }
+  | {
+      /** Each project's own level, as the Team page's project access sets it. */
+      readonly grants: ReadonlyArray<{
+        readonly projectId: string;
+        readonly roleCode: ProjectAccessRole;
+      }>;
+    }
+);
+
 declare module "../model.ts" {
   interface OperationIntents {
     readonly "check-invitee": {
@@ -43,19 +75,7 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly email: string;
     };
-    readonly "invite-member": {
-      readonly orgId: string;
-      readonly email: string;
-      readonly invitee: Invitee;
-      readonly level: AppAccessLevel;
-      /**
-       * Their place on the team, from the Team page. Without it, the organization opens nothing
-       * and only someone who works on the app may start projects of their own.
-       */
-      readonly role?: TeamRole;
-      /** The apps the invitation opens, as one: every chosen app's places and Mates. */
-      readonly projects: AppProjects;
-    };
+    readonly "invite-member": InviteMemberIntent;
     readonly "set-app-access": {
       readonly orgId: string;
       /** The membership (`clientUser`) id. */

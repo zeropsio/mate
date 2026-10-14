@@ -8,9 +8,12 @@
  * them arrive; each choice goes back to the caller, which writes it — or, in a creation's draft,
  * keeps it.
  */
+import { Link } from "@tanstack/react-router";
 import {
   CogIcon,
+  CrownIcon,
   EyeIcon,
+  EyeOffIcon,
   LockOpenIcon,
   MoreVerticalIcon,
   PlusIcon,
@@ -19,6 +22,15 @@ import {
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import { useMemo, useState, type ReactNode } from "react";
 
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
 import { Input } from "../../ui/input";
@@ -35,6 +47,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { Avatar } from "../primitives";
 import {
+  asksFirst,
   BADGE_WORDS,
   personMenu,
   type AccessCandidate,
@@ -55,6 +68,9 @@ export type ProjectAccessSlot = (
 
 /** A choice from a person's ···: a level, or the way out. */
 export type AccessChoice = GivenLevel | NonNullable<PersonChange["end"]>;
+
+/** Where a person's own Team page is, by membership id: the chip's face leads there. */
+export type PersonPageLink = (clientUserId: string) => boolean;
 
 /** Someone picked in *Add access*, at the level ticked for them. */
 export interface AccessPick {
@@ -78,13 +94,20 @@ export interface ProjectAccessChipsProps {
   readonly onAdd?: (picks: ReadonlyArray<AccessPick>) => void;
   /** Adding is under way. */
   readonly adding?: boolean;
+  /** Whether a chip's face leads to that person's Team page; absent, none does. */
+  readonly personPage?: PersonPageLink;
 }
 
-const BADGE_ICON: Readonly<Record<ChipLevel, typeof LockOpenIcon>> = {
+/** A badge's level: a chip's, or `owner` on a project someone owns. */
+export type BadgeLevel = ChipLevel | "owner";
+
+const BADGE_ICON: Readonly<Record<BadgeLevel, typeof LockOpenIcon>> = {
+  owner: CrownIcon,
   full: LockOpenIcon,
   basic: CogIcon,
   read: EyeIcon,
   mixed: SplitIcon,
+  hidden: EyeOffIcon,
 };
 
 /** The key a refusal to add people is said under. */
@@ -99,6 +122,7 @@ export function ProjectAccessChips({
   onChoose,
   onAdd,
   adding = false,
+  personPage,
 }: ProjectAccessChipsProps) {
   const people = view.kind === "people" ? view.people : [];
   const said = Object.entries(troubles ?? {}).flatMap(([key, line]) => {
@@ -119,6 +143,7 @@ export function ProjectAccessChips({
             <AccessChip
               busy={saving?.has(person.key) === true}
               key={person.key}
+              linked={personPage?.(person.key) === true}
               {...(onChoose === undefined
                 ? {}
                 : { onChoose: (choice: AccessChoice) => onChoose(person, choice) })}
@@ -141,12 +166,17 @@ export function ProjectAccessChips({
   );
 }
 
-function AccessBadge({ level, busy }: { level: ChipLevel; busy: boolean }) {
+/** The level a chip holds, as a small badge: an icon and a word. */
+export function AccessBadge({ level, busy = false }: { level: BadgeLevel; busy?: boolean }) {
   const Icon = BADGE_ICON[level];
   return (
-    <span className="ov-chip-badge" data-level={busy ? undefined : level} data-part="badge">
+    <span
+      className="ov-chip-badge"
+      data-level={busy ? undefined : level === "owner" ? "full" : level}
+      data-part="badge"
+    >
       {busy ? null : <Icon aria-hidden="true" className="size-3" />}
-      {busy ? "Saving…" : BADGE_WORDS[level]}
+      {busy ? "Saving…" : level === "owner" ? "Owner" : BADGE_WORDS[level]}
     </span>
   );
 }
@@ -154,13 +184,21 @@ function AccessBadge({ level, busy }: { level: ChipLevel; busy: boolean }) {
 function AccessChip({
   person,
   busy,
+  linked,
   onChoose,
 }: {
   readonly person: ProjectPerson;
   readonly busy: boolean;
+  /** The face leads to the person's own Team page. */
+  readonly linked: boolean;
   readonly onChoose?: (choice: AccessChoice) => void;
 }) {
   const change = person.change;
+  const [asking, setAsking] = useState<AccessChoice | null>(null);
+  const choose = (choice: AccessChoice) => {
+    if (change !== null && asksFirst(change, choice)) setAsking(choice);
+    else onChoose?.(choice);
+  };
   return (
     <li
       className="ov-chip"
@@ -168,7 +206,19 @@ function AccessChip({
       data-pending={person.pending || undefined}
     >
       <Tooltip>
-        <TooltipTrigger render={<span className="ov-chip-who" />}>
+        <TooltipTrigger
+          render={
+            linked ? (
+              <Link
+                className="ov-chip-who"
+                params={{ clientUserId: person.key }}
+                to="/settings/team/$clientUserId"
+              />
+            ) : (
+              <span className="ov-chip-who" />
+            )
+          }
+        >
           <Avatar initials={person.initials} size="md" src={person.avatarUrl} />
           <span className="ov-chip-text">
             <span
@@ -193,7 +243,34 @@ function AccessChip({
         </TooltipPopup>
       </Tooltip>
       {change === null || onChoose === undefined ? null : (
-        <ChipMenu busy={busy} change={change} name={person.name} onChoose={onChoose} />
+        <ChipMenu busy={busy} change={change} name={person.name} onChoose={choose} />
+      )}
+      {change?.selfLower === undefined ? null : (
+        <AlertDialog
+          onOpenChange={(open) => {
+            if (!open) setAsking(null);
+          }}
+          open={asking !== null}
+        >
+          <AlertDialogPopup>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{change.selfLower.title}</AlertDialogTitle>
+              <AlertDialogDescription>{change.selfLower.description}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+              <Button
+                onClick={() => {
+                  if (asking !== null) onChoose?.(asking);
+                  setAsking(null);
+                }}
+                variant="destructive"
+              >
+                Give it up
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogPopup>
+        </AlertDialog>
       )}
     </li>
   );
@@ -222,6 +299,7 @@ function HoverCard({ person }: { readonly person: ProjectPerson }) {
       ) : person.line === "" ? null : (
         <span className="ov-chip-card-line">{person.line}</span>
       )}
+      {person.note === null ? null : <span className="ov-chip-card-line">{person.note}</span>}
     </div>
   );
 }
@@ -239,6 +317,7 @@ function ChipMenu({
   readonly onChoose: (choice: AccessChoice) => void;
 }) {
   const entries = personMenu(change);
+  const actions = entries.flatMap((entry) => (entry.kind === "action" ? [entry] : []));
   const levels = entries.flatMap((entry) => (entry.kind === "level" ? [entry] : []));
   const end = entries.find((entry) => entry.kind === "end");
   const held = levels.find((entry) => entry.checked)?.level ?? "";
@@ -252,18 +331,25 @@ function ChipMenu({
         <MoreVerticalIcon aria-hidden="true" />
       </MenuTrigger>
       <MenuPopup align="start">
-        <MenuRadioGroup
-          onValueChange={(value) => {
-            if (value !== held) onChoose(value as GivenLevel);
-          }}
-          value={held}
-        >
-          {levels.map((entry) => (
-            <MenuRadioItem key={entry.level} value={entry.level} variant="check">
-              {entry.label}
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
+        {actions.map((entry) => (
+          <MenuItem key={`${entry.choice}-${entry.label}`} onClick={() => onChoose(entry.choice)}>
+            {entry.label}
+          </MenuItem>
+        ))}
+        {levels.length === 0 ? null : (
+          <MenuRadioGroup
+            onValueChange={(value) => {
+              if (value !== held) onChoose(value as GivenLevel);
+            }}
+            value={held}
+          >
+            {levels.map((entry) => (
+              <MenuRadioItem key={entry.level} value={entry.level} variant="check">
+                {entry.label}
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+        )}
         {end === undefined ? null : (
           <>
             <MenuSeparator />

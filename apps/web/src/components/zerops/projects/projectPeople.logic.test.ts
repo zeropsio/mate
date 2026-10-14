@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   accessChanges,
+  asksFirst,
+  defaultAccessMenu,
   personMenu,
   projectPeople,
   shortName,
@@ -120,46 +122,46 @@ describe("what each person may do on the project, in words", () => {
       line: "Sees every project",
     },
     {
-      name: "A member given read access on production only reads 'Only looks at production'",
+      name: "A member given read access on production only reads 'Read only on production'",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: PROD_AND_STAGE([["ada", "READ_ONLY"]]),
-      line: "Only looks at production",
+      line: "Read only on production",
     },
     {
       name: "A member given different access per place reads each place's",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "ADMIN"]]),
-      line: "Works on stage · only looks at production",
+      line: "Full access on stage · read only on production",
     },
     {
-      name: "A member given full access on every place reads 'Can work on it'",
+      name: "A member given full access on every place reads 'Full access'",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: PROD_AND_STAGE([["ada", "ADMIN"]], [["ada", "ADMIN"]]),
-      line: "Can work on it",
+      line: "Full access",
     },
     {
-      name: "A member given read access on every place reads 'Can only look'",
+      name: "A member given read access on every place reads 'Read only'",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "READ_ONLY"]]),
-      line: "Can only look",
+      line: "Read only",
     },
     {
       name: "An admin lowered to read on production reads the exception beside the role",
       member: member("ada", "Ada", "ADMIN"),
       places: PROD_AND_STAGE([["ada", "READ_ONLY"]]),
-      line: "Admin · only looks at production",
+      line: "Admin · read only on production",
     },
     {
       name: "An owner lowered on two places names both",
       member: member("ada", "Ada", "OWNER"),
       places: PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "READ_ONLY"]]),
-      line: "Owner · only looks at production and stage",
+      line: "Owner · read only on production and stage",
     },
     {
       name: "A read-only member raised to full on stage reads the exception beside the role",
       member: member("ada", "Ada", "READ_ONLY"),
       places: PROD_AND_STAGE([], [["ada", "ADMIN"]]),
-      line: "Sees every project · works on stage",
+      line: "Sees every project · full access on stage",
     },
     {
       name: "An override that grants what the role already does changes nothing",
@@ -187,13 +189,13 @@ describe("what each person may do on the project, in words", () => {
         place("p-beta", "stage", [["ada", "ADMIN"]], "Beta"),
         place("p-rc", "stage", [], "RC"),
       ],
-      line: "Works on Beta · only looks at production",
+      line: "Full access on Beta · read only on production",
     },
     {
       name: "A Mate that serves as stage is a place: 'Dev / Stage'",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: [place("p-prod", "production"), place("p-dev", "devstage", [["ada", "ADMIN"]])],
-      line: "Works on dev / stage",
+      line: "Full access on dev / stage",
     },
     {
       name: "An integration token in the member list is not a person on the project",
@@ -420,7 +422,7 @@ describe("what is said when the people cannot be known", () => {
         ],
       }),
     );
-    expect(lineOf(view, "Ada")).toBe("Can only look");
+    expect(lineOf(view, "Ada")).toBe("Read only");
   });
 });
 
@@ -458,14 +460,16 @@ describe("what an owner or admin may change of each person's access", () => {
     Object.fromEntries(people(view(viewer)).map((person) => [person.name, person.change]));
 
   it("An admin changes a member's level, their own Mates kept out of it, and withdraws an invitation", () => {
-    expect(changes({ roleCode: "ADMIN", membershipId: "cu-me" })).toEqual({
-      Mia: null,
+    const shown = changes({ roleCode: "ADMIN", membershipId: "cu-me" });
+    expect({ Olga: shown.Olga, Adam: shown.Adam, Dana: shown.Dana, Ivo: shown.Ivo }).toEqual({
       Olga: null,
       Adam: null,
       Dana: {
         clientUserId: "cu-dev",
         level: "basic",
         levels: ["full", "read"],
+        actions: [],
+        self: false,
         end: "remove",
         owned: ["m-dana"],
       },
@@ -473,6 +477,8 @@ describe("what an owner or admin may change of each person's access", () => {
         clientUserId: "cu-inv",
         level: "read",
         levels: ["full", "read"],
+        actions: [],
+        self: false,
         end: "withdraw",
         owned: [],
       },
@@ -499,7 +505,15 @@ describe("what an owner or admin may change of each person's access", () => {
   it("A person's menu offers the two levels, theirs checked, then the way out", () => {
     const both = ["full", "read"] as const;
     expect(
-      personMenu({ clientUserId: "cu-dev", level: "full", levels: both, end: "remove", owned: [] }),
+      personMenu({
+        clientUserId: "cu-dev",
+        level: "full",
+        levels: both,
+        actions: [],
+        self: false,
+        end: "remove",
+        owned: [],
+      }),
     ).toEqual([
       { kind: "level", level: "full", label: "Give full access", checked: true },
       { kind: "level", level: "read", label: "Make read only", checked: false },
@@ -510,10 +524,164 @@ describe("what an owner or admin may change of each person's access", () => {
         clientUserId: "cu-inv",
         level: "mixed",
         levels: both,
+        actions: [],
+        self: false,
         end: "withdraw",
         owned: [],
       }).at(-1),
     ).toEqual({ kind: "end", end: "withdraw", label: "Withdraw invite" });
+  });
+});
+
+describe("an owner's, admin's or every-project member's chip menu, as legacy offers it", () => {
+  it.each<{
+    sentence: string;
+    viewer: string;
+    member: "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY";
+    held: "full" | "basic" | "read" | "hidden" | "mixed";
+    override?: boolean;
+    self?: boolean;
+    offered: ReadonlyArray<string> | null;
+  }>([
+    {
+      sentence: "never offers to hide a project from an organization owner",
+      viewer: "OWNER",
+      member: "OWNER",
+      held: "full",
+      offered: ["Make read only"],
+    },
+    {
+      sentence: "offers an admin read only; back to full is removing the override",
+      viewer: "OWNER",
+      member: "ADMIN",
+      held: "read",
+      override: true,
+      offered: ["Remove override"],
+    },
+    {
+      sentence: "never offers to hide a project from an organization admin or owner",
+      viewer: "OWNER",
+      member: "ADMIN",
+      held: "full",
+      offered: ["Make read only"],
+    },
+    {
+      sentence: "offers to hide a project from a basic or read-only member",
+      viewer: "OWNER",
+      member: "READ_ONLY",
+      held: "read",
+      offered: ["Give full access", "Hide this project"],
+    },
+    {
+      sentence:
+        "offers a member who sees every project full access, and back to read only is removing the override",
+      viewer: "ADMIN",
+      member: "READ_ONLY",
+      held: "full",
+      override: true,
+      offered: ["Remove override", "Hide this project"],
+    },
+    {
+      sentence:
+        "offers a member who works on every project both levels, hiding, and their own way back",
+      viewer: "ADMIN",
+      member: "BASIC_USER",
+      held: "read",
+      override: true,
+      offered: ["Give full access", "Hide this project", "Remove override"],
+    },
+    {
+      sentence:
+        "offers a member who works on every project no way back while nothing is overridden",
+      viewer: "ADMIN",
+      member: "BASIC_USER",
+      held: "basic",
+      offered: ["Give full access", "Make read only", "Hide this project"],
+    },
+    {
+      sentence: "a hidden member's way back is removing the override",
+      viewer: "OWNER",
+      member: "READ_ONLY",
+      held: "hidden",
+      override: true,
+      offered: ["Give full access", "Remove override"],
+    },
+    {
+      sentence: "an admin viewer changes no owner",
+      viewer: "ADMIN",
+      member: "OWNER",
+      held: "full",
+      offered: null,
+    },
+    {
+      sentence: "an admin viewer changes no other admin",
+      viewer: "ADMIN",
+      member: "ADMIN",
+      held: "full",
+      offered: null,
+    },
+    {
+      sentence: "an admin viewer may lower their own access",
+      viewer: "ADMIN",
+      member: "ADMIN",
+      held: "full",
+      self: true,
+      offered: ["Make read only"],
+    },
+    {
+      sentence: "someone who isn't an owner or admin changes nothing",
+      viewer: "BASIC_USER",
+      member: "READ_ONLY",
+      held: "read",
+      offered: null,
+    },
+  ])(
+    "$sentence",
+    ({ viewer, member: memberRole, held, override = false, self = false, offered }) => {
+      expect(
+        defaultAccessMenu({ viewerRole: viewer, memberRole, self, held, override })?.map(
+          ({ label }) => label,
+        ) ?? null,
+      ).toEqual(offered);
+    },
+  );
+
+  it.each([
+    {
+      sentence: "Lowering your own full access asks first",
+      self: true,
+      level: "full",
+      choice: "read",
+      asks: true,
+    },
+    {
+      sentence: "Hiding a project from yourself asks first",
+      self: true,
+      level: "full",
+      choice: "none",
+      asks: true,
+    },
+    {
+      sentence: "Giving yourself access back asks nothing",
+      self: true,
+      level: "read",
+      choice: "full",
+      asks: false,
+    },
+    {
+      sentence: "Lowering someone else asks nothing",
+      self: false,
+      level: "full",
+      choice: "read",
+      asks: false,
+    },
+  ] as const)("$sentence", ({ self, level, choice, asks }) => {
+    expect(
+      asksFirst(
+        { clientUserId: "cu-me", level, levels: [], actions: [], self, end: null, owned: [] },
+        choice,
+      ),
+    ).toBe(asks);
   });
 });
 
@@ -628,7 +796,7 @@ describe("each person as a chip", () => {
     expect([shortName("Bo"), shortName("cy@example.com")]).toEqual(["Bo", "cy@example.com"]);
   });
 
-  it("An owner's or admin's chip has no menu: their role gives them everything", () => {
+  it("When the viewer is an admin, an owner's or another admin's chip has no menu: Zerops refuses those writes", () => {
     const view = projectPeople(
       input({
         members: known([member("own", "Olga", "OWNER"), member("adm", "Adam", "ADMIN")]),
@@ -636,19 +804,6 @@ describe("each person as a chip", () => {
       }),
     );
     expect(people(view).map(({ change }) => change)).toEqual([null, null]);
-  });
-
-  it("An admin lowered somewhere here is offered only full access back", () => {
-    const view = projectPeople(
-      input({
-        members: known([member("adm", "Adam", "ADMIN")]),
-        projects: PROD_AND_STAGE([["adm", "READ_ONLY"]]),
-        viewer: ADMIN_VIEWER,
-      }),
-    );
-    expect(personMenu(chip(view, "Adam")!.change!)).toEqual([
-      { kind: "level", level: "full", label: "Give full access", checked: false },
-    ]);
   });
 
   it("Remove access is offered only where a person holds a grant of their own here", () => {
@@ -659,8 +814,28 @@ describe("each person as a chip", () => {
         viewer: ADMIN_VIEWER,
       }),
     );
-    expect(chip(view, "Dana")?.change?.end).toBeNull();
-    expect(chip(view, "Rob")?.change?.end).toBe("remove");
+    const removes = (name: string) =>
+      chip(view, name)?.change?.actions.some(({ choice }) => choice === "remove");
+    expect(removes("Dana")).toBe(false);
+    expect(removes("Rob")).toBe(true);
+  });
+
+  it("A project hidden from a read-only member shows as hidden, and says an owner or admin can show it again", () => {
+    const view = projectPeople(
+      input({
+        members: known([member("ro", "Rita", "READ_ONLY")]),
+        projects: PROD_AND_STAGE([["ro", "NO_ACCESS"]], [["ro", "NO_ACCESS"]]),
+        viewer: { roleCode: "OWNER", membershipId: "cu-me" },
+      }),
+    );
+    expect(chip(view, "Rita")?.level).toBe("hidden");
+    expect(chip(view, "Rita")?.note).toBe(
+      "Hidden from them here. An owner or admin can show it again.",
+    );
+    expect(chip(view, "Rita")?.change?.actions).toEqual([
+      { choice: "full", label: "Give full access" },
+      { choice: "remove", label: "Remove override" },
+    ]);
   });
 
   it("Members who reach none of the projects are offered to add access for, tokens never", () => {

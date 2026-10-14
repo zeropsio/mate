@@ -267,9 +267,13 @@ function useProjectAccess(projects: AccessProjects) {
     saving,
     troubles,
     adding: saving.has(ADD_TROUBLE),
+    // An owner or admin opens a person's own Team page from their chip.
+    ...(view.kind === "people" && view.invite ? { personPage: LINKED } : {}),
     ...(writable ? { onChoose: choose, onAdd: add } : {}),
   };
 }
+
+const LINKED = () => true;
 
 /** The People on an app's page, for the group `groupId`: every project of the app at once. */
 export function ProjectPeople({ groupId }: { groupId: string }) {

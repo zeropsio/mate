@@ -176,16 +176,55 @@ describe("a conversation's background work after its turn", () => {
           );
           yield* w.agent((agent, thread) => agent.finish(thread));
           const view = yield* viewOf(w);
+          // The helper's own shell is the helper's work while the helper runs (Eli, 2026-10-14:
+          // its helpers' shells read as "2 background jobs" of its own).
           assert.deepStrictEqual(
             view?.work?.map(({ title, of }) => ({ title, of })),
             [
               { title: "Final batched browser check", of: "mate" },
               { title: "Review the diff", of: "helper" },
-              { title: "Run the helper's tests", of: "helper" },
             ],
           );
           const row = conversationRowOf(view!, { environmentId: "env", epoch: 1 });
-          assert.strictEqual(row.state.kind === "working" ? row.state.work?.count : null, 3);
+          assert.strictEqual(row.state.kind === "working" ? row.state.work?.count : null, 2);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});
+
+describe("a helper's own work after its turn", () => {
+  it.effect(
+    "is its helper's while the helper runs, and named on its own once the helper ended",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          yield* w.tell({ _tag: "Send", text: "Check the release" });
+          yield* w.agent((agent, thread) =>
+            Effect.gen(function* () {
+              yield* startsWork(agent, thread, "h1", { kind: "helper", title: "Review the diff" });
+              yield* startsWork(agent, thread, "t1", {
+                kind: "shell",
+                title: "Run the helper's tests",
+                helper: "h1",
+              });
+            }),
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const named = (yield* viewOf(w))?.work?.map(({ title }) => title);
+          assert.deepStrictEqual(named, ["Review the diff"]);
+          yield* w.agent((agent, thread) =>
+            agent.emit("task.completed", thread, {
+              payload: { taskId: "h1", status: "completed" },
+            }),
+          );
+          const view = yield* viewOf(w);
+          assert.deepStrictEqual(
+            view?.work?.map(({ title, of }) => ({ title, of })),
+            [{ title: "Run the helper's tests", of: "helper" }],
+          );
+          assert.strictEqual(view?.background, "working");
           yield* w.shutdown;
         }),
       ),

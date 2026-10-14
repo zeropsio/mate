@@ -27,6 +27,7 @@ import {
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
 
+import { memberPicture } from "~/zerops/memberPicture";
 import { zeropsInitials } from "../landing/ZeropsAccountControl.logic";
 
 export interface ProjectPeopleInput {
@@ -58,10 +59,15 @@ export interface ProjectPeopleInput {
 
 /** A level a chip shows: full access, a developer's, read only — or different from place to place. */
 export type AccessLevel = "full" | "basic" | "read";
-export type ChipLevel = AccessLevel | "mixed";
+/** `hidden`: a project kept from someone who works on or sees every project. */
+export type ChipLevel = AccessLevel | "mixed" | "hidden";
 
-/** The two levels a person can be given here. */
-export type GivenLevel = "full" | "read";
+/**
+ * The levels a person can be given here: full, read only — or, `none`, hidden from someone who
+ * works on or sees every project. Zerops keeps every project visible to an owner or an admin
+ * (`noAccessRoleInvalid`, measured 2026-10-14).
+ */
+export type GivenLevel = "full" | "read" | "none";
 
 /** What the viewer may change of one person's access here. */
 export interface PersonChange {
@@ -69,8 +75,16 @@ export interface PersonChange {
   readonly clientUserId: string;
   /** The level they have here now. */
   readonly level: ChipLevel;
-  /** The levels they may be given: both, or — an owner or admin lowered — only full back. */
+  /** The levels to pick between, theirs checked: someone the organization gives no project. */
   readonly levels: ReadonlyArray<GivenLevel>;
+  /**
+   * Someone whose role reaches every project: each change their menu offers, in its words
+   * (`defaultAccessMenu`). Empty for anyone else.
+   */
+  readonly actions: ReadonlyArray<DefaultAccessAction>;
+  /** The viewer's own chip: lowering their own full access asks first, in these words. */
+  readonly self: boolean;
+  readonly selfLower?: { readonly title: string; readonly description: string };
   /**
    * The way out: `remove` drops their own grants here, so their organization role decides again;
    * `withdraw` ends an invitation's access here. `null` where there is nothing of theirs to drop.
@@ -109,6 +123,8 @@ export interface ProjectPerson extends PersonFace {
   readonly level: ChipLevel;
   /** Each project and their level there, where the levels differ. */
   readonly across: ReadonlyArray<{ readonly label: string; readonly level: AccessLevel | null }>;
+  /** What a hidden project means for them: who can show it again. */
+  readonly note: string | null;
   /** What the viewer may change of their access; `null` for nothing. */
   readonly change: PersonChange | null;
 }
@@ -208,11 +224,11 @@ export const appProjectsOf = (projects: ProjectPeopleInput["projects"]): AppProj
 const listed = (words: ReadonlyArray<string>): string =>
   words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
 
-/** The menu's own words for each level, so a row says what its menu would set. */
+/** The chips' own words for each level — Full, Read, Hidden — so a line says what a badge does. */
 const EXCEPTION_WORDS: Readonly<Record<Access, string>> = {
-  full: "works on",
-  read: "only looks at",
-  none: "no access to",
+  full: "full access on",
+  read: "read only on",
+  none: "hidden on",
 };
 
 /** What a member may do here, in words; `null` where they may touch none of its places. */
@@ -229,7 +245,7 @@ function accessWords(
         ? []
         : [`${EXCEPTION_WORDS[access]} ${listed(differing.map(({ place }) => place.inSentence))}`];
     });
-    // "Admin · only looks at production": an exception stands where "everything" would.
+    // "Admin · read only on production": an exception stands where "everything" would.
     return [
       words.role,
       ...(exceptions.length === 0 && words.reach !== undefined ? [words.reach] : exceptions),
@@ -239,15 +255,15 @@ function accessWords(
   if (reached.length === 0) return null;
   const alike =
     reached.length === onPlaces.length && reached.every((one) => one.access === reached[0]!.access);
-  if (alike) return reached[0]!.access === "full" ? "Can work on it" : "Can only look";
-  // "Works on stage · only looks at production": what they work on first, then what they see.
+  if (alike) return reached[0]!.access === "full" ? "Full access" : "Read only";
+  // "Full access on stage · read only on production": full first, then read only.
   const by = (access: Access) =>
     reached.filter((one) => one.access === access).map(({ place }) => place.inSentence);
   const works = by("full");
   const looks = by("read");
   const said = [
-    ...(works.length === 0 ? [] : [`works on ${listed(works)}`]),
-    ...(looks.length === 0 ? [] : [`only looks at ${listed(looks)}`]),
+    ...(works.length === 0 ? [] : [`${EXCEPTION_WORDS.full} ${listed(works)}`]),
+    ...(looks.length === 0 ? [] : [`${EXCEPTION_WORDS.read} ${listed(looks)}`]),
   ].join(" · ");
   return said.charAt(0).toUpperCase() + said.slice(1);
 }
@@ -317,12 +333,11 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
       name,
       short: shortName(name),
       initials: zeropsInitials(name),
-      avatarUrl:
-        (userId === undefined ? null : input.pictures[userId]) ||
-        avatar?.smallAvatarUrl ||
-        avatar?.externalAvatarUrl ||
-        avatar?.largeAvatarUrl ||
-        null,
+      avatarUrl: memberPicture({
+        hq: userId === undefined ? null : input.pictures[userId],
+        avatar,
+        email: member.user?.email,
+      }),
       email: member.user?.email?.trim() || null,
       role: ORG_ROLE_WORDS[role],
     };
@@ -332,11 +347,17 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
       return [];
     }
 
-    // The badge: on the places, or on the Mates where there is none — or none they reach.
-    const placeLevels = places.map((place) => levelOf(roleOn(place.projectId)));
-    const judged = placeLevels.some((level) => level !== null)
+    // The badge: on the places, or on the Mates where there is none — or none they reach. For
+    // someone whose role reaches every project, a project kept from them is hidden there.
+    const reachesAll = role !== "NO_ACCESS";
+    const levelOn = (projectId: string): ChipLevel | null =>
+      levelOf(roleOn(projectId)) ?? (reachesAll ? "hidden" : null);
+    const placeLevels = places.map((place) => levelOn(place.projectId));
+    const judged: ReadonlyArray<ChipLevel | null> = placeLevels.some((level) => level !== null)
       ? placeLevels
-      : onMates.map(({ level }) => level);
+      : reachesAll
+        ? mates.map(({ projectId }) => (owned.includes(projectId) ? "full" : levelOn(projectId)))
+        : onMates.map(({ level }) => level);
     const first = judged[0] ?? levelOf(role);
     const level: ChipLevel =
       first !== null && judged.every((one) => one === first) ? first : "mixed";
@@ -369,18 +390,37 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
       ({ projectId }) => !owned.includes(projectId) && grantOf(projectId) !== undefined,
     );
     const self = input.viewer !== undefined && member.id === input.viewer.membershipId;
+    const defaults = reachesAll
+      ? defaultAccessMenu({
+          viewerRole: input.viewer?.roleCode,
+          memberRole: role,
+          self,
+          held: level,
+          override: own,
+        })
+      : null;
     const change: PersonChange | null =
-      actions !== null
+      defaults !== null && defaults.length > 0
         ? {
             clientUserId: member.id,
             level,
-            levels: ["full", "read"],
-            end: pending ? "withdraw" : own ? "remove" : null,
+            levels: [],
+            actions: defaults,
+            self,
+            ...(self ? { selfLower: selfLowerWords(input.viewer?.roleCode) } : {}),
+            end: null,
             owned,
           }
-        : // An owner or admin lowered somewhere here: only the way back to full.
-          viewerAdmin && !self && roleAtLeast(role, "ADMIN") && own && level !== "full"
-          ? { clientUserId: member.id, level, levels: ["full"], end: null, owned }
+        : actions !== null && !reachesAll
+          ? {
+              clientUserId: member.id,
+              level,
+              levels: ["full", "read"],
+              actions: [],
+              self,
+              end: pending ? "withdraw" : own ? "remove" : null,
+              owned,
+            }
           : null;
 
     // What they may do here: on its places, or by their role where it has none yet.
@@ -403,6 +443,7 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
       ].join(" · "),
       level,
       across,
+      note: level === "hidden" || level === "mixed" ? hiddenNote(judged) : null,
       change,
     };
     return [{ person, rank: [person.you ? 0 : 1, pending ? 1 : 0, best, -roleRank(role)] }];
@@ -424,15 +465,15 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
   };
 }
 
-/** What someone reaching only Mates here may do on them: "Works on Fen · only looks at Juno". */
+/** What someone reaching only Mates here may do on them: "Full access on Fen · read only on Juno". */
 function mateWords(
   onMates: ReadonlyArray<{ readonly label: string; readonly level: AccessLevel }>,
 ): string | null {
   const works = onMates.filter(({ level }) => level !== "read").map(({ label }) => label);
   const looks = onMates.filter(({ level }) => level === "read").map(({ label }) => label);
   const said = [
-    ...(works.length === 0 ? [] : [`works on ${listed(works)}`]),
-    ...(looks.length === 0 ? [] : [`only looks at ${listed(looks)}`]),
+    ...(works.length === 0 ? [] : [`${EXCEPTION_WORDS.full} ${listed(works)}`]),
+    ...(looks.length === 0 ? [] : [`${EXCEPTION_WORDS.read} ${listed(looks)}`]),
   ].join(" · ");
   return said === "" ? null : said.charAt(0).toUpperCase() + said.slice(1);
 }
@@ -457,11 +498,17 @@ export type PersonMenuEntry =
       readonly kind: "end";
       readonly end: NonNullable<PersonChange["end"]>;
       readonly label: string;
+    }
+  | {
+      readonly kind: "action";
+      readonly choice: DefaultAccessAction["choice"];
+      readonly label: string;
     };
 
 export const LEVEL_WORDS: Readonly<Record<GivenLevel, string>> = {
   full: "Give full access",
   read: "Make read only",
+  none: "Hide this project",
 };
 
 /** A badge in words, for a hover card's list and for a screen reader. */
@@ -470,11 +517,13 @@ export const BADGE_WORDS: Readonly<Record<ChipLevel, string>> = {
   basic: "Basic",
   read: "Read",
   mixed: "Mixed",
+  hidden: "Hidden",
 };
 
 /** A person's menu: the levels they may be given, theirs checked, then the way out. */
 export function personMenu(change: PersonChange): ReadonlyArray<PersonMenuEntry> {
   return [
+    ...change.actions.map(({ choice, label }) => ({ kind: "action" as const, choice, label })),
     ...change.levels.map((level) => ({
       kind: "level" as const,
       level,
@@ -496,7 +545,91 @@ export function personMenu(change: PersonChange): ReadonlyArray<PersonMenuEntry>
 const GIVEN_ROLE: Readonly<Record<GivenLevel, ProjectAccessRole>> = {
   full: "ADMIN",
   read: "READ_ONLY",
+  none: "NO_ACCESS",
 };
+
+/** One entry of a default-access person's menu: what it sets, in its words. */
+export interface DefaultAccessAction {
+  /** A level to give, or `remove`: their own grant dropped, so their role decides again. */
+  readonly choice: GivenLevel | "remove";
+  readonly label: string;
+}
+
+const REMOVE_OVERRIDE: DefaultAccessAction = { choice: "remove", label: "Remove override" };
+
+/**
+ * The menu of someone whose organization role reaches every project — an owner, an admin, someone
+ * who works on or sees every project — as Zerops lets the viewer change it: each level they don't
+ * hold, where landing back on their role's own level reads *Remove override*; *Hide this project*
+ * for someone who works on or sees every project — never an owner or admin, whom Zerops keeps every
+ * project visible to; and *Remove override* on its own where no entry
+ * lands back on their role's level. `null` where the viewer may change none of it: not an owner
+ * or admin, or an admin looking at another owner or admin (Zerops refuses those writes).
+ */
+export function defaultAccessMenu(input: {
+  readonly viewerRole: string | undefined;
+  readonly memberRole: ZeropsOrgRole;
+  /** The viewer's own chip. */
+  readonly self: boolean;
+  /** What they hold here now. */
+  readonly held: ChipLevel;
+  /** Whether they hold a grant of their own here. */
+  readonly override: boolean;
+}): ReadonlyArray<DefaultAccessAction> | null {
+  if (!roleAtLeast(input.viewerRole, "ADMIN")) return null;
+  if (
+    !roleAtLeast(input.viewerRole, "OWNER") &&
+    !input.self &&
+    roleAtLeast(input.memberRole, "ADMIN")
+  )
+    return null;
+  const base = levelOf(input.memberRole);
+  const offer = (level: "full" | "read"): ReadonlyArray<DefaultAccessAction> =>
+    input.held === level
+      ? []
+      : [level === base ? REMOVE_OVERRIDE : { choice: level, label: LEVEL_WORDS[level] }];
+  return [
+    ...offer("full"),
+    ...offer("read"),
+    ...(input.held !== "hidden" && mayHide(input.memberRole)
+      ? [{ choice: "none" as const, label: LEVEL_WORDS.none }]
+      : []),
+    // A developer's own level is neither entry's: their way back is its own.
+    ...(input.override && base === "basic" ? [REMOVE_OVERRIDE] : []),
+  ];
+}
+
+/** Whether a project can be hidden from someone: only one who works on or sees every project. */
+export const mayHide = (role: string | undefined): boolean =>
+  asOrgRole(role) === "BASIC_USER" || asOrgRole(role) === "READ_ONLY";
+
+/** Whether a choice gives up the viewer's own full access here, which asks first. */
+export const asksFirst = (change: PersonChange, choice: AccessChoiceLike): boolean =>
+  change.self &&
+  (change.level === "full" || change.level === "mixed") &&
+  (choice === "read" || choice === "none");
+
+type AccessChoiceLike = GivenLevel | "remove" | "withdraw";
+
+/** What giving up one's own full access asks: whether they can turn it back themselves. */
+export function selfLowerWords(viewerRole: string | undefined): {
+  readonly title: string;
+  readonly description: string;
+} {
+  return {
+    title: "Give up your own full access here?",
+    description: roleAtLeast(viewerRole, "ADMIN")
+      ? "Your role lets you turn it back yourself, from this same menu."
+      : "You won't be able to turn it back yourself: an owner or admin will have to do it for you.",
+  };
+}
+
+/** Who can show a hidden project again: an owner or admin, never the hidden member themselves. */
+function hiddenNote(levels: ReadonlyArray<ChipLevel | null>): string | null {
+  return levels.includes("hidden")
+    ? "Hidden from them here. An owner or admin can show it again."
+    : null;
+}
 
 /**
  * What one menu choice — or adding someone — writes: their grant on every project here but the

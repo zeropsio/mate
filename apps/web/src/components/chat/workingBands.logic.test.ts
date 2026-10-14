@@ -168,6 +168,42 @@ describe("what the Mate's card says still runs after its turn", () => {
       said: ["Final batched browser check · and 3 more — Its own jobs"],
     },
     {
+      // Eli, 2026-10-14: three helpers and two of its own jobs read as one line, "Its helpers".
+      name: "its helpers and its own jobs on lines of their own when they are many",
+      work: {
+        items: [
+          helper("UI overhaul + placement clarity"),
+          helper("Swarm scale toward 500k"),
+          helper("Walls, turrets-on-walls, craters, climb"),
+          job("Run the test suite"),
+          job("Serve the preview"),
+        ],
+        count: 5,
+        helpers: 3,
+      },
+      said: [
+        "UI overhaul + placement clarity · and 2 more — Its helpers",
+        "Run the test suite · and 1 more — Its own jobs",
+      ],
+    },
+    {
+      name: "one helper among many of its own jobs by its own title",
+      work: {
+        items: [
+          job("Final batched browser check"),
+          job("Wait for the final check to finish"),
+          job("Wait for the final check to complete"),
+          helper("Review the diff"),
+        ],
+        count: 5,
+        helpers: 1,
+      },
+      said: [
+        "Final batched browser check · and 3 more — Its own jobs",
+        "Review the diff — Its helper",
+      ],
+    },
+    {
       name: "untitled work by what it is",
       work: { items: [job(null), helper(null)], count: 2 },
       said: ["A background job — Its own job", "A helper — Its helper"],
