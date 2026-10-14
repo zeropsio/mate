@@ -2778,3 +2778,102 @@ describe("vault variable writes", () => {
     expect((error as ZeropsApiError).message).not.toContain("sk_test");
   });
 });
+
+// Measured 2026-10-14 in the test org: validate answers who an address is without changing
+// anything; invite and connect make a membership waiting for the person; a member's own list is
+// replaced whole; deleting a membership leaves the account.
+describe("ZeropsApiClient — inviting people and setting their grants", () => {
+  const sent = (stub: ReturnType<typeof recordingFetch>) =>
+    stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`);
+  const clientWith = (stub: ReturnType<typeof recordingFetch>) => {
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    return client;
+  };
+
+  it.each([
+    {
+      sentence: "an address with a Zerops account is that account",
+      answer: jsonResponse(200, { id: "u-eva", email: "eva@example.com" }),
+      expected: { kind: "existing", userId: "u-eva" },
+    },
+    {
+      sentence: "an address without one is a new person",
+      answer: jsonResponse(400, { error: { code: "userAccountNotFound", message: "Not found." } }),
+      expected: { kind: "new" },
+    },
+  ])("Checking an address before inviting it: $sentence", async ({ answer, expected }) => {
+    const stub = recordingFetch(() => answer);
+    await expect(
+      clientWith(stub).validateOrganizationUser("org-1", "eva@example.com"),
+    ).resolves.toEqual(expected);
+    expect(sent(stub)).toEqual(["POST /client/org-1/user/validate"]);
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({ email: "eva@example.com" });
+  });
+
+  it("An address already in the organization is refused with Zerops's own code", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(400, { error: { code: "userAlreadyConnectedToCompany", message: "Already." } }),
+    );
+    await expect(
+      clientWith(stub).validateOrganizationUser("org-1", "eva@example.com"),
+    ).rejects.toMatchObject({ code: "userAlreadyConnectedToCompany" });
+  });
+
+  it("Inviting a new address sends its name and the membership offered", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const invite = {
+      email: "eva@example.com",
+      firstName: "Eva",
+      lastName: "Dvořáková",
+      roleCode: "NO_ACCESS",
+      canCreateProjects: true,
+      canViewFinances: false,
+      canEditFinances: false,
+    };
+    await clientWith(stub).inviteOrganizationUser("org-1", invite);
+    expect(sent(stub)).toEqual(["POST /client/org-1/user"]);
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual(invite);
+  });
+
+  it("Inviting an existing account connects it by its user id", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { id: "cu-eva", email: "eva@example.com" }),
+    );
+    const invite = {
+      userId: "u-eva",
+      roleCode: "NO_ACCESS",
+      canCreateProjects: false,
+      canViewFinances: false,
+      canEditFinances: false,
+    };
+    await clientWith(stub).connectOrganizationUser("org-1", invite);
+    expect(sent(stub)).toEqual(["PUT /client/org-1/user/connect"]);
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual(invite);
+  });
+
+  it("A member's grants are read, and written back whole", async () => {
+    const stub = recordingFetch((request) =>
+      request.method === "GET"
+        ? jsonResponse(200, {
+            projectRoleList: [{ id: "r1", projectId: "p1", roleCode: "READ_ONLY" }],
+          })
+        : new Response(null, { status: 204 }),
+    );
+    const client = clientWith(stub);
+    await expect(client.readMemberProjectRoles("cu-eva")).resolves.toEqual([
+      { projectId: "p1", roleCode: "READ_ONLY" },
+    ]);
+    await client.writeMemberProjectRoles("cu-eva", [{ projectId: "p2", roleCode: "BASIC_USER" }]);
+    expect(sent(stub)).toEqual(["GET /client-user/cu-eva/roles", "PUT /client-user/cu-eva/roles"]);
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
+      projectRoleList: [{ projectId: "p2", roleCode: "BASIC_USER" }],
+    });
+  });
+
+  it("Removing a membership deletes it, and nothing else", async () => {
+    const stub = recordingFetch(() => new Response(null, { status: 204 }));
+    await clientWith(stub).removeOrganizationMember("cu-eva");
+    expect(sent(stub)).toEqual(["DELETE /client-user/cu-eva"]);
+  });
+});
