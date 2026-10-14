@@ -1,5 +1,6 @@
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
+import { readsAlongOnly, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
 import { ThreadFileWrites } from "./zerops/ThreadFileWrites.ts";
 import {
   sameUsageLimitCommandCoverage,
@@ -1954,6 +1955,12 @@ export const websocketRpcRouteLayer = HttpRouter.add(
     );
     const clientOrigin = readClientConnectionOrigin(request);
     yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
+    // Asked on every acting call: HQ may name another owner while the socket stays open.
+    const hqLink = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsHqLink));
+    const readsAlong =
+      hqLink === undefined
+        ? Effect.succeed(false)
+        : Effect.map(hqLink.standing, (standing) => readsAlongOnly(standing, session.subject));
     const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
       const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
       // Terminal output streams run ahead of the client's acks inside a small
@@ -1961,7 +1968,10 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       yield* RpcServer.make(WsRpcGroup, WS_RPC_SERVER_OPTIONS).pipe(
         Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
         Effect.provide(
-          Layer.merge(rpcScopeAuthorizationLayer(session.scopes), rpcInstrumentationLayer),
+          Layer.merge(
+            rpcScopeAuthorizationLayer(session.scopes, readsAlong),
+            rpcInstrumentationLayer,
+          ),
         ),
         Effect.forkScoped,
       );

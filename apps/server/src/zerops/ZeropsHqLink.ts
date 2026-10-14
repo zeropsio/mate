@@ -85,6 +85,7 @@ import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import type { UsageLink } from "../usage/UsageLink.ts";
 import { makeUsageCapture } from "../usage/UsageCapture.ts";
@@ -128,6 +129,16 @@ export type HqStanding =
   | { readonly kind: "not-linked" }
   /** The Mate as HQ last sent it. */
   | { readonly kind: "linked"; readonly mate: MateState };
+
+/**
+ * Whether the session's `subject` only reads along in this Mate: a Zerops person other than the
+ * owner HQ last named. Nobody does while HQ names no owner, as the client opens its composer then.
+ */
+export const readsAlongOnly = (standing: HqStanding, subject: string): boolean =>
+  standing.kind === "linked" &&
+  typeof standing.mate.ownerUserId === "string" &&
+  subject.startsWith(ZEROPS_SUBJECT_PREFIX) &&
+  zeropsUserIdOf(subject) !== standing.mate.ownerUserId;
 
 export interface ZeropsHqLinkOptions {
   readonly autoUpdatePolicy?: Pick<MateAutoUpdatePolicy["Service"], "open">;

@@ -38,7 +38,7 @@ const groupOf = <const Tags extends ReadonlyArray<WsRpcMethod>>(...tags: Tags) =
 
 /** The middleware ws.ts installs for a connection with `scopes`. */
 const connectionMiddleware = (scopes: ReadonlyArray<AuthEnvironmentScope>) =>
-  Layer.merge(rpcScopeAuthorizationLayer(scopes), rpcInstrumentationLayer);
+  Layer.merge(rpcScopeAuthorizationLayer(scopes, Effect.succeed(false)), rpcInstrumentationLayer);
 const readOnlyConnection = connectionMiddleware([AuthOrchestrationReadScope]);
 const threadId = ThreadId.make("thread-instrumented");
 const rpcSpanDefaults = { "rpc.transport": "websocket", "rpc.system": "effect-rpc" };
