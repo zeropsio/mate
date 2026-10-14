@@ -9,6 +9,8 @@ import { act, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { placeAddresses, withPlaceAddresses } from "~/zerops/__fixtures__/placeAddresses";
+import { useAddressesSheet } from "~/zerops/addressesSheet";
 import type { FlowVerbOutcome } from "~/zerops/flowVerbs";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 
@@ -148,6 +150,7 @@ afterEach(async () => {
   await act(async () => root?.unmount());
   root = undefined;
   vi.unstubAllGlobals();
+  useAddressesSheet.getState().close();
 });
 async function mount(
   release: typeof state.value.release,
@@ -157,6 +160,7 @@ async function mount(
   },
   rollBack: typeof state.value.rollBack = async () => ({ ok: false, reason: "unused" }),
   shape: (base: ZeropsProjectFlow) => ZeropsProjectFlow = (base) => base,
+  wrap: (children: ReactNode) => ReactNode = (children) => children,
 ) {
   const window = new Window();
   for (const name of [
@@ -181,7 +185,9 @@ async function mount(
   window.document.body.append(container);
   root = createRoot(container as unknown as HTMLElement);
   const render = () =>
-    root!.render(<ZeropsReleaseReview target={target} titleId="release" onClose={() => {}} />);
+    root!.render(
+      wrap(<ZeropsReleaseReview target={target} titleId="release" onClose={() => {}} />),
+    );
   await act(async () => render());
   return { container, render };
 }
@@ -298,5 +304,90 @@ describe("the roll back dialog's press", () => {
     expect(compared.asks.at(-1)).toBe(offered);
     await act(async () => answer({ ok: true, tag: "v0.1.5", deploys: { jobs: [], note: null } }));
     expect(compared.asks.at(-1)).toBe(offered);
+  });
+});
+
+describe("the release dialog's way to a domain of your own", () => {
+  const PRODUCTION = {
+    projectId: "p-prod",
+    target: { kind: "zerops", projectId: "p-prod" },
+    name: "prod",
+    tier: "production",
+    sources: ["release"],
+    services: [],
+    environment: "prod",
+    keyHeld: true,
+    keyInvalid: false,
+  } as unknown as ZeropsProjectFlow["environmentInputs"][number];
+  const withProduction =
+    (production = PRODUCTION) =>
+    (base: ZeropsProjectFlow): ZeropsProjectFlow => ({
+      ...base,
+      environmentInputs: [production],
+    });
+  /** The release HQ takes, and production running it by the time the answer is drawn. */
+  const lands = (render: () => void) => async (): Promise<FlowVerbOutcome> => {
+    const before = state.value.flows.get("xyz")!;
+    state.value.flows.set("xyz", {
+      ...before,
+      releases: [row("v0.1.5", HEAD), row("v0.1.4", BEFORE, false)],
+      release: { ...before.release, suggestion: "v0.1.6", contents: [] },
+    });
+    render();
+    return { ok: true, tag: "v0.1.5" };
+  };
+  const domainDoor = (container: Awaited<ReturnType<typeof mount>>["container"]) =>
+    [...container.querySelectorAll<TestButton>("button")].find((button) =>
+      button.textContent?.includes("Put it on your domain"),
+    );
+
+  async function released(
+    places: Parameters<typeof withPlaceAddresses>[0],
+    production = PRODUCTION,
+  ) {
+    let draw = () => {};
+    const { container, render } = await mount(
+      async () => lands(draw)(),
+      undefined,
+      undefined,
+      withProduction(production),
+      withPlaceAddresses(places),
+    );
+    draw = render;
+    const offered = domainDoor(container);
+    await act(async () => container.querySelector<TestButton>("[data-review-primary]")!.click());
+    expect(container.textContent).toContain("Released v0.1.5");
+    return { container, offered };
+  }
+
+  it("offers Put it on your domain once a release to production is live and production has no domain of its own, and opens the sheet to add one", async () => {
+    const { container, offered } = await released({ "p-prod": placeAddresses([]) });
+    expect(offered, "Not before the release is live.").toBeUndefined();
+    const door = domainDoor(container);
+    expect(door).toBeDefined();
+    await act(async () => door!.click());
+    expect(useAddressesSheet.getState().target).toEqual({
+      orgId: "org",
+      projectId: "p-prod",
+      groupId: "xyz",
+      intent: "add-domain",
+    });
+  });
+
+  it.each([
+    ["has a domain of its own", placeAddresses(["shop.example.com"])],
+    ["is still being read", placeAddresses("reading")],
+  ])("does not offer Put it on your domain while production %s", async (_case, production) => {
+    const { container } = await released({ "p-prod": production });
+    expect(domainDoor(container)).toBeUndefined();
+  });
+
+  it("does not offer Put it on your domain where production is a Git destination", async () => {
+    const git = {
+      ...PRODUCTION,
+      target: { kind: "git", branch: "production", delivery: "direct" },
+    } as unknown as typeof PRODUCTION;
+    const { container } = await released({ "p-prod": placeAddresses([]) }, git);
+    expect(domainDoor(container)).toBeUndefined();
   });
 });

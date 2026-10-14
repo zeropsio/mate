@@ -71,3 +71,42 @@ export function slowMemberList(drivers: ScenarioDrivers, ms: number) {
     return undefined;
   });
 }
+
+/**
+ * A sensitive Shared value in project `projectId`'s vault, as the platform lists it (redacted)
+ * and reveals it: the reveal answers `value` to whoever the platform lets see it.
+ */
+export function sensitiveSharedValue(
+  drivers: ScenarioDrivers,
+  projectId: string,
+  key: string,
+  value: string,
+) {
+  const id = `vault-${key}`;
+  const project = drivers.zerops.rows("project").find((row) => row.id === projectId);
+  if (!project) throw new Error(`Create project ${projectId} first`);
+  const at = "2026-10-07T12:00:00.000Z";
+  drivers.zerops.put("project", {
+    ...project,
+    envList: [
+      {
+        id,
+        clientId: project.clientId,
+        projectId,
+        key,
+        content: "<redacted>",
+        type: "USER",
+        editable: true,
+        sensitive: true,
+        internal: false,
+        created: at,
+        lastUpdate: at,
+      },
+    ],
+  });
+  drivers.zerops.handlers.push((request) =>
+    request.method === "GET" && request.url.pathname.endsWith(`/project-env/${id}/reveal`)
+      ? { body: { content: value } }
+      : undefined,
+  );
+}

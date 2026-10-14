@@ -40,10 +40,12 @@ import {
 import {
   looksSecret,
   revealRefusalWords,
+  SUDO_REFUSAL,
   showOf,
   usedByWords,
   type VaultShow,
 } from "./vaultGroups.logic";
+import { VaultStepUp } from "./VaultStepUp";
 
 /** What one row is doing now, as the panel knows it. */
 export type VaultRowActivity =
@@ -266,6 +268,8 @@ function RowBody(props: VaultRowProps) {
   const [revealed, setRevealed] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
   const [revealRefusal, setRevealRefusal] = useState<string | null>(null);
+  /** The refusal asked for sudo mode: the person can confirm in Zerops, then it shows. */
+  const [stepUp, setStepUp] = useState(false);
   const show = async () => {
     if (props.onReveal === undefined) return;
     setRevealing(true);
@@ -276,8 +280,10 @@ function RowBody(props: VaultRowProps) {
       setDraft(answer.value);
       setReveal(true);
       setRevealRefusal(null);
+      setStepUp(false);
     } else {
       setRevealRefusal(revealRefusalWords(answer.code));
+      setStepUp(answer.code === SUDO_REFUSAL);
     }
   };
   const [guard, setGuard] = useState(false);
@@ -394,6 +400,7 @@ function RowBody(props: VaultRowProps) {
             {revealRefusal}
           </p>
         )}
+        {stepUp ? <VaultStepUp onConfirmed={() => void show()} /> : null}
         <p>
           {usedByWords(value)}
           {restarts.length > 0 ? (
@@ -530,12 +537,16 @@ function VaultManagedRow({
   const hidden = value.sensitive || looksSecret(value.key);
   const [shown, setShown] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [stepUp, setStepUp] = useState(false);
   const show = async () => {
     if (!value.sensitive) return setShown(value.value ?? "");
     if (onReveal === undefined) return;
     const answer = await onReveal(scope.ref, value.id);
-    if (answer.ok) setShown(answer.value);
-    else setRefusal(revealRefusalWords(answer.code));
+    setStepUp(!answer.ok && answer.code === SUDO_REFUSAL);
+    if (answer.ok) {
+      setShown(answer.value);
+      setRefusal(null);
+    } else setRefusal(revealRefusalWords(answer.code));
   };
   return (
     <div
@@ -571,6 +582,11 @@ function VaultManagedRow({
           {refusal}
         </p>
       )}
+      {stepUp ? (
+        <div className="w-full pb-1.5 text-xs text-muted-foreground">
+          <VaultStepUp onConfirmed={() => void show()} />
+        </div>
+      ) : null}
     </div>
   );
 }

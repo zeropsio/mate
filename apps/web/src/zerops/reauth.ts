@@ -5,13 +5,18 @@
  * expiry: it ends only when the person revokes it. A 401 then sends the tab
  * back to the Zerops app, which mints a fresh one, and the callback returns
  * the person to the route they were on (`navigationStorage.ts`).
+ *
+ * A device-login build never goes on its own: its session renews itself, so a
+ * refused one is gone for real, and the Zerops window needs the person's click.
+ * The tab lands on the sign-in.
  */
+import { zeropsSignInMode } from "./deviceLogin";
 import { startZeropsHandover } from "./handover";
 import { readZeropsNativeSignInBridge } from "./nativeSignIn";
 
 export interface ZeropsReauthDeps {
   readonly storage: () => Pick<Storage, "getItem" | "setItem" | "removeItem">;
-  /** A desktop build signs in through the system browser, never this window. */
+  /** A desktop build signs in through the system browser, a device-login build on a click: never on its own. */
   readonly native: () => boolean;
   readonly go: (url: string) => void;
   /** Mints the hand-over request; remembers the route to return to. */
@@ -61,7 +66,7 @@ export function makeZeropsReauth(deps: ZeropsReauthDeps): ZeropsReauth {
 /** This tab's: its `sessionStorage`, its desktop bridge, its location. */
 export const browserZeropsReauth = makeZeropsReauth({
   storage: () => window.sessionStorage,
-  native: () => readZeropsNativeSignInBridge() !== null,
+  native: () => readZeropsNativeSignInBridge() !== null || zeropsSignInMode() === "device-login",
   go: (url) => window.location.replace(url),
   start: () => startZeropsHandover(),
 });

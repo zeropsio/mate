@@ -1813,6 +1813,9 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
       token: refreshedSession.accessToken,
     });
     expect(loginRequests[1]?.authorization).toBe(`Bearer ${refreshedSession.accessToken}`);
+    // The refresh token is the refresh's only credential; the refused access token is not sent.
+    const refresh = stub.requests.find((request) => request.url.includes("/auth/refresh"));
+    expect(refresh?.authorization).toBeNull();
     expect(client.session?.accessToken).toBe(refreshedSession.accessToken);
     // The session changed (refreshed), it was never cleared.
     expect(onSessionChange).not.toHaveBeenCalledWith(null);
@@ -2106,6 +2109,109 @@ describe("ZeropsApiClient.adoptSession", () => {
 
     await expect(client.adoptSession({ accessToken: "  " })).rejects.toBeInstanceOf(ZeropsApiError);
     expect(stub.requests).toHaveLength(0);
+  });
+
+  it("keeps a device login's whole session: its refresh token, expiry and person", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { id: "user-9", email: "a@b.c" }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    const approved: ZeropsSession = {
+      accessToken: "at-1",
+      refreshToken: "rt-1",
+      expiresAt: "2026-10-19T00:00:00Z",
+      expiresIn: 432_000,
+      userId: "user-9",
+      tokenType: "Bearer",
+    };
+
+    await expect(client.adoptSession(approved)).resolves.toEqual(approved);
+  });
+
+  it("refuses a session that still owes a second factor, sending nothing", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+
+    await expect(
+      client.adoptSession({ accessToken: "at-1", twoFAMethods: ["TOTP"], twoFAVerified: false }),
+    ).rejects.toBeInstanceOf(ZeropsApiError);
+    expect(stub.requests).toHaveLength(0);
+  });
+});
+
+describe("ZeropsApiClient refresh refused", () => {
+  // The platform rotates both tokens on a refresh and refuses a spent refresh token with
+  // `400 refreshTokenInvalid`: the session is over, and the tab signs out instead of retrying.
+  it("ends the session when the refresh token was already spent", async () => {
+    const changes: Array<ZeropsSession | null> = [];
+    const stub = recordingFetch((request) =>
+      request.url.endsWith("/auth/refresh")
+        ? jsonResponse(400, { error: { code: "refreshTokenInvalid" } })
+        : jsonResponse(401, { error: { code: "unauthorized" } }),
+    );
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        changes.push(session);
+      },
+    });
+    client.restoreSession({ accessToken: "at-1", refreshToken: "rt-spent" });
+
+    await expect(client.fetchUser()).rejects.toMatchObject({ kind: "expired-session" });
+    expect(client.session).toBeNull();
+    expect(changes).toEqual([null]);
+  });
+});
+
+describe("ZeropsApiClient.revokeSession", () => {
+  it("ends a device login's session at the platform with its own bearer", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { success: true }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+
+    await client.revokeSession({ accessToken: "at-1", refreshToken: "rt-1" });
+
+    expect(stub.requests.map((request) => [request.url, request.authorization])).toEqual([
+      [`${DEFAULT_ZEROPS_API_BASE}/api/rest/public/auth/logout`, "Bearer at-1"],
+    ]);
+  });
+
+  it("swaps a refused access token with its own refresh token, then ends the fresh pair", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/auth/refresh")) {
+        return jsonResponse(200, { accessToken: "at-2", refreshToken: "rt-2" });
+      }
+      return request.authorization === "Bearer at-1"
+        ? jsonResponse(401, { error: { code: "unauthorized" } })
+        : jsonResponse(200, { success: true });
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+
+    await client.revokeSession({ accessToken: "at-1", refreshToken: "rt-1" });
+
+    expect(stub.requests.map((request) => request.url.split("/public")[1])).toEqual([
+      "/auth/logout",
+      "/auth/refresh",
+      "/auth/logout",
+    ]);
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({ refreshTokenId: "rt-1" });
+    expect(stub.requests[2]?.authorization).toBe("Bearer at-2");
+  });
+
+  it("sends nothing for a personal token, which cannot revoke itself", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+
+    await client.revokeSession({ accessToken: "pat-1" });
+
+    expect(stub.requests).toHaveLength(0);
+  });
+
+  it("never fails: the person is signed out here whatever the platform answers", async () => {
+    const client = new ZeropsApiClient({
+      fetch: () => Promise.reject(new TypeError("Failed to fetch")),
+    });
+
+    await expect(
+      client.revokeSession({ accessToken: "at-1", refreshToken: "rt-1" }),
+    ).resolves.toBeUndefined();
   });
 });
 

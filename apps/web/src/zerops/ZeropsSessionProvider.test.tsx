@@ -85,49 +85,6 @@ afterEach(async () => {
 });
 
 describe("ZeropsSessionProvider sign-in guards", () => {
-  it("signs in with a password: verified person, stored session, open account", async () => {
-    const harness = harnessWith();
-    const tab = await mountTab(harness, harness.browser.openTab());
-    expect(tab.session().status).toBe("signed-out");
-
-    await tab.run(() => tab.session().signIn("person@example.test", "secret"));
-
-    expect(tab.session().status).toBe("signed-in");
-    expect(tab.session().user?.id).toBe("user-1");
-    expect(tab.accountId()).toBe("user-1");
-    expect(JSON.parse(storedSession(harness)!)).toMatchObject({ accessToken: expect.any(String) });
-  });
-
-  it("stays signed out with nothing stored after a refused password", async () => {
-    const harness = harnessWith();
-    const tab = await mountTab(harness, harness.browser.openTab());
-
-    await expect(
-      tab.run(() => tab.session().signIn("person@example.test", "wrong")),
-    ).rejects.toThrow();
-
-    expect(tab.session().status).toBe("signed-out");
-    expect(tab.accountId()).toBeNull();
-    expect(storedSession(harness)).toBeNull();
-  });
-
-  it("waits at the second factor with nothing stored, then signs in on the code", async () => {
-    const harness = makeAccountHarness({
-      people: [{ user: person, password: "secret", totp: "123456" }],
-    });
-    const tab = await mountTab(harness, harness.browser.openTab());
-
-    await tab.run(() => tab.session().signIn("person@example.test", "secret"));
-    expect(tab.session().status).toBe("totp-required");
-    expect(tab.accountId()).toBeNull();
-    expect(storedSession(harness)).toBeNull();
-
-    await tab.run(() => tab.session().verifyTotp("123456"));
-    expect(tab.session().status).toBe("signed-in");
-    expect(tab.accountId()).toBe("user-1");
-    expect(storedSession(harness)).not.toBeNull();
-  });
-
   it("adopts a hand-over token only after the platform names its person", async () => {
     const harness = harnessWith();
     const tab = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/authorized" });
@@ -163,6 +120,39 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(storedSession(harness)).toBeNull();
     expect(harness.rest.requests().filter(({ route }) => route === "POST /auth/logout")).toEqual(
       [],
+    );
+  });
+
+  it("adopts a device login's whole session only after the platform names its person", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab());
+
+    await expect(
+      tab.run(() => tab.session().adoptDeviceLogin({ accessToken: "revoked", refreshToken: "r" })),
+    ).rejects.toThrow();
+    expect(storedSession(harness)).toBeNull();
+
+    const approved = { ...harness.rest.issueSession("user-1"), expiresAt: "2026-10-19T00:00:00Z" };
+    await tab.run(() => tab.session().adoptDeviceLogin(approved));
+    expect(tab.session().status).toBe("signed-in");
+    expect(tab.accountId()).toBe("user-1");
+    expect(JSON.parse(storedSession(harness)!)).toEqual(approved);
+  });
+
+  it("signs a device-login session out here at once, then ends it at the platform", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab());
+    const approved = harness.rest.issueSession("user-1");
+    await tab.run(() => tab.session().adoptDeviceLogin(approved));
+
+    await tab.run(() => tab.session().signOut());
+
+    expect(tab.session().status).toBe("signed-out");
+    expect(storedSession(harness)).toBeNull();
+    await vi.waitFor(() =>
+      expect(
+        harness.rest.requests().filter(({ route }) => route === "POST /auth/logout"),
+      ).toHaveLength(1),
     );
   });
 
@@ -359,7 +349,7 @@ describe("ZeropsSessionProvider across two tabs", () => {
     const a = await mountTab(harness, harness.browser.openTab());
     const b = await mountTab(harness, harness.browser.openTab());
 
-    await a.run(() => a.session().signIn("person@example.test", "secret"));
+    await a.run(() => a.session().adoptDeviceLogin(harness.rest.issueSession("user-1")));
     await settle();
 
     expect(b.session().status).toBe("signed-in");
@@ -500,7 +490,7 @@ describe("ZeropsSessionProvider verified adoption across tabs", () => {
     const fromB = b.frames().length;
     const before = harness.browser.openTab().localStorage.getItem(OWNER_KEY);
 
-    await a.run(() => a.session().signIn("person@example.test", "secret"));
+    await a.run(() => a.session().adoptDeviceLogin(harness.rest.issueSession("user-1")));
     await settle();
 
     expect(harness.browser.openTab().localStorage.getItem(OWNER_KEY)).not.toBe(before);

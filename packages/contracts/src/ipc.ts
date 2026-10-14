@@ -170,11 +170,16 @@ export const DesktopUpdateCheckResultSchema = Schema.Struct({
 });
 
 /**
- * The Zerops sign-in hand-over, run out-of-window: the renderer mints a
- * nonce (`state`) and hands it to the main process, which opens the system
- * browser at the platform's authorize URL and listens on a loopback port for
- * the redirect back. See `packages/client-runtime/src/zerops/handover.ts`
- * for the wire contract this rides on.
+ * The Zerops sign-in, run out-of-window in the system browser. The main process runs one of two
+ * modes, by its own setting:
+ *
+ * - the hand-over: the renderer mints a nonce (`state`), the main process opens the platform's
+ *   authorize URL and listens on a loopback port for the redirect back, and answers the callback
+ *   fragment for the renderer to verify (`packages/client-runtime/src/zerops/handover.ts`);
+ * - device login: the main process starts a request on the API, opens its consent page, pushes
+ *   the request's user code (`DesktopZeropsSignInProgress`, tagged with `state`) and polls until
+ *   the person decides, answering the approved session itself
+ *   (`packages/client-runtime/src/zerops/deviceLogin.ts`).
  */
 export interface DesktopZeropsSignInInput {
   /** The nonce the renderer minted and is holding, to check the callback against. */
@@ -187,16 +192,63 @@ export const DesktopZeropsSignInInputSchema = Schema.Struct({
   intent: Schema.optional(Schema.Literal("register")),
 });
 
+/** The session an approved device login answers: the platform's login shape. */
+export interface DesktopZeropsSession {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: string;
+  expiresIn?: number;
+  userId?: string;
+  tokenType?: string;
+  twoFAMethods?: ReadonlyArray<string>;
+  twoFAVerified?: boolean;
+}
+
+export const DesktopZeropsSessionSchema = Schema.Struct({
+  accessToken: Schema.String.check(Schema.isNonEmpty()),
+  refreshToken: Schema.optionalKey(Schema.String),
+  expiresAt: Schema.optionalKey(Schema.String),
+  expiresIn: Schema.optionalKey(Schema.Number),
+  userId: Schema.optionalKey(Schema.String),
+  tokenType: Schema.optionalKey(Schema.String),
+  twoFAMethods: Schema.optionalKey(Schema.Array(Schema.String)),
+  twoFAVerified: Schema.optionalKey(Schema.Boolean),
+});
+
 export type DesktopZeropsSignInResult =
   /** The platform redirected back with a callback fragment for the renderer to verify. */
   | { kind: "callback"; fragment: string }
-  /** Timed out, or the window closed before the browser came back. */
+  /** A device login the person approved: the session to adopt. */
+  | { kind: "session"; session: DesktopZeropsSession }
+  /** A device login the person denied on the consent page. */
+  | { kind: "denied" }
+  /** A device login nobody decided before the platform forgot it. */
+  | { kind: "expired" }
+  /** The platform refused to start or check a device login, in its words. */
+  | { kind: "failed"; message: string }
+  /** Timed out, or the window closed (or a newer attempt began) before the browser came back. */
   | { kind: "cancelled" };
 
 export const DesktopZeropsSignInResultSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("callback"), fragment: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("session"), session: DesktopZeropsSessionSchema }),
+  Schema.Struct({ kind: Schema.Literal("denied") }),
+  Schema.Struct({ kind: Schema.Literal("expired") }),
+  Schema.Struct({ kind: Schema.Literal("failed"), message: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("cancelled") }),
 ]);
+
+/** A device login's request is open: the code its consent page shows, for the person to compare. */
+export interface DesktopZeropsSignInProgress {
+  /** The attempt's nonce, as `DesktopZeropsSignInInput.state` carried it. */
+  state: string;
+  userCode: string;
+}
+
+export const DesktopZeropsSignInProgressSchema = Schema.Struct({
+  state: Schema.String.check(Schema.isNonEmpty()),
+  userCode: Schema.String.check(Schema.isNonEmpty()),
+});
 
 // Stable id for the historical same-origin "primary" local environment
 // (Windows-native backend in the T3-upstream desktop, or a self-hosted web
@@ -339,14 +391,21 @@ export interface DesktopBridge {
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
   /**
-   * Runs the Zerops sign-in hand-over in the system browser instead of the
-   * app window: opens `input.state`'s authorize URL externally, listens on a
-   * loopback port for the platform's redirect, and resolves with the
-   * callback fragment (or `cancelled` on timeout or an abandoned window).
-   * Optional: older desktop builds lack it, and callers fall back to
+   * Runs the Zerops sign-in in the system browser instead of the app window,
+   * in the main process's mode (`DesktopZeropsSignInInput`): the hand-over
+   * resolves with the callback fragment, device login with the approved
+   * session or how it ended; either resolves `cancelled` on timeout or an
+   * abandoned window. Optional: older desktop builds lack it, and callers fall back to
    * navigating the app window itself.
    */
   zeropsSignIn?: (input: DesktopZeropsSignInInput) => Promise<DesktopZeropsSignInResult>;
+  /**
+   * A device-login attempt's user code, pushed once its request is open and before its result.
+   * Optional: older desktop builds run the hand-over only.
+   */
+  onZeropsSignInProgress?: (
+    listener: (progress: DesktopZeropsSignInProgress) => void,
+  ) => () => void;
 }
 
 export type ConfirmDialogVariant = "default" | "destructive";

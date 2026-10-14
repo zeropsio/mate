@@ -1,4 +1,6 @@
+import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
+import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { StopView } from "@t3tools/client-runtime/zerops/flow";
@@ -33,6 +35,7 @@ export function ZeropsStopMenu({
   stop,
   routes,
   projectId,
+  groupId,
   onOpenStop,
   triggerClassName,
 }: {
@@ -41,11 +44,14 @@ export function ZeropsStopMenu({
   readonly stop: StopView;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly projectId: string;
+  /** The application whose places the addresses sheet's switch offers; absent outside one. */
+  readonly groupId?: string | undefined;
   readonly onOpenStop: (() => void) | undefined;
   /** The trigger's look, which is the surface's: sidebar tokens there, page tokens on a page. */
   readonly triggerClassName: string;
 }) {
   const publicAccess = usePublicAccess(projectId);
+  const orgId = useAccountOrgId();
   routes = publicAccess.bound ? publicAccess.routes : routes;
   // `v1.4.0 · 77ab0e1 · tagged by ada` — the whole of what one row abbreviates.
   const version = stop.version;
@@ -80,6 +86,17 @@ export function ZeropsStopMenu({
           )}
         </MenuGroup>
         <MenuSeparator />
+        {orgId === null ? null : (
+          <MenuItem
+            onClick={() => {
+              useAddressesSheet
+                .getState()
+                .open({ orgId, projectId, ...(groupId === undefined ? {} : { groupId }) });
+            }}
+          >
+            Addresses
+          </MenuItem>
+        )}
         <MenuItem
           render={<a href={zeropsProjectUrl(projectId)} rel="noreferrer" target="_blank" />}
         >

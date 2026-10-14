@@ -51,11 +51,6 @@ zerops:
         # VITE_HTTP_URL / VITE_WS_URL stay unset too — either one makes the
         # app non-hosted and pins it to that backend. The repository `.env`
         # is gitignored, so a clone carries neither.
-        #
-        # VITE_ZEROPS_TURNSTILE_SITE_KEY stays unset, so the sign-up widget
-        # is off and registration refuses to send. Turnstile's site key is
-        # bound to app.zerops.io; a second hostname has to be added to it
-        # before in-app sign-up works anywhere else.
     run:
       base: alpine/static@1.0
       routing:

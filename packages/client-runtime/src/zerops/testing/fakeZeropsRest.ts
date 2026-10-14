@@ -343,8 +343,12 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
       case "POST /auth/refresh": {
         const { refreshTokenId } = request.body as { refreshTokenId: string };
         const userId = refreshTokens.get(refreshTokenId);
-        if (userId === undefined) return failure(401, "unauthorized");
+        // The platform rotates both tokens: a spent refresh token is refused with 400, and the
+        // access token it renewed answers 401 at once.
+        if (userId === undefined) return failure(400, "refreshTokenInvalid");
         refreshTokens.delete(refreshTokenId);
+        for (const [token, held] of accessTokens)
+          if (held.refreshToken === refreshTokenId) accessTokens.delete(token);
         refreshes += 1;
         // `/auth/refresh` answers with the session at the top level.
         return json(200, issueSession(userId));

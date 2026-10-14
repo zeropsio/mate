@@ -70,7 +70,7 @@ export interface ReviewPrimaryButton extends ReviewButton {
   readonly shortcut?: true | undefined;
   /** Pressed and running: the label says so, and it takes no second press. */
   readonly busy?: boolean;
-  readonly icon?: "tag" | "rollback" | undefined;
+  readonly icon?: "tag" | "rollback" | "globe" | undefined;
   /** The words it shows where they say more than its label: "Merge to stage". */
   readonly text?: string | undefined;
 }
@@ -242,6 +242,7 @@ export function ZeropsReviewSurface({
             >
               {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
               {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
+              {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
               {primary.busy === true ? `${primary.label}…` : (primary.text ?? primary.label)}
               {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
                 <kbd aria-hidden="true">{PRESS_KEYS}</kbd>

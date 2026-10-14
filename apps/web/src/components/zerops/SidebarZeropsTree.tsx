@@ -1,4 +1,5 @@
 import { showProjectParts } from "~/zerops/projectPartsShown";
+import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
 import { mateStatus } from "../../zerops/mateStatus.logic";
@@ -211,6 +212,7 @@ import { KeyChip, MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
 import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
 import {
+  addressesPlace,
   formatWorkingTime,
   projectHeadingMenu,
   sidebarMateKey,
@@ -713,6 +715,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const session = useZeropsSessionOptional();
   const accountHq = useAccountHq(structureView.orgId ?? undefined);
+  const accountOrgId = useAccountOrgId();
   const carried = useCarriedCoreBuild();
   const [followingHqUpdate, setFollowingHqUpdate] = useState(false);
   const hqStale = structureView.structure !== null && hqDown(structureView);
@@ -1479,6 +1482,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                   },
                 }
               : undefined,
+            addressesPlace({
+              production: productionItem?.project.id,
+              stages: stages.map(({ stop }) => targetProjectId(stop.projectId)),
+              mates: ordered.map(({ item }) => item.project.id),
+            }),
           );
     const demand =
       group === undefined
@@ -1985,10 +1993,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     };
   };
 
-  /** A project's ···: its own verbs — fold, add a Mate, open it, move it, set a place up. */
+  /**
+   * A project's ···: its own verbs — fold, add a Mate, open it, its addresses (at `place`, its
+   * production or first place), move it, set a place up.
+   */
   const projectMenuOf = (
     group: CanonicalGroup,
     fold: { readonly open: boolean; readonly toggle: () => void } | undefined,
+    place: string | undefined,
   ): ReadonlyArray<HeadingMenuEntry> => {
     const missing = missingEnvironmentRows({
       tiersOnMain: tiersAddable({
@@ -2016,6 +2028,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           ? onBrowseProjects
           : () => {
               onOpenGroup(group.groupId);
+            },
+      onAddresses:
+        place === undefined || accountOrgId === null
+          ? undefined
+          : () => {
+              useAddressesSheet
+                .getState()
+                .open({ orgId: accountOrgId, projectId: place, groupId: group.groupId });
             },
       reorder: {
         canMoveUp: neighbours(group.groupId).indexOf(group.groupId) > 0,

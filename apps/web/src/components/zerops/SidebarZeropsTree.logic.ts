@@ -77,10 +77,22 @@ export type HeadingMenuEntry =
   | { readonly kind: "separator" };
 
 /**
+ * The place a project's Addresses opens: its production, else its first stage, else its first
+ * Mate's own project; `undefined` while it has none.
+ */
+export function addressesPlace(input: {
+  readonly production: string | undefined;
+  readonly stages: ReadonlyArray<string | undefined>;
+  readonly mates: ReadonlyArray<string>;
+}): string | undefined {
+  return [input.production, ...input.stages, ...input.mates].find((id) => id !== undefined);
+}
+
+/**
  * A project heading's ··· (round 5): Fold, Add a Mate and Open project first — the heading's own
- * verbs, none of them on it at rest — then moving it among the others, then adding a stage or a
- * production it lacks, and where projects are added. The New Mate dialog opens over the view on
- * screen: Add a Mate goes nowhere.
+ * verbs, none of them on it at rest — then its Addresses where it has a place, then moving it
+ * among the others, then adding a stage or a production it lacks, and where projects are added.
+ * The New Mate dialog opens over the view on screen: Add a Mate goes nowhere.
  */
 export function projectHeadingMenu(input: {
   readonly collapsed: boolean;
@@ -88,6 +100,8 @@ export function projectHeadingMenu(input: {
   readonly onToggle: (() => void) | undefined;
   readonly onAddMate: () => void;
   readonly onOpen: () => void;
+  /** Opens the addresses sheet for its place (`addressesPlace`); absent while it has none. */
+  readonly onAddresses?: (() => void) | undefined;
   readonly reorder:
     | {
         readonly canMoveUp: boolean;
@@ -113,6 +127,7 @@ export function projectHeadingMenu(input: {
       : [item(input.collapsed ? "Unfold" : "Fold", input.onToggle)]),
     item("Add a project Mate", input.onAddMate),
     item("Open project", input.onOpen),
+    ...(input.onAddresses === undefined ? [] : [item("Addresses", input.onAddresses)]),
     separator,
     ...(reorder === undefined
       ? []
