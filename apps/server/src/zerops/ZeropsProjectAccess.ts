@@ -37,7 +37,8 @@ import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
 
 /**
  * How long HQ's relay holds from HQ's read of Zerops: one role recheck at its ceiling, the window
- * a removed person keeps their screen for when this Mate reads Zerops itself.
+ * before current admission needs a fresh answer. Ordinary unenrolled Mates may read Zerops;
+ * enrolled Mates require the HQ classification too.
  */
 export const RELAY_HOLDS = Duration.seconds(MAX_ZEROPS_ROLE_RECHECK_SECONDS);
 

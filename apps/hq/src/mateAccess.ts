@@ -6,8 +6,8 @@
  *
  * Sent whole down the Mate's link after every view, with how long before it was sent Zerops
  * answered that view: freshness and content in one frame. A frame past `MATE_LINK_FRAME_MAX` is
- * not sent — the Mate reads Zerops itself — and is logged once per Mate until one fits again, so a
- * large org is seen, not silent.
+ * not sent and is logged once per Mate until one fits again. An enrolled Mate cannot admit from
+ * an expired view; the log identifies the oversized org that prevented its refresh.
  *
  * @module mateAccess
  */
