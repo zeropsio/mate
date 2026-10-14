@@ -3,7 +3,9 @@
  * account, outstanding mints wait past the door window, then one sweep is submitted; the person's
  * *Delete again* submits an explicit one. What the sweep deletes, and what stays owed, is the
  * operation's (`executors/throwawaySweep.ts`); this hook only says where the cleanup stands. A
- * failed cleanup stays visible until an explicit again.
+ * refused cleanup stays visible until an explicit again. One whose outcome is unknown (it never
+ * reached Zerops, or Zerops failed) asks again by itself a few times first, quietly: its tokens
+ * carry no rights, and a network blip is not the person's to fix.
  */
 import { SWEEP_FAILED_REASON } from "@t3tools/client-runtime/data";
 import {
@@ -18,6 +20,9 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Past the door's window, so the newest recorded mint is eligible for the sweep. */
 const PAST_THE_WINDOW_MS = 1_000;
+
+/** The waits before each automatic again of a cleanup whose outcome is unknown. */
+const UNKNOWN_RETRY_MS = [30_000, 120_000, 600_000] as const;
 
 type CleanupState = {
   readonly state: "idle" | "waiting" | "running" | "done" | "failed" | "unknown";
@@ -59,6 +64,46 @@ export function useZeropsThrowawaySweep(input: {
     [cleanupSnapshot],
   );
   const [view, setView] = useState({ debt, clientId, ...IDLE });
+  /** The automatic agains this account and organization spent, and the one waiting. */
+  const retries = useRef<{
+    readonly debt: typeof debt;
+    readonly clientId: string | undefined;
+    count: number;
+  }>({ debt, clientId, count: 0 });
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sweepLater = useRef<(explicit: boolean) => void>(() => undefined);
+
+  /**
+   * Schedules the next automatic again of a cleanup whose outcome is unknown, showing it as
+   * queued; false for a refusal, or once the tries are spent.
+   */
+  const retryUnknown = useCallback(
+    (failure: ThrowawayCleanupFailure | undefined): boolean => {
+      if (failure?.state !== "unknown" || clientId === undefined) return false;
+      if (retries.current.debt !== debt || retries.current.clientId !== clientId)
+        retries.current = { debt, clientId, count: 0 };
+      if (retryTimer.current === null) {
+        const wait = UNKNOWN_RETRY_MS[retries.current.count];
+        if (wait === undefined) return false;
+        retries.current.count += 1;
+        retryTimer.current = setTimeout(() => {
+          retryTimer.current = null;
+          sweepLater.current(true);
+        }, wait);
+      }
+      setView({ debt, clientId, state: "waiting", failure: null });
+      return true;
+    },
+    [clientId, debt],
+  );
+  // A pending again belongs to the account and organization it was scheduled for.
+  useEffect(
+    () => () => {
+      if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    },
+    [clientId, debt],
+  );
   /** The sweep this account and organization submitted last, and whether it is still out. */
   const submitted = useRef<{
     readonly debt: typeof debt;
@@ -79,10 +124,12 @@ export function useZeropsThrowawaySweep(input: {
         .then(({ progress, evidence }) => {
           attempt.running = false;
           if (progress.stage === "done" && progress.outcome === "succeeded") {
+            retries.current = { debt, clientId, count: 0 };
             publish({ state: "done", failure: null });
             return;
           }
           const outstanding = debt.cleanupFailures(clientId)[0];
+          if (retryUnknown(outstanding)) return;
           publish({
             state: outstanding?.state ?? "failed",
             failure: outstanding?.reason ?? evidence ?? SWEEP_FAILED_REASON,
@@ -97,12 +144,17 @@ export function useZeropsThrowawaySweep(input: {
           });
         });
     },
-    [clientId, debt, operations, userId],
+    [clientId, debt, operations, retryUnknown, userId],
   );
+  useEffect(() => {
+    sweepLater.current = sweep;
+  }, [sweep]);
 
   const again = useCallback(() => {
     const last = submitted.current;
     if (last?.running === true && last.debt === debt && last.clientId === clientId) return;
+    if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
     sweep(true);
   }, [clientId, debt, sweep]);
 
@@ -116,6 +168,7 @@ export function useZeropsThrowawaySweep(input: {
       // Our own sweep said how it failed; a failure recorded since is shown over it.
       if (ours && (last.running || failures.length === 0)) return;
       const failure = failures[0];
+      if (retryUnknown(failure)) return;
       setView({
         debt,
         clientId,
@@ -133,7 +186,7 @@ export function useZeropsThrowawaySweep(input: {
     setView({ debt, clientId, state: "waiting", failure: null });
     const timer = setTimeout(() => sweep(false), wait);
     return () => clearTimeout(timer);
-  }, [clientId, debt, enabled, failedAt, failures, needsAgain, sweep]);
+  }, [clientId, debt, enabled, failedAt, failures, needsAgain, retryUnknown, sweep]);
 
   return { ...(view.debt === debt && view.clientId === clientId ? view : IDLE), again };
 }
