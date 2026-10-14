@@ -224,6 +224,7 @@ const fixture = Effect.gen(function* () {
   const overviews = yield* makeMateOverviews(memoryStore().store);
   const sourceNow = (): StructureSource => ({
     environmentSource: environmentSnapshot(),
+    chiefOwners: new Map(chiefRows.map((row) => [row.project_id, row.user_id])),
     facts: org,
     appIds: new Set(deleted ? [] : otherApp ? ["A", "B"] : ["A"]),
     projectIds: new Set(deleted ? [] : ["P"]),
@@ -451,7 +452,7 @@ const fixture = Effect.gen(function* () {
         (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>) =>
           Effect.sync(() => {
             sqlReads.push({ query: strings.join("?"), values });
-            return strings.join("?").includes("FROM hq_chief") ? chiefRows : [];
+            return [];
           }),
         {
           in: (column: string, values: ReadonlyArray<unknown>) => ({ column, values }),

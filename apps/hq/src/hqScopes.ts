@@ -54,7 +54,7 @@ import { Roles, type OrgView } from "./roles.ts";
 import { makeSourceFence } from "./sourceFence.ts";
 import { makeScopeJournal } from "./scopeJournal.ts";
 import { Structure, type StructureSource, type StructureRead } from "./structure.ts";
-import { CHIEF_TAG, chiefOfPerson } from "./chiefOwnership.ts";
+import { chiefOfPerson } from "./chiefOwnership.ts";
 
 const isZeropsRefused = Schema.is(ZeropsRefused);
 
@@ -496,17 +496,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 .map((project) => project.projectId),
             );
             const listed = [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)];
-            // Whose Chief each Chief project is: the viewer's own, or another person's. Read only
-            // while the org holds a project tagged a Chief's, so an org without one pays nothing.
-            const chiefOwners = new Map(
-              current.facts.projects.some((project) => project.tags.includes(CHIEF_TAG))
-                ? (yield* sql<{ readonly project_id: string; readonly user_id: string }>`
-                    SELECT project_id, user_id FROM hq_chief
-                    WHERE org_id = ${current.facts.orgId} AND revoked_at IS NULL`).map(
-                    (row) => [row.project_id, row.user_id] as const,
-                  )
-                : [],
-            );
+            const chiefOwners = current.chiefOwners;
             const signersFor = (projectId: string) => {
               const signedInNow: Record<string, string> = {};
               const everSignedIn: Record<string, string> = {};
