@@ -4,6 +4,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
 import type { TimeoutRisk } from "./gate-timing-reporter.ts";
 import { failureSummary, gateLogDirectory, runLogged, stageSummary } from "./gate-log.ts";
 import { acquireGateSlot, gateSlotCount, gateSlotDirectory } from "./gate-slots.ts";
@@ -12,6 +13,7 @@ import { transform as parseCss } from "lightningcss";
 import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
 
 export const repositoryInvariants = [
+  "scripts/gate-file-inputs.test.ts",
   "scripts/surface-manifest.test.ts",
   "scripts/mate-zone-architecture.test.ts",
   "scripts/mate-boundaries.test.ts",
@@ -40,6 +42,9 @@ export const stateOnlySmoke = {
     "a published page that navigates itself by script sends nothing and is never shown",
   ],
 } as const;
+
+// Full related scenario files, nearest first; edited and explicitly named files are uncapped.
+export const relatedScenarioLimit = 8;
 
 export const scenarioAreas = [
   "a-signin",
@@ -279,22 +284,6 @@ export function buildRelatedFileGraph(
     if (resolved) publicEntries.add(resolved);
     return [manifest.path, ...(resolved ? [resolved] : [])];
   };
-  const filesBelow = (directory: string): string[] => {
-    const current = NodeFS.existsSync(NodePath.join(root, directory))
-      ? NodeFS.readdirSync(NodePath.join(root, directory), { withFileTypes: true }).flatMap(
-          (entry) => {
-            const path = `${directory}/${entry.name}`;
-            return entry.isDirectory() ? filesBelow(path) : entry.isFile() ? [path] : [];
-          },
-        )
-      : [];
-    return [
-      ...new Set([
-        ...current,
-        ...[...previous.keys()].filter((path) => path.startsWith(`${directory}/`)),
-      ]),
-    ];
-  };
   const record = (value: unknown): Record<string, unknown> | undefined =>
     typeof value === "object" && value !== null && !Array.isArray(value)
       ? (value as Record<string, unknown>)
@@ -454,19 +443,12 @@ export function buildRelatedFileGraph(
     };
     visit(parsed.program);
   }
-  const executionInputs = (file: string): string[] => {
-    if (file === "apps/server/src/spi/replay/goldens.test.ts") {
-      // loadFixture and goldenCheck read recordings, metadata and expected JSON from this root.
-      return filesBelow("apps/server/src/spi/fixtures");
-    }
-    return [];
-  };
   const edges = new Map<string, string[]>();
   const changedEdges = new Map<string, string[]>();
   const imports = (file: string): string[] => {
     const cached = edges.get(file);
     if (cached) return cached;
-    const dependencies = executionInputs(file);
+    const dependencies: string[] = [];
     const conditional: string[] = [];
     changedEdges.set(file, conditional);
     // Data assets are terminal graph nodes: matching their path is enough, not reading their bytes.
@@ -498,6 +480,14 @@ export function buildRelatedFileGraph(
       if (!sourceFile.test(file)) continue;
       const parsed = parseSync(file, source, parserOptions);
       if (parsed.errors.length) throw new Error(`${file}: ${parsed.errors[0]!.message}`);
+      if (
+        /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(file) &&
+        hasFileReads(parsed.program) &&
+        !Object.hasOwn(fileReadInputs, file)
+      )
+        throw new Error(
+          `${file}: filesystem reads need a declaration in scripts/gate-file-inputs.ts (use [] only for disposable files)`,
+        );
       const add = (request: string, names?: ReadonlyArray<string>) =>
         dependencies.push(
           ...resolveImport(file, request).flatMap((target) =>
@@ -580,31 +570,58 @@ export function buildRelatedFileGraph(
     const priorDepth = visited.get(file);
     if (priorDepth !== undefined && (maxDepth === Infinity || priorDepth <= depth)) continue;
     visited.set(file, depth);
-    if (stopped.has(file) || depth >= maxDepth) continue;
+    if (stopped.has(file)) {
+      // A changed test is still checked for undeclared reads, even when traversal stops here.
+      if (/\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(file)) imports(file);
+      continue;
+    }
+    if (depth >= maxDepth) continue;
     for (const dependency of imports(file)) {
       edge(readers, dependency, file);
       pending.push({ file: dependency, depth: depth + 1 });
     }
     for (const dependency of changedEdges.get(file) ?? []) edge(changedReaders, dependency, file);
   }
+  const rank = (paths: ReadonlyArray<string>) => {
+    const changed = new Set(paths.filter((path) => !documentation(path)));
+    const distances = new Map([...changed].map((file) => [file, 0]));
+    const offer = (file: string, distance: number) => {
+      if (distance < (distances.get(file) ?? Infinity)) distances.set(file, distance);
+    };
+    for (const file of changed)
+      for (const reader of changedReaders.get(file) ?? []) offer(reader, 1);
+    // Declared reads are terminal edges: reading a source's bytes does not read its imports.
+    for (const file of visited.keys())
+      if (
+        fileReadInputs[file]?.some((pattern) =>
+          [...changed].some((path) => NodePath.matchesGlob(path, pattern)),
+        )
+      )
+        offer(file, 1);
+    const queue = [...distances.keys()];
+    for (let i = 0; i < queue.length; i++) {
+      const file = queue[i]!;
+      const distance = distances.get(file)! + 1;
+      for (const reader of readers.get(file) ?? []) {
+        if (distance >= (distances.get(reader) ?? Infinity)) continue;
+        offer(reader, distance);
+        queue.push(reader);
+      }
+    }
+    return candidates
+      .filter((file) => distances.has(file))
+      .map((file) => ({ file, distance: distances.get(file)! }))
+      .sort((left, right) => left.distance - right.distance || left.file.localeCompare(right.file));
+  };
   return Object.freeze({
+    rank,
     select(paths: ReadonlyArray<string>): string[] {
       const changed = new Set(paths.filter((path) => !documentation(path)));
       if (!changed.size) return [];
-      if (maxDepth === Infinity) {
-        const affected = new Set(changed);
-        // Conditional edges match changed barrels only, never an affected export's barrel.
-        for (const file of changed)
-          for (const reader of changedReaders.get(file) ?? []) affected.add(reader);
-        const owners = [...affected];
-        while (owners.length)
-          for (const reader of readers.get(owners.pop()!) ?? []) {
-            if (affected.has(reader)) continue;
-            affected.add(reader);
-            owners.push(reader);
-          }
-        return candidates.filter((test) => affected.has(test)).sort();
-      }
+      if (maxDepth === Infinity)
+        return rank(paths)
+          .map(({ file }) => file)
+          .sort();
       return candidates
         .filter((test) => {
           const pending = inputs.get(test)!.map((file) => ({ file, depth: 0 }));
@@ -842,6 +859,7 @@ function selectionHash(root: string, inventory: ReadonlyArray<string>): string {
   hash.update(JSON.stringify([process.version, inventory]));
   const inputs = [
     "scripts/gate-changed.ts",
+    "scripts/gate-file-inputs.ts",
     "scripts/gate-timing-reporter.ts",
     "scripts/gate-smoke-reporter.ts",
     ...repositoryInvariants,
@@ -946,12 +964,26 @@ export function buildGateGraph(
     ),
   );
   const units = Object.freeze(unitFiles(root));
+  const collectScenarios = (directory: string): string[] =>
+    NodeFS.existsSync(NodePath.join(root, directory))
+      ? NodeFS.readdirSync(NodePath.join(root, directory), { withFileTypes: true }).flatMap(
+          (entry) => {
+            const file = NodePath.posix.join(directory, entry.name);
+            return entry.isDirectory()
+              ? collectScenarios(file)
+              : entry.isFile() && file.endsWith(".scenario.ts")
+                ? [file]
+                : [];
+          },
+        )
+      : [];
+  const scenarios = Object.freeze(collectScenarios("apps/web/test/scenarios/areas"));
   // The CLI did not discover import readers for comments/docs or manifest-only edits.
   const related =
     stoppedAt && !stoppedAt.some((path) => !documentation(path) && !packageManifest(path))
       ? undefined
-      : buildRelatedFileGraph(root, units, previous, Infinity, stoppedAt);
-  return Object.freeze({ workspace, units, related });
+      : buildRelatedFileGraph(root, [...units, ...scenarios], previous, Infinity, stoppedAt);
+  return Object.freeze({ workspace, units, scenarios, related });
 }
 
 export function selectGateSteps(
@@ -1054,7 +1086,9 @@ export function selectGateSteps(
   );
   const ownedUnits = [
     ...new Set([
-      ...(related?.select(paths.filter((path) => !manifestPaths.has(path))) ?? []),
+      ...(related
+        ?.select(paths.filter((path) => !manifestPaths.has(path)))
+        .filter((file) => units.includes(file)) ?? []),
       ...units.filter((file) =>
         changedModules.some(
           (module) =>
@@ -1214,41 +1248,58 @@ if (import.meta.main) {
   const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
   const changes = meaningfulChanges(root, comparison, allPaths);
   const meaningful = { ...changes, paths: changes.paths.filter(activePath) };
-  // L3 owns import-graph scenario coverage; L2 runs only declared files and a fixed smoke.
+  const smokeFiles = meaningful.paths.length ? Object.keys(stateOnlySmoke) : [];
+  validateSelectedFiles(root, smokeFiles);
+  const graph = buildGateGraph(root, meaningful.previous, meaningful.paths);
+  const explicitScenarios = new Set([
+    ...namedScenarios,
+    ...meaningful.paths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
+  ]);
+  const rankedScenarios =
+    graph.related
+      ?.rank(meaningful.paths)
+      .filter(({ file }) => graph.scenarios.includes(file) && !explicitScenarios.has(file)) ?? [];
+  const selectedScenarios = rankedScenarios.slice(0, relatedScenarioLimit);
+  const overflowScenarios = rankedScenarios.slice(relatedScenarioLimit);
   const inventory = [
     ...new Set([
       ...meaningful.paths.filter(
         (file) => file.endsWith(".scenario.ts") && existing.includes(file),
       ),
       ...namedScenarios,
+      ...selectedScenarios.map(({ file }) => file),
     ]),
   ].sort();
-  const smokeFiles = meaningful.paths.length ? Object.keys(stateOnlySmoke) : [];
-  validateSelectedFiles(root, [...inventory, ...smokeFiles]);
+  validateSelectedFiles(root, inventory);
   if (verbose || args.includes("--list")) {
     console.log(
-      `Scenario files: ${inventory.length}; reason: ${meaningful.paths.length || namedScenarios.length ? "edited files or explicit --scenarios" : "documentation/comments only"}`,
+      `Scenario files: ${inventory.length}; reason: ${meaningful.paths.length || namedScenarios.length ? "edited files, explicit --scenarios or import graph" : "documentation/comments only"}`,
     );
     for (const file of inventory)
       console.log(
         `Scenario ${file}; reason: ${[
           ...(meaningful.paths.includes(file) ? ["changed file"] : []),
           ...(namedScenarios.includes(file) ? ["explicit --scenarios"] : []),
+          ...selectedScenarios
+            .filter((selected) => selected.file === file)
+            .map(({ distance }) => `import graph distance ${distance}`),
         ].join("; ")}`,
       );
   }
-  const { steps, ownedUnits } = selectGateSteps(
-    buildGateGraph(root, meaningful.previous, meaningful.paths),
-    {
-      comparison,
-      existing,
-      paths: meaningful.paths,
-      typecheckPaths: changes.paths,
-      inventory,
-      smokeFiles,
-      slots,
-    },
+  console.log(
+    `Related scenario cap: ${relatedScenarioLimit}; selected ${selectedScenarios.length}; overflow ${overflowScenarios.length} (deferred, no full-suite fallback)`,
   );
+  for (const { file, distance } of overflowScenarios)
+    console.log(`Deferred scenario ${file}; import graph distance ${distance}`);
+  const { steps, ownedUnits } = selectGateSteps(graph, {
+    comparison,
+    existing,
+    paths: meaningful.paths,
+    typecheckPaths: changes.paths,
+    inventory,
+    smokeFiles,
+    slots,
+  });
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
