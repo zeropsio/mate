@@ -1172,6 +1172,8 @@
         "apps/web/src/components/zerops/projects/overviewSlots.tsx",
         "apps/web/src/components/zerops/projects/OverviewCardMate.tsx",
         "apps/web/src/components/zerops/projects/projectsView.logic.ts",
+        "apps/web/src/components/zerops/projects/ProjectPeople.tsx",
+        "apps/web/src/components/zerops/projects/ProjectInviteDialog.tsx",
         "apps/web/src/components/zerops/ZeropsAskDialog.tsx",
         "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",

@@ -50,6 +50,7 @@ import {
 } from "./serviceWrites.ts";
 import { throwawaySweepExecutor } from "./throwawaySweep.ts";
 import { addressWritesExecutor } from "./addressWrites.ts";
+import { appAccessExecutor } from "./appAccess.ts";
 import { serviceRestartExecutor, vaultWriteExecutor } from "./vaultWrites.ts";
 
 type ZeropsOperationsClient = Pick<
@@ -104,6 +105,12 @@ type ZeropsOperationsClient = Pick<
   | "addServiceVariable"
   | "updateServiceVariable"
   | "removeServiceVariable"
+  | "validateOrganizationUser"
+  | "inviteOrganizationUser"
+  | "connectOrganizationUser"
+  | "readMemberProjectRoles"
+  | "writeMemberProjectRoles"
+  | "removeOrganizationMember"
 >;
 
 export function makeZeropsExecutor(input: {
@@ -268,6 +275,26 @@ export function makeZeropsExecutor(input: {
       syncPublicPortRouting: (projectId) => client.syncPublicPortRouting(projectId),
       requestProjectPublicIp: (projectId) => client.requestProjectPublicIp(projectId),
     });
+    const people = appAccessExecutor(
+      {
+        validateOrganizationUser: (orgId, email) => client.validateOrganizationUser(orgId, email),
+        inviteOrganizationUser: (orgId, invite) => client.inviteOrganizationUser(orgId, invite),
+        connectOrganizationUser: (orgId, invite) => client.connectOrganizationUser(orgId, invite),
+        listOrganizationMembers: (orgId) => client.listOrganizationMembers(orgId),
+        readMemberProjectRoles: (id) => client.readMemberProjectRoles(id),
+        writeMemberProjectRoles: (id, list) => client.writeMemberProjectRoles(id, list),
+        removeOrganizationMember: (id) => client.removeOrganizationMember(id),
+      },
+      // The member list and the app's places, read again before the write is reported done.
+      async (orgId, places) => {
+        const demands: ReadonlyArray<DetailDemand> = [
+          { family: "organizationMembers", ownerId: orgId },
+          ...places.map((ownerId) => ({ family: "project", listing: "project", ownerId }) as const),
+        ];
+        for (const demand of demands) input.revalidate(orgId, demand);
+        await Promise.all(demands.map((demand) => input.readDetail(demand)));
+      },
+    );
     return {
       submit: (requestId, intent) =>
         Effect.suspend(() => {
@@ -340,6 +367,12 @@ export function makeZeropsExecutor(input: {
               return addresses.publishPorts(requestId, intent);
             case "request-ipv4":
               return addresses.requestIpv4(requestId, intent);
+            case "check-invitee":
+              return people.check(requestId, intent);
+            case "invite-member":
+              return people.invite(requestId, intent);
+            case "set-app-access":
+              return people.setAccess(requestId, intent);
             default:
               // HQ's own writes go to HQ's executor; the coordinator never routes one here.
               return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));
@@ -448,6 +481,15 @@ export function makeZeropsExecutor(input: {
         hasServiceVariable: (...args) => source.hasServiceVariable(...args),
         listPublicHttpRoutings: (...args) => source.listPublicHttpRoutings(...args),
         listOrganizationMembers: (...args) => source.listOrganizationMembers(...args),
+        readMemberProjectRoles: (...args) => source.readMemberProjectRoles(...args),
+        validateOrganizationUser: (orgId, email) =>
+          source.validateOrganizationUser(orgId, email, check),
+        inviteOrganizationUser: (orgId, invite) =>
+          source.inviteOrganizationUser(orgId, invite, check),
+        connectOrganizationUser: (orgId, invite) =>
+          source.connectOrganizationUser(orgId, invite, check),
+        writeMemberProjectRoles: (id, list) => source.writeMemberProjectRoles(id, list, check),
+        removeOrganizationMember: (id) => source.removeOrganizationMember(id, check),
       };
       return admission().pipe(Effect.andThen(assemble(client).submit(requestId, intent)));
     },

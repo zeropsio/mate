@@ -90,6 +90,8 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   /** A Mate's face, small: whose a change is, beside it. */
   readonly mateFace: (item: T) => ReactNode;
   readonly nowMs: number;
+  /** Drawn on the project's own page, whose column already holds its history. */
+  readonly onPage?: boolean | undefined;
 }) {
   const { flows, deployments, nowMs } = input;
   const people = useAtomValue(shownHqProjectPeopleAtom);
@@ -298,8 +300,9 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
             Roll back to {back}
           </button>
         )}
-        {/* Its releases, where it has any: nothing released has no history to open. */}
-        {releases.length === 0 ? null : (
+        {/* Its releases, where it has any: nothing released has no history to open — and on the
+            project's own page its history stands beside the card. */}
+        {releases.length === 0 || input.onPage === true ? null : (
           <button
             className="ov-btn"
             onClick={() => {
@@ -312,7 +315,9 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         )}
       </>
     ) : null;
-    return <PlacePanel actions={actions} model={model} />;
+    return (
+      <PlacePanel actions={actions} groupId={groupId} model={model} roomy={input.onPage === true} />
+    );
   };
 
   /**

@@ -23,7 +23,6 @@ import { ReleaseAction, useReleaseOffer, type ReleaseOffer } from "./ZeropsRelea
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { StopVaultSide, StopVaultToggle, useStopVaultOpen } from "./vault/StopVault";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
-import { useVisibleProjectAccess } from "~/zerops/useVisibleProjectAccess";
 import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAccess";
 /**
  * A project group's page, and one stop's, in place of the thread.
@@ -42,17 +41,11 @@ import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAcc
  * Structural only — what a row says is `projectFlow.ts`'s and
  * `groupHistory.ts`'s (rule R5).
  */
-import { useAtomValue } from "@effect/atom-react";
-import { hqMatesAtom } from "~/state/zerops";
 import { StopReadAgain } from "./StopReadAgain";
 import {
   cannotTellWhatRuns,
-  assignCandidateMateTints,
   buildZeropsGroupTree,
   heldGroupLabel,
-  hasMate,
-  mateShapeOf,
-  changeState,
   deployWord,
   flowVerbKey,
   flowVerbLabel,
@@ -61,8 +54,6 @@ import {
   environmentSlots,
   productionRunsOf,
   type EnvironmentSlotRow,
-  PROJECT_ALL_CLEAR,
-  projectAttention,
   releaseContentsCommits,
   releaseContentsSummary,
   carriedReads,
@@ -70,14 +61,9 @@ import {
   movedCount,
   releaseTagsByCommit,
   type MovedCommits,
-  type ReleaseContentsSummary,
   shortCommit,
-  sidebarChangeLabel,
-  type ProjectAttentionItem,
   type ZeropsPublicRoute,
-  type ProjectAttentionKind,
   type CanonicalEnvironmentRow as EnvironmentRow,
-  type FlowPullRequest,
   type CompareRead,
   type FlowReleaseRow,
   type GroupEnvironmentRowInput,
@@ -91,7 +77,6 @@ import {
   firstDeployTone,
   stageFirstDeploy,
   type FirstDeploy,
-  matePoseOf,
 } from "@t3tools/client-runtime/zerops";
 import {
   DEPLOYS_ASIDE,
@@ -113,40 +98,17 @@ import {
   type StopVerdict,
   type StopView,
 } from "@t3tools/client-runtime/zerops/flow";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { KnownAffordance, Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import {
-  candidatesNotice,
-  findCandidate,
-  heldCandidates,
-  type CandidatesNotice,
-} from "@t3tools/client-runtime/zerops/projections";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRightIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
+import { ChevronRightIcon, ExternalLinkIcon } from "lucide-react";
 import { Fragment, useCallback, useContext, useId, useMemo, useState } from "react";
 
-import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import type { MateLiveView } from "@t3tools/shared/hqMates";
 
-import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import {
-  activityOfNow,
-  mateAwake,
-  mateFaceFor,
-  mateFaceOf,
-  mateReviewWaits,
-  type ZeropsAgentActivity,
-} from "~/zerops/agentActivity";
-import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { useAddMate } from "~/zerops/newMate";
-import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
-import { useListingPatience } from "~/zerops/useListingPatience";
-import { useNowMs } from "~/zerops/useNowMs";
-import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
-import { useMateUpdateStates } from "~/zerops/useMateUpdate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useFlowVerbs, type FlowVerbOutcome } from "~/zerops/flowVerbs";
 import {
@@ -157,8 +119,8 @@ import {
   useStopDeploymentsShown,
   type ZeropsProjectFlow,
 } from "~/zerops/projectFlows";
-import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
-import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
+import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
+import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useHqRecipeFailure } from "~/zerops/useHqAppDetail";
 import {
@@ -176,34 +138,19 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
-import { useWaitsOnViewer } from "~/zerops/useZeropsMateOwners";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { ProjectPeople } from "./projects/ProjectPeople";
+import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
-import {
-  FlatCard,
-  MateFace,
-  MicroLabel,
-  StatusDot,
-  VERDICT_BORDER_CLASS,
-  VerdictPanel,
-} from "./primitives";
-import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
-import { MateUpdateStatusText } from "./MateUpdateLine";
-import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
-import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
+import { FlatCard, MicroLabel, StatusDot, VerdictPanel } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
 import { deployAnswerSaid, type DeployAnswerJob } from "@t3tools/client-runtime/zerops/hq";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
-import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
-import { useMateActions } from "~/zerops/useMateActions";
-import { useOpenMate } from "~/zerops/useOpenMate";
-import { useZeropsContainers } from "~/zerops/zeropsContainers";
-import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import {
   findInventoryProjectRef,
   HeldInventoryContext,
@@ -281,74 +228,6 @@ function useGroupName(groupId: string): string | undefined {
   return listed ?? (held === null ? undefined : heldGroupLabel(held.projects, groupId));
 }
 
-/**
- * Every Mate on this project, with everything that can be done to it.
- *
- * The same `useMateActions` the projects screen uses, so *Rename Mate*,
- * *Restart*, *Hand this Mate over* and the rest are one definition — this page
- * listed its Mates and could do nothing to any of them (the owner,
- * 2026-09-19). The registry and the health read are taken here and handed
- * over: both hold per-instance state, and a second reader is a second poll.
- *
- * The update verbs are not among them: they belong to the server a Mate runs,
- * and `ZeropsMateUpdateControl` is what holds that answer. It rides in as the
- * menu's extra entries, mounted once per Mate, exactly as the Mate card does
- * it — so the same *Check for updates* is offered on both.
- */
-function useMateMenus(): {
-  readonly menuForMate: (projectId: string) => React.ReactNode;
-  readonly dialogs: React.ReactNode;
-  readonly trouble: string | null;
-} {
-  const { listing } = useZeropsCandidates();
-  const { serverVersions } = useZeropsContainers();
-  const registry = useZeropsRegistry();
-  const actions = useMateActions({ registry, serverVersions });
-  const menuForMate = useCallback(
-    (projectId: string) => {
-      const found = findCandidate(listing, (entry) => entry.project.id === projectId);
-      if (found.kind !== "found") return null;
-      const candidate = found.row;
-      const tags = readZeropsMembership(candidate.project);
-      const menu = (extra: ReadonlyArray<ZeropsMenuAction>) => {
-        const entries = actions.actionsFor(candidate, tags, extra);
-        // A menu with nothing in it is a button that opens an empty box.
-        if (entries.length === 0) return null;
-        return (
-          <ZeropsProjectMenu
-            actions={entries}
-            label={`More for ${projectNameInApp(candidate.project)}`}
-            routes={candidate.routes}
-          />
-        );
-      };
-      // *Check for updates* and *Update to x.y.z* are the server's own verbs,
-      // and the control that reads that server is a mount per Mate — the same
-      // one the Mate card uses, so a check started here and a check started
-      // there are the same check (`useMateUpdate` keys by environment).
-      if (candidate.group !== "connected" || candidate.environmentId === undefined) return menu([]);
-      return (
-        <ZeropsMateUpdateControl
-          environmentId={candidate.environmentId}
-          mateName={projectNameInApp(candidate.project)}
-        >
-          {({ menuActions }) => menu(menuActions)}
-        </ZeropsMateUpdateControl>
-      );
-    },
-    [actions, listing],
-  );
-  return { menuForMate, dialogs: actions.dialogs, trouble: actions.trouble };
-}
-
-/** The project's own menu uses the same writer decision and rename form as its row. */
-function useGroupActions(groupId: string): {
-  readonly menu: React.ReactNode;
-} {
-  const group = useGroup(groupId);
-  return { menu: group === undefined ? null : <ZeropsProjectRenameMenu group={group} /> };
-}
-
 /** Every environment of a group, by the sha it runs, whole or short as its version name spells it. */
 function deployedShas(environments: ReadonlyArray<EnvironmentRow>): ReadonlyMap<string, string> {
   const deployed = new Map<string, string>();
@@ -377,167 +256,6 @@ const COMPARED = { compare: true } as const;
 function useHistoryNames(): HistoryNames {
   const mateNames = useMateNames();
   return useMemo(() => ({ mateNames }), [mateNames]);
-}
-
-/** How "Who is on it" names the listing it is drawn from, while that listing cannot say "none". */
-const GROUP_MATES_SURFACE = {
-  subject: "who is on this project",
-  entity: "project",
-  source: "zerops",
-  checking: "Checking who is on it…",
-  negative: null,
-} as const;
-
-/**
- * Every Mate on a project, as its page shows them, and what the section says
- * in place of "no Mate" until the listing may say it (DESIGN §3.4): a
- * placeholder while it is unread, its cause while its read failed, "Still
- * reading…" over the Mates read of a listing known in part.
- *
- * Read from the same three places the menu reads: the group tree for who is in
- * the group, the activity feed for what each is on, and `mateTints` for the
- * colour its face wears — so a Mate is the same Mate on both surfaces.
- */
-function useGroupMates(
-  groupId: string,
-  flow: ZeropsProjectFlow | undefined,
-): {
-  readonly mates: ReadonlyArray<GroupMate>;
-  readonly notice: CandidatesNotice | null;
-  /** Reads the listing again: the notice's *Try again*. */
-  readonly refresh: () => void;
-} {
-  const { listing, refresh } = useZeropsCandidates();
-  // Each Mate as its menu row reads it: HQ's word, or its socket's.
-  const activityOf = useMateRowActivity(useMatesActivity());
-  // HQ's word of who is up, as the menu reads it (`mateAwake`).
-  const hqView = useAtomValue(hqMatesAtom);
-  const hqMates = hqView?.current === true ? hqView.mates : null;
-  const updates = useMateUpdateStates();
-  const nowMs = useNowMs();
-  const waitsOnViewer = useWaitsOnViewer();
-  const mates = useMemo(() => {
-    const candidates = heldCandidates(listing).rows;
-    const tints = assignCandidateMateTints(candidates);
-    // Order is irrelevant here — a lookup by groupId, not a listing.
-    const group = buildZeropsGroupTree(candidates, { order: "name" }).groups.find(
-      (entry) => entry.group.groupId === groupId,
-    );
-    // A group's `environments` is every project in it — the stage and the
-    // production included. `hasMate` is the predicate the menu has always used
-    // to tell a Mate from a stop, and this listed the stops as Mates without it
-    // (the owner, 2026-09-19).
-    return (group?.environments ?? [])
-      .filter(({ item }) => hasMate(item))
-      .map(({ item }) =>
-        groupMateOf({
-          nowMs,
-          item,
-          read: activityOf(item),
-          mates: hqMates,
-          tint: tints.get(item.project.id) ?? "slate",
-          reviewWaits: mateReviewWaits(flow, item.project.id),
-          mine: waitsOnViewer(item.project.id),
-          update: mateUpdateStatus(updates.of(item)),
-        }),
-      );
-  }, [activityOf, flow, groupId, hqMates, listing, updates, waitsOnViewer, nowMs]);
-  const patient = useListingPatience(listing);
-  const notice = useMemo(
-    () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs, { patient }),
-    [listing, nowMs, patient],
-  );
-  return { mates, notice, refresh };
-}
-
-/** Opens a Mate's own conversation, as selecting its row in the menu does (`useOpenMate`). */
-function useOpenMateOf(): (projectId: string) => void {
-  const openMate = useOpenMate();
-  return useCallback((projectId: string) => openMate({ projectId }), [openMate]);
-}
-
-/**
- * What this project needs somebody for, and the one handler that deals with
- * whichever row they press.
- *
- * Each row already knows what it acts on, so this is a switch rather than four
- * callbacks threaded down: a Mate opens its conversation, a stop and a change
- * open their pages, and a release is the project's own verb.
- */
-function useProjectAttention(
-  groupId: string,
-  mates: ReadonlyArray<GroupMate>,
-  input: {
-    readonly environments: ReadonlyArray<EnvironmentRow>;
-    readonly pullRequests: ReadonlyArray<FlowPullRequest>;
-    readonly notLive: number;
-    readonly notLiveAtLeast: boolean;
-    readonly canRelease: boolean;
-  },
-): {
-  readonly items: ReadonlyArray<ProjectAttentionItem>;
-  readonly onAct: (item: ProjectAttentionItem) => void;
-} {
-  const mateNames = useMateNames();
-  const openMate = useOpenMateOf();
-  const navigate = useNavigate();
-  const { environments, pullRequests, notLive, notLiveAtLeast, canRelease } = input;
-
-  const items = useMemo(
-    () =>
-      projectAttention({
-        // A face wearing `needs` is a Mate that has stopped and asked
-        // something: the one state where nothing moves until a person answers.
-        waitingMates: mates
-          .filter((mate) => mate.asks === true && mate.failed !== true)
-          .map((mate) => ({ projectId: mate.projectId, name: mate.name })),
-        // Stopped on an error, it wears the same face and asks nothing.
-        failedMates: mates
-          .filter((mate) => mate.failed === true)
-          .map((mate) => ({ projectId: mate.projectId, name: mate.name })),
-        failedStops: environments
-          .filter((environment) => environment.tone === "bad")
-          .map((environment) => ({
-            projectId: environment.id,
-            name: environment.name,
-          })),
-        pullRequests,
-        notLive,
-        notLiveAtLeast,
-        canRelease,
-        mateNames: mateNames ?? EMPTY_MATE_NAMES,
-      }),
-    [canRelease, environments, mateNames, mates, notLive, notLiveAtLeast, pullRequests],
-  );
-
-  const onAct = useCallback(
-    (item: ProjectAttentionItem) => {
-      const target = item.target;
-      if (target === undefined) return;
-      if (target.kind === "mate") {
-        openMate(target.projectId);
-        return;
-      }
-      if (target.kind === "stop") {
-        void navigate({
-          to: "/group/$groupId/$projectId",
-          params: { groupId, projectId: target.projectId },
-        });
-        return;
-      }
-      void navigate({
-        to: "/change/$groupId/$repository/$number",
-        params: {
-          groupId,
-          repository: target.repository,
-          number: String(target.number),
-        },
-      });
-    },
-    [groupId, navigate, openMate],
-  );
-
-  return { items, onAct };
 }
 
 /** Where a project with nothing set up goes: the screen that sets things up. */
@@ -709,7 +427,40 @@ export function ZeropsRuntimeStops({
   );
 }
 
+/**
+ * A project's own page: its card from the overview at the page's width — the same slots, so a
+ * Mate's row, a place's panel and the release's door are one thing on both — and the column
+ * beside it with what a card has no room for: the people on it, its environments, its
+ * repositories and its history.
+ */
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
+  const groupName = useGroupName(groupId);
+  const crumbs = useCrumbs({ groupId, name: groupName });
+  // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
+  const addMate = useAddMate();
+  const project = useMemo(
+    () => ({
+      groupId,
+      aside: <ZeropsGroupAside groupId={groupId} />,
+      people: <ProjectPeople groupId={groupId} />,
+      onAddMate: () => {
+        addMate(groupId);
+      },
+      unread: <UnreadGroupDetail groupId={groupId} />,
+    }),
+    [addMate, groupId],
+  );
+  return (
+    <ZeropsHostedFrame breadcrumb={<Crumbs crumbs={crumbs.slice(0, -1)} />} width="full">
+      <ZeropsProjectsContent project={project} search={NO_SEARCH} />
+    </ZeropsHostedFrame>
+  );
+}
+
+const NO_SEARCH = {};
+
+/** The page's column: what the project's card has no room for, once its flow is read. */
+function ZeropsGroupAside({ groupId }: { readonly groupId: string }) {
   const recipeFailure = useHqRecipeFailure(groupId);
   // The application's flow, what a release would put live compared while the page is drawn.
   const { flows } = useProjectFlows(
@@ -717,18 +468,16 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     COMPARED,
   );
   const flow = flows.get(groupId);
-  if (flow === undefined) return <UnreadGroupDetail groupId={groupId} />;
-  return <KnownGroupDetail groupId={groupId} flow={flow} recipeFailure={recipeFailure} />;
+  if (flow === undefined) return null;
+  return <KnownGroupAside groupId={groupId} flow={flow} recipeFailure={recipeFailure} />;
 }
 
 function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
   const deployments = useStopDeploymentsShown();
   const runtimeStops = useRuntimeStops(groupId);
   const navigate = useNavigate();
-  const crumbs = useCrumbs();
-  const groupName = useGroupName(groupId);
   return (
-    <DetailShell crumbs={crumbs} title={groupName}>
+    <>
       <ZeropsRuntimeStops
         stops={runtimeStops}
         deployments={deployments}
@@ -737,11 +486,11 @@ function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
         }}
       />
       <UnreadDetail groupId={groupId} />
-    </DetailShell>
+    </>
   );
 }
 
-function KnownGroupDetail({
+function KnownGroupAside({
   groupId,
   flow,
   recipeFailure,
@@ -752,7 +501,6 @@ function KnownGroupDetail({
 }) {
   const gitTargets = useGitTargetOperations(groupId);
   const deployments = useStopDeploymentsShown();
-  const verbs = useFlowVerbs();
   const environments = flow.environments;
   const repo = groupRepository(environments);
   const history = useRepositoryHistory({ appId: groupId, repo, repos: flow.repos });
@@ -761,26 +509,10 @@ function KnownGroupDetail({
   const waiting = flow.release.summary ?? releaseContentsSummary(flow.release.contents, 20);
   const groupName = useGroupName(groupId);
   const openProjects = useOpenProjects();
-  // The New Mate dialog over this page, as from every "Add a project Mate" (`ZeropsNewMateHost`).
-  const addMate = useAddMate();
-  const actions = useGroupActions(groupId);
-  const mates_ = useMateMenus();
   const release = useReleaseOffer(groupId, flow);
-  const crumbs = useCrumbs();
   const names = useHistoryNames();
-  const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId, flow);
-  // Each drawn Mate holds only the project detail that decides the viewer’s access.
-  useVisibleProjectAccess(useMemo(() => mates.map((mate) => mate.projectId), [mates]));
-  const openMate = useOpenMateOf();
-  const { withheldNotice, shown } = useWithheldStops(environments);
+  const { withheldNotice } = useWithheldStops(environments);
   const firstDeployOf = useStageFirstDeploys(flow);
-  const attention = useProjectAttention(groupId, mates, {
-    environments: shown,
-    pullRequests: flow.pullRequests,
-    notLive: waiting.total,
-    notLiveAtLeast: waiting.atLeast,
-    canRelease: release.offered,
-  });
   const offered = useEnvironmentOffers()(groupId);
   const addEnvironment = useAddEnvironment();
   const devstages = useDevstages(groupId);
@@ -849,37 +581,13 @@ function KnownGroupDetail({
       finishing={finishing.finishing.has(groupId)}
       history={history}
       groupId={groupId}
-      attention={attention.items}
-      mates={mates}
-      matesNotice={matesNotice}
-      onMatesNoticeAct={(affordance) => {
-        if (affordance.kind === "go-to-projects") openProjects();
-        else rereadMates();
-      }}
       name={groupName}
-      onAct={attention.onAct}
       names={names}
-      menu={
-        <>
-          {actions.menu}
-          {mates_.dialogs}
-        </>
-      }
-      menuForMate={mates_.menuForMate}
-      onAddMate={() => {
-        addMate(groupId);
-      }}
-      onOpenMate={openMate}
-      crumbs={crumbs}
-
       onSetUp={openProjects}
       release={release}
-      trouble={mates_.trouble}
       onOpenChange={openChange}
-      pullRequests={flow.pullRequests}
       repo={repo}
       tags={tags}
-      waiting={waiting}
       withheldNotice={withheldNotice}
       firstDeployOf={firstDeployOf}
     />
@@ -887,11 +595,11 @@ function KnownGroupDetail({
 }
 
 /**
- * A project group, drawn — every read already done and handed in.
+ * A project's page column, drawn — every read already done and handed in: its environments, its
+ * repositories and its history, each on the card's ground.
  *
  * Split from the page above for the same reason the change's pane is: a
- * harness and a test can then look at a project with nothing set up, or twelve
- * changes waiting, without an account behind it.
+ * harness and a test can then look at a project with nothing set up without an account behind it.
  */
 export function ZeropsGroupPane({
   repos,
@@ -905,27 +613,14 @@ export function ZeropsGroupPane({
   onFinish,
   finishing,
   history,
-  attention,
   groupId,
-  mates,
-  matesNotice = null,
-  onMatesNoticeAct,
-  onAct,
   name,
   names,
-  crumbs,
-  menu,
-  menuForMate,
-  onAddMate,
-  onOpenMate,
   onSetUp,
-  trouble,
   onOpenChange,
-  pullRequests,
   release,
   repo,
   tags,
-  waiting,
   withheldNotice,
   firstDeployOf,
 }: {
@@ -952,35 +647,12 @@ export function ZeropsGroupPane({
   readonly groupId: string;
   /** The project's name; undefined while the listing has not named it — never its id. */
   readonly name: string | undefined;
-  readonly crumbs: ReadonlyArray<Crumb>;
   /** Where a project with nothing set up goes to get something set up. */
   readonly onSetUp: () => void;
-  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   readonly release: ReleaseOffer;
   /** The repository its history is read from; absent where none is declared. */
   readonly repo: string | undefined;
-  /** What needs somebody, worst first — the page's opening answer. */
-  readonly attention: ReadonlyArray<ProjectAttentionItem>;
-  readonly onAct: (item: ProjectAttentionItem) => void;
-  /** Every Mate on this project read so far, in the order the menu lists them. */
-  readonly mates: ReadonlyArray<GroupMate>;
-  /**
-   * What "Who is on it" says until the listing may say "no Mate" (DESIGN §3.4);
-   * absent or `null` once it is complete.
-   */
-  readonly matesNotice?: CandidatesNotice | null;
-  /** Its affordance, pressed: read the listing again, or go to the projects. */
-  readonly onMatesNoticeAct?: ((affordance: KnownAffordance) => void) | undefined;
   readonly names: HistoryNames;
-  readonly onAddMate: () => void;
-  /** One Mate's own quiet actions, by its project id. */
-  readonly menuForMate?: (projectId: string) => React.ReactNode;
-  /** The project's own quiet actions — rename, above all. */
-  readonly menu?: React.ReactNode;
-  /** Why a write from that menu failed, said under the heading it came from. */
-  readonly trouble?: string | null;
-  readonly onOpenMate: (projectId: string) => void;
-  readonly waiting: ReleaseContentsSummary;
   /**
    * What a stop says in place of its content while the grant withholds its
    * project (DESIGN §3.4); `null` while it may be shown. Absent, every stop is.
@@ -1001,70 +673,10 @@ export function ZeropsGroupPane({
     [environments, withheldNotice],
   );
   return (
-    <DetailShell
-      // *Release* left the header when the panel below got a working one: a
-      // page says a thing once, and the place it says it is the place you act
-      // on it. *Add a Mate* stays — it answers nothing the panel raised.
-      actions={
-        <>
-          <Button onClick={onAddMate} size="sm" variant="outline">
-            <PlusIcon aria-hidden="true" className="size-3.5" />
-            Add a project Mate
-          </Button>
-          {menu}
-        </>
-      }
-      crumbs={crumbs}
-
-      subtitle={groupSubtitle(environments.length, pullRequests.length)}
-      title={name}
-    >
-      {trouble === null || trouble === undefined ? null : (
-        <p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
-      )}
+    <>
       {readFailures}
-      <AttentionPanel items={attention} onAct={onAct} release={release} />
-
-      <Section title="Who is on it">
-        {mates.length === 0 ? (
-          matesNotice === null ? (
-            <Empty
-              action="Add a project Mate"
-              onAction={onAddMate}
-              text="No Mate is working on this project yet."
-            />
-          ) : null
-        ) : (
-          <ul className="flex flex-col">
-            {mates.map((mate) => (
-              <MateLine
-                key={mate.projectId}
-                mate={mate}
-                menu={menuForMate?.(mate.projectId)}
-                onOpen={onOpenMate}
-              />
-            ))}
-          </ul>
-        )}
-        {matesNotice === null ? null : (
-          <ListingNotice notice={matesNotice} onAct={onMatesNoticeAct} />
-        )}
-      </Section>
-
-      <Section title="Repositories">
-        <GitRemoteSettings
-          appId={groupId}
-          repos={repos}
-          appName={name ?? "Application"}
-          actions={gitActions}
-          can={gitCan}
-          live={gitLive}
-          environments={environments}
-        />
-      </Section>
-
       {slots.length === 0 ? null : (
-        <Section title="Environments">
+        <SideSection title="Environments">
           <ul className="flex flex-col">
             {slots.map((slot) => {
               if (slot.kind === "devstage")
@@ -1178,46 +790,21 @@ export function ZeropsGroupPane({
               );
             })}
           </ul>
-        </Section>
+        </SideSection>
       )}
 
-      <Section title="In flight">
-        {pullRequests.length === 0 ? (
-          <Note>Nothing open.</Note>
-        ) : (
-          <ul className="flex flex-col">
-            {pullRequests.map((pull) => (
-              <ChangeLine
-                among={pullRequests}
-                groupId={groupId}
-                key={`${pull.repository}#${pull.number}`}
-                pull={pull}
-              />
-            ))}
-          </ul>
-        )}
-      </Section>
-
-      {waiting.total === 0 || !environments.some((entry) => entry.tier === "production") ? null : (
-        <Section
-          title={`Merged, waiting for production · ${String(waiting.total)}${waiting.atLeast ? "+" : ""}`}
-        >
-          <ul className="mb-3 flex flex-col gap-1">
-            {waiting.subjects.map((subject) => (
-              <li className="truncate text-sm text-foreground" key={subject}>
-                {subject}
-              </li>
-            ))}
-            {waiting.more === 0 ? null : (
-              <li className="text-sm text-muted-foreground">
-                {`+${String(waiting.more)}${waiting.atLeast ? "+" : ""} more`}
-              </li>
-            )}
-          </ul>
-        </Section>
-      )}
-
-      <Section title={repo === undefined ? "History" : `History · ${repo}`}>
+      <SideSection title="Repositories">
+        <GitRemoteSettings
+          appId={groupId}
+          repos={repos}
+          appName={name ?? "Application"}
+          actions={gitActions}
+          can={gitCan}
+          live={gitLive}
+          environments={environments}
+        />
+      </SideSection>
+      <SideSection title={repo === undefined ? "History" : `History · ${repo}`}>
         {repo === undefined ? (
           <Empty
             action="Set up an environment"
@@ -1233,8 +820,8 @@ export function ZeropsGroupPane({
             tags={tags}
           />
         )}
-      </Section>
-    </DetailShell>
+      </SideSection>
+    </>
   );
 }
 
@@ -2369,7 +1956,6 @@ export function ZeropsChangeDetailPage({
 const STAYS = () => {};
 
 /** Nobody to name, before the flow is read. */
-const EMPTY_MATE_NAMES: ReadonlyMap<string, string> = new Map();
 const EMPTY_STOPS: ReadonlyArray<EnvironmentRow> = [];
 
 /** A stop whose project the flow has no listing for: not read, never "nothing". */
@@ -2434,18 +2020,6 @@ export function detailTrail(
   return [projects, { label: inside.name, to: { kind: "group", groupId: inside.groupId } }];
 }
 
-/**
- * A project's one line under its name.
- *
- * It was the Gitea org — `Shop` over `shop` — which reads as the name repeated
- * with a typo. What is actually worth knowing at a glance is how much there is.
- */
-function groupSubtitle(stops: number, changes: number): string {
-  const stopPart = stops === 1 ? "1 environment" : `${String(stops)} environments`;
-  const changePart = changes === 1 ? "1 change open" : `${String(changes)} changes open`;
-  return `${stopPart} · ${changePart}`;
-}
-
 /** A section with nothing in it yet, and the way to put something there. */
 function Empty({
   text,
@@ -2463,242 +2037,6 @@ function Empty({
         {action}
       </Button>
     </div>
-  );
-}
-
-/**
- * What the project needs somebody for, before anything else on the page.
- *
- * Not a Section: it is the answer, and an answer that looks like the four
- * blocks under it is an answer nobody reads first. It sits in a panel, above
- * the heading rhythm, and every row is the way to deal with the thing it
- * names.
- */
-function AttentionPanel({
-  items,
-  onAct,
-  release,
-}: {
-  readonly items: ReadonlyArray<ProjectAttentionItem>;
-  readonly onAct: (item: ProjectAttentionItem) => void;
-  /**
-   * What *Release* would do, for the one item whose verb is not a way
-   * somewhere. Without it that row drew a button with no target, and `onAct`
-   * returned on the spot: the panel's only completing verb did nothing.
-   */
-  readonly release: ReleaseOffer;
-}) {
-  const [first] = items;
-  if (first === undefined) {
-    return (
-      <p
-        className="rounded-lg border border-border px-3 py-2.5 text-sm text-muted-foreground"
-        data-zerops-surface="project-attention-clear"
-      >
-        {PROJECT_ALL_CLEAR}
-      </p>
-    );
-  }
-  const worst = ATTENTION_TONE[first.kind];
-  return (
-    <ul
-      // The edge wears the worst thing inside it, and the list is ordered
-      // worst first. It used to be amber whatever it held, so a panel whose
-      // only row was a blue *Release* still had a blocked change's border.
-      className={cn("flex flex-col overflow-hidden rounded-lg border", VERDICT_BORDER_CLASS[worst])}
-      data-zerops-surface="project-attention"
-    >
-      {items.map((item) => (
-        <li
-          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0"
-          key={`${item.kind}:${item.text}`}
-        >
-          <StatusDot
-            className="min-w-0 text-sm text-foreground"
-            label={item.text}
-            sentence
-            tone={ATTENTION_TONE[item.kind]}
-          />
-          {/* One column for the verbs: three buttons stacked with only
-              `justify-end` between them landed on three different edges.
-              `min-w`, not `w`: `See the build` is wider than `Open`. */}
-          <span className="flex min-w-28 shrink-0 justify-end">
-            {item.kind === "not-live" ? (
-              // The release asks before it goes, so it brings its own confirm
-              // rather than being a button that reports to `onAct`.
-              <ReleaseAction release={release} />
-            ) : item.verb === undefined ? null : (
-              <Button
-                onClick={() => {
-                  onAct(item);
-                }}
-                size="sm"
-                variant="outline"
-              >
-                {item.verb}
-              </Button>
-            )}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * A halted Mate and a failed deploy are not the same kind of bad — and work
- * merged and waiting is not bad at all.
- *
- * The list is ordered worst first, so the tones run down it as a ladder: red
- * broken, amber blocked, blue moving. *Release* wears the same blue in the
- * left menu; one fact does not get two colours depending on which surface
- * reports it.
- */
-const ATTENTION_TONE: Record<ProjectAttentionKind, ServiceStatusToneId> = {
-  "mate-waiting": "attention",
-  "mate-failed": "failed",
-  "deploy-failed": "failed",
-  "change-blocked": "attention",
-  "not-live": "busy",
-};
-
-/**
- * A Mate on the project as its page draws it: what it is on while a word of now says it — HQ's
- * live word or its socket's reading — and saying nothing otherwise, awake at rest while it runs as
- * its menu row reads it (`mateAwake`), else asleep. Its face is its row's
- * (`mateFaceOf`): needing you while it asks, or while its own change waits for your review — your
- * own Mate only; another's waits on its owner.
- */
-export function groupMateOf(input: {
-  readonly nowMs?: number;
-  readonly item: ZeropsCandidate;
-  /** What its menu row reads (`useMateRowActivity`). */
-  readonly read: ZeropsAgentActivity | undefined;
-  /** HQ's Mates, where its view is current (`hqMatesAtom`). */
-  readonly mates?: ReadonlyMap<string, Pick<MateLiveView, "presence">> | null;
-  readonly tint: MateTintId;
-  readonly reviewWaits: boolean;
-  /** Its Mate waits on the viewer, as HQ says it (`waitsOnViewer`). */
-  readonly mine: boolean;
-  readonly update: MateUpdateStatus | null | undefined;
-}): GroupMate {
-  const { item, tint, mine } = input;
-  const live = activityOfNow(input.read);
-  const connected = mateAwake(item, input.mates) || live !== undefined;
-  const subject = live?.subject;
-  return {
-    projectId: item.project.id,
-    name: projectNameInApp(item.project),
-    tint,
-    shape: mateShapeOf(item.project, tint),
-    face: mateFaceOf({
-      connected,
-      activity: live,
-      reviewWaits: input.reviewWaits,
-      mine,
-      pose: input.nowMs === undefined ? undefined : matePoseOf(item, input.nowMs),
-    }),
-    asks: mine && mateFaceFor(connected, live) === "needs",
-    ...(live?.kind === "failed" ? { failed: true } : {}),
-    subject,
-    snippet: subject === undefined ? undefined : live?.snippet,
-    when:
-      live === undefined || subject === undefined
-        ? undefined
-        : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
-    update: input.update,
-  };
-}
-
-export interface GroupMate {
-  readonly projectId: string;
-  readonly name: string;
-  readonly tint: MateTintId;
-  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
-  readonly shape: MateShapeId;
-  readonly face: MateMarkState;
-  /**
-   * Its conversation waits on an answer — what *waiting on an answer* lists. A change waiting
-   * for review wears the same face and is the change's own item, never an answer.
-   */
-  readonly asks?: boolean;
-  /** Its last run stopped on an error: its face reads `needs`, and it asks nothing. */
-  readonly failed?: boolean;
-  /** What it is on, or was last on; absent until somebody has spoken to it. */
-  readonly subject: string | undefined;
-  readonly snippet: string | undefined;
-  readonly when: string | undefined;
-  /** What its menu's check or update is doing, said over its subject until it settles. */
-  readonly update?: MateUpdateStatus | null | undefined;
-}
-
-/**
- * Who is working on this project.
- *
- * The page listed environments, changes and commits and not one of the Mates
- * that made them — on a product whose whole proposition is that Mates do the
- * work (the owner, 2026-09-19: "it's basically a group dashboard and you
- * didn't think to show a preview of mates"). It is the first section because
- * it answers the first question anybody opens this page with.
- *
- * The same three lines the menu gives a Mate, at the page's size: the face
- * wearing its state, what it is on, and the last thing it said.
- */
-function MateLine({
-  mate,
-  menu,
-  onOpen,
-}: {
-  readonly mate: GroupMate;
-  /** This Mate's own quiet actions — the same set the projects screen offers. */
-  readonly menu?: React.ReactNode;
-  readonly onOpen: (projectId: string) => void;
-}) {
-  return (
-    // The row is a control and the menu is another: a button inside a button
-    // is not a thing, so they sit side by side and the row keeps the hover.
-    <li className="group/row flex min-w-0 items-center gap-1">
-      <button
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
-        onClick={() => {
-          onOpen(mate.projectId);
-        }}
-        type="button"
-      >
-        <MateFace shape={mate.shape} size="md" state={mate.face} tint={mate.tint} />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="flex min-w-0 items-baseline gap-2">
-            <span className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">
-              {mate.name}
-            </span>
-            {mate.when === undefined || mate.when.length === 0 ? null : (
-              <span className="shrink-0 text-xs leading-5 text-muted-foreground tabular-nums">
-                {mate.when}
-              </span>
-            )}
-          </span>
-          {mate.update !== null && mate.update !== undefined ? (
-            <MateUpdateStatusText
-              className="text-xs leading-4 text-muted-foreground"
-              status={mate.update}
-            />
-          ) : mate.subject === undefined ? (
-            <span className="truncate text-xs leading-4 text-muted-foreground/70">
-              Nothing asked of it yet
-            </span>
-          ) : (
-            <span className="truncate text-xs leading-4 text-muted-foreground">{mate.subject}</span>
-          )}
-          {mate.snippet === undefined ? null : (
-            <span className="truncate text-xs leading-4 text-muted-foreground/70">
-              {mate.snippet}
-            </span>
-          )}
-        </span>
-        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
-      </button>
-      {menu === undefined ? null : <span className="shrink-0">{menu}</span>}
-    </li>
   );
 }
 
@@ -2820,52 +2158,6 @@ function ZeropsStopLine({
   );
 }
 
-function ChangeLine({
-  groupId,
-  pull,
-  among,
-}: {
-  readonly groupId: string;
-  /** The project's open changes: a Mate's in two repositories name theirs. */
-  readonly among: ReadonlyArray<FlowPullRequest>;
-  readonly pull: FlowPullRequest;
-}) {
-  const navigate = useNavigate();
-  // One vocabulary down the column: `changeState` answers a rebase and a
-  // passing check in the same register, which two sources did not.
-  const state = changeState(pull);
-  // The group page is where somebody comes looking for a change, so its rows
-  // open one — a stop's row next to it has always been a door.
-  const open = useCallback(() => {
-    void navigate({
-      to: "/change/$groupId/$repository/$number",
-      params: { groupId, repository: pull.repository, number: String(pull.number) },
-    });
-  }, [groupId, navigate, pull.number, pull.repository]);
-  return (
-    <li>
-      <button
-        className="grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_7.5rem_1rem] items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
-        onClick={open}
-        type="button"
-      >
-        <span className="min-w-0 truncate text-sm text-foreground">
-          {sidebarChangeLabel(pull, among)}
-        </span>
-        {state === undefined ? null : (
-          <StatusDot
-            className="shrink-0 text-xs text-muted-foreground"
-            label={state.word}
-            sentence
-            tone={state.tone}
-          />
-        )}
-        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
-      </button>
-    </li>
-  );
-}
-
 /** One step of the trail above a page's name. */
 export interface Crumb {
   readonly label: string;
@@ -2971,6 +2263,22 @@ function Crumbs({ crumbs }: { readonly crumbs: ReadonlyArray<Crumb> }) {
   );
 }
 
+/** One part of a project page's column, on the card's ground: its name, then what it holds. */
+function SideSection({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children: React.ReactNode;
+}) {
+  return (
+    <section aria-label={title} className="ov-side">
+      <h2 className="ov-side-name">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
 function Section({
   title,
   children,
@@ -2987,47 +2295,6 @@ function Section({
       </h2>
       {children}
     </section>
-  );
-}
-
-/**
- * What a section drawn from the listing says in place of a "none" it may not
- * say yet: its message, after the delay that keeps a quick answer from
- * flickering it, and its one affordance.
- */
-function ListingNotice({
-  notice,
-  onAct,
-}: {
-  readonly notice: CandidatesNotice;
-  readonly onAct?: ((affordance: KnownAffordance) => void) | undefined;
-}) {
-  const { affordance, message } = notice;
-  return (
-    <div
-      className={cn(
-        "flex flex-wrap items-center gap-3",
-        message.afterMs > 0 && "animate-zerops-appear",
-      )}
-      role={notice.region === "message" ? "alert" : "status"}
-      style={message.afterMs > 0 ? { animationDelay: `${message.afterMs}ms` } : undefined}
-    >
-      <p
-        className={cn(
-          "text-sm",
-          message.tone === "alert"
-            ? "text-[var(--zerops-status-failed-text)]"
-            : "text-muted-foreground",
-        )}
-      >
-        {message.text}
-      </p>
-      {affordance === null || onAct === undefined ? null : (
-        <Button onClick={() => onAct(affordance)} size="sm" variant="outline">
-          {affordance.label}
-        </Button>
-      )}
-    </div>
   );
 }
 

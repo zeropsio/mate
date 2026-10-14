@@ -19,6 +19,7 @@ import type {
   GroupFlowStop,
   ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
+import type { AddressDomain, DomainFace, PlaceAddresses } from "@t3tools/client-runtime/data";
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 import { StrictMode } from "react";
@@ -44,6 +45,7 @@ import {
   type ProjectsFlowGroup,
 } from "~/components/zerops/projects/ZeropsProjectsFlow";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
+import { placeAddresses, withPlaceAddresses } from "~/zerops/__fixtures__/placeAddresses";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -234,6 +236,61 @@ const live = (
   kind: "live",
   stop: stop(projectId, "production", { version: version(label), addresses }),
   line: label,
+});
+
+/** A domain of a place's own, leading to one service, as far from answering as `face` says. */
+const ownDomain = (domainName: string, service: string, face: DomainFace): AddressDomain => ({
+  routingId: domainName,
+  domainName,
+  routingDomains: [domainName],
+  targets: [{ serviceId: service, serviceName: service, port: 3000, path: "/" }],
+  sslEnabled: true,
+  face,
+  url: `https://${domainName}`,
+  resolvedIps: [],
+  nameServers: [],
+});
+
+/** A place's addresses as read: its own domains, and each service's zerops.app address. */
+const readPlace = (
+  domains: ReadonlyArray<AddressDomain>,
+  services: ReadonlyArray<string>,
+): PlaceAddresses => ({
+  ...placeAddresses([]),
+  domains,
+  zerops: services.map((service) => ({
+    serviceId: service,
+    serviceName: service,
+    on: true,
+    hosts: [
+      {
+        port: 3000,
+        url: `https://${service}-1f9c-3000.prg1.zerops.app`,
+        host: `${service}-1f9c-3000.prg1.zerops.app`,
+      },
+    ],
+    port: 3000,
+  })),
+});
+
+/**
+ * The places' addresses the panels read, in the account `org`: one with its own domain live and
+ * its www twin waiting for DNS, one with none yet (Add your domain), one of two services with a
+ * domain getting its certificate. The rest are still being read: as their listing says them.
+ */
+const inAccount = withPlaceAddresses({
+  "docs-prod": readPlace(
+    [ownDomain("docs.acme.com", "web", "live"), ownDomain("www.docs.acme.com", "web", "dns")],
+    ["web"],
+  ),
+  "tea-prod": readPlace([], ["app"]),
+  "ledger-prod": readPlace(
+    [
+      ownDomain("ledger.acme.com", "web", "live"),
+      ownDomain("api.ledger.acme.com", "api", "certificate"),
+    ],
+    ["api", "web"],
+  ),
 });
 
 const PROJECTS: ReadonlyArray<Project> = [
@@ -638,8 +695,9 @@ function HarnessPage() {
             renderPlacePanel={(entry, line) => {
               const found = byId.get(entry.group.groupId);
               if (found === undefined) return null;
-              return (
+              return inAccount(
                 <PlacePanel
+                  groupId={entry.group.groupId}
                   actions={found.actions.map((label, index) => (
                     <button
                       className="ov-btn"
@@ -651,7 +709,7 @@ function HarnessPage() {
                     </button>
                   ))}
                   model={{ ...found.panel, line }}
-                />
+                />,
               );
             }}
             renderReleaseVerb={() => (
