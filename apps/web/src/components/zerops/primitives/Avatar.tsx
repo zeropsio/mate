@@ -3,7 +3,7 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 
-type AvatarSize = "xs" | "sm" | "md";
+type AvatarSize = "xs" | "sm" | "md" | "xl";
 
 const SIZE_CLASS: Record<AvatarSize, string> = {
   /** Pinned to the corner of a Mate's face: whose Mate it is. */
@@ -12,6 +12,8 @@ const SIZE_CLASS: Record<AvatarSize, string> = {
   sm: "size-6 text-[10px]",
   /** Beside a name and an email: a menu's identity block, a settings row. */
   md: "size-8 text-xs",
+  /** A person's own card and page: the face is the subject. */
+  xl: "size-24 text-2xl",
 };
 
 type AvatarProps = Omit<React.ComponentProps<"span">, "children"> & {

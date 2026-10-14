@@ -12,12 +12,15 @@ import type { ProjectGrantEntry } from "@t3tools/client-runtime/zerops/appAccess
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   invitableTeamRoles,
+  membershipOf,
   teamActions,
   teamRoleOf,
+  type OrgMembership,
   type TeamRole,
 } from "@t3tools/client-runtime/zerops/teamRoles";
 import { asOrgRole, ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 
+import { memberPicture } from "~/zerops/memberPicture";
 import { zeropsInitials } from "../zerops/landing/ZeropsAccountControl.logic";
 import { UNREADABLE } from "../zerops/projects/projectPeople.logic";
 
@@ -83,6 +86,13 @@ export interface TeamPerson {
   readonly key: string;
   readonly userId: string | undefined;
   readonly name: string;
+  readonly email: string | null;
+  /** When they joined or were invited, as Zerops dates it; `null` where it doesn't. */
+  readonly created: string | null;
+  /** Their role as a card's badge: a preset's name, else Zerops's role in words. */
+  readonly badge: string;
+  /** Their membership whole, as the person page edits it. */
+  readonly membership: OrgMembership;
   readonly initials: string;
   readonly avatarUrl: string | null;
   readonly you: boolean;
@@ -108,18 +118,22 @@ export type TeamView =
       readonly invite: ReadonlyArray<TeamRole>;
     };
 
-/** Each preset's words, as the menu and the invitation offer it. */
-export const TEAM_ROLE_WORDS: Readonly<
-  Record<TeamRole, { readonly label: string; readonly hint: string }>
-> = {
-  admin: { label: "Admin", hint: "Every project and the team" },
-  developer: {
-    label: "Developer",
-    hint: "Their own projects and the ones they're given; can start new ones",
-  },
-  guest: { label: "Guest", hint: "Only the projects they're given" },
-  owner: { label: "Owner", hint: "Everything, billing included" },
+/** Each preset's name, as a card's badge and a person's role say it. */
+export const TEAM_ROLE_WORDS: Readonly<Record<TeamRole, string>> = {
+  owner: "Owner",
+  admin: "Admin",
+  developer: "Developer",
+  guest: "Guest",
 };
+
+/** A Zerops role in plain words, as *Advanced* names it. */
+export const ROLE_CODE_WORDS = {
+  OWNER: "Owner",
+  ADMIN: "Admin",
+  BASIC_USER: "Basic user",
+  READ_ONLY: "Read only",
+  NO_ACCESS: "No access",
+} as const;
 
 const ROLE_WORDS = {
   OWNER: "Owner",
@@ -192,7 +206,7 @@ export function teamPeople(input: TeamInput): TeamView {
     const preset = teamRoleOf(member);
     const role =
       preset === "developer" || preset === "guest"
-        ? TEAM_ROLE_WORDS[preset].label
+        ? TEAM_ROLE_WORDS[preset]
         : ROLE_WORDS[asOrgRole(member.roleCode) as keyof typeof ROLE_WORDS];
     const reach = reachOf(member, input);
     const actions = teamActions({
@@ -208,13 +222,17 @@ export function teamPeople(input: TeamInput): TeamView {
       key: member.id,
       userId,
       name,
+      email: member.user?.email?.trim() || null,
+      created: member.created ?? null,
+      badge:
+        preset === null ? ROLE_CODE_WORDS[asOrgRole(member.roleCode)] : TEAM_ROLE_WORDS[preset],
+      membership: membershipOf(member),
       initials: zeropsInitials(name),
-      avatarUrl:
-        (userId === undefined ? null : input.pictures[userId]) ||
-        avatar?.smallAvatarUrl ||
-        avatar?.externalAvatarUrl ||
-        avatar?.largeAvatarUrl ||
-        null,
+      avatarUrl: memberPicture({
+        hq: userId === undefined ? null : input.pictures[userId],
+        avatar,
+        email: member.user?.email,
+      }),
       you: userId !== undefined && userId === input.viewerUserId,
       pending,
       role,
@@ -249,20 +267,40 @@ export function teamPeople(input: TeamInput): TeamView {
   };
 }
 
+/** How the team is ordered: when each joined, either way, or by name. */
+export type TeamSort = "created-asc" | "created-desc" | "name";
+
+export const TEAM_SORT_WORDS: Readonly<Record<TeamSort, string>> = {
+  "created-asc": "Oldest first",
+  "created-desc": "Newest first",
+  name: "By name",
+};
+
 /**
- * The Mate projects an invitation may give: every group of the organization but those holding a
- * Chief, which is one person's own Mate for the whole organization, never a project to share.
+ * The people a search and an order leave: a name or an e-mail containing what was typed, any case;
+ * ordered by when they joined — someone Zerops doesn't date last — or by name.
  */
-export function invitableGroups(
-  groups: ReadonlyArray<{
-    readonly groupId: string;
-    readonly name: string;
-    readonly projects: ReadonlyArray<{ readonly projectId: string }>;
-  }>,
-  chiefProjectIds: ReadonlySet<string>,
-): ReadonlyArray<{ readonly groupId: string; readonly name: string }> {
-  return groups
-    .filter(({ projects }) => !projects.some(({ projectId }) => chiefProjectIds.has(projectId)))
-    .map(({ groupId, name }) => ({ groupId, name }))
-    .toSorted((a, b) => a.name.localeCompare(b.name));
+export function shownTeam(
+  people: ReadonlyArray<TeamPerson>,
+  query: string,
+  sort: TeamSort,
+): ReadonlyArray<TeamPerson> {
+  const needle = query.trim().toLocaleLowerCase();
+  const found =
+    needle === ""
+      ? people
+      : people.filter(
+          ({ name, email }) =>
+            name.toLocaleLowerCase().includes(needle) ||
+            (email?.toLocaleLowerCase().includes(needle) ?? false),
+        );
+  const byName = (a: TeamPerson, b: TeamPerson) => a.name.localeCompare(b.name);
+  if (sort === "name") return found.toSorted(byName);
+  const direction = sort === "created-asc" ? 1 : -1;
+  return found.toSorted((a, b) => {
+    if (a.created === b.created) return byName(a, b);
+    if (a.created === null) return 1;
+    if (b.created === null) return -1;
+    return direction * a.created.localeCompare(b.created);
+  });
 }

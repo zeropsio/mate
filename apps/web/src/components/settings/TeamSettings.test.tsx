@@ -11,14 +11,18 @@ vi.mock("@tanstack/react-router", async (actual) => ({
   ...(await actual<typeof import("@tanstack/react-router")>()),
   Link: ({
     children,
-    params,
+    params = {},
     to,
+    ...rest
   }: {
     readonly children?: ReactNode;
-    readonly params: { readonly groupId: string };
+    readonly params?: Readonly<Record<string, string>>;
     readonly to: string;
-  }) => <a href={to.replace("$groupId", params.groupId)}>{children}</a>,
-  useNavigate: () => () => {},
+  }) => (
+    <a href={to.replace(/\$(\w+)/g, (_, key: string) => params[key] ?? "")} {...rest}>
+      {children}
+    </a>
+  ),
 }));
 
 const member = (
@@ -58,85 +62,62 @@ const input = (viewer?: TeamInput["viewer"], viewerUserId = "ada"): TeamInput =>
   viewer,
 });
 
-/** The page as a person reads it: the count, each row's lines and menu, and the invitation. */
+/** The page as a person reads it: the count, each card's parts and where it leads, Invite. */
 function drawn(viewer?: TeamInput["viewer"], viewerUserId?: string) {
-  const markup = renderToStaticMarkup(
-    <TeamList
-      onEnd={() => {}}
-      onInvite={() => {}}
-      onRole={() => {}}
-      organizationName="Acme"
-      view={teamPeople(input(viewer, viewerUserId))}
-    />,
-  );
+  const markup = renderToStaticMarkup(<TeamList view={teamPeople(input(viewer, viewerUserId))} />);
   const body = new DOMParser().parseFromString(markup, "text/html").body;
+  const part = (card: Element, name: string) =>
+    card.querySelector(`[data-part="${name}"]`)?.textContent ?? null;
   return {
     heading: body.querySelector("h2")?.parentElement?.textContent,
-    rows: [...body.querySelectorAll("li")].map((row) => ({
-      name: row.querySelector(".ov-mate-name")?.textContent,
-      line: row.querySelector(".ov-mate-l2")?.textContent,
-      pending: row.hasAttribute("data-pending"),
-      menu: row.querySelector('[aria-label$="\'s role"]') !== null,
-      links: [...row.querySelectorAll("a")].map((link) => link.getAttribute("href")),
+    cards: [...body.querySelectorAll("ul[aria-label=People] > li > a")].map((card) => ({
+      name: part(card, "name"),
+      role: part(card, "role"),
+      email: part(card, "email"),
+      pending: card.hasAttribute("data-pending"),
+      href: card.getAttribute("href"),
     })),
     invite: body.querySelector('[data-zerops-surface="invite-team"]') !== null,
   };
 }
 
 describe("the organization's team", () => {
-  it("Everyone in the organization is a row, never a token: who, their role, what they reach", () => {
+  it("Everyone in the organization is a card, never a token: their name, role and e-mail", () => {
     const page = drawn();
     expect(page.heading).toBe("Team4 people");
-    expect(page.rows.map(({ name, line }) => [name, line])).toEqual([
-      ["Ada Owner", "Owner · everything"],
-      ["Al Admin", "Admin · everything"],
-      ["Bob Guest", "Guest · on Snap"],
-      ["Iva Invited", "Invited · not joined yet · Guest"],
+    expect(page.cards.map(({ name, role, email }) => [name, role, email])).toEqual([
+      ["Ada Owner", "Owner", "ada@example.com"],
+      ["Al Admin", "Admin", "al@example.com"],
+      ["Bob Guest", "Guest", "bob@example.com"],
+      ["Iva Invited", "Guest", "iva@example.com"],
     ]);
   });
 
-  it("A person's project leads to that project's page", () => {
-    expect(drawn().rows.find(({ name }) => name === "Bob Guest")?.links).toEqual([
-      "/group/g-snap/flow",
+  it("A card opens that person's own page", () => {
+    expect(drawn().cards.map(({ href }) => href)).toEqual([
+      "/settings/team/cu-ada",
+      "/settings/team/cu-al",
+      "/settings/team/cu-bob",
+      "/settings/team/cu-iva",
     ]);
   });
 
   it("An invitation not joined yet is dimmed", () => {
-    expect(drawn().rows.map(({ pending }) => pending)).toEqual([false, false, false, true]);
+    expect(drawn().cards.map(({ pending }) => pending)).toEqual([false, false, false, true]);
   });
 
   it.each([
-    {
-      sentence: "An owner invites, and finds a menu on everyone but themselves",
-      viewer: { roleCode: "OWNER", membershipId: "cu-ada" },
-      who: "ada",
-      invite: true,
-      menus: { "Ada Owner": false, "Al Admin": true, "Bob Guest": true, "Iva Invited": true },
-    },
-    {
-      sentence: "An admin invites, and finds no menu on an owner or an admin",
-      viewer: { roleCode: "ADMIN", membershipId: "cu-al" },
-      who: "al",
-      invite: true,
-      menus: { "Ada Owner": false, "Al Admin": false, "Bob Guest": true, "Iva Invited": true },
-    },
-    {
-      sentence: "A guest neither invites nor finds a menu",
-      viewer: { roleCode: "NO_ACCESS", membershipId: "cu-bob" },
-      who: "bob",
-      invite: false,
-      menus: { "Ada Owner": false, "Al Admin": false, "Bob Guest": false, "Iva Invited": false },
-    },
+    { sentence: "An owner finds Invite beside the search", viewer: "OWNER", invite: true },
+    { sentence: "An admin finds Invite beside the search", viewer: "ADMIN", invite: true },
+    { sentence: "A guest finds no Invite", viewer: "NO_ACCESS", invite: false },
     {
       sentence: "Nobody is invited or changed while the viewer's role is not known",
       viewer: undefined,
-      who: "ada",
       invite: false,
-      menus: { "Ada Owner": false, "Al Admin": false, "Bob Guest": false, "Iva Invited": false },
     },
-  ])("$sentence", ({ viewer, who, invite, menus }) => {
-    const page = drawn(viewer, who);
-    expect(page.invite).toBe(invite);
-    expect(Object.fromEntries(page.rows.map(({ name, menu }) => [name, menu]))).toEqual(menus);
+  ])("$sentence", ({ viewer, invite }) => {
+    expect(
+      drawn(viewer === undefined ? undefined : { roleCode: viewer, membershipId: "cu-x" }).invite,
+    ).toBe(invite);
   });
 });

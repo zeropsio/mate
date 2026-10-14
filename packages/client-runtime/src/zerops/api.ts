@@ -134,9 +134,11 @@ export interface ZeropsOrganizationMember {
   readonly status?: string;
   readonly roleCode?: string;
   readonly canCreateProjects?: boolean;
-  /** Finances are Zerops HQ's: a role change sends them back as they were. */
+  /** Only an owner sets the two finance flags (`zerops/teamRoles.ts`). */
   readonly canViewFinances?: boolean;
   readonly canEditFinances?: boolean;
+  /** When the membership was made, as an ISO date. */
+  readonly created?: string;
   readonly user?: {
     readonly id?: string;
     readonly fullName?: string;

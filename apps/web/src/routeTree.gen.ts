@@ -30,6 +30,8 @@ import { Route as SettingsArchivedRouteImport } from './routes/settings.archived
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatChiefRouteImport } from './routes/_chat.chief'
+import { Route as SettingsTeamInviteRouteImport } from './routes/settings.team_.invite'
+import { Route as SettingsTeamClientUserIdRouteImport } from './routes/settings.team_.$clientUserId'
 import { Route as ChatMateProjectIdRouteImport } from './routes/_chat.mate.$projectId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
@@ -142,6 +144,17 @@ const ChatChiefRoute = ChatChiefRouteImport.update({
   path: '/chief',
   getParentRoute: () => ChatRoute,
 } as any)
+const SettingsTeamInviteRoute = SettingsTeamInviteRouteImport.update({
+  id: '/team_/invite',
+  path: '/team/invite',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsTeamClientUserIdRoute =
+  SettingsTeamClientUserIdRouteImport.update({
+    id: '/team_/$clientUserId',
+    path: '/team/$clientUserId',
+    getParentRoute: () => SettingsRoute,
+  } as any)
 const ChatMateProjectIdRoute = ChatMateProjectIdRouteImport.update({
   id: '/mate/$projectId',
   path: '/mate/$projectId',
@@ -205,6 +218,8 @@ export interface FileRoutesByFullPath {
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/mate/$projectId': typeof ChatMateProjectIdRoute
+  '/settings/team/$clientUserId': typeof SettingsTeamClientUserIdRoute
+  '/settings/team/invite': typeof SettingsTeamInviteRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
@@ -234,6 +249,8 @@ export interface FileRoutesByTo {
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/mate/$projectId': typeof ChatMateProjectIdRoute
+  '/settings/team/$clientUserId': typeof SettingsTeamClientUserIdRoute
+  '/settings/team/invite': typeof SettingsTeamInviteRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
@@ -265,6 +282,8 @@ export interface FileRoutesById {
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/_chat/mate/$projectId': typeof ChatMateProjectIdRoute
+  '/settings/team_/$clientUserId': typeof SettingsTeamClientUserIdRoute
+  '/settings/team_/invite': typeof SettingsTeamInviteRoute
   '/_chat/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/_chat/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/_chat/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
@@ -296,6 +315,8 @@ export interface FileRouteTypes {
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/mate/$projectId'
+    | '/settings/team/$clientUserId'
+    | '/settings/team/invite'
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
     | '/mate/new/$birthId'
@@ -325,6 +346,8 @@ export interface FileRouteTypes {
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/mate/$projectId'
+    | '/settings/team/$clientUserId'
+    | '/settings/team/invite'
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
     | '/mate/new/$birthId'
@@ -355,6 +378,8 @@ export interface FileRouteTypes {
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
     | '/_chat/mate/$projectId'
+    | '/settings/team_/$clientUserId'
+    | '/settings/team_/invite'
     | '/_chat/group/$groupId/$projectId'
     | '/_chat/group/$groupId/flow'
     | '/_chat/mate/new/$birthId'
@@ -522,6 +547,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatChiefRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/settings/team_/invite': {
+      id: '/settings/team_/invite'
+      path: '/team/invite'
+      fullPath: '/settings/team/invite'
+      preLoaderRoute: typeof SettingsTeamInviteRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/team_/$clientUserId': {
+      id: '/settings/team_/$clientUserId'
+      path: '/team/$clientUserId'
+      fullPath: '/settings/team/$clientUserId'
+      preLoaderRoute: typeof SettingsTeamClientUserIdRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/_chat/mate/$projectId': {
       id: '/_chat/mate/$projectId'
       path: '/mate/$projectId'
@@ -612,6 +651,8 @@ interface SettingsRouteChildren {
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
   SettingsTeamRoute: typeof SettingsTeamRoute
   SettingsZeropsRoute: typeof SettingsZeropsRoute
+  SettingsTeamClientUserIdRoute: typeof SettingsTeamClientUserIdRoute
+  SettingsTeamInviteRoute: typeof SettingsTeamInviteRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
@@ -625,6 +666,8 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsSourceControlRoute: SettingsSourceControlRoute,
   SettingsTeamRoute: SettingsTeamRoute,
   SettingsZeropsRoute: SettingsZeropsRoute,
+  SettingsTeamClientUserIdRoute: SettingsTeamClientUserIdRoute,
+  SettingsTeamInviteRoute: SettingsTeamInviteRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(

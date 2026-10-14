@@ -7577,6 +7577,435 @@ a.ov-card-site:hover {
   color: var(--muted-foreground);
 }
 
+/* A chip's face leads to the person's own Team page. */
+a.ov-chip-who {
+  cursor: pointer;
+}
+
+a.ov-chip-who:hover .ov-chip-name {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a.ov-chip-who:focus-visible {
+  border-radius: 999px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Settings → Team, legacy Zerops's shapes in Mate's ink: the team as cards, a person's own page
+   and the invitation, one narrow column of sections, each heading over its rows. The picker's
+   popover sits outside the page, so it carries the same surfaces. */
+.tm-team,
+.tm-page,
+.ov-pick {
+  --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--background));
+  --ov-hover: color-mix(in oklab, var(--foreground) 4%, transparent);
+  --ov-rule: color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+
+.dark .tm-team,
+.dark .tm-page,
+.dark .ov-pick {
+  --ov-lift: color-mix(in oklab, var(--foreground) 6%, var(--background));
+  --ov-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --ov-rule: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+
+.tm-team {
+  display: grid;
+  gap: 20px;
+}
+
+.tm-team-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.tm-team-search {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.tm-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+  gap: 14px;
+}
+
+.tm-card {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 26px 16px 22px;
+  border-radius: 16px;
+  background: var(--ov-lift);
+  text-align: center;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.tm-card:hover {
+  background: var(--ov-hover);
+}
+
+.tm-card:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.tm-card[data-pending] .tm-card-face {
+  opacity: 0.55;
+}
+
+.tm-card-face {
+  margin-bottom: 12px;
+}
+
+.tm-card-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  margin: 4px 0 2px;
+}
+
+.tm-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--zerops-status-busy-surface);
+  color: var(--zerops-status-busy-text);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 18px;
+  text-transform: uppercase;
+}
+
+.tm-badge[data-tone="muted"] {
+  box-shadow: inset 0 0 0 1px var(--ov-rule);
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.tm-card-mail {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-empty {
+  padding: 24px 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  text-align: center;
+}
+
+.tm-page {
+  display: grid;
+  gap: 44px;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.tm-head {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.tm-head > [data-zerops-primitive="avatar"] {
+  margin-bottom: 14px;
+}
+
+.tm-head-name {
+  color: var(--foreground);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 28px;
+}
+
+.tm-head-line {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.tm-section {
+  display: grid;
+  gap: 14px;
+}
+
+.tm-section-head {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+}
+
+.tm-section-title {
+  color: var(--foreground);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.tm-section-text {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 20px;
+  text-wrap: pretty;
+}
+
+.tm-section-foot {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.tm-section-foot > [role="alert"] {
+  color: var(--zerops-status-failed-text);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.tm-label {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.tm-role {
+  display: grid;
+  gap: 10px;
+}
+
+.tm-role-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tm-role-card {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-height: 96px;
+  padding: 16px 18px;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  background: var(--ov-lift);
+  text-align: left;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    border-color 150ms var(--ease-out-strong);
+}
+
+.tm-role-card:not(:disabled):hover {
+  background: var(--ov-hover);
+}
+
+.tm-role-card[data-selected] {
+  border-color: var(--primary);
+  background: var(--background);
+}
+
+.tm-role-card:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.tm-role-card:disabled {
+  cursor: default;
+}
+
+.tm-role-card:disabled:not([data-selected]) {
+  opacity: 0.55;
+}
+
+.tm-role-card-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.tm-role-card-text {
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  line-height: 18px;
+}
+
+.tm-advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-self: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tm-advanced-toggle:hover {
+  background: var(--ov-hover);
+}
+
+.tm-advanced-toggle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.tm-advanced-toggle > svg {
+  transition: transform 180ms var(--ease-out-strong);
+}
+
+.tm-advanced-toggle > svg[data-open] {
+  transform: rotate(180deg);
+}
+
+.tm-advanced-custom {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.tm-advanced {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.tm-flags {
+  display: grid;
+  gap: 10px;
+  padding-left: 2px;
+}
+
+.tm-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.tm-flag[data-disabled] {
+  color: var(--muted-foreground);
+}
+
+.tm-flag-lock {
+  display: inline-flex;
+  color: var(--muted-foreground);
+}
+
+.tm-project-face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+/* A person's projects: names are longer than people's, so fewer, wider chips. */
+.ov-chips[data-wide] {
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+}
+
+.ov-chip[data-changed] {
+  box-shadow: inset 0 0 0 1.5px var(--primary);
+}
+
+.tm-pick-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+.tm-pick-row[data-ticked] {
+  background: var(--ov-hover);
+}
+
+.tm-pick-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-pick-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-inline-start: 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tm-rule {
+  justify-self: center;
+  width: 40px;
+  height: 1px;
+  background: var(--ov-rule);
+}
+
+.tm-invite-card {
+  display: grid;
+  gap: 18px;
+  padding: 32px;
+  border-radius: 16px;
+  background: var(--ov-lift);
+}
+
+.tm-names {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tm-field {
+  display: grid;
+  gap: 6px;
+}
+
 /* *Add a Mate* at the foot of a project page's Mates: a row the size of a folded one, its plus
    where a face stands. */
 .ov-add {

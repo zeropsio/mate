@@ -8,8 +8,10 @@
  * them arrive; each choice goes back to the caller, which writes it — or, in a creation's draft,
  * keeps it.
  */
+import { Link } from "@tanstack/react-router";
 import {
   CogIcon,
+  CrownIcon,
   EyeIcon,
   EyeOffIcon,
   LockOpenIcon,
@@ -67,6 +69,9 @@ export type ProjectAccessSlot = (
 /** A choice from a person's ···: a level, or the way out. */
 export type AccessChoice = GivenLevel | NonNullable<PersonChange["end"]>;
 
+/** Where a person's own Team page is, by membership id: the chip's face leads there. */
+export type PersonPageLink = (clientUserId: string) => boolean;
+
 /** Someone picked in *Add access*, at the level ticked for them. */
 export interface AccessPick {
   readonly candidate: AccessCandidate;
@@ -89,9 +94,15 @@ export interface ProjectAccessChipsProps {
   readonly onAdd?: (picks: ReadonlyArray<AccessPick>) => void;
   /** Adding is under way. */
   readonly adding?: boolean;
+  /** Whether a chip's face leads to that person's Team page; absent, none does. */
+  readonly personPage?: PersonPageLink;
 }
 
-const BADGE_ICON: Readonly<Record<ChipLevel, typeof LockOpenIcon>> = {
+/** A badge's level: a chip's, or `owner` on a project someone owns. */
+export type BadgeLevel = ChipLevel | "owner";
+
+const BADGE_ICON: Readonly<Record<BadgeLevel, typeof LockOpenIcon>> = {
+  owner: CrownIcon,
   full: LockOpenIcon,
   basic: CogIcon,
   read: EyeIcon,
@@ -111,6 +122,7 @@ export function ProjectAccessChips({
   onChoose,
   onAdd,
   adding = false,
+  personPage,
 }: ProjectAccessChipsProps) {
   const people = view.kind === "people" ? view.people : [];
   const said = Object.entries(troubles ?? {}).flatMap(([key, line]) => {
@@ -131,6 +143,7 @@ export function ProjectAccessChips({
             <AccessChip
               busy={saving?.has(person.key) === true}
               key={person.key}
+              linked={personPage?.(person.key) === true}
               {...(onChoose === undefined
                 ? {}
                 : { onChoose: (choice: AccessChoice) => onChoose(person, choice) })}
@@ -153,12 +166,17 @@ export function ProjectAccessChips({
   );
 }
 
-function AccessBadge({ level, busy }: { level: ChipLevel; busy: boolean }) {
+/** The level a chip holds, as a small badge: an icon and a word. */
+export function AccessBadge({ level, busy = false }: { level: BadgeLevel; busy?: boolean }) {
   const Icon = BADGE_ICON[level];
   return (
-    <span className="ov-chip-badge" data-level={busy ? undefined : level} data-part="badge">
+    <span
+      className="ov-chip-badge"
+      data-level={busy ? undefined : level === "owner" ? "full" : level}
+      data-part="badge"
+    >
       {busy ? null : <Icon aria-hidden="true" className="size-3" />}
-      {busy ? "Saving…" : BADGE_WORDS[level]}
+      {busy ? "Saving…" : level === "owner" ? "Owner" : BADGE_WORDS[level]}
     </span>
   );
 }
@@ -166,10 +184,13 @@ function AccessBadge({ level, busy }: { level: ChipLevel; busy: boolean }) {
 function AccessChip({
   person,
   busy,
+  linked,
   onChoose,
 }: {
   readonly person: ProjectPerson;
   readonly busy: boolean;
+  /** The face leads to the person's own Team page. */
+  readonly linked: boolean;
   readonly onChoose?: (choice: AccessChoice) => void;
 }) {
   const change = person.change;
@@ -185,7 +206,19 @@ function AccessChip({
       data-pending={person.pending || undefined}
     >
       <Tooltip>
-        <TooltipTrigger render={<span className="ov-chip-who" />}>
+        <TooltipTrigger
+          render={
+            linked ? (
+              <Link
+                className="ov-chip-who"
+                params={{ clientUserId: person.key }}
+                to="/settings/team/$clientUserId"
+              />
+            ) : (
+              <span className="ov-chip-who" />
+            )
+          }
+        >
           <Avatar initials={person.initials} size="md" src={person.avatarUrl} />
           <span className="ov-chip-text">
             <span

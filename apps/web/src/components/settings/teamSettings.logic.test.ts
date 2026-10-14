@@ -2,7 +2,7 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  invitableGroups,
+  shownTeam,
   teamGrantIds,
   teamPeople,
   type TeamInput,
@@ -294,20 +294,65 @@ describe("what the viewer may change of the team", () => {
   });
 });
 
-describe("what an invitation may give", () => {
-  it("never offers a person's Chief as a project to give", () => {
-    const groups = [
-      {
-        groupId: "snap",
-        name: "Snap",
-        projects: [{ projectId: "snap-prod" }, { projectId: "snap-kai" }],
-      },
-      { groupId: "chief-ales", name: "Chief · Ales", projects: [{ projectId: "chief-ales-mate" }] },
-      { groupId: "beviro", name: "Beviro", projects: [{ projectId: "beviro-cleo" }] },
-    ];
-    expect(invitableGroups(groups, new Set(["chief-ales-mate"]))).toEqual([
-      { groupId: "beviro", name: "Beviro" },
-      { groupId: "snap", name: "Snap" },
+describe("finding someone on the team", () => {
+  const TEAM = people(
+    teamPeople(
+      input([
+        member("petra", "Petra Kralova", "OWNER", { created: "2024-03-01T10:00:00Z" }),
+        member("ota", "Ota Benes", "ADMIN", { created: "2025-01-15T10:00:00Z" }),
+        member("zora", "Zora Mala", "NO_ACCESS", { created: "2023-06-20T10:00:00Z" }),
+        member("ivo", "ivo.novy@example.com", "NO_ACCESS"),
+      ]),
+    ),
+  );
+  const names = (list: ReturnType<typeof shownTeam>) => list.map(({ name }) => name);
+
+  it.each([
+    {
+      sentence: "Oldest first: by when they joined, anyone Zerops doesn't date last",
+      sort: "created-asc" as const,
+      order: ["Zora Mala", "Petra Kralova", "Ota Benes", "ivo.novy@example.com"],
+    },
+    {
+      sentence: "Newest first turns it round",
+      sort: "created-desc" as const,
+      order: ["Ota Benes", "Petra Kralova", "Zora Mala", "ivo.novy@example.com"],
+    },
+    {
+      sentence: "By name, alphabetically",
+      sort: "name" as const,
+      order: ["ivo.novy@example.com", "Ota Benes", "Petra Kralova", "Zora Mala"],
+    },
+  ])("$sentence", ({ sort, order }) => {
+    expect(names(shownTeam(TEAM, "", sort))).toEqual(order);
+  });
+
+  it.each([
+    { query: "petra", found: ["Petra Kralova"] },
+    { query: "  MALA ", found: ["Zora Mala"] },
+    { query: "ota@example", found: ["Ota Benes"] },
+    { query: "nobody", found: [] },
+  ])("The search finds by name or e-mail, any case: $query", ({ query, found }) => {
+    expect(names(shownTeam(TEAM, query, "name"))).toEqual(found);
+  });
+
+  it("A card's badge is the preset's name, else Zerops's role in words", () => {
+    expect(
+      people(
+        teamPeople(
+          input([
+            member("a", "A", "OWNER"),
+            member("d", "D", "NO_ACCESS", { canCreateProjects: true }),
+            member("g", "G", "NO_ACCESS"),
+            member("b", "B", "BASIC_USER"),
+          ]),
+        ),
+      ).map(({ name, badge }) => [name, badge]),
+    ).toEqual([
+      ["A", "Owner"],
+      ["B", "Basic user"],
+      ["D", "Developer"],
+      ["G", "Guest"],
     ]);
   });
 });

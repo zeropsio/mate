@@ -1,25 +1,29 @@
 /**
- * Settings → Team (`TeamList`), from a made-up organization seen by its owner: you, a second
- * owner, two admins, a developer on two Mate projects, a guest on three, someone who works on every
- * project, an invitation not accepted yet — one change saving, one refused, *Invite* at the foot —
- * and the guest's ··· open.
+ * Settings → Team, from a made-up organization seen by its owner: the team as cards (`TeamList`),
+ * one person's own page (`TeamMemberView`) and the invitation (`TeamInviteView`).
  *
  * Served by the dev server at `/design-team.html` (`?theme=dark`), beside a blank left menu at the
- * owner's 435 px; open it at 1786 × 1000. `?invite=access` opens the invitation at its role step
- * (a guest, Snap ticked); `?menu=0` leaves every menu shut. Fixtures only: no route imports this
- * module.
+ * owner's 435 px; open it at 1786 × 1000. `?page=member` shows a developer's page with two
+ * project grants (`&who=` another key: `cu-karel` an admin, `cu-iva` an invitation, `cu-me`
+ * your own; `&viewer=ADMIN` as an admin sees it; `&advanced=1` a custom role with Advanced open;
+ * `&picker=1` the project picker open). `?page=invite` the invitation's first step;
+ * `&step=details` "Adding" a new address, a guest with Snap given. Fixtures only: no route
+ * imports this module.
  */
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import { presetMembership } from "@t3tools/client-runtime/zerops/teamRoles";
 import {
   createMemoryHistory,
   createRootRoute,
+  createRoute,
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
-import { TeamInviteDialog } from "~/components/settings/TeamInviteDialog";
+import { TeamInviteView } from "~/components/settings/TeamInvitePage";
+import { TeamMemberView } from "~/components/settings/TeamMemberPage";
 import { TeamList } from "~/components/settings/TeamSettings";
 import {
   teamPeople,
@@ -31,30 +35,38 @@ import "../index.css";
 
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
+const viewerRole = params.get("viewer") ?? "OWNER";
 const MENU_WIDTH = 435;
 
 const member = (
   id: string,
   fullName: string,
   roleCode: string,
+  created: string,
   extra: Partial<ZeropsOrganizationMember> = {},
 ): ZeropsOrganizationMember => ({
   id: `cu-${id}`,
   status: "ACTIVE",
   roleCode,
-  user: { id, fullName, email: `${id}@example.com` },
+  created,
+  user: { id, fullName, email: `${fullName.toLowerCase().replace(/\W+/g, ".")}@example.com` },
   ...extra,
 });
 
 const MEMBERS = [
-  member("me", "Ada Lovelace", "OWNER"),
-  member("karel", "Karel Novák", "ADMIN"),
-  member("petra", "Petra Králová", "OWNER"),
-  member("jan", "Jan Svoboda", "NO_ACCESS", { canCreateProjects: true }),
-  member("eva", "Eva Dvořáková", "NO_ACCESS"),
-  member("tomas", "Tomáš Beneš", "BASIC_USER"),
-  member("lucie", "Lucie Horáková", "ADMIN"),
-  member("iva", "iva.mala@example.com", "NO_ACCESS", { status: "WAITING_AUTHORIZATION" }),
+  member("me", "Ada Lovelace", "OWNER", "2022-01-10T09:00:00Z"),
+  member("karel", "Karel Novak", "ADMIN", "2022-04-02T09:00:00Z"),
+  member("petra", "Petra Kralova", "OWNER", "2022-06-18T09:00:00Z"),
+  member("jan", "Jan Svoboda", "NO_ACCESS", "2023-02-11T09:00:00Z", { canCreateProjects: true }),
+  member("eva", "Eva Dvorakova", "NO_ACCESS", "2023-09-30T09:00:00Z"),
+  member("tomas", "Tomas Benes", "BASIC_USER", "2024-01-05T09:00:00Z", {
+    canCreateProjects: true,
+  }),
+  member("lucie", "Lucie Horakova", "ADMIN", "2024-05-21T09:00:00Z"),
+  member("iva", "iva.mala@example.com", "NO_ACCESS", "2025-03-03T09:00:00Z", {
+    status: "WAITING_AUTHORIZATION",
+    user: { id: "iva", email: "iva.mala@example.com" },
+  }),
   { id: "cu-token", status: "ACTIVE", roleCode: "ADMIN", user: { email: "token-x@zerops.io" } },
 ];
 
@@ -71,75 +83,110 @@ const grants = (entries: Record<string, string>) => ({
 const INPUT: TeamInput = {
   members: { known: true, status: "ready", refused: false, list: MEMBERS },
   grants: {
-    "cu-jan": grants({ "snap-prod": "BASIC_USER", "beviro-prod": "BASIC_USER" }),
+    "cu-jan": grants({ "snap-prod": "ADMIN", "beviro-prod": "ADMIN" }),
     "cu-eva": grants({
       "snap-prod": "READ_ONLY",
       "beviro-prod": "READ_ONLY",
-      "shop-prod": "BASIC_USER",
+      "shop-prod": "ADMIN",
     }),
     "cu-iva": grants({ "snap-prod": "READ_ONLY" }),
   },
   places: { "snap-prod": SNAP, "beviro-prod": BEVIRO, "shop-prod": SHOP },
   pictures: {},
   viewerUserId: "me",
-  viewer: { roleCode: "OWNER", membershipId: "cu-me" },
+  viewer: { roleCode: viewerRole, membershipId: viewerRole === "OWNER" ? "cu-me" : "cu-karel" },
 };
+
+const PROJECTS = [
+  { projectId: "beviro-prod", label: "Beviro · production" },
+  { projectId: "beviro-stage", label: "Beviro · stage" },
+  { projectId: "shop-prod", label: "Shop · production" },
+  { projectId: "snap-fen", label: "Snap · Fen" },
+  { projectId: "snap-prod", label: "Snap · production" },
+  { projectId: "snap-stage", label: "Snap · stage" },
+  { projectId: "legacy", label: "legacy-api" },
+];
 
 const VIEW = teamPeople(INPUT);
-const ACTIONS = {
-  check: () => new Promise<never>(() => {}),
-  shownHere: () => false,
-  send: () => new Promise<never>(() => {}),
-};
+const never = () => new Promise<never>(() => {});
+
+function Page() {
+  const page = params.get("page");
+  const who = params.get("who") ?? "cu-jan";
+  useEffect(() => {
+    if (params.get("picker") !== "1") return;
+    const timer = setTimeout(() => {
+      document.querySelector<HTMLElement>('[data-zerops-surface="set-custom-access"]')?.click();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, []);
+  if (VIEW.kind !== "people") return null;
+  if (page === "member") {
+    const found = VIEW.people.find(({ key }) => key === who)!;
+    const person =
+      params.get("advanced") === "1"
+        ? { ...found, membership: { ...presetMembership("developer"), canViewFinances: true } }
+        : found;
+    return (
+      <TeamMemberView
+        actions={{ updateMembership: never, saveAccess: never, remove: never }}
+        grants={
+          who === "cu-karel"
+            ? { "shop-prod": "NO_ACCESS" }
+            : { "snap-prod": "ADMIN", "beviro-prod": "READ_ONLY", "snap-fen": "OWNER" }
+        }
+        organizationName="Acme"
+        person={person}
+        projects={PROJECTS}
+        viewerRole={viewerRole}
+      />
+    );
+  }
+  if (page === "invite") {
+    const details = params.get("step") === "details";
+    return (
+      <TeamInviteView
+        actions={{ check: never, send: never }}
+        initial={
+          details ? { step: "details", email: "petra.kralova@example.com", existing: null } : null
+        }
+        initialDraft={details ? { "snap-prod": "ADMIN" } : {}}
+        initialMembership={presetMembership("guest")}
+        onSent={() => {}}
+        organizationName="Acme"
+        projects={PROJECTS}
+        viewerRole={viewerRole}
+      />
+    );
+  }
+  return <TeamList view={VIEW} />;
+}
 
 function HarnessPage() {
-  const invite = params.get("invite") === "access";
-  // The guest's ··· open, as a person clicking it sees it.
-  useEffect(() => {
-    if (invite || params.get("menu") === "0") return;
-    const timer = setTimeout(() => {
-      document.querySelector<HTMLElement>('[aria-label="Change Eva Dvořáková\'s role"]')?.click();
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [invite]);
+  const narrow = params.get("page") === "member" || params.get("page") === "invite";
   return (
     <div className="flex h-dvh bg-background text-foreground">
       <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }} />
       <main className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 pt-10 pb-12">
-          <TeamList
-            onEnd={() => {}}
-            onInvite={() => {}}
-            onRole={() => {}}
-            organizationName="Acme"
-            saving={new Set(["cu-tomas"])}
-            troubles={{ "cu-lucie": "Admins can't change an owner's or another admin's role." }}
-            view={VIEW}
-          />
+        <div
+          className={
+            narrow
+              ? "mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 pt-10 pb-12"
+              : "mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-10 pb-12"
+          }
+        >
+          <Page />
         </div>
-        {invite && VIEW.kind === "people" ? (
-          <TeamInviteDialog
-            actions={ACTIONS}
-            initial={{
-              step: "access",
-              email: "petra.kralova@example.com",
-              invitee: { kind: "existing", userId: "petra" },
-            }}
-            initialChoice={{ role: "guest", groups: ["g-snap"], level: "work" }}
-            onOpenChange={() => {}}
-            open
-            organizationName="Acme"
-            projects={[BEVIRO, SHOP, SNAP].map(({ key, name }) => ({ groupId: key, name }))}
-            roles={VIEW.invite}
-          />
-        ) : null}
       </main>
     </div>
   );
 }
 
+const rootRoute = createRootRoute({ component: HarnessPage });
 const router = createRouter({
-  routeTree: createRootRoute({ component: HarnessPage }),
+  routeTree: rootRoute.addChildren([
+    createRoute({ getParentRoute: () => rootRoute, path: "/settings/team/$clientUserId" }),
+  ]),
   history: createMemoryHistory(),
 });
 
