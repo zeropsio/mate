@@ -48,6 +48,7 @@ import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
+import { ProjectAccessDraft } from "./projects/ProjectPeople";
 import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
 import {
   creationRecipe,
@@ -174,6 +175,9 @@ function NewMateDialog({
   });
   return (
     <ZeropsEnvironmentCreationDialog
+      access={(onChange) => (
+        <ProjectAccessDraft groupId={group.groupId} kind="mate" onChange={onChange} />
+      )}
       closed={
         addOffer.kind !== "allowed"
           ? {

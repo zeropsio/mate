@@ -36,6 +36,11 @@ export interface ProjectReviewItem {
   readonly mine: boolean;
   /** The Mate it is of, by its Zerops project: its row marks it after its name. */
   readonly mateProjectId?: string | undefined;
+  /**
+   * Its Mate still works (`changeShowsReview`): it asks for no review yet, and its mark stays,
+   * quieter, so the change is always findable.
+   */
+  readonly inProgress?: true | undefined;
 }
 
 /** A change's row, as the menu keys it and the jump box finds it: `repository#number`. */
@@ -117,6 +122,39 @@ export function reviewTagLabel(
   const [only] = items;
   if (items.length === 1 && only !== undefined) return `Review ${only.title}`;
   return `${String(items.length)} to review in ${projectName}`;
+}
+
+/** The mark after a name: what asks for review there, else what its Mate still works on. */
+export interface ReviewMark {
+  /** Something there asks for the person's review; else every change is still in progress. */
+  readonly asks: boolean;
+  /** How many it stands for: those that ask, else those in progress. */
+  readonly count: number;
+  /** What it says to somebody who cannot see it. */
+  readonly label: string;
+}
+
+/**
+ * The mark a row's changes wear: *Review* while any asks for review, else, quieter, that its Mate
+ * still works on them — never gone while a change is open (Eli, 2026-10-14).
+ */
+export function reviewMarkOf(
+  items: ReadonlyArray<Pick<ProjectReviewItem, "title" | "inProgress">>,
+  projectName: string,
+): ReviewMark {
+  const asking = items.filter((item) => item.inProgress !== true);
+  if (asking.length > 0) {
+    return { asks: true, count: asking.length, label: reviewTagLabel(asking, projectName) };
+  }
+  const [only] = items;
+  return {
+    asks: false,
+    count: items.length,
+    label:
+      items.length === 1 && only !== undefined
+        ? `In progress: ${only.title}`
+        : `${String(items.length)} changes in progress in ${projectName}`,
+  };
 }
 
 /** The popover's heading: its changes, or what is to review when crew tasks are among them. */

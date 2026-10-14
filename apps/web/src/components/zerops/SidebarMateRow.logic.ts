@@ -24,7 +24,7 @@ import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
-import { nowLineWords } from "../chat/runCard.logic";
+import { backgroundWorkWords, nowLineWords } from "../chat/runCard.logic";
 
 import { formatWorkingTime } from "./SidebarZeropsTree.logic";
 
@@ -465,9 +465,17 @@ export function mateRowView(
   }
   switch (state) {
     case "working":
-      // Its turn over, its helpers at work: its card's own words, its clock stopped with its turn.
+      // Its turn over, its work running on: what that work is, where its row names it (Eli,
+      // 2026-10-14: "Waiting for its helpers" over its own jobs); else its card's own words. Its
+      // clock stopped with its turn.
       if (activity.waitsOnHelpers === true) {
-        return view({ kind: "live", words: nowLineWords({ kind: "after" }) });
+        return view({
+          kind: "live",
+          words:
+            activity.backgroundWork === undefined
+              ? nowLineWords({ kind: "after" })
+              : backgroundWorkWords(activity.backgroundWork),
+        });
       }
       return view(
         activity.liveStep === undefined

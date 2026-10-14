@@ -359,6 +359,17 @@ describe("threadAgentActivity", () => {
     const both = { ...RUNNING, backgroundLiveness: "working" as const };
     expect(threadAgentActivity(both, undefined).waitsOnHelpers).toBeUndefined();
   });
+
+  it("names what a Mate whose turn is over waits on, where its shell names it, and nothing once it works", () => {
+    const work = {
+      items: [{ title: "Final batched browser check", of: "mate" as const, since: 1 }],
+      count: 1,
+    };
+    const after = shell({ backgroundLiveness: "working", backgroundWork: work });
+    expect(threadAgentActivity(after, undefined).backgroundWork).toEqual(work);
+    const both = { ...RUNNING, backgroundLiveness: "working" as const, backgroundWork: work };
+    expect(threadAgentActivity(both, undefined).backgroundWork).toBeUndefined();
+  });
 });
 
 describe("agentActivitySubject", () => {
@@ -1220,6 +1231,28 @@ describe("rowAgentActivity — an engine Mate's menu state off its own row", () 
       "waiting on its helpers",
       { state: { kind: "working", since: STARTED, waitsOnHelpers: true } },
       { kind: "working", face: "working", waitsOnHelpers: true },
+    ],
+    [
+      "waiting on its own background job, by name",
+      {
+        state: {
+          kind: "working",
+          since: STARTED,
+          waitsOnHelpers: true,
+          work: {
+            items: [{ title: "Final batched browser check", of: "mate", since: 1 }],
+            count: 1,
+          },
+        },
+      },
+      {
+        kind: "working",
+        waitsOnHelpers: true,
+        backgroundWork: {
+          items: [{ title: "Final batched browser check", of: "mate", since: 1 }],
+          count: 1,
+        },
+      },
     ],
     [
       "waiting on an approval",

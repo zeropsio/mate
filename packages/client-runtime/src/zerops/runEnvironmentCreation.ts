@@ -228,6 +228,7 @@ export async function runEnvironmentCreation(
               name: step.name,
               tagList: step.tagList,
               ...(step.location === undefined ? {} : { location: step.location }),
+              ...(step.userRoles === undefined ? {} : { userRoles: step.userRoles }),
             },
             {
               orgId,
@@ -254,6 +255,19 @@ export async function runEnvironmentCreation(
           );
           projectName = step.name;
           await accept(imported.projectId);
+          // An import document names no people: the creator's choice is given to the project made.
+          if (step.userRoles !== undefined && step.userRoles.length > 0) {
+            assertCurrent();
+            await run(
+              {
+                kind: "grant-new-project-access",
+                orgId,
+                projectId: imported.projectId,
+                userRoles: step.userRoles,
+              },
+              { orgId, unobserved: UNCONFIRMED_WRITE },
+            );
+          }
           break;
         }
         case "import-container": {

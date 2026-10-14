@@ -257,6 +257,7 @@ export function useEnvironmentCreation(): (
         recipe: choice.recipe,
         withAgent: choice.withAgent,
         ...(intent === undefined ? {} : { birth: intent }),
+        ...(choice.userRoles === undefined ? {} : { userRoles: choice.userRoles }),
       });
       if (!isCurrent()) return { kind: "refused", reason: null };
       if (!plan.ok) return { kind: "refused", reason: plan.reason };

@@ -17,6 +17,7 @@ import {
   PaletteIcon,
   SearchIcon,
   Settings2Icon,
+  UsersIcon,
   XIcon,
 } from "lucide-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -35,6 +36,7 @@ import {
 } from "../ui/sidebar";
 import { SidebarUtilityMenu } from "../sidebar/SidebarChrome";
 import { AccountVoiceLine } from "../zerops/AccountVoiceLine";
+import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { scrollToSettingsTarget } from "./settingsLayout";
 import {
   searchSettings,
@@ -53,6 +55,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/source-control": GitBranchIcon,
   "/settings/connections": Link2Icon,
   "/settings/zerops": CloudIcon,
+  "/settings/team": UsersIcon,
   "/settings/archived": ArchiveIcon,
 };
 
@@ -71,8 +74,15 @@ function SettingsSectionIcon({ to }: { to: SettingsPath }) {
   return <Icon className="mt-0.5 size-3.5 shrink-0 text-sidebar-muted-foreground/60" />;
 }
 
+/** The team is an organization's: its page is offered only signed in with one. */
+const shownNavItems = (withOrganization: boolean) =>
+  withOrganization
+    ? SETTINGS_NAV_ITEMS
+    : SETTINGS_NAV_ITEMS.filter(({ to }) => to !== "/settings/team");
+
 export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const navigate = useNavigate();
+  const navItems = shownNavItems(useZeropsSessionOptional()?.activeOrganization != null);
   const currentHash = useLocation({ select: (location) => location.hash });
   const { isMobile, setOpenMobile, open, setOpen } = useSidebar();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -264,7 +274,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))
-                : SETTINGS_NAV_ITEMS.map((item) => {
+                : navItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = pathname === item.to || pathname.startsWith(`${item.to}/`);
                     return (

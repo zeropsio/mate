@@ -58,6 +58,7 @@ const SHARED_VERBS: Readonly<Record<string, string | null>> = {
   restart: null,
   "finish-setup": null,
   assign: "Hand over…",
+  access: null,
   move: "Move to project…",
   delete: null,
 };

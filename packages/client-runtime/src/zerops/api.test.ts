@@ -2431,6 +2431,46 @@ describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
   });
 });
 
+describe("ZeropsApiClient.writeNewProjectAccess — a project's people, given once it is made", () => {
+  const project = {
+    id: "p1",
+    name: "Shop - stage",
+    status: "ACTIVE",
+    clientId: "org-1",
+    description: "",
+    tagList: ["mate"],
+    publicIpV4Shared: false,
+    maxCreditLimit: null,
+    userRoles: [{ clientUserId: "cu-creator", roleCode: "OWNER" }],
+  };
+
+  it("writes the project's whole list with the chosen people in it, its creator and record kept", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, project));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.writeNewProjectAccess("p1", [
+      { clientUserId: "cu-ada", roleCode: "ADMIN" },
+      { clientUserId: "cu-bo", roleCode: "READ_ONLY" },
+    ]);
+
+    expect(stub.requests.map((request) => request.method)).toEqual(["GET", "PUT"]);
+    // The platform replaces the record: what the write must not change goes back as it was read.
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
+      name: "Shop - stage",
+      description: "",
+      tagList: ["mate"],
+      publicIpV4Shared: false,
+      maxCreditLimit: null,
+      userRoles: [
+        { id: "cu-creator", roleCode: "OWNER" },
+        { id: "cu-ada", roleCode: "ADMIN" },
+        { id: "cu-bo", roleCode: "READ_ONLY" },
+      ],
+    });
+  });
+});
+
 describe("ZeropsApiClient.writeProject — the TagWriter's one PUT", () => {
   const project = {
     id: "p1",
@@ -2869,6 +2909,19 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
     expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
       projectRoleList: [{ projectId: "p2", roleCode: "BASIC_USER" }],
     });
+  });
+
+  it("A member's role changes their membership alone, its finances as they were", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const membership = {
+      roleCode: "NO_ACCESS",
+      canCreateProjects: true,
+      canViewFinances: true,
+      canEditFinances: false,
+    };
+    await clientWith(stub).updateOrganizationMember("cu-eva", membership);
+    expect(sent(stub)).toEqual(["PUT /client-user/cu-eva"]);
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual(membership);
   });
 
   it("Removing a membership deletes it, and nothing else", async () => {

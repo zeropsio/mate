@@ -2,8 +2,10 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  accessChanges,
   personMenu,
   projectPeople,
+  shortName,
   type ProjectPeopleInput,
   type ProjectPerson,
 } from "./projectPeople.logic";
@@ -175,7 +177,7 @@ describe("what each person may do on the project, in words", () => {
       name: "A grant on a Mate alone gives no access to the project's places",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: [...PROD_AND_STAGE(), mate("p-mate", "u-ada", [["ada", "OWNER"]])],
-      line: undefined,
+      line: "1 Mate",
     },
     {
       name: "Two stages are named by their own names",
@@ -460,8 +462,20 @@ describe("what an owner or admin may change of each person's access", () => {
       Mia: null,
       Olga: null,
       Adam: null,
-      Dana: { clientUserId: "cu-dev", level: "work", end: "remove", owned: ["m-dana"] },
-      Ivo: { clientUserId: "cu-inv", level: "look", end: "withdraw", owned: [] },
+      Dana: {
+        clientUserId: "cu-dev",
+        level: "basic",
+        levels: ["full", "read"],
+        end: "remove",
+        owned: ["m-dana"],
+      },
+      Ivo: {
+        clientUserId: "cu-inv",
+        level: "read",
+        levels: ["full", "read"],
+        end: "withdraw",
+        owned: [],
+      },
     });
   });
 
@@ -483,17 +497,211 @@ describe("what an owner or admin may change of each person's access", () => {
   });
 
   it("A person's menu offers the two levels, theirs checked, then the way out", () => {
+    const both = ["full", "read"] as const;
     expect(
-      personMenu({ clientUserId: "cu-dev", level: "work", end: "remove", owned: [] }, "Shop"),
+      personMenu({ clientUserId: "cu-dev", level: "full", levels: both, end: "remove", owned: [] }),
     ).toEqual([
-      { kind: "level", level: "work", label: "Can work on it", checked: true },
-      { kind: "level", level: "look", label: "Can only look", checked: false },
-      { kind: "end", end: "remove", label: "Remove from Shop" },
+      { kind: "level", level: "full", label: "Give full access", checked: true },
+      { kind: "level", level: "read", label: "Make read only", checked: false },
+      { kind: "end", end: "remove", label: "Remove access" },
     ]);
     expect(
-      personMenu({ clientUserId: "cu-inv", level: null, end: "withdraw", owned: [] }, "Shop").at(
-        -1,
-      ),
+      personMenu({
+        clientUserId: "cu-inv",
+        level: "mixed",
+        levels: both,
+        end: "withdraw",
+        owned: [],
+      }).at(-1),
     ).toEqual({ kind: "end", end: "withdraw", label: "Withdraw invite" });
+  });
+});
+
+describe("each person as a chip", () => {
+  const chip = (view: ReturnType<typeof projectPeople>, name: string) =>
+    people(view).find((person) => person.name === name);
+  const ADMIN_VIEWER = { roleCode: "ADMIN", membershipId: "cu-me" };
+
+  it.each<{
+    readonly name: string;
+    readonly member: ZeropsOrganizationMember;
+    readonly places: ReadonlyArray<Project>;
+    readonly level: string | undefined;
+  }>([
+    {
+      name: "An owner of the organization is full access everywhere",
+      member: member("ada", "Ada", "OWNER"),
+      places: PROD_AND_STAGE(),
+      level: "full",
+    },
+    {
+      name: "A developer of the organization is basic",
+      member: member("ada", "Ada", "BASIC_USER"),
+      places: PROD_AND_STAGE(),
+      level: "basic",
+    },
+    {
+      name: "A read-only member of the organization is read",
+      member: member("ada", "Ada", "READ_ONLY"),
+      places: PROD_AND_STAGE(),
+      level: "read",
+    },
+    {
+      name: "A member given full access on every place is full",
+      member: member("ada", "Ada", "NO_ACCESS"),
+      places: PROD_AND_STAGE([["ada", "ADMIN"]], [["ada", "ADMIN"]]),
+      level: "full",
+    },
+    {
+      name: "A member whose level differs from place to place is mixed",
+      member: member("ada", "Ada", "NO_ACCESS"),
+      places: PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "ADMIN"]]),
+      level: "mixed",
+    },
+    {
+      name: "A member on some places and not others is mixed",
+      member: member("ada", "Ada", "NO_ACCESS"),
+      places: PROD_AND_STAGE([["ada", "ADMIN"]]),
+      level: "mixed",
+    },
+    {
+      name: "An app with no place is judged on its Mates",
+      member: member("ada", "Ada", "NO_ACCESS"),
+      places: [
+        mate("m-1", undefined, [["ada", "READ_ONLY"]]),
+        mate("m-2", undefined, [["ada", "READ_ONLY"]]),
+      ],
+      level: "read",
+    },
+    {
+      name: "Someone reaching only their own Mate is judged on it",
+      member: member("ada", "Ada", "NO_ACCESS"),
+      places: [...PROD_AND_STAGE(), mate("m-ada", "u-ada")],
+      level: "full",
+    },
+    {
+      name: "An integration token is no chip",
+      member: member("ada", "Ada", "ADMIN", {
+        user: { id: "u-ada", fullName: "Ada", email: "token-AbCdEfGhIjKlMnOpQrStUv@zerops.io" },
+      }),
+      places: PROD_AND_STAGE(),
+      level: undefined,
+    },
+  ])("$name", ({ member: one, places, level }) => {
+    expect(
+      chip(projectPeople(input({ members: known([one]), projects: places })), "Ada")?.level,
+    ).toBe(level);
+  });
+
+  it("A mixed chip lists each project and their level there", () => {
+    const view = projectPeople(
+      input({
+        members: known([member("ada", "Ada", "NO_ACCESS")]),
+        projects: [
+          ...PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "ADMIN"]]),
+          { ...mate("m-1", undefined, [["ada", "ADMIN"]]), name: "Fen" },
+        ],
+      }),
+    );
+    expect(chip(view, "Ada")?.across).toEqual([
+      { label: "Production", level: "read" },
+      { label: "Stage", level: "full" },
+      { label: "Fen", level: "full" },
+    ]);
+  });
+
+  it("A chip names a person short, with their e-mail and their role for the hover card", () => {
+    const view = projectPeople(
+      input({
+        members: known([
+          member("ada", "Ada King Lovelace", "BASIC_USER", {
+            user: { id: "u-ada", fullName: "Ada King Lovelace", email: "ada@example.com" },
+          }),
+        ]),
+      }),
+    );
+    expect(chip(view, "Ada King Lovelace")).toMatchObject({
+      short: "Ada L.",
+      email: "ada@example.com",
+      role: "Developer",
+    });
+    expect([shortName("Bo"), shortName("cy@example.com")]).toEqual(["Bo", "cy@example.com"]);
+  });
+
+  it("An owner's or admin's chip has no menu: their role gives them everything", () => {
+    const view = projectPeople(
+      input({
+        members: known([member("own", "Olga", "OWNER"), member("adm", "Adam", "ADMIN")]),
+        viewer: ADMIN_VIEWER,
+      }),
+    );
+    expect(people(view).map(({ change }) => change)).toEqual([null, null]);
+  });
+
+  it("An admin lowered somewhere here is offered only full access back", () => {
+    const view = projectPeople(
+      input({
+        members: known([member("adm", "Adam", "ADMIN")]),
+        projects: PROD_AND_STAGE([["adm", "READ_ONLY"]]),
+        viewer: ADMIN_VIEWER,
+      }),
+    );
+    expect(personMenu(chip(view, "Adam")!.change!)).toEqual([
+      { kind: "level", level: "full", label: "Give full access", checked: false },
+    ]);
+  });
+
+  it("Remove access is offered only where a person holds a grant of their own here", () => {
+    const view = projectPeople(
+      input({
+        members: known([member("dev", "Dana", "BASIC_USER"), member("ro", "Rob", "BASIC_USER")]),
+        projects: PROD_AND_STAGE([["ro", "READ_ONLY"]]),
+        viewer: ADMIN_VIEWER,
+      }),
+    );
+    expect(chip(view, "Dana")?.change?.end).toBeNull();
+    expect(chip(view, "Rob")?.change?.end).toBe("remove");
+  });
+
+  it("Members who reach none of the projects are offered to add access for, tokens never", () => {
+    const view = projectPeople(
+      input({
+        members: known([
+          member("zoe", "Zoe", "NO_ACCESS", {
+            user: { id: "u-zoe", fullName: "Zoe", email: "zoe@example.com" },
+          }),
+          member("ada", "Ada", "NO_ACCESS"),
+          member("dev", "Dana", "BASIC_USER"),
+          member("tok", "Token", "NO_ACCESS", {
+            user: { id: "u-tok", email: "token-AbCdEfGhIjKlMnOpQrStUv@zerops.io" },
+          }),
+        ]),
+        viewer: ADMIN_VIEWER,
+      }),
+    );
+    expect(view.kind === "people" && view.candidates.map(({ name, role }) => [name, role])).toEqual(
+      [
+        ["Ada", "Member"],
+        ["Zoe", "Member"],
+      ],
+    );
+  });
+
+  it("A choice writes every project here but the Mates the person owns", () => {
+    expect(
+      accessChanges({
+        clientUserId: "cu-ada",
+        projectIds: ["prod", "stage", "m-ada", "m-bo"],
+        owned: ["m-ada"],
+        choice: "full",
+      }),
+    ).toEqual([
+      { clientUserId: "cu-ada", projectId: "prod", roleCode: "ADMIN" },
+      { clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" },
+      { clientUserId: "cu-ada", projectId: "m-bo", roleCode: "ADMIN" },
+    ]);
+    expect(
+      accessChanges({ clientUserId: "cu-ada", projectIds: ["prod"], owned: [], choice: "remove" }),
+    ).toEqual([{ clientUserId: "cu-ada", projectId: "prod", roleCode: null }]);
   });
 });

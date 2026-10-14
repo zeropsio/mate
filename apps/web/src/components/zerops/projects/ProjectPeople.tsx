@@ -1,11 +1,17 @@
 /**
- * A project's People: who can work on it and how. The organization's members, the grants on the
- * project's places and whose each Mate is, all through the account's data layer; each place's own
- * row — the only read naming everybody's grants — is held while it is shown.
+ * Who reaches Zerops projects, as people chips (`ProjectAccessChips`), read through the account's
+ * data layer: the organization's members, each project's own row — the only read naming everybody's
+ * grants, held while it is shown — and whose each Mate is, as HQ names its owner.
  *
- * An organization owner or admin invites someone at its foot and, from a person's menu, sets how
- * much they may do here or takes them out. Each change is the account's operation; a row says it
- * is saving until Zerops answered and the people were read again, and says a refusal under it.
+ * Three ways in. An app's page shows its People: one chip per person who reaches any of its
+ * projects, every change made to all of them at once. A project's own page (an environment, or a
+ * Mate's *Project access…*) shows that one project's. A creation dialog edits a draft the creation
+ * sends with the project (`accessDraft.logic.ts`).
+ *
+ * An organization owner or admin changes access from a person's ⋮ and adds people already in the
+ * organization from *Add access*. Each change is the account's operation (`set-project-access`); a
+ * chip says it is saving until Zerops answered and the people were read again, and a refusal is
+ * said under the chips.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -18,10 +24,13 @@ import {
   type MembersRead,
   type ProjectGrantsRead,
 } from "@t3tools/client-runtime/data";
-import type { AppAccessChange, AppProjects } from "@t3tools/client-runtime/zerops/appAccess";
+import type {
+  ProjectAccessChange,
+  ProjectGrant,
+} from "@t3tools/client-runtime/zerops/projectAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import { Atom } from "effect/reactivity";
-import { MoreHorizontalIcon, PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -36,28 +45,22 @@ import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 
-import { Button } from "../../ui/button";
+import { draftChoose, draftPrefill, draftView } from "./accessDraft.logic";
 import {
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  MenuTrigger,
-} from "../../ui/menu";
-import { Avatar } from "../primitives";
-import { ProjectInviteDialog, type ProjectInviteActions } from "./ProjectInviteDialog";
+  ADD_TROUBLE,
+  ProjectAccessChips,
+  type AccessChoice,
+  type AccessPick,
+} from "./ProjectAccessChips";
 import {
+  accessChanges,
   appProjectsOf,
-  personMenu,
   projectPeople,
   type ProjectPeopleInput,
-  type ProjectPeopleView,
   type ProjectPerson,
 } from "./projectPeople.logic";
 
-/** Outside an account nothing is read: every place's grants are still to come. */
+/** Outside an account nothing is read: every project's grants are still to come. */
 const UNREAD_GRANTS = Atom.make<Readonly<Record<string, ProjectGrantsRead>>>({});
 const UNREAD_MEMBERS = Atom.make<MembersRead>({
   fact: { kind: "unknown" },
@@ -70,40 +73,32 @@ const UNREAD_MEMBERS = Atom.make<MembersRead>({
   refused: false,
 });
 
-/** Who can work on the group `groupId`, as the data layer holds it now. */
-function useProjectPeople(groupId: string): {
-  readonly view: ProjectPeopleView;
-  readonly name: string;
-  readonly app: AppProjects;
-  readonly clientId: string | null;
-  /** The group's Mates a person owns, by their Zerops user id. */
-  readonly ownedBy: (userId: string | undefined) => ReadonlyArray<string>;
-} {
+type AccessProjects = ProjectPeopleInput["projects"];
+
+/** A draft with nothing chosen and nothing to start from: one list, so a render changes nothing. */
+const NO_GRANTS: ReadonlyArray<ProjectGrant> = [];
+
+/**
+ * What access to `projects` is drawn from, as the data layer holds it now: the members, each
+ * project's grants (its own row held while this is mounted), whose each Mate is, and who looks.
+ */
+function useAccessReads(projects: AccessProjects) {
   const session = useZeropsSessionOptional();
   const orgId = useAccountOrgId();
-  const { registry } = useZeropsRegistry();
-  const group = registry.groups.find((one) => one.groupId === groupId);
-  const projects = useMemo(
-    () => registry.groups.find((one) => one.groupId === groupId)?.projects ?? [],
-    [groupId, registry],
-  );
-  const placeIds = useMemo(
-    () => projects.flatMap(({ projectId, kind }) => (kind === "mate" ? [] : [projectId])),
-    [projects],
-  );
-  const placeKey = placeIds.join(",");
+  const projectIds = useMemo(() => projects.map(({ projectId }) => projectId), [projects]);
+  const projectKey = projectIds.join(",");
 
-  // Each place's own row, held while the section is drawn: everybody's grants come only with it.
+  // Each project's own row, held while the chips are drawn: everybody's grants come only with it.
   const demandDetail = useAtomValue(accountReadsAtom)?.demandDetail;
   useEffect(() => {
-    if (demandDetail === undefined || placeKey === "") return;
-    const releases = placeKey
+    if (demandDetail === undefined || projectKey === "") return;
+    const releases = projectKey
       .split(",")
       .map((ownerId) => demandDetail({ family: "project", listing: "project", ownerId }));
     return () => {
       for (const release of releases) release();
     };
-  }, [demandDetail, placeKey]);
+  }, [demandDetail, projectKey]);
 
   // The organization's members: who they are, their role, whether they joined. Displayed here,
   // never a gate: what anyone may do is Zerops' and HQ's to decide.
@@ -116,26 +111,21 @@ function useProjectPeople(groupId: string): {
   );
   const grants = useProjection(
     projectsGrants,
-    orgId === null ? null : { orgId, projectIds: placeIds },
+    orgId === null ? null : { orgId, projectIds },
     UNREAD_GRANTS,
   );
-  const roster = useAtomValue(shownProjectsAtom).projects;
   const hqProjectPeople = useAtomValue(shownHqProjectPeopleAtom);
   const viewerUserId = session?.user?.id ?? null;
   const viewer = useAccountDataOptional()?.viewer;
 
-  const view = useMemo(() => {
-    const input: ProjectPeopleInput = {
+  const base = useMemo(
+    () => ({
       members: {
         known: members.fact.kind === "known",
         status: members.status,
         refused: members.refused,
         list: members.members,
       },
-      projects: projects.map(({ projectId, kind }) => {
-        const name = roster.find(({ id }) => id === projectId)?.name;
-        return { projectId, kind, ...(name === undefined ? {} : { name }) };
-      }),
       grants,
       owners: Object.fromEntries(
         projects.map(({ projectId }) => [projectId, hqProjectPeople[projectId]?.owner?.userId]),
@@ -154,34 +144,45 @@ function useProjectPeople(groupId: string): {
               membershipId: viewer.membershipId,
               ...(viewer.roleCode === undefined ? {} : { roleCode: viewer.roleCode }),
             },
-    };
-    return projectPeople(input);
-  }, [grants, hqProjectPeople, members, projects, roster, viewer, viewerUserId]);
-  const app = useMemo(() => appProjectsOf(projects), [projects]);
-  const ownedBy = useCallback(
-    (userId: string | undefined) =>
-      userId === undefined
-        ? []
-        : app.mates.filter((projectId) => hqProjectPeople[projectId]?.owner?.userId === userId),
-    [app, hqProjectPeople],
+    }),
+    [grants, hqProjectPeople, members, projects, viewer, viewerUserId],
   );
-  return { view, name: group?.name ?? "this project", app, clientId, ownedBy };
+  return { base, clientId };
 }
 
-/** The People section of a project page, for the group `groupId`. */
-export function ProjectPeople({ groupId }: { groupId: string }) {
-  const { view, name, app, clientId, ownedBy } = useProjectPeople(groupId);
+/** The projects of the group `groupId`, each with its own name, as HQ's structure places them. */
+function useGroupProjects(groupId: string | null): AccessProjects {
+  const { registry } = useZeropsRegistry();
+  const roster = useAtomValue(shownProjectsAtom).projects;
+  return useMemo(
+    () =>
+      (registry.groups.find((one) => one.groupId === groupId)?.projects ?? []).map(
+        ({ projectId, kind }) => {
+          const name = roster.find(({ id }) => id === projectId)?.name;
+          return { projectId, kind, ...(name === undefined ? {} : { name }) };
+        },
+      ),
+    [groupId, registry, roster],
+  );
+}
+
+/**
+ * Who reaches `projects`, and the changes the viewer makes to it: a choice applies to every one of
+ * them but the Mates the person owns.
+ */
+function useProjectAccess(projects: AccessProjects) {
+  const { base, clientId } = useAccessReads(projects);
+  const view = useMemo(() => projectPeople({ ...base, projects }), [base, projects]);
   const operations = useAccountOperationsOptional();
   const [saving, setSaving] = useState<ReadonlySet<string>>(() => new Set());
   const [troubles, setTroubles] = useState<Readonly<Record<string, string>>>({});
-  const [inviting, setInviting] = useState(false);
+  const projectIds = useMemo(() => projects.map(({ projectId }) => projectId), [projects]);
 
-  const change = useCallback(
-    (person: ProjectPerson, next: AppAccessChange) => {
-      const access = person.change;
-      if (operations === null || clientId === null || access === null) return;
+  /** Runs one write under `key`: saving until it ends, its refusal said under the chips. */
+  const write = useCallback(
+    (key: string, intent: Parameters<NonNullable<typeof operations>["submit"]>[0]) => {
+      if (operations === null) return;
       const isCurrent = captureAccountLifetime();
-      const key = person.key;
       const said = (trouble: string | null) =>
         setTroubles(({ [key]: _was, ...rest }) =>
           trouble === null ? rest : { ...rest, [key]: trouble },
@@ -189,14 +190,7 @@ export function ProjectPeople({ groupId }: { groupId: string }) {
       setSaving((held) => new Set(held).add(key));
       said(null);
       void operations
-        .submit({
-          kind: "set-app-access",
-          orgId: clientId,
-          clientUserId: access.clientUserId,
-          change: next,
-          projects: app,
-          owned: access.owned,
-        })
+        .submit(intent)
         .then(
           ({ progress, evidence }) => {
             if (isCurrent()) said(writeTrouble(progress, evidence));
@@ -214,195 +208,173 @@ export function ProjectPeople({ groupId }: { groupId: string }) {
           });
         });
     },
-    [app, clientId, operations],
+    [operations],
   );
 
-  const invite = useMemo((): ProjectInviteActions | null => {
-    if (operations === null || clientId === null) return null;
-    return {
-      check: (email) =>
-        operations.run(
-          { kind: "check-invitee", orgId: clientId, email },
-          { orgId: clientId, unobserved: "Zerops isn't answering. Try again." },
+  const choose = useCallback(
+    (person: ProjectPerson, choice: AccessChoice) => {
+      const change = person.change;
+      if (clientId === null || change === null) return;
+      if (choice === "withdraw") {
+        write(person.key, {
+          kind: "set-app-access",
+          orgId: clientId,
+          clientUserId: change.clientUserId,
+          change: "withdraw",
+          projects: appProjectsOf(projects),
+          owned: change.owned,
+        });
+        return;
+      }
+      write(person.key, {
+        kind: "set-project-access",
+        orgId: clientId,
+        changes: accessChanges({
+          clientUserId: change.clientUserId,
+          projectIds,
+          owned: change.owned,
+          choice,
+        }),
+      });
+    },
+    [clientId, projectIds, projects, write],
+  );
+
+  const add = useCallback(
+    (picks: ReadonlyArray<AccessPick>) => {
+      if (clientId === null) return;
+      const changes = picks.flatMap(({ candidate, level }): ReadonlyArray<ProjectAccessChange> =>
+        accessChanges({
+          clientUserId: candidate.clientUserId,
+          projectIds,
+          // A Mate of their own stays theirs, as HQ names its owner.
+          owned: projects.flatMap(({ projectId }) =>
+            candidate.userId !== undefined && base.owners[projectId] === candidate.userId
+              ? [projectId]
+              : [],
+          ),
+          choice: level,
+        }),
+      );
+      write(ADD_TROUBLE, { kind: "set-project-access", orgId: clientId, changes });
+    },
+    [base.owners, clientId, projectIds, projects, write],
+  );
+
+  const writable = operations !== null && clientId !== null;
+  return {
+    view,
+    saving,
+    troubles,
+    adding: saving.has(ADD_TROUBLE),
+    ...(writable ? { onChoose: choose, onAdd: add } : {}),
+  };
+}
+
+/** The People on an app's page, for the group `groupId`: every project of the app at once. */
+export function ProjectPeople({ groupId }: { groupId: string }) {
+  const projects = useGroupProjects(groupId);
+  const access = useProjectAccess(projects);
+  return <ProjectAccessChips label="People" {...access} />;
+}
+
+/** One Zerops project's access: an environment's page, or a Mate's *Project access…*. */
+export function ProjectAccess({
+  projectId,
+  kind,
+  name,
+  heading = true,
+}: {
+  readonly projectId: string;
+  readonly kind: RoleProjectKind;
+  readonly name?: string;
+  /** Drawn with its own heading; `false` where the host names the section. */
+  readonly heading?: boolean;
+}) {
+  const projects = useMemo(
+    () => [{ projectId, kind, ...(name === undefined ? {} : { name }) }],
+    [kind, name, projectId],
+  );
+  const access = useProjectAccess(projects);
+  return <ProjectAccessChips heading={heading} {...access} />;
+}
+
+/**
+ * A new project's access, before it exists: its creator pinned, then everyone it will reach, the
+ * app's people prefilled. Says each change to `onChange` as the list the creation sends.
+ */
+export function ProjectAccessDraft({
+  groupId,
+  kind,
+  onChange,
+  heading = false,
+}: {
+  /** The app it is made in; `null` for a brand new app. */
+  readonly groupId: string | null;
+  readonly kind: RoleProjectKind;
+  readonly onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void;
+  /** Drawn with its own heading; by default the creation form names the section. */
+  readonly heading?: boolean;
+}) {
+  const app = useGroupProjects(groupId);
+  // The prefill reads the places, or the Mates where the app has none.
+  const read = useMemo(() => {
+    const places = app.filter(({ kind: one }) => one !== "mate");
+    return places.length > 0 ? places : app;
+  }, [app]);
+  const { base } = useAccessReads(read);
+  const [chosen, setChosen] = useState<ReadonlyArray<ProjectGrant> | null>(null);
+  const input = useMemo(
+    () => ({
+      members: base.members,
+      kind,
+      app: { projects: read, grants: base.grants, owners: base.owners },
+      pictures: base.pictures,
+      creator:
+        base.viewer === undefined
+          ? undefined
+          : { membershipId: base.viewer.membershipId, userId: base.viewerUserId },
+      list: [],
+    }),
+    [base, kind, read],
+  );
+  const prefill = useMemo(() => draftPrefill(input), [input]);
+  const list = chosen ?? prefill ?? NO_GRANTS;
+  const view = useMemo(() => draftView({ ...input, list }), [input, list]);
+
+  useEffect(() => {
+    onChange(list);
+  }, [list, onChange]);
+
+  const choose = useCallback(
+    (person: ProjectPerson, choice: AccessChoice) => {
+      const change = person.change;
+      if (change === null) return;
+      setChosen(
+        draftChoose(
+          list,
+          base.members.list,
+          change.clientUserId,
+          choice === "withdraw" ? "remove" : choice,
         ),
-      shownHere: (clientUserId) =>
-        view.kind === "people" && view.people.some((person) => person.key === clientUserId),
-      send: async (email, invitee, level) => {
-        const { progress, evidence } = await operations.submit(
-          invitee.kind === "member"
-            ? {
-                kind: "set-app-access",
-                orgId: clientId,
-                clientUserId: invitee.clientUserId,
-                change: level,
-                projects: app,
-                owned: ownedBy(invitee.userId),
-              }
-            : { kind: "invite-member", orgId: clientId, email, invitee, level, projects: app },
-        );
-        const trouble = writeTrouble(progress, evidence);
-        if (trouble !== null) throw new Error(trouble);
-      },
-    };
-  }, [app, clientId, operations, ownedBy, view]);
-
-  return (
-    <>
-      <ProjectPeopleList
-        onChange={change}
-        {...(invite === null ? {} : { onInvite: () => setInviting(true) })}
-        projectName={name}
-        saving={saving}
-        troubles={troubles}
-        view={view}
-      />
-      {invite === null ? null : (
-        <ProjectInviteDialog
-          actions={invite}
-          onOpenChange={setInviting}
-          open={inviting}
-          projectName={name}
-        />
-      )}
-    </>
+      );
+    },
+    [base.members.list, list],
   );
+  const add = useCallback(
+    (picks: ReadonlyArray<AccessPick>) =>
+      setChosen(
+        picks.reduce(
+          (next, { candidate, level }) =>
+            draftChoose(next, base.members.list, candidate.clientUserId, level),
+          list,
+        ),
+      ),
+    [base.members.list, list],
+  );
+  return <ProjectAccessChips heading={heading} onAdd={add} onChoose={choose} view={view} />;
 }
 
-/** The section as drawn from what is known of the people, and what is being changed of them. */
-export function ProjectPeopleList({
-  view,
-  projectName = "this project",
-  saving,
-  troubles,
-  onChange,
-  onInvite,
-}: {
-  readonly view: ProjectPeopleView;
-  readonly projectName?: string;
-  /** The rows whose access is being changed now, by key. */
-  readonly saving?: ReadonlySet<string>;
-  /** What a change's refusal said, by row key. */
-  readonly troubles?: Readonly<Record<string, string>>;
-  readonly onChange?: (person: ProjectPerson, change: AppAccessChange) => void;
-  /** Opens the invitation; absent, nobody is invited from here. */
-  readonly onInvite?: () => void;
-}) {
-  return (
-    <section className="ov-sec" aria-label="People">
-      <h3 className="ov-sec-name">People</h3>
-      {view.kind === "reading" ? (
-        <p className="ov-sec-empty">Reading who has access…</p>
-      ) : view.kind === "unreadable" ? (
-        <p className="ov-sec-empty">{view.line}</p>
-      ) : (
-        <>
-          {view.people.length === 0 ? (
-            <p className="ov-sec-empty">Nobody has access yet.</p>
-          ) : (
-            <ul className="ov-people">
-              {view.people.map((person) => {
-                const busy = saving?.has(person.key) === true;
-                const trouble = troubles?.[person.key];
-                return (
-                  <li
-                    className="ov-person"
-                    data-pending={person.pending || undefined}
-                    key={person.key}
-                  >
-                    <Avatar initials={person.initials} size="md" src={person.avatarUrl} />
-                    <div className="ov-mate-text">
-                      <div className="ov-mate-l1">
-                        <span className="ov-mate-name">{person.name}</span>
-                        {person.you ? <span className="ov-person-you">You</span> : null}
-                      </div>
-                      <span className="ov-mate-l2">{busy ? "Saving…" : person.line}</span>
-                      {trouble === undefined ? null : (
-                        <span className="ov-mate-l2" data-tone="failed" data-wrap="" role="alert">
-                          {trouble}
-                        </span>
-                      )}
-                    </div>
-                    {person.change === null || onChange === undefined ? null : (
-                      <span className="ov-person-more">
-                        <PersonMenu
-                          busy={busy}
-                          onChange={(next) => onChange(person, next)}
-                          person={person}
-                          projectName={projectName}
-                        />
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {view.invite && onInvite !== undefined ? (
-            <button
-              className="ov-add"
-              data-zerops-surface="invite-person"
-              onClick={onInvite}
-              type="button"
-            >
-              <span aria-hidden="true" className="ov-add-face">
-                <PlusIcon className="size-4" />
-              </span>
-              <span>Invite</span>
-            </button>
-          ) : null}
-        </>
-      )}
-    </section>
-  );
-}
-
-/** A person's ···: their level here, theirs checked, then the way out. */
-function PersonMenu({
-  person,
-  projectName,
-  busy,
-  onChange,
-}: {
-  readonly person: ProjectPerson;
-  readonly projectName: string;
-  readonly busy: boolean;
-  readonly onChange: (change: AppAccessChange) => void;
-}) {
-  if (person.change === null) return null;
-  const entries = personMenu(person.change, projectName);
-  const levels = entries.flatMap((entry) => (entry.kind === "level" ? [entry] : []));
-  const end = entries.find((entry) => entry.kind === "end");
-  return (
-    <Menu>
-      <MenuTrigger
-        aria-label={`Change ${person.name}'s access`}
-        disabled={busy}
-        render={<Button size="icon-xs" variant="ghost" />}
-      >
-        <MoreHorizontalIcon aria-hidden="true" />
-      </MenuTrigger>
-      <MenuPopup align="end">
-        <MenuRadioGroup
-          onValueChange={(value) => {
-            if (value !== person.change?.level) onChange(value as AppAccessChange);
-          }}
-          value={person.change.level ?? ""}
-        >
-          {levels.map((entry) => (
-            <MenuRadioItem key={entry.level} value={entry.level} variant="check">
-              {entry.label}
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
-        {end === undefined ? null : (
-          <>
-            <MenuSeparator />
-            <MenuItem onClick={() => onChange(end.end)} variant="destructive">
-              {end.label}
-            </MenuItem>
-          </>
-        )}
-      </MenuPopup>
-    </Menu>
-  );
-}
+/** What a creation role makes, as the access draft names the project. */
+export const roleProjectKind = (role: "dev" | "devstage" | "stage" | "prod"): RoleProjectKind =>
+  role === "dev" ? "mate" : role === "prod" ? "production" : role;

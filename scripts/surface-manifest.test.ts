@@ -212,6 +212,7 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-git",
   "zerops-new-project",
   "zerops-settings",
+  "zerops-team-settings",
   "zerops-crew-section",
   "zerops-crew-editors",
   "zerops-crew-chat",

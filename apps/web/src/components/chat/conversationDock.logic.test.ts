@@ -448,6 +448,23 @@ describe("deriveDock", () => {
     expect(dock?.background?.tasks.map((item) => item.id)).toEqual(["b2"]);
   });
 
+  it("carries what its row names still running after the turn, and nothing it named while a turn runs", () => {
+    const work = {
+      items: [{ title: "Final batched browser check", of: "mate", since: 1 }],
+      count: 4,
+    } as const;
+    const after = deriveDock({
+      ...base,
+      isWorking: false,
+      runningTurnId: null,
+      backgroundLiveness: "working",
+      backgroundWork: work,
+    });
+    expect(after?.afterWork).toEqual(work);
+    const during = deriveDock({ ...base, backgroundLiveness: "working", backgroundWork: work });
+    expect(during?.afterWork).toBeUndefined();
+  });
+
   // A bar stands for what runs without the Mate waiting on it (pass 35): a
   // pipeline whose call returned and runs on. One it still waits on is the
   // live slot's; a finished or failed one leaves — its line stays in the

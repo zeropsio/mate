@@ -22,6 +22,7 @@ import {
   zeropsRegionFromPublicZone,
 } from "./containerAddress.ts";
 import { withMateProjectRole } from "./mateAccess.ts";
+import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
 import {
@@ -133,6 +134,9 @@ export interface ZeropsOrganizationMember {
   readonly status?: string;
   readonly roleCode?: string;
   readonly canCreateProjects?: boolean;
+  /** Finances are Zerops HQ's: a role change sends them back as they were. */
+  readonly canViewFinances?: boolean;
+  readonly canEditFinances?: boolean;
   readonly user?: {
     readonly id?: string;
     readonly fullName?: string;
@@ -1377,6 +1381,52 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `PUT /project/{id}` with `userRoles` — a project's people, given once, on a project just made
+   * from an import document, which has no room for them. Taken from a project owner as well as an
+   * organization admin, so its creator may give it; a person's own list is not
+   * (`writeMemberProjectRoles`).
+   *
+   * Only on a project just made: the write replaces the whole list, cannot name an integration
+   * token and drops a Mate key's own grant (F7, measured 2026-10-03) — no key holds one yet. The
+   * list read is kept, its creator's `OWNER` with it, the chosen people set in it; the platform
+   * replaces the record too, so its fields go back as they were read (`projectWriteBody`).
+   */
+  async writeNewProjectAccess(
+    projectId: string,
+    userRoles: ReadonlyArray<ProjectGrant>,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<ZeropsProject> {
+    const generation = this.#generation;
+    this.#assertGeneration(generation);
+    const project = await this.fetchProject(projectId);
+    this.#assertGeneration(generation);
+    const list = userRoles.reduce(
+      (held, { clientUserId, roleCode }) => withProjectGrant(held, clientUserId, roleCode),
+      project.userRoles ?? [],
+    );
+    return this.#request<ZeropsProject>(
+      `/project/${projectId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          ...projectWriteBody({
+            name: project.name,
+            description: project.description,
+            tagList: project.tagList ?? [],
+            publicIpV4Shared: project.publicIpV4Shared,
+            maxCreditLimit: project.maxCreditLimit,
+          }),
+          userRoles: creationUserRoles(list),
+        }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
    * Hands a Mate to a person — or takes it away (guide 0.8, D11).
    *
    * A per-project role override, written by an org owner or admin. It is the
@@ -1533,6 +1583,28 @@ export class ZeropsApiClient {
     await this.#request(
       `/client-user/${clientUserId}/roles`,
       { method: "PUT", body: JSON.stringify({ projectRoleList }) },
+      {
+        operationKind: "project-write",
+        ignoreAnswer: true,
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
+   * `PUT /client-user/{id}` — a membership's organization role and rights, an invitation's too.
+   * Only an owner or an admin may; an admin sets `BASIC_USER` and below and never changes an
+   * owner's or an admin's membership; only an owner sets finances. The member's project grants
+   * stay as they are (measured 2026-10-14).
+   */
+  async updateOrganizationMember(
+    clientUserId: string,
+    membership: Omit<OrganizationInvite, "email">,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/client-user/${clientUserId}`,
+      { method: "PUT", body: JSON.stringify(membership) },
       {
         operationKind: "project-write",
         ignoreAnswer: true,
@@ -1894,6 +1966,8 @@ export class ZeropsApiClient {
       readonly name: string;
       readonly tagList: ReadonlyArray<string>;
       readonly location?: string;
+      /** Who reaches it from birth beyond their organization role (`zerops/projectAccess.ts`). */
+      readonly userRoles?: ReadonlyArray<ProjectGrant>;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
@@ -1909,6 +1983,7 @@ export class ZeropsApiClient {
             name: input.name,
             tagList: BORN_TAGS.filter((tag) => input.tagList.includes(tag)),
             ...(input.location ? { location: input.location } : {}),
+            ...(input.userRoles === undefined ? {} : { userRoles: input.userRoles }),
           }),
         ),
       },

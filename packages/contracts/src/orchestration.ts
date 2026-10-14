@@ -800,6 +800,27 @@ export const ThreadLiveStep = Schema.Union([
 ]);
 export type ThreadLiveStep = typeof ThreadLiveStep.Type;
 
+/** One piece of background work a conversation waits on: what it was asked, and whose it is. */
+export const BackgroundWorkItem = Schema.Struct({
+  title: Schema.NullOr(Schema.String),
+  /** One of its helpers' (a helper, or a helper's own job), or the Mate's own job. */
+  of: Schema.Literals(["helper", "mate"]),
+  /** When it started, in epoch milliseconds. */
+  since: NonNegativeInt,
+});
+export type BackgroundWorkItem = typeof BackgroundWorkItem.Type;
+
+/**
+ * The background work a conversation's turn left running, as its row names it: the first few,
+ * oldest first, and how many run in all. None (`count` 0) while what it started has ended and the
+ * agent's own turn on it is due.
+ */
+export const BackgroundWork = Schema.Struct({
+  items: ForwardCompatibleArray(BackgroundWorkItem),
+  count: NonNegativeInt,
+});
+export type BackgroundWork = typeof BackgroundWork.Type;
+
 export const OrchestrationThreadShell = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -856,6 +877,11 @@ export const OrchestrationThreadShell = Schema.Struct({
    * server restarted). Optional so old servers interop; absent = unknown.
    */
   backgroundTaskIds: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /**
+   * What that background work is, by name, where the engine's row names it. Absent where nothing
+   * names it (a server from before it).
+   */
+  backgroundWork: Schema.optional(BackgroundWork),
   /**
    * Current plan step while a turn runs, for the Working indicators
    * (sidebar row, in-chat working line). Cleared when the turn settles —

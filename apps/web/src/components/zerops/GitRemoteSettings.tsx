@@ -26,6 +26,49 @@ export interface GitRemoteActions {
   };
 }
 
+/** The repositories connected to a remote, as the page's column says them: one quiet line each. */
+export function connectedRepos(
+  repos: ReadonlyArray<RepoListEntry> | undefined,
+): ReadonlyArray<RepoListEntry & { readonly remote: NonNullable<RepoListEntry["remote"]> }> {
+  return (repos ?? []).flatMap((repo) =>
+    repo.name === RECIPE_REPO || repo.remote == null ? [] : [{ ...repo, remote: repo.remote }],
+  );
+}
+
+/**
+ * "medusadev → github.com/acme/medusa": each connected repository and where it mirrors to, with
+ * what its token says where the remote refused it or it runs out. Connecting and changing one is
+ * the project menu's *Mirror code to GitHub or GitLab…*.
+ */
+export function GitRemoteLines({
+  repos,
+  now: at,
+}: {
+  readonly repos: ReadonlyArray<RepoListEntry> | undefined;
+  readonly now?: number;
+}) {
+  const clock = useNowMs();
+  const now = at ?? clock;
+  return (
+    <ul data-zerops-surface="git-remotes">
+      {connectedRepos(repos).map((repo) => (
+        <li className="py-1.5" key={repo.name}>
+          <p className="rv-words">
+            {repo.name} → {gitRemoteLabel(repo.remote.url)}
+          </p>
+          {repo.remote.invalidSince === null ? null : (
+            <p className="rv-note">The remote refused Mate's token. Replace token.</p>
+          )}
+          {repo.remote.expiresAt == null ||
+          gitRemoteExpiry(repo.remote, now) === undefined ? null : (
+            <p className="rv-note">{gitRemoteExpiry(repo.remote, now)}</p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function GitRemoteSettings({
   appId,
   repos,
