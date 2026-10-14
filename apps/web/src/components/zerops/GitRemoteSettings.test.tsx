@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { GitRemoteSettings } from "./GitRemoteSettings";
 const remote = {
   url: "https://github.com/acme/api.git",
@@ -133,6 +134,83 @@ it("candidate token is cleared before verification and failed verification keeps
     expect(container.querySelector('input[type="password"]')).not.toBeNull();
     await act(async () => button("Cancel").click());
     expect(container.querySelector('input[type="password"]')).toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});
+
+it.each([
+  {
+    title: "a refused token shows HQ's missing permission and where to grant it",
+    error: new HqError({
+      kind: "refused",
+      code: "git_probe_refused",
+      status: 409,
+      message: "Grant Contents: Read and write in GitHub's token settings.",
+    }),
+    expected: "Grant Contents: Read and write in GitHub's token settings.",
+  },
+  {
+    title: "a rate-limited token test shows when HQ says to try again",
+    error: new HqError({
+      kind: "unavailable",
+      code: "git_probe_refused",
+      status: 429,
+      message: "GitHub asked Mate to wait; try this token again later.",
+    }),
+    expected: "GitHub asked Mate to wait; try this token again later.",
+  },
+  {
+    title: "a token write with an uncertain outcome asks the person to check its outcome",
+    error: new HqError({
+      kind: "uncertain",
+      code: "git_probe_refused",
+      message: "A write answer was lost.",
+    }),
+    expected: "HQ couldn't confirm the token change. Check its outcome before trying again.",
+  },
+  {
+    title: "an unrelated token change failure keeps the outcome check",
+    error: new HqError({ kind: "refused", code: "forbidden", message: "Unrelated refusal." }),
+    expected: "HQ couldn't confirm the token change. Check its outcome before trying again.",
+  },
+  {
+    title: "an untyped token change error keeps the outcome check",
+    error: new Error("Unknown failure."),
+    expected: "HQ couldn't confirm the token change. Check its outcome before trying again.",
+  },
+])("$title", async ({ error, expected }) => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  const replace = vi.fn(async () => {
+    throw error;
+  });
+  try {
+    await act(async () =>
+      root.render(
+        <GitRemoteSettings
+          repos={repos}
+          appName="Shop"
+          can={{ replace_remote_token: { allow: true } }}
+          actions={{ replaceToken: replace }}
+        />,
+      ),
+    );
+    const button = (text: string) =>
+      [...container.querySelectorAll("button")].find((node) => node.textContent === text)!;
+    await act(async () => button("Replace token").click());
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Candidate token"]')!;
+    const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"))!;
+    const props = Reflect.get(input, key) as {
+      onChange: (event: { target: { value: string } }) => void;
+    };
+    await act(async () => props.onChange({ target: { value: "fixture-candidate" } }));
+    await act(async () => button("Verify and keep token").click());
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(expected);
+    expect(input.value).toBe("");
+    expect(container.textContent).toContain("github.com/acme/api");
   } finally {
     await act(async () => root.unmount());
     vi.unstubAllGlobals();

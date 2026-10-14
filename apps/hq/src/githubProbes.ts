@@ -39,31 +39,33 @@ export class ProbeRefused extends Schema.TaggedError<ProbeRefused>()("ProbeRefus
   scope: Schema.optionalKey(Schema.String),
 }) {
   override get message() {
+    const tokenSettings =
+      this.hostKind === "github" ? "GitHub token settings" : "the repository host’s token settings";
     switch (this.reason) {
       case "token_invalid":
-        return `${this.hostKind === "github" ? "GitHub" : "The repository host"} rejected this token (expired, revoked or mistyped).`;
+        return `${this.hostKind === "github" ? "GitHub" : "The repository host"} rejected this token (expired, revoked or mistyped). Create a replacement in ${tokenSettings}.`;
       case "rate_limited":
         return this.resetAt
           ? `The repository host asked Mate to wait until ${this.resetAt}.`
           : "The repository host asked Mate to wait.";
       case "sso":
-        return "This token needs the organization's SSO authorization.";
+        return "This token needs the organization's SSO authorization. Authorize it in the organization's GitHub SSO settings.";
       case "archived":
-        return `${this.remote} is archived, so nothing can be pushed to it.`;
+        return `${this.remote} is archived, so nothing can be pushed to it. Unarchive it in repository settings before testing again.`;
       case "push_not_granted":
         if (this.hostKind !== "github")
-          return `This token can't push to ${this.remote}: the host did not grant write access.${this.hostKind === "gitlab" ? " GitLab's push scope is write_repository." : ""}`;
+          return `This token can't push to ${this.remote}: the host did not grant write access.${this.hostKind === "gitlab" ? " GitLab's push scope is write_repository." : ""} Check repository write access in ${tokenSettings}.`;
         return `This token can't push to ${this.remote}: under Repository access choose Only select repositories → ${this.remote} with Contents: Read and write. If ${this.remote.split("/")[0]} approves tokens, it may still be pending.`;
       case "not_visible":
-        return `${this.remote} doesn't exist, or your account can't see it.`;
+        return `${this.remote} doesn't exist, or your account can't see it. Check the repository address and this token's repository access in ${tokenSettings}.`;
       case "classic_scope":
-        return `This is a classic token without ${this.scope}. Create a fine-grained token, or add ${this.scope}.`;
+        return `This is a classic token without ${this.scope}. Create a fine-grained token with the link above, or add ${this.scope} in ${tokenSettings}.`;
       case "pull_requests_only":
         return `${this.branch} takes changes only through pull requests. Choose Open a pull request.`;
       case "unreachable":
-        return "The repository host could not be reached in time.";
+        return "The repository host could not be reached in time. Check the connection, then test this token again.";
       case "could_not_verify":
-        return `Mate couldn't verify access to ${this.remote}.`;
+        return `Mate couldn't verify access to ${this.remote}. Check the repository address and this token's repository access in ${tokenSettings}, then test again.`;
     }
   }
 }
@@ -73,6 +75,7 @@ export interface VerifiedRemote {
   readonly expiresAt: string | null;
   readonly expiryLabel: string;
   readonly mergeSettings: boolean;
+  readonly branchRules?: "none_on_plan";
 }
 export const tokenExpiryLabel = (expiresAt: string | null) =>
   expiresAt === null ? "Expiry not reported" : `Token expires ${expiresAt}`;
@@ -82,7 +85,7 @@ export class GithubProbes extends Context.Service<
     readonly verify: (
       remote: RemoteIdentity,
       token: Redacted.Redacted,
-      branch: string,
+      branch?: string,
     ) => Effect.Effect<VerifiedRemote, ProbeRefused>;
   }
 >()("@t3tools/hq/githubProbes") {}
@@ -187,7 +190,7 @@ export const githubProbesLayer = Layer.effect(
     const verify = Effect.fn("GithubProbes.verify")(function* (
       remote: RemoteIdentity,
       token: Redacted.Redacted,
-      branch: string,
+      branch?: string,
     ) {
       const now = yield* Clock.currentTimeMillis;
       let tokenState: "unknown" | "valid" | "invalid" = "unknown";
@@ -201,7 +204,7 @@ export const githubProbesLayer = Layer.effect(
           reason,
           hostKind: remote.kind,
           remote: remote.path,
-          branch,
+          branch: branch ?? "",
           tokenState,
           ...extra,
         });
@@ -275,15 +278,25 @@ export const githubProbesLayer = Layer.effect(
         return yield* refused("could_not_verify", { status: push.status });
       tokenState = "valid";
       expiresAt ??= date(push.headers["github-authentication-token-expiration"]) ?? null;
-      if (verified.kind === "github") {
+      let branchRules: "none_on_plan" | undefined;
+      if (verified.kind === "github" && branch) {
         const rules = yield* read(transport.rules(verified, branch, token));
         const failure = common(rules);
         if (failure) return yield* failure;
-        const decoded =
-          rules.status === 200 ? Option.getOrUndefined(decodeRules(rules.body)) : undefined;
-        if (!decoded) return yield* refused("could_not_verify", { status: rules.status });
-        if (decoded.some((rule) => rule.type === "pull_request"))
-          return yield* refused("pull_requests_only", { status: 200 });
+        // GitHub explicitly disables rules on this plan; permission failures remain unknown.
+        if (
+          rules.status === 403 &&
+          Option.getOrUndefined(decodeMessage(rules.body))?.message ===
+            "Upgrade to GitHub Pro or make this repository public to enable this feature."
+        ) {
+          branchRules = "none_on_plan";
+        } else {
+          const decoded =
+            rules.status === 200 ? Option.getOrUndefined(decodeRules(rules.body)) : undefined;
+          if (!decoded) return yield* refused("could_not_verify", { status: rules.status });
+          if (decoded.some((rule) => rule.type === "pull_request"))
+            return yield* refused("pull_requests_only", { status: 200 });
+        }
       }
       return {
         remote: verified,
@@ -291,6 +304,7 @@ export const githubProbesLayer = Layer.effect(
         expiresAt,
         expiryLabel: tokenExpiryLabel(expiresAt),
         mergeSettings,
+        ...(branchRules ? { branchRules } : {}),
       };
     });
     return GithubProbes.of({ verify });

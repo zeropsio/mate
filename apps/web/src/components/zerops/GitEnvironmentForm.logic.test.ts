@@ -34,6 +34,11 @@ export const adoption: HqGitAdoption = {
 };
 
 describe("direct Git setup", () => {
+  it.each([0, 23])("the first push creates an absent branch with %s files", (changedFiles) => {
+    expect(gitAdoptionSentence({ ...adoption, remoteHead: null, changedFiles })).toBe(
+      `The first push creates https://github.com/acme/shop main with ${changedFiles} files.`,
+    );
+  });
   it("a typed repository address can start an application with no recorded code repository", () => {
     expect(gitSetupRepository([], "github.com/acme/shop")).toMatchObject({
       name: "shop",

@@ -104,6 +104,7 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
         remoteHead: preview.remoteTip,
         changedFiles: preview.changedFiles,
         seed: preview.seed,
+        ...(source.branchRules === undefined ? {} : { branchRules: source.branchRules }),
       };
       return { git, source, preview, review };
     });

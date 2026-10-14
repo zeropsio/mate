@@ -115,6 +115,16 @@ const fixture = Effect.gen(function* () {
             }
             response.setHeader("content-type", "application/json");
             if (request.url?.includes("rules/branches")) {
+              if (state.mode === "plan") {
+                response.writeHead(403);
+                response.end(
+                  JSON.stringify({
+                    message:
+                      "Upgrade to GitHub Pro or make this repository public to enable this feature.",
+                  }),
+                );
+                return;
+              }
               state.afterRules?.();
               state.afterRules = undefined;
               response.end(state.mode === "pr" ? '[{"type":"pull_request"}]' : "[]");
@@ -237,6 +247,57 @@ const fixture = Effect.gen(function* () {
 
 describe("repository credential custody", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "A GitHub Free branch preview carries the plan's lack of branch rules to its consumer",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes, state } = yield* fixture;
+            yield* remotes.connect("custodian", input);
+            state.mode = "plan";
+            const checked = yield* remotes.forUse(REF, "new-production");
+            assert.strictEqual(checked.branchRules, "none_on_plan");
+          }),
+        ),
+    );
+    it.effect.each(["connect-git-remote", "probe-git-remote", "replace-git-remote-token"] as const)(
+      "A repository token test does not read an unchosen branch: %s",
+      (kind) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes, state } = yield* fixture;
+            if (kind === "replace-git-remote-token") yield* remotes.connect("custodian", input);
+            state.mode = "pr";
+            state.seen = [];
+            const result = yield* remotes.write(
+              "custodian",
+              `no-branch-${kind}`,
+              {
+                kind,
+                orgId: "org",
+                hqProjectId: "HQ",
+                ...REF,
+                url: input.url,
+              },
+              token,
+            );
+            assert.strictEqual(result.acceptance.kind, "accepted");
+            assert.deepStrictEqual(state.seen, [
+              "GET /repos/krls2020/tst123",
+              "GET /krls2020/tst123.git/info/refs?service=git-receive-pack",
+            ]);
+            const saved = yield* remotes.get(REF);
+            if (kind !== "probe-git-remote") {
+              assert.isDefined(saved);
+              assert.strictEqual(
+                (yield* remotes.forUse(REF, "release").pipe(Effect.flip)).reason,
+                "pull_requests_only",
+              );
+            }
+          }),
+        ),
+    );
+
     it.effect(
       "Connecting a repository address records the first code repository and creates its Git storage",
       () =>

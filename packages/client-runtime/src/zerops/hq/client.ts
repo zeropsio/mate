@@ -451,8 +451,12 @@ export const HQ_WRITE_UNCERTAIN =
 const uncertain = () =>
   new HqError({ kind: "uncertain", code: "uncertain", message: HQ_WRITE_UNCERTAIN });
 
-/** HQ's code and reason in an answer's body; a body that is not HQ's JSON names neither. */
-function said(text: string): { readonly code?: unknown; readonly reason?: unknown } {
+/** HQ's refusal evidence; a body that is not HQ's JSON names none. */
+function said(text: string): {
+  readonly code?: unknown;
+  readonly reason?: unknown;
+  readonly message?: unknown;
+} {
   try {
     const body: unknown = JSON.parse(text);
     return typeof body === "object" && body !== null ? body : { code: undefined };
@@ -467,12 +471,21 @@ const WROTE_NOTHING_ZEROPS = "zerops_unanswered";
 async function errorOf(response: Response): Promise<HqError> {
   const body = said(await response.text());
   const code = typeof body.code === "string" ? body.code : `http_${response.status}`;
+  // ProbeRefused owns the host-specific remedy; other refusals keep the client's wording.
+  const probeMessage =
+    code === "git_probe_refused"
+      ? typeof body.message === "string" && body.message.trim().length > 0
+        ? body.message
+        : "Mate could not verify repository access; check the repository address and token settings, then try again."
+      : undefined;
   if (response.status >= 500 || response.status === 429) {
     return new HqError({
       kind: "unavailable",
       code,
       status: response.status,
-      message: code === WROTE_NOTHING_ZEROPS ? ZEROPS_UNANSWERED : "HQ is not answering right now.",
+      message:
+        probeMessage ??
+        (code === WROTE_NOTHING_ZEROPS ? ZEROPS_UNANSWERED : "HQ is not answering right now."),
     });
   }
   const reason = typeof body.reason === "string" ? body.reason : undefined;
@@ -481,7 +494,7 @@ async function errorOf(response: Response): Promise<HqError> {
     code,
     reason,
     status: response.status,
-    message: hqRefusalWords({ code, reason }),
+    message: probeMessage ?? hqRefusalWords({ code, reason }),
   });
 }
 

@@ -537,6 +537,84 @@ describe("makeHqApi", () => {
   });
 });
 
+describe("Git token refusals", () => {
+  const intent = {
+    kind: "connect-git-remote" as const,
+    orgId: "org",
+    appId: "app",
+    hqProjectId: "hq",
+    repo: "recipe",
+    url: "https://github.com/example/repository.git",
+  };
+
+  const refusal = (body: unknown, status = 409) => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/git-targets/token-test" ? json(status, body) : undefined,
+    );
+    return makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    }).gitTargetWrite("token-test", intent, "candidate");
+  };
+
+  it.each([
+    ["token_invalid", "GitHub rejected this token; replace it in GitHub's token settings."],
+    ["rate_limited", "GitHub asked Mate to wait; try the token test again later."],
+    ["sso", "Authorize this token for your organization in GitHub's token settings."],
+    ["archived", "Unarchive this repository in GitHub's repository settings before pushing."],
+    [
+      "push_not_granted",
+      "Select this repository and Contents: Read and write in the token settings.",
+    ],
+    [
+      "not_visible",
+      "Check the repository address and this token's repository selection in GitHub.",
+    ],
+    [
+      "could_not_verify",
+      "Mate could not verify this token; check its repository access in GitHub.",
+    ],
+    [
+      "classic_scope",
+      "Add the missing scope in GitHub's token settings, or create a fine-grained token.",
+    ],
+    ["pull_requests_only", "This branch requires pull requests; choose Open a pull request."],
+    ["unreachable", "The repository host could not be reached; try the token test again."],
+    ["newer_reason", "The repository host requires another permission; check its token settings."],
+  ])(
+    "the token test shows HQ's action for %s without exposing the reason code",
+    async (reason, message) => {
+      await expect(
+        refusal(
+          { code: "git_probe_refused", reason, message },
+          reason === "rate_limited" ? 429 : 409,
+        ),
+      ).rejects.toMatchObject({ code: "git_probe_refused", message });
+    },
+  );
+
+  it.each([undefined, null, 42, "", "   "])(
+    "a token refusal with message %s gives a readable next step",
+    async (message) => {
+      await expect(
+        refusal({ code: "git_probe_refused", reason: "could_not_verify", message }),
+      ).rejects.toMatchObject({
+        code: "git_probe_refused",
+        message:
+          "Mate could not verify repository access; check the repository address and token settings, then try again.",
+      });
+    },
+  );
+
+  it("other refusals keep the client's own words when HQ supplies a message", async () => {
+    await expect(
+      refusal({ code: "forbidden", reason: "not_structure_writer", message: "Host text." }),
+    ).rejects.toMatchObject({ message: "Only an owner or admin of the organization can do this." });
+  });
+});
+
 describe("readHqHealth", () => {
   it.each<[string, Response | "throw", Awaited<ReturnType<typeof readHqHealth>>]>([
     [

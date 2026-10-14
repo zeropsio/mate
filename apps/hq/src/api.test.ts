@@ -38,6 +38,7 @@ import { tempDir } from "../test/harness/tempDir.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { ZeropsOwnToken } from "./zerops/api.ts";
 import { corsRoutes, failure } from "./api.ts";
+import { ProbeRefused } from "./githubProbes.ts";
 import { NotLeader } from "./leader.ts";
 import type { StructureRead } from "./structure.ts";
 import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
@@ -55,6 +56,25 @@ const withProjectAddresses = (
       );
 
 describe("HQ's failures", () => {
+  it.effect("a refused Git token keeps its safe explanation through the HTTP response", () =>
+    Effect.gen(function* () {
+      const error = new ProbeRefused({
+        reason: "could_not_verify",
+        hostKind: "github",
+        remote: "krls2020/tst123",
+        branch: "",
+        tokenState: "unknown",
+      });
+      const response = yield* failure(error);
+      const body = yield* Effect.promise(() => HttpServerResponse.toWeb(response).json());
+      assert.deepStrictEqual(body, {
+        code: "git_probe_refused",
+        message: error.message,
+        reason: "could_not_verify",
+        tokenState: "unknown",
+      });
+    }),
+  );
   it.effect("caches a preflight from any origin for two hours, without credentials", () =>
     Effect.gen(function* () {
       const { handler, dispose } = HttpRouter.toWebHandler(
