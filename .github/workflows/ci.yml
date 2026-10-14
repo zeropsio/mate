@@ -31,7 +31,31 @@ jobs:
       actions: read
     outputs:
       skip: ${{ steps.verdict.outputs.skip }}
+      jobs: ${{ steps.blame.outputs.jobs }}
+      blame: ${{ steps.blame.outputs.blame }}
+      test_scripts: ${{ steps.blame.outputs.test_scripts }}
+      test_hq: ${{ steps.blame.outputs.test_hq }}
+      test_web: ${{ steps.blame.outputs.test_web }}
+      test_server: ${{ steps.blame.outputs.test_server }}
     steps:
+      - name: Checkout CI selector
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /package.json
+            /scripts/ci-blame.ts
+            /.ci-blame-jobs
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+
+      - name: Select failed jobs for blame
+        id: blame
+        run: node scripts/ci-blame.ts
+
       - name: Check kh-next verification
         id: verdict
         env:
@@ -181,7 +205,7 @@ jobs:
   check:
     name: Check
     needs: [prepare, changes]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'check') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -312,7 +336,7 @@ jobs:
   chat_bundle:
     name: Chat Contract bundle
     needs: [prepare, changes]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_bundle') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -361,7 +385,7 @@ jobs:
   state_smoke:
     name: State Smoke
     needs: [prepare, chat_bundle]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && needs.chat_bundle.result == 'success' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && needs.chat_bundle.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -417,17 +441,22 @@ jobs:
   test:
     name: Test
     needs: [prepare, test_packages, test_scripts, test_hq]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'test') }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
+      - name: Report verified promotion
+        if: needs.prepare.outputs.skip == 'true'
+        run: echo 'This SHA passed full CI on kh-next.'
+
       - name: Require every package test job to pass
-        run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}" = true
+        if: needs.prepare.outputs.skip != 'true'
+        run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (needs.prepare.outputs.blame == 'true' || !contains(needs.*.result, 'skipped')) }}" = true
 
   test_packages:
     name: Test Packages
     needs: prepare
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_packages') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -512,13 +541,12 @@ jobs:
   test_scripts:
     name: Test Scripts ${{ matrix.shard }}
     needs: prepare
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_scripts') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      matrix:
-        shard: [1]
+      matrix: ${{ fromJSON(needs.prepare.outputs.test_scripts) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -549,18 +577,17 @@ jobs:
         run: &cross_client_dependencies vp install --frozen-lockfile --filter='!@t3tools/desktop'
 
       - name: Test
-        run: vp run --filter @t3tools/scripts test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: vp run --filter @t3tools/scripts test --shard ${{ matrix.shard }}/${{ matrix.total }}
 
   test_hq:
     name: Test HQ ${{ matrix.shard }}
     needs: prepare
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_hq') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      matrix:
-        shard: [1]
+      matrix: ${{ fromJSON(needs.prepare.outputs.test_hq) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -586,20 +613,19 @@ jobs:
         run: *hosted_dependencies
 
       - name: Test
-        run: vp run --filter @t3tools/hq test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: vp run --filter @t3tools/hq test --shard ${{ matrix.shard }}/${{ matrix.total }}
 
   # apps/web alone ran ~8.5 min inside Test and set the length of every CI run.
   # Its 669 files run in parallel workers, so two runners halve it.
   test_web:
     name: Test Web ${{ matrix.shard }}
     needs: prepare
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_web') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      matrix:
-        shard: [1, 2]
+      matrix: ${{ fromJSON(needs.prepare.outputs.test_web) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -630,7 +656,7 @@ jobs:
         run: *hosted_dependencies
 
       - name: Test
-        run: vp run --filter @t3tools/web test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: vp run --filter @t3tools/web test --shard ${{ matrix.shard }}/${{ matrix.total }}
 
   # apps/server sets `fileParallelism: false`, so its files run strictly one at
   # a time. Sharding spreads them over separate runners instead of separate
@@ -640,13 +666,12 @@ jobs:
   test_server:
     name: Test Server ${{ matrix.shard }}
     needs: prepare
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_server') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
+      matrix: ${{ fromJSON(needs.prepare.outputs.test_server) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -684,7 +709,7 @@ jobs:
           # server suite includes platform-specific skips and still runs in full.
           MATE_CHAT_GATE_SERVER: "1"
         run: >-
-          vp run --filter t3 test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+          vp run --filter t3 test --shard ${{ matrix.shard }}/${{ matrix.total }}
           --allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
 
       - name: Certify engine oracles
@@ -720,7 +745,7 @@ jobs:
   changes:
     name: Changes
     needs: prepare
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'changes') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -825,17 +850,22 @@ jobs:
   release_smoke:
     name: Release Smoke
     needs: [prepare, check]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'release_smoke') }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
+      - name: Report verified promotion
+        if: needs.prepare.outputs.skip == 'true'
+        run: echo 'This SHA passed full CI on kh-next.'
+
       - name: Require release smoke to pass
+        if: needs.prepare.outputs.skip != 'true'
         run: test "${{ needs.check.result }}" = success
 
   test_mobile:
     name: Test Mobile
     needs: prepare
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_mobile') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -873,7 +903,7 @@ jobs:
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
     needs: prepare
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'mobile_native_static_analysis') }}
     runs-on: macos-latest
     timeout-minutes: 10
     steps:

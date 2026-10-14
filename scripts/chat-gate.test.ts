@@ -6,6 +6,7 @@ import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
 import * as NodeUtil from "node:util";
 import { parse } from "yaml";
+import { blameSelection } from "./ci-blame.ts";
 import { expect, it } from "vite-plus/test";
 import {
   SCENARIO_PROJECT_FILES,
@@ -545,8 +546,9 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
   };
   // A false chat verdict must not prevent the shared bundle or its scenario consumers on main.
   expect(jobs.chat_bundle!.if).toBe(
-    "${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') }}",
+    "${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_bundle') }}",
   );
+  expect(blameSelection("refs/heads/main", undefined).selected).toContain("chat_bundle");
   const signal = parse(
     NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
   );

@@ -3,7 +3,21 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { parse } from "yaml";
+import { parse as parseYaml } from "yaml";
+import { blameMatrices } from "./ci-blame.ts";
+
+const parse = (source: string) => {
+  const parsed = parseYaml(source);
+  for (const [job, matrix] of Object.entries(blameMatrices)) {
+    if (typeof parsed.jobs?.[job]?.strategy?.matrix === "string") {
+      parsed.jobs[job].strategy.matrix = {
+        include: matrix,
+        shard: matrix.map((row) => row.shard),
+      };
+    }
+  }
+  return parsed;
+};
 import { expect, it } from "vite-plus/test";
 import { chatGateStages } from "./chat-gate.ts";
 import { checkSteps } from "./ci-local.ts";
@@ -369,9 +383,7 @@ it("the Test verdict includes every scripts and HQ shard", () => {
     "test_scripts",
     "test_hq",
   ]);
-  expect(workflow.jobs.test.if).toBe(
-    "${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' }}",
-  );
+  expect(workflow.jobs.test.if).toContain("!cancelled() && needs.prepare.result == 'success'");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'failure')");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'skipped')");
   for (const name of ["test_scripts", "test_hq"]) {
@@ -381,7 +393,7 @@ it("the Test verdict includes every scripts and HQ shard", () => {
     ).toEqual([1]);
     expect(workflow.jobs[name].strategy["fail-fast"]).toBe(false);
     expect(workflow.jobs[name].steps.at(-1).run).toContain(
-      "--shard ${{ matrix.shard }}/${{ strategy.job-total }}",
+      "--shard ${{ matrix.shard }}/${{ matrix.total }}",
     );
   }
   expect(
@@ -510,7 +522,9 @@ it("CI runs full verification on integration pushes and preserves PR change sele
   expect(workflow.on.pull_request).toBeNull();
   expect(workflow.on.workflow_call).toBeUndefined();
   expect(workflow["run-name"]).toBe("CI · ${{ github.ref_name }}");
-  expect(workflow.jobs.prepare.outputs).toEqual({ skip: "${{ steps.verdict.outputs.skip }}" });
+  expect(workflow.jobs.prepare.outputs).toMatchObject({
+    skip: "${{ steps.verdict.outputs.skip }}",
+  });
   for (const [name, job] of Object.entries(workflow.jobs) as [
     string,
     { needs?: string | string[]; if?: string },
@@ -554,7 +568,21 @@ it("main promotion reports successful required checks without repeating verified
     expect(job.if, `ASSERTION: ${name} cannot hide a failed preparation`).toContain(
       "needs.prepare.result == 'success'",
     );
-    // GitHub's conditional skips satisfy required checks; no receipt-only runner is needed.
+    if (id === "test" || id === "release_smoke") {
+      const receipt = job.steps.find(
+        (step: { name: string }) => step.name === "Report verified promotion",
+      );
+      expect(receipt, `ASSERTION: ${name} explicitly reports the verified promotion`).toBeDefined();
+      expect(job.if).not.toContain("needs.prepare.outputs.skip");
+      expect(receipt.if).toBe("needs.prepare.outputs.skip == 'true'");
+      expect(NodeChildProcess.spawnSync("bash", ["-c", receipt.run]).status).toBe(0);
+      for (const step of job.steps.filter((step: { name: string }) => step.name !== receipt.name)) {
+        expect(step.if, `ASSERTION: ${name} never repeats verification on promotion`).toBe(
+          "needs.prepare.outputs.skip != 'true'",
+        );
+      }
+      continue;
+    }
     expect(job.if, `ASSERTION: ${name} skips verified work at job level`).toContain(
       "needs.prepare.outputs.skip != 'true'",
     );
@@ -571,7 +599,7 @@ it("Decision: a SHA is tested once, on kh-next; main only re-verifies that recei
     string,
     { if?: string; steps: { name: string; if?: string }[] },
   ][]) {
-    if (id === "prepare") continue;
+    if (["prepare", "test", "release_smoke"].includes(id)) continue;
     expect(
       job.if,
       `ASSERTION: ${id} skips its entire runner when the SHA already passed on kh-next`,
@@ -583,6 +611,10 @@ it("Decision: a SHA is tested once, on kh-next; main only re-verifies that recei
     for (const skip of [true, false]) {
       const condition = job
         .if!.replace(/^\$\{\{\s*|\s*\}\}$/gu, "")
+        .replaceAll(
+          /contains\(fromJSON\(needs.prepare.outputs.jobs\), '[a-z_]+'\)/gu,
+          "true == true",
+        )
         .replaceAll("!cancelled()", "true == true")
         .replaceAll("needs.prepare.outputs.skip", `'${skip}'`)
         .replaceAll(/needs\.[a-z_]+\.result/gu, "'success'")
@@ -670,7 +702,8 @@ it.each([
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
   expect(workflow.jobs.prepare, "ASSERTION: CI owns one verified-SHA projection").toBeDefined();
-  const run = workflow.jobs.prepare.steps[0].run as string;
+  const run = workflow.jobs.prepare.steps.find((step: { id?: string }) => step.id === "verdict")
+    .run as string;
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-promotion-"));
   const output = NodePath.join(directory, "output");
   const called = NodePath.join(directory, "called");
