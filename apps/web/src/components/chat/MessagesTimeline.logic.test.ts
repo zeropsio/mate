@@ -1691,6 +1691,31 @@ describe("deriveMessagesTimelineRows", () => {
       });
     });
 
+    // Eli, 2026-10-14: a wake after "Walls" finished was titled "Colossus … finished", a helper
+    // that had finished three hours before, between runs a person's message started.
+    it("names the helper whose finish woke the turn, never one that finished earlier", () => {
+      const entries = [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Started them."),
+        launch,
+        assistant("a2", "t1", 4, "They report back."),
+        // A finished at 10, while nothing ran; the person's message started t2 at 12.
+        user("m1", 12),
+        assistant("a3", "t2", 13, "Still on it."),
+        assistant("a4", "t3", 20, "B is back."),
+      ];
+      const helperFinishes = [finish("a", 10, 0), finish("b", 19, 59)];
+      // Its line over the run, or its card's title where the card holds its lines.
+      const titles = rows({ entries, settled: "t3", helperFinishes }).flatMap((row) =>
+        row.kind === "background" && row.id.startsWith("woke:")
+          ? [row.title]
+          : row.kind === "record" && row.opener !== undefined
+            ? [row.opener.title]
+            : [],
+      );
+      expect(titles).toEqual(["Helper b"]);
+    });
+
     it("a task reporting in a woken run's first moments never stands for the helper that woke it", () => {
       const watch = background("w1", 6, {
         label: "Watch the logs",
