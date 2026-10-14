@@ -312,7 +312,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         )}
       </>
     ) : null;
-    return <PlacePanel actions={actions} model={model} />;
+    return <PlacePanel actions={actions} groupId={groupId} model={model} />;
   };
 
   /**

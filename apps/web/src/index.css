@@ -7604,6 +7604,10 @@ a.ov-card-site:hover {
   line-height: 18px;
 }
 
+.ov-panel-note[data-tone="muted"] {
+  color: var(--muted-foreground);
+}
+
 .ov-panel-note[data-tone="attention"] {
   color: var(--zerops-status-attention-text);
 }
