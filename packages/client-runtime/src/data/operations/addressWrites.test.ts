@@ -92,7 +92,7 @@ function reads(
     readonly ports?: Readonly<Record<string, PublicPortRoutingValue>>;
     readonly project?: Readonly<Record<string, unknown>>;
     readonly app?: Readonly<Record<string, unknown>>;
-    /** The status the row of the sync following the write says. */
+    /** The status the row of the sync following the write says; it ends at `ENDED`. */
     readonly sync?: "RUNNING" | "FINISHED" | "FAILED";
     /** A listing whose baseline never came. */
     readonly unread?: "routings" | "ports";
@@ -110,6 +110,7 @@ function reads(
                 projectId: "p1",
                 status: input.sync,
                 actionName: "project.syncPublicHttpRouting",
+                ...(input.sync === "RUNNING" ? {} : { finished: ENDED }),
               },
             ],
       projects: [{ id: "p1", publicIpV6: "2001:db8::1", ...input.project }],
@@ -169,6 +170,11 @@ const ADD = {
 
 const waiting = routing({ isSynced: false, everSynced: false });
 
+/** When the sync ended, and a moment before and after it. */
+const ENDED = "2026-10-14T10:00:05.400Z";
+const BEFORE = "2026-10-14T10:00:05Z";
+const AFTER = "2026-10-14T10:00:09Z";
+
 describe("when an address write is done", () => {
   it("a domain added is not done while the sync following it runs, though Zerops holds it", () => {
     const read = reads({ routings: { rt1: waiting }, sync: "RUNNING" });
@@ -176,9 +182,34 @@ describe("when an address write is done", () => {
     expect(addDomain.reflected(read, ADD, following)).toBe(true);
   });
 
-  it("a domain added is done once the sync following it finished, whatever its routing reads yet", () => {
-    const read = reads({ routings: { rt1: waiting }, sync: "FINISHED" });
+  it("a domain added is done once the sync following it finished and its routing reads it in place", () => {
+    const stale = reads({
+      routings: { rt1: { ...waiting, lastUpdate: BEFORE } },
+      sync: "FINISHED",
+    });
+    expect(addDomain.settledBy?.(stale, ADD, following)).toBeNull();
+    const read = reads({ routings: { rt1: routing() }, sync: "FINISHED" });
     expect(addDomain.settledBy?.(read, ADD, following)).toEqual({ kind: "succeeded" });
+  });
+
+  it("a write whose sync finished is done once what it changed was updated after it, whatever it says", () => {
+    const intent = {
+      kind: "disable-subdomain-access",
+      orgId: ORG,
+      projectId: "p1",
+      serviceId: "s1",
+    } as const;
+    const stale = reads({ app: { lastUpdate: BEFORE }, sync: "FINISHED" });
+    expect(disableSubdomainAccess.settledBy?.(stale, intent, following)).toBeNull();
+    const reopened = reads({ app: { lastUpdate: AFTER }, sync: "FINISHED" });
+    expect(disableSubdomainAccess.settledBy?.(reopened, intent, following)).toEqual({
+      kind: "succeeded",
+    });
+    const changed = reads({
+      routings: { rt1: { ...waiting, lastUpdate: AFTER } },
+      sync: "FINISHED",
+    });
+    expect(addDomain.settledBy?.(changed, ADD, following)).toEqual({ kind: "succeeded" });
   });
 
   it("a domain added no sync follows is done once the organization's routings show it in place", () => {

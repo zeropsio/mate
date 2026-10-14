@@ -54,6 +54,8 @@ export interface PublicRoutingValue {
   readonly deleteOnSync?: boolean;
   /** Whether it was ever put in place: a routing never synced is new, not changed. */
   readonly everSynced?: boolean;
+  /** When Zerops last changed it: a write's end is read only from what came after it. */
+  readonly lastUpdate?: string;
   readonly sslEnabled: boolean;
   readonly domains: ReadonlyArray<PublicRoutingDomain>;
   readonly locations: ReadonlyArray<{
@@ -79,6 +81,7 @@ const Row = Schema.Struct({
   isEditable: Said(Schema.Boolean),
   deleteOnSync: Said(Schema.Boolean),
   lastSync: Said(Schema.String),
+  lastUpdate: Said(Schema.String),
   sslEnabled: Schema.Boolean,
   domains: Schema.Array(
     Schema.Struct({
@@ -150,6 +153,7 @@ export const publicRoutingFamily: FamilySpec<"publicRouting"> = {
           isEditable,
           deleteOnSync,
           lastSync,
+          lastUpdate,
           sslEnabled,
           domains,
           locations,
@@ -162,6 +166,7 @@ export const publicRoutingFamily: FamilySpec<"publicRouting"> = {
             ...(isEditable == null ? {} : { isEditable }),
             ...(deleteOnSync == null ? {} : { deleteOnSync }),
             ...(lastSync === undefined ? {} : { everSynced: lastSync !== null && lastSync !== "" }),
+            ...(lastUpdate == null ? {} : { lastUpdate }),
             sslEnabled,
             domains: domains.map(domainOf),
             locations: locations.map(({ path, port, serviceStackId }) => ({
