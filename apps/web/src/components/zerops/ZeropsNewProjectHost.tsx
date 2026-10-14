@@ -75,6 +75,7 @@ import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
+import { ProjectAccessDraft } from "./projects/ProjectPeople";
 import { ZeropsNewProjectDialog, type NewProjectChoice } from "./ZeropsNewProjectForm";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 
@@ -205,7 +206,7 @@ function NewProjectDialog() {
     );
   }
 
-  const createProject = ({ name, botName, face }: NewProjectChoice) => {
+  const createProject = ({ name, botName, face, userRoles }: NewProjectChoice) => {
     if (creating || !canCreate) return;
     setCreating(true);
     const organizationId = activeOrganization.id;
@@ -218,6 +219,7 @@ function NewProjectDialog() {
       locationId,
       // Every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`).
       agents: [],
+      ...(userRoles === undefined ? {} : { userRoles }),
     };
     // The creation's id is its group's: its view is there from the press.
     const birthId = ask.birthId;
@@ -234,6 +236,8 @@ function NewProjectDialog() {
 
   return (
     <ZeropsNewProjectDialog
+      // A brand new app: its creator, and whom the organization's roles give it.
+      access={(onChange) => <ProjectAccessDraft groupId={null} kind="mate" onChange={onChange} />}
       closed={
         addProject.offered
           ? undefined

@@ -4,7 +4,7 @@
  * ends with what happens next; Create hands the project and its Mate over at once.
  */
 import { MATE_SHAPE_IDS, MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
-import { act, type ReactElement } from "react";
+import { act, useEffect, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -13,6 +13,18 @@ import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 
 import { Dialog } from "../ui/dialog";
 import { ZeropsNewProjectForm } from "./ZeropsNewProjectForm";
+
+/** A draft standing in for the account's (`ProjectAccessDraft`): it says its list once drawn. */
+function ChosenAccess({
+  list,
+  onChange,
+}: {
+  list: ReadonlyArray<{ clientUserId: string; roleCode: string }>;
+  onChange: (list: ReadonlyArray<{ clientUserId: string; roleCode: string }>) => void;
+}) {
+  useEffect(() => onChange(list), [list, onChange]);
+  return null;
+}
 import { zeropsNewProjectScopeStepVisible } from "./ZeropsNewProjectHost";
 
 const ORGANIZATION: ZeropsOrganization = {
@@ -225,6 +237,21 @@ describe("ZeropsNewProjectForm — the project and its first Mate", () => {
       botName: "Mira Lin",
       face: { tint: "olive", shape: "hexagon" },
     });
+  });
+
+  it("hands over the access chosen for its first Mate's project", () => {
+    const onCreate = vi.fn();
+    const chosen = [{ clientUserId: "cu-ada", roleCode: "ADMIN" }];
+    const tree = mount(
+      projectForm({
+        onCreate,
+        access: (onChange) => <ChosenAccess list={chosen} onChange={onChange} />,
+      }),
+    );
+    type(tree, PROJECT_FIELD, "Acme CRM");
+    type(tree, MATE_FIELD, "Mira");
+    press(tree);
+    expect(onCreate.mock.calls[0]?.[0]).toMatchObject({ userRoles: chosen });
   });
 
   it.each([

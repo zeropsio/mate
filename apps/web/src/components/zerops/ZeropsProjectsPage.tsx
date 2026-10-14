@@ -165,6 +165,7 @@ import {
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { GitMirrorDialog } from "./GitMirrorDialog";
+import { ProjectAccessDraft, roleProjectKind } from "./projects/ProjectPeople";
 import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
@@ -2589,6 +2590,13 @@ export function ZeropsProjectsContent({
       ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (
         <ZeropsEnvironmentCreationDialog
+          access={(onChange) => (
+            <ProjectAccessDraft
+              groupId={creationRequest.groupId}
+              kind={roleProjectKind(creationRequest.role)}
+              onChange={onChange}
+            />
+          )}
           fallbackFocus={() =>
             document
               .getElementById(`project-${creationRequest.groupId}`)

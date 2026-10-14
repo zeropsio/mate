@@ -48,6 +48,7 @@ import {
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
+import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 
 import type {
   BirthLineProgress,
@@ -81,6 +82,8 @@ export interface NewProjectAsk {
    * it serves. Drawn in no group: the menu's top row shows it coming up instead.
    */
   readonly chief?: true | undefined;
+  /** Who reaches its first Mate's project beyond their organization role, as chosen at Create. */
+  readonly userRoles?: ReadonlyArray<ProjectGrant> | undefined;
   /**
    * Add a Mate, not a New project: the Mate goes into the project `name` that stands — no Git
    * hosting or registration of the project's own — its Zerops project named in full under it,
@@ -210,6 +213,8 @@ export interface NewProjectCreation {
   readonly appId: string;
   /** The birth intent HQ holds of its Mate. */
   readonly birth: string;
+  /** Who reaches it from birth beyond their organization role. */
+  readonly userRoles?: ReadonlyArray<ProjectGrant>;
 }
 
 /**
@@ -470,6 +475,9 @@ export async function runNewProjectBirth(
           appId,
           ...(ask.locationId === null ? {} : { location: ask.locationId }),
           birth: intent,
+          ...(ask.userRoles === undefined || ask.userRoles.length === 0
+            ? {}
+            : { userRoles: ask.userRoles }),
         })
       ).projectId,
   );

@@ -307,11 +307,14 @@ export function ProjectAccessDraft({
   groupId,
   kind,
   onChange,
+  heading = false,
 }: {
   /** The app it is made in; `null` for a brand new app. */
   readonly groupId: string | null;
   readonly kind: RoleProjectKind;
   readonly onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void;
+  /** Drawn with its own heading; by default the creation form names the section. */
+  readonly heading?: boolean;
 }) {
   const app = useGroupProjects(groupId);
   // The prefill reads the places, or the Mates where the app has none.
@@ -369,5 +372,9 @@ export function ProjectAccessDraft({
       ),
     [base.members.list, list],
   );
-  return <ProjectAccessChips onAdd={add} onChoose={choose} view={view} />;
+  return <ProjectAccessChips heading={heading} onAdd={add} onChoose={choose} view={view} />;
 }
+
+/** What a creation role makes, as the access draft names the project. */
+export const roleProjectKind = (role: "dev" | "devstage" | "stage" | "prod"): RoleProjectKind =>
+  role === "dev" ? "mate" : role === "prod" ? "production" : role;

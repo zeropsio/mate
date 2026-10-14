@@ -16,7 +16,8 @@ import {
   PlusIcon,
   SplitIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
@@ -43,6 +44,14 @@ import {
   type ProjectPeopleView,
   type ProjectPerson,
 } from "./projectPeople.logic";
+
+/**
+ * A creation form's *Project access*: the host draws the draft (`ProjectAccessDraft`), which says
+ * each change of the list the creation sends; a form without one sends none.
+ */
+export type ProjectAccessSlot = (
+  onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void,
+) => ReactNode;
 
 /** A choice from a person's ···: a level, or the way out. */
 export type AccessChoice = GivenLevel | NonNullable<PersonChange["end"]>;
