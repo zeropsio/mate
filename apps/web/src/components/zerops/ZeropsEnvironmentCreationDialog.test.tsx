@@ -146,6 +146,7 @@ it("offers Git without a recipe when HQ authorizes while Zerops stays the defaul
     tierServices: [],
     git: {
       repos: [],
+      takenNames: [],
       offered: { add: true, connect: true, replace: true },
       setup: {
         connect: async () => ({ ok: false, reason: "refused" }),
@@ -166,6 +167,7 @@ it("New production starts with only a destination and Continue", () => {
     role: "prod",
     git: {
       repos: [],
+      takenNames: [],
       offered: { add: true, connect: true, replace: true },
       setup: {
         connect: async () => ({ ok: false, reason: "refused" }),

@@ -265,6 +265,202 @@ const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A
 describe("structure", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
+      "a Chief and its application are returned only to its registered person, including for org owners and admins",
+      () =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const app = yield* structure.createApp("owner", "Chief · Maker");
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_OWN",
+              kind: "mate",
+              mate: { face: "chief" },
+            });
+            yield* sql`INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id)
+            VALUES ('personal-chief-hash', 'ORG', 'maker', 'P_OWN')`;
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.map((project) =>
+                project.id === "P_OWN" ? { ...project, tags: ["mate", "chief"] } : project,
+              ),
+            }));
+            const source = yield* structure.navigation;
+            assert.deepStrictEqual(
+              source.forPerson("maker").apps.map((value) => value.id),
+              [app.id],
+            );
+            for (const viewer of ["owner", "admin", "reader", "dev"]) {
+              const personal = source.forPerson(viewer);
+              assert.deepStrictEqual(personal.apps, [], viewer);
+              assert.notInclude(JSON.stringify(personal), '"P_OWN"', viewer);
+              assert.notInclude(JSON.stringify(personal), "Chief · Maker", viewer);
+            }
+          }),
+        ),
+    );
+    it.effect(
+      "deleting a Chief retains its empty application's privacy without deleting the application",
+      () =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const app = yield* structure.createApp("owner", "Chief · Owner");
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_OWN",
+              kind: "mate",
+              mate: { face: "chief" },
+            });
+            yield* sql`INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id)
+          VALUES ('orphan-chief-hash', 'ORG', 'owner', 'P_OWN')`;
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.filter((project) => project.id !== "P_OWN"),
+            }));
+            assert.strictEqual(yield* structure.reconcile, 1);
+            assert.deepStrictEqual((yield* structure.read("admin")).apps, []);
+            assert.deepStrictEqual(
+              (yield* structure.read("owner")).apps.map((value) => value.id),
+              [app.id],
+            );
+            assert.strictEqual(
+              (yield* sql`SELECT id FROM hq_app WHERE id = ${app.id}::uuid`).length,
+              1,
+            );
+            assert.deepStrictEqual(
+              yield* sql`SELECT app_id::text FROM hq_chief WHERE project_id = 'P_OWN'`,
+              [{ app_id: app.id }],
+            );
+            yield* sql`INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id, app_id, revoked_at)
+          VALUES ('previous-orphan-chief-hash', 'ORG', 'admin', 'P_OWN', ${app.id}::uuid, now())`;
+            for (const viewer of ["owner", "admin"])
+              assert.deepStrictEqual((yield* structure.read(viewer)).apps, [], viewer);
+          }),
+        ),
+    );
+    it.effect.each(["untagged", "DELETING", "DELETED"] as const)(
+      "an unavailable registered Chief never returns as its owner's ordinary Mate: %s",
+      (state) =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const app = yield* structure.createApp("owner", "Chief · Owner");
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_OWN",
+              kind: "mate",
+              mate: { face: "chief" },
+            });
+            yield* sql`INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id)
+          VALUES ('unavailable-chief-hash', 'ORG', 'owner', 'P_OWN')`;
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.map((project) =>
+                project.id === "P_OWN"
+                  ? {
+                      ...project,
+                      tags: state === "untagged" ? [] : ["chief"],
+                      status: state === "untagged" ? "ACTIVE" : state,
+                    }
+                  : project,
+              ),
+            }));
+            const read = yield* structure.read("owner");
+            assert.deepStrictEqual(read.apps, []);
+            assert.notInclude(JSON.stringify(read), '"P_OWN"');
+          }),
+        ),
+    );
+    it.effect.each(["mate", "devstage"] as const)(
+      "a shared application keeps its ordinary Mate while withholding another person's Chief metadata: %s",
+      (kind) =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const app = yield* structure.createApp("owner", "Shared app");
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "ordinary" },
+            });
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_OWN",
+              kind,
+              mate: { face: "chief" },
+            });
+            yield* sql`INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id)
+          VALUES ('personal-chief-hash', 'ORG', 'maker', 'P_OWN')`;
+            yield* sql`INSERT INTO hq_birth_intent (app_id, face, made_by, project_id)
+          VALUES (${app.id}::uuid, 'private-birth', 'maker', 'P_OWN')`;
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.map((project) =>
+                project.id === "P_OWN" ? { ...project, tags: ["chief"] } : project,
+              ),
+            }));
+            const shared = (yield* structure.read("owner")).apps.find(
+              (value) => value.id === app.id,
+            )!;
+            assert.deepStrictEqual(
+              shared.projects.map((project) => project.projectId),
+              ["P_MATE"],
+            );
+            assert.deepStrictEqual(shared.births, []);
+            assert.deepStrictEqual(shared.environments, []);
+            const source = yield* structure.environments;
+            const facts = { ...(yield* Ref.get(view)), freshness: "cached" as const };
+            assert.deepStrictEqual(
+              source.forApp("owner", app.id, facts, shared.can.read_change),
+              [],
+            );
+            assert.notInclude(JSON.stringify(shared), '"P_OWN"');
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.filter((project) => project.id !== "P_OWN"),
+            }));
+            assert.deepStrictEqual(
+              (yield* structure.read("owner")).apps.find((value) => value.id === app.id)!.contents
+                .deletingProjectIds,
+              [],
+            );
+          }),
+        ),
+    );
+    it.effect(
+      "an unregistered Chief is absent from every person's source, before registration and after its owner loses access",
+      () =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.map((project) =>
+                project.id === "P_OWN" ? { ...project, tags: ["chief"] } : project,
+              ),
+            }));
+            for (const viewer of ["owner", "admin", "maker"])
+              assert.strictEqual(
+                (yield* structure.read(viewer)).unheld["P_OWN"],
+                undefined,
+                viewer,
+              );
+            yield* sql`INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id)
+            VALUES ('personal-chief-hash', 'ORG', 'maker', 'P_OWN')`;
+            assert.isDefined((yield* structure.read("maker")).unheld["P_OWN"]);
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              members: current.members.map((member) =>
+                member.userId === "maker" ? { ...member, status: "DELETED" } : member,
+              ),
+            }));
+            assert.strictEqual((yield* structure.read("maker")).unheld["P_OWN"], undefined);
+          }),
+        ),
+    );
+    it.effect(
       "Git navigation finishes birth when verified remote data arrives after its first read, without a deploy token.",
       () =>
         withStructure(() =>

@@ -1,3 +1,4 @@
+import { HqGitEnvironmentRefusalReason } from "@t3tools/shared/hqGitTargets";
 import type { HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { keepGitReceipt, readGitReceipt } from "./gitTargetReceipts.ts";
 /** Structure's Git lifecycle: no project, no external deletion, and no delivery executor. */
@@ -17,10 +18,11 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import { Deploys } from "./deploys.ts";
-import { environmentNameProblem } from "./environments.ts";
+import { environmentNameProblem } from "@t3tools/shared/hqEnvironment";
 import { GitHost, holdingRepo } from "./gitHost.ts";
 import { Leader } from "./leader.ts";
 import { can } from "./permissions.ts";
+import { gitEnvironmentRemovalOffer } from "./offers.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { Roles, decidedFresh } from "./roles.ts";
 import { Rollouts } from "./rollouts.ts";
@@ -28,20 +30,7 @@ import { Rollouts } from "./rollouts.ts";
 export class GitEnvironmentRefused extends Schema.TaggedError<GitEnvironmentRefused>()(
   "GitEnvironmentRefused",
   {
-    reason: Schema.Literals([
-      "forbidden",
-      "app_not_found",
-      "environment_not_found",
-      "production_taken",
-      "branch_taken",
-      "environment_name_taken",
-      "environment_name_missing",
-      "environment_name_long",
-      "environment_name_invalid",
-      "review_stale",
-      "no_repositories",
-      "history_loss_confirmation_required",
-    ]),
+    reason: HqGitEnvironmentRefusalReason,
   },
 ) {}
 
@@ -56,21 +45,25 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
     const rollouts = yield* Rollouts;
     const refuse = (reason: GitEnvironmentRefused["reason"]) =>
       new GitEnvironmentRefused({ reason });
-    const allowed = Effect.fnUntraced(function* (userId: string, appId: string, adopting: boolean) {
+    const allowed = Effect.fnUntraced(function* (
+      userId: string,
+      appId: string,
+      adopting: boolean,
+      tier: "stage" | "production" = "stage",
+    ) {
       const view = yield* roles.forWrite;
       const projects = yield* sql<{
         readonly project_id: string;
       }>`SELECT project_id FROM hq_app_project WHERE app_id::text=${appId}`;
-      const verb = adopting ? "add_git_environment" : "remove_git_environment";
-      if (
-        !can(
-          { kind: "person", userId },
-          verb,
-          { projectIds: projects.map((p) => p.project_id) },
-          view,
-        ).allow
-      )
-        return yield* refuse("forbidden");
+      const decision = adopting
+        ? can(
+            { kind: "person", userId },
+            "add_git_environment",
+            { projectIds: projects.map((p) => p.project_id) },
+            view,
+          )
+        : gitEnvironmentRemovalOffer(userId, projects, view, tier);
+      if (!decision.allow) return yield* refuse("forbidden");
       const app = yield* sql`SELECT 1 FROM hq_app WHERE id::text=${appId}`;
       if (app.length === 0) return yield* refuse("app_not_found");
     });
@@ -287,9 +280,11 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
               appLocked(
                 appId,
                 Effect.gen(function* () {
-                  const rows =
-                    yield* sql`SELECT 1 FROM hq_environment WHERE id=${environmentId} AND app_id::text=${appId} AND target='git' FOR UPDATE`;
+                  const rows = yield* sql<{
+                    readonly tier: "stage" | "production";
+                  }>`SELECT tier FROM hq_environment WHERE id=${environmentId} AND app_id::text=${appId} AND target='git' FOR UPDATE`;
                   if (rows.length === 0) return yield* refuse("environment_not_found");
+                  yield* allowed(userId, appId, false, rows[0]!.tier);
                   const blocker = yield* deploys.blocker(environmentId);
                   if (
                     blocker?.state === "unresolved" &&

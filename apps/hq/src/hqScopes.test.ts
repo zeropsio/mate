@@ -15,6 +15,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
 import { AutoUpdatePolicy } from "./autoUpdate.ts";
 import { Backup } from "./backup.ts";
+import { chiefProjectIsVisible } from "./chiefOwnership.ts";
 import { Changes, ChangeRefused } from "./changes.ts";
 import { DeployKeys } from "./deployKeys.ts";
 import { Deploys } from "./deploys.ts";
@@ -25,6 +26,7 @@ import { makeMateOverviews, MateOverviews } from "./mateOverviews.ts";
 import { Official, type OfficialStatus } from "./official.ts";
 import { mateOffers } from "./offers.ts";
 import { Releases } from "./releases.ts";
+import { Remotes, remoteForWire, type RemoteRecord } from "./repoRemotes.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import {
   Structure,
@@ -75,7 +77,7 @@ const menuChange = {
   mergeability: "conflict",
   ready: false,
 } as const;
-const fixture = Effect.gen(function* () {
+const fixtureWithRemotes = Effect.fnUntraced(function* (remotes?: Remotes["Service"]) {
   let org = facts;
   let policyReads = 0;
   let policy = { orgId: "ORG", enabled: true, revision: 0 };
@@ -223,6 +225,7 @@ const fixture = Effect.gen(function* () {
   const overviews = yield* makeMateOverviews(memoryStore().store);
   const sourceNow = (): StructureSource => ({
     environmentSource: environmentSnapshot(),
+    chiefOwners: new Map(chiefRows.map((row) => [row.project_id, row.user_id])),
     facts: org,
     appIds: new Set(deleted ? [] : otherApp ? ["A", "B"] : ["A"]),
     projectIds: new Set(deleted ? [] : ["P"]),
@@ -294,8 +297,15 @@ const fixture = Effect.gen(function* () {
       } as unknown as StructureRead;
       return {
         ...read,
-        apps:
-          otherApp && !deleted
+        // Keep own invalid records available to exercise the scope's unavailable-Chief guard.
+        apps: !chiefProjectIsVisible(
+          org,
+          userId,
+          "P",
+          new Map(chiefRows.map((row) => [row.project_id, row.user_id])),
+        )
+          ? []
+          : otherApp && !deleted
             ? [...read.apps, { ...read.apps[0]!, id: "B", name: "Other app", projects: [] }]
             : read.apps,
       };
@@ -310,7 +320,10 @@ const fixture = Effect.gen(function* () {
         Effect.gen(function* () {
           policyReads++;
           if (!org.members.some((member) => member.userId === userId && member.status === "ACTIVE"))
-            return yield* new StructureRefused({ code: "forbidden", reason: "not_active_member" });
+            return yield* new StructureRefused({
+              code: "forbidden",
+              reason: "not_active_member",
+            });
           return policy;
         }),
       set: (_userId, enabled) =>
@@ -443,7 +456,7 @@ const fixture = Effect.gen(function* () {
         (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>) =>
           Effect.sync(() => {
             sqlReads.push({ query: strings.join("?"), values });
-            return strings.join("?").includes("FROM hq_chief") ? chiefRows : [];
+            return [];
           }),
         {
           in: (column: string, values: ReadonlyArray<unknown>) => ({ column, values }),
@@ -455,7 +468,11 @@ const fixture = Effect.gen(function* () {
     } as unknown as Leader["Service"]),
   );
   const context = yield* Layer.build(
-    hqScopesLayer("BUILD", Duration.seconds(30)).pipe(Layer.provide(services)),
+    hqScopesLayer("BUILD", Duration.seconds(30)).pipe(
+      Layer.provide(
+        remotes === undefined ? services : Layer.merge(services, Layer.succeed(Remotes, remotes)),
+      ),
+    ),
   );
   const hub = Context.get(context, HqScopes);
   const connect = (userId: string, sessionId = "session") =>
@@ -637,6 +654,7 @@ const fixture = Effect.gen(function* () {
     },
   };
 });
+const fixture = fixtureWithRemotes();
 const resetOf = (message: ScopeOutput) => {
   if (message.type !== "scope-reset" && message.type !== "scope-values")
     throw new Error("expected scope delivery");
@@ -895,7 +913,56 @@ describe("revisioned HQ values", () => {
       }),
     ),
   );
-  it.effect("a person's own Chief reads as theirs, and someone else's as another's", () =>
+  it.effect.each(["untagged", "DELETING", "DELETED"] as const)(
+    "HQ navigation no longer calls an unavailable Chief mine: %s",
+    (state) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          f.chiefs([{ project_id: "P", user_id: "owner" }]);
+          yield* f.roles({
+            ...facts,
+            projects: [
+              ...facts.projects.map((project) => ({
+                ...project,
+                tags: state === "untagged" ? [] : ["chief"],
+                status: state === "untagged" ? "ACTIVE" : state,
+              })),
+              { ...facts.projects[0]!, id: "OTHER_CHIEF", tags: ["chief"] },
+            ],
+          });
+          const client = yield* f.connect("owner");
+          yield* client.subscribe([{ scope: nav }]);
+          const delivery = resetOf(yield* client.take);
+          const project = delivery.values.find((value) => value.key === "project:P")!.value as {
+            person: { chief?: string; chiefProjectId: string | null };
+          };
+          assert.strictEqual(project.person.chief, undefined);
+          assert.strictEqual(project.person.chiefProjectId, null);
+        }),
+      ),
+  );
+  it.effect("an ordinary Mate never discloses its person's Chief to another viewer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.chiefs([{ project_id: "PERSONAL", user_id: "owner" }]);
+        yield* f.roles({
+          ...facts,
+          projects: [...facts.projects, { ...facts.projects[0]!, id: "PERSONAL", tags: ["chief"] }],
+        });
+        const client = yield* f.connect("reader");
+        yield* client.subscribe([{ scope: nav }]);
+        const delivery = resetOf(yield* client.take);
+        const project = delivery.values.find((value) => value.key === "project:P")!.value as {
+          person: { chiefProjectId: string | null };
+        };
+        assert.strictEqual(project.person.chiefProjectId, null);
+        assert.notInclude(json(delivery.values), "PERSONAL");
+      }),
+    ),
+  );
+  it.effect("HQ navigation returns a person's own Chief and withholds another person's Chief", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const f = yield* fixture;
@@ -912,17 +979,23 @@ describe("revisioned HQ values", () => {
         });
         for (const [userId, chief] of [
           ["owner", "mine"],
-          ["reader", "another"],
+          ["reader", null],
         ] as const) {
           const client = yield* f.connect(userId);
           yield* client.subscribe([{ scope: nav }]);
           const delivery = resetOf(yield* client.take);
           yield* client.take;
-          const project = delivery.values.find((value) => value.key === "project:P")!.value as {
-            person: { chief?: string; chiefProjectId?: string | null };
-          };
-          assert.strictEqual(project.person.chief, chief);
-          assert.strictEqual(project.person.chiefProjectId, "P");
+          const value = delivery.values.find((value) => value.key === "project:P");
+          if (chief === null) {
+            assert.strictEqual(value, undefined);
+            assert.notInclude(json(delivery.values), '"projectId":"P"');
+          } else {
+            const project = value!.value as {
+              person: { chief?: string; chiefProjectId?: string | null };
+            };
+            assert.strictEqual(project.person.chief, chief);
+            assert.strictEqual(project.person.chiefProjectId, "P");
+          }
         }
       }),
     ),
@@ -1856,6 +1929,82 @@ describe("revisioned HQ values", () => {
           const reset = resetOf(yield* first.take);
           assert.include(json(reset.values), '"recipe:stage"');
           assert.strictEqual(reset.scope.kind, "app-detail");
+        }),
+      ),
+  );
+  it.effect(
+    "a disconnected repository is explicitly disconnected in its next application record",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const changes = yield* PubSub.unbounded<number>();
+          let remote: RemoteRecord | undefined = {
+            appId: "A",
+            repo: "appdev",
+            url: "https://github.com/krls2020/tst123.git",
+            urlKey: "github.com/krls2020/tst123",
+            host: "github.com",
+            hostRepoId: "123",
+            keptBy: "owner",
+            keptAt: "2026-10-14T10:00:00Z",
+            invalidSince: null,
+            expiresAt: null,
+            expiryLabel: "No expiry",
+            credentialState: "kept",
+          };
+          const repo = { name: "appdev", mainHead: null, updatedAt: "2026-10-14T10:00:00Z" };
+          const unused = () => Effect.die("Unexpected remote mutation in a scope read");
+          const f = yield* fixtureWithRemotes({
+            changes: Stream.fromPubSub(changes),
+            get: () => Effect.sync(() => remote),
+            listRepos: () =>
+              Effect.sync(() => [
+                {
+                  ...repo,
+                  remote: remote === undefined ? null : remoteForWire(remote),
+                },
+              ]),
+            write: unused,
+            receipt: unused,
+            connect: unused,
+            updateAddress: unused,
+            disconnect: unused,
+            forUse: unused,
+            invalidate: unused,
+          });
+          const client = yield* f.connect("owner");
+          yield* client.subscribe([{ scope: { kind: "app-detail", appId: "A" } }]);
+          const connected = resetOf(yield* client.take);
+          assert.deepStrictEqual(
+            connected.values.find((value) => value.key === "repos"),
+            {
+              key: "repos",
+              value: [
+                {
+                  ...repo,
+                  remote: {
+                    url: "https://github.com/krls2020/tst123.git",
+                    repositoryId: "123",
+                    expiresAt: null,
+                    invalidSince: null,
+                    keptAt: "2026-10-14T10:00:00Z",
+                    keptBy: "owner",
+                  },
+                },
+              ],
+            },
+          );
+          assert.strictEqual((yield* client.take).type, "scope-ready");
+          remote = undefined;
+          yield* PubSub.publish(changes, 1);
+          const disconnected = resetOf(yield* client.take);
+          assert.deepStrictEqual(
+            disconnected.values.find((value) => value.key === "repos"),
+            {
+              key: "repos",
+              value: [{ ...repo, remote: null }],
+            },
+          );
         }),
       ),
   );

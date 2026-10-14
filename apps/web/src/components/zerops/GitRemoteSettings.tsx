@@ -1,3 +1,4 @@
+import { OperationStopped } from "@t3tools/client-runtime/data";
 import { gitRemoteExpiry } from "@t3tools/client-runtime/zerops";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { HqRemoteProbe, RepoListEntry } from "@t3tools/shared/hqChanges";
@@ -26,6 +27,7 @@ export interface GitRemoteActions {
 }
 
 export function GitRemoteSettings({
+  appId,
   repos,
   appName,
   environments = [],
@@ -34,6 +36,7 @@ export function GitRemoteSettings({
   live = true,
   now: at,
 }: {
+  readonly appId: string;
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly appName: string;
   readonly environments?: ReadonlyArray<{
@@ -56,7 +59,7 @@ export function GitRemoteSettings({
           .filter((repo) => repo.name !== RECIPE_REPO)
           .map((repo) => (
             <Remote
-              key={repo.name}
+              key={JSON.stringify([appId, repo.name])}
               repo={repo}
               appName={appName}
               dependencies={environments
@@ -152,9 +155,10 @@ function Remote({
       }
     } catch (cause) {
       setAnswer(
-        cause instanceof HqError &&
-          cause.code === "git_probe_refused" &&
-          (cause.kind === "refused" || (cause.kind === "unavailable" && cause.status === 429))
+        cause instanceof OperationStopped ||
+          (cause instanceof HqError &&
+            cause.code === "git_probe_refused" &&
+            (cause.kind === "refused" || (cause.kind === "unavailable" && cause.status === 429)))
           ? cause.message
           : "HQ couldn't confirm the token change. Check its outcome before trying again.",
       );

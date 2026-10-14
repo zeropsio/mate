@@ -1,3 +1,4 @@
+import { deriveEnvironmentName } from "@t3tools/shared/hqEnvironment";
 import type { HqGitAdoption, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import type { GitEnvironmentSetup } from "~/zerops/setUpEnvironment";
@@ -16,6 +17,7 @@ import {
   gitSetupBranchValid,
   gitSetupExpiry,
   gitSetupRepository,
+  gitSetupRepositoryHint,
   gitSetupRepositories,
   gitSetupReview,
 } from "./GitEnvironmentForm.logic";
@@ -24,6 +26,7 @@ export interface GitEnvironmentFormProps {
   readonly groupName: string;
   readonly tier: "stage" | "production";
   readonly defaultName: string;
+  readonly takenNames: ReadonlyArray<string> | undefined;
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly setup: GitEnvironmentSetup;
   readonly offered: { readonly add: boolean; readonly connect: boolean; readonly replace: boolean };
@@ -38,6 +41,7 @@ export function GitEnvironmentForm({
   groupName,
   tier,
   defaultName,
+  takenNames,
   repos,
   setup,
   offered,
@@ -46,6 +50,8 @@ export function GitEnvironmentForm({
   onCancel,
   onAdded,
 }: GitEnvironmentFormProps) {
+  const name =
+    takenNames === undefined ? undefined : deriveEnvironmentName(defaultName, tier, takenNames);
   const id = useId();
   const [step, setStep] = useState<"repository" | "token" | "branch">("repository");
   const [address, setAddress] = useState("");
@@ -59,8 +65,7 @@ export function GitEnvironmentForm({
   const [pending, setPending] = useState<"connect" | "add">();
   const [notice, setNotice] = useState<string>();
   const [uncertain, setUncertain] = useState(false);
-  const tokenInput = useRef<HTMLInputElement>(null);
-  const [hasToken, setHasToken] = useState(false);
+  const [token, setToken] = useState("");
   const [tested, setTested] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -92,6 +97,7 @@ export function GitEnvironmentForm({
   const busy = pending !== undefined || reading;
   const canAdd =
     step === "branch" &&
+    name !== undefined &&
     connected &&
     offered.add &&
     gitSetupBranchValid(branch) &&
@@ -155,15 +161,15 @@ export function GitEnvironmentForm({
           if (connected && !busy && !uncertain) setStep("branch");
         } else {
           setReadBranch(branch);
-          if (!canAdd || adoption === undefined) return;
+          if (!canAdd || adoption === undefined || name === undefined) return;
           void act("add", async () => {
             await setup.add({
               tier,
-              name: defaultName,
+              name,
               target: { kind: "git", branch, delivery: "direct" },
               adoption,
             });
-            if (mounted.current) onAdded(defaultName);
+            if (mounted.current) onAdded(name);
           });
         }
       }}
@@ -197,11 +203,13 @@ export function GitEnvironmentForm({
               }}
             />
             <p className="text-xs text-muted-foreground">
-              {repository?.guide.hostLabel ?? "GitHub"} · a token comes next
+              {repository
+                ? `${repository.guide.hostLabel} · a token comes next`
+                : "A token comes next"}
             </p>
             {address.trim() !== "" && repos !== undefined && repository === undefined ? (
               <p role="alert" className="text-sm text-destructive">
-                Enter a repository address without credentials. SSH URLs are not supported.
+                {gitSetupRepositoryHint(address)}
               </p>
             ) : null}
             {repos === undefined ? (
@@ -232,6 +240,10 @@ export function GitEnvironmentForm({
                 >
                   Create the token on GitHub
                 </a>
+                <p className="text-sm">
+                  On GitHub, under Repository access choose Only select repositories and pick{" "}
+                  {repository.guide.repository} — the link cannot do it for you.
+                </p>
                 <p className="text-sm font-medium">On GitHub, check that it says</p>
                 <ul className="space-y-1 text-sm">
                   <li>Resource owner: {repository.guide.owner}</li>
@@ -268,11 +280,11 @@ export function GitEnvironmentForm({
             <Label htmlFor={`${id}-token`}>Token</Label>
             <Input
               id={`${id}-token`}
-              ref={tokenInput}
               type="password"
+              value={token}
               autoComplete="off"
               disabled={busy || uncertain}
-              onChange={(event) => setHasToken(event.target.value.trim() !== "")}
+              onChange={(event) => setToken(event.target.value)}
             />
             <Button
               type="button"
@@ -280,13 +292,12 @@ export function GitEnvironmentForm({
               disabled={
                 busy ||
                 uncertain ||
-                !hasToken ||
+                token.trim() === "" ||
                 !(repository.sameRemote ? offered.replace : offered.connect)
               }
               onClick={() => {
-                const candidate = tokenInput.current?.value.trim() ?? "";
-                if (tokenInput.current) tokenInput.current.value = "";
-                setHasToken(false);
+                const candidate = token.trim();
+                setToken("");
                 if (candidate === "") return;
                 void act("connect", async () => {
                   const result = await setup.connect(
@@ -394,6 +405,13 @@ export function GitEnvironmentForm({
             {preview.error}
           </p>
         ) : null}
+        {step === "branch" && name === undefined ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            {takenNames === undefined
+              ? "Reading this project's environment names…"
+              : "This project has used all generated names. Remove an unused environment before adding another."}
+          </p>
+        ) : null}
         {notice ? (
           <p role="status" className="text-sm text-muted-foreground">
             {notice}
@@ -426,6 +444,7 @@ export function GitEnvironmentForm({
             variant="outline"
             disabled={busy}
             onClick={() => {
+              setToken("");
               if (step === "repository") onBack?.();
               else setStep("repository");
             }}

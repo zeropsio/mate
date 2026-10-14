@@ -1,3 +1,9 @@
+import { ownChiefCandidateAtom } from "~/zerops/useZeropsCandidates";
+import {
+  shownHqMateDirectoryAtom,
+  isListedMateEnvironment,
+  shownCanonicalHqListNavigationAtom,
+} from "@t3tools/client-runtime/data";
 import { autoAnimate } from "@formkit/auto-animate";
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqPersonFactsAtom, mateLimitAtom } from "@t3tools/client-runtime/data";
@@ -92,7 +98,7 @@ import {
   useThreadShells,
 } from "../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
-import { hqDownSinceAtom, hqNavigationAtom } from "../state/zerops";
+import { hqDownSinceAtom } from "../state/zerops";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
@@ -212,10 +218,8 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, useMenuProjects, useOverviewKey } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
-import { ownChiefAmong, withoutOwnChief } from "~/zerops/chief";
 import { useChiefSetupEntry, useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
 import { useAccountHq } from "~/zerops/accountHq";
-import { useOwnChief } from "~/zerops/ownChief";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
 import { SidebarRail, useRailTiles } from "./zerops/SidebarRail";
 import { SidebarStage } from "./zerops/SidebarStage";
@@ -1402,7 +1406,7 @@ export default function Sidebar() {
   // HQ not answering: the menu draws the structure it last read, says since when and how old that
   // is (SPEC §6.2.3); the Mates' conversations go on without HQ.
   const zeropsHqOutage = hqOutage(
-    useAtomValue(hqNavigationAtom),
+    useAtomValue(shownCanonicalHqListNavigationAtom),
     useAtomValue(hqDownSinceAtom),
     timestampFormat,
     zeropsNowMs,
@@ -1912,7 +1916,7 @@ export default function Sidebar() {
   );
   // The menu's top row is the person's Chief: its conversation once it is listed, else the Chief
   // page, where it is set up. An organization without an HQ holds no Chief: its top is the mark.
-  const ownChief = useOwnChief();
+  const mateDirectory = useAtomValue(shownHqMateDirectoryAtom);
   const zeropsChiefPageOpen = useLocation({ select: (location) => location.pathname === "/chief" });
   const zeropsAccountHq = useAccountHq(zeropsSession.activeOrganization?.id ?? undefined);
   const zeropsHoldsChief = !(
@@ -1922,14 +1926,8 @@ export default function Sidebar() {
     if (isMobile) setOpenMobile(false);
     void router.navigate({ to: "/chief" });
   }, [isMobile, router, setOpenMobile]);
-  const zeropsChief = useMemo(
-    () => ownChiefAmong(zeropsCandidates, ownChief),
-    [zeropsCandidates, ownChief],
-  );
-  const zeropsListed = useMemo(
-    () => withoutOwnChief(zeropsCandidates, ownChief),
-    [zeropsCandidates, ownChief],
-  );
+  const zeropsChief = useAtomValue(ownChiefCandidateAtom);
+  const zeropsListed = zeropsCandidates;
   const chiefSetupLine = useChiefSetupLine();
   const chiefSetupEntry = useChiefSetupEntry();
   const chiefUnfinished = useChiefUnfinished(zeropsChief?.project.id ?? null);
@@ -2041,12 +2039,13 @@ export default function Sidebar() {
         legacyThreads.filter(
           (thread) =>
             thread.archivedAt === null &&
+            isListedMateEnvironment(mateDirectory, thread.environmentId) &&
             thread.crew === undefined &&
             (scopedProjectKeys === null ||
               scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
         ),
       ),
-    [scopedProjectKeys, legacyThreads],
+    [scopedProjectKeys, legacyThreads, mateDirectory],
   );
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
@@ -2055,8 +2054,11 @@ export default function Sidebar() {
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
   const searchableThreads = useMemo(() => activeThreads, [activeThreads]);
   const searchEnvironmentIds = useMemo(
-    () => environments.map((environment) => environment.environmentId),
-    [environments],
+    () =>
+      environments
+        .map((environment) => environment.environmentId)
+        .filter((id) => isListedMateEnvironment(mateDirectory, id)),
+    [environments, mateDirectory],
   );
   // useThreadSearch owns the debounce, the two-character floor and asking only
   // connected environments.

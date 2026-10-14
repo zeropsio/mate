@@ -769,7 +769,11 @@ export interface MateBornLine {
  * to do, is its own view's to say.
  */
 export function mateBornLine(coming: MateComing): MateBornLine {
-  if (coming.kind === "failed") return BORN_STOPPED;
+  if (coming.kind === "failed") {
+    return coming.verb === "redeploy"
+      ? { words: coming.line, since: undefined, tone: "attention" }
+      : BORN_STOPPED;
+  }
   return { words: BORN_WORDS, since: coming.since, tone: "muted" };
 }
 

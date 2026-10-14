@@ -1,9 +1,18 @@
 // @vitest-environment happy-dom
 import { act } from "react";
+import * as Effect from "effect/Effect";
+import { AtomRegistry } from "effect/reactivity";
+import {
+  hqAppDetail,
+  makeAccountStore,
+  readsOfState,
+  makeOperations,
+  runToEnd,
+} from "@t3tools/client-runtime/data";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { HqError } from "@t3tools/client-runtime/zerops/hq";
+import { hqRefusalWords, HqError } from "@t3tools/client-runtime/zerops/hq";
 import { GitRemoteSettings } from "./GitRemoteSettings";
 const remote = {
   url: "https://github.com/acme/api.git",
@@ -18,7 +27,7 @@ const actions = { replaceToken: vi.fn(), disconnect: vi.fn(), connect: vi.fn() }
 describe("Application repositories", () => {
   it("absent optional offers cannot expose a remote write", () => {
     const html = renderToStaticMarkup(
-      <GitRemoteSettings repos={repos} appName="Shop" actions={actions} />,
+      <GitRemoteSettings appId="shop" repos={repos} appName="Shop" actions={actions} />,
     );
     expect(html).toContain("github.com/acme/api");
     expect(html).toContain("Expiry not reported");
@@ -31,6 +40,7 @@ describe("Application repositories", () => {
     (expiresAt) => {
       const html = renderToStaticMarkup(
         <GitRemoteSettings
+          appId="shop"
           repos={[{ ...repos[0]!, remote: { ...remote, expiresAt } }]}
           appName="Shop"
           now={Date.parse(remote.keptAt)}
@@ -45,6 +55,7 @@ describe("Application repositories", () => {
   it("disconnect stays absent while either Git environment depends on the remote", () => {
     const html = renderToStaticMarkup(
       <GitRemoteSettings
+        appId="shop"
         repos={repos}
         appName="Shop"
         actions={actions}
@@ -64,6 +75,7 @@ describe("Application repositories", () => {
     (repositoryId) => {
       const html = renderToStaticMarkup(
         <GitRemoteSettings
+          appId="shop"
           repos={repos}
           appName="Shop"
           can={{ update_remote_address: { allow: true } }}
@@ -86,6 +98,7 @@ describe("Application repositories", () => {
   it("stale offers cannot expose a mutation", () => {
     const html = renderToStaticMarkup(
       <GitRemoteSettings
+        appId="shop"
         repos={repos}
         appName="Shop"
         can={{ replace_remote_token: { allow: true }, disconnect_remote: { allow: true } }}
@@ -109,6 +122,7 @@ it("candidate token is cleared before verification and failed verification keeps
     await act(async () =>
       root.render(
         <GitRemoteSettings
+          appId="shop"
           repos={repos}
           appName="Shop"
           can={{ replace_remote_token: { allow: true } }}
@@ -141,6 +155,44 @@ it("candidate token is cleared before verification and failed verification keeps
 });
 
 it.each([
+  {
+    title: "a repository owned by another project shows the same refusal as production setup",
+    error: async () => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const operations = makeOperations({
+        store,
+        makeId: () => "eva-connect",
+        executors: {
+          hq: {
+            submit: () =>
+              Effect.fail({
+                outcome: "definitive-refusal",
+                code: "remote_taken",
+                message: hqRefusalWords({ code: "remote_refused", reason: "remote_taken" }),
+              }),
+          },
+        },
+      });
+      try {
+        await runToEnd({ operations, store, registry })(
+          {
+            kind: "connect-git-remote",
+            orgId: "org",
+            appId: "eva",
+            hqProjectId: "hq",
+            repo: "api",
+            url: remote.url,
+          },
+          { orgId: "org", unobserved: "HQ is not answering." },
+        );
+      } finally {
+        registry.dispose();
+      }
+    },
+    expected:
+      "This repository is already connected to another application. Disconnect it there (Settings → Repositories) or use another repository.",
+  },
   {
     title: "a refused token shows HQ's missing permission and where to grant it",
     error: new HqError({
@@ -185,12 +237,14 @@ it.each([
   const container = document.createElement("div");
   const root = createRoot(container);
   const replace = vi.fn(async () => {
+    if (typeof error === "function") await error();
     throw error;
   });
   try {
     await act(async () =>
       root.render(
         <GitRemoteSettings
+          appId="shop"
           repos={repos}
           appName="Shop"
           can={{ replace_remote_token: { allow: true } }}
@@ -256,6 +310,7 @@ it.each(["connect", "replace", "disconnect", "address"] as const)(
       await act(async () =>
         root.render(
           <GitRemoteSettings
+            appId="shop"
             repos={action === "connect" ? [{ ...repos[0]!, remote: null }] : repos}
             appName="Shop"
             actions={supplied}
@@ -310,3 +365,133 @@ it.each(["connect", "replace", "disconnect", "address"] as const)(
     }
   },
 );
+
+it.each(["settled", "pending"] as const)(
+  "repository operation results stay with their project when verification is %s",
+  async (state) => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    let finish!: (value: { ok: false; reason: string }) => void;
+    const result = new Promise<{ ok: false; reason: string }>((resolve) => {
+      finish = resolve;
+    });
+    const props = {
+      repos: [{ ...repos[0]!, name: "appdev" }],
+      appName: "Same project name",
+      can: { replace_remote_token: { allow: true } },
+      actions: { replaceToken: () => result },
+    };
+    const render = async (appId: string) => {
+      await act(async () => root.render(<GitRemoteSettings {...props} appId={appId} />));
+    };
+    const click = async (label: string) => {
+      await act(async () =>
+        [...host.querySelectorAll("button")].find((node) => node.textContent === label)!.click(),
+      );
+    };
+    try {
+      await render("eva");
+      await click("Replace token");
+      const input = host.querySelector<HTMLInputElement>('input[aria-label="Candidate token"]')!;
+      const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"))!;
+      const inputProps = Reflect.get(input, key) as {
+        onChange: (event: { target: { value: string } }) => void;
+      };
+      await act(async () => inputProps.onChange({ target: { value: "fixture-candidate" } }));
+      await click("Verify and keep token");
+      if (state === "settled") {
+        await act(async () => finish({ ok: false, reason: "Eva's token was refused." }));
+        expect(host.querySelector('[role="status"]')?.textContent).toBe("Eva's token was refused.");
+      }
+      await render("cyd");
+      if (state === "pending")
+        await act(async () => finish({ ok: false, reason: "Eva's token was refused." }));
+      expect(host.textContent).toContain("appdev · github.com/acme/api");
+      expect(host.querySelector('[role="status"]')).toBeNull();
+      expect(host.querySelector('input[type="password"]')).toBeNull();
+      expect(
+        [...host.querySelectorAll("button")].find((node) => node.textContent === "Replace token")
+          ?.disabled,
+      ).toBe(false);
+    } finally {
+      await act(async () => root.unmount());
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+it("a refreshed disconnect record clears only its project's repository controls", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  let revision = 0;
+  const publish = (appId: string, connected: boolean) => {
+    store.dispatch({
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: [{ scope: `hq:org:hq-app-detail:${appId}`, generation: 1 }],
+      reset: true,
+      rows: [
+        {
+          family: "hqAppDetail",
+          id: `${appId}/repos`,
+          revision: { kind: "hq", incarnation: "i", revision: ++revision },
+          value: {
+            kind: "repos",
+            value: [{ ...repos[0]!, name: "appdev", remote: connected ? remote : null }],
+          },
+        },
+      ],
+      removals: [],
+    });
+  };
+  const render = async (appId: string) => {
+    const detail = hqAppDetail.derive(readsOfState(store.state()), { orgId: "org", appId });
+    await act(async () =>
+      root.render(
+        <GitRemoteSettings
+          appId={appId}
+          repos={detail.repos}
+          appName={appId}
+          can={{
+            connect_remote: { allow: true },
+            replace_remote_token: { allow: true },
+            disconnect_remote: { allow: true },
+            update_remote_address: { allow: true },
+          }}
+          actions={{ ...actions, reviewAddress: vi.fn(), updateAddress: vi.fn() }}
+        />,
+      ),
+    );
+  };
+  try {
+    for (const appId of ["cyd", "eva"]) {
+      const key = `hq:org:hq-app-detail:${appId}` as const;
+      store.dispatch({ kind: "stream", key, now: 0, event: { kind: "demand", demanded: true } });
+      store.dispatch({ kind: "stream", key, now: 0, event: { kind: "attempt" } });
+      publish(appId, true);
+    }
+    await render("cyd");
+    expect(host.textContent).toContain("appdev · github.com/acme/api");
+    publish("cyd", false);
+    await render("cyd");
+    expect(host.textContent).toContain("appdev · No remote connected");
+    expect([...host.querySelectorAll("button")].map((node) => node.textContent)).toEqual([
+      "Connect repository",
+    ]);
+    await render("eva");
+    expect(host.textContent).toContain("appdev · github.com/acme/api");
+    expect([...host.querySelectorAll("button")].map((node) => node.textContent)).toEqual([
+      "Replace token",
+      "Review address",
+      "Disconnect",
+    ]);
+  } finally {
+    await act(async () => root.unmount());
+    registry.dispose();
+    vi.unstubAllGlobals();
+  }
+});

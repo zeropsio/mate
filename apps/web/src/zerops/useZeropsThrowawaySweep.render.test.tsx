@@ -120,7 +120,7 @@ async function again() {
 }
 
 describe("inventory throwaway cleanup", () => {
-  it.each(["failed", "unknown"] as const)(
+  it.each(["failed"] as const)(
     "shows an immediate %s deletion outcome and deletes its exact fresh target only on again",
     async (state) => {
       await mount();
@@ -139,7 +139,9 @@ describe("inventory throwaway cleanup", () => {
       });
       expect(mocks.read).not.toHaveBeenCalled();
       expect(mocks.remove).not.toHaveBeenCalled();
-      mocks.remove.mockRejectedValueOnce(new Error("Delete failed again."));
+      mocks.remove.mockRejectedValueOnce(
+        new ZeropsApiError("Delete failed again.", "forbidden", 403),
+      );
       await again();
       expect(mocks.remove).toHaveBeenCalledTimes(1);
       expect(mocks.remove).toHaveBeenCalledWith({ clientId: "org-1", tokenId: "fresh" });
@@ -155,6 +157,59 @@ describe("inventory throwaway cleanup", () => {
       expect(mocks.debt!.failedAt("org-1")).toBeNull();
     },
   );
+
+  // The owner, 2026-10-14: a delete that never reached Zerops is a network blip, not the
+  // person's to fix; its tokens carry no rights. It asks the person only once its tries are spent.
+  it("a deletion whose outcome is unknown tries again by itself, quietly, and speaks once its tries are spent", async () => {
+    await mount();
+    mocks.remove.mockRejectedValue(new Error("Failed to fetch"));
+    await act(async () => {
+      mocks.debt!.owe("org-1", NOW, "mate-door:fresh:n1");
+      mocks.debt!.failCleanup("org-1", NOW, {
+        attempt: "mate-door:fresh:n1",
+        tokenId: "fresh",
+        state: "unknown",
+        reason: "Network error contacting Zerops: Failed to fetch",
+      });
+    });
+    expect(shown.state).toBe("waiting");
+    for (const [wait, tries] of [
+      [30_000, 1],
+      [120_000, 2],
+      [600_000, 3],
+    ] as const) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(wait);
+      });
+      expect(mocks.remove).toHaveBeenCalledTimes(tries);
+    }
+    expect(mocks.remove).toHaveBeenLastCalledWith({ clientId: "org-1", tokenId: "fresh" });
+    expect(shown).toMatchObject({ state: "unknown", failure: "Failed to fetch" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+    });
+    expect(mocks.remove).toHaveBeenCalledTimes(3);
+  });
+
+  it("a deletion whose outcome is unknown settles by itself once Zerops answers", async () => {
+    await mount();
+    mocks.remove.mockRejectedValueOnce(new Error("Failed to fetch"));
+    await act(async () => {
+      mocks.debt!.owe("org-1", NOW, "mate-door:fresh:n1");
+      mocks.debt!.failCleanup("org-1", NOW, {
+        attempt: "mate-door:fresh:n1",
+        tokenId: "fresh",
+        state: "unknown",
+        reason: "Network error contacting Zerops: Failed to fetch",
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000 + 120_000);
+    });
+    expect(mocks.remove).toHaveBeenCalledTimes(2);
+    expect(shown.state).toBe("done");
+    expect(mocks.debt!.failedAt("org-1")).toBeNull();
+  });
 
   it("keeps a manual cleanup running until all of its exact targets have ended", async () => {
     for (const tokenId of ["first", "second"]) {

@@ -98,6 +98,7 @@ it("A chosen Git target survives the recipe arriving after first paint", () => {
     recipe: "reading" as const,
     tierServices: [],
     git: {
+      takenNames: [],
       repos: undefined,
       offered: { add: true, connect: true, replace: true },
       setup: { connect: vi.fn(), preview: vi.fn(), add: vi.fn() },

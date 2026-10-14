@@ -14,12 +14,15 @@ import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { readEnvironmentSource } from "./environmentNavigation.ts";
-// Current-Core fixtures include 0054 rollout provenance.
+// Current-Core fixtures include rollout provenance and the independent personal Chief schema.
 vi.mock("./migrationFiles.ts", async (original) => {
   const module = await original<typeof import("./migrationFiles.ts")>();
   return {
     ...module,
-    treeMigrations: () => module.treeMigrations().filter((file) => file.name < "0055_"),
+    treeMigrations: () =>
+      module
+        .treeMigrations()
+        .filter((file) => file.name < "0055_" || file.name === "0056_chief_application.sql"),
   };
 });
 const NAME = "0052_environment_identity.sql";

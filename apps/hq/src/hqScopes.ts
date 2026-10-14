@@ -1,4 +1,4 @@
-import { Remotes, remoteForWire } from "./repoRemotes.ts";
+import { Remotes } from "./repoRemotes.ts";
 import { gitTargetValues } from "./gitTargetReceipts.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- scope incarnations are unique to this Core process.
 import * as NodeCrypto from "node:crypto";
@@ -54,7 +54,7 @@ import { Roles, type OrgView } from "./roles.ts";
 import { makeSourceFence } from "./sourceFence.ts";
 import { makeScopeJournal } from "./scopeJournal.ts";
 import { Structure, type StructureSource, type StructureRead } from "./structure.ts";
-import { CHIEF_TAG, chiefOfPerson } from "./chief.ts";
+import { chiefOfPerson } from "./chiefOwnership.ts";
 
 const isZeropsRefused = Schema.is(ZeropsRefused);
 
@@ -496,17 +496,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 .map((project) => project.projectId),
             );
             const listed = [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)];
-            // Whose Chief each Chief project is: the viewer's own, or another person's. Read only
-            // while the org holds a project tagged a Chief's, so an org without one pays nothing.
-            const chiefOwners = new Map(
-              current.facts.projects.some((project) => project.tags.includes(CHIEF_TAG))
-                ? (yield* sql<{ readonly project_id: string; readonly user_id: string }>`
-                    SELECT project_id, user_id FROM hq_chief
-                    WHERE org_id = ${current.facts.orgId} AND revoked_at IS NULL`).map(
-                    (row) => [row.project_id, row.user_id] as const,
-                  )
-                : [],
-            );
+            const chiefOwners = current.chiefOwners;
             const signersFor = (projectId: string) => {
               const signedInNow: Record<string, string> = {};
               const everSignedIn: Record<string, string> = {};
@@ -552,18 +542,22 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 observable.some((project) => project.projectId === projectId) &&
                 all.get(projectId)?.overview?.identity.runsWithoutSignIn === true;
               const mate = listed.find((project) => project.projectId === projectId)?.mate;
-              const ownerUserId = mateOwner({
-                facts: current.facts,
-                projectId,
-                mate: observable.some((project) => project.projectId === projectId)
-                  ? mate
-                  : undefined,
-                overview: observable.some((project) => project.projectId === projectId)
-                  ? all.get(projectId)?.overview
-                  : undefined,
-              });
+              const ownerUserId =
+                chiefOwners.get(projectId) ??
+                mateOwner({
+                  facts: current.facts,
+                  projectId,
+                  mate: observable.some((project) => project.projectId === projectId)
+                    ? mate
+                    : undefined,
+                  overview: observable.some((project) => project.projectId === projectId)
+                    ? all.get(projectId)?.overview
+                    : undefined,
+                });
               const chiefProjectId =
-                chiefOfPerson(current.facts, ownerUserId, chiefOwners)?.projectId ?? null;
+                ownerUserId === entry.userId
+                  ? (chiefOfPerson(current.facts, ownerUserId, chiefOwners)?.projectId ?? null)
+                  : null;
               const waitsOn =
                 signedInNow["claude-code"] ??
                 signedInNow.codex ??
@@ -575,13 +569,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 waitsOnViewer: waitsOn === entry.userId,
                 mayWrite: observable.some((project) => project.projectId === projectId),
                 mine: ownerUserId === entry.userId,
-                ...(chiefOwners.has(projectId)
-                  ? {
-                      chief:
-                        chiefOwners.get(projectId) === entry.userId
-                          ? ("mine" as const)
-                          : ("another" as const),
-                    }
+                ...(chiefProjectId === projectId && chiefOwners.get(projectId) === entry.userId
+                  ? { chief: "mine" as const }
                   : {}),
                 unseen:
                   attention == null
@@ -717,22 +706,14 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                       GitError: () => Effect.succeed([]),
                     }),
                   );
-                  const repos = yield* changes.listRepos(entry.userId, scope.appId);
-                  const withRemotes = Option.isSome(remotes)
-                    ? yield* Effect.forEach(repos, (repo) =>
-                        Effect.map(
-                          remotes.value.get({ appId: scope.appId, repo: repo.name }),
-                          (remote) =>
-                            remote === undefined
-                              ? repo
-                              : { ...repo, remote: remoteForWire(remote) },
-                        ),
-                      )
-                    : repos;
+                  const repos = yield* (Option.isSome(remotes) ? remotes.value : changes).listRepos(
+                    entry.userId,
+                    scope.appId,
+                  );
                   data = [
                     ...(Option.isSome(remotes) ? yield* gitTargetValues(sql, scope.appId) : []),
                     { key: "releases", value: yield* releases.list(entry.userId, scope.appId) },
-                    { key: "repos", value: withRemotes },
+                    { key: "repos", value: repos },
                     ...mate,
                     {
                       key: "recipe:stage",

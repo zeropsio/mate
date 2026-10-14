@@ -1,12 +1,12 @@
 import { createElement } from "react";
-import { useHeldZeropsCandidates } from "./useZeropsCandidates";
+import { useHeldZeropsDetailCandidates } from "./useZeropsCandidates";
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 import { useRecoveryCommand, useRecoveryFeedback, RecoveryItems } from "./recoveryOutcomes";
 
 /** The same admitted platform operations used by the menu, from the disconnected Mate's notice. */
 export function useMateRecoveryAction(projectId: string | null) {
-  const rows = useHeldZeropsCandidates();
+  const rows = useHeldZeropsDetailCandidates();
   const viewer = useZeropsSessionOptional()?.activeOrganization;
   const candidate = rows.find((row) => row.project.id === projectId);
   const role =
@@ -22,7 +22,7 @@ export function useMateRecoveryAction(projectId: string | null) {
     role === "READ_ONLY" ||
     role === "NO_ACCESS"
       ? undefined
-      : async (action: "start" | "restart") => {
+      : async (action: "start" | "restart" | "redeploy") => {
           if (candidate.service === undefined) return;
           await command(
             {

@@ -140,11 +140,6 @@ const services = (options: CoreOptions) => {
     observationLayer,
     personGitCredentialsLayer,
     remotes,
-    structureLayer({
-      hqProjectId: options.hqProjectId,
-      credential: options.credential,
-      reconcileEvery: options.reconcileEvery ?? Duration.seconds(60),
-    }),
     doorLayer({ hqProjectId: options.hqProjectId }),
     mateCredentialsLayer({ credential: options.credential }),
     proposalDecisionsLayer.pipe(
@@ -169,6 +164,13 @@ const services = (options: CoreOptions) => {
     ),
   )
     .pipe(
+      Layer.provideMerge(
+        structureLayer({
+          hqProjectId: options.hqProjectId,
+          credential: options.credential,
+          reconcileEvery: options.reconcileEvery ?? Duration.seconds(60),
+        }),
+      ),
       Layer.provideMerge(changesLayer),
       Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),
       Layer.provideMerge(usageLedgerLayer),

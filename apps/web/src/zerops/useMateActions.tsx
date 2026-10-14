@@ -67,6 +67,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { MateDeployConfirmation } from "./MateDeployConfirmation";
+import { useMateComingOf } from "./useMenuMateReadings";
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
 import type { HqMoveTo } from "@t3tools/shared/hqOffers";
 import { useMateOffers, useOrgOffers } from "./useHqOffers";
@@ -122,7 +124,7 @@ import { useOpenMate } from "./useOpenMate";
 import { useProjectOrderOptions } from "./projectOrderPreference";
 import {
   useTakenBotNames,
-  useZeropsCandidates,
+  useZeropsDetailCandidates,
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
 import { finishSetupContainer } from "./finishSetup.logic";
@@ -159,6 +161,7 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
   | { readonly kind: "restart"; readonly candidate: ZeropsCandidatePresentation }
+  | { readonly kind: "redeploy"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "rename"; readonly candidate: ZeropsCandidatePresentation }
   | {
       readonly kind: "face";
@@ -277,8 +280,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const atomRegistry = useContext(RegistryContext);
-  const { listing, refresh } = useZeropsCandidates();
+  const { listing, refresh } = useZeropsDetailCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
+  const comingOf = useMateComingOf(candidates);
   const router = useRouter();
   const openMate = useOpenMate();
   const { linkTarget } = useEnvironmentLinks();
@@ -525,13 +529,14 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
       return {
         candidate,
+        coming: comingOf(candidate),
         health: undefined,
         waiting: false,
         can: mateRowCan(mateOffersOf(candidate.project.id)),
         ...(visibility === undefined ? {} : { visibility }),
       };
     },
-    [mateOffersOf, viewer],
+    [comingOf, mateOffersOf, viewer],
   );
 
   const start = useCallback(
@@ -1311,6 +1316,14 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const serverVersion = serverVersions.get(candidate.key);
       const busy = busyKey === candidate.key;
       const quick: Array<ZeropsMenuEntry> = [];
+      if (rowAction.kind === "redeploy") {
+        quick.push({
+          id: "redeploy",
+          label: rowAction.label,
+          disabled: busy,
+          onSelect: () => setDialog({ kind: "redeploy", candidate }),
+        });
+      }
       if (rowAction.kind === "start") {
         quick.push({
           id: "start",
@@ -1491,6 +1504,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   }, [setDialog]);
   const dialogs = (
     <>
+      {dialog?.kind === "redeploy" ? (
+        <MateDeployConfirmation candidate={dialog.candidate} onClose={close} />
+      ) : null}
       {dialog?.kind === "restart" ? (
         <RestartMateConfirmation
           projectId={dialog.candidate.project.id}

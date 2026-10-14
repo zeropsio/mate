@@ -465,11 +465,37 @@ describe("repository credential custody", () => {
               })
               .pipe(Effect.flip);
             assert.strictEqual(refused.reason, "remote_taken");
+            assert.strictEqual("applicationName" in refused && refused.applicationName, APP);
+            assert.strictEqual("repository" in refused && refused.repository, path);
             assert.deepStrictEqual(yield* git.list(OTHER), []);
             assert.deepStrictEqual(
               yield* sql`SELECT name FROM hq_repo WHERE app_id::text=${OTHER}`,
               [],
             );
+          }),
+        ),
+    );
+    it.effect(
+      "An occupied repository hides its application when the person's read access is no longer verified",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes, state, sql } = yield* fixture;
+            yield* remotes.connect("custodian", input);
+            yield* sql`DELETE FROM hq_repo WHERE app_id::text=${OTHER}`;
+            state.afterRules = () => {
+              state.nextRoles = Effect.sync(() => {
+                state.nextRoles = Effect.sync(() => {
+                  state.members = [member("custodian", "NO_ACCESS")];
+                });
+              });
+            };
+            const refused = yield* remotes
+              .connect("custodian", { ...input, appId: OTHER, repo: "fresh" })
+              .pipe(Effect.flip);
+            assert.strictEqual(refused.reason, "remote_taken");
+            assert.isUndefined("applicationName" in refused ? refused.applicationName : undefined);
+            assert.strictEqual("repository" in refused && refused.repository, "krls2020/tst123");
           }),
         ),
     );
@@ -773,6 +799,28 @@ describe("repository credential custody", () => {
               "repository_changed",
             );
             assert.deepStrictEqual(yield* sql`SELECT * FROM hq_repo_remote`, stable);
+          }),
+        ),
+    );
+    it.effect(
+      "Repository lists keep connections with their application and show a completed disconnect",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes } = yield* fixture;
+            yield* remotes.connect("custodian", input);
+            const connected = yield* remotes.listRepos("custodian", APP);
+            const remote = connected.find((repo) => repo.name === "web")?.remote;
+            assert.strictEqual(remote?.url, "https://github.com/krls2020/tst123.git");
+            assert.strictEqual(remote?.repositoryId, "1416745513");
+            assert.strictEqual(remote?.keptBy, "custodian");
+            assert.strictEqual(remote?.invalidSince, null);
+            assert.strictEqual(connected.find((repo) => repo.name === "worker")?.remote, null);
+            const other = yield* remotes.listRepos("custodian", OTHER);
+            assert.strictEqual(other.find((repo) => repo.name === "web")?.remote, null);
+            yield* remotes.disconnect("custodian", REF);
+            const disconnected = yield* remotes.listRepos("custodian", APP);
+            assert.strictEqual(disconnected.find((repo) => repo.name === "web")?.remote, null);
           }),
         ),
     );

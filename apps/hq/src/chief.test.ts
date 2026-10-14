@@ -8,8 +8,9 @@ import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 
 import { mateInApp, rowsWhere } from "../test/harness/mates.ts";
-import { sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
+import { sessionFor, startCore, untilHealth, ticketFor } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { scopeReset, nextScopeValue } from "../test/harness/scopes.ts";
 import type { FakeWorld } from "../test/harness/zeropsFake.ts";
 import { CHIEF_LIMIT } from "./rateLimit.ts";
 
@@ -210,6 +211,86 @@ describe("the Chief", () => {
         }),
     );
 
+    it.effect.each(["deleted", "deleting", "untagged"] as const)(
+      "a person's deleted or untagged Chief is absent from their current record: %s",
+      (state) =>
+        Effect.gen(function* () {
+          const { core, call, dev } = yield* running;
+          yield* call("POST", "/api/chief", { session: dev, body: { projectId: "P_CHIEF" } });
+          const at = core.fake.projects.findIndex((project) => project.id === "P_CHIEF");
+          if (state === "deleted") core.fake.projects.splice(at, 1);
+          else
+            core.fake.projects.splice(at, 1, {
+              ...core.fake.projects[at]!,
+              ...(state === "deleting" ? { status: "DELETING" } : { tags: [] }),
+            });
+          const answer = yield* call("GET", "/api/chief", { session: dev }).pipe(
+            Effect.filterOrFail((answer) => (answer.body as { chief: unknown }).chief === null),
+            Effect.retry(Schedule.spaced(Duration.millis(50))),
+            Effect.timeout(Duration.seconds(5)),
+          );
+          assert.deepStrictEqual(answer.body, { chief: null });
+        }),
+    );
+
+    it.effect(
+      "registering my Chief publishes it to my second device while REST and other people's devices withhold it",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* startCore(true, {
+            reconcileEvery: Duration.infinity,
+            streamRecheck: Duration.infinity,
+          });
+          seedChiefs(core.fake);
+          yield* untilHealth(core.call, "active");
+          const owner = yield* sessionFor(core.call, "door-owner");
+          const dev = yield* sessionFor(core.call, "door-dev");
+          yield* mateInApp(core.call, core.fake, owner, "P_CHIEF", "Chief · Dev");
+          const mine = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, dev)}`,
+          );
+          const others = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, owner)}`,
+          );
+          const nav = { kind: "navigation" } as const;
+          for (const socket of [mine, others])
+            assert.strictEqual(
+              (yield* scopeReset(socket, nav)).some((value) => value.key === "project:P_CHIEF"),
+              false,
+            );
+          assert.strictEqual(
+            (yield* core.call("POST", "/api/chief", {
+              session: dev,
+              body: { projectId: "P_CHIEF" },
+            })).status,
+            200,
+          );
+          const [association] =
+            yield* core.sql`SELECT chief.app_id::text AS recorded, placement.app_id::text AS current
+            FROM hq_chief chief JOIN hq_app_project placement USING (project_id)
+            WHERE chief.project_id = 'P_CHIEF' AND chief.revoked_at IS NULL`;
+          assert.strictEqual(association!.recorded, association!.current);
+          const own = yield* nextScopeValue<{
+            person: { chief: string; chiefProjectId: string; ownerUserId: string };
+          }>(mine, nav, "project:P_CHIEF");
+          assert.strictEqual(own.person.chief, "mine");
+          assert.strictEqual(own.person.chiefProjectId, "P_CHIEF");
+          assert.strictEqual(own.person.ownerUserId, "dev");
+          assert.strictEqual(
+            (yield* scopeReset(others, nav)).some((value) => value.key === "project:P_CHIEF"),
+            false,
+          );
+          assert.notInclude(
+            JSON.stringify((yield* core.call("GET", "/api/structure", { session: owner })).body),
+            "P_CHIEF",
+          );
+          assert.include(
+            JSON.stringify((yield* core.call("GET", "/api/structure", { session: dev })).body),
+            "P_CHIEF",
+          );
+        }),
+    );
+
     /** `dev`'s Chief registered: its credential's header, and a call through the proxy. */
     const withChief = Effect.gen(function* () {
       const context = yield* running;
@@ -226,6 +307,36 @@ describe("the Chief", () => {
         });
       return { ...context, credential, proxy };
     });
+
+    it.effect(
+      "a Chief's proxy withholds another person's Chief even when platform project roles grant access",
+      () =>
+        Effect.gen(function* () {
+          const { proxy, call, owner, upstream } = yield* withChief;
+          assert.strictEqual(
+            (yield* call("POST", "/api/chief", {
+              session: owner,
+              body: { projectId: "P_CHIEF_2" },
+            })).status,
+            200,
+          );
+          upstream.answer = () => ({
+            status: 200,
+            body: JSON.stringify({
+              items: [
+                { id: "P_CHIEF", clientId: "ORG" },
+                { id: "P_CHIEF_2", clientId: "ORG" },
+              ],
+              totalHits: 2,
+            }),
+          });
+          assert.deepStrictEqual((yield* proxy("POST", "project/search", {})).body, {
+            items: [{ id: "P_CHIEF", clientId: "ORG" }],
+            totalHits: 1,
+          });
+          assert.strictEqual((yield* proxy("GET", "project/P_CHIEF_2/log")).status, 403);
+        }),
+    );
 
     it.effect("the proxy refuses a write's method and any read zcp's org mode does not make", () =>
       Effect.gen(function* () {

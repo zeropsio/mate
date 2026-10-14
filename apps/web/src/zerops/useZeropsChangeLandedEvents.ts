@@ -28,7 +28,7 @@ import { useMemo } from "react";
 
 import { useAppsChanges, useHqAddress } from "./projectFlows";
 import { useHqAppDetailHold } from "./useHqAppDetail";
-import { useHeldZeropsCandidates } from "./useZeropsCandidates";
+import { useHeldZeropsDetailCandidates } from "./useZeropsCandidates";
 
 const NONE: ReadonlyArray<ChangeLandedEvent> = [];
 
@@ -66,7 +66,7 @@ export function changeLandedEventsFor(
  * drawn: its landings are that detail's, and nothing else holds it for a conversation.
  */
 export function useZeropsMateAppDetailHold(environmentId: string | null | undefined): void {
-  const rows = useHeldZeropsCandidates();
+  const rows = useHeldZeropsDetailCandidates();
   const mate =
     environmentId === null || environmentId === undefined
       ? undefined
@@ -80,7 +80,7 @@ const NO_APPS: ReadonlyArray<string> = [];
 export function useZeropsChangeLandedEvents(
   environmentId: string | null | undefined,
 ): ReadonlyArray<ChangeLandedEvent> {
-  const rows = useHeldZeropsCandidates();
+  const rows = useHeldZeropsDetailCandidates();
   const mate = rows.find((row) => String(row.environmentId) === environmentId);
   // Only the Mate's own application's changes are read, while its conversation is drawn.
   const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;

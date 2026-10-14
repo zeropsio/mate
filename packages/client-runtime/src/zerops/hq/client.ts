@@ -1,3 +1,4 @@
+import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
@@ -456,6 +457,9 @@ function said(text: string): {
   readonly code?: unknown;
   readonly reason?: unknown;
   readonly message?: unknown;
+  readonly repository?: unknown;
+  readonly applicationName?: unknown;
+  readonly environments?: unknown;
 } {
   try {
     const body: unknown = JSON.parse(text);
@@ -468,7 +472,9 @@ function said(text: string): {
 /** HQ's code for a write refused because Zerops did not answer its roles: nothing was written. */
 const WROTE_NOTHING_ZEROPS = "zerops_unanswered";
 
-async function errorOf(response: Response): Promise<HqError> {
+const isRemoteRefusal = Schema.is(HqRemoteRefusal);
+
+async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
   const body = said(await response.text());
   const code = typeof body.code === "string" ? body.code : `http_${response.status}`;
   // ProbeRefused owns the host-specific remedy; other refusals keep the client's wording.
@@ -494,7 +500,14 @@ async function errorOf(response: Response): Promise<HqError> {
     code,
     reason,
     status: response.status,
-    message: probeMessage ?? hqRefusalWords({ code, reason }),
+    message:
+      probeMessage ??
+      hqRefusalWords({
+        code,
+        reason,
+        gitSetup,
+        ...(isRemoteRefusal(body) ? { remote: body } : {}),
+      }),
   });
 }
 
@@ -503,9 +516,9 @@ async function errorOf(response: Response): Promise<HqError> {
  * for a Core that does not lead (`not_active`), and one refused because Zerops did not answer its
  * roles (`zerops_unanswered`): neither writes anything.
  */
-async function answered(response: Response, write: boolean): Promise<Response> {
+async function answered(response: Response, write: boolean, gitSetup = false): Promise<Response> {
   if (response.ok) return response;
-  const error = await errorOf(response);
+  const error = await errorOf(response, gitSetup);
   if (
     write &&
     response.status >= 500 &&
@@ -541,7 +554,7 @@ async function send(
       message: "HQ could not be reached.",
     });
   }
-  return answered(response, write);
+  return answered(response, write, new URL(url).pathname.startsWith("/api/git-targets/"));
 }
 
 const json = async <T>(response: Response): Promise<T> => (await response.json()) as T;

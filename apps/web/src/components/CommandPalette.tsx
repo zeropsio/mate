@@ -97,7 +97,12 @@ import {
   waitForProject,
 } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
-import { hqMatesAtom, hqNavigationAtom } from "../state/zerops";
+import {
+  shownHqListedMatesAtom,
+  shownCanonicalHqListNavigationAtom,
+  shownHqMateDirectoryAtom,
+  isListedMateEnvironment,
+} from "@t3tools/client-runtime/data";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
@@ -170,7 +175,6 @@ import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useHqGate } from "../zerops/hqGate";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { candidateListingAtom } from "../zerops/useZeropsCandidates";
-import { useOthersChiefs } from "../zerops/ownChief";
 import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
 import {
   primaryServerKeybindingsAtom,
@@ -436,15 +440,6 @@ function overlayModeForCommand(command: string | null): SearchOverlayMode | null
   return command in OVERLAY_MODE_BY_COMMAND
     ? OVERLAY_MODE_BY_COMMAND[command as keyof typeof OVERLAY_MODE_BY_COMMAND]
     : null;
-}
-
-/** HQ's Mates but for other people's Chiefs, which the jump box finds nowhere. */
-function withoutOthersChiefs<T>(
-  mates: ReadonlyMap<string, T> | null,
-  othersChiefs: ReadonlySet<string>,
-): ReadonlyMap<string, T> | null {
-  if (mates === null || !(othersChiefs.size > 0)) return mates;
-  return new Map([...mates].filter(([projectId]) => !othersChiefs.has(projectId)));
 }
 
 export function CommandPalette({ children }: { children: ReactNode }) {
@@ -747,11 +742,26 @@ export function OpenCommandPaletteDialog(props: {
   const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
   });
-  const { environments } = useEnvironments();
+  const { environments: allEnvironments } = useEnvironments();
+  const mateDirectory = useAtomValue(shownHqMateDirectoryAtom);
+  const environments = useMemo(
+    () =>
+      allEnvironments.filter((environment) =>
+        isListedMateEnvironment(mateDirectory, environment.environmentId),
+      ),
+    [allEnvironments, mateDirectory],
+  );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
-  const projects = useProjects();
+  const allProjects = useProjects();
+  const projects = useMemo(
+    () =>
+      allProjects.filter((project) =>
+        isListedMateEnvironment(mateDirectory, project.environmentId),
+      ),
+    [allProjects, mateDirectory],
+  );
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threadShells = useThreadShells();
   // Unopened Mates' chats come from HQ, independently of this tab's socket shells.
@@ -768,8 +778,13 @@ export function OpenCommandPaletteDialog(props: {
   const { linkable } = useEnvironmentLinks();
   const threads = useMemo(
     () =>
-      threadShells.filter((thread) => linkable(thread.environmentId) && thread.crew === undefined),
-    [linkable, threadShells],
+      threadShells.filter(
+        (thread) =>
+          linkable(thread.environmentId) &&
+          thread.crew === undefined &&
+          isListedMateEnvironment(mateDirectory, thread.environmentId),
+      ),
+    [linkable, threadShells, mateDirectory],
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const {
@@ -1239,11 +1254,9 @@ export function OpenCommandPaletteDialog(props: {
     ],
   );
 
-  const hqMates = useAtomValue(hqMatesAtom);
-  // Another person's Chief is found nowhere, its chats neither (`ownChief.ts`).
-  const othersChiefs = useOthersChiefs();
+  const hqMates = useAtomValue(shownHqListedMatesAtom);
   const candidateListing = useAtomValue(candidateListingAtom);
-  const hqStructure = useAtomValue(hqNavigationAtom);
+  const hqStructure = useAtomValue(shownCanonicalHqListNavigationAtom);
   const mateNames = useMemo(
     () => hqChatMateNames(heldCandidates(candidateListing).rows, hqStructure?.structure ?? null),
     [candidateListing, hqStructure],
@@ -1261,8 +1274,8 @@ export function OpenCommandPaletteDialog(props: {
         .map((environment) => environment.environmentId),
     );
     return {
-      mates: withoutOthersChiefs(hqMates?.mates ?? null, othersChiefs),
-      current: hqMates?.current === true,
+      mates: new Map(Object.entries(hqMates.mates)),
+      current: hqMates.live,
       connected: (environmentId) => connected.has(environmentId),
       linkable,
       lastVisitedAt: (environmentId, threadId) =>
@@ -1271,7 +1284,7 @@ export function OpenCommandPaletteDialog(props: {
       mateApp: (projectId) => mateApps.get(projectId),
       renderStatus: (status) => <ThreadRowResolvedStatus status={status} />,
     };
-  }, [environments, hqMates, othersChiefs, mateNames, mateApps, linkable, threadLastVisitedAtById]);
+  }, [environments, hqMates, mateNames, mateApps, linkable, threadLastVisitedAtById]);
   const allThreadItems = useMemo(
     () =>
       buildThreadActionItems({

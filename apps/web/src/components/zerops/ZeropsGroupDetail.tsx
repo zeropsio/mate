@@ -1052,6 +1052,7 @@ export function ZeropsGroupPane({
 
       <Section title="Repositories">
         <GitRemoteSettings
+          appId={groupId}
           repos={repos}
           appName={name ?? "Application"}
           actions={gitActions}

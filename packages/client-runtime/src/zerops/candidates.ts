@@ -35,6 +35,8 @@ export interface ZeropsCandidateService {
   readonly id: string;
   readonly name: string;
   readonly status: string;
+  /** Omitted means unread; null is the platform's affirmative absence of a deployment. */
+  readonly activeAppVersion?: ZeropsService["activeAppVersion"];
   /** When the platform made it: a young one may still be in its press's hands. */
   readonly created?: string;
 }
@@ -431,6 +433,9 @@ export function deriveZeropsCandidates(
       id: service.id,
       name: service.name,
       status: service.status,
+      ...(service.activeAppVersion === undefined
+        ? {}
+        : { activeAppVersion: service.activeAppVersion }),
       ...(service.created === undefined ? {} : { created: service.created }),
     };
     if (service.status !== "ACTIVE") {
