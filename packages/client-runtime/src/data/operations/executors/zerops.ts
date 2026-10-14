@@ -373,6 +373,8 @@ export function makeZeropsExecutor(input: {
               return people.invite(requestId, intent);
             case "set-app-access":
               return people.setAccess(requestId, intent);
+            case "set-project-access":
+              return people.setProjectAccess(requestId, intent);
             default:
               // HQ's own writes go to HQ's executor; the coordinator never routes one here.
               return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));

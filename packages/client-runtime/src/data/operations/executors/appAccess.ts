@@ -1,6 +1,7 @@
 /**
  * Who works on an app, at Zerops (`operations/appAccess.ts`): an address checked, an invitation
- * with the app's grants on it, a member's access to the app changed, removed or withdrawn.
+ * with the app's grants on it, a member's access to the app changed, removed or withdrawn; and who
+ * reaches some projects, written on each person's own list.
  *
  * Zerops keeps no request ids, so a write whose answer was lost is proven only by reading what it
  * would have changed — the member list, the member's own grants — and never sent again; anything
@@ -14,6 +15,7 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import { planAppGrants, type ProjectGrantEntry } from "../../../zerops/appAccess.ts";
+import { planMemberProjectGrants } from "../../../zerops/projectAccess.ts";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
@@ -285,5 +287,43 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
       return receiptOf(requestId, intent.orgId, { membershipEnded });
     });
 
-  return { check, invite, setAccess };
+  const setProjectAccess = (requestId: string, intent: IntentOf<"set-project-access">) =>
+    Effect.gen(function* () {
+      const projects = [...new Set(intent.changes.map(({ projectId }) => projectId))];
+      const people = Map.groupBy(intent.changes, ({ clientUserId }) => clientUserId);
+      const members = yield* verb(() => platform.listOrganizationMembers(intent.orgId));
+      const found = [...people.keys()].map((id) => members.find((one) => one.id === id));
+      // Nobody is written while anyone named has gone: the change is judged as a whole.
+      if (found.some((one) => one === undefined))
+        return yield* Effect.fail<StreamFault>({
+          outcome: "definitive-refusal",
+          message: "They're no longer in this organization.",
+        });
+      let written = 0;
+      for (const member of found) {
+        if (member === undefined) continue;
+        const changes = people.get(member.id) ?? [];
+        const granted = yield* Effect.result(
+          Effect.mapError(
+            writeGrants(member.id, (current) =>
+              planMemberProjectGrants({ current, orgRole: member.roleCode, changes }),
+            ),
+            (fault) => inWords(fault, CHANGE),
+          ),
+        );
+        if (Result.isFailure(granted)) {
+          yield* Effect.promise(() => readBack(intent.orgId, projects));
+          return yield* Effect.fail(granted.failure);
+        }
+        if (!granted.success.written) {
+          yield* Effect.promise(() => readBack(intent.orgId, projects));
+          return unobservable("Check their access, then choose again");
+        }
+        written += 1;
+      }
+      yield* Effect.promise(() => readBack(intent.orgId, projects));
+      return receiptOf(requestId, intent.orgId, { written });
+    });
+
+  return { check, invite, setAccess, setProjectAccess };
 }

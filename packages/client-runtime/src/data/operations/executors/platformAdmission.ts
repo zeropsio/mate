@@ -39,11 +39,12 @@ export function admitPlatformOperation(input: {
     if (
       intent.kind === "check-invitee" ||
       intent.kind === "invite-member" ||
-      intent.kind === "set-app-access"
+      intent.kind === "set-app-access" ||
+      intent.kind === "set-project-access"
     ) {
       if (viewer.id !== intent.orgId || !capabilities().manageOrganization)
         return yield* refused(
-          intent.kind === "set-app-access"
+          intent.kind === "set-app-access" || intent.kind === "set-project-access"
             ? "Only an organization owner or admin can change who has access."
             : "Only an organization owner or admin can invite.",
         );

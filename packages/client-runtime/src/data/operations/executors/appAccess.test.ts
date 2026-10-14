@@ -444,3 +444,112 @@ describe("changing a member's access to an app", () => {
     }),
   );
 });
+
+describe("setting who reaches some projects", () => {
+  const set = (
+    org: ReturnType<typeof organization>,
+    changes: ReadonlyArray<{
+      clientUserId: string;
+      projectId: string;
+      roleCode: "ADMIN" | "READ_ONLY" | null;
+    }>,
+  ) => org.executor.setProjectAccess("r1", { kind: "set-project-access", orgId: ORG, changes });
+
+  it.effect("Each person's change is one write of their own list, their other projects kept", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-ada", "NO_ACCESS"), member("cu-bo", "BASIC_USER")], {
+        "cu-ada": [{ projectId: "p-far", roleCode: "OWNER" }],
+        "cu-bo": [{ projectId: "stage", roleCode: "READ_ONLY" }],
+      });
+      const receipt = yield* set(org, [
+        { clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" },
+        { clientUserId: "cu-ada", projectId: "prod", roleCode: "ADMIN" },
+        { clientUserId: "cu-bo", projectId: "stage", roleCode: null },
+      ]);
+      expect(org.grants).toEqual({
+        "cu-ada": [
+          { projectId: "p-far", roleCode: "OWNER" },
+          { projectId: "stage", roleCode: "ADMIN" },
+          { projectId: "prod", roleCode: "ADMIN" },
+        ],
+        "cu-bo": [],
+      });
+      expect(org.calls.filter((verb) => verb === "writeMemberProjectRoles")).toHaveLength(2);
+      // The member list and every project touched are read again before it reports done.
+      expect(org.readBack).toEqual([["stage", "prod"]]);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+
+  it.effect("A change someone already has writes nothing", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-ada", "READ_ONLY")]);
+      yield* set(org, [{ clientUserId: "cu-ada", projectId: "stage", roleCode: "READ_ONLY" }]);
+      expect(org.calls).not.toContain("writeMemberProjectRoles");
+    }),
+  );
+
+  it.effect("A project write whose answer was lost is proven by reading the list back", () =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-ada", "NO_ACCESS")],
+        {},
+        { writeMemberProjectRoles: "landed" },
+      );
+      const receipt = yield* set(org, [
+        { clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" },
+      ]);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+
+  it.effect("A lost project write the list doesn't show is the person's to check", () =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-ada", "NO_ACCESS")],
+        {},
+        { writeMemberProjectRoles: lost },
+      );
+      const answer = yield* set(org, [
+        { clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" },
+      ]);
+      expect(answer).toMatchObject({
+        unobservable: { nextActor: "person", nextAction: "Check their access, then choose again" },
+      });
+      expect(org.readBack).toEqual([["stage"]]);
+    }),
+  );
+
+  it.effect("Someone who left the organization is said so before anything is written", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-ada", "NO_ACCESS")]);
+      const answer = yield* Effect.result(
+        set(org, [
+          { clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" },
+          { clientUserId: "cu-gone", projectId: "stage", roleCode: "ADMIN" },
+        ]),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        message: "They're no longer in this organization.",
+      });
+      expect(org.calls).toEqual(["listOrganizationMembers"]);
+    }),
+  );
+
+  it.effect("Zerops refusing a project change says who may change access", () =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-ada", "NO_ACCESS")],
+        {},
+        { writeMemberProjectRoles: forbidden },
+      );
+      const answer = yield* Effect.result(
+        set(org, [{ clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" }]),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        message: "Only an organization owner or admin can change who has access.",
+      });
+      expect(org.readBack).toEqual([["stage"]]);
+    }),
+  );
+});

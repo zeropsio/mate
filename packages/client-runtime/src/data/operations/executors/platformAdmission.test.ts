@@ -56,6 +56,8 @@ describe("operation admission from the account store", () => {
     { kind: "set-app-access", orgRole: "ADMIN", allowed: true },
     { kind: "invite-member", orgRole: "BASIC_USER", allowed: false },
     { kind: "set-app-access", orgRole: "BASIC_USER", allowed: false },
+    { kind: "set-project-access", orgRole: "OWNER", allowed: true },
+    { kind: "set-project-access", orgRole: "BASIC_USER", allowed: false },
   ] as const)(
     "Only an organization owner or admin invites people or changes their access: $kind as $orgRole",
     (entry) =>
@@ -64,23 +66,29 @@ describe("operation admission from the account store", () => {
         const intent: OperationIntent =
           entry.kind === "check-invitee"
             ? { kind: entry.kind, orgId: "org", email: "eva@example.com" }
-            : entry.kind === "invite-member"
+            : entry.kind === "set-project-access"
               ? {
                   kind: entry.kind,
                   orgId: "org",
-                  email: "eva@example.com",
-                  invitee: { kind: "existing", userId: "u-eva" },
-                  level: "work",
-                  projects,
+                  changes: [{ clientUserId: "cu-eva", projectId: "p", roleCode: "ADMIN" }],
                 }
-              : {
-                  kind: entry.kind,
-                  orgId: "org",
-                  clientUserId: "cu-eva",
-                  change: "look",
-                  projects,
-                  owned: [],
-                };
+              : entry.kind === "invite-member"
+                ? {
+                    kind: entry.kind,
+                    orgId: "org",
+                    email: "eva@example.com",
+                    invitee: { kind: "existing", userId: "u-eva" },
+                    level: "work",
+                    projects,
+                  }
+                : {
+                    kind: entry.kind,
+                    orgId: "org",
+                    clientUserId: "cu-eva",
+                    change: "look",
+                    projects,
+                    owned: [],
+                  };
         const result = yield* Effect.result(
           admitPlatformOperation({
             intent,
