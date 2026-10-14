@@ -2137,6 +2137,30 @@ describe("ZeropsApiClient.adoptSession", () => {
   });
 });
 
+describe("ZeropsApiClient refresh refused", () => {
+  // The platform rotates both tokens on a refresh and refuses a spent refresh token with
+  // `400 refreshTokenInvalid`: the session is over, and the tab signs out instead of retrying.
+  it("ends the session when the refresh token was already spent", async () => {
+    const changes: Array<ZeropsSession | null> = [];
+    const stub = recordingFetch((request) =>
+      request.url.endsWith("/auth/refresh")
+        ? jsonResponse(400, { error: { code: "refreshTokenInvalid" } })
+        : jsonResponse(401, { error: { code: "unauthorized" } }),
+    );
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        changes.push(session);
+      },
+    });
+    client.restoreSession({ accessToken: "at-1", refreshToken: "rt-spent" });
+
+    await expect(client.fetchUser()).rejects.toMatchObject({ kind: "expired-session" });
+    expect(client.session).toBeNull();
+    expect(changes).toEqual([null]);
+  });
+});
+
 describe("ZeropsApiClient.revokeSession", () => {
   it("ends a device login's session at the platform with its own bearer", async () => {
     const stub = recordingFetch(() => jsonResponse(200, { success: true }));

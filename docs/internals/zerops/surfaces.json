@@ -384,6 +384,7 @@
         "apps/web/src/components/zerops/vault/VaultPanel.tsx",
         "apps/web/src/components/zerops/vault/VaultPanelContainer.tsx",
         "apps/web/src/components/zerops/vault/VaultRow.tsx",
+        "apps/web/src/components/zerops/vault/VaultStepUp.tsx",
         "apps/web/src/components/zerops/vault/StopVault.tsx"
       ],
       "entryPoints": [
@@ -967,6 +968,7 @@
       "components": [
         "apps/web/src/components/zerops/landing/ZeropsAccountControl.tsx",
         "apps/web/src/components/zerops/landing/ZeropsAppFailed.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsDeviceLoginWait.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHostedFrame.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHostedLanding.tsx",
@@ -1140,7 +1142,6 @@
         "apps/web/src/zerops/deletingMates.ts",
         "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
         "apps/web/src/zerops/agentActivity.ts",
-        "apps/web/src/zerops/turnstile.tsx",
         "packages/client-runtime/src/zerops/accountScope.ts",
         "packages/client-runtime/src/zerops/autoEnterProvisioning.ts",
         "packages/client-runtime/src/zerops/bots.ts",
@@ -1362,7 +1363,6 @@
         "packages/client-runtime/src/zerops/autoEnterProvisioning.test.ts",
         "packages/client-runtime/src/zerops/registrationHandoff.test.ts",
         "packages/client-runtime/src/zerops/containerHealth.test.ts",
-        "apps/web/src/zerops/turnstile.test.ts",
         "apps/web/src/zerops/useMateUpgradeRecovery.test.ts",
         "packages/client-runtime/src/data/projections/platformAccess.test.ts",
         "apps/web/src/zerops/useProjectTopology.test.ts",

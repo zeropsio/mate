@@ -619,6 +619,8 @@ function errorKindFor(status: number, code: string | null): ZeropsApiErrorKind {
   if (status === 403) return "forbidden";
   if (status === 404) return "not-found";
   if (status === 400) {
+    // A refresh token already spent or revoked: the session is over, whatever the status says.
+    if (code === "refreshTokenInvalid") return "expired-session";
     // The API answers a made-up id with `400 projectNotFound`, so "gone" and
     // "malformed" have to be separated by the code, not the status.
     return code && /notFound$/i.test(code) ? "not-found" : "invalid-input";
