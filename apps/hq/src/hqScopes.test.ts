@@ -103,7 +103,6 @@ const fixture = Effect.gen(function* () {
           {
             id: "P",
             target: { kind: "zerops" as const, projectId: "P" },
-            projectId: "P",
             tier: "stage" as const,
             name: "stage",
             sources: ["main"],
@@ -1358,14 +1357,17 @@ describe("revisioned HQ values", () => {
           const app = arrived.values.find((value) => value.key === "app:A")!.value as {
             environments: Array<{
               id: string;
-              projectId: string;
-              target: unknown;
+              target: { kind: "zerops"; projectId: string };
               jobs: Array<{ state: string }>;
             }>;
           };
           const environment = app.environments[0]!;
           assert.deepStrictEqual(
-            { id: environment.id, projectId: environment.projectId, target: environment.target },
+            {
+              id: environment.id,
+              projectId: environment.target.projectId,
+              target: environment.target,
+            },
             {
               id: "P",
               projectId: "P",
