@@ -505,7 +505,7 @@ jobs:
 
   test_packages:
     name: Test Packages
-    needs: prepare
+    needs: [prepare, changes]
     if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_packages') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -539,6 +539,7 @@ jobs:
         run: *full_dependencies
 
       - name: Ensure Electron runtime is installed
+        if: needs.changes.outputs.native_clients != 'false'
         run: vp run --filter @t3tools/desktop ensure:electron
 
       - name: Test
@@ -551,6 +552,7 @@ jobs:
 
       # Reuse Packages' Electron install for the complete Linux runtime smoke.
       - name: Build desktop pipeline
+        if: needs.changes.outputs.native_clients != 'false'
         env:
           VITE_HTTP_URL: ""
           VITE_WS_URL: ""
@@ -560,12 +562,15 @@ jobs:
           vp run build:desktop
 
       - name: Verify preload bundle output
+        if: needs.changes.outputs.native_clients != 'false'
         run: node apps/desktop/scripts/verify-preload-bundle.mjs
 
       - name: Stage desktop web bundle
+        if: needs.changes.outputs.native_clients != 'false'
         run: node scripts/stage-desktop-web.ts --skip-build
 
       - name: Diagnose Linux Electron runtime
+        if: needs.changes.outputs.native_clients != 'false'
         continue-on-error: true
         run: |
           electron_binary="$(cd apps/desktop && node -e 'process.stdout.write(require("electron"))')"
@@ -573,12 +578,13 @@ jobs:
           xvfb-run -a -s "-screen 0 1440x900x24" "$electron_binary" --version
 
       - name: Smoke test desktop
+        if: needs.changes.outputs.native_clients != 'false'
         run: |
           xvfb-run -a -s "-screen 0 1440x900x24" vp run --filter @t3tools/desktop smoke-test 2>&1 |
             tee "${{ runner.temp }}/desktop-smoke-log.txt"
 
       - name: Upload desktop smoke capture
-        if: always()
+        if: always() && needs.changes.outputs.native_clients != 'false'
         uses: actions/upload-artifact@v4
         with:
           name: desktop-smoke-capture
@@ -824,12 +830,16 @@ jobs:
     outputs:
       chat: ${{ steps.detect.outputs.chat }}
       resource_monitor: ${{ steps.detect.outputs.resource_monitor }}
+      native_clients: ${{ steps.detect.outputs.native_clients }}
     steps:
       - name: Checkout workspace manifest
         uses: actions/checkout@v6
         with:
           sparse-checkout: |
             /package.json
+            /apps/mobile/package.json
+            /apps/desktop/package.json
+            /packages/*/package.json
           sparse-checkout-cone-mode: false
 
       - name: Setup Node
@@ -846,7 +856,7 @@ jobs:
         run: |
           set -uo pipefail
 
-          areas=(chat resource_monitor)
+          areas=(chat resource_monitor native_clients)
 
           fail_open() {
             echo "$* Running every gated job."
@@ -906,6 +916,21 @@ jobs:
           # clients never import apps/server; they meet it over the contracts.
           shared='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|vite\.config\.ts|\.github/workflows/ci\.yml)$|^packages/(contracts|shared|client-runtime)/'
 
+          # Derive imported workspace paths from the apps' manifests. Renamed
+          # paths participate above, so removing an input also selects the jobs.
+          native_packages=$(node --input-type=module <<'NODE'
+          import { readFileSync, readdirSync } from 'node:fs';
+          const manifest = (path) => JSON.parse(readFileSync(`${path}/package.json`, 'utf8'));
+          const imports = new Set(['apps/mobile', 'apps/desktop'].flatMap((path) => {
+            const pkg = manifest(path);
+            return Object.keys({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.optionalDependencies });
+          }));
+          const paths = readdirSync('packages').filter((name) => imports.has(manifest(`packages/${name}`).name));
+          process.stdout.write(paths.map((name) => `^packages/${name}/`).join('|'));
+          NODE
+          ) || fail_open "Could not resolve native client dependencies."
+          gate native_clients "^apps/(mobile|desktop)/|${native_packages}"
+
           # The bundle feeds every scenario area, all of which run real HQ Core.
           gate chat "${shared}|^apps/(hq|server|web)/|^packages/(effect-codex-app-server|effect-acp)/|^scripts/(chat-gate|gate-changed|test-postgres)"
 
@@ -919,7 +944,7 @@ jobs:
   # Keep the required Release Smoke context; its commands run in Check's installed workspace.
   release_smoke:
     name: Release Smoke
-    needs: [prepare, check]
+    needs: [prepare, check, test_mobile, mobile_native_static_analysis]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'release_smoke') }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
@@ -930,12 +955,16 @@ jobs:
 
       - name: Require release smoke to pass
         if: needs.prepare.outputs.skip != 'true'
-        run: test "${{ needs.check.result }}" = success
+        run: |
+          test "${{ needs.check.result }}" = success
+          for result in "${{ needs.test_mobile.result }}" "${{ needs.mobile_native_static_analysis.result }}"; do
+            case "$result" in success|skipped) ;; *) exit 1 ;; esac
+          done
 
   test_mobile:
     name: Test Mobile
-    needs: prepare
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_mobile') }}
+    needs: [prepare, changes]
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_mobile') && needs.changes.outputs.native_clients != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -972,8 +1001,8 @@ jobs:
 
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
-    needs: prepare
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'mobile_native_static_analysis') }}
+    needs: [prepare, changes]
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'mobile_native_static_analysis') && needs.changes.outputs.native_clients != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
