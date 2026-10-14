@@ -25,23 +25,21 @@
  * own project with its own key, read once for the door and the signers too
  * (`ZeropsOrgRead`): the descriptor reports what it answered (S4).
  *
- * ## A failed read keeps people in, once
+ * ## A failed read keeps people in, for a bounded time
  *
  * A platform blip must not throw a room full of people out, and it must not
  * become a way to stay in either. A pass that cannot say changes nothing while
- * the last answer was read less than two intervals ago; past that, it ends
- * every Zerops session, because by then the server has been unable to say who
- * belongs here for two intervals running. HQ's relay already held for one
- * interval from its read, so a pass that cannot say once it lapsed ends them
- * at once. A changed answer lands within two intervals at worst, and the
- * interval is never longer than `MAX_ZEROPS_ROLE_RECHECK_SECONDS`
- * (`ZeropsEnvironment.ts`).
+ * the last answer still holds — `ACCESS_HOLDS` from when Zerops gave it, the
+ * same rule a scheduled turn follows (`ZeropsProjectAccess.ts`); past that, it
+ * ends every Zerops session. While Zerops answers, a changed answer lands
+ * within one interval of the newest answer that still named them
+ * (`DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS`, `ZeropsEnvironment.ts`).
  *
  * ## The day rule
  *
  * A session older than {@link ZeropsEnvironment.sessionMaxAge} ends whatever
  * the read said — including on a pass that could not read. It is not a
- * security window (role changes are caught in minutes); it is the promise that
+ * security window (role changes are caught within a minute); it is the promise that
  * nothing runs forever on one proof.
  *
  * @module ZeropsMembershipWatch
@@ -62,7 +60,7 @@ import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { ZeropsOrgRead } from "./ZeropsOrgRead.ts";
-import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { accessHolds, ACCESS_HOLDS, ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 
 /** The subject prefix every session the Zerops door mints carries. */
 export const ZEROPS_SUBJECT_PREFIX = "zerops-user:";
@@ -92,10 +90,9 @@ export interface MembershipRecheckPlan {
   readonly endSessions: ReadonlyArray<string>;
 }
 
-/** The last answer that said who the project lets in: when Zerops answered it, and whether HQ relayed it. */
+/** The last answer that said who the project lets in: when Zerops answered it. */
 export interface LastGoodRead {
   readonly atMs: number;
-  readonly relayed: boolean;
 }
 
 /**
@@ -109,18 +106,11 @@ export function planMembershipRecheck(input: {
   readonly maxSessionAgeMs: number;
   /** The last good answer before this pass. */
   readonly lastGood: LastGoodRead;
-  /** The re-check interval. */
-  readonly intervalMs: number;
 }): MembershipRecheckPlan {
-  // One failed pass is a blip and changes nothing. Two intervals without an
-  // answer means the server has not known who belongs here for that long, and
-  // guessing "still them" is the guess that keeps a removed person in. HQ's
-  // relay held for one of them already.
-  const unknownForMs = input.nowEpochMs - input.lastGood.atMs;
-  const blind =
-    !input.read.ok &&
-    (unknownForMs >= 2 * input.intervalMs ||
-      (input.lastGood.relayed && unknownForMs > input.intervalMs));
+  // A failed read is a blip while the last answer holds. Past that the server
+  // has not known who belongs here for too long, and guessing "still them" is
+  // the guess that keeps a removed person in.
+  const blind = !input.read.ok && !accessHolds(input.lastGood.atMs, input.nowEpochMs);
 
   const endSessions: Array<string> = [];
   for (const session of input.sessions) {
@@ -182,7 +172,7 @@ export const runMembershipRecheck = Effect.fn("ZeropsMembershipWatch.pass")(func
   // Nobody signed in: no answer is kept from anyone, and whoever signs in next is let in by the
   // door's own answer.
   if (sessions.length === 0) {
-    yield* Ref.set(input.lastGood, { atMs: now.epochMilliseconds, relayed: false });
+    yield* Ref.set(input.lastGood, { atMs: now.epochMilliseconds });
     return 0;
   }
 
@@ -209,10 +199,9 @@ export const runMembershipRecheck = Effect.fn("ZeropsMembershipWatch.pass")(func
     nowEpochMs: now.epochMilliseconds,
     maxSessionAgeMs: Duration.toMillis(input.environment.sessionMaxAge),
     lastGood,
-    intervalMs: Duration.toMillis(input.environment.roleRecheckInterval),
   });
   if (access.ok && access.readAtMs >= lastGood.atMs) {
-    yield* Ref.set(input.lastGood, { atMs: access.readAtMs, relayed: access.relayed });
+    yield* Ref.set(input.lastGood, { atMs: access.readAtMs });
   }
 
   for (const sessionId of plan.endSessions) {
@@ -226,13 +215,10 @@ export const runMembershipRecheck = Effect.fn("ZeropsMembershipWatch.pass")(func
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const environment = config.zerops;
-  // As if read one interval before start: the first pass that cannot say is the one tolerated,
-  // the next ends every session — the counter's bound from boot.
+  // As if Zerops last answered as long ago as an answer holds: the pass at start that cannot say
+  // is the one tolerated, the next ends every session.
   const lastGood = yield* Ref.make<LastGoodRead>({
-    atMs:
-      (yield* DateTime.now).epochMilliseconds -
-      (environment === undefined ? 0 : Duration.toMillis(environment.roleRecheckInterval)),
-    relayed: false,
+    atMs: (yield* DateTime.now).epochMilliseconds - Duration.toMillis(ACCESS_HOLDS),
   });
   const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
   const projectAccess = yield* ZeropsProjectAccess;
@@ -253,7 +239,7 @@ export const make = Effect.gen(function* () {
           Effect.provideService(ZeropsIdentityStatusModule.ZeropsIdentityStatus, identityStatus),
           Effect.provideService(ZeropsOrgRead, orgRead),
           // A pass that dies must not take the loop with it: the next one is
-          // minutes away and is the recovery.
+          // the recovery.
           Effect.catchCause(() => Effect.succeed(0)),
         );
 

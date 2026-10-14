@@ -30,21 +30,21 @@ export const ZEROPS_API_PATH_PREFIX = "/api/rest/public";
  *
  * A session minted at the throwaway door carries no credential of the caller's
  * to re-present, so nothing about it expires on its own. Instead the server
- * asks the platform on this interval — with its own key — and ends the
- * sessions whose answer changed. Five minutes is the window a removed
- * colleague keeps their screen for; the two extra reads it costs are the same
- * two the door already makes.
+ * asks the platform on this interval — with its own key, or HQ's relay while
+ * it holds (`ZeropsProjectAccess`) — and ends the sessions whose answer
+ * changed. While Zerops answers, a removed colleague keeps their screen at
+ * most one interval past the newest answer that still named them, and no
+ * answer is trusted longer than this interval: a minute at worst. The two
+ * reads a pass makes are the two the door already makes, cached across both
+ * (`ZeropsOrgRead`).
  */
-export const DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS = 300;
+export const DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS = 30;
 
 /**
  * The longest re-check interval any configuration gets.
  *
- * The membership watch ends a changed session within two intervals (one
- * failed pass is tolerated, the second ends every session), and the client
- * trusts exactly that bound when it keeps a connected Mate usable without the
- * platform's own answer. A larger configured value would stretch the window a
- * removed person keeps, so it is cut down to this.
+ * A configured interval stretches the window a removed person keeps their
+ * screen for, so it is cut down to this.
  */
 export const MAX_ZEROPS_ROLE_RECHECK_SECONDS = 300;
 

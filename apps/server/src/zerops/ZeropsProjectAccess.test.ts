@@ -114,7 +114,7 @@ const accessOver = (
     return { access, calls, keys };
   });
 
-// R6: HQ relays who the project lets in; a Mate trusts the relay at most five minutes from HQ's
+// R6: HQ relays who the project lets in; a Mate trusts the relay at most `RELAY_HOLDS` from HQ's
 // read of Zerops, and reads Zerops itself past that, or with no relay.
 describe("ZeropsProjectAccess", () => {
   it.effect("a Mate admits by today's rules while HQ has not classified it", () =>
@@ -168,14 +168,14 @@ describe("ZeropsProjectAccess", () => {
       const { access, calls } = yield* accessOver();
       yield* TestClock.adjust(Duration.minutes(10));
       const now = 10 * 60_000;
-      yield* access.relayed({ members: RELAYED, ageMs: 60_000 });
+      yield* access.relayed({ members: RELAYED, ageMs: 10_000 });
       assert.deepStrictEqual(yield* access.read, {
         ok: true,
         members: RELAYED,
-        readAtMs: now - 60_000,
+        readAtMs: now - 10_000,
         relayed: true,
       });
-      yield* TestClock.adjust(Duration.minutes(4));
+      yield* TestClock.adjust(Duration.seconds(20));
       assert.isTrue((yield* access.read).ok && (yield* access.relay).pipe(Option.isSome));
       assert.deepStrictEqual(calls, []);
     }),
@@ -185,7 +185,11 @@ describe("ZeropsProjectAccess", () => {
     Array.from(
       [
         ["with no relay", undefined],
-        ["once the relay is past five minutes from HQ's read", { ageMs: 0, after: RELAY_HOLDS }],
+        [
+          "once the relay is past five minutes from HQ's read",
+          { ageMs: 0, after: Duration.minutes(5) },
+        ],
+        ["once the relay is past thirty seconds from HQ's read", { ageMs: 0, after: RELAY_HOLDS }],
       ] as const,
       ([name, relay]) => ({ title: `reads Zerops itself ${name}`, relay }),
     ),
