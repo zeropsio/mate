@@ -370,20 +370,28 @@ export function nameProblem(first: string, last: string): string | null {
   return first.trim() === "" || last.trim() === "" ? "Enter their first and last name." : null;
 }
 
-/** Where an invitation goes once Zerops said who the address is. */
-export type TeamInviteStep =
-  /** "Adding <e-mail>": a new account is named first; someone with an account is not. */
-  | { readonly step: "details"; readonly email: string; readonly existing: string | null }
-  /** Already in the organization: their own page is where they are changed. */
-  | { readonly step: "member"; readonly email: string; readonly clientUserId: string };
+/** "Adding <e-mail>": a new account is named first; someone with an account is not. */
+export interface TeamInviteStep {
+  readonly step: "details";
+  readonly email: string;
+  readonly existing: string | null;
+}
 
-export function teamInviteStep(email: string, answer: InviteeCheck): TeamInviteStep {
+/**
+ * Where an invitation goes once Zerops said who the address is: on to "Adding <e-mail>", or — for
+ * an address already in the organization — nowhere, the e-mail field saying why.
+ */
+export function teamInviteStep(
+  email: string,
+  answer: InviteeCheck,
+  organizationName: string,
+): TeamInviteStep | { readonly problem: string } {
   switch (answer.kind) {
     case "existing":
       return { step: "details", email, existing: answer.userId };
     case "new":
       return { step: "details", email, existing: null };
     case "member":
-      return { step: "member", email, clientUserId: answer.clientUserId };
+      return { problem: `${email} is in ${organizationName} already.` };
   }
 }

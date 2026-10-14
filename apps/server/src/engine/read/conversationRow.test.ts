@@ -279,44 +279,39 @@ describe("the menu row while work its turn started runs on", () => {
       },
     },
     {
-      name: "names the first three of what it waits on and counts them all",
-      work: [
-        job("Final batched browser check", 410),
-        job("Wait for the final check to finish", 420),
-        job("Wait for the final check to complete", 430),
-        job("Block until final captures are in", 440),
-      ],
+      // The helpers panel lists each; the card lists five of them on rows of their own.
+      name: "names the first five of what it waits on and counts them all",
+      work: [1, 2, 3, 4, 5, 6].map((n) => job(`Check ${String(n)}`, 400 + n)),
       expected: {
-        items: [
-          job("Final batched browser check", 410),
-          job("Wait for the final check to finish", 420),
-          job("Wait for the final check to complete", 430),
-        ],
-        count: 4,
+        items: [1, 2, 3, 4, 5].map((n) => job(`Check ${String(n)}`, 400 + n)),
+        count: 6,
         helpers: 0,
       },
     },
     {
       // Eli, 2026-10-14: three helpers and two of its own jobs read as "… · and 4 more — Its helpers".
-      name: "names the first few of its helpers and of its own jobs apart, and counts its helpers",
+      name: "names the first five of its helpers and of its own jobs apart, and counts its helpers",
       work: [
-        { ...helperWork, title: "UI overhaul + placement clarity", since: 401 },
-        { ...helperWork, title: "Swarm scale toward 500k", since: 402 },
-        { ...helperWork, title: "Walls, turrets-on-walls, craters, climb", since: 403 },
-        { ...helperWork, title: "Colossus: model, walk, pilot, orders", since: 404 },
-        job("Run the test suite", 405),
-        job("Serve the preview", 406),
+        ...[1, 2, 3, 4, 5, 6].map((n) => ({
+          ...helperWork,
+          title: `Helper ${String(n)}`,
+          since: 400 + n,
+        })),
+        job("Run the test suite", 410),
+        job("Serve the preview", 411),
       ],
       expected: {
         items: [
-          { ...helperWork, title: "UI overhaul + placement clarity", since: 401 },
-          { ...helperWork, title: "Swarm scale toward 500k", since: 402 },
-          { ...helperWork, title: "Walls, turrets-on-walls, craters, climb", since: 403 },
-          job("Run the test suite", 405),
-          job("Serve the preview", 406),
+          ...[1, 2, 3, 4, 5].map((n) => ({
+            ...helperWork,
+            title: `Helper ${String(n)}`,
+            since: 400 + n,
+          })),
+          job("Run the test suite", 410),
+          job("Serve the preview", 411),
         ],
-        count: 6,
-        helpers: 4,
+        count: 8,
+        helpers: 6,
       },
     },
     {

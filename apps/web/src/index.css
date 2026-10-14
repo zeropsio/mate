@@ -7619,14 +7619,19 @@ a.ov-chip-who:focus-visible {
 
 .tm-team-bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
 
+.tm-team-count {
+  margin-inline-end: 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .tm-team-search {
-  flex: 1 1 240px;
-  min-width: 0;
+  width: 240px;
 }
 
 .tm-cards {
@@ -7645,11 +7650,15 @@ a.ov-chip-who:focus-visible {
   border-radius: 16px;
   background: var(--ov-lift);
   text-align: center;
-  transition: background-color 150ms var(--ease-out-strong);
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    box-shadow 150ms var(--ease-out-strong);
 }
 
+/* The resting card already carries a lift, so the pointer adds to it rather than replacing it. */
 .tm-card:hover {
-  background: var(--ov-hover);
+  background: color-mix(in oklab, var(--foreground) 9%, var(--background));
+  box-shadow: inset 0 0 0 1px var(--ov-rule);
 }
 
 .tm-card:focus-visible {
@@ -7760,37 +7769,62 @@ a.ov-chip-who:focus-visible {
   gap: 14px;
 }
 
-.tm-section-head {
+/* A block's own heading: what it is on the left, its one action at the end, its line under it. */
+.tm-block-head {
   display: grid;
-  gap: 4px;
-  text-align: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 24px;
+  align-items: center;
 }
 
-.tm-section-title {
+.tm-block-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tm-block-title {
   color: var(--foreground);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 24px;
+  line-height: 22px;
 }
 
-.tm-section-text {
+.tm-block-desc {
   color: var(--muted-foreground);
   font-size: 13px;
-  line-height: 20px;
+  line-height: 18px;
   text-wrap: pretty;
 }
 
-.tm-section-foot {
-  display: grid;
-  gap: 8px;
-  margin-top: 6px;
+/* Beside an action, a block's line keeps clear of it. */
+.tm-block-head .tm-block-desc {
+  max-width: 52ch;
 }
 
-.tm-section-foot > [role="alert"] {
+.tm-access {
+  display: grid;
+  gap: 14px;
+}
+
+/* A section's buttons sit at the column's end, at the page's one button size; what went wrong
+   stands beside them. */
+.tm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tm-actions > [role="alert"],
+.tm-trouble {
   color: var(--zerops-status-failed-text);
   font-size: 13px;
   line-height: 18px;
-  text-align: center;
+}
+
+.tm-actions > [role="alert"] {
+  margin-inline-end: auto;
 }
 
 .tm-label {
@@ -7863,21 +7897,25 @@ a.ov-chip-who:focus-visible {
   line-height: 18px;
 }
 
+/* Advanced opens under the cards, at their left edge: its chevron sits where a card's text starts. */
 .tm-advanced-toggle {
   display: inline-flex;
   align-items: center;
-  justify-self: center;
+  justify-self: start;
   gap: 6px;
-  margin-top: 6px;
-  padding: 4px 10px;
+  margin-top: 2px;
+  margin-inline-start: -8px;
+  padding: 4px 8px;
   border-radius: 8px;
-  color: var(--foreground);
+  color: var(--muted-foreground);
   font-size: 13px;
   font-weight: 500;
+  transition: color 150ms var(--ease-out-strong);
 }
 
-.tm-advanced-toggle:hover {
-  background: var(--ov-hover);
+.tm-advanced-toggle:hover,
+.tm-advanced-toggle[aria-expanded="true"] {
+  color: var(--foreground);
 }
 
 .tm-advanced-toggle:focus-visible {
@@ -7894,38 +7932,62 @@ a.ov-chip-who:focus-visible {
 }
 
 .tm-advanced-custom {
-  color: var(--muted-foreground);
   font-weight: 400;
 }
 
+/* The cards' width, Settings rows inside: what each choice is on the left, its control on the right. */
 .tm-advanced {
   display: grid;
-  justify-items: start;
-  gap: 10px;
+  padding: 0 18px;
+  border-radius: 12px;
+  background: var(--ov-lift);
 }
 
-.tm-flags {
+.tm-advanced-row {
   display: grid;
-  gap: 10px;
-  padding-left: 2px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 24px;
+  align-items: center;
+  min-height: 56px;
+  padding: 10px 0;
 }
 
-.tm-flag {
+.tm-advanced-row + .tm-advanced-row {
+  border-top: 1px solid var(--ov-rule);
+}
+
+label.tm-advanced-row:not([data-disabled]) {
+  cursor: pointer;
+}
+
+.tm-advanced-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tm-advanced-title {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   color: var(--foreground);
   font-size: 14px;
+  font-weight: 500;
   line-height: 20px;
 }
 
-.tm-flag[data-disabled] {
+.tm-advanced-row[data-disabled] .tm-advanced-title {
   color: var(--muted-foreground);
 }
 
-.tm-flag-lock {
-  display: inline-flex;
+.tm-advanced-desc {
   color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.tm-advanced-control {
+  width: 176px;
 }
 
 .tm-project-face {
@@ -7981,16 +8043,18 @@ a.ov-chip-who:focus-visible {
 }
 
 .tm-rule {
-  justify-self: center;
-  width: 40px;
   height: 1px;
   background: var(--ov-rule);
 }
 
+/* One field needs no more room than an address: the e-mail step stands narrow in the column. */
 .tm-invite-card {
   display: grid;
   gap: 18px;
-  padding: 32px;
+  justify-self: center;
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
   border-radius: 16px;
   background: var(--ov-lift);
 }

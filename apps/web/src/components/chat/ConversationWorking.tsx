@@ -933,16 +933,24 @@ export function ConversationAfterWork({
         />
       ) : (
         <ul className="run-band grid" data-after-work-lines>
-          {lines.map((line) => (
-            <DetailRow
-              key={line.key}
-              onOpen={line.helper ? onOpenAgents : undefined}
-              time={line.startedAt === null ? null : spanOf(line.startedAt, null)}
-              title={line.title}
-              tone="busy"
-              word={line.word}
-            />
-          ))}
+          {lines.map((line) =>
+            line.more === true ? (
+              // How many more run, under the rows: no mark, as it names none of them.
+              <li key={line.key} className="run-bar text-muted-foreground">
+                <span aria-hidden="true" />
+                <span>{line.title}</span>
+              </li>
+            ) : (
+              <DetailRow
+                key={line.key}
+                onOpen={line.helper ? onOpenAgents : undefined}
+                time={line.startedAt === null ? null : spanOf(line.startedAt, null)}
+                title={line.title}
+                tone="busy"
+                word={line.word}
+              />
+            ),
+          )}
         </ul>
       )}
     </section>

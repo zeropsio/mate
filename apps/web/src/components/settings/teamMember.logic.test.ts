@@ -234,11 +234,11 @@ describe("an invitation's address, checked", () => {
       step: { step: "details", email: "petra.kralova@example.com", existing: "u-petra" },
     },
     {
-      sentence: "Someone already here is said so, with their page",
+      sentence: "An address already in the organization goes no further, the field saying why",
       answer: { kind: "member", clientUserId: "cu-petra", roleCode: "NO_ACCESS" } as const,
-      step: { step: "member", email: "petra.kralova@example.com", clientUserId: "cu-petra" },
+      step: { problem: "petra.kralova@example.com is in Acme already." },
     },
   ])("$sentence", ({ answer, step }) => {
-    expect(teamInviteStep("petra.kralova@example.com", answer)).toEqual(step);
+    expect(teamInviteStep("petra.kralova@example.com", answer, "Acme")).toEqual(step);
   });
 });

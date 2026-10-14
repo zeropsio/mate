@@ -3704,6 +3704,106 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Eli, 2026-10-14: a turn its helper's finish woke said only "No response requested." — Claude
+  // Code's own placeholder, written by the model this time (its transcript: claude-opus-5-5) —
+  // and it stood as Eli's message. Claude Code never shows that text or "(no content)" as a reply.
+  it.effect.each([
+    { name: "its placeholder, streamed", parts: ["No response", " requested."], said: "" },
+    { name: "its placeholder, whole", parts: [], snapshot: "No response requested.", said: "" },
+    { name: "its empty placeholder", parts: ["(no content)"], said: "" },
+    {
+      name: "words that only begin like it",
+      parts: ["No", ", the schema is fine."],
+      said: "No, the schema is fine.",
+    },
+    {
+      name: "the placeholder followed by more",
+      parts: ["No response requested.", " The arsenal is in."],
+      said: "No response requested. The arsenal is in.",
+    },
+  ])("never says Claude Code's no-reply placeholder as the Mate's words: $name", (scene) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "go on", attachments: [] });
+      const stream = (uuid: string, event: Record<string, unknown>) =>
+        ({
+          type: "stream_event",
+          session_id: "sdk-session-quiet",
+          uuid,
+          parent_tool_use_id: null,
+          event,
+        }) as unknown as SDKMessage;
+      const text = scene.snapshot ?? scene.parts.join("");
+      if (scene.parts.length > 0) {
+        harness.query.emit(
+          stream("q1", {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "text", text: "" },
+          }),
+        );
+        scene.parts.forEach((part, at) =>
+          harness.query.emit(
+            stream(`q-d${String(at)}`, {
+              type: "content_block_delta",
+              index: 0,
+              delta: { type: "text_delta", text: part },
+            }),
+          ),
+        );
+        harness.query.emit(stream("q2", { type: "content_block_stop", index: 0 }));
+      }
+      harness.query.emit({
+        type: "assistant",
+        session_id: "sdk-session-quiet",
+        uuid: "assistant-quiet",
+        parent_tool_use_id: null,
+        message: {
+          id: "assistant-message-quiet",
+          model: "claude-opus-5-5",
+          content: [{ type: "text", text }],
+        },
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-quiet",
+        uuid: "result-quiet",
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const said = events
+        .flatMap((event) =>
+          event.type === "content.delta" && event.payload.streamKind === "assistant_text"
+            ? [event.payload.delta]
+            : [],
+        )
+        .join("");
+      const messages = events.filter(
+        (event) =>
+          event.type === "item.completed" && event.payload.itemType === "assistant_message",
+      );
+      assert.strictEqual(said, scene.said);
+      assert.strictEqual(messages.length, scene.said === "" ? 0 : 1);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   // A call still open when its turn's result comes never returned: the turn's
   // end closes it as unreturned, never as a call that came back (D4).
   it.effect("closes a call left open at the turn's end as unreturned", () => {

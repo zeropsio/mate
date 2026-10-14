@@ -61,6 +61,8 @@ type Scene = {
   liveJobs?: ReadonlyArray<string>;
   /** Turns whose work the account does not hold yet (an engine card not read whole). */
   unheldWork?: ReadonlyArray<string>;
+  /** Turns an engine Mate ran: each its engine's card. */
+  engineTurns?: ReadonlyArray<string>;
 };
 
 /** A day, in the fixtures' minutes. */
@@ -89,6 +91,9 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     ...(scene.alongside === undefined ? {} : { alongside: scene.alongside }),
     provider: scene.provider === undefined ? "codex" : scene.provider,
     ...(scene.liveJobs === undefined ? {} : { liveJobs: { ids: new Set(scene.liveJobs) } }),
+    ...(scene.engineTurns === undefined
+      ? {}
+      : { runCards: Object.fromEntries(scene.engineTurns.map((id) => [turn(id), { runs: [] }])) }),
     ...(scene.unheldWork === undefined
       ? {}
       : {
@@ -1714,6 +1719,32 @@ describe("deriveMessagesTimelineRows", () => {
             : [],
       );
       expect(titles).toEqual(["Helper b"]);
+    });
+
+    // Eli, 2026-10-14: "Walls … finished · helper" stood alone between Eli's answer and the
+    // woken run that only wrote (a finish no run had taken, titling the wrong run).
+    it("holds what woke a run that only wrote in that run's card, never a line of its own", () => {
+      const entries = [
+        user("m0", 0),
+        assistant("a1", "t1", 1, "Started them."),
+        launch,
+        assistant("a2", "t1", 4, "They report back."),
+        assistant("a3", "t2", 20, "The battlefield rules are in."),
+      ];
+      const list = rows({
+        entries,
+        settled: "t2",
+        helperFinishes: [finish("b", 19, 59)],
+        engineTurns: ["t1", "t2"],
+      });
+      expect(list.some((row) => row.kind === "background" && row.id.startsWith("woke:"))).toBe(
+        false,
+      );
+      expect(
+        list.flatMap((row) =>
+          row.kind === "record" && row.opener !== undefined ? [row.opener.title] : [],
+        ),
+      ).toEqual(["Helper b"]);
     });
 
     it("a task reporting in a woken run's first moments never stands for the helper that woke it", () => {

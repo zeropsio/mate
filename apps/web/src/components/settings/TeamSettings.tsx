@@ -1,9 +1,9 @@
 /**
- * Settings → Team, as legacy Zerops draws it: a search by name or e-mail, and everyone
- * in the organization — never an integration token — as a card, by name, invitations last: their face, name, role and
- * e-mail, a developer's or guest's projects under it, an invitation not joined yet saying so.
- * A card opens that person's own page. An organization owner or admin finds *Invite* beside the
- * search, which opens the invitation.
+ * Settings → Team, as legacy Zerops draws it: everyone in the organization — never an integration
+ * token — as a card, by name, invitations last: their face, name, role and e-mail, a developer's or
+ * guest's projects under it, an invitation not joined yet saying so. A card opens that person's own
+ * page. The heading carries the count, a search by name or e-mail and, for an organization owner or
+ * admin, *Invite*.
  */
 import { Link } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
@@ -44,7 +44,34 @@ export function TeamList({
     <SettingsSection
       headerAction={
         view.kind === "people" ? (
-          <span className="text-sm text-muted-foreground">{view.count}</span>
+          <div className="tm-team-bar">
+            <span className="tm-team-count">{view.count}</span>
+            <div className="tm-team-search">
+              <InputGroup>
+                <InputGroupAddon>
+                  <SearchIcon aria-hidden="true" />
+                </InputGroupAddon>
+                <InputGroupInput
+                  aria-label="Search the team"
+                  onChange={(event) => setQuery(event.currentTarget.value)}
+                  placeholder="Search by name or e-mail"
+                  size="sm"
+                  type="search"
+                  value={query}
+                />
+              </InputGroup>
+            </div>
+            {view.invite.length > 0 ? (
+              <Button
+                data-zerops-surface="invite-team"
+                render={<Link to="/settings/team/invite" />}
+                size="sm"
+              >
+                <PlusIcon aria-hidden="true" />
+                Invite
+              </Button>
+            ) : null}
+          </div>
         ) : null
       }
       id="team"
@@ -55,45 +82,16 @@ export function TeamList({
           <p className="tm-empty">Reading who is on the team…</p>
         ) : view.kind === "unreadable" ? (
           <p className="tm-empty">{view.line}</p>
+        ) : shown.length === 0 ? (
+          <p className="tm-empty">Nobody matches “{query.trim()}”.</p>
         ) : (
-          <>
-            <div className="tm-team-bar">
-              <div className="tm-team-search">
-                <InputGroup>
-                  <InputGroupAddon>
-                    <SearchIcon aria-hidden="true" />
-                  </InputGroupAddon>
-                  <InputGroupInput
-                    aria-label="Search the team"
-                    onChange={(event) => setQuery(event.currentTarget.value)}
-                    placeholder="Search by name or e-mail…"
-                    type="search"
-                    value={query}
-                  />
-                </InputGroup>
-              </div>
-              {view.invite.length > 0 ? (
-                <Button
-                  data-zerops-surface="invite-team"
-                  render={<Link to="/settings/team/invite" />}
-                >
-                  <PlusIcon aria-hidden="true" />
-                  Invite
-                </Button>
-              ) : null}
-            </div>
-            {shown.length === 0 ? (
-              <p className="tm-empty">Nobody matches “{query.trim()}”.</p>
-            ) : (
-              <ul aria-label="People" className="tm-cards">
-                {shown.map((person) => (
-                  <li className="grid" key={person.key}>
-                    <PersonCard person={person} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
+          <ul aria-label="People" className="tm-cards">
+            {shown.map((person) => (
+              <li className="grid" key={person.key}>
+                <PersonCard person={person} />
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </SettingsSection>
