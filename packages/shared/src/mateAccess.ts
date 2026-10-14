@@ -34,14 +34,6 @@ export function restrictChiefAccess(
   return chief == null ? members : members.filter((member) => member.userId === chief.userId);
 }
 
-/** A Chief tag requires an authoritative owner before the direct door can open. */
-export function isChiefProject(body: unknown): boolean {
-  if (typeof body !== "object" || body === null) return false;
-  const tags =
-    (body as Record<string, unknown>)["tagList"] ?? (body as Record<string, unknown>)["tags"];
-  return Array.isArray(tags) && tags.includes("chief");
-}
-
 export interface ZeropsOrgMember {
   /** The `clientUser` id — what a project's `userRoles` names. */
   readonly clientUserId: string;
