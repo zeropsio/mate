@@ -57,6 +57,20 @@ const rejected = (attempt: number) =>
   );
 
 describe("linkPhaseOf: the supervisor's state as region L", () => {
+  it("a refused Chief session retains its owner's name for the admission machine", () => {
+    expect(
+      linkPhaseOf(
+        connectionState(
+          "blocked",
+          new ConnectionBlockedError({
+            reason: "permission",
+            detail: "This Chief Mate belongs to another person.",
+            chiefOwnerName: "Karlos",
+          }),
+        ),
+      ),
+    ).toEqual({ phase: "blocked", reason: "permission", chiefOwnerName: "Karlos" });
+  });
   it.each([
     [AVAILABLE_CONNECTION_STATE, { phase: "idle" }],
     [connectionState("offline"), { phase: "offline" }],

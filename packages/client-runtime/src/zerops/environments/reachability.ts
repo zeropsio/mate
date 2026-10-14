@@ -39,7 +39,7 @@ export type ContainerNotice = Extract<
 export type Reachability =
   | { readonly kind: "gone"; readonly because: AbsenceEvidence }
   | { readonly kind: "replaced"; readonly by: EnvironmentId }
-  | { readonly kind: "refused-role" }
+  | { readonly kind: "refused-role"; readonly chiefOwnerName?: string }
   /** The link kept refusing its configuration; waits for the user or an input change. */
   | { readonly kind: "refused-configuration" }
   /** The Mate refused its credential; waits for the user or an input change. */
@@ -137,7 +137,12 @@ export function selectReachability(
   if (credential.kind === "refused") {
     switch (credential.reason.kind) {
       case "role":
-        return { kind: "refused-role" };
+        return {
+          kind: "refused-role",
+          ...(credential.reason.chiefOwnerName === undefined
+            ? {}
+            : { chiefOwnerName: credential.reason.chiefOwnerName }),
+        };
       case "version":
         // The machine refuses a version only on a descriptor it has read.
         return machine.descriptor === null
@@ -328,6 +333,8 @@ export function reachabilityPhrase(
         "go-to-projects",
       ]);
     case "refused-role":
+      if (verdict.chiefOwnerName !== undefined)
+        return phrase(`This is ${verdict.chiefOwnerName}'s Chief Mate.`);
       return phrase("You can see this project in Zerops but can't operate its Mate.", [
         "try-again",
       ]);

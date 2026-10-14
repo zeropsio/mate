@@ -263,6 +263,11 @@ export function mateNoticeVoice(
         actions,
       );
     case "refused-role":
+      if (reachability.chiefOwnerName !== undefined)
+        return say(
+          reachabilityPhrase(reachability, { nowMs: input.nowMs, mateName: name }).text ?? "",
+          "",
+        );
       return say(
         `${name} isn't available with your access.`,
         "You can see the project, but can't operate its Mate.",

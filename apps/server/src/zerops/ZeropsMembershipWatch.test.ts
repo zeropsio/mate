@@ -336,6 +336,30 @@ describe("runMembershipRecheck", () => {
     }),
   );
 
+  it.effect("a Chief session belongs only to its registered owner even for an org owner", () =>
+    Effect.gen(function* () {
+      const lastGood = yield* lastGoodAt(-300_000);
+      const auth = fakeAuth([
+        { sessionId: "jan", subject: `${ZEROPS_SUBJECT_PREFIX}${JAN}` },
+        { sessionId: "eva", subject: `${ZEROPS_SUBJECT_PREFIX}${EVA}` },
+      ]);
+      const { layer } = readLayer(membershipRoute());
+      const ended = yield* Effect.gen(function* () {
+        yield* (yield* ZeropsProjectAccessModule.ZeropsProjectAccess).relayed({
+          members: [
+            { userId: JAN, role: "OWNER", visibility: "open" },
+            { userId: EVA, role: "OWNER", visibility: "open" },
+          ],
+          chief: { userId: EVA, ownerName: "Eva" },
+          ageMs: 0,
+        });
+        return yield* runMembershipRecheck({ environment, lastGood });
+      }).pipe(Effect.provide(Layer.mergeAll(auth.layer, layer)));
+      assert.strictEqual(ended, 1);
+      assert.deepStrictEqual(auth.revoked, ["jan"]);
+    }),
+  );
+
   it.effect("reads nothing when nobody is signed in", () =>
     Effect.gen(function* () {
       const lastGood = yield* lastGoodAt(-600_000);

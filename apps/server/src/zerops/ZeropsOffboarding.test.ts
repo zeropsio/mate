@@ -166,6 +166,7 @@ describe("ZeropsOffboarding's loop", () => {
                 Layer.succeed(
                   ZeropsProjectAccess,
                   ZeropsProjectAccess.of({
+                    chief: Effect.succeed(undefined),
                     changes: Stream.fromPubSub(relays),
                   } as unknown as ZeropsProjectAccess["Service"]),
                 ),

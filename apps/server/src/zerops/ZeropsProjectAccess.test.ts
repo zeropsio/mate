@@ -58,6 +58,8 @@ const RELAYED: ReadonlyArray<MateAccessMember> = [
 const accessOver = (
   zerops: {
     readonly members?: unknown;
+    readonly tags?: ReadonlyArray<string>;
+    readonly enrolled?: boolean;
     readonly userRoles?: unknown;
     readonly status?: number;
     readonly key?: string | undefined;
@@ -76,7 +78,12 @@ const accessOver = (
           request.url.endsWith("/user/list")
             ? json(zerops.members ?? ORG, status)
             : json(
-                { id: PROJECT_ID, clientId: CLIENT_ID, userRoles: zerops.userRoles ?? [] },
+                {
+                  id: PROJECT_ID,
+                  clientId: CLIENT_ID,
+                  userRoles: zerops.userRoles ?? [],
+                  tagList: zerops.tags ?? [],
+                },
                 status,
               ),
         ),
@@ -96,7 +103,11 @@ const accessOver = (
               ),
             ),
           ),
-          ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+          ServerConfig.layer({
+            zerops: zerops.enrolled
+              ? { ...environment, hqEnrollmentPath: "/test/hq/enrollment.json" }
+              : environment,
+          } as ServerConfig.ServerConfig["Service"]),
         ),
       ),
     );
@@ -106,6 +117,29 @@ const accessOver = (
 // R6: HQ relays who the project lets in; a Mate trusts the relay at most five minutes from HQ's
 // read of Zerops, and reads Zerops itself past that, or with no relay.
 describe("ZeropsProjectAccess", () => {
+  it.effect("an enrolled Mate does not guess Chief ownership before HQ answers", () =>
+    Effect.gen(function* () {
+      const { access } = yield* accessOver({ enrolled: true });
+      assert.deepStrictEqual(yield* access.read, { ok: false });
+    }),
+  );
+
+  it.effect("an enrolled Mate does not replace expired Chief ownership with platform roles", () =>
+    Effect.gen(function* () {
+      const { access } = yield* accessOver({ enrolled: true });
+      yield* access.relayed({ members: OWN, ageMs: 0, chief: { userId: JAN, ownerName: "Jan" } });
+      yield* TestClock.adjust(Duration.sum(RELAY_HOLDS, Duration.millis(1)));
+      assert.deepStrictEqual(yield* access.read, { ok: false });
+    }),
+  );
+
+  it.effect("an unregistered tagged Chief never opens through the platform fallback", () =>
+    Effect.gen(function* () {
+      const { access } = yield* accessOver({ tags: ["mate", "chief"] });
+      assert.deepStrictEqual(yield* access.read, { ok: false });
+    }),
+  );
+
   it.effect("answers from HQ's relay while it is fresh, reading nothing of Zerops", () =>
     Effect.gen(function* () {
       const { access, calls } = yield* accessOver();
