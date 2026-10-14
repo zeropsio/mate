@@ -5,6 +5,7 @@ import {
   type GroupFlowProduction,
   type GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
+import type { AddressDomain, DomainFace, PlaceAddresses } from "@t3tools/client-runtime/data";
 import { HqEnvironmentId } from "@t3tools/contracts";
 import type { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 import { describe, expect, it } from "vite-plus/test";
@@ -23,6 +24,7 @@ import {
   foldMates,
   foldWords,
   mateChangeForReview,
+  panelAddresses,
   placeLines,
   readyLine,
   readyTitle,
@@ -826,4 +828,184 @@ describe("cardChangeRows", () => {
   ])("places releases among a card's changes: $case", ({ changes, releases, rows }) => {
     expect(shown(cardChangeRows(changes, releases))).toEqual(rows);
   });
+});
+
+describe("a place's addresses on its panel", () => {
+  const domain = (
+    domainName: string,
+    service: string,
+    face: DomainFace = "live",
+  ): AddressDomain => ({
+    routingId: `r-${domainName}`,
+    domainName,
+    routingDomains: [domainName],
+    targets: [{ serviceId: service, serviceName: service, port: 3000, path: "/" }],
+    sslEnabled: true,
+    face,
+    url: `https://${domainName}`,
+    resolvedIps: [],
+    nameServers: [],
+  });
+  const subdomain = (service: string, on = true) => ({
+    serviceId: service,
+    serviceName: service,
+    on,
+    hosts: on
+      ? [
+          {
+            port: 3000,
+            url: `https://${service}-1a2b-3000.prg1.zerops.app`,
+            host: `${service}-1a2b-3000.prg1.zerops.app`,
+          },
+        ]
+      : [],
+    port: 3000,
+  });
+  const place = (
+    domains: ReadonlyArray<AddressDomain>,
+    zerops: PlaceAddresses["zerops"],
+    state: PlaceAddresses["state"] = "ready",
+  ): PlaceAddresses => ({
+    state,
+    domains,
+    zerops,
+    ips: { zoneHasSharedV4: false },
+    portsState: "ready",
+    ports: [],
+    webTargets: [],
+    portTargets: [],
+    waitingDomains: [],
+    waitingPorts: [],
+    readsProject: false,
+  });
+  const listed = [{ service: "app", url: "https://app-1a2b-3000.prg1.zerops.app" }];
+
+  it.each([
+    {
+      case: "its own domain, live, over its zerops.app address",
+      place: place([domain("shop.acme.com", "app")], [subdomain("app")]),
+      head: "shop.acme.com",
+      doors: [],
+    },
+    {
+      case: "no domain of its own: its zerops.app address",
+      place: place([], [subdomain("app")]),
+      head: "app-1a2b-3000.prg1.zerops.app",
+      doors: [],
+    },
+    {
+      case: "its own domain not live yet: its zerops.app address meanwhile",
+      place: place([domain("shop.acme.com", "app", "dns")], [subdomain("app")]),
+      head: "app-1a2b-3000.prg1.zerops.app",
+      doors: [],
+    },
+    {
+      case: "several services: a door each, at its own domain where it has one, and that domain heads it",
+      place: place([domain("shop.acme.com", "shop")], [subdomain("shop"), subdomain("api")]),
+      head: "shop.acme.com",
+      doors: [
+        { service: "api", url: "https://api-1a2b-3000.prg1.zerops.app" },
+        { service: "shop", url: "https://shop.acme.com" },
+      ],
+    },
+    {
+      case: "several services and no domain of its own: a door each, no one address",
+      place: place([], [subdomain("shop"), subdomain("api")]),
+      head: undefined,
+      doors: [
+        { service: "api", url: "https://api-1a2b-3000.prg1.zerops.app" },
+        { service: "shop", url: "https://shop-1a2b-3000.prg1.zerops.app" },
+      ],
+    },
+    {
+      case: "a service with its zerops.app address off and no domain: no door",
+      place: place([], [subdomain("app"), subdomain("db", false)]),
+      head: "app-1a2b-3000.prg1.zerops.app",
+      doors: [],
+    },
+    {
+      case: "still being read: as its listing says it",
+      place: place([], [], "reading"),
+      head: "app-1a2b-3000.prg1.zerops.app",
+      doors: [],
+    },
+    {
+      case: "outside an account: as its listing says it",
+      place: undefined,
+      head: "app-1a2b-3000.prg1.zerops.app",
+      doors: [],
+    },
+  ])("a place is headed by the address it answers at: $case", ({ place, head, doors }) => {
+    const said = panelAddresses({ kind: "production", listed, place });
+    expect(said.head?.host).toBe(head);
+    expect(said.doors).toEqual(doors);
+  });
+
+  it.each([
+    { face: "going-live", word: "Going live", tone: "muted" },
+    { face: "changing", word: "Changing", tone: "muted" },
+    { face: "removing", word: "Removing", tone: "muted" },
+    { face: "dns", word: "Waiting for your DNS", tone: "attention" },
+    { face: "elsewhere", word: "Points elsewhere", tone: "attention" },
+    { face: "certificate", word: "Getting a certificate", tone: "muted" },
+    { face: "certificate-failed", word: "Couldn't get a certificate", tone: "attention" },
+  ] as const)(
+    "a domain of its own not answering yet says how far it is, as the addresses sheet says it: $face",
+    ({ face, word, tone }) => {
+      const said = panelAddresses({
+        kind: "stage",
+        listed,
+        place: place(
+          [domain("shop.acme.com", "app", face), domain("acme.com", "app")],
+          [subdomain("app")],
+        ),
+      });
+      expect(said.pending).toEqual([{ name: "shop.acme.com", word, tone }]);
+    },
+  );
+
+  it("a place with only its default address and nothing pending says nothing more", () => {
+    const said = panelAddresses({ kind: "stage", listed, place: place([], [subdomain("app")]) });
+    expect(said.pending).toEqual([]);
+    expect(said.offerDomain).toBe(false);
+  });
+
+  it.each([
+    {
+      case: "production read with no domain of its own",
+      kind: "production",
+      place: place([], [subdomain("app")]),
+      offered: true,
+    },
+    {
+      case: "production with a domain of its own",
+      kind: "production",
+      place: place([domain("shop.acme.com", "app")], []),
+      offered: false,
+    },
+    {
+      case: "production with a domain of its own not live yet",
+      kind: "production",
+      place: place([domain("shop.acme.com", "app", "dns")], []),
+      offered: false,
+    },
+    {
+      case: "production still being read",
+      kind: "production",
+      place: place([], [], "reading"),
+      offered: false,
+    },
+    { case: "production outside an account", kind: "production", place: undefined, offered: false },
+    {
+      case: "a stage with no domain of its own",
+      kind: "stage",
+      place: place([], [subdomain("app")]),
+      offered: false,
+    },
+  ] as const)(
+    "offers a domain of its own as the globe's popover does: $case",
+    ({ kind, place, offered }) => {
+      expect(panelAddresses({ kind, listed, place }).offerDomain).toBe(offered);
+    },
+  );
 });

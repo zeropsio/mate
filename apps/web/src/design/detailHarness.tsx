@@ -29,7 +29,6 @@ import {
   releaseRow,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type EnvironmentServiceState,
-  type FlowPullRequest,
   type FlowRelease,
   type MovedCommits,
   type ReleaseDeployFailure,
@@ -62,51 +61,6 @@ import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import "../index.css";
 
-/** Where these panes sit, as the harness pretends: the chat, then the project. */
-const MATES = [
-  {
-    projectId: "p-theo",
-    name: "Theo",
-    tint: "amber" as const,
-    shape: "hexagon" as const,
-    face: "working" as const,
-    subject: "Cache the link previews so the list stops flickering",
-    snippet: "Keying on locale now, and the tests cover both.",
-    when: "1h",
-  },
-  {
-    projectId: "p-iris",
-    name: "Iris",
-    tint: "violet" as const,
-    shape: "clover" as const,
-    face: "needs" as const,
-    subject: "Split the checkout into two steps",
-    snippet: "Which of the two VAT rates should the basket show?",
-    when: "12m",
-  },
-];
-
-const ATTENTION = [
-  {
-    kind: "mate-waiting" as const,
-    text: "Iris is waiting on an answer",
-    verb: "Open",
-    target: { kind: "mate" as const, projectId: "p-iris" },
-  },
-  {
-    kind: "change-blocked" as const,
-    text: "#6 conflicts with main",
-    verb: "Ask Theo",
-    target: { kind: "change" as const, repository: "appdev", number: 6 },
-  },
-  {
-    kind: "not-live" as const,
-    text: "3 changes waiting for production",
-    verb: "Release",
-    target: undefined,
-  },
-];
-
 const ROUTES = [
   {
     service: "app",
@@ -128,8 +82,6 @@ const crumbs = (group: string) => [
   { label: "Projects", onClick: () => {} },
   { label: group, onClick: () => {} },
 ];
-
-const CRUMBS = crumbs("Shop");
 
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
 
@@ -177,26 +129,6 @@ function environment(over: Partial<EnvironmentRow> = {}): EnvironmentRow {
     versionRepository: "appdev",
     ...over,
   } as EnvironmentRow;
-}
-
-function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
-  return {
-    repository: "appdev",
-    number: 5,
-    title: "Cache the link previews so the list stops flickering",
-    kind: "code",
-    mateProjectId: "p-theo",
-    url: undefined,
-    mergeability: "mergeable",
-    behind: false,
-    merged: false,
-    mergedAt: undefined,
-    headSha: sha("b21d904c"),
-    baseBranch: "main",
-    line: "appdev #5",
-    updatedAt: new Date().toISOString(),
-    ...over,
-  };
 }
 
 const WAITING = releaseContentsSummary(
@@ -761,11 +693,6 @@ function EnvironmentsFrame({
 }) {
   return (
     <ZeropsGroupPane
-      attention={[]}
-      mates={[]}
-      onAct={() => {}}
-      onAddMate={() => {}}
-      onOpenMate={() => {}}
       history={{ kind: "read", commits: [], total: 0 }}
       tags={new Map()}
       environments={environments}
@@ -789,13 +716,10 @@ function EnvironmentsFrame({
       finishing={false}
       groupId="shop"
       name="Shop"
-      crumbs={CRUMBS}
       names={NAMES}
       onSetUp={() => {}}
-      pullRequests={[]}
       release={release}
       repo={undefined}
-      waiting={waiting}
     />
   );
 }
@@ -869,11 +793,6 @@ function Harness() {
 
       <State label="A project, running" note="Two stops, one change in flight, three waiting.">
         <ZeropsGroupPane
-          attention={ATTENTION}
-          mates={MATES}
-          onAct={() => {}}
-          onAddMate={() => {}}
-          onOpenMate={() => {}}
           history={HISTORY}
           tags={TAGS}
           environments={[
@@ -907,16 +826,10 @@ function Harness() {
           finishing={false}
           groupId="shop"
           name="Shop"
-          crumbs={CRUMBS}
           names={NAMES}
           onSetUp={() => {}}
-          pullRequests={[
-            pull(),
-            pull({ number: 6, title: "Bump the linter", mergeability: "conflicting" }),
-          ]}
           release={RELEASE_WAITING}
           repo="appdev"
-          waiting={WAITING}
         />
       </State>
 
@@ -925,11 +838,6 @@ function Harness() {
         note="No stops, no changes, no repository: every section is an empty state at once."
       >
         <ZeropsGroupPane
-          attention={[]}
-          mates={[]}
-          onAct={() => {}}
-          onAddMate={() => {}}
-          onOpenMate={() => {}}
           history={{ kind: "read", commits: [], total: 0 }}
           tags={new Map()}
           environments={[]}
@@ -942,13 +850,10 @@ function Harness() {
           finishing={false}
           groupId="fresh"
           name="Design tokens"
-          crumbs={CRUMBS}
           names={NAMES}
           onSetUp={() => {}}
-          pullRequests={[]}
           release={RELEASE_NONE}
           repo={undefined}
-          waiting={NOTHING_WAITING}
         />
       </State>
 

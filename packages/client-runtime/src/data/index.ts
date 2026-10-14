@@ -115,6 +115,7 @@ export { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
 export {
   addresses,
   dnsAdvice,
+  lacksOwnDomain,
   SHARED_IPV4,
   type AddressDomain,
   type AddressTarget,
@@ -129,6 +130,7 @@ export {
 } from "./projections/addresses.ts";
 export { addonsScope, type ProjectIpv4Addon } from "./families/projectAddons.ts";
 export type { PortRoutingWrite } from "./operations/addressWrites.ts";
+export type { Invitee, InviteeCheck } from "./operations/appAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 export { mateVariables, type MateVariables } from "./projections/mateVariables.ts";
 export type {
@@ -200,6 +202,7 @@ export {
   type MembersRead,
   type SampledRead,
 } from "./projections/sampled.ts";
+export { projectsGrants, type ProjectGrantsRead } from "./projections/projectGrants.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export {
   makeHqExecutor,

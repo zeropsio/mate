@@ -5,6 +5,7 @@
  */
 import {
   addresses,
+  lacksOwnDomain,
   PROJECT_ROUTINGS_LISTING,
   type PlaceAddresses,
 } from "@t3tools/client-runtime/data";
@@ -25,11 +26,6 @@ const NOT_READ = Atom.make<PlaceAddresses>({
   waitingPorts: [],
   readsProject: false,
 });
-
-/** A place read in full that holds no domain of its own: a domain is worth offering. */
-export function lacksOwnDomain(place: PlaceAddresses): boolean {
-  return place.state === "ready" && place.domains.length === 0;
-}
 
 /** Whether the project is read and has no domain of its own; `false` outside an account. */
 export function useLacksOwnDomain(projectId: string | undefined): boolean {
