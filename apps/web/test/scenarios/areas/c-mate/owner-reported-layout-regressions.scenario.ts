@@ -260,9 +260,10 @@ describe("owner-reported layout regressions", () => {
           await s.page.locator('[role="textbox"]').fill(question);
           await waitForStillFrames(s.page);
         });
-        const slowed = yield* Effect.promise(() => slowAnimations(s.page, 0.2));
+        const playbackRate = 0.2;
+        const slowed = yield* Effect.promise(() => slowAnimations(s.page, playbackRate));
         const trace = yield* Effect.promise(() =>
-          s.page.evaluateHandle(() => {
+          s.page.evaluateHandle((playbackRate) => {
             const state = {
               active: true,
               frames: [] as Array<{
@@ -273,8 +274,8 @@ describe("owner-reported layout regressions", () => {
                 opacity: number;
               }>,
             };
-            // Geometry belongs to the frame's animation clock. A delayed timer's wall clock
-            // charges its wait to one sample and the resulting movement to the next.
+            // Geometry belongs to this frame's clock, which CDP slows with the animations.
+            // Convert it to display time; a delayed timer's wall clock misattributes frame gaps.
             const sample = (at: number) =>
               setTimeout(() => {
                 const composer = document.querySelector('[data-slot="composer-shell"]');
@@ -284,7 +285,7 @@ describe("owner-reported layout regressions", () => {
                   opacity *= Number(getComputedStyle(element).opacity);
                 if (composer)
                   state.frames.push({
-                    at,
+                    at: at / playbackRate,
                     composer: composer.getBoundingClientRect().top,
                     message: message?.getBoundingClientRect().top ?? null,
                     path: location.pathname,
@@ -294,7 +295,7 @@ describe("owner-reported layout regressions", () => {
               }, 0);
             requestAnimationFrame(sample);
             return state;
-          }),
+          }, playbackRate),
         );
         yield* s.when.conversation.sends(question);
         expect((yield* mate.provider.received).input.input).toBe(question);
