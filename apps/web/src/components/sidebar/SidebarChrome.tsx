@@ -7,6 +7,7 @@ import {
   PanelLeftOpenIcon,
   PlusIcon,
   SettingsIcon,
+  UsersIcon,
 } from "lucide-react";
 import type { SidebarAccountDestination } from "../zerops/SidebarZeropsAccount.logic";
 import { SidebarZeropsAccountRow } from "../zerops/SidebarZeropsAccount";
@@ -278,6 +279,8 @@ export function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"
       return <GitPullRequestIcon />;
     case "usage":
       return <ChartNoAxesColumnIcon />;
+    case "team":
+      return <UsersIcon />;
     case "settings":
       return <SettingsIcon />;
   }

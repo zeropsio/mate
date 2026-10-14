@@ -1,15 +1,14 @@
 /**
  * Inviting someone to the team, as legacy Zerops does it, on a page of its own: first their
- * e-mail, checked with Zerops — someone already in the organization is said so, with a way to
- * their page. Then "Adding <e-mail>": their first and last name where the address has no Zerops
- * account yet (Zerops makes one with the invitation), the same role cards, *Advanced* and *Project
- * access* as a person's own page, and *Send invite*. Each press waits for Zerops's answer and says
- * a refusal under it; once the invitation landed the team is shown.
+ * e-mail, in a narrow card, checked with Zerops. Then "Adding <e-mail>": their first and last name
+ * where the address has no Zerops account yet (Zerops makes one with the invitation), the same role
+ * cards, *Advanced* and *Project access* as a person's own page, and *Send invite*. Each press
+ * waits for Zerops's answer and says a refusal beside it; once the invitation landed the team is
+ * shown.
  */
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import type { Invitee, InviteeCheck } from "@t3tools/client-runtime/data";
 import { presetMembership, type OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
-import { ChevronRightIcon } from "lucide-react";
 import { useId, useState } from "react";
 
 import { Button } from "../ui/button";
@@ -100,9 +99,10 @@ export function TeamInviteView({
     if (step === null) {
       const address = email.trim();
       return press(async () => {
-        const next = teamInviteStep(address, await actions.check(address));
+        const next = teamInviteStep(address, await actions.check(address), organizationName);
         setSubmitted(false);
-        setStep(next);
+        if ("problem" in next) setTrouble(next.problem);
+        else setStep(next);
       });
     }
     if (step.step !== "details") return;
@@ -139,16 +139,17 @@ export function TeamInviteView({
     >
       {step === null ? (
         <div className="tm-invite-card">
-          <div className="tm-section-head">
-            <h1 className="tm-section-title">Add a new team member</h1>
-            <p className="tm-section-text">
-              Zerops e-mails them a link to join {organizationName}.
-            </p>
+          <div className="tm-block-text">
+            <h1 className="tm-block-title">Add a new team member</h1>
+            <span className="tm-block-desc">
+              Zerops e-mails them a link to join {organizationName}
+              {organizationName.endsWith(".") ? "" : "."}
+            </span>
           </div>
           <div className="tm-field">
             <Label htmlFor={`${id}-email`}>E-mail</Label>
             <Input
-              aria-invalid={submitted && problem !== null ? true : undefined}
+              aria-invalid={failed !== null ? true : undefined}
               autoComplete="off"
               autoFocus
               id={`${id}-email`}
@@ -157,71 +158,32 @@ export function TeamInviteView({
                 setTrouble(null);
               }}
               readOnly={pending}
-              size="lg"
               type="email"
               value={email}
             />
+            {failed === null ? null : (
+              <p className="tm-trouble" role="alert">
+                {failed}
+              </p>
+            )}
           </div>
-          <div className="tm-section-foot">
-            <Button
-              aria-busy={pending || undefined}
-              className="w-full"
-              disabled={pending}
-              size="lg"
-              type="submit"
-            >
+          <div className="tm-actions">
+            <Button aria-busy={pending || undefined} disabled={pending} type="submit">
               {pending ? "Checking…" : "Continue"}
-              <ChevronRightIcon aria-hidden="true" />
-            </Button>
-            {failed === null ? null : <p role="alert">{failed}</p>}
-          </div>
-        </div>
-      ) : step.step === "member" ? (
-        <div className="tm-invite-card">
-          <div className="tm-section-head">
-            <h1 className="tm-section-title">Already on the team</h1>
-            <p className="tm-section-text">
-              {step.email} is in {organizationName} already. Change their role and projects on their
-              own page.
-            </p>
-          </div>
-          <div className="tm-section-foot">
-            <Button
-              className="w-full"
-              render={
-                <Link
-                  params={{ clientUserId: step.clientUserId }}
-                  to="/settings/team/$clientUserId"
-                />
-              }
-              size="lg"
-            >
-              Open their page
-            </Button>
-            <Button
-              className="w-full"
-              onClick={() => {
-                setStep(null);
-                setEmail("");
-              }}
-              type="button"
-              variant="ghost"
-            >
-              Invite someone else
             </Button>
           </div>
         </div>
       ) : (
         <>
-          <header className="tm-section-head">
+          <header className="tm-block-text">
             <h1 className="tm-head-name">
               Adding <span className="font-semibold">{step.email}</span>
             </h1>
-            <p className="tm-section-text">
+            <span className="tm-block-desc">
               {isNew
                 ? "No Zerops account uses this address yet: Zerops makes one with the invitation."
                 : "They have a Zerops account: they join once they accept."}
-            </p>
+            </span>
           </header>
           {isNew ? (
             <div className="tm-names">
@@ -232,7 +194,6 @@ export function TeamInviteView({
                   autoFocus
                   id={`${id}-first`}
                   onChange={(event) => setFirst(event.target.value)}
-                  size="lg"
                   value={first}
                 />
               </div>
@@ -242,7 +203,6 @@ export function TeamInviteView({
                   aria-invalid={submitted && last.trim() === "" ? true : undefined}
                   id={`${id}-last`}
                   onChange={(event) => setLast(event.target.value)}
-                  size="lg"
                   value={last}
                 />
               </div>
@@ -257,13 +217,6 @@ export function TeamInviteView({
             />
           </section>
           <section aria-label="Project access" className="tm-section">
-            <div className="tm-section-head">
-              <h2 className="tm-section-title">Project access</h2>
-              <p className="tm-section-text">
-                Set custom project-specific access for this user. By default, users have access to
-                all projects based on their global team role.
-              </p>
-            </div>
             <MemberProjectAccess
               candidates={projects.filter(({ projectId }) => draft[projectId] === undefined)}
               chips={chips}
@@ -273,19 +226,9 @@ export function TeamInviteView({
               onChoose={(projectId, choice) => setDraft(withChoice(draft, projectId, choice))}
             />
           </section>
-          <div className="tm-section-foot">
-            <Button
-              aria-busy={pending || undefined}
-              className="w-full"
-              disabled={pending}
-              size="lg"
-              type="submit"
-            >
-              {pending ? "Sending…" : "Send invite"}
-            </Button>
+          <div className="tm-actions">
             {failed === null ? null : <p role="alert">{failed}</p>}
             <Button
-              className="w-full"
               onClick={() => {
                 setStep(null);
                 setTrouble(null);
@@ -294,6 +237,9 @@ export function TeamInviteView({
               variant="ghost"
             >
               Change the e-mail
+            </Button>
+            <Button aria-busy={pending || undefined} disabled={pending} type="submit">
+              {pending ? "Sending…" : "Send invite"}
             </Button>
           </div>
         </>

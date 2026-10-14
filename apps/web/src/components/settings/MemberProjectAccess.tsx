@@ -1,10 +1,10 @@
 /**
  * One person's *Project access*, as their own page and the invitation set it — legacy Zerops's:
- * the projects whose own level for them differs from what their role gives, as chips — a project's
- * Mate name over its level, a ⋮ with what may change — then *Set custom accesses*, a picker: search
- * the projects, give each Read, Full (or Hidden, for someone whose role reaches every project) or
- * leave it Unset, then *Add projects*. Nothing is written here: the host keeps the draft and saves
- * it whole.
+ * a heading over what their role gives by default, *Set custom accesses* at the heading's end, then
+ * the projects whose own level for them differs, as chips — a project's Mate name over its level, a
+ * ⋮ with what may change. *Set custom accesses* opens a picker: search the projects, give each Read,
+ * Full (or Hidden, for someone whose role reaches every project) or leave it Unset, then *Add
+ * projects*. Nothing is written here: the host keeps the draft and saves it whole.
  */
 import { FolderIcon, MoreVerticalIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -43,64 +43,26 @@ export function MemberProjectAccess({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <ul aria-label="Their projects" className="ov-chips" data-wide="">
-      {chips.map((chip) => (
-        <li
-          className="ov-chip"
-          data-changed={chip.changed || undefined}
-          data-menu={(editable && chip.actions.length > 0) || undefined}
-          key={chip.projectId}
-        >
-          <span className="ov-chip-who">
-            <span aria-hidden="true" className="tm-project-face">
-              <FolderIcon className="size-4" />
-            </span>
-            <span className="ov-chip-text">
-              <span className="ov-chip-name" data-part="name">
-                {chip.label}
-              </span>
-              <AccessBadge level={chip.level} />
-            </span>
+    <div className="tm-access">
+      <div className="tm-block-head">
+        <span className="tm-block-text">
+          <h2 className="tm-block-title">Project access</h2>
+          <span className="tm-block-desc">
+            Set custom project-specific access for this user. By default, users have access to all
+            projects based on their global team role.
           </span>
-          {editable && chip.actions.length > 0 ? (
-            <Menu>
-              <MenuTrigger
-                aria-label={`Change access to ${chip.label}`}
-                render={<Button size="icon-xs" variant="ghost" />}
-              >
-                <MoreVerticalIcon aria-hidden="true" />
-              </MenuTrigger>
-              <MenuPopup align="start">
-                {chip.actions.map((action) => (
-                  <MenuItem
-                    key={`${action.choice}-${action.label}`}
-                    onClick={() => onChoose(chip.projectId, action.choice)}
-                    {...(action.choice === "remove" ? { variant: "destructive" as const } : {})}
-                  >
-                    {action.label}
-                  </MenuItem>
-                ))}
-              </MenuPopup>
-            </Menu>
-          ) : null}
-        </li>
-      ))}
-      {editable && candidates.length > 0 ? (
-        <li className="ov-chip-slot">
+        </span>
+        {editable && candidates.length > 0 ? (
           <Popover onOpenChange={setOpen} open={open}>
             <PopoverTrigger
               render={
-                <button
-                  className="ov-chip-add"
-                  data-zerops-surface="set-custom-access"
-                  type="button"
-                />
+                <Button data-zerops-surface="set-custom-access" size="sm" variant="outline" />
               }
             >
-              <PlusIcon aria-hidden="true" className="size-4" />
-              <span>Set custom accesses</span>
+              <PlusIcon aria-hidden="true" />
+              Set custom accesses
             </PopoverTrigger>
-            <PopoverPopup align="start" padding="none" width="lg">
+            <PopoverPopup align="end" padding="none" width="lg">
               {open ? (
                 <ProjectPicker
                   candidates={candidates}
@@ -113,9 +75,54 @@ export function MemberProjectAccess({
               ) : null}
             </PopoverPopup>
           </Popover>
-        </li>
-      ) : null}
-    </ul>
+        ) : null}
+      </div>
+      {chips.length === 0 ? null : (
+        <ul aria-label="Their projects" className="ov-chips" data-wide="">
+          {chips.map((chip) => (
+            <li
+              className="ov-chip"
+              data-changed={chip.changed || undefined}
+              data-menu={(editable && chip.actions.length > 0) || undefined}
+              key={chip.projectId}
+            >
+              <span className="ov-chip-who">
+                <span aria-hidden="true" className="tm-project-face">
+                  <FolderIcon className="size-4" />
+                </span>
+                <span className="ov-chip-text">
+                  <span className="ov-chip-name" data-part="name">
+                    {chip.label}
+                  </span>
+                  <AccessBadge level={chip.level} />
+                </span>
+              </span>
+              {editable && chip.actions.length > 0 ? (
+                <Menu>
+                  <MenuTrigger
+                    aria-label={`Change access to ${chip.label}`}
+                    render={<Button size="icon-xs" variant="ghost" />}
+                  >
+                    <MoreVerticalIcon aria-hidden="true" />
+                  </MenuTrigger>
+                  <MenuPopup align="start">
+                    {chip.actions.map((action) => (
+                      <MenuItem
+                        key={`${action.choice}-${action.label}`}
+                        onClick={() => onChoose(chip.projectId, action.choice)}
+                        {...(action.choice === "remove" ? { variant: "destructive" as const } : {})}
+                      >
+                        {action.label}
+                      </MenuItem>
+                    ))}
+                  </MenuPopup>
+                </Menu>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

@@ -156,51 +156,48 @@ describe("what the Mate's card says still runs after its turn", () => {
       said: ["Final batched browser check — Its own job", "Review the diff — Its helper"],
     },
     {
-      name: "one line for many, the first by its title and the rest counted",
+      // Eli, 2026-10-14: five helpers read as one line, "… · and 4 more — Its helpers — 2h 10m".
+      name: "a row for each of five, each saying whose it is",
       work: {
         items: [
-          job("Final batched browser check"),
-          job("Wait for the final check to finish"),
-          job("Wait for the final check to complete"),
-        ],
-        count: 4,
-      },
-      said: ["Final batched browser check · and 3 more — Its own jobs"],
-    },
-    {
-      // Eli, 2026-10-14: three helpers and two of its own jobs read as one line, "Its helpers".
-      name: "its helpers and its own jobs on lines of their own when they are many",
-      work: {
-        items: [
-          helper("UI overhaul + placement clarity"),
+          helper("Deeper production chains + drones"),
           helper("Swarm scale toward 500k"),
-          helper("Walls, turrets-on-walls, craters, climb"),
+          helper("Arsenal: mines, arc gates, orbital"),
           job("Run the test suite"),
-          job("Serve the preview"),
+          helper("Fog of war, scanning, tech tree"),
         ],
         count: 5,
-        helpers: 3,
+        helpers: 4,
       },
       said: [
-        "UI overhaul + placement clarity · and 2 more — Its helpers",
-        "Run the test suite · and 1 more — Its own jobs",
+        "Deeper production chains + drones — Its helper",
+        "Swarm scale toward 500k — Its helper",
+        "Arsenal: mines, arc gates, orbital — Its helper",
+        "Run the test suite — Its own job",
+        "Fog of war, scanning, tech tree — Its helper",
       ],
     },
     {
-      name: "one helper among many of its own jobs by its own title",
+      name: "the first five on rows of their own and how many more run",
       work: {
         items: [
-          job("Final batched browser check"),
-          job("Wait for the final check to finish"),
-          job("Wait for the final check to complete"),
-          helper("Review the diff"),
+          helper("One"),
+          helper("Two"),
+          helper("Three"),
+          job("Four"),
+          job("Five"),
+          job("Six"),
         ],
-        count: 5,
-        helpers: 1,
+        count: 8,
+        helpers: 3,
       },
       said: [
-        "Final batched browser check · and 3 more — Its own jobs",
-        "Review the diff — Its helper",
+        "One — Its helper",
+        "Two — Its helper",
+        "Three — Its helper",
+        "Four — Its own job",
+        "Five — Its own job",
+        "and 3 more",
       ],
     },
     {
@@ -221,4 +218,22 @@ describe("what the Mate's card says still runs after its turn", () => {
   ])("says $name", ({ work, said }) => {
     expect(lines(work)).toEqual(said);
   });
+});
+
+it("gives each row still running its own start, never one shared across them", () => {
+  const work = {
+    items: [
+      {
+        title: "Deeper production chains + drones",
+        of: "helper",
+        since: Date.UTC(2026, 9, 14, 19, 0),
+      },
+      { title: "Swarm scale toward 500k", of: "helper", since: Date.UTC(2026, 9, 14, 21, 2) },
+    ],
+    count: 2,
+  } as const;
+  expect(afterWorkLines(work).map((line) => line.startedAt)).toEqual([
+    "2026-10-14T19:00:00.000Z",
+    "2026-10-14T21:02:00.000Z",
+  ]);
 });

@@ -175,14 +175,14 @@ describe("inviting someone to the team", () => {
     ]);
   });
 
-  it("Someone on the team already is said so, with a way to their page", async () => {
+  it("An address already in the organization stays on the e-mail, the field saying so", async () => {
     const page = mount("OWNER", {
       check: async () => ({ kind: "member", clientUserId: "cu-petra", roleCode: "NO_ACCESS" }),
     });
     page.type("email", "petra.kralova@example.com");
     await page.submit();
-    expect(page.heading()).toBe("Already on the team");
-    expect(page.links()).toEqual(["/settings/team/cu-petra"]);
+    expect(page.heading()).toBe("Add a new team member");
+    expect(page.alerts()).toEqual(["petra.kralova@example.com is in Acme already."]);
     expect(page.send).not.toHaveBeenCalled();
   });
 
