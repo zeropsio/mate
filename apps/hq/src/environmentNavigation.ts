@@ -11,7 +11,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type * as SqlClient from "effect/sql/SqlClient";
 import type { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
-import type { HqReleaseTarget, ReleaseRollout } from "@t3tools/shared/hqRelease";
+import type { HqReleaseTarget, ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import { environmentBirths } from "./births.ts";
 import { releaseTargetOf } from "./gitEvents.ts";
 import {
@@ -65,12 +65,15 @@ export const readEnvironmentSource = Effect.fnUntraced(function* (
     readonly key_held: boolean;
     readonly key_invalid: boolean;
     readonly project_ids: ReadonlyArray<string>;
+    readonly tier_stops: ReadonlyArray<TierStop>;
   }>`
 SELECT e.id AS environment_id, e.project_id, e.target, e.created_for_production, e.branch, e.delivery, e.app_id::text AS app_id, e.tier, e.name, e.sources,
        (rank() OVER (PARTITION BY e.app_id ORDER BY e.declared_seq))::int AS "order",
        t.project_id IS NOT NULL AS key_held,
        t.invalid_since IS NOT NULL AS key_invalid,
-       ARRAY(SELECT p.project_id FROM hq_app_project p WHERE p.app_id=e.app_id) AS project_ids
+       ARRAY(SELECT p.project_id FROM hq_app_project p WHERE p.app_id=e.app_id) AS project_ids,
+       COALESCE((SELECT jsonb_agg(jsonb_build_object('service', s.service, 'rollbackTo', s.rollback_to) ORDER BY s.service)
+                 FROM hq_tier_stop s WHERE s.environment_id=e.id AND s.service <> ''), '[]'::jsonb) AS tier_stops
 FROM hq_environment e LEFT JOIN hq_deploy_token t USING (project_id)
 ORDER BY e.declared_seq`;
   const iso = (column: string) =>
@@ -215,19 +218,6 @@ FROM standing s`;
             : { target: row.target, releaseTarget: row.release_target }),
         };
   };
-  const stops = yield* sql<{
-    readonly environment_id: string;
-    readonly service: string;
-    readonly rollback_to: string | null;
-  }>`
-SELECT environment_id, service, rollback_to FROM hq_tier_stop
-WHERE service <> '' ORDER BY environment_id, service`;
-  const tierStopsOf = (environmentId: string) => {
-    const tierStops = stops
-      .filter((stop) => stop.environment_id === environmentId)
-      .map((stop) => ({ service: stop.service, rollbackTo: stop.rollback_to }));
-    return tierStops.length === 0 ? {} : { tierStops };
-  };
   const born = yield* environmentBirths(sql);
   const birthOf = (environmentId: string): EnvironmentBirth | null =>
     born.get(environmentId) ?? null;
@@ -242,7 +232,7 @@ WHERE service <> '' ORDER BY environment_id, service`;
       keyInvalid: row.key_invalid,
       release: releaseOf(row.environment_id),
       birth: birthOf(row.environment_id),
-      ...tierStopsOf(row.environment_id),
+      ...(row.tier_stops.length === 0 ? {} : { tierStops: row.tier_stops }),
     };
     const values = jobs
       .filter((job) => job.environment_id === row.environment_id)
