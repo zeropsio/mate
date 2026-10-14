@@ -14,6 +14,10 @@ import { AppRoot } from "./AppRoot";
 import { keepBootFrame } from "./zerops/bootFrame";
 import { staleChunkRecovery } from "./lib/staleChunk";
 import { pressesInFlight } from "./zerops/matePress";
+import { captureZeropsHqSignIn } from "./zerops/hqSignIn";
+
+// HQ's card sign-in leaves the address before the router reads it (`zerops/hqSignIn.ts`).
+captureZeropsHqSignIn();
 
 // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
 const history = isElectron ? createHashHistory() : createBrowserHistory();

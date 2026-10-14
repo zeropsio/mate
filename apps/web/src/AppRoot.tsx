@@ -6,6 +6,8 @@ import { ZeropsMenuPreview } from "./zerops/useMenuRows";
 import { ZeropsHqNavigation } from "./zerops/hqNavigation";
 import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
 import { ZeropsHostedLanding } from "./components/zerops/landing/ZeropsHostedLanding";
+import { zeropsSignInMode } from "./zerops/deviceLogin";
+import { driveZeropsHqSignIn } from "./zerops/hqSignIn";
 import { appBasePath } from "./basePath";
 import { RouterProvider } from "@tanstack/react-router";
 
@@ -40,7 +42,17 @@ export function ZeropsAccountDataBoundary({ children }: { readonly children: Rea
 }
 
 function AccountProductBoundary({ router }: { readonly router: AppRouter }) {
-  const { status, user } = useZeropsSession();
+  const { status, user, client, adoptDeviceLogin } = useZeropsSession();
+  // A trip through HQ from its Mate card settles with the session check (`hqSignIn.ts`): it runs for
+  // a signed-out tab of a device-login build, and is spent unrun any other way.
+  useEffect(() => {
+    if (status === "loading") return;
+    driveZeropsHqSignIn(
+      status === "signed-out" && zeropsSignInMode() === "device-login"
+        ? { apiBase: client.baseUrl, adopt: adoptDeviceLogin }
+        : null,
+    );
+  }, [adoptDeviceLogin, client, status]);
   useEffect(() => {
     if (window.location.pathname.replace(/\/$/, "") === `${appBasePath()}/pair`) {
       window.history.replaceState(null, "", `${appBasePath()}/zerops`);

@@ -9,6 +9,7 @@ import {
   type ZeropsDeviceLoginStage,
 } from "~/zerops/deviceLogin";
 import { startZeropsHandover } from "~/zerops/handover";
+import { dismissZeropsHqSignIn, retryZeropsHqSignIn, useZeropsHqSignIn } from "~/zerops/hqSignIn";
 import {
   readZeropsNativeSignInBridge,
   readZeropsNativeSignInProgress,
@@ -40,6 +41,8 @@ export function ZeropsHostedLanding() {
     useZeropsSession();
   const [nativeState, setNativeState] = useState<ZeropsNativeSignInState>({ kind: "idle" });
   const [device, setDevice] = useState<DeviceLoginState>({ kind: "idle" });
+  // A trip through HQ from its Mate card (`hqSignIn.ts`), run beside the session check.
+  const hq = useZeropsHqSignIn();
   const generation = useRef(0);
   const deviceRun = useRef<ZeropsDeviceLoginRun | null>(null);
   // Signed in — here, or by another tab — the Zerops window has nothing left to answer.
@@ -74,6 +77,16 @@ export function ZeropsHostedLanding() {
           {retrying === true ? "Trying again…" : null}
         </p>
       </ZeropsLandingShell>
+    );
+  if (hq.kind === "running")
+    return <ZeropsFrameWait label="Signing you in…" line="Signing you in…" signedIn={false} />;
+  if (hq.kind === "failed")
+    return (
+      <ZeropsHandoverFailed
+        message={hq.message}
+        onBack={dismissZeropsHqSignIn}
+        onRetry={() => retryZeropsHqSignIn({ apiBase: client.baseUrl, adopt: adoptDeviceLogin })}
+      />
     );
   // Runs on the click: the Zerops window must open before anything is awaited.
   const startDeviceLogin = (intent: Intent) => {
