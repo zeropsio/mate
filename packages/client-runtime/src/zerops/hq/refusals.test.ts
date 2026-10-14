@@ -7,6 +7,16 @@ import { REASONS } from "@t3tools/shared/zeropsPermissions";
 import { enrollmentRefusalWords, hqOfferWords, hqRefusalWords } from "./refusals.ts";
 
 describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
+  it.each([
+    [
+      "production_taken",
+      "That project has its production already. Close this form and open the existing production.",
+    ],
+    ["branch_taken", "An environment already uses this branch. Choose another branch."],
+  ])("A Git environment conflict says how to continue: %s", (reason, expected) => {
+    expect(hqRefusalWords({ code: "conflict", reason })).toBe(expected);
+  });
+
   it.each([...REASONS])("says %s in words of its own, never the code", (reason) => {
     const words = hqRefusalWords({ code: "forbidden", reason });
     expect(words).not.toContain(reason);
@@ -43,7 +53,11 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
       "An environment's name starts with a letter and has only small letters, digits and dashes.",
     ],
     ["environment_name_long", "invalid", "An environment's name has at most 63 characters."],
-    ["environment_name_taken", "conflict", "This project has an environment of that name already."],
+    [
+      "environment_name_taken",
+      "conflict",
+      "This project has an environment of that name already. Close this form and open Add again to get a new name.",
+    ],
     ["environment_not_found", "environment_not_found", "HQ has no such environment."],
     ["deploy_token_refused", "invalid", "Zerops did not accept this deploy key."],
     ["deploy_token_scope", "invalid", "This deploy key reaches more than its own project."],

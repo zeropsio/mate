@@ -1,3 +1,4 @@
+import { deriveEnvironmentName } from "@t3tools/shared/hqEnvironment";
 import type { HqGitAdoption, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import type { GitEnvironmentSetup } from "~/zerops/setUpEnvironment";
@@ -25,6 +26,7 @@ export interface GitEnvironmentFormProps {
   readonly groupName: string;
   readonly tier: "stage" | "production";
   readonly defaultName: string;
+  readonly takenNames: ReadonlyArray<string> | undefined;
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly setup: GitEnvironmentSetup;
   readonly offered: { readonly add: boolean; readonly connect: boolean; readonly replace: boolean };
@@ -37,6 +39,7 @@ export function GitEnvironmentForm({
   groupName,
   tier,
   defaultName,
+  takenNames,
   repos,
   setup,
   offered,
@@ -44,6 +47,8 @@ export function GitEnvironmentForm({
   onCancel,
   onAdded,
 }: GitEnvironmentFormProps) {
+  const name =
+    takenNames === undefined ? undefined : deriveEnvironmentName(defaultName, tier, takenNames);
   const id = useId();
   const [step, setStep] = useState<"repository" | "token" | "branch">("repository");
   const [address, setAddress] = useState("");
@@ -89,6 +94,7 @@ export function GitEnvironmentForm({
   const busy = pending !== undefined || reading;
   const canAdd =
     step === "branch" &&
+    name !== undefined &&
     connected &&
     offered.add &&
     gitSetupBranchValid(branch) &&
@@ -152,15 +158,15 @@ export function GitEnvironmentForm({
           if (connected && !busy && !uncertain) setStep("branch");
         } else {
           setReadBranch(branch);
-          if (!canAdd || adoption === undefined) return;
+          if (!canAdd || adoption === undefined || name === undefined) return;
           void act("add", async () => {
             await setup.add({
               tier,
-              name: defaultName,
+              name,
               target: { kind: "git", branch, delivery: "direct" },
               adoption,
             });
-            if (mounted.current) onAdded(defaultName);
+            if (mounted.current) onAdded(name);
           });
         }
       }}
@@ -394,6 +400,13 @@ export function GitEnvironmentForm({
         {preview?.key === previewKey && preview?.error ? (
           <p role="status" className="text-sm text-muted-foreground">
             {preview.error}
+          </p>
+        ) : null}
+        {step === "branch" && name === undefined ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            {takenNames === undefined
+              ? "Reading this project's environment names…"
+              : "This project has used all generated names. Remove an unused environment before adding another."}
           </p>
         ) : null}
         {notice ? (

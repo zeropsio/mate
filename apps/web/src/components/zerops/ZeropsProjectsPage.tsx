@@ -1530,9 +1530,14 @@ function ZeropsProjectsContent({
     activeOrganization === null || activeOrganization === undefined
       ? null
       : hqProjectIdOf(activeOrganization.id);
-  const gitSetupCan = hqStructure.structure?.apps.find(
+  const gitSetupApp = hqStructure.structure?.apps.find(
     (app) => app.id === creationRequest?.groupId,
-  )?.can;
+  );
+  const gitSetupNames =
+    hqStructure.live && Array.isArray(gitSetupApp?.environments)
+      ? gitSetupApp.environments.map((environment) => environment.name)
+      : undefined;
+  const gitSetupCan = gitSetupApp?.can;
   const gitSetupOffered = (verb: string) =>
     hqOffer(gitSetupCan, verb, {
       current: hqStructure.live,
@@ -2546,6 +2551,7 @@ function ZeropsProjectsContent({
             activeOrganization === null || activeOrganization === undefined || gitSetupHq === null
               ? undefined
               : {
+                  takenNames: gitSetupNames,
                   repos: gitSetupDetail.live ? gitSetupDetail.repos : undefined,
                   offered: {
                     add: gitSetupOffered("add_git_environment"),

@@ -18,7 +18,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import { Deploys } from "./deploys.ts";
-import { environmentNameProblem } from "./environments.ts";
+import { environmentNameProblem } from "@t3tools/shared/hqEnvironment";
 import { GitHost, holdingRepo } from "./gitHost.ts";
 import { Leader } from "./leader.ts";
 import { can } from "./permissions.ts";
