@@ -147,6 +147,7 @@ function creatorChip(
     line: "Full access, as its creator",
     level: "full",
     across: [],
+    note: null,
     change: null,
   };
 }
@@ -158,7 +159,14 @@ export function draftChoose(
   clientUserId: string,
   choice: GivenLevel | "remove",
 ): ReadonlyArray<ProjectGrant> {
-  const roleCode = choice === "remove" ? null : choice === "full" ? "ADMIN" : "READ_ONLY";
+  const roleCode =
+    choice === "remove"
+      ? null
+      : choice === "full"
+        ? "ADMIN"
+        : choice === "read"
+          ? "READ_ONLY"
+          : "NO_ACCESS";
   const orgRole = members.find((member) => member.id === clientUserId)?.roleCode;
   return withProjectGrant(
     list,

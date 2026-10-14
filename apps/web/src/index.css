@@ -7570,6 +7570,13 @@ a.ov-card-site:hover {
   border-top: 1px solid var(--ov-rule);
 }
 
+/* A project kept from someone whose role reaches every project: no fill, a dashed edge. */
+.ov-chip-badge[data-level="hidden"] {
+  box-shadow: inset 0 0 0 1px var(--ov-rule);
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
 /* *Add a Mate* at the foot of a project page's Mates: a row the size of a folded one, its plus
    where a face stands. */
 .ov-add {

@@ -11,6 +11,7 @@
 import {
   CogIcon,
   EyeIcon,
+  EyeOffIcon,
   LockOpenIcon,
   MoreVerticalIcon,
   PlusIcon,
@@ -19,6 +20,15 @@ import {
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import { useMemo, useState, type ReactNode } from "react";
 
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
 import { Input } from "../../ui/input";
@@ -35,6 +45,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { Avatar } from "../primitives";
 import {
+  asksFirst,
   BADGE_WORDS,
   personMenu,
   type AccessCandidate,
@@ -85,6 +96,7 @@ const BADGE_ICON: Readonly<Record<ChipLevel, typeof LockOpenIcon>> = {
   basic: CogIcon,
   read: EyeIcon,
   mixed: SplitIcon,
+  hidden: EyeOffIcon,
 };
 
 /** The key a refusal to add people is said under. */
@@ -161,6 +173,11 @@ function AccessChip({
   readonly onChoose?: (choice: AccessChoice) => void;
 }) {
   const change = person.change;
+  const [asking, setAsking] = useState<AccessChoice | null>(null);
+  const choose = (choice: AccessChoice) => {
+    if (change !== null && asksFirst(change, choice)) setAsking(choice);
+    else onChoose?.(choice);
+  };
   return (
     <li
       className="ov-chip"
@@ -193,7 +210,34 @@ function AccessChip({
         </TooltipPopup>
       </Tooltip>
       {change === null || onChoose === undefined ? null : (
-        <ChipMenu busy={busy} change={change} name={person.name} onChoose={onChoose} />
+        <ChipMenu busy={busy} change={change} name={person.name} onChoose={choose} />
+      )}
+      {change?.selfLower === undefined ? null : (
+        <AlertDialog
+          onOpenChange={(open) => {
+            if (!open) setAsking(null);
+          }}
+          open={asking !== null}
+        >
+          <AlertDialogPopup>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{change.selfLower.title}</AlertDialogTitle>
+              <AlertDialogDescription>{change.selfLower.description}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+              <Button
+                onClick={() => {
+                  if (asking !== null) onChoose?.(asking);
+                  setAsking(null);
+                }}
+                variant="destructive"
+              >
+                Give it up
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogPopup>
+        </AlertDialog>
       )}
     </li>
   );
@@ -222,6 +266,7 @@ function HoverCard({ person }: { readonly person: ProjectPerson }) {
       ) : person.line === "" ? null : (
         <span className="ov-chip-card-line">{person.line}</span>
       )}
+      {person.note === null ? null : <span className="ov-chip-card-line">{person.note}</span>}
     </div>
   );
 }
@@ -239,6 +284,7 @@ function ChipMenu({
   readonly onChoose: (choice: AccessChoice) => void;
 }) {
   const entries = personMenu(change);
+  const actions = entries.flatMap((entry) => (entry.kind === "action" ? [entry] : []));
   const levels = entries.flatMap((entry) => (entry.kind === "level" ? [entry] : []));
   const end = entries.find((entry) => entry.kind === "end");
   const held = levels.find((entry) => entry.checked)?.level ?? "";
@@ -252,18 +298,25 @@ function ChipMenu({
         <MoreVerticalIcon aria-hidden="true" />
       </MenuTrigger>
       <MenuPopup align="start">
-        <MenuRadioGroup
-          onValueChange={(value) => {
-            if (value !== held) onChoose(value as GivenLevel);
-          }}
-          value={held}
-        >
-          {levels.map((entry) => (
-            <MenuRadioItem key={entry.level} value={entry.level} variant="check">
-              {entry.label}
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
+        {actions.map((entry) => (
+          <MenuItem key={`${entry.choice}-${entry.label}`} onClick={() => onChoose(entry.choice)}>
+            {entry.label}
+          </MenuItem>
+        ))}
+        {levels.length === 0 ? null : (
+          <MenuRadioGroup
+            onValueChange={(value) => {
+              if (value !== held) onChoose(value as GivenLevel);
+            }}
+            value={held}
+          >
+            {levels.map((entry) => (
+              <MenuRadioItem key={entry.level} value={entry.level} variant="check">
+                {entry.label}
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+        )}
         {end === undefined ? null : (
           <>
             <MenuSeparator />

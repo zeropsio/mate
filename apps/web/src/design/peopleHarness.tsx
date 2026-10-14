@@ -1,7 +1,7 @@
 /**
  * People chips (`ProjectAccessChips`), from a made-up organization: an owner, you as a developer
- * with two Mates, an admin lowered on production, a guest with a grant per place, an invitation not
- * accepted yet and two members with no access — an app's People as you see them, then as an
+ * with two Mates, an admin lowered on production, an admin the app is hidden from, a guest with a
+ * grant per place, an invitation not accepted yet and two members with no access — an app's People as you see them, then as an
  * organization owner (a ⋮ per person, one change saving, one refused, *Add access* last), one
  * environment's *Project access*, a new stage's draft with its creator pinned, *Add access* open
  * (`?pick`), and the one line a refused member list leaves.
@@ -43,6 +43,7 @@ const MEMBERS = [
   member("ada", "Ada Lovelace", "OWNER"),
   member("me", "Tomáš Beneš", "BASIC_USER"),
   member("karel", "Karel Novák", "ADMIN"),
+  member("lucie", "Lucie Horáková", "ADMIN"),
   member("jan", "Jan Svoboda", "NO_ACCESS"),
   member("eva", "Eva Dvořáková", "NO_ACCESS"),
   member("iva", "Iva Malá", "BASIC_USER", "WAITING_AUTHORIZATION"),
@@ -65,9 +66,16 @@ const input = (members: ProjectPeopleInput["members"]): ProjectPeopleInput => ({
       grants: [
         { clientUserId: "cu-karel", roleCode: "READ_ONLY" },
         { clientUserId: "cu-jan", roleCode: "READ_ONLY" },
+        { clientUserId: "cu-lucie", roleCode: "NO_ACCESS" },
       ],
     },
-    stage: { status: "ready", grants: [{ clientUserId: "cu-jan", roleCode: "ADMIN" }] },
+    stage: {
+      status: "ready",
+      grants: [
+        { clientUserId: "cu-jan", roleCode: "ADMIN" },
+        { clientUserId: "cu-lucie", roleCode: "NO_ACCESS" },
+      ],
+    },
   },
   owners: { m1: "me", m2: "me", m3: "karel" },
   pictures: {},

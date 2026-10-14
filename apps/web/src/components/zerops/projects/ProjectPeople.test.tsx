@@ -166,13 +166,22 @@ describe("changing who can work on a project", () => {
     expect(section?.querySelector('[data-zerops-surface="add-access"]')).toBeNull();
   });
 
-  it("An owner finds a menu on each person whose access they may change: an invitation's too, never their own", () => {
+  it("An owner finds a menu on each person whose access they may change: an invitation's and their own too", () => {
     const section = drawn({ roleCode: "OWNER", membershipId: "cu-anna" });
     expect(
       [...(section?.querySelectorAll('[aria-label$="\'s access"]') ?? [])].map((menu) =>
         menu.getAttribute("aria-label"),
       ),
-    ).toEqual(["Change Petr Novák's access", "Change iva@example.com's access"]);
+    ).toEqual([
+      "Change Anna Berg's access",
+      "Change Petr Novák's access",
+      "Change iva@example.com's access",
+    ]);
+  });
+
+  it("An admin finds no menu on an owner: Zerops refuses an admin that write", () => {
+    const section = drawn({ roleCode: "ADMIN", membershipId: "cu-someone" });
+    expect(section?.querySelector('[aria-label="Change Anna Berg\'s access"]')).toBeNull();
   });
 
   it("A change under way says so on the row, and a refused one is said under it", () => {
@@ -214,7 +223,9 @@ describe("a new project's access in a creation dialog", () => {
       ["Anna B.", "Full"],
       [],
     ]);
-    expect(section?.querySelectorAll('[aria-label$="\'s access"]').length).toBe(0);
+    expect(
+      section?.querySelector("ul > li")?.querySelector('[aria-label$="\'s access"]') ?? null,
+    ).toBeNull();
     expect(section?.querySelector('[data-zerops-surface="add-access"]')?.textContent).toBe(
       "Add access",
     );
