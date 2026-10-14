@@ -671,6 +671,7 @@ describe("deploys", () => {
               yield* gitRelease(appId, "git-production", "v0.2.0", [
                 { service: "code", sha: latest },
               ]);
+              yield* planned;
               destinations.set("code", { url: remote, keptAt: "2026-10-13T01:00:00Z" });
               yield* request({ cause: "key_kept", appId, repo: "code", by: "owner" });
               yield* planned;
