@@ -2,11 +2,16 @@
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { useAddressesSheet } from "~/zerops/addressesSheet";
 import type { FixProblem } from "~/zerops/fixRequest";
+import {
+  placeAddresses as place,
+  withPlaceAddresses as inAccount,
+} from "~/zerops/__fixtures__/placeAddresses";
 
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
 import type { ChipMenuModel, ChipMenuStop, ProductionChip } from "./SidebarProductionChip.logic";
@@ -110,9 +115,13 @@ afterEach(() => {
   for (const unmount of unmounts.splice(0)) unmount();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  useAddressesSheet.getState().close();
 });
 
-async function mount(over: Partial<ProjectSitesInput> = {}) {
+async function mount(
+  over: Partial<ProjectSitesInput> = {},
+  wrap: (children: ReactNode) => ReactNode = (children) => children,
+) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
   document.body.append(container);
@@ -132,14 +141,16 @@ async function mount(over: Partial<ProjectSitesInput> = {}) {
   };
   await act(async () => {
     root.render(
-      <ProjectSites {...props}>
-        {({ tag, globe }) => (
-          <div data-row="">
-            {tag}
-            {globe}
-          </div>
-        )}
-      </ProjectSites>,
+      wrap(
+        <ProjectSites {...props}>
+          {({ tag, globe }) => (
+            <div data-row="">
+              {tag}
+              {globe}
+            </div>
+          )}
+        </ProjectSites>,
+      ),
     );
   });
   unmounts.push(() => {
@@ -353,5 +364,84 @@ describe("the environment tag", () => {
       "stage:stage",
     );
     expect(tag?.hasAttribute("data-popup-open")).toBe(true);
+  });
+});
+
+describe("the addresses sheet's doors", () => {
+  const sectionOf = (title: string) =>
+    [...document.querySelectorAll<HTMLElement>("[data-sites-section]")].find(
+      (section) => section.getAttribute("aria-label") === title,
+    );
+  const manageIn = (title: string) =>
+    sectionOf(title)?.querySelector<HTMLElement>(
+      '[data-zerops-surface="sidebar-project-sites-manage"]',
+    ) ?? null;
+  const addDomain = () => surface("sidebar-project-sites-add-domain");
+
+  it.each([
+    ["Production", "quill-production"],
+    ["stage", "quill-stage"],
+    ["Nell", "quill-nell"],
+  ])(
+    "Manage on %s's head opens the addresses sheet for its project and closes the popover",
+    async (title, projectId) => {
+      await mount({}, inAccount({}));
+      await press(surface("sidebar-project-sites"));
+      await press(manageIn(title));
+      expect(useAddressesSheet.getState().target).toEqual({
+        orgId: "org",
+        projectId,
+        groupId: "quill",
+      });
+      expect(surface("sidebar-project-sites-popover")).toBeNull();
+    },
+  );
+
+  it("offers no Manage for a place Git delivers to, which has no Zerops addresses", async () => {
+    await mount(
+      {
+        production: () => ({
+          stops: [
+            // Delivered by Git: only that it is, not how, matters here.
+            stop({ name: "production", git: {} as unknown as NonNullable<ChipMenuStop["git"]> }),
+          ],
+        }),
+      },
+      inAccount({}),
+    );
+    await press(surface("sidebar-project-sites"));
+    expect(sectionOf("Production")).toBeDefined();
+    expect(manageIn("Production")).toBeNull();
+    expect(manageIn("stage")).not.toBeNull();
+  });
+
+  it("offers no Manage outside an account, where no sheet can read a place", async () => {
+    await mount();
+    await press(surface("sidebar-project-sites"));
+    expect(surfaces("sidebar-project-sites-manage")).toEqual([]);
+  });
+
+  it("Add your domain shows in production's section only while production has no domain of its own, and opens the sheet to add one", async () => {
+    await mount({}, inAccount({ "quill-production": place([]), "quill-stage": place([]) }));
+    await press(surface("sidebar-project-sites"));
+    expect(surfaces("sidebar-project-sites-add-domain")).toHaveLength(1);
+    expect(sectionOf("Production")?.contains(addDomain())).toBe(true);
+    await press(addDomain());
+    expect(useAddressesSheet.getState().target).toEqual({
+      orgId: "org",
+      projectId: "quill-production",
+      groupId: "quill",
+      intent: "add-domain",
+    });
+    expect(surface("sidebar-project-sites-popover")).toBeNull();
+  });
+
+  it.each([
+    ["has a domain of its own", place(["quill.example.com"])],
+    ["is still being read", place("reading")],
+  ])("Add your domain does not show while production %s", async (_case, production) => {
+    await mount({}, inAccount({ "quill-production": production }));
+    await press(surface("sidebar-project-sites"));
+    expect(addDomain()).toBeNull();
   });
 });

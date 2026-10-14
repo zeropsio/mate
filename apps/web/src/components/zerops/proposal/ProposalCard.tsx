@@ -1,9 +1,11 @@
 /**
  * What a Mate proposes, on its card: what it would do as its title, why in the Mate's words, what
- * exactly — the service, the value (hidden when it is secret), or the words and attachment another
- * Mate, or the person's own Chief, would be sent — and Approve or Decline. Decided, the same card
- * says how it went in place: running, done, failed in the platform's words, or declined. Nothing
- * ran before the person approved it. Props only: the container carries out the approval.
+ * exactly — the service, the value (hidden when it is secret), the words and attachment another
+ * Mate, or the person's own Chief, would be sent, or the service and port a domain points at — and
+ * Approve or Decline. Decided, the same card says how it went in place: running, done, failed in
+ * the platform's words, or declined; an approved domain says how far it is from answering, and
+ * opens the project's addresses. Nothing ran before the person approved it. Props only: the
+ * container carries out the approval.
  */
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
@@ -11,6 +13,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CircleAlertIcon,
+  GlobeIcon,
   KeyRoundIcon,
   PlayIcon,
   RotateCwIcon,
@@ -27,7 +30,9 @@ import { FlatCard, MateFace } from "../primitives";
 import {
   chiefMessageTarget,
   proposalOutcomeWords,
+  proposalTitle,
   proposalWhere,
+  type DomainProposalState,
   type ProposalStage,
 } from "./proposal.logic";
 
@@ -61,6 +66,12 @@ export interface ProposalCardProps {
   readonly onSetUpChief?: (() => void) | undefined;
   /** Why the person's last decision was not kept, in HQ's or the platform's words. */
   readonly refusal?: string | undefined;
+  /** `domain.add`, undecided: the other changes approving it puts in place. */
+  readonly domainAlso?: string | undefined;
+  /** `domain.add`, approved: how far its domains are from answering, once the project shows them. */
+  readonly domainState?: DomainProposalState | undefined;
+  /** `domain.add`, approved: opens the project's addresses. */
+  readonly onOpenAddresses?: (() => void) | undefined;
 }
 
 const KIND_ICON: Record<ZeropsProposal["kind"], LucideIcon> = {
@@ -70,6 +81,7 @@ const KIND_ICON: Record<ZeropsProposal["kind"], LucideIcon> = {
   "env.set": KeyRoundIcon,
   "mate.message": SendIcon,
   "chief.message": SendIcon,
+  "domain.add": GlobeIcon,
 };
 
 /** A secret value is never drawn: the card says it is hidden. */
@@ -100,7 +112,7 @@ export function ProposalCard(props: ProposalCardProps) {
                   proposal.kind === "chief.message" &&
                   chiefTarget?.kind === "unknown"
                 ? "Finding this Mate's Chief…"
-                : proposal.summary}
+                : proposalTitle(proposal)}
           </p>
           {where === null ? null : (
             <p className="text-xs text-muted-foreground" data-proposal-where>
@@ -238,6 +250,11 @@ function ProposalFoot(props: ProposalCardProps) {
   if (stage === "open") {
     return (
       <div className="grid gap-1.5">
+        {props.domainAlso === undefined ? null : (
+          <p className="text-xs leading-4 text-muted-foreground" data-proposal-also>
+            {props.domainAlso}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-2" data-proposal-decide>
           {props.onSetUpChief === undefined ? (
             props.chiefTarget !== undefined && props.chiefTarget.kind !== "chief" ? null : (
@@ -281,6 +298,9 @@ function ProposalFoot(props: ProposalCardProps) {
       </p>
     );
   }
+  if (proposal.kind === "domain.add" && (stage === "done" || stage === "unseen")) {
+    return <DomainFoot {...props} stage={stage} />;
+  }
   const words = proposalOutcomeWords(proposal, stage);
   return (
     <div
@@ -306,6 +326,45 @@ function ProposalFoot(props: ProposalCardProps) {
           </Button>
         ) : null
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * An approved domain: how far it is from answering, as the project's addresses show it — until
+ * they show it, that it was added — and the way to its records.
+ */
+function DomainFoot(props: ProposalCardProps & { readonly stage: "done" | "unseen" }) {
+  const { domainState, proposal, stage } = props;
+  const tone = domainState?.tone ?? (stage === "done" ? "live" : "waiting");
+  return (
+    <div
+      className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground"
+      data-proposal-outcome={stage}
+      data-proposal-domain={domainState?.tone}
+      role="status"
+    >
+      <span
+        className={
+          tone === "problem"
+            ? "flex min-w-0 items-start gap-1.5 text-destructive-foreground"
+            : "flex min-w-0 items-center gap-1.5"
+        }
+      >
+        {tone === "working" ? <Spinner size="xs" /> : null}
+        {tone === "live" ? (
+          <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok-text" />
+        ) : null}
+        {tone === "problem" ? (
+          <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
+        ) : null}
+        {domainState?.words ?? proposalOutcomeWords(proposal, stage)}
+      </span>
+      {props.onOpenAddresses === undefined ? null : (
+        <Button onClick={props.onOpenAddresses} size="xs" variant="outline">
+          Open addresses
+        </Button>
+      )}
     </div>
   );
 }

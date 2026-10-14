@@ -321,4 +321,11 @@ describe("a project's own row", () => {
   ])("$name", ({ after, grants: expected }) => {
     expect(grantsOf([...held(), ownRead("2026-10-06T10:00:00Z"), ...after])).toEqual(expected);
   });
+
+  it("a project whose own IPv4 ended carries none after the push that says so", () => {
+    const said = (publicIpV4: string | null) =>
+      decode({ ...row, publicIpV4 })!.value as ProjectValue;
+    const fact = reduce([...held(), listingRead(said("203.0.113.77")), listingPush(said(null))]);
+    expect(fact.kind === "known" ? (fact.value.publicIpV4 ?? "none") : "unread").toBe("none");
+  });
 });

@@ -46,6 +46,8 @@ describe("zeropsRegistrations", () => {
       "zerops:org:services",
       "zerops:org:routings",
       "zerops:org:routings",
+      "zerops:org:portRoutings",
+      "zerops:org:portRoutings",
     ]);
   });
 

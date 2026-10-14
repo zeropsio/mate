@@ -2,7 +2,11 @@ import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { StopView } from "@t3tools/client-runtime/zerops/flow";
 import { cloneElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { act, create } from "react-test-renderer";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { useAddressesSheet } from "~/zerops/addressesSheet";
+import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
 
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
 
@@ -18,14 +22,18 @@ vi.mock("../ui/menu", () => ({
   MenuItem: ({
     children,
     disabled,
+    onClick,
     render,
   }: {
     children: ReactNode;
     disabled?: boolean;
+    onClick?: () => void;
     render?: ReactElement;
   }) =>
     render === undefined ? (
-      <div aria-disabled={disabled === true ? "true" : undefined}>{children}</div>
+      <div aria-disabled={disabled === true ? "true" : undefined} onClick={onClick}>
+        {children}
+      </div>
     ) : (
       cloneElement(render, undefined, children)
     ),
@@ -138,5 +146,61 @@ describe("ZeropsStopMenu", () => {
     expect(html).toContain("app-26a7.prg1.zerops.app");
     expect(html).toContain("api-26a7-3000.prg1.zerops.app");
     expect(menu()).not.toContain('data-zerops-surface="public-routes"');
+  });
+});
+
+describe("ZeropsStopMenu's Addresses", () => {
+  afterEach(() => {
+    useAddressesSheet.getState().close();
+  });
+  const account = { orgId: "org" } as AccountData;
+  const itemsOf = (projectId: string, groupId: string | undefined, inAccount: boolean) => {
+    let tree: ReturnType<typeof create> | undefined;
+    const element = (
+      <ZeropsStopMenu
+        groupId={groupId}
+        name="production"
+        onOpenStop={undefined}
+        projectId={projectId}
+        routes={[]}
+        stop={STOP}
+        triggerClassName="ml-auto"
+      />
+    );
+    act(() => {
+      tree = create(
+        inAccount ? (
+          <AccountDataContext.Provider value={account}>{element}</AccountDataContext.Provider>
+        ) : (
+          element
+        ),
+      );
+    });
+    const items = tree!.root.findAll(
+      (node) => node.type === "div" && node.children.includes("Addresses"),
+    );
+    return { items, unmount: () => act(() => tree!.unmount()) };
+  };
+
+  it.each([
+    ["production's page", "shop-prod", "shop"],
+    ["a stage's page", "shop-stage", "shop"],
+    ["a project outside an application", "solo", undefined],
+  ])("on %s opens the addresses sheet for that page's project", (_case, projectId, groupId) => {
+    const { items, unmount } = itemsOf(projectId, groupId, true);
+    expect(items).toHaveLength(1);
+    act(() => items[0]?.props.onClick());
+    expect(useAddressesSheet.getState().target).toEqual({
+      orgId: "org",
+      projectId,
+      ...(groupId === undefined ? {} : { groupId }),
+    });
+    unmount();
+  });
+
+  it("offers no Addresses outside an account", () => {
+    const { items, unmount } = itemsOf("shop-prod", "shop", false);
+    expect(items).toEqual([]);
+    unmount();
   });
 });
