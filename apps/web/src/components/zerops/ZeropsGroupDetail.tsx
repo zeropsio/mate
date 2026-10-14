@@ -139,7 +139,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { ProjectPeople } from "./projects/ProjectPeople";
+import { ProjectAccess, ProjectPeople } from "./projects/ProjectPeople";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
@@ -1105,6 +1105,7 @@ function ZeropsProjectStopDetailPage({
     <>
       <StopPublicAccessStatus access={publicAccess} />
       <ZeropsStopPane
+        access={<ProjectAccess heading={false} kind={stop.tier} projectId={projectId} />}
         vault={orgId === null ? undefined : { orgId, open: vaultOpen, onToggle: toggleVault }}
         readAgain={<StopReadAgain projectId={projectId} />}
         readFailures={
@@ -1379,7 +1380,10 @@ export function ZeropsStopPane({
   view,
   waiting,
   vault,
+  access,
 }: {
+  /** Who reaches the environment's project, as people chips, under its card. */
+  readonly access?: React.ReactNode;
   /** The environment's vault, where the account reads its organization: shown beside the page. */
   readonly vault?:
     | {
@@ -1680,6 +1684,8 @@ export function ZeropsStopPane({
             )}
           </CardGroup>
         )}
+
+        {access === undefined ? null : <CardGroup title="Project access">{access}</CardGroup>}
       </FlatCard>
       {/* A verb that refused says so under the card it was pressed in. */}
       {trouble === null ? null : (

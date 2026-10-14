@@ -652,6 +652,8 @@ interface StopCase {
     readonly open: boolean;
     readonly onToggle: () => void;
   };
+  /** Who reaches the environment's project, as the page draws it. */
+  readonly access?: React.ReactNode;
 }
 
 /** A stop's page with every read already done — the producers' words, the pane's drawing. */
@@ -719,6 +721,7 @@ function renderStop(input: StopCase): string {
   });
   return renderToStaticMarkup(
     <ZeropsStopPane
+      access={input.access}
       vault={input.vault}
       readAgain={input.readAgain}
       runAgain={
@@ -1107,6 +1110,15 @@ describe("ZeropsStopPane — the environment's vault", () => {
 });
 
 describe("ZeropsStopPane", () => {
+  it.each(["stage", "production"] as const)(
+    "the %s environment's page shows who reaches its project, under its card",
+    (tier) => {
+      const markup = renderStop({ tier, services: [], access: <ul aria-label="Chips" /> });
+      expect(markup).toContain("Project access");
+      expect(markup).toContain('aria-label="Chips"');
+      expect(renderStop({ tier, services: [] })).not.toContain("Project access");
+    },
+  );
   it.each(["stage", "production"] as const)(
     "opens the %s environment's own Zerops project from its menu",
     (tier) => {
