@@ -248,3 +248,21 @@ export function teamPeople(input: TeamInput): TeamView {
     invite: input.viewer === undefined ? [] : invitableTeamRoles(input.viewer.roleCode),
   };
 }
+
+/**
+ * The Mate projects an invitation may give: every group of the organization but those holding a
+ * Chief, which is one person's own Mate for the whole organization, never a project to share.
+ */
+export function invitableGroups(
+  groups: ReadonlyArray<{
+    readonly groupId: string;
+    readonly name: string;
+    readonly projects: ReadonlyArray<{ readonly projectId: string }>;
+  }>,
+  chiefProjectIds: ReadonlySet<string>,
+): ReadonlyArray<{ readonly groupId: string; readonly name: string }> {
+  return groups
+    .filter(({ projects }) => !projects.some(({ projectId }) => chiefProjectIds.has(projectId)))
+    .map(({ groupId, name }) => ({ groupId, name }))
+    .toSorted((a, b) => a.name.localeCompare(b.name));
+}

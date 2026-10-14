@@ -1,7 +1,13 @@
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
-import { teamGrantIds, teamPeople, type TeamInput, type TeamPlace } from "./teamSettings.logic";
+import {
+  invitableGroups,
+  teamGrantIds,
+  teamPeople,
+  type TeamInput,
+  type TeamPlace,
+} from "./teamSettings.logic";
 
 const member = (
   id: string,
@@ -285,5 +291,23 @@ describe("what the viewer may change of the team", () => {
     const view = as("cy", "BASIC_USER");
     expect(view.kind === "people" && view.invite).toEqual([]);
     expect(Object.values(changes(view)).every((change) => change === null)).toBe(true);
+  });
+});
+
+describe("what an invitation may give", () => {
+  it("never offers a person's Chief as a project to give", () => {
+    const groups = [
+      {
+        groupId: "snap",
+        name: "Snap",
+        projects: [{ projectId: "snap-prod" }, { projectId: "snap-kai" }],
+      },
+      { groupId: "chief-ales", name: "Chief · Ales", projects: [{ projectId: "chief-ales-mate" }] },
+      { groupId: "beviro", name: "Beviro", projects: [{ projectId: "beviro-cleo" }] },
+    ];
+    expect(invitableGroups(groups, new Set(["chief-ales-mate"]))).toEqual([
+      { groupId: "beviro", name: "Beviro" },
+      { groupId: "snap", name: "Snap" },
+    ]);
   });
 });

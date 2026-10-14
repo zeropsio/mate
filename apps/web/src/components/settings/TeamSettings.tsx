@@ -38,6 +38,7 @@ import {
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
+import { isChief } from "~/zerops/chief";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 
@@ -70,6 +71,7 @@ import {
 } from "./TeamInviteDialog";
 import {
   reachWords,
+  invitableGroups,
   TEAM_ROLE_WORDS,
   teamGrantIds,
   teamPeople,
@@ -176,10 +178,11 @@ function useTeam() {
 
   const groups = useMemo(
     () =>
-      registry.groups
-        .map(({ groupId, name }) => ({ groupId, name }))
-        .toSorted((a, b) => a.name.localeCompare(b.name)),
-    [registry],
+      invitableGroups(
+        registry.groups,
+        new Set(roster.filter((project) => isChief(project)).map((project) => project.id)),
+      ),
+    [registry, roster],
   );
   /** The chosen Mate projects' places and Mates, as one. */
   const projectsOf = useCallback(
