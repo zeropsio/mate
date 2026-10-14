@@ -99,8 +99,15 @@ export function TeamMemberView({
   const [membership, setMembership] = useState(person.membership);
   const role = usePress();
   const [draft, setDraft] = useState<AccessDraft | null>(null);
+  // What was saved, held on screen until their grants are read again: a page never paints a
+  // list it takes back. `before` is the read the save started from.
+  const [held, setHeld] = useState<{
+    readonly draft: AccessDraft;
+    readonly before: AccessDraft | null;
+  } | null>(null);
   const saved = grants ?? {};
-  const shownDraft = draft ?? saved;
+  const shownDraft =
+    draft ?? (held !== null && (grants === held.before || grants === null) ? held.draft : saved);
   const access = usePress();
   const changes = draftChanges(saved, shownDraft);
   const [askingSelf, setAskingSelf] = useState(false);
@@ -120,11 +127,17 @@ export function TeamMemberView({
   const lowersSelf =
     person.you &&
     changes.some(({ roleCode }) => roleCode === "READ_ONLY" || roleCode === "NO_ACCESS");
-  const saveAccess = () =>
+  const saveAccess = () => {
+    const sent = shownDraft;
+    const before = grants;
     access.press(
       () => actions?.saveAccess(changes) ?? Promise.resolve(),
-      () => setDraft(null),
+      () => {
+        setHeld({ draft: sent, before });
+        setDraft(null);
+      },
     );
+  };
   const end = person.change?.end ?? (person.pending ? "withdraw" : "remove");
   const selfWords = selfLowerWords(viewerRole);
 
@@ -172,7 +185,7 @@ export function TeamMemberView({
             projects based on their global team role.
           </p>
         </div>
-        {grants === null ? (
+        {grants === null && held === null ? (
           <p className="tm-empty">Reading their projects…</p>
         ) : (
           <MemberProjectAccess
@@ -295,7 +308,10 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
   const person =
     view.kind === "people" ? view.people.find(({ key }) => key === clientUserId) : null;
   const read = team.grants[clientUserId];
-  const grants = read?.status === "ready" && read.value !== undefined ? draftOf(read.value) : null;
+  // A read held from before stands while it is read again.
+  const value = read?.value;
+  // One object per read: the page tells a read-back from the read a save started from.
+  const grants = useMemo(() => (value === undefined ? null : draftOf(value)), [value]);
   const actions = useMemo((): TeamMemberActions | undefined => {
     if (!team.writable || clientId === null) return undefined;
     return {
