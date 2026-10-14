@@ -145,12 +145,17 @@ describe("Git environment setup's real form", () => {
     const tokens = host.querySelectorAll<HTMLInputElement>('input[type="password"]');
     await enter(urls[0]!, "https://github.com/acme/shop");
     await enter(tokens[0]!, "candidate");
+    const branch = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find(
+      (input) => input.value === "main",
+    )!;
+    await enter(branch, "production");
     await click("Test and connect app");
     expect(props.setup.connect).toHaveBeenCalledExactlyOnceWith(
       "app",
       "https://github.com/acme/shop",
       "candidate",
       false,
+      "production",
     );
     expect(tokens[0]!.value).toBe("");
     expect(host.textContent).toContain("app: This token cannot push.");

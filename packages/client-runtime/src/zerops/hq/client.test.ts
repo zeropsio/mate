@@ -1876,3 +1876,64 @@ describe("HQ automatic-update policy transport", () => {
     },
   );
 });
+
+it("Git transport keeps candidate plaintext in one incoming write body and recovers the original decoded receipt", async () => {
+  const marker = "TRANSIENT_GIT_CANDIDATE";
+  const intent = {
+    kind: "probe-git-remote" as const,
+    orgId: "org",
+    appId: "app",
+    hqProjectId: "hq",
+    repo: "web",
+    branch: "selected",
+    url: "https://github.com/krls2020/tst123",
+  };
+  const receipt = {
+    requestId: "original",
+    operationId: "original",
+    executor: "hq",
+    affected: [{ family: "hqAppDetail", id: "app" }],
+    handles: [],
+    acceptance: {
+      kind: "accepted",
+      result: {
+        ok: true,
+        remote: { url: intent.url, repositoryId: "123", expiresAt: null, invalidSince: null },
+      },
+    },
+    outcome: { kind: "succeeded", evidence: "original" },
+  };
+  let lost = true;
+  const hq = fakeHq((seen) => {
+    if (seen.path === "/api/git-targets/original") {
+      if (lost) {
+        lost = false;
+        throw new TypeError("lost accepting answer");
+      }
+      return json(200, { ...receipt, token: marker });
+    }
+    if (seen.path === "/api/git-targets/original/receipt")
+      return json(200, { receipt: { ...receipt, sealed: marker } });
+    return undefined;
+  });
+  const door = doors();
+  const api = makeHqApi({
+    address: ADDRESS,
+    fetch: hq.fetch,
+    throughDoor: door.throughDoor,
+    openSocket: NO_SOCKET,
+  });
+  await expect(api.gitTargetWrite("original", intent, marker)).rejects.toMatchObject({
+    kind: "uncertain",
+  });
+  expect(await api.gitTargetReceipt("original", intent)).toEqual(receipt);
+  const sent = hq.seen.filter((seen) => seen.path.startsWith("/api/git-targets"));
+  expect(sent.map(({ method, path, search }) => ({ method, path, search }))).toEqual([
+    { method: "POST", path: "/api/git-targets/original", search: "" },
+    { method: "POST", path: "/api/git-targets/original/receipt", search: "" },
+  ]);
+  expect(sent[0]!.body).toEqual({ intent, candidate: marker });
+  expect(sent[1]!.body).toEqual({ intent });
+  expect(JSON.stringify(sent.map(({ body: _incoming, ...safe }) => safe))).not.toContain(marker);
+  expect(JSON.stringify(intent)).not.toContain(marker);
+});
