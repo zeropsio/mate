@@ -125,7 +125,7 @@ import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { Leader, type NotLeader } from "./leader.ts";
 import { type TierService, deltaImport, deployedByHq, tierServices } from "./recipeDeltas.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
-import { Releases } from "./releases.ts";
+import { Releases, tierCommitOf } from "./releases.ts";
 import { Roles, decidedFresh } from "./roles.ts";
 import { type RolloutCause, Rollouts, rolloutOf } from "./rollouts.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
@@ -516,24 +516,52 @@ export const deploysLayer = (
       const textArray = (names: ReadonlyArray<string>) =>
         sql`ARRAY(SELECT jsonb_array_elements_text(${encodeNames(names)}::jsonb))`;
 
-      /** The runtimes a tier of the application builds, as its recipe's `main` declares them. */
-      const runtimesOf = (appId: string, tier: "stage" | "production") =>
+      /**
+       * The runtimes a tier of the application builds, as its recipe's `main` declares them, or the
+       * recipe commit `at` (a release's tag) — with every service it names.
+       */
+      const runtimesOf = (appId: string, tier: "stage" | "production", at?: string) =>
         Effect.gen(function* () {
-          const read = yield* recipes.read(appId, tier).pipe(
+          const read = yield* recipes.read(appId, tier, at).pipe(
             Effect.tapError((error) =>
               Effect.logWarning(`${tier} tier unreadable`, { appId, error }),
             ),
             Effect.option,
           );
+          const none = { runtimes: [], named: undefined };
           if (Option.isNone(read) || read.value.state === "absent") {
-            return { runtimes: [], note: `the ${tier} tier could not be read` };
+            return { ...none, note: `the ${tier} tier could not be read` };
           }
           const runtimes = tierRuntimes(read.value.importYaml, appId);
           if (!runtimes.ok) {
             yield* Effect.logWarning(`${tier} tier refused`, { appId, problem: runtimes.problem });
-            return { runtimes: [], note: `the ${tier} tier was refused: ${runtimes.problem}` };
+            return { ...none, note: `the ${tier} tier was refused: ${runtimes.problem}` };
           }
-          return { runtimes: runtimes.runtimes, note: undefined };
+          const services = tierServices(read.value.importYaml);
+          return {
+            runtimes: runtimes.runtimes,
+            named: services.ok
+              ? new Set(services.services.map((service) => service.hostname))
+              : undefined,
+            note: undefined,
+          };
+        });
+
+      /**
+       * Each runtime's setup in a tier, as the deploy of `label` reads it: a production's from the
+       * tier its release was tagged with (MODEL §9/10), a stage's from `main`.
+       */
+      const tierSetupsOf = (appId: string, tier: "stage" | "production", label: string | null) =>
+        Effect.gen(function* () {
+          const at =
+            tier === "production" && label !== null
+              ? yield* tierCommitOf(sql, appId, label)
+              : undefined;
+          return new Map(
+            (yield* runtimesOf(appId, tier, at)).runtimes.map(
+              (runtime) => [runtime.hostname, runtime.zeropsSetup] as const,
+            ),
+          );
         });
 
       /**
@@ -564,11 +592,12 @@ export const deploysLayer = (
         });
 
       /**
-       * A production's: each runtime at the commit the release `tag` lists (C16), else the newest
-       * approved release's — only of a release made since the production's release floor, where
-       * it has one (set when an attach or a replacement creates it), so attaching one deploys nothing: none before a release, which is no failure; a runtime it
-       * does not list, and a service it lists that production no longer builds, are reported, and
-       * the rest deploy.
+       * A production's: each runtime of the tier the release `tag` was tagged with (MODEL §9/10) at
+       * the commit it lists (C16), else the newest approved release's — only of a release made since
+       * the production's release floor, where it has one (set when an attach or a replacement
+       * creates it), so attaching one deploys nothing: none before a release, which is no failure; a
+       * runtime it does not list, and a service it lists its tier does not build, are reported, and
+       * the rest deploy. With what its tier names, for `tierLifecycle`.
        */
       const productionWanted = (environment: Environment, tag?: string) =>
         Effect.gen(function* () {
@@ -578,7 +607,11 @@ export const deploysLayer = (
               ? yield* releases.newest(appId, environment.id)
               : yield* releaseOf(environment, tag);
           if (release === undefined) return { targets: [], note: undefined };
-          const { runtimes, note } = yield* runtimesOf(appId, "production");
+          const { runtimes, named, note } = yield* runtimesOf(
+            appId,
+            "production",
+            yield* tierCommitOf(sql, appId, release.tag),
+          );
           const listed = new Map(release.entries.map((entry) => [entry.service, entry.sha]));
           const unlisted = runtimes.filter((runtime) => !listed.has(runtime.hostname));
           const built = new Set(runtimes.map((runtime) => runtime.hostname));
@@ -589,7 +622,7 @@ export const deploysLayer = (
               ? `${release.tag} lists no ${unlisted.map((runtime) => runtime.hostname).join(", ")}`
               : undefined,
             gone.length > 0
-              ? `production no longer builds ${gone.map((entry) => entry.service).join(", ")}`
+              ? `${release.tag}'s tier builds no ${gone.map((entry) => entry.service).join(", ")}`
               : undefined,
           ].filter((line): line is string => line !== undefined);
           const targets = runtimes.flatMap((runtime, ord): ReadonlyArray<Target> => {
@@ -598,7 +631,14 @@ export const deploysLayer = (
               ? []
               : [{ service: runtime.hostname, repo: runtime.repo, sha, label: release.tag, ord }];
           });
-          return { targets, note: notes.length === 0 ? undefined : notes.join("; ") };
+          return {
+            targets,
+            note: notes.length === 0 ? undefined : notes.join("; "),
+            tier:
+              named === undefined
+                ? undefined
+                : { tag: release.tag, rollbackOf: release.rollbackOf, named },
+          };
         });
 
       /**
@@ -610,13 +650,106 @@ export const deploysLayer = (
           sql<{
             readonly tag: string;
             readonly entries: ReadonlyArray<{ readonly service: string; readonly sha: string }>;
+            readonly rollbackOf: string | null;
           }>`
-            SELECT tag, entries FROM hq_release
+            SELECT tag, entries, rollback_of AS "rollbackOf" FROM hq_release
             WHERE app_id::text = ${environment.app_id} AND tag = ${tag} AND (
               SELECT release_floor IS NULL OR released_at >= release_floor
               FROM hq_environment WHERE id = ${environment.id})`,
           (rows) => rows[0],
         );
+
+      /**
+       * A production brought to what its release's tier names (MODEL §9/8, §9/10), with its
+       * environment's token: a part of the application — a service one of its releases listed —
+       * the tier does not name is stopped, never deleted (deleting a service is a person's act); a
+       * stopped service `targets` deploys to is started first. One the project lacks (`gone`) is its
+       * deploy's to report. Each stopped part's line, and what HQ started or could not do.
+       */
+      const tierLifecycle = (
+        environment: Environment,
+        tier: {
+          readonly tag: string;
+          readonly rollbackOf: string | null;
+          readonly named: ReadonlySet<string>;
+        },
+        targets: ReadonlyArray<Target>,
+      ) =>
+        Effect.gen(function* () {
+          const notes: Array<string> = [];
+          const left: Array<LeftOut> = [];
+          const gone = new Set<string>();
+          const projectId = environment.project_id;
+          if (projectId === null) return { notes, left, gone };
+          const parts = yield* sql<{ readonly service: string }>`
+            SELECT DISTINCT entry->>'service' AS service
+            FROM hq_release, jsonb_array_elements(entries) AS entry
+            WHERE app_id::text = ${environment.app_id} AND state = 'approved' AND target = 'zerops'`;
+          const dropped = parts
+            .map((part) => part.service)
+            .filter((service) => !tier.named.has(service));
+          const listed = new Set(targets.map((target) => target.service));
+          const undeclared = `the tier of ${tier.tag} does not declare it`;
+          const detail = (error: ZeropsError) =>
+            error._tag === "ZeropsUnavailable"
+              ? zeropsDidNotAnswer(error.message)
+              : `Zerops refused: ${error.code}`;
+          const key = yield* keyOf(projectId, environment.name);
+          if (!("token" in key)) {
+            if (dropped.length > 0) {
+              notes.push(`HQ could not stop ${dropped.join(", ")}: ${key.reason}`);
+            }
+            return { notes, left, gone };
+          }
+          const read = yield* zerops.services(projectId)(key.token).pipe(Effect.result);
+          if (read._tag === "Failure") {
+            yield* Effect.logWarning("production services unread", {
+              environment: environment.name,
+              error: read.failure,
+            });
+            if (dropped.length > 0) {
+              notes.push(`HQ could not stop ${dropped.join(", ")}: ${detail(read.failure)}`);
+            }
+            return { notes, left, gone };
+          }
+          const started: Array<string> = [];
+          const present = new Set(read.success.map((service) => service.name));
+          for (const service of listed) if (!present.has(service)) gone.add(service);
+          for (const service of read.success) {
+            if (service.isSystem) continue;
+            if (dropped.includes(service.name)) {
+              if (service.status !== "ACTIVE" && service.status !== "STOPPED") continue;
+              const stop =
+                service.status === "ACTIVE"
+                  ? yield* deploy.stopService(service.id)(key.token).pipe(Effect.result)
+                  : undefined;
+              const [ran] = yield* sql<{ readonly sha: string }>`
+                SELECT sha FROM hq_deploy_job
+                WHERE environment_id = ${environment.id} AND kind = 'deploy'
+                  AND service = ${service.name} AND state = 'live'
+                ORDER BY ended_at DESC, id DESC LIMIT 1`;
+              left.push({
+                environment_id: environment.id,
+                project_id: projectId,
+                service: service.name,
+                sha: ran?.sha ?? "",
+                job: null,
+                reason:
+                  stop?._tag === "Failure"
+                    ? `${undeclared}; HQ could not stop it: ${detail(stop.failure)}`
+                    : tier.rollbackOf === null
+                      ? `stopped: ${undeclared}`
+                      : `stopped by rollback to ${tier.rollbackOf}: ${undeclared}`,
+              });
+            } else if (listed.has(service.name) && service.status === "STOPPED") {
+              const start = yield* deploy.startService(service.id)(key.token).pipe(Effect.result);
+              if (start._tag === "Success") started.push(service.name);
+              else notes.push(`HQ could not start ${service.name}: ${detail(start.failure)}`);
+            }
+          }
+          if (started.length > 0) notes.push(`${tier.tag} started ${started.join(", ")}`);
+          return { notes, left, gone };
+        });
 
       /** What an environment is wanted at now: a stage main's heads, a production its release. */
       const wantedOf = (environment: Environment) =>
@@ -742,7 +875,8 @@ export const deploysLayer = (
        * In a leader's write: the job `target` asks for in `projectId` — `skipped`, saying why, where
        * its commit cannot deploy (`skip`) or its build failed there and neither a release nor a
        * person asks again (B37) — superseding what of the service still waits; or none, and why,
-       * where a job of the commit is under way or HQ last made the service run it.
+       * where a job of the commit is under way or HQ last made the service run it, unless the
+       * project no longer has it (`gone`): its job reports that.
        */
       const makeJob = (
         rolloutId: string,
@@ -751,6 +885,7 @@ export const deploysLayer = (
         cause: Cause,
         by: string | null,
         skip: string | undefined,
+        gone = false,
       ) =>
         Effect.gen(function* () {
           const projectId = environment.project_id;
@@ -786,6 +921,7 @@ export const deploysLayer = (
             ORDER BY ended_at DESC, id DESC LIMIT 1`;
           if (
             cause !== "run_again" &&
+            !gone &&
             running !== undefined &&
             running.repo === target.repo &&
             running.sha === target.sha
@@ -874,31 +1010,47 @@ export const deploysLayer = (
           /** The jobs `targets` asks for in `environment`, each with why it cannot deploy. */
           const asked: Array<{
             readonly environment: Environment;
-            readonly targets: ReadonlyArray<{ readonly target: Target; readonly skip?: string }>;
+            readonly targets: ReadonlyArray<{
+              readonly target: Target;
+              readonly skip?: string;
+              readonly gone?: boolean;
+            }>;
           }> = [];
-          const ask = (environment: Environment, targets: ReadonlyArray<Target>) =>
+          /** `gone`: services the project no longer has, whose deploys report it (C16). */
+          const ask = (
+            environment: Environment,
+            targets: ReadonlyArray<Target>,
+            gone: ReadonlySet<string> = new Set(),
+          ) =>
             Effect.gen(function* () {
               if (environment.target === "git") {
                 asked.push({ environment, targets: targets.map((target) => ({ target })) });
                 return;
               }
-              const setups = new Map(
-                (yield* runtimesOf(environment.app_id, environment.tier)).runtimes.map(
-                  (runtime) => [runtime.hostname, runtime.zeropsSetup] as const,
-                ),
+              const setups = yield* tierSetupsOf(
+                environment.app_id,
+                environment.tier,
+                targets[0]?.label ?? null,
               );
-              const checked: Array<{ readonly target: Target; readonly skip?: string }> = [];
+              const checked: Array<{
+                readonly target: Target;
+                readonly skip?: string;
+                readonly gone?: boolean;
+              }> = [];
               for (const target of targets) {
                 const skip = yield* codeProblem(
                   environment.app_id,
                   target,
                   setups.get(target.service),
                 );
-                checked.push(skip === undefined ? { target } : { target, skip });
+                const asked = gone.has(target.service) ? { target, gone: true } : { target };
+                checked.push(skip === undefined ? asked : { ...asked, skip });
               }
               asked.push({ environment, targets: checked });
             });
           /** Each tier a recipe merge changed: what it added, and what HQ sees of it now. */
+          /** The services a release's tier no longer names, stopped, each with its line. */
+          const lifecycle: Array<LeftOut> = [];
           const tiers: Array<{
             readonly tier: "stage" | "production";
             readonly digest: string;
@@ -996,11 +1148,21 @@ export const deploysLayer = (
                     rollout.environment_created_at !== environment.created_at)
                 )
                   continue;
-                const wanted = yield* environment.target === "git"
-                  ? gitWanted(environment, rollout.tag ?? undefined)
-                  : productionWanted(environment, rollout.tag ?? undefined);
+                if (environment.target === "git") {
+                  const wanted = yield* gitWanted(environment, rollout.tag ?? undefined);
+                  yield* ask(environment, wanted.targets);
+                  continue;
+                }
+                const wanted = yield* productionWanted(environment, rollout.tag ?? undefined);
                 if (wanted.note !== undefined) notes.push(wanted.note);
-                yield* ask(environment, wanted.targets);
+                if (wanted.tier === undefined) {
+                  yield* ask(environment, wanted.targets);
+                  continue;
+                }
+                const brought = yield* tierLifecycle(environment, wanted.tier, wanted.targets);
+                notes.push(...brought.notes);
+                lifecycle.push(...brought.left);
+                yield* ask(environment, wanted.targets, brought.gone);
               }
               break;
             }
@@ -1052,9 +1214,9 @@ export const deploysLayer = (
                   count += 1;
                 }
               }
-              const leftOut: Array<LeftOut> = [];
+              const leftOut: Array<LeftOut> = [...lifecycle];
               for (const { environment, targets } of asked) {
-                for (const { target, skip } of targets) {
+                for (const { target, skip, gone } of targets) {
                   if (environment.target === "git") {
                     yield* makePushJob(rollout.id, environment, target, rollout.by);
                     count += 1;
@@ -1068,6 +1230,7 @@ export const deploysLayer = (
                     rollout.cause,
                     by,
                     skip,
+                    gone,
                   );
                   if ("left" in job) leftOut.push(job.left);
                   else count += 1;
@@ -1468,9 +1631,8 @@ export const deploysLayer = (
             const commit = yield* commitOf(git, job);
             if ("state" in commit) return commit;
             const setup =
-              (yield* runtimesOf(job.app_id, job.tier)).runtimes.find(
-                (runtime) => runtime.hostname === job.service,
-              )?.zeropsSetup ?? job.service;
+              (yield* tierSetupsOf(job.app_id, job.tier, job.label)).get(job.service) ??
+              job.service;
             const label = job.label ?? (job.tier === "stage" ? "main" : "release");
             yield* update(job, sql`state = 'submitting', submitted_at = now()`);
             const version = yield* deploy
@@ -1647,10 +1809,10 @@ export const deploysLayer = (
           if (ended.state !== "imported") return yield* end(job, ended);
           const [environment] = yield* environmentsOf({ environmentId: job.environment_id });
           const wanted = environment === undefined ? { targets: [] } : yield* wantedOf(environment);
-          const setups = new Map(
-            (yield* runtimesOf(job.app_id, job.tier)).runtimes.map(
-              (runtime) => [runtime.hostname, runtime.zeropsSetup] as const,
-            ),
+          const setups = yield* tierSetupsOf(
+            job.app_id,
+            job.tier,
+            wanted.targets[0]?.label ?? null,
           );
           const deploys: Array<{ readonly target: Target; readonly skip?: string }> = [];
           for (const target of wanted.targets) {
@@ -1899,7 +2061,8 @@ export const deploysLayer = (
               environment: names.get(left.environment_id) ?? left.environment_id,
               kind: "deploy" as const,
               service: left.service,
-              sha: left.sha,
+              // A part stopped before HQ ever made it run anything names no commit.
+              sha: left.sha === "" ? null : left.sha,
               job: left.job,
               state: "skipped" as const,
               processId: null,

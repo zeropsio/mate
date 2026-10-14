@@ -18,8 +18,8 @@ import type { RemoteError } from "./repoRemotes.ts";
  *   repositories (`tierRuntimes.ts`); each commit is on that repository's `main`, its head or
  *   before.
  * - **A rollback is a new release** (main C29): named the patch over every release, listing an
- *   approved release's entries as they were — a service production no longer builds included, for
- *   its deploy to report (C16) — and the earlier release stays as it was.
+ *   approved release's entries as they were, checked against the tier that release was tagged with
+ *   (MODEL §9/10, `tierCommitOf`) — and the earlier release stays as it was.
  * - **Read** by whoever reads the application's changes, as main's group repository's tags were:
  *   newest first by version, at most ten.
  *
@@ -169,6 +169,25 @@ const releaseOf = (row: ReleaseRow): Release => ({
   ...(row.snapshot ? { snapshot: true } : {}),
   ...(row.release_target === null ? {} : { target: row.target, releaseTarget: row.release_target }),
 });
+
+/**
+ * The recipe commit whose tier the release `tag` deploys (MODEL §9/10): the commit it was tagged on,
+ * and for a rollback the one its target was — down a chain of rollbacks to the release that first
+ * listed its entries. None where HQ holds no such release.
+ */
+export const tierCommitOf = (sql: SqlClient.SqlClient, appId: string, tag: string) =>
+  Effect.map(
+    sql<{ readonly sha: string }>`
+      WITH RECURSIVE chain AS (
+        SELECT sha, rollback_of, 0 AS depth FROM hq_release
+        WHERE app_id::text = ${appId} AND tag = ${tag}
+        UNION ALL
+        SELECT r.sha, r.rollback_of, c.depth + 1 FROM chain c
+        JOIN hq_release r ON r.app_id::text = ${appId} AND r.tag = c.rollback_of
+        WHERE c.depth < 64)
+      SELECT sha FROM chain ORDER BY depth DESC LIMIT 1`,
+    (rows) => rows[0]?.sha,
+  );
 
 const refuse = (code: ReleaseRefused["code"], reason: ReleaseRefused["reason"]) =>
   Effect.fail(new ReleaseRefused({ code, reason }));
@@ -391,8 +410,15 @@ export const releasesLayer: Layer.Layer<
                   return yield* refuse("conflict", "production_moved");
               }
             } else {
-              // The production tier at that head: what each service is built from.
-              const tier = yield* recipes.read(appId, "production");
+              // The production tier at that head, or a rollback's as its target was tagged with:
+              // what each service is built from.
+              const tier = yield* recipes.read(
+                appId,
+                "production",
+                wanted.rollbackOf === null
+                  ? undefined
+                  : yield* tierCommitOf(sql, appId, wanted.rollbackOf),
+              );
               const read = tier.state === "present" ? tierRuntimes(tier.importYaml, appId) : null;
               const repoOf = new Map(
                 read?.ok === true
@@ -400,7 +426,7 @@ export const releasesLayer: Layer.Layer<
                   : [],
               );
               // What it names before where it is: every service, then every commit. A rollback carries
-              // the earlier release's entries as they were (main C16): one production no longer
+              // the earlier release's entries as they were (main C16): one its tier no longer
               // builds, its deploy reports, and deploys the rest.
               if (
                 wanted.rollbackOf === null &&

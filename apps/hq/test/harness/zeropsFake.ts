@@ -516,6 +516,16 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
         });
         return { processId };
       }),
+    stopService: (serviceId) => (credential) =>
+      Effect.map(deployedBy(world, "stopService", credential, serviceId), (service) => {
+        service.status = "STOPPED";
+        return { processId: id("process") };
+      }),
+    startService: (serviceId) => (credential) =>
+      Effect.map(deployedBy(world, "startService", credential, serviceId), (service) => {
+        service.status = "ACTIVE";
+        return { processId: id("process") };
+      }),
   };
 };
 

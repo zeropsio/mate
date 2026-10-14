@@ -1,6 +1,6 @@
 /**
- * A tier of an application's recipe, as `main` of its recipe repository holds it (SPEC §3.2c): what
- * a deploy reads for the services it deploys. Read as every reader of a tier reads it
+ * A tier of an application's recipe, as `main` of its recipe repository holds it (SPEC §3.2c), or a
+ * release's tag (`at`, MODEL §9/10): what a deploy reads for the services it deploys. Read as every reader of a tier reads it
  * (`Changes.recipeTier`, `@t3tools/shared/hqRecipe` `RecipeTierResponse`): `absent` without the
  * repository, the file, or a service in it. Any failure to read it is one error to the deploy.
  *
@@ -25,6 +25,7 @@ export class RecipeTiers extends Context.Service<
     readonly read: (
       appId: string,
       tier: RecipeTier,
+      at?: string,
     ) => Effect.Effect<RecipeTierResponse, RecipeTierUnreadable>;
   }
 >()("@t3tools/hq/recipeTiers") {}
@@ -43,7 +44,8 @@ export const recipeTiersLayer = Layer.effect(
   Effect.gen(function* () {
     const changes = yield* Changes;
     return {
-      read: (appId, tier) => changes.recipeTier(appId, tier).pipe(Effect.mapError(unreadable)),
+      read: (appId, tier, at) =>
+        changes.recipeTier(appId, tier, at).pipe(Effect.mapError(unreadable)),
     };
   }),
 );
