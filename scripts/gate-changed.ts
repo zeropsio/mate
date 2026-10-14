@@ -49,8 +49,8 @@ export const scenarioAreas = [
   "lifecycle-mutations",
 ] as const;
 
-// Native clients keep compiling; their local tests and scenarios stay dormant.
-const activePath = (path: string) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path);
+// Native runtimes are outside the hosted browser scenario harness.
+const browserPath = (path: string) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path);
 
 const sourceFile = /\.[cm]?[jt]sx?$/u;
 const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
@@ -829,9 +829,7 @@ function typecheckPackages(paths: ReadonlyArray<string>, packages: ReadonlyArray
 
 // Each application and service owns the configuration used for its selected test files.
 export function relatedTestPackages(packages: ReadonlyArray<GatePackage>) {
-  return packages.filter(
-    (pkg) => activePath(pkg.directory) && /^(?:apps|infra)\//u.test(pkg.directory),
-  );
+  return packages.filter((pkg) => /^(?:apps|infra)\//u.test(pkg.directory));
 }
 
 interface GateStage {
@@ -1125,8 +1123,7 @@ function unitFiles(root: string): string[] {
     NodeFS.readdirSync(NodePath.join(root, directory), { withFileTypes: true }).flatMap((entry) => {
       const path = NodePath.posix.join(directory, entry.name);
       if (entry.isDirectory())
-        return !activePath(path) ||
-          ["node_modules", "dist", "dist-electron", ".plans", ".git"].includes(entry.name)
+        return ["node_modules", "dist", "dist-electron", ".plans", ".git"].includes(entry.name)
           ? []
           : collect(path);
       return /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path) ? [path] : [];
@@ -1179,7 +1176,6 @@ export function selectGateSteps(
     comparison,
     existing,
     paths,
-    typecheckPaths,
     inventory,
     smokeFiles,
     slots,
@@ -1187,7 +1183,6 @@ export function selectGateSteps(
     readonly comparison: string;
     readonly existing: ReadonlyArray<string>;
     readonly paths: ReadonlyArray<string>;
-    readonly typecheckPaths: ReadonlyArray<string>;
     readonly inventory: ReadonlyArray<string>;
     readonly smokeFiles: ReadonlyArray<string>;
     readonly slots: number;
@@ -1195,7 +1190,7 @@ export function selectGateSteps(
 ) {
   const { workspace, units, related } = graph;
   const files = inventory.map((file) => NodePath.posix.relative("apps/web", file));
-  const packages = typecheckPackages(typecheckPaths, workspace);
+  const packages = typecheckPackages(paths, workspace);
   const steps: GateStage[] = [];
   steps.push({
     name: "guard ledgers",
@@ -1426,33 +1421,30 @@ if (import.meta.main) {
   }
   validateSelectedFiles(root, namedScenarios);
   const comparison = comparisonBase(root, base);
-  const allPaths = changedPaths(root, comparison);
-  const paths = allPaths.filter(activePath);
-  if (allPaths.length === 0 && namedScenarios.length === 0) {
+  const paths = changedPaths(root, comparison);
+  if (paths.length === 0 && namedScenarios.length === 0) {
     console.log("No changed files; no gates to run.");
     process.exit(0);
   }
   const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
-  const changes = meaningfulChanges(root, comparison, allPaths);
-  const meaningful = { ...changes, paths: changes.paths.filter(activePath) };
-  const smokeFiles = meaningful.paths.length ? Object.keys(stateOnlySmoke) : [];
+  const meaningful = meaningfulChanges(root, comparison, paths);
+  const scenarioPaths = meaningful.paths.filter(browserPath);
+  const smokeFiles = scenarioPaths.length ? Object.keys(stateOnlySmoke) : [];
   validateSelectedFiles(root, smokeFiles);
   const graph = buildGateGraph(root, meaningful.previous, meaningful.paths);
   const explicitScenarios = new Set([
     ...namedScenarios,
-    ...meaningful.paths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
+    ...scenarioPaths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
   ]);
   const rankedScenarios =
     graph.related
-      ?.rank(meaningful.paths)
+      ?.rank(scenarioPaths)
       .filter(({ file }) => graph.scenarios.includes(file) && !explicitScenarios.has(file)) ?? [];
   const selectedScenarios = rankedScenarios.slice(0, relatedScenarioLimit);
   const overflowScenarios = rankedScenarios.slice(relatedScenarioLimit);
   const inventory = [
     ...new Set([
-      ...meaningful.paths.filter(
-        (file) => file.endsWith(".scenario.ts") && existing.includes(file),
-      ),
+      ...scenarioPaths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
       ...namedScenarios,
       ...selectedScenarios.map(({ file }) => file),
     ]),
@@ -1482,7 +1474,6 @@ if (import.meta.main) {
     comparison,
     existing,
     paths: meaningful.paths,
-    typecheckPaths: changes.paths,
     inventory,
     smokeFiles,
     slots,

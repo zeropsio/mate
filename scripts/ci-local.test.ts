@@ -204,7 +204,7 @@ it.each(["build", "typecheck", "tc"])(
 );
 
 it.each(["true", "false"])(
-  "Decision: native tests remain discoverable on GitHub Actions and excluded locally (GITHUB_ACTIONS=%s)",
+  "Decision: no app is outside the gate; native unit tests are discoverable locally and on GitHub Actions (GITHUB_ACTIONS=%s)",
   (githubActions) => {
     const result = NodeChildProcess.spawnSync(
       "vp",
@@ -219,12 +219,11 @@ it.each(["true", "false"])(
     const files = result.stdout
       .split("\n")
       .filter((line) => /^apps\/(?:mobile|desktop)\//u.test(line));
-    if (githubActions === "true") {
-      expect(files, "ASSERTION: CI discovers the existing mobile unit consumer").toContain(
-        "apps/mobile/src/state/workspaceModel.test.ts",
-      );
-      expect(files).toContain("apps/desktop/scripts/smoke-test.test.mjs");
-    } else expect(files).toEqual([]);
+    expect(
+      files,
+      "ASSERTION: every environment discovers the existing mobile unit consumer",
+    ).toContain("apps/mobile/src/state/workspaceModel.test.ts");
+    expect(files).toContain("apps/desktop/scripts/smoke-test.test.mjs");
   },
 );
 

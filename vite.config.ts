@@ -47,7 +47,6 @@ export default defineConfig({
     ...(maxWorkers === undefined ? {} : { maxWorkers }),
     environment: "node",
     exclude: [
-      ...(process.env.GITHUB_ACTIONS === "true" ? [] : ["**/apps/mobile/**", "**/apps/desktop/**"]),
       "**/.repos/**",
       "**/node_modules/**",
       "**/dist/**",
