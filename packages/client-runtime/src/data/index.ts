@@ -115,6 +115,7 @@ export { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
 export {
   addresses,
   dnsAdvice,
+  lacksOwnDomain,
   SHARED_IPV4,
   type AddressDomain,
   type AddressTarget,

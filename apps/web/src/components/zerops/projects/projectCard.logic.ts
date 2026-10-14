@@ -9,7 +9,7 @@
  *
  * Pure: no React, no clock of its own.
  */
-import type { PlaceAddresses } from "@t3tools/client-runtime/data";
+import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/data";
 import {
   changeState,
   placeAddresses,
@@ -599,7 +599,7 @@ export function panelAddresses(input: {
       const { word, tone } = domainFaceWords(domain.face);
       return [{ name: domain.domainName, word, tone: tone === "warn" ? "attention" : "muted" }];
     }),
-    offerDomain: input.kind === "production" && place.domains.length === 0,
+    offerDomain: input.kind === "production" && lacksOwnDomain(place),
   };
 }
 

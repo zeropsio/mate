@@ -163,6 +163,11 @@ export interface PlaceAddresses {
   readonly readsProject: boolean;
 }
 
+/** A place read in full that holds no domain of its own: a domain is worth offering. */
+export function lacksOwnDomain(place: PlaceAddresses): boolean {
+  return place.state === "ready" && place.domains.length === 0;
+}
+
 /**
  * The shared IPv4 of each region, by the name its project zones carry: a project's zone answers on
  * it while `publicIpV4Shared` is on (`dig +short A <zone>`, read 2026-10-14). The platform's rows
