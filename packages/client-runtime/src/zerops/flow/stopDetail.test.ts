@@ -32,6 +32,7 @@ import {
   stopFailedDeploys,
   stopKeyGap,
   stopMetaLine,
+  stopTierStops,
   stopVerdict,
   type StopFailedDeploy,
   type StopFailure,
@@ -1272,6 +1273,54 @@ describe("notInZerops — what the recipe declares and the project lacks", () =>
     },
   ])("$name", ({ recipeServices, platform, missing }) => {
     expect(notInZerops({ recipeServices, platform })).toEqual(missing);
+  });
+});
+
+describe("A stop offers Delete only on a service its tier no longer declares, never on a rollback's stop", () => {
+  it.each<{
+    readonly name: string;
+    readonly tierStops: Parameters<typeof stopTierStops>[0]["tierStops"];
+    readonly platform: Shown<ReadonlyArray<StopService>>;
+    readonly rows: ReturnType<typeof stopTierStops>;
+  }>([
+    {
+      name: "a one-part app: HQ stopped nothing",
+      tierStops: undefined,
+      platform: PLATFORM,
+      rows: [],
+    },
+    {
+      name: "the tier dropped worker",
+      tierStops: [{ service: "worker", rollbackTo: null }],
+      platform: PLATFORM,
+      rows: [
+        {
+          hostname: "worker",
+          line: "its tier no longer declares it",
+          deletable: { serviceId: "id-worker" },
+        },
+      ],
+    },
+    {
+      name: "a rollback stopped worker",
+      tierStops: [{ service: "worker", rollbackTo: "v0.1.0" }],
+      platform: PLATFORM,
+      rows: [{ hostname: "worker", line: "stopped by rollback to v0.1.0", deletable: undefined }],
+    },
+    {
+      name: "a person already deleted it",
+      tierStops: [{ service: "cron", rollbackTo: null }],
+      platform: PLATFORM,
+      rows: [],
+    },
+    {
+      name: "the services not read yet",
+      tierStops: [{ service: "worker", rollbackTo: null }],
+      platform: { state: "unread", waitingFor: null },
+      rows: [],
+    },
+  ])("$name", ({ tierStops, platform, rows }) => {
+    expect(stopTierStops({ tierStops, platform })).toEqual(rows);
   });
 });
 

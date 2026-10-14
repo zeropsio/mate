@@ -39,6 +39,7 @@ import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAcc
  * `groupHistory.ts`'s (rule R5).
  */
 import { StopReadAgain } from "./StopReadAgain";
+import { StopTierStops } from "./StopTierStops";
 import {
   cannotTellWhatRuns,
   buildZeropsGroupTree,
@@ -86,12 +87,14 @@ import {
   stopFailedDeploys,
   stopKeyGap,
   stopMetaLine,
+  stopTierStops,
   stopTone,
   stopVerdict,
   stopView,
   type Deployment,
   type RunAgain,
   type StopServiceRow,
+  type StopTierStop,
   type StopVerdict,
   type StopView,
 } from "@t3tools/client-runtime/zerops/flow";
@@ -1143,6 +1146,11 @@ function ZeropsProjectStopDetailPage({
             ? undefined
             : notInZerops({ recipeServices: declared.recipeServices, platform })
         }
+        tierStops={
+          declared === undefined || withheld !== null
+            ? undefined
+            : stopTierStops({ tierStops: declared.tierStops, platform })
+        }
         deployAnswer={deployAnswer}
         runAgain={
           mayRunAgain
@@ -1228,6 +1236,7 @@ interface StopAddService {
 }
 
 const NOTHING_MISSING: ReadonlyArray<string> = [];
+const NO_TIER_STOPS: ReadonlyArray<StopTierStop> = [];
 
 /** A stop's role, as its tag reads beside its name. */
 const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
@@ -1355,6 +1364,7 @@ export function ZeropsStopPane({
   deployAgain,
   addService,
   notInZerops = NOTHING_MISSING,
+  tierStops = NO_TIER_STOPS,
   deployAnswer,
   services: readServices,
   stop,
@@ -1398,6 +1408,8 @@ export function ZeropsStopPane({
   readonly addService?: StopAddService | undefined;
   /** The services the stop's tier declares and its project lacks (`notInZerops`). */
   readonly notInZerops?: ReadonlyArray<string> | undefined;
+  /** The services HQ stopped because the tier no longer declares them (`stopTierStops`). */
+  readonly tierStops?: ReadonlyArray<StopTierStop> | undefined;
   /** What HQ answered of the deploys the last verb pressed here asked for. */
   readonly deployAnswer?: HqDeployAnswer | undefined;
   /** What `main` has that this production does not; nothing for a stage. */
@@ -1628,6 +1640,13 @@ export function ZeropsStopPane({
                 </li>
               ))}
             </ul>
+          )}
+          {stop.target.kind !== "zerops" || tierStops.length === 0 ? null : (
+            <StopTierStops
+              projectId={stop.target.projectId}
+              rowClassName={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")}
+              rows={tierStops}
+            />
           )}
           {otherDeploys === undefined ? null : (
             <ZeropsDeployAnswer

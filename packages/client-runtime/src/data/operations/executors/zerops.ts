@@ -43,6 +43,7 @@ import {
   updateProjectTagsExecutor,
 } from "./projectWrites.ts";
 import {
+  deleteServiceExecutor,
   enableSubdomainAccessExecutor,
   enableZeropsMateExecutor,
   startServiceExecutor,
@@ -60,6 +61,7 @@ type ZeropsOperationsClient = Pick<
   | "restartService"
   | "stopService"
   | "startService"
+  | "deleteService"
   | "deleteProject"
   | "listIntegrationTokens"
   | "readIntegrationToken"
@@ -205,6 +207,9 @@ export function makeZeropsExecutor(input: {
     const stopOne = stopServiceExecutor({
       stopService: (serviceId) => client.stopService(serviceId),
     });
+    const deleteOne = deleteServiceExecutor({
+      deleteService: (serviceId) => client.deleteService(serviceId),
+    });
     const startAll = startProjectExecutor({
       startProject: (projectId) => client.startProject(projectId),
     });
@@ -341,6 +346,8 @@ export function makeZeropsExecutor(input: {
               return startOne(requestId, intent);
             case "stop-service":
               return stopOne(requestId, intent);
+            case "delete-service":
+              return deleteOne(requestId, intent);
             case "start-project":
               return startAll(requestId, intent);
             case "enable-zerops-mate":
@@ -457,6 +464,7 @@ export function makeZeropsExecutor(input: {
         restartService: (id, signal) => source.restartService(id, signal, check),
         stopService: (id) => source.stopService(id, check),
         startService: (id) => source.startService(id, check),
+        deleteService: (id) => source.deleteService(id, check),
         deleteProject: (id, signal) => source.deleteProject(id, signal, check),
         enableSubdomainAccess: (id) => source.enableSubdomainAccess(id, check),
         writeMateFlag: (id) => source.writeMateFlag(id, check),
