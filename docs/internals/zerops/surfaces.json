@@ -1713,6 +1713,66 @@
       "captures": []
     },
     {
+      "id": "zerops-team-settings",
+      "title": "Team settings",
+      "components": [
+        "apps/web/src/components/settings/TeamSettings.tsx",
+        "apps/web/src/components/settings/TeamInviteDialog.tsx",
+        "apps/web/src/components/settings/teamSettings.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "/settings/team"
+        },
+        {
+          "kind": "settings-section",
+          "value": "Team"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/zerops", "@t3tools/client-runtime/zerops/teamRoles"],
+      "reverseStates": [
+        {
+          "action": "Invite",
+          "reverse": "Withdraw invite"
+        },
+        {
+          "action": "Change a person's role",
+          "reverse": "none: Choosing their earlier role in the same menu is the way back."
+        },
+        {
+          "action": "Withdraw invite",
+          "reverse": "Invite"
+        },
+        {
+          "action": "Remove from the organization",
+          "reverse": "Invite"
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the team yet."
+      },
+      "tests": [
+        "apps/web/src/components/settings/TeamSettings.test.tsx",
+        "apps/web/src/components/settings/TeamInviteDialog.test.tsx",
+        "apps/web/src/components/settings/teamSettings.logic.test.ts",
+        "packages/client-runtime/src/zerops/teamRoles.test.ts",
+        "packages/client-runtime/src/data/operations/executors/team.test.ts",
+        "packages/client-runtime/src/data/operations/executors/appAccess.test.ts"
+      ],
+      "captures": []
+    },
+    {
       "id": "zerops-crew-section",
       "title": "Crew tab",
       "components": [

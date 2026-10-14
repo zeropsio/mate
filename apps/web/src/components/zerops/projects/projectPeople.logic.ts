@@ -192,7 +192,7 @@ function accessWords(
   return said.charAt(0).toUpperCase() + said.slice(1);
 }
 
-const UNREADABLE = {
+export const UNREADABLE = {
   refused: "Zerops doesn’t show you this organization’s members.",
   failed: "Couldn’t read this organization’s members.",
 };
