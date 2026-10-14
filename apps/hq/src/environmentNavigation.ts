@@ -153,10 +153,10 @@ rollout AS (
   ORDER BY r.app_id, r.tag, r.id DESC
 ),
 left_out AS (
-  SELECT r.id AS rollout_id, l.environment_id, l.service, l.sha, l.job, l.reason
+  SELECT r.id AS rollout_id, l.environment_id, l.service, l.sha, l.job, l.reason, l.stopped
   FROM rollout r,
        jsonb_to_recordset(r.left_out)
-         AS l(environment_id text, service text, sha text, job text, reason text)
+         AS l(environment_id text, service text, sha text, job text, reason text, stopped jsonb)
 ),
 ends AS (
   SELECT j.rollout_id, j.environment_id, j.state, j.ended_at
@@ -193,7 +193,9 @@ SELECT s.environment_id, s.id::text AS id, s.tag,
          AS ended_at,
        COALESCE((
          SELECT jsonb_agg(jsonb_build_object('service', l.service, 'sha', l.sha,
-                  'job', l.job, 'reason', l.reason))
+                  'job', l.job, 'reason', l.reason)
+                  || CASE WHEN l.stopped IS NULL THEN '{}'::jsonb
+                     ELSE jsonb_build_object('stopped', l.stopped) END)
          FROM left_out l
          WHERE l.rollout_id = s.id AND l.environment_id = s.environment_id
        ), '[]'::jsonb) AS left_out

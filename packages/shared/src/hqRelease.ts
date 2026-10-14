@@ -154,6 +154,11 @@ export const ReleaseRollout = Schema.Struct({
       sha: Schema.String,
       job: Schema.NullOr(Schema.String),
       reason: Schema.String,
+      /**
+       * HQ stopped the service because the release's tier does not declare it: by a rollback to
+       * `rollbackTo`, or by an ordinary release where that is `null`. Absent for anything else.
+       */
+      stopped: Schema.optionalKey(Schema.Struct({ rollbackTo: Schema.NullOr(Schema.String) })),
     }),
   ),
 }).check(Schema.makeFilter((value) => releaseTargetMatches({ ...value, entries: [] })));
