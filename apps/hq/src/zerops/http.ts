@@ -51,6 +51,8 @@ const MemberList = Schema.Struct({
       roleCode: Schema.String,
       status: Schema.String,
       canCreateProjects: Schema.Boolean,
+      canViewFinances: Schema.optionalKey(Schema.Boolean),
+      canEditFinances: Schema.optionalKey(Schema.Boolean),
       user: Schema.Struct({
         fullName: Schema.String,
         avatar: Schema.optionalKey(
@@ -313,6 +315,8 @@ export const makeZeropsApiHttp = (
               userId: row.userId,
               clientUserId: row.id,
               canCreateProjects: row.canCreateProjects,
+              canViewFinances: row.canViewFinances === true,
+              canEditFinances: row.canEditFinances === true,
             })),
           ),
         ),
