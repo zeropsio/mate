@@ -3728,9 +3728,10 @@ describe("original lifecycle receipts", () => {
     it.effect(
       "Production removal requires the same role as creating production and the confirmed target fate",
       () =>
-        withStructure(() =>
+        withStructure((view) =>
           Effect.gen(function* () {
             const structure = yield* Structure;
+            yield* devReads(view, "P_PROD");
             const app = yield* structure.createApp("owner", "Guarded production");
             yield* structure.attachProject("owner", app.id, {
               projectId: "P_MATE",
