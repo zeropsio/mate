@@ -94,6 +94,12 @@ export interface ZeropsSessionValue {
    * like a hand-over's.
    */
   readonly adoptDeviceLogin: (session: ZeropsSession) => Promise<void>;
+  /**
+   * The bearer a sudo device login is asked with: the held session's, renewed first when it
+   * expires within fifteen minutes. A renewal during the approval would revoke the token the
+   * request is bound to, so it happens before the request, never during.
+   */
+  readonly sudoBearer: () => Promise<string>;
   readonly signOut: () => Promise<void>;
   readonly verifyAgain?: () => void;
   /** A background retry of a failed check is running: the failure stays, saying it tries again. */
@@ -113,6 +119,9 @@ export { useZeropsSession, useZeropsSessionOptional } from "./sessionContext";
 
 /** How long before its expiry a device-login session renews itself. */
 const RENEW_AHEAD_MS = 24 * 60 * 60_000;
+
+/** A sudo request asked of a session about to expire would die with it: it renews first. */
+const SUDO_RENEWAL_MARGIN_MS = 15 * 60_000;
 
 /** What a page reads of the session machine's state. */
 function statusOf(state: ZeropsSessionState): ZeropsSessionStatus {
@@ -235,7 +244,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
     } finally {
       signingOut = false;
     }
-    if (held !== null) void client.revokeSession(held);
+    if (held !== null) void calls.revoke(held);
   };
   return { calls, client, driver, signOutLocally };
 }
@@ -313,12 +322,9 @@ export function ZeropsSessionProvider({
   useEffect(() => {
     if (status !== "signed-in") return;
     const renewSoon = () => {
-      const held = client.session;
-      if (held?.refreshToken === undefined || held.expiresAt === undefined) return;
-      if (Date.parse(held.expiresAt) - Date.now() > RENEW_AHEAD_MS) return;
       // A refusal ends the session through the client; a renewal that never reached the platform
       // leaves it held, and the next wake tries again.
-      void client.renewHeldSession().catch(() => null);
+      void calls.freshBearer(RENEW_AHEAD_MS, Date.now()).catch(() => null);
     };
     renewSoon();
     const onVisible = () => {
@@ -330,7 +336,7 @@ export function ZeropsSessionProvider({
       window.document.removeEventListener("visibilitychange", onVisible);
       window.clearInterval(hourly);
     };
-  }, [client, status]);
+  }, [calls, status]);
 
   const organizations = useMemo(() => (user ? zeropsClientsFromUser(user) : []), [user]);
   const activeOrganization = useMemo(
@@ -429,6 +435,11 @@ export function ZeropsSessionProvider({
           // flag.
           setLastRegistration({ auth: session, user: adopted, zcpClaimed: true });
         }
+      },
+      sudoBearer: async () => {
+        const bearer = await calls.freshBearer(SUDO_RENEWAL_MARGIN_MS, Date.now());
+        if (bearer === null) throw new Error("Sign in to Zerops again.");
+        return bearer;
       },
       adoptDeviceLogin: async (session) => {
         driver.signedIn((await calls.adoptToken(session)).user);

@@ -25,7 +25,6 @@ import {
   type ZeropsDeviceLoginKind,
   type ZeropsDeviceLoginOutcome,
 } from "@t3tools/client-runtime/zerops/deviceLogin";
-import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { browserTransportFetch } from "@t3tools/client-runtime/data";
 
 export type ZeropsSignInMode = "handover" | "device-login";
@@ -35,9 +34,6 @@ export function zeropsSignInMode(): ZeropsSignInMode {
 }
 
 const DEFAULT_LOGIN_APP_CODE = "mate";
-
-/** A sudo request asked of a session about to expire would die with it: renew first. */
-const SUDO_RENEWAL_MARGIN_MS = 15 * 60_000;
 
 /** An early wake (the tab shown, the window focused) asks at once, but not more than this often. */
 const EARLY_WAKE_FLOOR_MS = 1_000;
@@ -115,30 +111,6 @@ function browserPorts(): ZeropsDeviceLoginPorts {
 }
 
 /**
- * The bearer a sudo request is asked with: the held session's, renewed first when it expires
- * within the margin. A renewal during the approval would revoke the token the request is bound
- * to, so it happens before the request, never during.
- */
-export async function sudoBearer(
-  client: Pick<ZeropsApiClient, "session" | "renewHeldSession">,
-  wallNowMs: number,
-): Promise<string> {
-  const held = client.session;
-  if (held === null) throw new Error("Sign in to Zerops again.");
-  const expiresAtMs = held.expiresAt === undefined ? Number.NaN : Date.parse(held.expiresAt);
-  if (
-    held.refreshToken !== undefined &&
-    Number.isFinite(expiresAtMs) &&
-    expiresAtMs - wallNowMs < SUDO_RENEWAL_MARGIN_MS
-  ) {
-    await client.renewHeldSession();
-  }
-  const current = client.session;
-  if (current === null) throw new Error("Sign in to Zerops again.");
-  return current.accessToken;
-}
-
-/**
  * Runs one device login. Call it on the person's click: the Zerops window opens synchronously
  * here, before anything is awaited. The window is closed once the run settles; HQ's own page
  * would close itself, app.zerops.io's would not.
@@ -147,7 +119,7 @@ export function runZeropsDeviceLogin(input: {
   readonly kind: ZeropsDeviceLoginKind;
   readonly apiBase: string;
   readonly intent?: ZeropsDeviceLoginIntent;
-  /** A sudo request's: the session's bearer, renewed first where needed (`sudoBearer`). */
+  /** A sudo request's: the session's bearer, renewed first where needed (the session's `sudoBearer`). */
   readonly bearer?: () => Promise<string>;
   readonly onStage: (stage: ZeropsDeviceLoginStage) => void;
   readonly ports?: ZeropsDeviceLoginPorts;

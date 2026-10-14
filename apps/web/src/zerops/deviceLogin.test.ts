@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { runZeropsDeviceLogin, sudoBearer, type ZeropsDeviceLoginStage } from "./deviceLogin";
+import { runZeropsDeviceLogin, type ZeropsDeviceLoginStage } from "./deviceLogin";
 
 const API = "https://api.example.test";
 const VERIFY = "https://app.zerops.io/authorize-login?request=req-1";
@@ -187,40 +187,5 @@ describe("runZeropsDeviceLogin", () => {
     const run = runZeropsDeviceLogin({ kind: "login", apiBase: API, onStage, ports });
     await expect(run.outcome).rejects.toMatchObject({ code: "deviceLoginAppInvalid" });
     expect(opened[0]?.window?.closed).toBe(true);
-  });
-});
-
-describe("sudoBearer", () => {
-  const at = Date.parse("2026-10-14T12:00:00Z");
-
-  function client(expiresAt: string, refreshToken: string | null = "refresh-1") {
-    let renewals = 0;
-    const held = {
-      session: {
-        accessToken: "access-1",
-        expiresAt,
-        ...(refreshToken === null ? {} : { refreshToken }),
-      } as { accessToken: string; expiresAt: string; refreshToken?: string },
-      renewHeldSession: async () => {
-        renewals += 1;
-        held.session = { ...held.session, accessToken: "access-2" };
-      },
-    };
-    return { held, renewals: () => renewals };
-  }
-
-  it.each([
-    ["renews first inside the fifteen-minute margin", "2026-10-14T12:10:00Z", "access-2", 1],
-    ["keeps a session with time left", "2026-10-14T13:00:00Z", "access-1", 0],
-  ])("%s", async (_case, expiresAt, bearer, renewals) => {
-    const { held, renewals: count } = client(expiresAt);
-    await expect(sudoBearer(held, at)).resolves.toBe(bearer);
-    expect(count()).toBe(renewals);
-  });
-
-  it("never renews a personal token, which has no refresh token", async () => {
-    const { held, renewals } = client("2026-10-14T12:01:00Z", null);
-    await expect(sudoBearer(held, at)).resolves.toBe("access-1");
-    expect(renewals()).toBe(0);
   });
 });

@@ -149,3 +149,34 @@ describe("probeZeropsPrincipal", () => {
     expect(answer).toEqual(unavailable);
   });
 });
+
+describe("makeZeropsSessionCalls.freshBearer", () => {
+  const at = Date.parse("2026-10-14T12:00:00Z");
+  const margin = 15 * 60_000;
+
+  it.each([
+    ["renews first inside the fifteen-minute margin", "2026-10-14T12:10:00Z", "access-2"],
+    ["keeps a session with time left", "2026-10-14T13:00:00Z", "access-1"],
+  ])("%s", async (_case, expiresAt, bearer) => {
+    const { fetch, sent } = platform({ "/auth/refresh": () => json(200, next) });
+    const calls = makeZeropsSessionCalls({ fetch, baseUrl: BASE_URL });
+    calls.client.restoreSession({ ...stored, expiresAt });
+
+    await expect(calls.freshBearer(margin, at)).resolves.toBe(bearer);
+    expect(sent).toEqual(bearer === "access-2" ? ["POST /auth/refresh"] : []);
+  });
+
+  it("never renews a personal token, which has no refresh token", async () => {
+    const { fetch, sent } = platform({});
+    const calls = makeZeropsSessionCalls({ fetch, baseUrl: BASE_URL });
+    calls.client.restoreSession({ accessToken: "pat-1", expiresAt: "2026-10-14T12:01:00Z" });
+
+    await expect(calls.freshBearer(margin, at)).resolves.toBe("pat-1");
+    expect(sent).toEqual([]);
+  });
+
+  it("answers no bearer when nothing is held", async () => {
+    const calls = makeZeropsSessionCalls({ fetch: platform({}).fetch, baseUrl: BASE_URL });
+    await expect(calls.freshBearer(margin, at)).resolves.toBeNull();
+  });
+});

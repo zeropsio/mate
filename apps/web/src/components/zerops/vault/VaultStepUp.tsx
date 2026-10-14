@@ -9,7 +9,6 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   runZeropsDeviceLogin,
-  sudoBearer,
   type ZeropsDeviceLoginRun,
   type ZeropsDeviceLoginStage,
 } from "~/zerops/deviceLogin";
@@ -30,7 +29,7 @@ export function VaultStepUp({ onConfirmed }: { readonly onConfirmed: () => void 
   const generation = useRef(0);
   useEffect(() => () => run.current?.cancel(), []);
   if (session === null) return null;
-  const { client } = session;
+  const { client, sudoBearer } = session;
 
   // Runs on the click: the Zerops window must open before anything is awaited.
   const confirm = () => {
@@ -40,7 +39,7 @@ export function VaultStepUp({ onConfirmed }: { readonly onConfirmed: () => void 
     run.current = runZeropsDeviceLogin({
       kind: "sudo",
       apiBase: client.baseUrl,
-      bearer: () => sudoBearer(client, Date.now()),
+      bearer: sudoBearer,
       onStage: (stage) => {
         if (current()) setState({ kind: "waiting", stage });
       },
