@@ -6,7 +6,7 @@ import {
   type GitOverviewView,
 } from "@t3tools/client-runtime/zerops";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useContext, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { InventoryContext, useAccountTrouble } from "~/zerops/inventoryContext";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
@@ -24,6 +24,9 @@ import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { gitPageState, type GitPageState } from "./ZeropsGitPage.logic";
 import { ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
+
+/** How long a first read may keep the page to its one line before it shows what it has. */
+const FIRST_READ_PATIENCE_MS = 1_500;
 
 function Reading() {
   return (
@@ -75,11 +78,25 @@ export function ZeropsGitOverview({
 }) {
   const [view, setView] = useState<GitOverviewView>("open");
   const [held, setHeld] = useState<ReadonlyArray<GitOverviewIdentity>>();
+  // The first read paints once: its list waits for the read to finish — or, should that take
+  // long, for FIRST_READ_PATIENCE_MS — and what arrives during it is never offered as an update.
+  const [firstRead, setFirstRead] = useState<"reading" | "patient" | "done">("reading");
+  useEffect(() => {
+    const patience = setTimeout(
+      () => setFirstRead((now) => (now === "reading" ? "patient" : now)),
+      FIRST_READ_PATIENCE_MS,
+    );
+    return () => clearTimeout(patience);
+  }, []);
+  if (firstRead !== "done" && state.kind === "read" && (!state.reading || state.failure !== null)) {
+    setFirstRead("done");
+  }
   const presentation = gitOverviewPresentation(state.kind === "read" ? state.apps : [], view, held);
-  // Capture the first readable list; purge identities removed by the authoritative projection.
+  // Capture the list the first read ended on; purge identities removed by the authoritative
+  // projection.
   if (
     state.kind === "read" &&
-    (presentation.rows.length > 0 || (!state.reading && state.failure === null)) &&
+    firstRead === "done" &&
     JSON.stringify(held) !== JSON.stringify(presentation.identities)
   ) {
     setHeld(presentation.identities);
@@ -98,6 +115,8 @@ export function ZeropsGitOverview({
     ) : (
       <ReadTrouble failure={state.failure} onAgain={onAgain} />
     );
+
+  if (firstRead === "reading" && state.reading && state.failure === null) return <Reading />;
 
   const incomplete = presentation.incomplete || state.reading || state.failure !== null;
   return (
