@@ -1,5 +1,4 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
@@ -13,7 +12,16 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import type { MateLogin } from "../ZeropsLogins.ts";
-import { TEST_HOST, git, read, write } from "./testing/crewGitFixture.ts";
+import {
+  DEV_SERVER,
+  TEST_HOST,
+  declareDevServers,
+  git,
+  read,
+  serveDev,
+  stopSupervised,
+  write,
+} from "./testing/crewGitFixture.ts";
 import {
   AS_CREW,
   KAREL,
@@ -1496,29 +1504,23 @@ describe("CrewEngine", () => {
       ),
   );
 
-  /** zcp's dev server, faked: a process started in `cwd` whose pid is in zcp's pidfile. */
-  const startDevServer = (world: CrewWorld, cwd: string) => {
-    const child = NodeChildProcess.spawn("sleep", ["60"], { cwd, detached: true, stdio: "ignore" });
-    child.unref();
-    NodeFS.writeFileSync(world.devServerPidFile, `${child.pid}\n`);
-    return child.pid!;
+  /** zcp's supervisor serves dev from `from`; the root whose supervised processes to stop. */
+  const startDevServer = (world: CrewWorld, from: Parameters<typeof serveDev>[1]) => {
+    serveDev(world.root, from);
+    return world.root;
   };
 
   it.live(
     "Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases",
     () => {
-      const started: Array<number> = [];
+      const started: Array<string> = [];
       return crewJourney((world) =>
         Effect.gen(function* () {
-          write(
-            world.root,
-            "zerops.yaml",
-            "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
-          );
+          declareDevServers(world.root, [DEV_SERVER]);
           git(world.root, ["add", "-A"]);
           git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
           yield* applied(world);
-          started.push(startDevServer(world, world.root));
+          started.push(startDevServer(world, "tree"));
           const thread = yield* firstTurn(world, () => undefined);
           const asked = yield* world.showOnDev(thread, { reason: "see the HUD" });
           yield* world.turnEnds(thread);
@@ -1537,7 +1539,7 @@ describe("CrewEngine", () => {
           yield* world.turnStarts(thread);
           const claimTurn = (yield* turnsSent(world)).at(-1)!;
           const shaped = Option.getOrThrow(yield* world.member(thread)).gate;
-          started.push(startDevServer(world, NodePath.join(world.root, ".crew/backend")));
+          started.push(startDevServer(world, { handle: "backend" }));
           yield* world.turnEnds(thread);
           const held = yield* world.snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "held",
@@ -1548,7 +1550,7 @@ describe("CrewEngine", () => {
           );
           yield* world.press({ _tag: "claimRelease", host: "appdev" });
           const releaseTurn = (yield* turnsSent(world)).at(-1)!;
-          started.push(startDevServer(world, world.root));
+          started.push(startDevServer(world, "tree"));
           yield* world.turnEnds(thread);
           const released = yield* world.snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "none",
@@ -1560,7 +1562,7 @@ describe("CrewEngine", () => {
                 .filter((row) => row.kind === "show-on-dev")
                 .map((row) => [row.host, row.text]),
               claimCard: claimTurn.text.split("\n")[1],
-              claimWorkDir: claimTurn.text.includes(`workDir=${world.root}/.crew/backend`),
+              claimWorkDir: claimTurn.text.includes("--cwd .crew/backend"),
               shaped: shaped.kind === "live" ? [shaped.turn, shaped.devServer?.port] : null,
               served: held.hosts[0]!.served,
               holdsClaim: gate.kind === "live" && gate.holdsClaim,
@@ -1585,11 +1587,7 @@ describe("CrewEngine", () => {
       ).pipe(
         Effect.ensuring(
           Effect.sync(() => {
-            for (const pid of started) {
-              try {
-                process.kill(pid);
-              } catch {}
-            }
+            for (const root of started) stopSupervised(root);
           }),
         ),
       );
@@ -1648,19 +1646,15 @@ describe("CrewEngine", () => {
   );
 
   it.live("an Allow waiting on a turn that a restart ended goes out when the engine boots", () => {
-    const started: Array<number> = [];
+    const started: Array<string> = [];
     return crewJourney([
       (world) =>
         Effect.gen(function* () {
-          write(
-            world.root,
-            "zerops.yaml",
-            "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
-          );
+          declareDevServers(world.root, [DEV_SERVER]);
           git(world.root, ["add", "-A"]);
           git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
           yield* applied(world);
-          started.push(startDevServer(world, world.root));
+          started.push(startDevServer(world, "tree"));
           const thread = yield* firstTurn(world, () => undefined);
           yield* world.showOnDev(thread, { reason: "See the camera" });
           yield* world.snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
@@ -1695,11 +1689,7 @@ describe("CrewEngine", () => {
     ]).pipe(
       Effect.ensuring(
         Effect.sync(() => {
-          for (const pid of started) {
-            try {
-              process.kill(pid);
-            } catch {}
-          }
+          for (const root of started) stopSupervised(root);
         }),
       ),
     );
@@ -1708,18 +1698,14 @@ describe("CrewEngine", () => {
   it.live(
     "Allow pressed while the crewmate's turn runs is kept and sent when the turn ends",
     () => {
-      const started: Array<number> = [];
+      const started: Array<string> = [];
       return crewJourney((world) =>
         Effect.gen(function* () {
-          write(
-            world.root,
-            "zerops.yaml",
-            "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
-          );
+          declareDevServers(world.root, [DEV_SERVER]);
           git(world.root, ["add", "-A"]);
           git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
           yield* applied(world);
-          started.push(startDevServer(world, world.root));
+          started.push(startDevServer(world, "tree"));
           const thread = yield* firstTurn(world, () => undefined);
           yield* world.showOnDev(thread, { reason: "See the camera" });
           yield* world.snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
@@ -1759,11 +1745,7 @@ describe("CrewEngine", () => {
       ).pipe(
         Effect.ensuring(
           Effect.sync(() => {
-            for (const pid of started) {
-              try {
-                process.kill(pid);
-              } catch {}
-            }
+            for (const root of started) stopSupervised(root);
           }),
         ),
       );
@@ -1771,18 +1753,14 @@ describe("CrewEngine", () => {
   );
 
   it.live("Show on dev pressed while the crewmate's turn runs goes out when the turn ends", () => {
-    const started: Array<number> = [];
+    const started: Array<string> = [];
     return crewJourney((world) =>
       Effect.gen(function* () {
-        write(
-          world.root,
-          "zerops.yaml",
-          "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
-        );
+        declareDevServers(world.root, [DEV_SERVER]);
         git(world.root, ["add", "-A"]);
         git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
         yield* applied(world);
-        started.push(startDevServer(world, world.root));
+        started.push(startDevServer(world, "tree"));
         const thread = yield* firstTurn(world, () => undefined);
         yield* world.press({ _tag: "showOnDev", handle: "backend" });
         const turnsWhileRunning = (yield* turnsSent(world)).length;
@@ -1810,25 +1788,17 @@ describe("CrewEngine", () => {
     ).pipe(
       Effect.ensuring(
         Effect.sync(() => {
-          for (const pid of started) {
-            try {
-              process.kill(pid);
-            } catch {}
-          }
+          for (const root of started) stopSupervised(root);
         }),
       ),
     );
   });
 
   it.live("a run that lets the crew show work on dev allows a request when its turn ends", () => {
-    const started: Array<number> = [];
+    const started: Array<string> = [];
     return crewJourney((world) =>
       Effect.gen(function* () {
-        write(
-          world.root,
-          "zerops.yaml",
-          "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
-        );
+        declareDevServers(world.root, [DEV_SERVER]);
         git(world.root, ["add", "-A"]);
         git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
         yield* applied(world);
@@ -1841,7 +1811,7 @@ describe("CrewEngine", () => {
           devGrant: true,
           leadMayStart: false,
         });
-        started.push(startDevServer(world, world.root));
+        started.push(startDevServer(world, "tree"));
         const thread = yield* firstTurn(world, () => undefined);
         yield* world.showOnDev(thread, { reason: "See the camera" });
         const admittedBefore = (yield* world.admissions).length;
@@ -1871,29 +1841,21 @@ describe("CrewEngine", () => {
     ).pipe(
       Effect.ensuring(
         Effect.sync(() => {
-          for (const pid of started) {
-            try {
-              process.kill(pid);
-            } catch {}
-          }
+          for (const root of started) stopSupervised(root);
         }),
       ),
     );
   });
 
   it.live("Show on dev pressed by you asks and allows at once, as you", () => {
-    const started: Array<number> = [];
+    const started: Array<string> = [];
     return crewJourney((world) =>
       Effect.gen(function* () {
-        write(
-          world.root,
-          "zerops.yaml",
-          "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n          httpSupport: true\n",
-        );
+        declareDevServers(world.root, [DEV_SERVER]);
         git(world.root, ["add", "-A"]);
         git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
         yield* applied(world);
-        started.push(startDevServer(world, world.root));
+        started.push(startDevServer(world, "tree"));
         yield* world.press({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
         const [created] = yield* opened(world);
         yield* world.turnEnds(created!.chat);
@@ -1924,11 +1886,7 @@ describe("CrewEngine", () => {
     ).pipe(
       Effect.ensuring(
         Effect.sync(() => {
-          for (const pid of started) {
-            try {
-              process.kill(pid);
-            } catch {}
-          }
+          for (const root of started) stopSupervised(root);
         }),
       ),
     );

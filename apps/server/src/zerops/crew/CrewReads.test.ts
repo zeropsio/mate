@@ -102,15 +102,4 @@ describe("CrewReads", () => {
         (root) => readsLayer(root),
       ),
   );
-
-  it.effect("finds no dev server when zcp started none", () =>
-    withCrewService(
-      () =>
-        Effect.gen(function* () {
-          const reads = yield* CrewReads.CrewReads;
-          assert.isUndefined(yield* reads.devServerCommand(TEST_HOST));
-        }),
-      (root) => readsLayer(root),
-    ),
-  );
 });

@@ -81,6 +81,7 @@ import {
   taskCard,
   type SentCard,
 } from "./cards.ts";
+import { copyWorkDir } from "../CrewRuntime.ts";
 import {
   CREW_EFFECT_KINDS,
   type CrewDecision,
@@ -2366,7 +2367,14 @@ const releaseClaim = (
   }
   const member = b.state.members[claim.handle];
   if (member === undefined || claim.devServer === null) return;
-  sendTurn(b, member, claimReleaseCard(host, claim.devServer), as, "claim-release", null);
+  sendTurn(
+    b,
+    member,
+    claimReleaseCard(host, member.handle, claim.devServer),
+    as,
+    "claim-release",
+    null,
+  );
 };
 
 /** A free crewmate's allowed claim turn goes out; a running run's dev grant allows a request. */
@@ -2384,7 +2392,12 @@ const claimTurn = (b: Builder, member: MemberRecord): boolean => {
     sendTurn(
       b,
       member,
-      claimStartCard(member.host, claim.devServer, claim.workDir ?? `.crew/${member.handle}`),
+      claimStartCard(
+        member.host,
+        member.handle,
+        claim.devServer,
+        claim.workDir ?? copyWorkDir(member.handle, claim.devServer),
+      ),
       claim.grantedBy ?? b.envelope.principal,
       "claim-start",
       null,
@@ -4091,7 +4104,7 @@ const claimRead = (
           sendTurn(
             b,
             member,
-            claimReleaseCard(host, claim.devServer),
+            claimReleaseCard(host, member.handle, claim.devServer),
             claim.grantedBy ?? { kind: "engine" },
             "claim-release",
             null,

@@ -25,7 +25,6 @@ import type {
   CrewCommand,
   CrewRefusalReason,
   CrewTaskState,
-  CrewServed,
   EffectId,
   EffectOutcome,
   KnownEngineEvent,
@@ -37,6 +36,7 @@ import type {
 } from "@t3tools/contracts";
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
+import type { DevServerReading } from "../CrewRuntime.ts";
 import type { CrewProposedTask, CrewReportInput, CrewReviewInput } from "../crewSeams.ts";
 import type { CrewEventDraft } from "./events.ts";
 import type { CrewImport } from "./importV1Crew.ts";
@@ -401,10 +401,8 @@ export interface CrewEffectValues {
       }
     | { readonly _tag: "dirty-tree" | "untracked-in-way"; readonly paths: ReadonlyArray<string> }
     | { readonly _tag: "park"; readonly detail: string };
-  readonly "crew.claim.read": {
-    readonly served: CrewServed;
-    /** The dev service's own dev server, `null` when the Mate runs none there. */
-    readonly devServer: { readonly port: number; readonly command: string } | null;
+  readonly "crew.claim.read": DevServerReading & {
+    /** Where the claimant's copy runs the dev server, in the repository. */
     readonly workDir: string;
   };
   readonly "crew.app.run": { readonly state: "running" | "stopped" };

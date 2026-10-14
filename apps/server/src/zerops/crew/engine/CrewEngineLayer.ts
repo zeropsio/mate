@@ -84,6 +84,7 @@ import { CrewEngine, type CrewEngineService } from "../CrewEngine.ts";
 import { CREW_ID, CrewHome, refusalOf } from "../CrewHome.ts";
 import { makeOver, type CrewMemoryRecords } from "../CrewMemory.ts";
 import { CrewReads } from "../CrewReads.ts";
+import { CrewRuntime } from "../CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
 import { CrewShell } from "../CrewShell.ts";
 import { CrewStoreError, type CrewMemoryRow } from "../CrewStore.ts";
@@ -323,6 +324,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     const shell = yield* CrewShell;
     const workspace = yield* CrewWorkspace;
     const reads = yield* CrewReads;
+    const runtime = yield* CrewRuntime;
     const repositories = yield* ZeropsRepositorySource;
     const observer = yield* ZeropsWorkspaceObserver;
     const instances = yield* ProviderInstances;
@@ -892,15 +894,10 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         const claim = current.claims[press.host];
         const member = claim === undefined ? undefined : current.members[claim.handle];
         if (claim?.state !== "requested" || member === undefined || member.active !== null) return;
-        const command = yield* reads
-          .devServerCommand(press.host)
+        const reading = yield* runtime
+          .devServer(press.host)
           .pipe(Effect.orElseSucceed(() => undefined));
-        const yaml = yield* reads
-          .zeropsYaml(press.host)
-          .pipe(Effect.orElseSucceed(() => undefined));
-        const port =
-          yaml === undefined ? null : (readDeclaredPorts(yaml, press.host)?.main ?? null);
-        if (command === undefined || port === null) {
+        if (reading?.devServer == null) {
           return yield* refuse("wrong-state", noDevServerWords(press.host, member));
         }
       });

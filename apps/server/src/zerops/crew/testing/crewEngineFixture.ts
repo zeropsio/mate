@@ -70,11 +70,6 @@ export const ZEROPS = resolveZeropsEnvironment({
 export interface CrewWorld {
   readonly root: string;
   readonly workspace: string;
-  /**
-   * zcp's dev-server pidfile as this world's engine reads it: the world's own, so no other run on
-   * the machine writes it under the engine.
-   */
-  readonly devServerPidFile: string;
   readonly admitted: Ref.Ref<
     ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
   >;
@@ -379,7 +374,6 @@ export const makeFixtureWorld = Effect.gen(function* () {
   const world: CrewWorld = {
     root,
     workspace,
-    devServerPidFile: NodePath.join(workspace, "zcp-dev-server.log.pid"),
     admitted: yield* Ref.make<
       ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
     >([]),

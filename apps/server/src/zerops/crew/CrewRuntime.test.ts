@@ -1,8 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeChildProcess from "node:child_process";
-import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
 
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -14,15 +11,27 @@ import {
   claimEventFromServed,
   claimOf,
   claimRequest,
+  backToTreeCommand,
+  backToTreeScript,
   CrewRuntime,
   holdsClaim,
-  makeCrewRuntime,
+  layer as CrewRuntimeLayer,
   servedFrom,
   showOnDevAnswer,
+  showOnDevCommand,
+  showOnDevScript,
 } from "./CrewRuntime.ts";
 import { CrewStore } from "./CrewStore.ts";
 import * as CrewWorkspace from "./CrewWorkspace.ts";
-import { crewGitLayer, TEST_HOST, withCrewService } from "./testing/crewGitFixture.ts";
+import {
+  crewGitLayer,
+  declareDevServers,
+  remoteEnvWithSupervisor,
+  stopSupervised,
+  supervise,
+  TEST_HOST,
+  withCrewService,
+} from "./testing/crewGitFixture.ts";
 
 const HANDLES = ["backend", "frontend"];
 
@@ -133,53 +142,70 @@ describe("holdsClaim", () => {
   });
 });
 
-/** A stand-in for zcp's dev server: a process in `cwd` whose pid is in the pidfile. */
-const startDevServer = (pidFile: string, cwd: string): NodeChildProcess.ChildProcess => {
-  const child = NodeChildProcess.spawn("sleep", ["30"], { cwd, stdio: "ignore" });
-  NodeFS.writeFileSync(pidFile, `${child.pid}\n`);
-  return child;
+const WEB = { name: "web", port: 3000, command: "sleep 30" } as const;
+
+/** The service declares `web` and the supervisor runs it from the tree. */
+const treeServes = (root: string) => {
+  declareDevServers(root, [WEB]);
+  supervise(root, "start", "web");
 };
+
+/** A claim or release turn's one command, run on the service as the turn would. */
+const runOnService = (root: string, body: string) =>
+  NodeChildProcess.execFileSync("/bin/sh", ["-c", body], {
+    cwd: root,
+    env: { ...process.env, ...remoteEnvWithSupervisor() },
+    stdio: "ignore",
+  });
 
 const withRuntime = <A, E>(
   body: (context: {
     readonly root: string;
-    readonly pidFile: string;
   }) => Effect.Effect<A, E, CrewRuntime | CrewStore | CrewWorkspace.CrewWorkspace>,
-) => {
-  const pidFile = NodePath.join(
-    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-dev-")),
-    "zcp-dev-server.log.pid",
-  );
-  return withCrewService(
+) =>
+  withCrewService(
     (root) =>
       Effect.gen(function* () {
         const workspace = yield* CrewWorkspace.CrewWorkspace;
         yield* workspace.create({ crew: "game", host: TEST_HOST, handle: "backend" });
-        return yield* body({ root, pidFile });
-      }),
+        return yield* body({ root });
+      }).pipe(Effect.ensuring(Effect.sync(() => stopSupervised(root)))),
     (root) =>
-      Layer.effect(CrewRuntime, makeCrewRuntime({ devServerPidFile: pidFile })).pipe(
-        Layer.provideMerge(crewGitLayer(root)),
+      CrewRuntimeLayer.pipe(
+        Layer.provideMerge(crewGitLayer(root, { remoteEnv: remoteEnvWithSupervisor() })),
       ),
   );
-};
+
+describe("the claim turns' commands", () => {
+  it("stop the declared server and run the copy in its place on its port, then give it back", () => {
+    expect([
+      showOnDevCommand("appdev", "backend", { ...WEB, command: "npm run dev", cwd: "." }),
+      backToTreeCommand("appdev", "backend", { ...WEB, command: "npm run dev", cwd: "." }),
+      showOnDevScript("backend", { ...WEB, command: "npm run dev", cwd: "apps/web" }),
+    ]).toEqual([
+      String.raw`ssh appdev 'zcp-devsup ctl --json stop web && zcp-devsup ctl --json run --name show-backend --cwd .crew/backend --port 3000 -- '\''npm run dev'\'''`,
+      "ssh appdev 'zcp-devsup ctl --json rm show-backend; zcp-devsup ctl --json start web'",
+      "zcp-devsup ctl --json stop web && zcp-devsup ctl --json run --name show-backend --cwd .crew/backend/apps/web --port 3000 -- 'npm run dev'",
+    ]);
+  });
+});
 
 describe("CrewRuntime", () => {
   it.effect("reads what dev serves from its process's working directory", () =>
-    withRuntime(({ root, pidFile }) =>
+    withRuntime(({ root }) =>
       Effect.gen(function* () {
         const runtime = yield* CrewRuntime;
-        const nothing = yield* runtime.served(TEST_HOST);
-        const lane = startDevServer(pidFile, NodePath.join(root, ".crew/backend"));
-        const fromLane = yield* runtime
-          .served(TEST_HOST)
-          .pipe(Effect.ensuring(Effect.sync(() => lane.kill())));
-        const tree = startDevServer(pidFile, root);
-        const fromTree = yield* runtime
-          .served(TEST_HOST)
-          .pipe(Effect.ensuring(Effect.sync(() => tree.kill())));
-        expect([nothing, fromLane, fromTree]).toEqual([
+        const nothing = (yield* runtime.devServer(TEST_HOST)).served;
+        treeServes(root);
+        const fromTree = yield* runtime.devServer(TEST_HOST);
+        const devServer = fromTree.devServer!;
+        runOnService(root, showOnDevScript("backend", devServer));
+        const fromLane = (yield* runtime.devServer(TEST_HOST)).served;
+        runOnService(root, backToTreeScript("backend", devServer));
+        const back = (yield* runtime.devServer(TEST_HOST)).served;
+        expect([nothing, fromTree, fromLane, back]).toEqual([
           { by: "unknown" },
+          { served: { by: "tree" }, devServer: { ...WEB, cwd: "." } },
           { by: "crewmate", handle: "backend" },
           { by: "tree" },
         ]);
@@ -187,8 +213,20 @@ describe("CrewRuntime", () => {
     ),
   );
 
+  it.effect("finds no dev server when zcp started none", () =>
+    withRuntime(() =>
+      Effect.gen(function* () {
+        const runtime = yield* CrewRuntime;
+        expect(yield* runtime.devServer(TEST_HOST)).toEqual({
+          served: { by: "unknown" },
+          devServer: null,
+        });
+      }),
+    ),
+  );
+
   it.effect("takes a claim from a request through held and back to the tree", () =>
-    withRuntime(({ root, pidFile }) =>
+    withRuntime(({ root }) =>
       Effect.gen(function* () {
         const runtime = yield* CrewRuntime;
         const store = yield* CrewStore;
@@ -215,14 +253,15 @@ describe("CrewRuntime", () => {
           Option.map(yield* store.getClaim(TEST_HOST), (row) => row.grantedBy),
         );
 
-        const lane = startDevServer(pidFile, NodePath.join(root, ".crew/backend"));
-        yield* runtime.settle(TEST_HOST).pipe(Effect.ensuring(Effect.sync(() => lane.kill())));
+        treeServes(root);
+        runOnService(root, showOnDevScript("backend", { ...WEB, cwd: "." }));
+        yield* runtime.settle(TEST_HOST);
         seen.push(yield* claim());
 
         yield* runtime.apply(TEST_HOST, "report");
         seen.push(yield* claim());
-        const tree = startDevServer(pidFile, root);
-        yield* runtime.settle(TEST_HOST).pipe(Effect.ensuring(Effect.sync(() => tree.kill())));
+        runOnService(root, backToTreeScript("backend", { ...WEB, cwd: "." }));
+        yield* runtime.settle(TEST_HOST);
         seen.push(yield* claim());
 
         expect(seen).toEqual([

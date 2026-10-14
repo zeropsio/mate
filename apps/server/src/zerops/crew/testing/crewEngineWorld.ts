@@ -66,7 +66,6 @@ import {
 } from "../../engineAdapters.ts";
 import { CrewEngine } from "../CrewEngine.ts";
 import { crewServicesLayer } from "../crewLayer.ts";
-import { DevServerPidFile } from "../CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost, type CrewThreadMember } from "../crewSeams.ts";
 import { installCrewThreadPolicy } from "../CrewThreadPolicy.ts";
 import { taskAssignment, type CrewEffectPayload } from "../engine/command.ts";
@@ -610,7 +609,6 @@ const enginePort = (input: {
     sendsReached,
     root: fx.root,
     workspace: fx.workspace,
-    devServerPidFile: fx.devServerPidFile,
     ownRef: Effect.map(crewState, (state) => {
       const open = Object.values(state.tasks).find(
         (task) => task.state !== "landed" && task.state !== "discarded",
@@ -1013,7 +1011,6 @@ const lifeLayer = (
     platformFakes(world, signIns),
     admissionFake(world),
     countingSsh(world.sshCalls, holds),
-    Layer.succeed(DevServerPidFile, world.devServerPidFile),
     ServerConfig.layer({
       cwd: world.workspace,
       attachmentsDir: NodePath.join(world.workspace, "attachments"),
