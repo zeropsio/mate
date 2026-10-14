@@ -183,6 +183,37 @@ describe("mateAddresses", () => {
       ],
     },
     {
+      name: "each named dev server is its own dev address, by its name and port",
+      input: {
+        services: [
+          {
+            ...svc("appdev", ["https://appdev-1df2-3000.prg1.zerops.app"]),
+            devServers: [
+              { name: "web", port: 3000, url: "https://appdev-1df2-3000.prg1.zerops.app" },
+              { name: "api", port: 8080, url: "https://appdev-1df2-8080.prg1.zerops.app" },
+              { name: "worker" },
+            ],
+          },
+        ],
+      },
+      expected: [
+        { service: "web :3000", role: "dev", url: "https://appdev-1df2-3000.prg1.zerops.app" },
+        { service: "api :8080", role: "dev", url: "https://appdev-1df2-8080.prg1.zerops.app" },
+      ],
+    },
+    {
+      name: "a one-part app's dev address is today's: one dev server names nothing",
+      input: {
+        services: [
+          {
+            ...svc("appdev", ["https://appdev-1-3000.example.app"]),
+            devServers: [{ name: "appdev", port: 3000, url: "https://appdev-1-3000.example.app" }],
+          },
+        ],
+      },
+      expected: [{ service: "appdev", role: "dev", url: "https://appdev-1-3000.example.app" }],
+    },
+    {
       name: "one address is listed once, whoever names it",
       input: {
         services: [svc("app", ["https://app-1-3000.example.app"])],

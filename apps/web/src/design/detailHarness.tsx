@@ -14,7 +14,10 @@ import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
  * `index.html`, and no route imports this module.
  */
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
+import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
+import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import { createRoot } from "react-dom/client";
 
 import {
@@ -37,7 +40,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import {
   serviceRows,
-  stopFailedDeploy,
+  rowsRunningAgain,
+  stopFailedDeploys,
   stopKeyGap,
   stopVerdict,
   stopView,
@@ -568,11 +572,12 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     nowMs: NOW,
     age: () => "2h ago",
   });
-  const failedDeploy = stopFailedDeploy({ tier: fixture.tier, rows: services, releases });
-  const failed =
-    failedDeploy === undefined
-      ? undefined
-      : { ...failedDeploy, mayRunAgain: fixture.mayRunAgain ?? false };
+  const failedDeploys = stopFailedDeploys({ tier: fixture.tier, rows: services, releases });
+  const failed = failedDeploys.map((entry) => ({
+    ...entry,
+    mayRunAgain: fixture.mayRunAgain ?? false,
+  }));
+  const [onlyFailed] = failed.length === 1 ? failed : [];
   return (
     <ZeropsStopPane
       deployAnswer={fixture.deployAnswer}
@@ -595,11 +600,11 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       routeTrouble={null}
       routes={routes}
       runAgain={
-        failed?.redeploy !== undefined && failed.mayRunAgain
+        onlyFailed?.redeploy !== undefined && onlyFailed.mayRunAgain
           ? { running: false, refused: null, onRunAgain: () => {} }
           : undefined
       }
-      services={services}
+      services={rowsRunningAgain(services, failedDeploys)}
       stop={stop}
       tags={TAGS}
       trouble={null}
@@ -876,6 +881,54 @@ function Harness() {
         <EnvironmentsFrame environments={[environment()]} facts={{}} />
       </State>
       <State
+        label="Environments · an application of several parts"
+        note="The stage names how many parts and each that differs; production names a part its rollback stopped."
+      >
+        <EnvironmentsFrame
+          environments={[
+            environmentRow({
+              projectId: "shop-stage",
+              name: "stage",
+              tier: "stage",
+              sources: ["main"],
+              services: [
+                service("api", "3f9c1b2e", undefined),
+                service("web", "a1b2c3d4", undefined),
+                service("worker", "3f9c1b2e", undefined, "building"),
+              ],
+            }),
+            environmentRow({
+              projectId: "shop-prod",
+              name: "production",
+              tier: "production",
+              sources: "release",
+              services: [
+                service("api", "3f9c1b2e", "v1.4.0"),
+                service("web", "3f9c1b2e", "v1.4.0"),
+                service("worker", "9d8e7f6a", "v1.3.0"),
+              ],
+              release: {
+                id: "r-14",
+                tag: "v1.4.0",
+                planned: true,
+                ended: true,
+                endedAt: "2026-10-14T21:00:00.000Z",
+                leftOut: [
+                  {
+                    service: "worker",
+                    sha: sha("9d8e7f6a"),
+                    job: null,
+                    reason: "v1.3.0 does not declare worker",
+                    stopped: { rollbackTo: "v1.3.0" },
+                  },
+                ],
+              },
+            }),
+          ]}
+          facts={{ productionRuns: "running" }}
+        />
+      </State>
+      <State
         label="Environments · a Mate is the stage"
         note="A devstage Mate stands for the stage: its agent deploys, HQ does not. No second stage is offered to a developer."
       >
@@ -1110,6 +1163,25 @@ function Harness() {
       </State>
 
       <State
+        label="A stage whose deploys failed on two parts"
+        note="Every failed part is named, each row with its own Run again; the verdict holds no verb."
+      >
+        <StopState
+          fixture={{
+            tier: "stage",
+            services: [
+              service("api", "b21d904c", undefined, "failed"),
+              service("app", "b21d904c", undefined, "failed"),
+              service("worker", "5c3ea18b", undefined),
+            ],
+            deployment: STAGE_RUNNING,
+            routes: ROUTES,
+            mayRunAgain: true,
+          }}
+        />
+      </State>
+
+      <State
         label="A production whose release failed to deploy"
         note="Beviro: v0.1.14's nextstore deploy failed and nextstore runs on v0.1.13 — the verdict says so, and the release row reads Deploy failed."
       >
@@ -1261,6 +1333,34 @@ document.documentElement.classList.toggle(
   new URLSearchParams(location.search).get("theme") === "dark",
 );
 
+/** A failed deploy's log reads the account's projects: stand-ins that hold none. */
+function Standins({ children }: { readonly children: ReactNode }) {
+  const inventory: Inventory = {
+    projects: [],
+    isLoading: false,
+    error: null,
+    projectRefs: new Map(),
+    authority: new Map(),
+    lost: new Set(),
+    deleted: [],
+  };
+  const data: ZeropsDataContextValue = {
+    scope: {} as AccountScope,
+    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
+    organizationRef: () => {
+      throw new Error("not in the harness");
+    },
+    projectRef: () => {
+      throw new Error("not in the harness");
+    },
+  };
+  return (
+    <ZeropsDataContext value={data}>
+      <InventoryContext value={inventory}>{children}</InventoryContext>
+    </ZeropsDataContext>
+  );
+}
+
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
@@ -1269,7 +1369,9 @@ if (host) {
           draws its lockup as a router link; inside a sidebar it draws none,
           so the harness needs no router. */}
       <SidebarProvider className="block">
-        <Harness />
+        <Standins>
+          <Harness />
+        </Standins>
       </SidebarProvider>
     </StrictMode>,
   );

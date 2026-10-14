@@ -304,7 +304,7 @@ function said(moment: Moment) {
         tier: "stage",
         view,
         releasing: undefined,
-        failed: undefined,
+        failed: [],
         waiting: 0,
         release: { offered: false, tag: undefined, reason: undefined },
         releasedAge: undefined,

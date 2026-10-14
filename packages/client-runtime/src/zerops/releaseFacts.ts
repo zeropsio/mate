@@ -14,6 +14,7 @@
  * @module releaseFacts
  */
 
+import { serviceNames } from "./projectAttention.ts";
 import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
 import type { Moved } from "./releaseCompare.ts";
 import type { ReleaseOutcome, ReleaseReplaces, ReviewPress } from "./reviewVerdict.ts";
@@ -185,16 +186,18 @@ export function releaseOutcomeOf(input: {
   const { tagged } = input;
   if (tagged?.standing === "live") return { kind: "released", at: tagged.taggedAt };
   if (tagged?.standing === "deploy-failed" || tagged?.verdict === "refused") {
-    const service = tagged.failedEntry?.service;
+    const services = tagged.failedEntries.map((entry) => entry.service);
     return {
       kind: "failed",
       detail:
         tagged.verdict === "refused"
           ? (tagged.detail ?? "HQ refused the release")
-          : service === undefined
+          : services.length === 0
             ? "Its production deploy failed"
-            : `The deploy of ${service} failed`,
-      service,
+            : services.length === 1
+              ? `The deploy of ${services[0]} failed`
+              : `The deploys of ${serviceNames(services)} failed`,
+      services,
       at: tagged.taggedAt,
     };
   }

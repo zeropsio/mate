@@ -310,7 +310,7 @@ describe("Git standing from the accepted release", () => {
           afterMs: 0,
         },
         releasing: undefined,
-        failed: undefined,
+        failed: [],
         waiting: 3,
         waitingAtLeast: false,
         untold: [],

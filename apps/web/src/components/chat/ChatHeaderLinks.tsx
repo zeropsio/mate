@@ -34,7 +34,7 @@ export function ChatHeaderLinks({
   readonly sites?: ProjectSitesInput | undefined;
   readonly mateProjectId?: string | undefined;
 }) {
-  const { addresses } = useMateAddresses(environmentId);
+  const { addresses } = useMateAddresses(environmentId, threadId);
   if (sites !== undefined && mateProjectId !== undefined) {
     return (
       <HeaderSites
