@@ -359,8 +359,19 @@ describe("a release's row", () => {
       runs(API, OLD),
       [failure("v1.3.0", "web", WEB)],
     );
-    expect(failed!.failedEntry).toEqual({ service: "web", commit: WEB });
-    expect(live!.failedEntry).toBeUndefined();
+    expect(failed!.failedEntries).toEqual([{ service: "web", commit: WEB }]);
+    expect(live!.failedEntries).toEqual([]);
+  });
+
+  it("names every service a release failed on, not the first alone", () => {
+    const [failed] = rows([release("v1.3.0")], runs(OLD, OLD), [
+      failure("v1.3.0", "web", WEB),
+      failure("v1.3.0", "api", API),
+    ]);
+    expect(failed!.failedEntries).toEqual([
+      { service: "api", commit: API },
+      { service: "web", commit: WEB },
+    ]);
   });
 
   it("never names a release that lists nothing as Live", () => {

@@ -94,7 +94,7 @@ function row(
     standing,
     word: "Approved",
     rollBack: false,
-    failedEntry: undefined,
+    failedEntries: [],
     ...over,
   };
 }
@@ -266,7 +266,7 @@ describe("what a release replaces: the first only when nothing was released befo
 
   it("a release after a mixed production: says what is true, and keeps the roll back", () => {
     const earlier = [
-      row("v0.1.1", "deploy-failed", { failedEntry: { service: "app", commit: HEAD } }),
+      row("v0.1.1", "deploy-failed", { failedEntries: [{ service: "app", commit: HEAD }] }),
       row("v0.1.0", undefined),
     ];
     const steps = walk(
@@ -465,7 +465,7 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
 
   it("a failed release whose deploy moved nothing offers no roll back; one that moved some does", () => {
     const failed = row("v0.1.1", "deploy-failed", {
-      failedEntry: { service: "app", commit: HEAD },
+      failedEntries: [{ service: "app", commit: HEAD }],
     });
     const still = walk([tagging, onItsWay, later(5, failed, true)]).at(-1);
     expect(still?.model.verdict.state).toBe("release-failed");
@@ -483,6 +483,48 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
     expect(moved?.model.ifWrong).toBe(
       "Roll back to v0.1.0 from production's menu. It gets its own review.",
     );
+  });
+});
+
+describe("a release that failed on several parts", () => {
+  it.each([
+    {
+      name: "one part's failure names it, as it always did",
+      services: ["app"],
+      detail: "The deploy of app failed",
+      why: "Production's release v0.1.1 failed in app's deploy",
+    },
+    {
+      name: "two parts' failures name both",
+      services: ["api", "web"],
+      detail: "The deploys of api and web failed",
+      why: "Production's release v0.1.1 failed in the deploys of api and web",
+    },
+  ])("$name", ({ services, detail, why }) => {
+    const tagged = row("v0.1.1", "deploy-failed", {
+      failedEntries: services.map((service) => ({ service, commit: HEAD })),
+    });
+    const outcome = releaseOutcomeOf({
+      tagged,
+      releasing: true,
+      pressing: false,
+      tag: "v0.1.1",
+      clockMs: NOW,
+    });
+    expect(outcome).toMatchObject({ kind: "failed", detail, services });
+    const model = releaseReview({
+      tag: "v0.1.1",
+      gate: { allowed: true },
+      permission: { allowed: true },
+      changes: 1,
+      onStage: undefined,
+      services,
+      replaces: { kind: "release", tag: "v0.1.0" },
+      outcome,
+      now: NOW,
+    });
+    expect(model.verdict.why).toBe(detail);
+    expect(JSON.stringify(model)).toContain(why);
   });
 });
 
@@ -608,7 +650,7 @@ describe("a release opened on its way follows its own tag to the end", () => {
       ended(
         "failed",
         before,
-        row("v0.1.0", "deploy-failed", { failedEntry: { service: "app", commit: HEAD } }),
+        row("v0.1.0", "deploy-failed", { failedEntries: [{ service: "app", commit: HEAD }] }),
       ),
       { state: "release-failed", title: "v0.1.0 didn't go out", why: "The deploy of app failed" },
       "Production still runs what it ran before.",

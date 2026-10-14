@@ -76,7 +76,7 @@ function row(tag: string, commit: string, live = true): FlowReleaseRow {
     standing: live ? "live" : undefined,
     word: live ? "Live" : "Approved",
     rollBack: false,
-    failedEntry: undefined,
+    failedEntries: [],
   };
 }
 function flow(): ZeropsProjectFlow {

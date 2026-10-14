@@ -37,7 +37,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import {
   serviceRows,
-  stopFailedDeploy,
+  rowsRunningAgain,
+  stopFailedDeploys,
   stopKeyGap,
   stopVerdict,
   stopView,
@@ -568,11 +569,12 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     nowMs: NOW,
     age: () => "2h ago",
   });
-  const failedDeploy = stopFailedDeploy({ tier: fixture.tier, rows: services, releases });
-  const failed =
-    failedDeploy === undefined
-      ? undefined
-      : { ...failedDeploy, mayRunAgain: fixture.mayRunAgain ?? false };
+  const failedDeploys = stopFailedDeploys({ tier: fixture.tier, rows: services, releases });
+  const failed = failedDeploys.map((entry) => ({
+    ...entry,
+    mayRunAgain: fixture.mayRunAgain ?? false,
+  }));
+  const [onlyFailed] = failed.length === 1 ? failed : [];
   return (
     <ZeropsStopPane
       deployAnswer={fixture.deployAnswer}
@@ -595,11 +597,11 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       routeTrouble={null}
       routes={routes}
       runAgain={
-        failed?.redeploy !== undefined && failed.mayRunAgain
+        onlyFailed?.redeploy !== undefined && onlyFailed.mayRunAgain
           ? { running: false, refused: null, onRunAgain: () => {} }
           : undefined
       }
-      services={services}
+      services={rowsRunningAgain(services, failedDeploys)}
       stop={stop}
       tags={TAGS}
       trouble={null}

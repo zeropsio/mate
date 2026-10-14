@@ -436,6 +436,7 @@ export {
   changesNotLive,
   PROJECT_ALL_CLEAR,
   projectAttention,
+  serviceNames,
   type ProjectAttentionItem,
   type ProjectAttentionKind,
 } from "./projectAttention.ts";

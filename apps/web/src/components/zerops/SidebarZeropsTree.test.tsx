@@ -2221,7 +2221,7 @@ describe("production and the stages are the project's places, behind its globe",
         kind: "deploy-failed",
         at: undefined,
         error: undefined,
-        service: "app",
+        services: ["app"],
       },
     });
     expect(envTagOf(render([CRM_DEV, up(CRM_PROD)], { getFlow: () => failed }))).toEqual({

@@ -1177,7 +1177,7 @@ export const REVIEW_STATES: ReadonlyArray<{
         outcome={{
           kind: "failed",
           detail: "The deploy of app failed",
-          service: "app",
+          services: ["app"],
           at: minutesAgo(2),
         }}
         press={{ kind: "done" }}

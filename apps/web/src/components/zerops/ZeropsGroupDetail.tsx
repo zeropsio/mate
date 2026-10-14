@@ -83,7 +83,8 @@ import {
   notInZerops,
   serviceRows,
   stopCardTitle,
-  stopFailedDeploy,
+  rowsRunningAgain,
+  stopFailedDeploys,
   stopKeyGap,
   stopMetaLine,
   stopTone,
@@ -91,6 +92,7 @@ import {
   stopView,
   type Deployment,
   type RunAgain,
+  type StopFailedDeploy,
   type StopServiceRow,
   type StopVerdict,
   type StopView,
@@ -1021,10 +1023,10 @@ function ZeropsProjectStopDetailPage({
           age: formatRelativeTimeLabel,
           firstDeploy,
         });
-  const failedDeploy =
+  const failedDeploys =
     flow === undefined || stop === undefined
-      ? undefined
-      : stopFailedDeploy({ tier: stop.tier, rows: services, releases: flow.releases });
+      ? NO_FAILED_DEPLOYS
+      : stopFailedDeploys({ tier: stop.tier, rows: services, releases: flow.releases });
   // *Run again* asks HQ, by its rule for who develops the application.
   const mayRunAgain = useEnvironmentDeployOffer()(projectId);
   const mayKeepKey = useKeepDeployKeyOffer();
@@ -1062,7 +1064,8 @@ function ZeropsProjectStopDetailPage({
   const view = stopView({ deployment, row: stop, nowMs });
   const live = flow.releases.find((entry) => entry.standing === "live");
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
-  const redeploy = failedDeploy?.redeploy;
+  // One failed part is asked again from the verdict; several, each from its own row.
+  const redeploy = failedDeploys.length === 1 ? failedDeploys[0]?.redeploy : undefined;
   // How many changes production lacks, at least that many where HQ stopped counting.
   const notLive =
     flow.release.summary === undefined
@@ -1072,7 +1075,7 @@ function ZeropsProjectStopDetailPage({
     tier: stop.tier,
     view,
     releasing: flow.release.inFlight ?? (release.releasing ? release.tag : undefined),
-    failed: failedDeploy === undefined ? undefined : { ...failedDeploy, mayRunAgain },
+    failed: failedDeploys.map((entry) => ({ ...entry, mayRunAgain })),
     waiting: notLive.count,
     waitingAtLeast: notLive.atLeast,
     untold: production ? flow.release.untold : NO_UNTOLD,
@@ -1162,7 +1165,7 @@ function ZeropsProjectStopDetailPage({
           platform.state !== "known" ||
           platform.coverage !== "complete"
             ? undefined
-            : services
+            : rowsRunningAgain(services, failedDeploys)
         }
         stop={stop}
         tags={tags}
@@ -1229,6 +1232,7 @@ interface StopAddService {
 }
 
 const NOTHING_MISSING: ReadonlyArray<string> = [];
+const NO_FAILED_DEPLOYS: ReadonlyArray<StopFailedDeploy> = [];
 
 /** A stop's role, as its tag reads beside its name. */
 const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {

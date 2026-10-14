@@ -92,7 +92,7 @@ const FAILED = menuOf(
       kind: "deploy-failed",
       at: undefined,
       error: "The build step exited with code 2 while installing packages.",
-      service: "app",
+      services: ["app"],
     },
   },
 );

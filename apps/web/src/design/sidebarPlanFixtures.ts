@@ -497,7 +497,7 @@ export const PLAN_FLOWS = new Map<string, SidebarProjectFlow>([
         kind: "deploy-failed",
         at: minutesAgo(12),
         error: "The build step exited with code 2 while installing packages.",
-        service: "app",
+        services: ["app"],
       },
     }),
   ],

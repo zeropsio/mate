@@ -377,9 +377,11 @@ export interface FlowReleaseRow extends FlowRelease {
   readonly word: string;
   /** Whether *Roll back to this* is offered. */
   readonly rollBack: boolean;
-  /** The commit, and its service, whose production deploy failed; on a Deploy failed row only. */
-  readonly failedEntry: ReleaseEntry | undefined;
+  /** Each commit, with its service, whose production deploy failed; on a Deploy failed row only. */
+  readonly failedEntries: ReadonlyArray<ReleaseEntry>;
 }
+
+const NO_ENTRIES: ReadonlyArray<ReleaseEntry> = [];
 
 /** A release as far as telling what runs it needs. */
 type ReleaseListing = Pick<FlowRelease, "tag" | "entries" | "verdict">;
@@ -436,16 +438,16 @@ export function nameStopByRelease<Row extends Omit<EnvironmentRow, "projectId">>
 }
 
 /**
- * The commit the release lists, and production does not run, whose production deploy failed as
+ * Each commit the release lists, and production does not run, whose production deploy failed as
  * that release's (`ReleaseDeployFailure`: its rollout's job, or one it left a service out for);
- * `undefined` for none. Another release's failure of the same commit is that release's.
+ * none where none did. Another release's failure of the same commit is that release's.
  */
 function deployFailed(
   release: FlowRelease,
   production: ReadonlyMap<string, string>,
   failed: ReadonlyArray<ReleaseDeployFailure>,
-): ReleaseEntry | undefined {
-  return release.entries.find(
+): ReadonlyArray<ReleaseEntry> {
+  return release.entries.filter(
     (entry) =>
       !sameCommit(production.get(entry.service), entry.commit) &&
       failed.some(
@@ -487,24 +489,24 @@ export function releaseRow(
       standing: "live",
       word: "Live",
       rollBack: false,
-      failedEntry: undefined,
+      failedEntries: NO_ENTRIES,
     };
-  const failedEntry =
+  const failedEntries =
     release.verdict === "refused"
-      ? undefined
+      ? NO_ENTRIES
       : deployFailed(release, deploys.production, deploys.failed);
-  if (failedEntry !== undefined)
+  if (failedEntries.length > 0)
     return {
       ...release,
       line,
       standing: "deploy-failed",
       word: "Deploy failed",
       rollBack: false,
-      failedEntry,
+      failedEntries,
     };
   return {
     ...release,
-    failedEntry: undefined,
+    failedEntries: NO_ENTRIES,
     line,
     standing: undefined,
     word: releaseWord(release.verdict),
