@@ -15,6 +15,8 @@
  * app.zerops.io's `/authorize-app`; `device-login` runs this. `VITE_ZEROPS_LOGIN_APP_CODE` names
  * the app the consent page asks for (`mate`), and `VITE_ZEROPS_CONSENT_ORIGIN` swaps the consent
  * page's origin (a local HQ).
+ *
+ * Opened from HQ's Mate card, the same request makes a trip of this tab instead (`hqSignIn.ts`).
  */
 import {
   checkZeropsDeviceLogin,
@@ -71,11 +73,23 @@ export interface ZeropsDeviceLoginPorts {
   readonly consentOrigin: string | undefined;
 }
 
+/** The app the consent page asks for: the build's, or `mate`. */
+export function zeropsLoginAppCode(): string {
+  const appCode = import.meta.env.VITE_ZEROPS_LOGIN_APP_CODE;
+  return appCode === undefined || appCode === "" ? DEFAULT_LOGIN_APP_CODE : appCode;
+}
+
+/** The consent page's origin where the build swaps the API's (HQ's), else `undefined`. */
+export function zeropsConsentOrigin(): string | undefined {
+  const consentOrigin = import.meta.env.VITE_ZEROPS_CONSENT_ORIGIN;
+  return consentOrigin === undefined || consentOrigin === "" ? undefined : consentOrigin;
+}
+
 /**
  * Resolves after `ms`, or as soon as asking is worth it: the tab shown again or its window
  * focused (the Zerops window just closed), or the run stopped.
  */
-function browserWait(ms: number, signal: AbortSignal): Promise<void> {
+export function browserWait(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const began = performance.now();
     const done = () => {
@@ -98,15 +112,13 @@ function browserWait(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 function browserPorts(): ZeropsDeviceLoginPorts {
-  const appCode = import.meta.env.VITE_ZEROPS_LOGIN_APP_CODE;
-  const consentOrigin = import.meta.env.VITE_ZEROPS_CONSENT_ORIGIN;
   return {
     open: (url) => window.open(url, "zerops-hq", "popup,width=520,height=760"),
     fetch: browserTransportFetch,
     nowMs: () => performance.now(),
     wait: browserWait,
-    appCode: appCode === undefined || appCode === "" ? DEFAULT_LOGIN_APP_CODE : appCode,
-    consentOrigin: consentOrigin === undefined || consentOrigin === "" ? undefined : consentOrigin,
+    appCode: zeropsLoginAppCode(),
+    consentOrigin: zeropsConsentOrigin(),
   };
 }
 

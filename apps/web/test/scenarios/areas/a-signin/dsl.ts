@@ -228,6 +228,18 @@ export function zeropsWindow(s: Scenario, page: Page = s.page) {
   };
 }
 
+/** Every address this tab's history holds, oldest first: what Back and Forward would open again. */
+export const historyAddresses = (page: Page) =>
+  Effect.promise(async () => {
+    const session = await page.createCDPSession();
+    try {
+      const { entries } = await session.send("Page.getNavigationHistory");
+      return entries.map((entry) => entry.url);
+    } finally {
+      await session.detach();
+    }
+  });
+
 /** A Mate's vault, from its conversation's right panel. */
 export function vault(page: Page) {
   return {
