@@ -24,6 +24,7 @@ import {
 
 const gateRunnerFiles = [
   "gate-changed.ts",
+  "gate-input-scopes.ts",
   "state-smoke-cases.ts",
   "gate-file-inputs.ts",
   "chat-gate.ts",
@@ -1175,9 +1176,23 @@ esac
     expect(failed.status).toBe(9);
     expect(failed.stderr).toContain("Full log:");
     expect(JSON.parse(NodeFS.readFileSync(receiptPath, "utf8")).results.at(-1).status).toBe(9);
+    const checksBeforeRetry = checks();
     const retried = run();
     expect(retried.status, retried.stderr).toBe(0);
     expect(retried.stdout).not.toContain("reused receipt");
+    expect(
+      checks().slice(checksBeforeRetry.length),
+      "ASSERTION: a gate re-run never repeats stages that passed on unchanged files",
+    ).toBe("vp\n");
+    const checksBeforeFull = checks();
+    const full = run(["--full"]);
+    expect(full.status, full.stderr).toBe(0);
+    expect(checks().slice(checksBeforeFull.length).split("\n").filter(Boolean)).toEqual([
+      "check-guard-exceptions.ts",
+      "check-runtime-cycles.ts",
+      "check-test-sentences.ts",
+      "vp",
+    ]);
     expect(run().stdout).toContain("reused receipt");
     // A corrupt or incomplete receipt is evidence to run, never evidence to skip.
     for (const content of [

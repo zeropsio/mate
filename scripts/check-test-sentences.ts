@@ -7,7 +7,7 @@ import { parseSync } from "oxc-parser";
 import { changedPaths, comparisonBase } from "./gate-changed.ts";
 import { decodeGitHubEvent, githubRatchetRevision } from "./lib/github-ratchet.ts";
 
-const testFile = /(?:\.test\.tsx?|\.scenario\.ts)$/u;
+import { retainedTestFile } from "./gate-input-scopes.ts";
 const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -107,7 +107,7 @@ export function sentenceComparison(root: string, base?: string): string {
 
 export function checkTestSentences(root: string, base?: string): string[] {
   const ancestor = sentenceComparison(root, base);
-  const paths = changedPaths(root, ancestor).filter((path) => testFile.test(path));
+  const paths = changedPaths(root, ancestor).filter((path) => retainedTestFile.test(path));
   if (!paths.length) return [];
   const baselineFiles = new Set(
     git(root, ["ls-tree", "-r", "--name-only", "-z", ancestor, "--", ...paths]).split("\0"),

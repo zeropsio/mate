@@ -56,7 +56,8 @@ The loop:
   then edited scenario files plus fixed state-only smoke (door, send, reload, approve, engine-secret,
   one sandbox case; no frame sampler). `--list` previews; `--base <ref>` changes the comparison.
   About five minutes: one blocking command, timeout at least ten minutes, never detached and polled.
-  Then re-run only failed files and the gate once more.
+  Then re-run only failed files and the gate once more; it reuses passed stages on unchanged inputs.
+  `--full` forces every selected stage to run.
 - Browser scenario shards run in the non-blocking `Signal` workflow on `kh-next`,
   `kh-bisect/signal-**` and pull requests; other `kh-bisect/**` refs run CI only. Diagnostic and PR
   pushes cancel older runs of the same workflow/ref; integration runs finish. Signal
