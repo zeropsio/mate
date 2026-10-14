@@ -563,6 +563,7 @@ function KnownGroupAside({
       }
       environments={environments}
       repos={flow.repos}
+      codeRepos={flow.codeRepos}
       slots={slots}
       onAdd={(tier) => {
         addEnvironment(groupId, tier);
@@ -596,6 +597,7 @@ function KnownGroupAside({
  */
 export function ZeropsGroupPane({
   repos,
+  codeRepos,
   readFailures,
   environments,
   slots,
@@ -615,6 +617,8 @@ export function ZeropsGroupPane({
   firstDeployOf,
 }: {
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
+  /** The repositories a Mate ships code to: the ones its Repositories section may name. */
+  readonly codeRepos?: ReadonlyArray<RepoListEntry> | undefined;
   readonly readFailures?: React.ReactNode;
   /** What has landed on the repository, as HQ compares it. */
   readonly history: ZeropsHistoryState;
@@ -781,9 +785,9 @@ export function ZeropsGroupPane({
       )}
 
       {/* Only what mirrors somewhere: connecting one is the project menu's. */}
-      {connectedRepos(repos).length === 0 ? null : (
+      {connectedRepos(codeRepos ?? repos).length === 0 ? null : (
         <SideSection title="Repositories">
-          <GitRemoteLines repos={repos} />
+          <GitRemoteLines repos={codeRepos ?? repos} />
         </SideSection>
       )}
       <SideSection title={repo === undefined ? "History" : `History · ${repo}`}>

@@ -321,6 +321,7 @@ export {
 } from "./releaseVersion.ts";
 export {
   appRecipeOf,
+  codeRepositoriesOf,
   deployWord,
   canonicalEnvironmentRowInputsOf,
   canonicalGroupStopsOf,

@@ -93,27 +93,51 @@ export function GitRemoteSettings({
 }) {
   const clock = useNowMs();
   const now = at ?? clock;
+  const [openedFor, setOpenedFor] = useState<string>();
+  const listed = repos?.filter((repo) => repo.name !== RECIPE_REPO);
+  const dependencies = environments
+    .filter((environment) => environment.target.kind === "git")
+    .map((environment) => environment.name);
+  // Once shown for this project, the list stays while the person works in it: a disconnect
+  // never folds it away under them.
+  if (
+    openedFor !== appId &&
+    (dependencies.length > 0 || listed?.some((repo) => repo.remote != null) === true)
+  )
+    setOpenedFor(appId);
+  const connectable =
+    hqOffer(can, "connect_remote", { current: live, unavailableSince: live ? null : 0 }).kind ===
+      "allowed" && actions?.connect !== undefined;
   return (
     <div data-zerops-surface="git-remote-settings">
-      {repos === undefined ? (
+      {listed === undefined ? (
         <p className="rv-note">Reading repositories…</p>
+      ) : listed.length === 0 ? (
+        <p className="rv-note">No code repository yet.</p>
+      ) : openedFor !== appId ? (
+        <div className="flex flex-col items-start gap-2 py-3">
+          <p className="rv-note">
+            Connect a GitHub repository to release this project to a Git branch.
+          </p>
+          {connectable ? (
+            <Button size="sm" variant="outline" onClick={() => setOpenedFor(appId)}>
+              Connect repository
+            </Button>
+          ) : null}
+        </div>
       ) : (
-        repos
-          .filter((repo) => repo.name !== RECIPE_REPO)
-          .map((repo) => (
-            <Remote
-              key={JSON.stringify([appId, repo.name])}
-              repo={repo}
-              appName={appName}
-              dependencies={environments
-                .filter((environment) => environment.target.kind === "git")
-                .map((environment) => environment.name)}
-              can={can}
-              actions={actions}
-              live={live}
-              now={now}
-            />
-          ))
+        listed.map((repo) => (
+          <Remote
+            key={JSON.stringify([appId, repo.name])}
+            repo={repo}
+            appName={appName}
+            dependencies={dependencies}
+            can={can}
+            actions={actions}
+            live={live}
+            now={now}
+          />
+        ))
       )}
     </div>
   );

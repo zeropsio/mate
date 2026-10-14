@@ -565,7 +565,7 @@ describe("Git token refusals", () => {
 
   const remoteCases = {
     remote_taken:
-      "This repository is already connected to another application. Disconnect it there (Settings → Repositories) or use another repository.",
+      "This repository is already connected to another project. Disconnect it under Repositories on that project's page, or use another repository.",
     no_key:
       "HQ cannot save this token yet. Ask your HQ administrator to configure its encryption key, then try again.",
     no_remote: "This repository has no connection. Connect it before continuing.",
@@ -660,7 +660,7 @@ describe("Git token refusals", () => {
       }),
     ).rejects.toMatchObject({
       message:
-        "krls2020/tst123 is already connected to mate-rig-e2e-c. Disconnect it there (Settings → Repositories) or use another repository.",
+        "krls2020/tst123 is already connected to mate-rig-e2e-c. Disconnect it under Repositories on mate-rig-e2e-c's page, or use another repository.",
     });
   });
 

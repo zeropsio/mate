@@ -123,6 +123,53 @@ describe("Application repositories", () => {
       expect(html).not.toContain("Force");
     },
   );
+  it.each([
+    {
+      title:
+        "a project with no Git environment and no remote shows one line saying why to connect one",
+      repos: [{ ...repos[0]!, remote: null }],
+      environments: [],
+      shows: [
+        "Connect a GitHub repository to release this project to a Git branch.",
+        ">Connect repository<",
+      ],
+      hides: ["api ·"],
+    },
+    {
+      title: "a connected remote lists every code repository",
+      repos: [...repos, { ...repos[0]!, name: "web", remote: null }],
+      environments: [],
+      shows: ["api · github.com/acme/api", "web · No remote connected"],
+      hides: ["Connect a GitHub repository"],
+    },
+    {
+      title: "a Git environment lists every code repository before any remote is connected",
+      repos: [{ ...repos[0]!, remote: null }],
+      environments: [{ name: "Production", target: { kind: "git" } }],
+      shows: ["api · No remote connected"],
+      hides: ["Connect a GitHub repository"],
+    },
+    {
+      title: "a project with no code repository says so instead of offering a connection",
+      repos: [],
+      environments: [],
+      shows: ["No code repository yet."],
+      hides: ["<button"],
+    },
+  ])("$title", ({ repos: listed, environments, shows, hides }) => {
+    const html = renderToStaticMarkup(
+      <GitRemoteSettings
+        appId="shop"
+        repos={listed}
+        appName="Shop"
+        actions={actions}
+        can={{ connect_remote: { allow: true }, replace_remote_token: { allow: true } }}
+        environments={environments}
+      />,
+    );
+    for (const text of shows) expect(html).toContain(text);
+    for (const text of hides) expect(html).not.toContain(text);
+  });
   it("stale offers cannot expose a mutation", () => {
     const html = renderToStaticMarkup(
       <GitRemoteSettings
@@ -219,7 +266,7 @@ it.each([
       }
     },
     expected:
-      "This repository is already connected to another application. Disconnect it there (Settings → Repositories) or use another repository.",
+      "This repository is already connected to another project. Disconnect it under Repositories on that project's page, or use another repository.",
   },
   {
     title: "a refused token shows HQ's missing permission and where to grant it",
@@ -357,6 +404,8 @@ it.each(["connect", "replace", "disconnect", "address"] as const)(
         await click("Confirm disconnect");
         expect(supplied.disconnect).toHaveBeenCalledWith("api");
       } else {
+        // An unconnected project folds its repositories behind the one line's action.
+        if (action === "connect") await click("Connect repository");
         await click(
           action === "connect"
             ? "Connect repository"

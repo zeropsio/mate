@@ -1,5 +1,5 @@
 /**
- * *Mirror code to GitHub or GitLab…*, from a project's ···: every repository of the application,
+ * *Mirror code to GitHub or GitLab…*, from a project's ···: every repository its Mates ship code to,
  * each connected to a remote, its token replaced, its address reviewed or disconnected, as HQ
  * offers it (`GitRemoteSettings`). The page's column says only the remotes that are connected.
  */
@@ -53,7 +53,7 @@ export function GitMirrorDialog({
             // Unread, the repositories are said to be read and no environment counts yet.
             {...(flow === undefined ? {} : { environments: flow.environments })}
             live={git.live}
-            repos={flow?.repos}
+            repos={flow?.codeRepos ?? flow?.repos}
           />
         </DialogPanel>
       </DialogPopup>
