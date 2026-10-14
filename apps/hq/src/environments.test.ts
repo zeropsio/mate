@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 
-import { environmentNameProblem, deriveEnvironmentName } from "./environments.ts";
+import { environmentNameProblem, deriveEnvironmentName } from "@t3tools/shared/hqEnvironment";
 
 describe("deriveEnvironmentName", () => {
   // Main's rule (D10): the name a person gave the project, made what a branch and a deploy ask it

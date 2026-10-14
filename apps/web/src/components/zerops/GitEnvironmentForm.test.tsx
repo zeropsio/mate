@@ -63,6 +63,7 @@ beforeEach(async () => {
     groupName: "Shop",
     tier: "production",
     defaultName: "Shop - production",
+    takenNames: [],
     repos: repositories,
     offered: { add: true, connect: true, replace: true },
     onCancel: vi.fn(),
@@ -93,6 +94,70 @@ async function chooseRepository() {
 }
 
 describe("Git environment setup's real form", () => {
+  it("A person can never be blocked by a field they cannot see", async () => {
+    await chooseRepository();
+    expect(Array.from(host.querySelectorAll("label")).map((node) => node.textContent)).toEqual([
+      "Branch",
+    ]);
+    await click("Add production to Shop");
+    expect(props.setup.add).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "shop-production" }),
+    );
+  });
+
+  it("Adding Git production uses the names arriving after the form opened", async () => {
+    await draw({ takenNames: undefined });
+    await chooseRepository();
+    expect(button("Add production to Shop").disabled).toBe(true);
+    expect(host.textContent).toContain("Reading this project's environment names…");
+    await draw({ takenNames: ["shop-production", "shop-production-2"] });
+    await click("Add production to Shop");
+    expect(props.setup.add).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "shop-production-3" }),
+    );
+  });
+
+  it("Adding Git production recalculates its name when another environment arrives", async () => {
+    await chooseRepository();
+    await draw({ takenNames: ["shop-production"] });
+    await click("Add production to Shop");
+    expect(props.setup.add).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "shop-production-2" }),
+    );
+  });
+
+  it.each([
+    { groupName: "Shop", branch: "mate-prod-e2e-20261014", expected: "shop-production" },
+    { groupName: "ACME.Web App", branch: "release-2026", expected: "acme-web-app-production" },
+    { groupName: "123 Shop", branch: "123-release", expected: "shop-production" },
+    { groupName: "9", branch: "release", expected: "production" },
+    { groupName: "A".repeat(80), branch: "release", expected: "a".repeat(63) },
+  ])(
+    "Adding Git production sends a valid generated name for $groupName on $branch",
+    async ({ groupName, branch, expected }) => {
+      await draw({
+        groupName,
+        defaultName: `${groupName} - production`,
+        setup: { ...props.setup, preview: vi.fn(async (branch) => [{ ...review, branch }]) },
+      });
+      await chooseRepository();
+      await enter(field("Branch"), branch);
+      await act(async () =>
+        field("Branch").dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+        ),
+      );
+      await click(`Add production to ${groupName}`);
+      expect(props.setup.add).toHaveBeenCalledWith({
+        tier: "production",
+        name: expected,
+        target: { kind: "git", branch, delivery: "direct" },
+        adoption: [{ ...review, branch }],
+      });
+      expect(props.onAdded).toHaveBeenCalledWith(expected);
+    },
+  );
+
   it.each([
     ["token_invalid", "GitHub rejected this token. Create a replacement in GitHub token settings."],
     ["push_not_granted", "This token can't push. Choose Contents: Read and write."],
@@ -220,11 +285,11 @@ describe("Git environment setup's real form", () => {
     await click("Add production to Shop");
     expect(props.setup.add).toHaveBeenCalledExactlyOnceWith({
       tier: "production",
-      name: "Shop - production",
+      name: "shop-production",
       target: { kind: "git", branch: "main", delivery: "direct" },
       adoption: [review],
     });
-    expect(props.onAdded).toHaveBeenCalledExactlyOnceWith("Shop - production");
+    expect(props.onAdded).toHaveBeenCalledExactlyOnceWith("shop-production");
   });
   it("changed repository evidence refreshes the first-push sentence before Add", async () => {
     await chooseRepository();

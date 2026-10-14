@@ -43,10 +43,10 @@ import type { SqlError } from "effect/sql/SqlError";
 
 import {
   type EnvironmentTier,
-  TIER_SOURCES,
   deriveEnvironmentName,
   environmentNameProblem,
-} from "./environments.ts";
+} from "@t3tools/shared/hqEnvironment";
+import { TIER_SOURCES } from "./environments.ts";
 import { makeGitEnvironments, type GitEnvironments } from "./gitEnvironments.ts";
 import { DeployKeys } from "./deployKeys.ts";
 import { makeMateSetupMarkers } from "./mateSetupMarkers.ts";

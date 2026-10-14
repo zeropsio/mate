@@ -120,7 +120,9 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   mate_not_found: "HQ has no such Mate.",
   placed_or_production_taken:
     "This Zerops project is in a project already, or that project has its production.",
-  production_taken: "That project has its production already.",
+  production_taken:
+    "That project has its production already. Close this form and open the existing production.",
+  branch_taken: "An environment already uses this branch. Choose another branch.",
   class_move_receipt_required:
     "This Move needs a credential and job migration that HQ cannot complete yet.",
   key_still_exists: "The original Mate key still exists. Finish its key cleanup first.",
@@ -138,7 +140,8 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   environment_name_long: "An environment's name has at most 63 characters.",
   environment_name_invalid:
     "An environment's name starts with a letter and has only small letters, digits and dashes.",
-  environment_name_taken: "This project has an environment of that name already.",
+  environment_name_taken:
+    "This project has an environment of that name already. Close this form and open Add again to get a new name.",
   environment_not_found: "HQ has no such environment.",
   deploy_token_refused: "Zerops did not accept this deploy key.",
   deploy_token_scope: "This deploy key reaches more than its own project.",

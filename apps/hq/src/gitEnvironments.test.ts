@@ -5,6 +5,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { assert, describe, it } from "@effect/vitest";
+import { deriveEnvironmentName } from "@t3tools/shared/hqEnvironment";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -308,6 +309,56 @@ describe("Structure Git environments", () => {
         );
       }),
     );
+    it.effect.each([
+      {
+        project: "mate-rig-e2e-c - production",
+        branch: "mate-prod-e2e-20261014",
+        expected: "mate-rig-e2e-c-production",
+      },
+      {
+        project: "ACME.Web App - production",
+        branch: "release-2026",
+        expected: "acme-web-app-production",
+      },
+      { project: "123 Shop - production", branch: "123-release", expected: "shop-production" },
+      { project: "9 - production", branch: "release", expected: "production" },
+      { project: "A".repeat(80), branch: "release", expected: "a".repeat(63) },
+    ])(
+      "HQ accepts the generated Git production name for $project on $branch",
+      ({ project, branch, expected }) =>
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          const name = deriveEnvironmentName(project, "production", []);
+          assert.strictEqual(name, expected);
+          const attachment = yield* f.add("production", name, branch);
+          const [stored] = yield* f.sql<{
+            readonly name: string;
+          }>`SELECT name FROM hq_environment WHERE id=${attachment.environmentId}`;
+          assert.strictEqual(stored?.name, expected);
+        }),
+    );
+
+    it.effect("HQ accepts a generated name unique among the application's environments", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        yield* f.add("stage", "shop-stage", "main");
+        const taken = yield* f.sql<{
+          readonly name: string;
+        }>`SELECT name FROM hq_environment WHERE app_id=${f.app.id}::uuid`;
+        const name = deriveEnvironmentName(
+          "Shop - stage",
+          "stage",
+          taken.map((row) => row.name),
+        );
+        assert.strictEqual(name, "shop-stage-2");
+        const attachment = yield* f.add("stage", name, "another-stage");
+        const [stored] = yield* f.sql<{
+          readonly name: string;
+        }>`SELECT name FROM hq_environment WHERE id=${attachment.environmentId}`;
+        assert.strictEqual(stored?.name, "shop-stage-2");
+      }),
+    );
+
     it.effect(
       "Git Run again chooses current wanted code and returns the original queued receipt without replay",
       () =>

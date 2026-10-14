@@ -83,7 +83,6 @@ describe("F: creation through the hosted client", () => {
             "ASSERTION: choosing the destination asks for no repository or branch fields",
           ).toBe(0);
           yield* c.chooseDestination("git");
-          yield* c.text("GitHub · a token comes next");
           const labels = yield* Effect.promise(() =>
             s.page.$$eval('[data-zerops-surface="git-environment-form"] label', (nodes) =>
               nodes.map((node) => node.textContent?.trim()),
@@ -94,6 +93,7 @@ describe("F: creation through the hosted client", () => {
             "ASSERTION: an empty application asks for Repository before Branch",
           ).toEqual(["Repository"]);
           yield* c.fill("Repository", "https://github.com/acme/app");
+          yield* c.text("GitHub · a token comes next");
           yield* c.click("Continue");
           yield* c.text("A token that may write to it");
           yield* c.text("Create the token on GitHub");
