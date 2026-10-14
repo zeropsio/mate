@@ -475,9 +475,16 @@ function ProjectCard<T>({
     >
       <header className="ov-card-head">
         <div className="ov-card-h1">
-          <h2 className="ov-card-name">
-            <GroupName entry={entry} />
-          </h2>
+          {/* On its own page the card's name is the page's heading. */}
+          {page === undefined ? (
+            <h2 className="ov-card-name">
+              <GroupName entry={entry} />
+            </h2>
+          ) : (
+            <h1 className="ov-card-name">
+              <GroupName entry={entry} />
+            </h1>
+          )}
           {props.renderCardPeople?.(entry)}
           <span className="ov-card-menu">{props.renderGroupMenu(entry)}</span>
         </div>
