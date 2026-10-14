@@ -95,6 +95,8 @@ export default defineConfig({
       // (fork.md §3.1) shortens import paths, which the formatter would reflow.
       "packages/effect-codex-app-server/**",
       "packages/effect-acp/**",
+      // zcp's contract fixtures are zcp's bytes, pinned by sha256 in their SOURCE.json.
+      "packages/client-runtime/src/zerops/fixtures/zcp/**",
       "apps/mobile/uniwind-types.d.ts",
       "*.icon/**",
     ],
