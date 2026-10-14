@@ -1,15 +1,19 @@
 import { beforeAll, describe, it, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
-import { deviceLoginDist } from "../../harness/deviceLogin.ts";
+import { deviceLoginDist } from "../../harness/deviceLoginBundle.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installSignIn, sensitiveSharedValue } from "./fake.ts";
 import { account, vault, zeropsWindow } from "./dsl.ts";
 
-const deviceLoginScenario = () => createScenario([installSignIn], { signIn: "device-login" });
+/** The device-login build, once `beforeAll` has it. */
+let dist = "";
+const deviceLoginScenario = () => createScenario([installSignIn], { signIn: "device-login", dist });
 
 describe("A: sign-in through the Zerops window", () => {
-  beforeAll(() => deviceLoginDist());
+  beforeAll(async () => {
+    dist = await deviceLoginDist();
+  });
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // Catches an approval in the Zerops window leaving the person at the door, or the window
     // asked without the popup display it closes itself by.

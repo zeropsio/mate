@@ -1,18 +1,7 @@
 import type { Page } from "puppeteer-core";
 import type { ZeropsFake } from "../fakes/zerops.ts";
-import { buildScenarioBundle } from "./build.ts";
 import type { openBrowser } from "./browser.ts";
 import { deadline } from "./http.ts";
-
-let deviceLoginBundle: Promise<string> | undefined;
-
-/**
- * The build that signs in by device login, made the first time a file asks for it: only its
- * scenarios pay for it. Ask in the file's `beforeAll`, where a cold build fits the hook's time.
- */
-export function deviceLoginDist() {
-  return (deviceLoginBundle ??= buildScenarioBundle("device-login"));
-}
 
 /**
  * Clicks `button` and answers the Zerops window it opens, routed. The platform holds the request

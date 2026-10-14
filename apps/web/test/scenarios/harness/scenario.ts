@@ -34,7 +34,7 @@ import {
 } from "../../../../server/integration/scriptedProviderDriver.ts";
 import { DataConsoleSpawn } from "../../../../server/src/zerops/ZeropsDataConsole.ts";
 import { transportGate } from "./transportGate.ts";
-import { answerInZerops, deviceLoginDist, openZeropsWindow } from "./deviceLogin.ts";
+import { answerInZerops, openZeropsWindow } from "./deviceLogin.ts";
 import { openScenarioNavigation, startScenarioCore, type HqTimings } from "./hqCore.ts";
 import {
   openBrowser,
@@ -68,9 +68,11 @@ export interface ScenarioOptions {
   hq?: HqTimings;
   /**
    * Restore an account by default; UI sign-in cases explicitly retain the OAuth journey, and
-   * `device-login` runs the build that signs in through the Zerops window (`deviceLoginDist`).
+   * `device-login` signs in through the Zerops window, on the build in `dist`.
    */
   signIn?: "injected" | "ui" | "device-login";
+  /** A build to serve instead of the shipped one (`deviceLoginDist`). */
+  dist?: string;
   /** `real` starts the real Mate server and engine for each Mate project; the fake stays default. */
   mate?: "fake" | "real";
 }
@@ -394,10 +396,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     return credential;
   });
 
-  const dist =
-    options.signIn === "device-login"
-      ? yield* Effect.promise(deviceLoginDist)
-      : inject("scenarioDist");
+  const dist = options.dist ?? inject("scenarioDist");
   const web = yield* Effect.promise(() => openBrowser(dist, routes, zerops.clock));
   cleanup.push(web.close);
   const actor = (page: Page, initialPerson = "owner") => {
