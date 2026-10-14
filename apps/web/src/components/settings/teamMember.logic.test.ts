@@ -124,7 +124,7 @@ describe("what an invitation may give", () => {
           { name: "Petra's Chief", projects: [{ projectId: "chief", kind: "mate" }] },
         ],
         roster: [
-          { id: "snap-fen", name: "Fen" },
+          { id: "snap-fen", name: "Snap - Fen" },
           { id: "old", name: "legacy-api" },
           { id: "chief", name: "Chief" },
         ],

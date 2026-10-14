@@ -11,6 +11,7 @@
  * Pure: the member, the viewer's role and the projects arrive read.
  */
 import type { InviteeCheck } from "@t3tools/client-runtime/data";
+import { nameUnderApp } from "@t3tools/client-runtime/zerops";
 import type { ProjectAccessRole } from "@t3tools/client-runtime/zerops/projectAccess";
 import {
   membershipLocks,
@@ -165,7 +166,8 @@ const KIND_WORDS: Readonly<Record<string, string>> = {
 /**
  * Every project the organization can give, by its Mate name, in order: each Mate project's places
  * and Mates — a place by its kind, or by its own name where the group has several of that kind, a
- * Mate by its name — then projects outside any Mate project by their own names. Chiefs never.
+ * Mate by its name under the app (`nameUnderApp`: "Snap - Kai" is Snap's Kai) — then projects
+ * outside any Mate project by their own names. Chiefs never.
  */
 export function accessProjects(input: {
   readonly groups: ReadonlyArray<{
@@ -183,7 +185,8 @@ export function accessProjects(input: {
     if (group.projects.some(({ projectId }) => input.chiefs.has(projectId))) return [];
     return group.projects.map(({ projectId, kind }) => {
       const several = group.projects.filter((other) => other.kind === kind).length > 1;
-      const own = names.get(projectId);
+      const whole = names.get(projectId);
+      const own = whole === undefined ? undefined : nameUnderApp(whole, group.name);
       const place =
         kind === "mate" || (several && own !== undefined)
           ? (own ?? "Mate")
