@@ -1424,14 +1424,21 @@ export const structureLayer = (options: {
           Effect.gen(function* () {
             if (press.owner.length < 1 || press.owner.length > 100)
               return yield* refuse("invalid", "press_owner_length");
-            yield* allowed(userId, "hold_press", { projectId }, yield* roles.forWrite);
+            const view = yield* roles.forWrite;
+            yield* allowed(userId, "hold_press", { projectId }, view);
             const importProcessId = press.importProcessId ?? null;
             const appId = press.appId ?? null;
             const rows = yield* leader.write(
               Effect.gen(function* () {
+                // An application the presser does not see answers as one HQ does not hold.
                 if (appId !== null) {
-                  const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
-                  if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
+                  const app = yield* readAppTarget(sql, appId);
+                  if (
+                    app.createdBy === undefined ||
+                    !can({ kind: "person", userId }, "read_app", app, view).allow
+                  ) {
+                    return yield* refuse("app_not_found", "app_not_found");
+                  }
                 }
                 if (press.renew === true) {
                   return yield* sql<PressRow>`
@@ -1439,7 +1446,8 @@ export const structureLayer = (options: {
                 kind = ${press.kind}, app_id = ${appId}::uuid, held_by = ${userId},
                 until = now() + ${`${PRESS_HOLD_MS} milliseconds`}::interval,
                 import_process_id = COALESCE(${importProcessId}, import_process_id)
-              WHERE project_id = ${projectId} AND owner = ${press.owner} AND until > now()
+              WHERE project_id = ${projectId} AND owner = ${press.owner} AND held_by = ${userId}
+                AND until > now()
               RETURNING project_id, kind, app_id::text AS app_id, import_process_id,
                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms,
                 to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until`;
@@ -1455,7 +1463,8 @@ export const structureLayer = (options: {
                   EXCLUDED.import_process_id,
                   CASE WHEN hq_press.owner = EXCLUDED.owner
                     THEN hq_press.import_process_id END)
-              WHERE hq_press.owner = EXCLUDED.owner OR hq_press.until <= now()
+              WHERE (hq_press.owner = EXCLUDED.owner AND hq_press.held_by = EXCLUDED.held_by)
+                OR hq_press.until <= now()
               RETURNING project_id, kind, app_id::text AS app_id, import_process_id,
                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms,
                 to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until`;
@@ -1477,11 +1486,12 @@ export const structureLayer = (options: {
             const ended = yield* leader.write(
               press.finished
                 ? sql`
-                    DELETE FROM hq_press WHERE project_id = ${projectId} AND owner = ${press.owner}
+                    DELETE FROM hq_press
+                    WHERE project_id = ${projectId} AND owner = ${press.owner} AND held_by = ${userId}
                     RETURNING 1`
                 : sql`
                     UPDATE hq_press SET until = LEAST(until, now())
-                    WHERE project_id = ${projectId} AND owner = ${press.owner}
+                    WHERE project_id = ${projectId} AND owner = ${press.owner} AND held_by = ${userId}
                     RETURNING 1`,
             );
             if (ended.length > 0) yield* changed;

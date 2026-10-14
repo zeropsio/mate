@@ -1863,6 +1863,45 @@ describe("structure", () => {
       ),
     );
 
+    it.effect(
+      "a press is renewed or ended only by the person holding it, and an application they do not see answers as a missing one",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const MATE = { kind: "mate" } as const;
+            const pressOf = Effect.map(structure.read("owner"), (read) => read.presses["P_OWN"]);
+            yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-a" });
+            // Another Basic user of the project who learned the press's name neither takes over,
+            // renews nor ends it.
+            assert.strictEqual(
+              yield* reasonOf(structure.holdPress("basic", "P_OWN", { ...MATE, owner: "press-a" })),
+              "press_held",
+            );
+            assert.strictEqual(
+              yield* reasonOf(
+                structure.holdPress("basic", "P_OWN", { ...MATE, owner: "press-a", renew: true }),
+              ),
+              "press_not_held",
+            );
+            yield* structure.endPress("basic", "P_OWN", { owner: "press-a", finished: true });
+            yield* structure.endPress("basic", "P_OWN", { owner: "press-a", finished: false });
+            const kept = yield* pressOf;
+            assert.isTrue((kept?.heldForMs ?? 0) > PRESS_HOLD_MS - 5_000);
+            // An application the presser does not see answers as one HQ does not hold.
+            const hidden = yield* structure.createApp("owner", "Hidden");
+            const pressFor = (appId: string) =>
+              reasonOf(
+                structure.holdPress("maker", "P_OWN", { owner: "press-a", kind: "stage", appId }),
+              );
+            assert.deepStrictEqual(
+              [yield* pressFor(hidden.id), yield* pressFor("00000000-0000-0000-0000-000000000000")],
+              ["app_not_found", "app_not_found"],
+            );
+          }),
+        ),
+    );
+
     // B5: a stage's press imports first and registers last; one cut short between them leaves a
     // project HQ holds nowhere, whose press record says what it is and where it goes.
     it.effect("keeps a stopped stage press's record, its hold ended, until its project goes", () =>
