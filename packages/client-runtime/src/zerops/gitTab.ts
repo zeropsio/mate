@@ -578,13 +578,20 @@ export function gitActionAllowed(
  * dev partner's code is deployed, built and unmounted; it never has a checkout,
  * and a row for it said "no repository yet" about something that will never
  * have one (the owner, 2026-09-17). Managed data services hold no repository
- * either.
+ * either. One repository per pair, whatever the number of dev services: a further dev
+ * service built from the same repository shares the first one's code volume.
  */
 export function gitCheckoutHostnames(
   services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname" | "group">>,
+  tier?: string,
 ): ReadonlyArray<string> {
-  const { devOf } = servicePairs({ services });
+  const { devOf, sharesCodeWith } = servicePairs({ services, tier });
   return services
-    .filter((service) => service.group === "runtimes" && !devOf.has(service.hostname))
+    .filter(
+      (service) =>
+        service.group === "runtimes" &&
+        !devOf.has(service.hostname) &&
+        !sharesCodeWith.has(service.hostname),
+    )
     .map((service) => service.hostname);
 }
