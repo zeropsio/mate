@@ -652,7 +652,10 @@ export function pairPreviewRoutes(
   hostnames: ReadonlyArray<string>,
 ): ReadonlyArray<GroupFlowPreview> {
   const { pairs, devOf } = servicePairs({
-    services: hostnames.map((hostname) => ({ hostname })),
+    // Routes and list are read separately: a route's service is a service even before the list shows it.
+    services: [...new Set([...hostnames, ...routes.map((route) => route.service)])].map(
+      (hostname) => ({ hostname }),
+    ),
   });
   const nameOf = new Map(pairs.map((pair) => [pair.dev, pair.name]));
   const named = new Map<string, string>();

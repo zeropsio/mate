@@ -1213,6 +1213,12 @@ describe("pairPreviewRoutes", () => {
       previews: ["todoapp"],
     },
     {
+      case: "a stage half the list has not shown yet, by its route",
+      routes: [route("todoapp"), route("todoappstage")],
+      hostnames: ["todoapp"],
+      previews: ["todoapp"],
+    },
+    {
       case: "none, where only the dev half is public",
       routes: [route("appdev")],
       hostnames: ["appdev", "appstage"],
