@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off -- host CLI copying files between two checkouts.
 /**
  * Copies zcp's monorepo contract fixtures (zcp `docs/spec-mate.md` §2.8a.7,
  * `internal/tools/testdata/mate-contract/`) into
