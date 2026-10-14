@@ -32,22 +32,28 @@ export function menuRows<Row extends CandidateRow>(input: {
  * answering. The project listing holds each project's name, state and creation — what the one
  * order is decided over — so nothing is drawn before its baseline. HQ places the rows in their
  * applications: the menu waits until the account decided whether the organization has an official
- * HQ, and for an official one while its link reads its navigation for the first time, until it is
- * read, refused or catching up after a failed attempt. Until then the menu says it is loading,
- * never a row placed or ordered on a guess.
+ * HQ, and for an official one until its navigation is read or refused. A source whose first read
+ * failed is retried within a second, so the menu holds on until it answers; only once the wait
+ * ran out (`waitedOut`) does one still catching up count as stopped answering, and the rows stand
+ * without it — names alone, not ordered on a guess and taken back a moment later.
  */
 export function menuSourcesSettled(input: {
   readonly projects: Pick<OrganizationProjects, "read" | "reconnecting" | "unavailableReason">;
   readonly hq: Pick<HqNavigationRead, "read" | "refusal" | "capped" | "reconnecting">;
   readonly verdict: HqVerdict;
+  /** The menu waited its patience (`MENU_SOURCES_PATIENCE_MS`) for its sources' first answers. */
+  readonly waitedOut: boolean;
 }): boolean {
-  const { projects, hq } = input;
+  const { projects, hq, waitedOut } = input;
   const listed =
-    projects.read === "read" || projects.reconnecting || projects.unavailableReason !== undefined;
-  const hqReading = hq.read !== "read" && hq.refusal === null && !hq.capped && !hq.reconnecting;
+    projects.read === "read" ||
+    projects.unavailableReason !== undefined ||
+    (waitedOut && projects.reconnecting);
+  const hqAnswered =
+    hq.read === "read" || hq.refusal !== null || hq.capped || (waitedOut && hq.reconnecting);
   const placed =
     input.verdict === "none" ||
     input.verdict === "unreadable" ||
-    (input.verdict === "official" && !hqReading);
+    (input.verdict === "official" && hqAnswered);
   return listed && placed;
 }

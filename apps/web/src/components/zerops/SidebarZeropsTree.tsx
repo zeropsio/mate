@@ -239,6 +239,7 @@ import { ProjectCluster, type ClusterFace } from "./SidebarProjectCluster";
 import {
   landingAfterDraw,
   openMateReveal,
+  type MateReveal,
   menuDrawsLoadingRows,
   slackAfterScroll,
   slackForFold,
@@ -517,6 +518,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly activeProjectResolving?: boolean | undefined;
   /**
+   * The open conversation as the route names it, whether or not its Mate is found: what a reload
+   * opened on is never scrolled to; one opened afterwards is, once (`openMateReveal`).
+   */
+  readonly activeConversation?: string | null | undefined;
+  /**
    * What this agent is doing right now.
    *
    * Injected because the answer is a thread's status through the one resolver
@@ -696,6 +702,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   onOpenGroup,
   activeProjectId,
   activeProjectResolving = false,
+  activeConversation,
   getActivity,
   keyedReadings = false,
   getConversationsRead,
@@ -833,14 +840,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
   // page — stands in view in the menu: its row scrolled to the nearest edge
   // once it is drawn (a new Mate's row comes a moment after its view, so every
-  // draw looks until it is there). Not the one open at mount, even found late:
-  // a reload leaves the menu where it was (`openMateReveal`).
-  const shownActiveRef = useRef<string | null | undefined>(
-    activeProjectResolving ? undefined : (activeProjectId ?? null),
-  );
+  // draw looks until it is there), once. Not the conversation open at mount,
+  // even found late: a reload leaves the menu where it was (`openMateReveal`).
+  const shownActiveRef = useRef<MateReveal | undefined>(undefined);
   useEffect(() => {
+    const conversation = activeConversation ?? null;
     const next = openMateReveal({
       seen: shownActiveRef.current,
+      conversation,
       open: activeProjectId ?? null,
       resolving: activeProjectResolving,
     });
@@ -850,7 +857,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       `[data-zerops-mate-row="${CSS.escape(next.reveal)}"]`,
     );
     if (row == null) return;
-    shownActiveRef.current = next.reveal;
+    shownActiveRef.current = { conversation, shown: next.reveal, owed: false };
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     row.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
   });

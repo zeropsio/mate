@@ -7,6 +7,7 @@ import type { Projection } from "../store.ts";
 import { linkKeys } from "../model.ts";
 import { projectsScope } from "../families/project.ts";
 import type { ProjectValue } from "../families/project.ts";
+import { streamTrouble } from "../streamMachine.ts";
 export interface PlatformInventory {
   readonly projects: ReadonlyArray<ProjectValue>;
   readonly denied: ReadonlyArray<string>;
@@ -40,11 +41,10 @@ export const platformInventory: Projection<
       }
       return access.kind === "allowed";
     });
-    const link = read.stream(linkKeys.zerops(orgId));
-    const scope = read.stream(projectsScope(orgId));
-    const failedRecovery =
-      (link.failures > 0 && link.phase !== "live") ||
-      (scope.failures > 0 && scope.phase !== "live");
+    // A failed attempt inside its grace — a first try's, a reconnect's — is a blink, unsaid.
+    const troubles = new Set(
+      [read.stream(linkKeys.zerops(orgId)), read.stream(projectsScope(orgId))].map(streamTrouble),
+    );
     return {
       projects,
       denied: [...denied],
@@ -53,7 +53,11 @@ export const platformInventory: Projection<
       live: roster.live,
       failure: roster.unavailableReason === undefined ? null : "Zerops isn't answering.",
       trouble:
-        roster.unavailableReason !== undefined ? "refused" : failedRecovery ? "retrying" : null,
+        roster.unavailableReason !== undefined || troubles.has("stopped")
+          ? "refused"
+          : troubles.has("retrying")
+            ? "retrying"
+            : null,
     };
   },
   equals: sameValue,

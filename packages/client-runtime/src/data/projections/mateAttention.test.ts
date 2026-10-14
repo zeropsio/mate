@@ -38,7 +38,7 @@ const down = (key: StreamKey): ReadonlyArray<AccountInput> => [
     fault: { outcome: "transient", message: "The socket broke." },
     jitter: 0,
   }),
-  stream(key, { kind: "grace-over", lostAt: 0 }),
+  stream(key, { kind: "grace-over", since: 0 }),
 ];
 
 /** An open Mate's own link, live, having said `value`. */
