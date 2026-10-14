@@ -4,6 +4,8 @@
  * successful RPC carrying its JSON, never a transport error.
  */
 import { describe, expect, it } from "@effect/vitest";
+import type { TerminalError, ZeropsAgentLoginError } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
@@ -12,6 +14,10 @@ import {
   runZeropsMateCheckUpdate,
   runZeropsMateUpdate,
   runAgentAuthCheck,
+  runAgentLoginCancel,
+  runAgentLoginSignOut,
+  runAgentLoginSubmitCode,
+  runLoginRemove,
 } from "./registerZeropsRpc.ts";
 
 const stubMateUpdate = (result: Effect.Effect<any, ZeropsCliNotFound | ZeropsCliFailed>) => ({
@@ -250,6 +256,132 @@ describe("manual auth check", () => {
       );
       expect(refused.reason).toBe("invalid-login");
       expect(calls).toEqual(["codex"]);
+    }),
+  );
+});
+
+describe("a personal login acts for its person alone", () => {
+  /** Jan signed codex in and runs a sign-in on `claude-code:work`; `claude-code` has a project token. */
+  const loginDeps = (subject: string, ran: string[]) => ({
+    subject,
+    zeropsAgentAuth: {
+      latest: Effect.succeed({
+        available: true,
+        agents: [
+          {
+            agentId: "codex" as const,
+            credPresent: true,
+            flagOAuth: true,
+            flagToken: false,
+            providerAuth: "unknown" as const,
+            state: "authorized" as const,
+            authorizedBy: { subject: "jan" },
+          },
+          {
+            agentId: "claude-code" as const,
+            credPresent: false,
+            flagOAuth: false,
+            flagToken: true,
+            providerAuth: "unknown" as const,
+            state: "authorized" as const,
+          },
+        ],
+      }),
+    },
+    zeropsLogins: {
+      latest: Effect.succeed([
+        {
+          id: "claude-code:work",
+          agent: "claude-code" as const,
+          label: "work",
+          kind: "subscription" as const,
+          default: false,
+          state: "authorized" as const,
+          token: false,
+          signedInBy: "jan",
+        },
+      ]),
+    },
+    zeropsAgentLogin: {
+      latest: Effect.succeed({
+        "claude-code": undefined,
+        codex: undefined,
+        "claude-code:work": {
+          phase: "awaiting-code" as const,
+          terminalId: "t",
+          startedAt: DateTime.makeUnsafe(0),
+          startedBy: "jan",
+        },
+      }),
+      cancel: (agentId: string, loginId?: string) =>
+        Effect.sync(() => void ran.push(`cancel ${loginId ?? agentId}`)),
+      submitCode: (agentId: string, _code: string, loginId?: string) =>
+        Effect.sync(() => void ran.push(`code ${loginId ?? agentId}`)),
+    },
+    zeropsSignOut: {
+      signOut: (target: { readonly agentId: string } | { readonly loginId: string }) =>
+        Effect.sync(
+          () => void ran.push(`sign out ${"agentId" in target ? target.agentId : target.loginId}`),
+        ),
+      remove: (loginId: string) => Effect.sync(() => void ran.push(`remove ${loginId}`)),
+    },
+  });
+  type LoginDeps = ReturnType<typeof loginDeps>;
+
+  it.effect.each<
+    readonly [
+      string,
+      (deps: LoginDeps) => Effect.Effect<void, TerminalError | ZeropsAgentLoginError>,
+      string,
+    ]
+  >([
+    [
+      "signing an agent's own login out",
+      (deps) => runAgentLoginSignOut(deps, { agentId: "codex" }),
+      "sign out codex",
+    ],
+    [
+      "signing a login beyond the two out",
+      (deps) => runAgentLoginSignOut(deps, { agentId: "claude-code", loginId: "claude-code:work" }),
+      "sign out claude-code:work",
+    ],
+    [
+      "removing a login",
+      (deps) => runLoginRemove(deps, { id: "claude-code:work" }),
+      "remove claude-code:work",
+    ],
+    [
+      "cancelling a sign-in",
+      (deps) => runAgentLoginCancel(deps, { agentId: "claude-code", loginId: "claude-code:work" }),
+      "cancel claude-code:work",
+    ],
+    [
+      "entering a sign-in's code",
+      (deps) =>
+        runAgentLoginSubmitCode(deps, {
+          agentId: "claude-code",
+          code: "c",
+          loginId: "claude-code:work",
+        }),
+      "code claude-code:work",
+    ],
+  ])("only its person may do it: %s", ([, run, action]) =>
+    Effect.gen(function* () {
+      const ran: string[] = [];
+      const refused = yield* Effect.result(run(loginDeps("zerops-user:eva", ran)));
+      expect(ran).toEqual([]);
+      expect(refused).toMatchObject({ failure: { reason: "invalid-login" } });
+      yield* run(loginDeps("zerops-user:jan", ran));
+      expect(ran).toEqual([action]);
+    }),
+  );
+
+  it.effect("a project-token login is nobody's: any member may still ask to sign it out", () =>
+    Effect.gen(function* () {
+      const ran: string[] = [];
+      yield* runAgentLoginSignOut(loginDeps("zerops-user:eva", ran), { agentId: "claude-code" });
+      yield* runAgentLoginCancel(loginDeps("zerops-user:eva", ran), { agentId: "codex" });
+      expect(ran).toEqual(["sign out claude-code", "cancel codex"]);
     }),
   );
 });

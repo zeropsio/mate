@@ -29,6 +29,7 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsMacStreamModule from "./ZeropsMacStream.ts";
+import { zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
@@ -207,6 +208,17 @@ export const resolveLoginTarget = (
     return { id: login.id, env: ZeropsLoginsModule.mateLoginEnvironment(login) };
   });
 
+/**
+ * A personal login acts for its person alone (D6, `ZeropsProjectSigners`): the member this server
+ * saw sign it in alone checks it, registers it again, signs it out or removes it, and the member
+ * who started a sign-in still running on it alone cancels it or enters its code. A login nobody
+ * signed in through Mate — a project token, no record — names nobody, and stays every member's.
+ */
+const refuseOthers = (subject: string, person: string | undefined, detail: string) =>
+  person !== undefined && person !== zeropsUserIdOf(subject)
+    ? Effect.fail(new ZeropsAgentLoginError({ reason: "invalid-login", detail }))
+    : Effect.void;
+
 /** An operator asks once; the feed carries the resulting verification/registration receipt. */
 export const runAgentAuthCheck = (
   deps: {
@@ -223,9 +235,6 @@ export const runAgentAuthCheck = (
   input: { readonly agentId: ZeropsAgentId; readonly loginId?: string | undefined },
 ) =>
   Effect.gen(function* () {
-    const userId = deps.subject.startsWith("zerops-user:")
-      ? deps.subject.slice("zerops-user:".length)
-      : deps.subject;
     let signer: string | undefined;
     if (input.loginId === undefined) {
       const snapshot = yield* deps.zeropsAgentAuth.latest;
@@ -243,16 +252,111 @@ export const runAgentAuthCheck = (
         (row) => row.id === input.loginId,
       )?.signedInBy;
     }
-    if (signer !== undefined && signer !== userId) {
-      return yield* new ZeropsAgentLoginError({
-        reason: "invalid-login",
-        detail: "Only the member who signed this login in can check or register it again.",
-      });
-    }
+    yield* refuseOthers(
+      deps.subject,
+      signer,
+      "Only the member who signed this login in can check or register it again.",
+    );
     yield* input.loginId === undefined
       ? deps.zeropsAgentAuth.recheckNow(input.agentId)
       : deps.zeropsLogins.recheckNow(input.loginId);
   });
+
+type LoginActionDeps = {
+  readonly subject: string;
+  readonly zeropsAgentAuth: Pick<ZeropsAgentAuth.ZeropsAgentAuth["Service"], "latest">;
+  readonly zeropsLogins: Pick<ZeropsLoginsModule.ZeropsLogins["Service"], "latest">;
+  readonly zeropsAgentLogin: Pick<
+    ZeropsAgentLoginModule.ZeropsAgentLogin["Service"],
+    "latest" | "cancel" | "submitCode"
+  >;
+  readonly zeropsSignOut: ZeropsSignOutModule.ZeropsSignOut["Service"];
+};
+
+/** Who this server saw sign the login in: an agent's own from its row, another from its own. */
+const signerOf = (deps: LoginActionDeps, agentId: ZeropsAgentId | undefined, loginId?: string) =>
+  loginId === undefined
+    ? deps.zeropsAgentAuth.latest.pipe(
+        Effect.map(
+          (snapshot) =>
+            snapshot.agents.find((row) => row.agentId === agentId)?.authorizedBy?.subject,
+        ),
+      )
+    : deps.zeropsLogins.latest.pipe(
+        Effect.map((rows) => rows.find((row) => row.id === loginId)?.signedInBy),
+      );
+
+const FINISHED_SIGN_IN: ReadonlySet<string> = new Set(["succeeded", "failed", "cancelled"]);
+
+/** Who started the sign-in still running on the login; none once it finished. */
+const starterOf = (deps: LoginActionDeps, agentId: ZeropsAgentId, loginId?: string) =>
+  deps.zeropsAgentLogin.latest.pipe(
+    Effect.map((logins) => {
+      const login = logins[loginId ?? agentId];
+      return login === undefined || FINISHED_SIGN_IN.has(login.phase) ? undefined : login.startedBy;
+    }),
+  );
+
+export const runAgentLoginCancel = (
+  deps: LoginActionDeps,
+  input: { readonly agentId: ZeropsAgentId; readonly loginId?: string | undefined },
+) =>
+  starterOf(deps, input.agentId, input.loginId).pipe(
+    Effect.flatMap((starter) =>
+      refuseOthers(
+        deps.subject,
+        starter,
+        "Only the member who started this sign-in can cancel it.",
+      ),
+    ),
+    Effect.andThen(deps.zeropsAgentLogin.cancel(input.agentId, input.loginId)),
+  );
+
+export const runAgentLoginSubmitCode = (
+  deps: LoginActionDeps,
+  input: {
+    readonly agentId: ZeropsAgentId;
+    readonly code: string;
+    readonly loginId?: string | undefined;
+  },
+) =>
+  starterOf(deps, input.agentId, input.loginId).pipe(
+    Effect.flatMap((starter) =>
+      refuseOthers(
+        deps.subject,
+        starter,
+        "Only the member who started this sign-in can enter its code.",
+      ),
+    ),
+    Effect.andThen(deps.zeropsAgentLogin.submitCode(input.agentId, input.code, input.loginId)),
+  );
+
+export const runAgentLoginSignOut = (
+  deps: LoginActionDeps,
+  input: { readonly agentId: ZeropsAgentId; readonly loginId?: string | undefined },
+) =>
+  signerOf(deps, input.agentId, input.loginId).pipe(
+    Effect.flatMap((signer) =>
+      refuseOthers(
+        deps.subject,
+        signer,
+        "Only the member who signed this login in can sign it out.",
+      ),
+    ),
+    Effect.andThen(
+      deps.zeropsSignOut.signOut(
+        input.loginId === undefined ? { agentId: input.agentId } : { loginId: input.loginId },
+      ),
+    ),
+  );
+
+export const runLoginRemove = (deps: LoginActionDeps, input: { readonly id: string }) =>
+  signerOf(deps, undefined, input.id).pipe(
+    Effect.flatMap((signer) =>
+      refuseOthers(deps.subject, signer, "Only the member who signed this login in can remove it."),
+    ),
+    Effect.andThen(deps.zeropsSignOut.remove(input.id)),
+  );
 
 /** Registers the Zerops feed RPCs. Called once from `ws.ts`. */
 export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandlers => {
@@ -292,30 +396,19 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
             ),
       ),
     [WS_METHODS.zeropsAgentLoginCancel]: (input) =>
-      admit(
-        WS_METHODS.zeropsAgentLoginCancel,
-        zeropsAgentLogin.cancel(input.agentId, input.loginId),
-      ),
+      admit(WS_METHODS.zeropsAgentLoginCancel, runAgentLoginCancel(deps, input)),
     // The code rides only into the login terminal: no span attribute or log
     // line here names it.
     [WS_METHODS.zeropsAgentLoginSubmitCode]: (input) =>
-      admit(
-        WS_METHODS.zeropsAgentLoginSubmitCode,
-        zeropsAgentLogin.submitCode(input.agentId, input.code, input.loginId),
-      ),
-    [WS_METHODS.zeropsAgentLoginSignOut]: (input) => {
-      const loginId = input.loginId;
-      return admit(
-        WS_METHODS.zeropsAgentLoginSignOut,
-        zeropsSignOut.signOut(loginId === undefined ? { agentId: input.agentId } : { loginId }),
-      );
-    },
+      admit(WS_METHODS.zeropsAgentLoginSubmitCode, runAgentLoginSubmitCode(deps, input)),
+    [WS_METHODS.zeropsAgentLoginSignOut]: (input) =>
+      admit(WS_METHODS.zeropsAgentLoginSignOut, runAgentLoginSignOut(deps, input)),
     // The API key rides only into the settings' secret store: no span
     // attribute or log line here names it.
     [WS_METHODS.zeropsLoginAdd]: (input) =>
       admit(WS_METHODS.zeropsLoginAdd, zeropsLogins.add(input, subject)),
     [WS_METHODS.zeropsLoginRemove]: (input) =>
-      admit(WS_METHODS.zeropsLoginRemove, zeropsSignOut.remove(input.id)),
+      admit(WS_METHODS.zeropsLoginRemove, runLoginRemove(deps, input)),
     [WS_METHODS.subscribeZeropsLifecycle]: (input) =>
       Stream.unwrap(
         Effect.map(zeropsLifecycle.subscribe(input.threadId), ({ latest, changes }) =>
