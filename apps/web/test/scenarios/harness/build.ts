@@ -10,11 +10,19 @@ declare module "vite-plus/test" {
   }
 }
 
-export async function buildScenarioBundle() {
+/**
+ * The builds scenarios run: the shipped one, and the same source built to sign in by device login
+ * (`VITE_ZEROPS_SIGN_IN`). The way in is chosen at build time, so each is its own bundle; the
+ * device-login one is built only for the scenarios that ask for it (`scenarioBundle`).
+ */
+export type ScenarioBundle = "handover" | "device-login";
+
+export async function buildScenarioBundle(bundle: ScenarioBundle = "handover") {
   const root = NodeURL.fileURLToPath(new URL("../../../../../", import.meta.url));
   const buildEnv: NodeJS.ProcessEnv = {
     ...process.env,
     NODE_ENV: "production",
+    VITE_ZEROPS_SIGN_IN: bundle,
     VITE_HOSTED_APP_CHANNEL: "latest",
     VITE_HOSTED_APP_URL: "",
     VITE_BASE_PATH: "",
@@ -47,7 +55,7 @@ export async function buildScenarioBundle() {
     });
   });
   console.log(
-    `scenario web: ${built ? "built" : "reused"} (${((performance.now() - started) / 1000).toFixed(2)}s)`,
+    `scenario web (${bundle}): ${built ? "built" : "reused"} (${((performance.now() - started) / 1000).toFixed(2)}s)`,
   );
   return dist;
 }
@@ -56,4 +64,8 @@ export default async function setup(project: TestProject) {
   project.provide("scenarioDist", await buildScenarioBundle());
 }
 
-if (import.meta.main) await buildScenarioBundle();
+// CI ships every bundle to the scenario shards; one build at a time shares the source tree safely.
+if (import.meta.main) {
+  await buildScenarioBundle("handover");
+  await buildScenarioBundle("device-login");
+}
