@@ -215,6 +215,19 @@ FROM standing s`;
             : { target: row.target, releaseTarget: row.release_target }),
         };
   };
+  const stops = yield* sql<{
+    readonly environment_id: string;
+    readonly service: string;
+    readonly rollback_to: string | null;
+  }>`
+SELECT environment_id, service, rollback_to FROM hq_tier_stop
+WHERE service <> '' ORDER BY environment_id, service`;
+  const tierStopsOf = (environmentId: string) => {
+    const tierStops = stops
+      .filter((stop) => stop.environment_id === environmentId)
+      .map((stop) => ({ service: stop.service, rollbackTo: stop.rollback_to }));
+    return tierStops.length === 0 ? {} : { tierStops };
+  };
   const born = yield* environmentBirths(sql);
   const birthOf = (environmentId: string): EnvironmentBirth | null =>
     born.get(environmentId) ?? null;
@@ -229,6 +242,7 @@ FROM standing s`;
       keyInvalid: row.key_invalid,
       release: releaseOf(row.environment_id),
       birth: birthOf(row.environment_id),
+      ...tierStopsOf(row.environment_id),
     };
     const values = jobs
       .filter((job) => job.environment_id === row.environment_id)
