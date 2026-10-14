@@ -149,7 +149,13 @@ import { useLiveSlot } from "./useLiveSlot";
 import { foldWork } from "./foldWork";
 import { usePace } from "./usePace";
 import { KeptTimelineContext } from "./keptTimelineContext";
-import { type DrawnRow, landingHosts, rowShifts, slotMoves } from "./slotMoves.logic";
+import {
+  type DrawnRow,
+  landingHosts,
+  orderedGlides,
+  rowShifts,
+  slotMoves,
+} from "./slotMoves.logic";
 import { resultPictures as allResultPictures, stripShowsFiles } from "./runResult.logic";
 import { useStripFiles } from "./resultStripFiles";
 import {
@@ -4268,7 +4274,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     keepScrollRef.current?.();
     const scroll = scrollIn(aboveRef.current);
     const list = scroll?.querySelector<HTMLElement>(":scope > ol") ?? null;
-    if (scroll !== null && list !== null) glideLines(scroll, list, landing.rows, landing.slot);
+    const landed = new Map<HTMLElement, number>();
     for (const [key, from] of landing.from) {
       // One that rode along unseen rises in as it arrives (`useRisesIn`).
       if (!Number.isFinite(from)) continue;
@@ -4277,7 +4283,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       // A call that opened a card of its own lands with its card.
       const card = line.closest<HTMLElement>("[data-chat-calls]");
       const alone = card !== null && card.childElementCount === 1;
-      plop(alone ? (card.closest<HTMLElement>("[data-chat-row]") ?? line) : line, from);
+      landed.set(alone ? (card.closest<HTMLElement>("[data-chat-row]") ?? line) : line, from);
       // Its bubble grows from the height it showed in the slot (a thought
       // the slot showed four lines of, the history in full).
       const stoodHeight = landing.bubbles.get(key);
@@ -4288,6 +4294,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         historyRoomsRef.current?.easeFrom(bubble, stoodHeight);
       }
     }
+    if (scroll !== null && list !== null)
+      glideLines(scroll, list, landing.rows, landed, landing.slot);
     const element = slotRef.current;
     if (landing.slot === null || landing.card === null || element === null) return;
     // Growing, the card grows at its bottom, and the list moves the slot.
@@ -4306,7 +4314,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       if (holderStood === undefined) continue;
       stopGliding(row);
       const base = (inHolder ?? element).getBoundingClientRect().top;
-      glideBy(row, stood - holderStood - (row.getBoundingClientRect().top - base));
+      glideBy(
+        row,
+        visibleTravel(row, stood - holderStood - (row.getBoundingClientRect().top - base)),
+      );
     }
   }, [landing]);
   // Read after each draw of a live run's card, once its landing glides
@@ -5366,7 +5377,7 @@ const GLIDE_ID = "run-glide";
  */
 function glideFrom(element: HTMLElement, stood: number): number {
   stopGliding(element);
-  return glideBy(element, stood - element.getBoundingClientRect().top);
+  return glideBy(element, visibleTravel(element, stood - element.getBoundingClientRect().top));
 }
 
 /** A translated row stays inside the scroll that clips it, including its first frame. */
@@ -5391,7 +5402,6 @@ function visibleTravel(element: HTMLElement, moved: number): number {
 
 /** An element gliding from `moved` px off its place to it, on the plop's curve. */
 function glideBy(element: HTMLElement, moved: number): number {
-  moved = visibleTravel(element, moved);
   if (Math.abs(moved) < 0.5) return 0;
   // Added to what moves it already: a call's rise keeps the rest of its way.
   element.animate([{ translate: `0 ${moved}px` }, { translate: "0 0" }], {
@@ -5412,23 +5422,35 @@ function glideLines(
   scroll: HTMLElement,
   list: HTMLElement,
   before: ReadonlyMap<string, number>,
+  landed: ReadonlyMap<HTMLElement, number>,
   /** Where the view ended before: a slot that grew took room a line stood in. */
   stoodBottom: number | null = null,
 ): void {
-  if (before.size === 0 || prefersReducedMotion()) return;
+  if ((before.size === 0 && landed.size === 0) || prefersReducedMotion()) return;
   const shown = scroll.getBoundingClientRect();
   const view = { top: shown.top, bottom: Math.max(shown.bottom, stoodBottom ?? shown.bottom) };
-  for (const line of list.children) {
-    if (!(line instanceof HTMLElement)) continue;
-    const stood = line.dataset.runKey === undefined ? undefined : before.get(line.dataset.runKey);
-    if (stood === undefined) continue;
-    stopGliding(line);
+  const rows = [...list.children].filter(
+    (line): line is HTMLElement => line instanceof HTMLElement,
+  );
+  // Cancel every sibling before measuring any: one plan owns their travel,
+  // including a landed row whose old slot position the scroll clips.
+  for (const line of rows) stopGliding(line);
+  const travel = rows.map((line) => {
+    const stood =
+      landed.get(line) ??
+      (line.dataset.runKey === undefined ? undefined : before.get(line.dataset.runKey));
+    if (stood === undefined) return 0;
     const box = line.getBoundingClientRect();
     const moved = stood - box.top;
-    if (Math.abs(moved) < 0.5 || box.bottom + moved < view.top || box.top + moved > view.bottom) {
-      continue;
-    }
-    glideFrom(line, stood);
+    if (box.bottom + moved < view.top || box.top + moved > view.bottom) return 0;
+    return visibleTravel(line, moved);
+  });
+  const ordered = orderedGlides(travel);
+  for (let index = 0; index < rows.length; index += 1) glideBy(rows[index]!, ordered[index]!);
+  // A call joining an existing card travels inside that card; the card's
+  // sibling travel was already accounted for by the plan above.
+  for (const [line, stood] of landed) {
+    if (!rows.includes(line)) glideFrom(line, stood);
   }
 }
 
@@ -5631,12 +5653,8 @@ function plopsIn(landing: ReadonlyMap<string, number> | null, key: string): bool
   return from !== undefined && Number.isFinite(from);
 }
 
-/** A landed row uses the same bounded travel as every other line moving in a scroll. */
+/** Landing glides share one curve so their ordered offsets stay ordered in every frame. */
 const PLOP_MS = 340;
-function plop(row: HTMLElement, from: number) {
-  if (prefersReducedMotion() || !Number.isFinite(from)) return;
-  glideFrom(row, from);
-}
 
 /**
  * Marks the edges the scroll has more past — a fade there says so — straight

@@ -1,3 +1,4 @@
+import liveSlotSteps from "./live-slot-order.fixture.json";
 import { composerLayout } from "./composerLayout.ts";
 import type { Page } from "puppeteer-core";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
@@ -208,6 +209,144 @@ async function settledEnd(page: Page) {
 }
 
 describe("owner-reported layout regressions", () => {
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "thoughts handing off to history keep source order and separate space from the next tool",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* Effect.promise(() =>
+            s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
+          );
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          chat
+            .fixture()
+            .exchange("Previous navigation", "The existing conversation is still here.");
+          const engine = chat.fixture().wire.engine;
+          yield* s.given.signedIn;
+          yield* Effect.promise(() => ownerMenu(s.page));
+          yield* chat.when.open();
+          yield* chat.when.send(
+            "OCT14-B: six separate read-only navigation calls with short commentary",
+          );
+          const run = [...engine.runs.values()].at(-1)!.id;
+          // The real GG OCT14-B thought/call records, in received server order.
+
+          const trace = yield* Effect.promise(() =>
+            s.page.evaluateHandle(() => {
+              const state = {
+                active: true,
+                frames: [] as Array<Array<{ key: string; top: number; bottom: number }>>,
+              };
+              const sample = () =>
+                setTimeout(() => {
+                  const rows = [
+                    ...document.querySelectorAll<HTMLElement>(
+                      "[data-run-chat][data-run-live] [data-chat-kind]",
+                    ),
+                  ]
+                    .filter((row) =>
+                      row.matches('[data-chat-kind="thought"], [data-chat-kind="step:command"]'),
+                    )
+                    .map((row) => {
+                      const box = row.getBoundingClientRect();
+                      let top = box.top;
+                      let bottom = box.bottom;
+                      for (
+                        let parent = row.parentElement;
+                        parent !== null;
+                        parent = parent.parentElement
+                      ) {
+                        const style = getComputedStyle(parent);
+                        if (
+                          ["auto", "scroll", "hidden", "clip"].includes(style.overflowY) ||
+                          style.clipPath !== "none"
+                        ) {
+                          const clip = parent.getBoundingClientRect();
+                          top = Math.max(top, clip.top);
+                          bottom = Math.min(bottom, clip.bottom);
+                        }
+                      }
+                      return {
+                        key: row.closest<HTMLElement>("[data-run-key]")?.dataset.runKey ?? "",
+                        top,
+                        bottom,
+                      };
+                    })
+                    .filter((row) => row.bottom > row.top);
+                  state.frames.push(rows);
+                  if (state.active) requestAnimationFrame(sample);
+                }, 0);
+              requestAnimationFrame(sample);
+              return state;
+            }),
+          );
+          const order: string[] = [];
+          for (const step of liveSlotSteps) {
+            const thought = engine.item(run, {
+              kind: "thought",
+              preview: step.streaming ? "" : step.thought,
+              length: step.streaming ? 0 : step.thought.length,
+              streaming: step.streaming,
+            });
+            if (step.streaming) {
+              engine.stream(thought, step.thought, "reasoning");
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  (text) => document.body.innerText.includes(text),
+                  { polling: "raf", timeout: 8000 },
+                  step.thought.split("\n")[0]!,
+                ),
+              );
+              engine.update(thought, {
+                preview: step.thought,
+                length: step.thought.length,
+                streaming: false,
+              });
+              engine.settle(thought);
+            }
+            const call = engine.item(run, { ...step.call, state: "running" });
+            order.push(thought, call);
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(
+                (id) =>
+                  [...document.querySelectorAll("[data-run-key]")].some((row) =>
+                    row.getAttribute("data-run-key")?.includes(id),
+                  ),
+                { polling: "raf", timeout: 8000 },
+                call,
+              ),
+            );
+            engine.update(call, { state: "done", endedAt: yield* Clock.currentTimeMillis });
+            yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 24 }));
+          }
+          const frames = yield* Effect.promise(() =>
+            trace.evaluate((state) => {
+              state.active = false;
+              return state.frames;
+            }),
+          );
+          yield* Effect.promise(() => trace.dispose());
+          const pairs = frames.flatMap((frame) => {
+            const rows = order
+              .map((id) => frame.find((row) => row.key.includes(id)))
+              .filter((row) => row !== undefined);
+            return rows.slice(1).map((row, i) => ({
+              before: rows[i]!.key,
+              after: row.key,
+              gap: row.top - rows[i]!.bottom,
+            }));
+          });
+          expect(pairs.length).toBeGreaterThan(0);
+          expect(
+            Math.min(...pairs.map((pair) => pair.gap)),
+            `ASSERTION: every painted thought/tool pair stays in source order with non-overlapping geometry: ${quoted(pairs.toSorted((a, b) => a.gap - b.gap).slice(0, 3))}`,
+          ).toBeGreaterThanOrEqual(0);
+        }),
+    );
+  });
   // Cyd: delayed HQ app detail inserted an old landing above the painted final answer,
   // dropping its words 79 px before the end follower glided back. The source stays unchanged.
 

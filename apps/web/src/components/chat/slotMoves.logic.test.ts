@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { LiveSlot, SlotEntry } from "./liveSlot.logic";
-import { landingHosts, rowShifts, slotMoves } from "./slotMoves.logic";
+import { landingHosts, orderedGlides, rowShifts, slotMoves } from "./slotMoves.logic";
+
+describe("history landing geometry", () => {
+  it.each([
+    { travel: [98, 2], expected: [2, 2] },
+    { travel: [98, 54, 2], expected: [2, 2, 2] },
+    { travel: [-20, 0, 12], expected: [-20, 0, 12] },
+    { travel: [20, 0, -12], expected: [-12, -12, -12] },
+  ])("earlier rows never travel below the following row: $travel", ({ travel, expected }) => {
+    expect(orderedGlides(travel)).toEqual(expected);
+  });
+});
 
 const entry = (key: string, answer?: string): SlotEntry => ({
   key,
