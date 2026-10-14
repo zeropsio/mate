@@ -267,11 +267,16 @@ function isPublicRepository(repository: string): boolean {
   );
 }
 
+/** A pair's stage half by name: `…stage`, the literal `stage` included. The one answer every site reads. */
+export function isStageHostname(hostname: string): boolean {
+  return hostname.endsWith("stage");
+}
+
 function roleOf(item: TierItem): RecipeServiceRole {
   if ([...CODE_KEYS].every((key) => ownKeyAt(item, key) === undefined)) return "managed";
   const repository = repositoryOf(item);
   if (repository !== undefined && isPublicRepository(repository)) return "utility";
-  return item.hostname?.endsWith("stage") === true ? "stage" : "dev";
+  return item.hostname !== undefined && isStageHostname(item.hostname) ? "stage" : "dev";
 }
 
 /**
