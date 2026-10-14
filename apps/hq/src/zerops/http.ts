@@ -487,6 +487,20 @@ export const makeZeropsDeployHttp = (
           HttpClientRequest.put(`${baseUrl}/service-stack/${serviceId}/enable-subdomain-access`),
           Created,
         ).pipe(Effect.map(({ id }) => ({ processId: id }))),
+      stopService: (serviceId) => (credential) =>
+        send(
+          "stopService",
+          credential,
+          HttpClientRequest.put(`${baseUrl}/service-stack/${serviceId}/stop`),
+          Created,
+        ).pipe(Effect.map(({ id }) => ({ processId: id }))),
+      startService: (serviceId) => (credential) =>
+        send(
+          "startService",
+          credential,
+          HttpClientRequest.put(`${baseUrl}/service-stack/${serviceId}/start`),
+          Created,
+        ).pipe(Effect.map(({ id }) => ({ processId: id }))),
       importServices: (projectId, yaml) => (credential) =>
         send(
           "importServices",

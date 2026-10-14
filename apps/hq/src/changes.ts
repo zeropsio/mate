@@ -143,11 +143,12 @@ export class Changes extends Context.Service<
     /**
      * A tier of the application's recipe as `main` holds it, bounded — what every reader of a tier
      * reads, a person's, a Mate's, a deploy's: `absent` without the repository, the file, or a
-     * service in it.
+     * service in it. A release's deploy reads it `at` the commit its tag names instead.
      */
     readonly recipeTier: (
       appId: string,
       tier: RecipeTier,
+      at?: string,
     ) => Effect.Effect<RecipeTierResponse, ChangeRefused | NotLeader | SqlError | GitError>;
     /** A tier, read by whoever may read the application's changes (`read_change`). */
     readonly readRecipe: (
@@ -879,7 +880,7 @@ export const changesLayer: Layer.Layer<
         }),
       );
 
-    const recipeTier = (appId: string, tier: RecipeTier) =>
+    const recipeTier = (appId: string, tier: RecipeTier, commit?: string) =>
       Effect.gen(function* () {
         const absent: RecipeTierResponse = { state: "absent" };
         const known = yield* sql`
@@ -887,7 +888,7 @@ export const changesLayer: Layer.Layer<
         if (known.length === 0) return absent;
         const git = yield* gitHost.git;
         const at = { appId, id: RECIPE_REPO };
-        const main = yield* mainOf(git, at);
+        const main = commit ?? (yield* mainOf(git, at));
         if (main === null) return absent;
         const path = RECIPE_TIER_PATHS[tier];
         const [dir = "", file = ""] = path.split("/");

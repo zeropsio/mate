@@ -176,6 +176,12 @@ export class ZeropsDeploy extends Context.Service<
     /** `PUT /service-stack/{id}/enable-subdomain-access`: its job. */
     readonly enableSubdomainAccess: (serviceId: string) => Write<{ readonly processId: string }>;
     /**
+     * `PUT /service-stack/{id}/stop` and `…/start`: its job. An environment's token may (P4 H2); it
+     * may delete one too, so HQ holds no delete here — deleting a service is a person's act.
+     */
+    readonly stopService: (serviceId: string) => Write<{ readonly processId: string }>;
+    readonly startService: (serviceId: string) => Write<{ readonly processId: string }>;
+    /**
      * `POST /project/{id}/service-stack/import` `{ yaml }`: services added to the project — what a
      * recipe delta imports (main D15); an environment's Basic user token may, as measured. The
      * services it made, by hostname, each with the processes bringing it up (measured

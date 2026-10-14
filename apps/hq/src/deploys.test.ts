@@ -189,7 +189,10 @@ interface JobRow {
 interface Rig {
   readonly appId: string;
   readonly world: FakeWorld;
-  /** Each application's tiers, by `<appId>/<tier>`. */
+  /**
+   * Each application's tiers, by `<appId>/<tier>` as `main` holds them, and by
+   * `<appId>/<tier>@<recipe commit>` as a release's tag does — else as `main` does.
+   */
   readonly tiers: Map<string, RecipeTierResponse>;
   /**
    * Commits `files` (null deletes one) to `main` of `repo`, made with its first commit; the new head, once HQ has
@@ -261,7 +264,12 @@ const withDeploys = <A, E>(
       ),
       Layer.provide(
         Layer.succeed(RecipeTiers, {
-          read: (appId, tier) => Effect.succeed(tiers.get(`${appId}/${tier}`) ?? ABSENT),
+          read: (appId, tier, at) =>
+            Effect.succeed(
+              (at === undefined ? undefined : tiers.get(`${appId}/${tier}@${at}`)) ??
+                tiers.get(`${appId}/${tier}`) ??
+                ABSENT,
+            ),
         }),
       ),
     );
@@ -3208,6 +3216,311 @@ describe("deploys", () => {
         }),
       ),
     );
+
+    // MODEL §9/8 and §9/10: a release deploys the tier its tag was made with, not main's; a part that
+    // tier does not name is stopped with the environment's token, never deleted — deleting a service
+    // is a person's act — and a stopped one it names is started.
+    describe("a release's tier", () => {
+      let made = 0;
+      /** The production tier of `parts`, merged to the recipe's main: its new head, as tagged. */
+      const tierAt = (rig: Rig, parts: ReadonlyArray<string>) =>
+        Effect.gen(function* () {
+          const tier = tierOf(...parts.flatMap((part) => runtime(rig.appId, part)));
+          rig.tiers.set(`${rig.appId}/production`, tier);
+          made += 1;
+          const head = yield* rig.commit("group", { "README.md": `# Shop ${String(made)}\n` });
+          rig.tiers.set(`${rig.appId}/production@${head}`, tier);
+          return head;
+        });
+      /** Each production service, and whether it runs. */
+      const production = (world: FakeWorld) =>
+        world.services
+          .filter((service) => service.projectId === "P_PROD")
+          .map((service) => [service.name, service.status]);
+      /** What the release `tag`'s rollout said of the services it asked nothing for. */
+      const leftOut = (tag: string) =>
+        Effect.flatMap(
+          SqlClient.SqlClient,
+          (sql) => sql<{ readonly service: string; readonly reason: string }>`
+            SELECT entry->>'service' AS service, entry->>'reason' AS reason
+            FROM hq_rollout, jsonb_array_elements(left_out) AS entry
+            WHERE tag = ${tag} ORDER BY 1`,
+        );
+      const noteOf = (tag: string) =>
+        Effect.flatMap(SqlClient.SqlClient, (sql) =>
+          Effect.map(
+            sql<{ readonly note: string | null }>`SELECT note FROM hq_rollout WHERE tag = ${tag}`,
+            (rows) => rows[0]?.note,
+          ),
+        );
+      /** `web` and `api` released as v0.1.0 and running in production. */
+      const twoParts = (rig: Rig) =>
+        Effect.gen(function* () {
+          yield* withProduction(rig.appId, rig.world);
+          rig.world.services.push(fakeService("api", { id: "S-api-prod", projectId: "P_PROD" }));
+          const web = yield* rig.commit("web", { "zerops.yaml": ZEROPS_YAML });
+          const api = yield* rig.commit("api", { "zerops.yaml": zeropsYaml("api") });
+          const one = yield* tierAt(rig, ["web", "api"]);
+          yield* (yield* Releases).release("dev", rig.appId, {
+            tag: "v0.1.0",
+            groupHead: one,
+            entries: [
+              { service: "web", sha: web },
+              { service: "api", sha: api },
+            ],
+          });
+          yield* rig.until(
+            (rows) =>
+              rows.filter((row) => row.project === "P_PROD" && row.state === "live").length === 2,
+          );
+          return { web, api };
+        });
+
+      it.effect(
+        "Rollback reads the tier from the target release's tag, stops a part it lacks, and a release naming it again starts it",
+        () =>
+          withDeploys((rig) =>
+            Effect.gen(function* () {
+              const { appId, world, commit, deploys, until, planned } = rig;
+              const releases = yield* Releases;
+              yield* withProduction(appId, world);
+              const web = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+              const one = yield* tierAt(rig, ["web"]);
+              yield* releases.release("dev", appId, {
+                tag: "v0.1.0",
+                groupHead: one,
+                entries: [{ service: "web", sha: web }],
+              });
+              yield* until((rows) => rows.some((row) => row.project === "P_PROD"));
+
+              // A part added: its service in production, its tier at v0.2.0.
+              world.services.push(
+                fakeService("worker", { id: "S-worker-prod", projectId: "P_PROD" }),
+              );
+              const worker = yield* commit("worker", { "zerops.yaml": zeropsYaml("worker") });
+              const two = yield* tierAt(rig, ["web", "worker"]);
+              const both = [
+                { service: "web", sha: web },
+                { service: "worker", sha: worker },
+              ];
+              yield* releases.release("dev", appId, {
+                tag: "v0.2.0",
+                groupHead: two,
+                entries: both,
+              });
+              yield* until((rows) =>
+                rows.some((row) => row.service === "worker" && row.state === "live"),
+              );
+
+              const back = yield* releases.rollback("dev", appId, "v0.1.0", { groupHead: two });
+              yield* planned;
+              assert.deepStrictEqual(production(world), [
+                ["web", "ACTIVE"],
+                ["worker", "STOPPED"],
+              ]);
+              assert.deepStrictEqual(
+                (yield* leftOut(back.tag)).filter((left) => left.service === "worker"),
+                [
+                  {
+                    service: "worker",
+                    reason: "stopped by rollback to v0.1.0: the tier of v0.2.1 does not declare it",
+                  },
+                ],
+              );
+              assert.include(world.calls, "stopService:key-prod");
+
+              const three = yield* tierAt(rig, ["web", "worker"]);
+              yield* releases.release("dev", appId, {
+                tag: "v0.3.0",
+                groupHead: three,
+                entries: both,
+              });
+              yield* planned;
+              assert.deepStrictEqual(production(world), [
+                ["web", "ACTIVE"],
+                ["worker", "ACTIVE"],
+              ]);
+              assert.strictEqual(yield* noteOf("v0.3.0"), "v0.3.0 started worker");
+              assert.deepStrictEqual(
+                (yield* deploys)
+                  .filter((row) => row.project === "P_PROD")
+                  .map(({ service, sha, state }) => [service, sha, state]),
+                [
+                  ["web", web, "live"],
+                  ["worker", worker, "live"],
+                ],
+              );
+            }),
+          ),
+      );
+
+      it.effect(
+        "A service the tier no longer declares is stopped, never deleted, and a rollback to a tier declaring it starts it at the release commit",
+        () =>
+          withDeploys((rig) =>
+            Effect.gen(function* () {
+              const { appId, world, commit, deploys, planned } = rig;
+              const releases = yield* Releases;
+              const { web, api } = yield* twoParts(rig);
+              const next = yield* commit("web", { "index.js": "next\n" });
+              const two = yield* tierAt(rig, ["web"]);
+              yield* releases.release("dev", appId, {
+                tag: "v0.2.0",
+                groupHead: two,
+                entries: [{ service: "web", sha: next }],
+              });
+              yield* planned;
+              assert.deepStrictEqual(production(world), [
+                ["web", "ACTIVE"],
+                ["api", "STOPPED"],
+              ]);
+              assert.deepStrictEqual(yield* leftOut("v0.2.0"), [
+                { service: "api", reason: "stopped: the tier of v0.2.0 does not declare it" },
+              ]);
+
+              yield* releases.rollback("dev", appId, "v0.1.0", { groupHead: two });
+              yield* rig.until(
+                (rows) =>
+                  rows.filter((row) => row.project === "P_PROD").length === 4 &&
+                  rows.at(-1)?.state === "live",
+              );
+              assert.deepStrictEqual(production(world), [
+                ["web", "ACTIVE"],
+                ["api", "ACTIVE"],
+              ]);
+              assert.strictEqual(yield* noteOf("v0.2.1"), "v0.2.1 started api");
+              assert.deepStrictEqual(
+                (yield* deploys)
+                  .filter((row) => row.project === "P_PROD")
+                  .map(({ service, sha }) => [service, sha]),
+                [
+                  ["web", web],
+                  ["api", api],
+                  ["web", next],
+                  ["web", web],
+                ],
+              );
+              assert.deepStrictEqual(yield* leftOut("v0.2.1"), [
+                { service: "api", reason: `api already runs ${api.slice(0, 7)}` },
+              ]);
+            }),
+          ),
+      );
+
+      it.effect(
+        "Rollback over a deleted part deploys the rest and reports the missing service",
+        () =>
+          withDeploys((rig) =>
+            Effect.gen(function* () {
+              const { appId, world, commit, deploys, until } = rig;
+              const releases = yield* Releases;
+              const { web, api } = yield* twoParts(rig);
+              const next = yield* commit("web", { "index.js": "next\n" });
+              const two = yield* tierAt(rig, ["web"]);
+              yield* releases.release("dev", appId, {
+                tag: "v0.2.0",
+                groupHead: two,
+                entries: [{ service: "web", sha: next }],
+              });
+              yield* until((rows) => rows.some((row) => row.sha === next && row.state === "live"));
+              // A person deleted the stopped api.
+              world.services.splice(
+                world.services.findIndex((service) => service.id === "S-api-prod"),
+                1,
+              );
+
+              yield* releases.rollback("dev", appId, "v0.1.0", { groupHead: two });
+              yield* until(
+                (rows) =>
+                  rows.filter((row) => row.project === "P_PROD").length === 5 &&
+                  rows.every((row) => row.state === "live" || row.state === "refused"),
+              );
+              assert.deepStrictEqual(
+                (yield* deploys)
+                  .filter((row) => row.project === "P_PROD")
+                  .slice(3)
+                  .map(({ service, sha, state, reason }) => [service, sha, state, reason]),
+                [
+                  ["web", web, "live", null],
+                  ["api", api, "refused", "the environment's project has no service api"],
+                ],
+              );
+            }),
+          ),
+      );
+
+      it.effect("A one-part app's release and rollback stop and start nothing", () =>
+        withDeploys((rig) =>
+          Effect.gen(function* () {
+            const { appId, world, commit, deploys, until, planned } = rig;
+            const releases = yield* Releases;
+            yield* withProduction(appId, world);
+            const web = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            const one = yield* tierAt(rig, ["web"]);
+            yield* releases.release("dev", appId, {
+              tag: "v0.1.0",
+              groupHead: one,
+              entries: [{ service: "web", sha: web }],
+            });
+            yield* until((rows) =>
+              rows.some((row) => row.project === "P_PROD" && row.state === "live"),
+            );
+            const next = yield* commit("web", { "index.js": "next\n" });
+            yield* releases.release("dev", appId, {
+              tag: "v0.2.0",
+              groupHead: one,
+              entries: [{ service: "web", sha: next }],
+            });
+            yield* until((rows) => rows.some((row) => row.sha === next && row.state === "live"));
+            yield* releases.rollback("dev", appId, "v0.1.0", { groupHead: one });
+            yield* planned;
+            yield* until(
+              (rows) => rows.filter((row) => row.project === "P_PROD").at(-1)?.state === "live",
+            );
+            assert.deepStrictEqual(
+              (yield* deploys)
+                .filter((row) => row.project === "P_PROD")
+                .map(({ service, sha, state }) => [service, sha, state]),
+              [
+                ["web", web, "live"],
+                ["web", next, "live"],
+                ["web", web, "live"],
+              ],
+            );
+            assert.deepStrictEqual(production(world), [["web", "ACTIVE"]]);
+            assert.isFalse(
+              world.calls.some((call) => /^(stop|start)Service:/u.test(call)),
+              "no service stopped or started",
+            );
+            for (const tag of ["v0.1.0", "v0.2.0", "v0.2.1"]) {
+              assert.strictEqual(yield* noteOf(tag), null);
+            }
+          }),
+        ),
+      );
+
+      it("HQ deletes no service: no release, rollback or tier change holds a path that deletes one", () => {
+        const deletes = [
+          /HttpClientRequest\.del\b/u,
+          /delete[A-Z]?\w*Service|deleteService/u,
+          /service-stack[^\n]*["']DELETE["']|["']DELETE["'][^\n]*service-stack/u,
+        ];
+        const sources = NodeFS.readdirSync(NodePath.join(import.meta.dirname), {
+          recursive: true,
+          encoding: "utf8",
+        }).filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
+        assert.isAbove(sources.length, 50);
+        const found = sources.flatMap((file) => {
+          const text = NodeFS.readFileSync(NodePath.join(import.meta.dirname, file), "utf8");
+          return deletes.some((pattern) => pattern.test(text)) ? [file] : [];
+        });
+        assert.deepStrictEqual(found, []);
+        assert.deepStrictEqual(
+          Object.keys(fakeZeropsDeploy(emptyWorld())).filter((name) => /delete/iu.test(name)),
+          [],
+        );
+      });
+    });
 
     // A production follows the releases made after it was attached: attaching, keeping its key or
     // replacing it deploys nothing of an older one, a rolled-back snapshot of v0.13.x included.
