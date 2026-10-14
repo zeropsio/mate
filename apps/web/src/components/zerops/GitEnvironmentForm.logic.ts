@@ -1,7 +1,8 @@
-import type { HqGitAdoption, RepoListEntry } from "@t3tools/shared/hqChanges";
+import { RepoName, type HqGitAdoption, type RepoListEntry } from "@t3tools/shared/hqChanges";
 import { HqGitBranch } from "@t3tools/shared/hqEnvironment";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import * as Schema from "effect/Schema";
+import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 
 /** The streamed roster owns connectivity; an operation answer never invents a repository. */
 export function gitSetupRepositories(repos: ReadonlyArray<RepoListEntry> | undefined) {
@@ -20,6 +21,7 @@ export function gitSetupRepositories(repos: ReadonlyArray<RepoListEntry> | undef
 }
 
 export const gitSetupBranchValid = Schema.is(HqGitBranch);
+const gitSetupRepoNameValid = Schema.is(RepoName);
 
 /** Any changed tip, identity, branch or included roster needs the person's review again. */
 export function gitSetupReview(
@@ -60,4 +62,29 @@ export function gitAdoptionSentence(review: HqGitAdoption): string {
 
 export function gitSetupExpiry(expiresAt: string | null): string {
   return expiresAt === null ? "Expiry not reported" : `Token expires ${expiresAt}`;
+}
+
+/** Resolve the person's address against HQ's code repositories, never the recipe. */
+export function gitSetupRepository(
+  repos: ReadonlyArray<RepoListEntry> | undefined,
+  address: string,
+  project = "",
+) {
+  const url = /^https:\/\//i.test(address.trim()) ? address.trim() : `https://${address.trim()}`;
+  const guide = gitTokenGuide(url, project);
+  if (guide.kind !== "guide") return undefined;
+  const roster = gitSetupRepositories(repos);
+  if (roster === undefined) return undefined;
+  const sameAddress = (value: string) => value.replace(/\.git\/?$/, "").replace(/\/$/, "");
+  const existing =
+    roster.find(
+      ({ repo }) => repo.remote != null && sameAddress(repo.remote.url) === sameAddress(url),
+    )?.repo ??
+    (roster.length === 1 && roster[0]?.repo.remote == null ? roster[0]?.repo : undefined);
+  const name = existing?.name ?? guide.repository.split("/").at(-1);
+  if (!gitSetupRepoNameValid(name) || name === RECIPE_REPO) return undefined;
+  const remote = existing?.remote;
+  const sameRemote = remote != null && sameAddress(remote.url) === sameAddress(url);
+  const connected = sameRemote && remote.invalidSince === null;
+  return { name, url, existing, guide, connected, sameRemote };
 }

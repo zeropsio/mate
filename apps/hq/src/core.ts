@@ -164,13 +164,13 @@ const services = (options: CoreOptions) => {
         deploysLayer().pipe(
           Layer.provideMerge(gitReleasesLayer.pipe(Layer.provide(remotes))),
           Layer.provide(recipeTiersLayer),
-          Layer.provideMerge(changesLayer),
         ),
       ),
-      Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),
     ),
   )
     .pipe(
+      Layer.provideMerge(changesLayer),
+      Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),
       Layer.provideMerge(usageLedgerLayer),
       Layer.provideMerge(mateOverviewsLayer),
       // One set of buckets for the API's addresses and the door's people.

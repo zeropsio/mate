@@ -337,7 +337,9 @@ export const failure = (error: {
         },
         error.reason === "not_structure_writer"
           ? 403
-          : error.reason === "bad_address" || error.reason === "bad_branch"
+          : error.reason === "bad_address" ||
+              error.reason === "bad_branch" ||
+              error.reason === "bad_repo"
             ? 400
             : 409,
       ),
