@@ -211,7 +211,31 @@ describe("environment identity expansion", () => {
               const viewed = source.forApp(
                 "owner",
                 APP,
-                { orgId: "ORG", freshness: "cached", members: [], projects: [] },
+                // The org's owner, who reads both environments' projects.
+                {
+                  orgId: "ORG",
+                  freshness: "cached",
+                  members: [
+                    {
+                      userId: "owner",
+                      clientUserId: "C-owner",
+                      name: "owner",
+                      kind: "person",
+                      status: "ACTIVE",
+                      roleCode: "OWNER",
+                      canCreateProjects: true,
+                    },
+                  ],
+                  projects: ["stage", "production"].map((id) => ({
+                    id,
+                    orgId: "ORG",
+                    name: id,
+                    status: "ACTIVE",
+                    tags: [],
+                    userRoles: [],
+                    publicZone: `${id}.zone`,
+                  })),
+                },
                 { allow: true },
               );
               if (!Array.isArray(viewed)) throw new Error("Expected environments");

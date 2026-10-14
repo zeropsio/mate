@@ -1926,6 +1926,62 @@ describe("HQ API", () => {
       }),
     );
 
+    // The refusal zcp answers by enrolling again (card zcp-hq-reenroll): HQ only revokes.
+    it.effect(
+      "a Mate whose key Zerops deleted is refused 401 mate_credential_required until it enrolls again",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          yield* setUpMate(call, "P_MATE");
+          const key = (id: string) =>
+            fake.tokens.set(`value-of-${id}`, {
+              id,
+              name: "zerops-zcp-zcp",
+              orgId: "ORG",
+              roleCode: "NO_ACCESS",
+              canCreateProjects: false,
+              canViewFinances: false,
+              canEditFinances: false,
+              projects: [{ projectId: "P_MATE", roleCode: "ADMIN" }],
+              createdMs: 0,
+              createdByUser: "owner",
+            });
+          const enroll = (keyTokenId: string) =>
+            Effect.gen(function* () {
+              const { nonce } = (yield* call("POST", "/api/mate/challenge", {
+                body: { projectId: "P_MATE" },
+              })).body as { readonly nonce: string };
+              fake.env.set("P_MATE", [
+                { key: "MATE_HQ_CHALLENGE", value: nonce, sensitive: false },
+              ]);
+              const issued = yield* call("POST", "/api/mate/credential", {
+                body: { projectId: "P_MATE", nonce, keyTokenId },
+              });
+              return (issued.body as { readonly credential: string }).credential;
+            });
+          const whoami = (credential: string) =>
+            Effect.map(
+              call("GET", "/api/mate/whoami", { headers: { authorization: `Mate ${credential}` } }),
+              (answer) => [answer.status, answer.body],
+            );
+          key("tok-first");
+          const first = yield* enroll("tok-first");
+          assert.deepStrictEqual(yield* whoami(first), [200, { projectId: "P_MATE" }]);
+          fake.tokens.delete("value-of-tok-first");
+          const refused = yield* whoami(first).pipe(
+            Effect.filterOrFail(([status]) => status === 401),
+            Effect.retry(Schedule.spaced(Duration.millis(50))),
+            Effect.timeout("10 seconds"),
+            Effect.orDie,
+          );
+          assert.deepStrictEqual(refused, [401, { code: "mate_credential_required" }]);
+          key("tok-second");
+          const second = yield* enroll("tok-second");
+          assert.deepStrictEqual(yield* whoami(second), [200, { projectId: "P_MATE" }]);
+        }),
+    );
+
     // ADR 0003's fallout: a Mate naming a key an earlier client widened gets its credential as any
     // other — the word that its key reads other projects stays HQ's — and the project's admin, who
     // finished its setup, asks HQ to read the key again; nobody else.
