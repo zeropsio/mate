@@ -1536,7 +1536,7 @@ export function ZeropsStopPane({
                 key={part.service}
               >
                 <span className="min-w-0 flex-1">
-                  <span className="text-[var(--zerops-status-failed-text)]">{part.text}</span>
+                  <span className="text-status-failed-text">{part.text}</span>
                   {part.detail === undefined ? null : (
                     <span className="text-muted-foreground"> · {part.detail}</span>
                   )}

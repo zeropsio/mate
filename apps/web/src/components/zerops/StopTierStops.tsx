@@ -58,9 +58,7 @@ export function StopTierStops({
                 {row.hostname} · {row.line}
               </span>
               {trouble?.hostname === row.hostname ? (
-                <span className="text-xs text-[var(--zerops-status-failed-text)]">
-                  {trouble.text}
-                </span>
+                <span className="text-xs text-status-failed-text">{trouble.text}</span>
               ) : null}
             </span>
             {row.deletable === undefined ? (
