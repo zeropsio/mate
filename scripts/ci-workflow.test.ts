@@ -3,7 +3,23 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { parse } from "yaml";
+import { parse as parseYaml } from "yaml";
+import { blameMatrices } from "./ci-blame.ts";
+
+const parse = (source: string) => {
+  const parsed = parseYaml(source);
+  for (const [job, matrix] of Object.entries(blameMatrices)) {
+    if (typeof parsed.jobs?.[job]?.strategy?.matrix === "string") {
+      parsed.jobs[job].strategy.matrix = {
+        include: matrix,
+        shard: matrix
+          .filter((row) => "shard" in row)
+          .map((row) => ("shard" in row ? row.shard : undefined)),
+      };
+    }
+  }
+  return parsed;
+};
 import { expect, it } from "vite-plus/test";
 import { chatGateStages } from "./chat-gate.ts";
 import { checkSteps } from "./ci-local.ts";
@@ -309,7 +325,7 @@ it("the Test verdict includes every scripts and HQ shard", () => {
     "test_scripts",
     "test_hq",
   ]);
-  expect(workflow.jobs.test.if).toBe("${{ !cancelled() && needs.prepare.result == 'success' }}");
+  expect(workflow.jobs.test.if).toContain("!cancelled() && needs.prepare.result == 'success'");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'failure')");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'skipped')");
   for (const name of ["test_scripts", "test_hq"]) {
@@ -319,7 +335,7 @@ it("the Test verdict includes every scripts and HQ shard", () => {
     ).toEqual([1]);
     expect(workflow.jobs[name].strategy["fail-fast"]).toBe(false);
     expect(workflow.jobs[name].steps.at(-1).run).toContain(
-      "--shard ${{ matrix.shard }}/${{ strategy.job-total }}",
+      "--shard ${{ matrix.shard }}/${{ matrix.total }}",
     );
   }
   expect(
@@ -448,7 +464,9 @@ it("CI runs full verification on integration pushes and preserves PR change sele
   expect(workflow.on.pull_request).toBeNull();
   expect(workflow.on.workflow_call).toBeUndefined();
   expect(workflow["run-name"]).toBe("CI · ${{ github.ref_name }}");
-  expect(workflow.jobs.prepare.outputs).toEqual({ skip: "${{ steps.verdict.outputs.skip }}" });
+  expect(workflow.jobs.prepare.outputs).toMatchObject({
+    skip: "${{ steps.verdict.outputs.skip }}",
+  });
   for (const [name, job] of Object.entries(workflow.jobs) as [
     string,
     { needs?: string | string[]; if?: string },
@@ -582,7 +600,8 @@ it.each([
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
   expect(workflow.jobs.prepare, "ASSERTION: CI owns one verified-SHA projection").toBeDefined();
-  const run = workflow.jobs.prepare.steps[0].run as string;
+  const run = workflow.jobs.prepare.steps.find((step: { id?: string }) => step.id === "verdict")
+    .run as string;
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-promotion-"));
   const output = NodePath.join(directory, "output");
   const called = NodePath.join(directory, "called");

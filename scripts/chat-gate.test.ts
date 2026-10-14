@@ -6,6 +6,7 @@ import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
 import * as NodeUtil from "node:util";
 import { parse } from "yaml";
+import { blameSelection } from "./ci-blame.ts";
 import { expect, it } from "vite-plus/test";
 import {
   SCENARIO_PROJECT_FILES,
@@ -539,19 +540,25 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
       {
         if?: string;
         name: string;
-        strategy: { matrix: { include: { command: string }[] } };
+        strategy: { matrix: string };
       }
     >;
   };
   // A false chat verdict must not prevent the shared bundle or its scenario consumers on main.
   expect(jobs.chat_bundle!.if).toBe(
-    "${{ !cancelled() && needs.prepare.result == 'success' && (needs.prepare.outputs.skip == 'true' || github.event_name == 'push' || needs.changes.outputs.chat != 'false') }}",
+    "${{ !cancelled() && needs.prepare.result == 'success' && (needs.prepare.outputs.skip == 'true' || github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_bundle') }}",
   );
   expect(jobs.chat_scenarios!.if).toBe(
-    "${{ !cancelled() && needs.prepare.result == 'success' && needs.chat_bundle.result == 'success' }}",
+    "${{ !cancelled() && needs.prepare.result == 'success' && needs.chat_bundle.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_scenarios') }}",
   );
   expect(jobs.chat_scenarios!.name).toMatch(/^Test Web /u);
-  const commands = jobs.chat_scenarios!.strategy.matrix.include.map((row) => row.command);
+  expect(jobs.chat_scenarios!.strategy.matrix).toBe(
+    "${{ fromJSON(needs.prepare.outputs.chat_scenarios) }}",
+  );
+  const selection = blameSelection("refs/heads/main", undefined);
+  expect(selection.selected).toContain("chat_bundle");
+  expect(selection.selected).toContain("chat_scenarios");
+  const commands = selection.matrices.chat_scenarios!.include.map((row) => String(row.command));
   const nonC = commands.filter((command) => command.startsWith("vp -C"));
   const allNonC =
     "vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenarios test/scenarios/areas --exclude 'test/scenarios/areas/c-mate/**'";

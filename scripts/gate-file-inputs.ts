@@ -163,6 +163,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/chat-gate.test.ts": [".github/workflows/ci.yml", "apps/web/test/scenarios/areas/**"],
   "scripts/check-guard-exceptions.test.ts": [],
   "scripts/ci-local.test.ts": [".github/workflows/ci.yml"],
+  "scripts/ci-blame.test.ts": [".github/workflows/ci.yml", "scripts/ci-blame.ts"],
   "scripts/ci-workflow.test.ts": [".github/workflows/*.yml", "pnpm-workspace.yaml"],
   "scripts/ensure-electron-runtime.test.ts": [],
   "scripts/gate-changed.test.ts": [],
