@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsHandoverOutcome } from "@t3tools/client-runtime/zerops/handover";
 
 import {
   ZEROPS_HANDOVER_NONCE_KEY,
   completeZeropsHandover,
+  lastZeropsHandoverIntent,
   mintZeropsHandoverNonce,
   readHandoverOnce,
   startZeropsHandover,
@@ -59,6 +60,29 @@ describe("startZeropsHandover", () => {
     const url = new URL(startZeropsHandover({ ...here, store: fakeStore(), intent: "register" }));
     expect(url.searchParams.get("intent")).toBe("register");
     expect(url.pathname).toBe("/authorize-app");
+  });
+
+  describe("a failed hand-over's Try again", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it.each([
+      ["a sign-up as a sign-up", "register", "register"],
+      ["a sign-in as a sign-in", undefined, undefined],
+    ] as const)("retries %s", (_case, intent, retried) => {
+      const kept = new Map<string, string>();
+      vi.stubGlobal("window", {
+        sessionStorage: {
+          getItem: (key: string) => kept.get(key) ?? null,
+          setItem: (key: string, value: string) => kept.set(key, value),
+          removeItem: (key: string) => kept.delete(key),
+        },
+      });
+      startZeropsHandover({ ...here, store: fakeStore(), intent: "register" });
+      startZeropsHandover({ ...here, store: fakeStore(), ...(intent ? { intent } : {}) });
+      expect(lastZeropsHandoverIntent()).toBe(retried);
+    });
   });
 });
 
