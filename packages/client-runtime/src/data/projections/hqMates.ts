@@ -42,6 +42,28 @@ export const hqMates: Projection<string, HqMatesRead> = {
   equals: sameValue,
 };
 
+/**
+ * Whether HQ answered for every Mate it places: each one's attention relayed, read with nothing in
+ * it, or refused — what a Mate's row says of when it last spoke and what it last said. The menu
+ * paints its rows once this holds, so each row comes with its time and its words.
+ */
+export const hqMatesAnswered: Projection<string, boolean> = {
+  name: "hqMatesAnswered",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) =>
+    read.members(placementsScope(orgId)).ids.every((projectId) => {
+      const placement = read.fact("placement", projectId);
+      if (placement.kind !== "known" || placement.value.mate == null) return true;
+      const scope = hqMateScope(orgId, projectId);
+      return (
+        read.fact("hqMate", projectId).kind === "known" ||
+        read.coverage(scope) === "complete" ||
+        read.stream(scope).phase === "refused"
+      );
+    }),
+  equals: Object.is,
+};
+
 function overviewOf(
   read: ProjectionReads,
   { orgId, projectId }: MateProjectKey,

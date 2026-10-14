@@ -46,6 +46,7 @@ import {
   hqMateLogins,
   hqMateReady,
   hqMates,
+  hqMatesAnswered,
   type HqMatesRead,
 } from "./projections/hqMates.ts";
 import { hqVerdict } from "./projections/hqVerdict.ts";
@@ -278,6 +279,13 @@ export const shownHqMatesAtom = Atom.make((get): HqMatesRead => {
   if (account === null || account.orgId === null) return NO_MATES;
   return get(account.data.project(hqMates, account.orgId));
 }).pipe(Atom.withLabel("data:shown-hq-mates"));
+
+/** Whether HQ answered for every Mate the organization shown places (`hqMatesAnswered`). */
+export const shownHqMatesAnsweredAtom = Atom.make((get): boolean => {
+  const account = get(accountReadsAtom);
+  if (account === null || account.orgId === null) return false;
+  return get(account.data.project(hqMatesAnswered, account.orgId));
+}).pipe(Atom.withLabel("data:shown-hq-mates-answered"));
 
 const NO_PERSON_FACTS: Readonly<Record<string, HqPersonFacts>> = {};
 

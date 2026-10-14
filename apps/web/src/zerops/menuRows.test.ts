@@ -212,6 +212,46 @@ describe("menuRowsAtom", () => {
     expect(drawnOrder(registry.get(atom))).toEqual([ZOE.id, ADA.id]);
   });
 
+  it("The menu paints its rows once each Mate's last words are read, not before", () => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, ORG, [ADA, ZOE]);
+    seedHqVerdict(store, ORG, "official");
+    const atom = menuRowsAtom(ORG, []);
+    mountHqNavigation(
+      registry,
+      ORG,
+      { structure: STRUCTURE, attentionUnanswered: [ADA.id, ZOE.id] },
+      store,
+    );
+    const waiting = registry.get(atom);
+    mountHqNavigation(
+      registry,
+      ORG,
+      { structure: STRUCTURE, attentionUnanswered: [ZOE.id] },
+      store,
+    );
+    const half = registry.get(atom);
+    mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
+
+    expect(waiting).toEqual({ settled: false, rows: [] });
+    expect(half).toEqual({ settled: false, rows: [] });
+    expect(drawnOrder(registry.get(atom))).toEqual([ZOE.id, ADA.id]);
+  });
+
+  it("A Mate whose last words have not come by the wait's end paints without them", () => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, ORG, [ADA, ZOE]);
+    seedHqVerdict(store, ORG, "official");
+    mountHqNavigation(
+      registry,
+      ORG,
+      { structure: STRUCTURE, attentionUnanswered: [ZOE.id] },
+      store,
+    );
+    const frame = registry.get(menuRowsAtom(ORG, [], { waitedOut: true, drawn: false }));
+    expect(drawnOrder(frame)).toEqual([ZOE.id, ADA.id]);
+  });
+
   it("Rows once drawn stay while HQ reads again", () => {
     const registry = AtomRegistry.make();
     const store = mountRoster(registry, ORG, [ADA, ZOE]);
