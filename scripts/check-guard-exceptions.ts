@@ -38,18 +38,8 @@ import {
   type CachedGuardFinding,
 } from "./lib/guard-cache.ts";
 
-/**
- * The reviewed source roots scanned by every oxlint-side guard: the client sources, and HQ for the
- * guards that reach it (each rule still decides from a file's path whether it applies).
- */
-export const GUARD_SCOPE_PATHS = [
-  "apps/web/src",
-  "apps/mobile/src",
-  "apps/desktop/src",
-  "packages/shared/src",
-  "packages/client-runtime/src",
-  "apps/hq/src",
-] as const;
+export { guardScopePaths as GUARD_SCOPE_PATHS } from "./gate-input-scopes.ts";
+import { guardScopePaths as GUARD_SCOPE_PATHS } from "./gate-input-scopes.ts";
 
 const DEFAULT_REPO_ROOT = NodePath.resolve(
   NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),

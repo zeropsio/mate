@@ -9,17 +9,7 @@ import { decodeGitHubEvent, githubRatchetRevision } from "./lib/github-ratchet.t
 
 const ROOT = NodePath.resolve(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "..");
 const BASELINE = "scripts/runtime-cycles.json";
-const SOURCE_ROOTS = [
-  "apps/web/src",
-  "apps/server/src",
-  "apps/hq/src",
-  "apps/mobile/src",
-  "apps/desktop/src",
-  "packages/client-runtime/src",
-  "packages/contracts/src",
-  "packages/shared/src",
-  "packages/hq-git/src",
-];
+import { runtimeCycleSourceRoots as SOURCE_ROOTS } from "./gate-input-scopes.ts";
 const EXCLUDES = [/\.test\./, /\.spec\./, /\/__fixtures__\//, /\/testing\//, /routeTree\.gen/];
 
 type Graph = Readonly<Record<string, readonly string[]>>;

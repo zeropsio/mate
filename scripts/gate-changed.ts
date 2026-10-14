@@ -4,6 +4,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import { guardScopePaths, runtimeCycleSourceRoots, retainedTestFile } from "./gate-input-scopes.ts";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
 import { stateOnlySmoke } from "./state-smoke-cases.ts";
 export { stateOnlySmoke } from "./state-smoke-cases.ts";
@@ -607,6 +608,49 @@ export function buildRelatedFileGraph(
   };
   return Object.freeze({
     rank,
+    // Receipt inputs traverse beyond lane edits; selection intentionally stops at them.
+    inputFiles(files: ReadonlyArray<string>, inventory: ReadonlyArray<string>): string[] {
+      const pending = files.flatMap(roots);
+      const visited = new Set<string>();
+      const reads = new Set<string>();
+      while (pending.length) {
+        const file = pending.pop()!;
+        if (visited.has(file)) continue;
+        visited.add(file);
+        pending.push(...imports(file), ...(changedEdges.get(file) ?? []));
+        if (/^vite(?:st)?\.config\.[cm]?[jt]s$/u.test(NodePath.posix.basename(file))) {
+          const setupPaths = (value: unknown): string[] => {
+            const node = record(value);
+            if (typeof node?.value === "string")
+              return [NodePath.posix.join(NodePath.posix.dirname(file), node.value)];
+            if (Array.isArray(node?.elements)) return node.elements.flatMap(setupPaths);
+            if (
+              (node?.type === "NewExpression" || node?.type === "CallExpression") &&
+              Array.isArray(node.arguments)
+            )
+              return setupPaths(node.arguments[0]);
+            throw new Error(`${file}: execution setup paths must be statically readable`);
+          };
+          const visit = (value: unknown): void => {
+            if (Array.isArray(value)) {
+              value.forEach(visit);
+              return;
+            }
+            const node = record(value);
+            if (!node) return;
+            for (const key of ["setupFiles", "globalSetup"]) {
+              const setups = field(node, key);
+              if (setups !== undefined) pending.push(...setupPaths(setups));
+            }
+            Object.values(node).forEach(visit);
+          };
+          for (const source of sources(file)) visit(parseSync(file, source, parserOptions).program);
+        }
+        for (const pattern of fileReadInputs[file] ?? [])
+          for (const input of inventory) if (NodePath.matchesGlob(input, pattern)) reads.add(input);
+      }
+      return [...new Set([...visited, ...reads])].sort();
+    },
     select(paths: ReadonlyArray<string>): string[] {
       const changed = new Set(paths.filter((path) => !documentation(path)));
       if (!changed.size) return [];
@@ -799,10 +843,11 @@ interface GateStage {
 }
 
 interface GateReceipt {
+  readonly stageHashes?: Readonly<Record<string, string>>;
   readonly diffHash: string;
   readonly selectionHash: string;
   readonly selectedStages: GateStage[];
-  readonly results: { name: string; status: number; durationMs: number }[];
+  results: { name: string; status: number; durationMs: number }[];
   durationMs: number;
   queueWaitMs: number;
   completed: boolean;
@@ -846,16 +891,16 @@ function diffHash(root: string, comparison: string): string {
 }
 
 // A rebase can update the selector or its configuration without changing the lane patch.
-function selectionHash(root: string, inventory: ReadonlyArray<string>): string {
+function selectionHash(root: string): string {
   const hash = NodeCrypto.createHash("sha256");
-  hash.update(JSON.stringify([process.version, inventory]));
+  hash.update(process.version);
   const inputs = [
     "scripts/gate-changed.ts",
+    "scripts/gate-input-scopes.ts",
     "scripts/state-smoke-cases.ts",
     "scripts/gate-file-inputs.ts",
     "scripts/gate-timing-reporter.ts",
     "scripts/gate-smoke-reporter.ts",
-    ...repositoryInvariants,
     "scripts/gate-log.ts",
     "scripts/gate-slots.ts",
     "scripts/test-process-lock.ts",
@@ -864,7 +909,7 @@ function selectionHash(root: string, inventory: ReadonlyArray<string>): string {
     "pnpm-workspace.yaml",
     "tsconfig.base.json",
     "apps/web/test/scenarios/vitest.config.ts",
-    ...inventory,
+    ".oxlintrc.json",
     ...[".", ...workspacePackages(root).map((pkg) => pkg.directory)].flatMap((directory) =>
       ["package.json", "vite.config.ts", "tsconfig.json"].map((file) =>
         NodePath.posix.join(directory, file),
@@ -883,22 +928,171 @@ function selectionHash(root: string, inventory: ReadonlyArray<string>): string {
   return hash.digest("hex");
 }
 
+/** Each stage proves its own inputs, rather than invalidating every success on a lane edit. */
+function stageHashes(
+  root: string,
+  comparison: string,
+  stages: GateStage[],
+  graph: ReturnType<typeof buildGateGraph>,
+  selection: string,
+): Record<string, string> {
+  const inventory = NodeChildProcess.execFileSync(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  )
+    .split("\0")
+    .filter((path) => path && !path.startsWith(".gate-receipt.json"));
+  const inputs = graph.related ?? buildRelatedFileGraph(root, []);
+  const digest = (paths: ReadonlyArray<string>, baseline: ReadonlyArray<string>) => {
+    const hash = NodeCrypto.createHash("sha256");
+    const files = [...new Set(paths)].sort();
+    if (baseline.length)
+      hash.update(
+        NodeChildProcess.execFileSync(
+          "git",
+          ["--literal-pathspecs", "ls-tree", "-z", comparison, "--", ...baseline],
+          { cwd: root, maxBuffer: 64 * 1024 * 1024 },
+        ),
+      );
+    for (const path of files) {
+      const absolute = NodePath.join(root, path);
+      const stat = NodeFS.lstatSync(absolute, { throwIfNoEntry: false });
+      const bytes = !stat
+        ? Buffer.alloc(0)
+        : stat.isSymbolicLink()
+          ? Buffer.from(NodeFS.readlinkSync(absolute))
+          : NodeFS.readFileSync(absolute);
+      hash.update(
+        JSON.stringify([
+          path,
+          stat ? (stat.isSymbolicLink() ? "symlink" : "file") : "deleted",
+          Boolean(stat && stat.mode & 0o111),
+          bytes.length,
+        ]),
+      );
+      hash.update(bytes);
+    }
+    return hash.digest("hex");
+  };
+  const laneTests = changedPaths(root, comparison).filter((path) => retainedTestFile.test(path));
+  return Object.fromEntries(
+    stages
+      .filter((stage) => !stage.slot)
+      .map((stage) => {
+        let files = stage.args
+          .filter((arg) => /\.[cm]?[jt]sx?$|\.md$/u.test(arg) && !arg.startsWith("--"))
+          .map((arg) => NodePath.posix.join(stage.cwd ?? ".", arg));
+        if (stage.command === "vp" && stage.args[0] === "test") {
+          const explicitConfig = stage.args.indexOf("--config");
+          files.push(
+            NodePath.posix.join(
+              stage.cwd ?? ".",
+              explicitConfig >= 0 ? stage.args[explicitConfig + 1]! : "vite.config.ts",
+            ),
+          );
+        }
+        let baseline: string[] = [];
+        let trailers = "";
+        if (stage.name === "check touched files") {
+          files.push(...inventory.filter((path) => path.startsWith("oxlint-plugin-t3code/")));
+        } else if (stage.name.startsWith("typecheck ")) {
+          const owners = new Set(
+            graph.workspace.filter((pkg) => pkg.directory === stage.cwd).map((pkg) => pkg.name),
+          );
+          for (const name of owners)
+            graph.workspace
+              .find((pkg) => pkg.name === name)
+              ?.dependencies?.forEach((dependency) => owners.add(dependency));
+          const directories = graph.workspace
+            .filter((pkg) => owners.has(pkg.name))
+            .map((pkg) => pkg.directory);
+          files.push(
+            ...inventory.filter((path) =>
+              directories.some((directory) => path.startsWith(`${directory}/`)),
+            ),
+          );
+          // Root-configured scenario/oracle typechecks have an explicit project path.
+          if (!stage.cwd)
+            files.push(
+              ...inventory.filter(
+                (path) => path.startsWith("apps/web/") || path.startsWith("packages/"),
+              ),
+            );
+        } else if (stage.name === "guard ledgers") {
+          files.push(
+            ...inventory.filter(
+              (path) =>
+                guardScopePaths.some((directory) => path.startsWith(`${directory}/`)) ||
+                path.startsWith("oxlint-plugin-t3code/"),
+            ),
+          );
+          baseline = [
+            "oxlint-plugin-t3code/exceptions",
+            "oxlint-plugin-t3code/failure-to-empty-enrollment.json",
+            "oxlint-plugin-t3code/rules/no-failure-to-empty.ts",
+          ];
+        } else if (stage.name === "runtime cycle ratchet") {
+          files.push(
+            "scripts/runtime-cycles.json",
+            ...inventory.filter(
+              (path) =>
+                runtimeCycleSourceRoots.some((directory) => path.startsWith(`${directory}/`)) ||
+                /^(?:apps|packages)\/[^/]+\/package\.json$/u.test(path),
+            ),
+          );
+          baseline = ["scripts/runtime-cycles.json", "scripts/check-runtime-cycles.ts"];
+        } else if (stage.name === "test sentence retention") {
+          files.push(...laneTests);
+          baseline = laneTests;
+          trailers = NodeChildProcess.execFileSync(
+            "git",
+            ["log", "--format=%(trailers)", `${comparison}..HEAD`],
+            { cwd: root, encoding: "utf8" },
+          )
+            .split("\n")
+            .filter((line) => line.startsWith("Drops-test:"))
+            .sort()
+            .join("\n");
+        }
+        if (stage.name !== "check touched files") files = inputs.inputFiles(files, inventory);
+        const command = {
+          ...stage,
+          args: stage.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
+        };
+        return [
+          stage.name,
+          NodeCrypto.createHash("sha256")
+            .update(JSON.stringify([selection, command, digest(files, baseline), trailers]))
+            .digest("hex"),
+        ];
+      }),
+  );
+}
+
+function readReceipt(path: string): GateReceipt | undefined {
+  try {
+    const receipt = JSON.parse(NodeFS.readFileSync(path, "utf8")) as GateReceipt | null;
+    return receipt &&
+      Array.isArray(receipt.selectedStages) &&
+      Array.isArray(receipt.results) &&
+      receipt.selectedStages.every((stage) => stage && typeof stage.name === "string") &&
+      receipt.results.every((result) => result && typeof result.name === "string")
+      ? receipt
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function reusableReceipt(
-  path: string,
+  receipt: GateReceipt | undefined,
   hash: string,
   selection: string,
   stages: GateStage[],
 ): boolean {
-  if (!NodeFS.existsSync(path)) return false;
-  const content = NodeFS.readFileSync(path, "utf8");
-  let receipt: GateReceipt | null;
-  try {
-    receipt = JSON.parse(content) as GateReceipt | null;
-  } catch {
-    return false;
-  } // A partial or corrupt receipt cannot prove a passing run.
   return (
-    receipt !== null &&
+    receipt !== undefined &&
     receipt.completed === true &&
     receipt.diffHash === hash &&
     receipt.selectionHash === selection &&
@@ -1195,7 +1389,7 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   if (args.includes("--help")) {
     console.log(
-      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--force] [--scenarios <file...>]\n" +
+      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--scenarios <file...>]\n" +
         "GATE_SLOTS: positive integer, default 3. Machine-wide slots for browser/scenario stages.\n" +
         `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
     );
@@ -1207,7 +1401,7 @@ if (import.meta.main) {
   const namedScenarios: string[] = [];
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
-    if (arg === "--list" || arg === "--force" || arg === "--verbose") continue;
+    if (arg === "--list" || arg === "--force" || arg === "--full" || arg === "--verbose") continue;
     if (arg === "--base") {
       const ref = args[++index];
       if (!ref || ref.startsWith("--")) throw new Error("--base needs a git ref");
@@ -1219,7 +1413,7 @@ if (import.meta.main) {
       if (namedScenarios.length === start) throw new Error("--scenarios needs scenario file paths");
     } else {
       throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--force] [--scenarios <file...>]",
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--scenarios <file...>]",
       );
     }
   }
@@ -1284,7 +1478,7 @@ if (import.meta.main) {
   );
   for (const { file, distance } of overflowScenarios)
     console.log(`Deferred scenario ${file}; import graph distance ${distance}`);
-  const { steps, ownedUnits } = selectGateSteps(graph, {
+  const { steps } = selectGateSteps(graph, {
     comparison,
     existing,
     paths: meaningful.paths,
@@ -1299,31 +1493,54 @@ if (import.meta.main) {
   } else {
     const receiptPath = NodePath.join(root, ".gate-receipt.json");
     const hash = diffHash(root, comparison);
-    const selection = selectionHash(root, [...inventory, ...smokeFiles, ...ownedUnits]);
+    const selection = selectionHash(root);
     // The ancestor SHA may move on rebase while the lane patch and selected checks stay identical.
     const selectedStages = steps.map((step) => ({
       ...step,
       args: step.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
     }));
+    const full = args.includes("--full") || args.includes("--force");
+    const fingerprints = stageHashes(root, comparison, steps, graph, selection);
+    const previousReceipt = full ? undefined : readReceipt(receiptPath);
     if (
-      !args.includes("--force") &&
-      reusableReceipt(receiptPath, hash, selection, selectedStages)
+      !full &&
+      reusableReceipt(previousReceipt, hash, selection, selectedStages) &&
+      JSON.stringify(previousReceipt?.stageHashes) === JSON.stringify(fingerprints)
     ) {
       console.log(`reused receipt: ${receiptPath} (${hash})`);
       process.exit(0);
     }
+    const reusable = new Map(
+      steps
+        .filter(
+          (step) =>
+            !step.slot &&
+            previousReceipt?.selectionHash === selection &&
+            previousReceipt.stageHashes?.[step.name] === fingerprints[step.name] &&
+            previousReceipt.selectedStages?.some((prior) => prior.name === step.name) &&
+            previousReceipt.results?.some(
+              (result) =>
+                result.name === step.name &&
+                result.status === 0 &&
+                Number.isFinite(result.durationMs) &&
+                result.durationMs >= 0,
+            ),
+        )
+        .map((step) => [step.name, { name: step.name, status: 0, durationMs: 0 }]),
+    );
     const gateStarted = Date.now();
     const receipt: GateReceipt = {
       diffHash: hash,
+      stageHashes: fingerprints,
       selectionHash: selection,
       selectedStages,
-      results: [],
+      results: [...reusable.values()],
       durationMs: 0,
       queueWaitMs: 0,
       completed: false,
       atRisk: [],
     };
-    // Invalidate the previous success before any check, including a forced run that gets interrupted.
+    // Retain only proven unchanged successes; pending stages are invalidated before any check.
     writeReceipt(receiptPath, receipt);
     const PATH = [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
       NodePath.delimiter,
@@ -1331,7 +1548,26 @@ if (import.meta.main) {
     const logs = gateLogDirectory("gate-changed");
     if (verbose) console.log(`Full logs: ${logs}`);
     let slot: Awaited<ReturnType<typeof acquireGateSlot>> | undefined;
+    const record = (result: GateReceipt["results"][number]) => {
+      receipt.results = [
+        ...receipt.results.filter((prior) => prior.name !== result.name),
+        result,
+      ].sort(
+        (left, right) =>
+          steps.findIndex((stage) => stage.name === left.name) -
+          steps.findIndex((stage) => stage.name === right.name),
+      );
+    };
     for (const [index, step] of steps.entries()) {
+      const reused = reusable.get(step.name);
+      if (reused) {
+        console.log(`reused stage: ${step.name}`);
+        continue;
+      }
+      if (step.slot && steps.slice(index + 1).every((next) => reusable.has(next.name))) {
+        record({ name: step.name, status: 0, durationMs: 0 });
+        continue;
+      }
       if (step.slot) {
         slot = await acquireGateSlot({
           slots,
@@ -1345,7 +1581,7 @@ if (import.meta.main) {
             ),
         });
         receipt.queueWaitMs = slot.waitMs;
-        receipt.results.push({ name: step.name, status: 0, durationMs: 0 });
+        record({ name: step.name, status: 0, durationMs: 0 });
         receipt.durationMs = Date.now() - gateStarted - receipt.queueWaitMs;
         writeReceipt(receiptPath, receipt);
         console.log(
@@ -1412,7 +1648,7 @@ if (import.meta.main) {
             `at-risk: ${risk.file} > ${risk.test}: ${risk.durationMs}ms / ${risk.timeoutMs}ms`,
           );
       }
-      receipt.results.push({ name: step.name, status, durationMs: Date.now() - started });
+      record({ name: step.name, status, durationMs: Date.now() - started });
       receipt.durationMs = Date.now() - gateStarted - receipt.queueWaitMs;
       writeReceipt(receiptPath, receipt);
       const output = NodeFS.readFileSync(logPath, "utf8");
@@ -1434,7 +1670,9 @@ if (import.meta.main) {
     slot?.release();
     if (
       diffHash(root, comparison) !== hash ||
-      selectionHash(root, [...inventory, ...smokeFiles, ...ownedUnits]) !== selection
+      selectionHash(root) !== selection ||
+      JSON.stringify(stageHashes(root, comparison, steps, graph, selection)) !==
+        JSON.stringify(fingerprints)
     )
       throw new Error(
         "Lane diff or selection inputs changed during the gate; run again for the changed code.",
