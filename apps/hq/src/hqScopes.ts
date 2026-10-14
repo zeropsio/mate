@@ -54,7 +54,7 @@ import { Roles, type OrgView } from "./roles.ts";
 import { makeSourceFence } from "./sourceFence.ts";
 import { makeScopeJournal } from "./scopeJournal.ts";
 import { Structure, type StructureSource, type StructureRead } from "./structure.ts";
-import { CHIEF_TAG, chiefOfPerson } from "./chief.ts";
+import { CHIEF_TAG, chiefOfPerson } from "./chiefOwnership.ts";
 
 const isZeropsRefused = Schema.is(ZeropsRefused);
 
@@ -552,18 +552,22 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 observable.some((project) => project.projectId === projectId) &&
                 all.get(projectId)?.overview?.identity.runsWithoutSignIn === true;
               const mate = listed.find((project) => project.projectId === projectId)?.mate;
-              const ownerUserId = mateOwner({
-                facts: current.facts,
-                projectId,
-                mate: observable.some((project) => project.projectId === projectId)
-                  ? mate
-                  : undefined,
-                overview: observable.some((project) => project.projectId === projectId)
-                  ? all.get(projectId)?.overview
-                  : undefined,
-              });
+              const ownerUserId =
+                chiefOwners.get(projectId) ??
+                mateOwner({
+                  facts: current.facts,
+                  projectId,
+                  mate: observable.some((project) => project.projectId === projectId)
+                    ? mate
+                    : undefined,
+                  overview: observable.some((project) => project.projectId === projectId)
+                    ? all.get(projectId)?.overview
+                    : undefined,
+                });
               const chiefProjectId =
-                chiefOfPerson(current.facts, ownerUserId, chiefOwners)?.projectId ?? null;
+                ownerUserId === entry.userId
+                  ? (chiefOfPerson(current.facts, ownerUserId, chiefOwners)?.projectId ?? null)
+                  : null;
               const waitsOn =
                 signedInNow["claude-code"] ??
                 signedInNow.codex ??
@@ -575,13 +579,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 waitsOnViewer: waitsOn === entry.userId,
                 mayWrite: observable.some((project) => project.projectId === projectId),
                 mine: ownerUserId === entry.userId,
-                ...(chiefOwners.has(projectId)
-                  ? {
-                      chief:
-                        chiefOwners.get(projectId) === entry.userId
-                          ? ("mine" as const)
-                          : ("another" as const),
-                    }
+                ...(chiefProjectId === projectId && chiefOwners.get(projectId) === entry.userId
+                  ? { chief: "mine" as const }
                   : {}),
                 unseen:
                   attention == null

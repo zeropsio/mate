@@ -1,3 +1,4 @@
+import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { tiersAddable } from "./projects/projectsView.logic";
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
@@ -40,7 +41,7 @@ import { Spinner } from "../ui/spinner";
 import { shownHqPersonFactsAtom, shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
-import { hqPlacementsAtom, hqNavigationAtom, hqPlacementStatusAtom } from "~/state/zerops";
+import { hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
 import {
   applyFirstBuildVerdict,
@@ -885,7 +886,7 @@ function ZeropsProjectsContent({
   // listing holds its project, and a New project this tab is making from the
   // press — the same placing the left menu reads.
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
-  const hqStructure = useAtomValue(hqNavigationAtom);
+  const hqStructure = useAtomValue(shownCanonicalHqListNavigationAtom);
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure.live;

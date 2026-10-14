@@ -1,3 +1,11 @@
+import {
+  canonicalHqListNavigation,
+  hqMateDirectory,
+  hqListedMateIdentities,
+  hqListedMates,
+  organizationMateListProjects,
+  EMPTY_MATE_DIRECTORY,
+} from "./projections/hqMateDirectory.ts";
 import { zeropsStructure } from "../zerops/hq/structure.ts";
 import { mateHealth } from "./projections/mateHealth.ts";
 /**
@@ -505,3 +513,50 @@ export const shownHqMateIdentitiesAtom = Atom.make(
     return account?.orgId == null ? {} : get(account.data.project(hqMateIdentities, account.orgId));
   },
 ).pipe(Atom.withLabel("data:shown-hq-mate-identities"));
+
+/** Personal Chief and ordinary Mate lists share the account's single partition. */
+export const shownHqMateDirectoryAtom = Atom.make((get) => {
+  const account = get(accountReadsAtom);
+  return account?.orgId == null
+    ? EMPTY_MATE_DIRECTORY
+    : get(account.data.project(hqMateDirectory, account.orgId));
+});
+export const shownMateListProjectsAtom = Atom.make((get) => {
+  const account = get(accountReadsAtom);
+  return account?.orgId == null
+    ? { ...NOT_READ_PROJECTS, orgId: null }
+    : {
+        ...get(account.data.project(organizationMateListProjects, account.orgId)),
+        orgId: account.orgId,
+      };
+});
+export const shownCanonicalHqListNavigationAtom = Atom.make((get) => {
+  const account = get(accountReadsAtom);
+  return account?.orgId == null
+    ? { ...NOT_READ_HQ, structure: null, orgId: null }
+    : {
+        ...get(account.data.project(canonicalHqListNavigation, account.orgId)),
+        orgId: account.orgId,
+      };
+});
+export const shownHqListNavigationAtom = Atom.make((get) => {
+  const navigation = get(shownCanonicalHqListNavigationAtom);
+  return {
+    ...navigation,
+    structure: navigation.structure === null ? null : zeropsStructure(navigation.structure),
+  };
+});
+export const shownHqListedMateIdentitiesAtom = Atom.make(
+  (get): Readonly<Record<string, HqMateIdentity>> => {
+    const account = get(accountReadsAtom);
+    return account?.orgId == null
+      ? {}
+      : get(account.data.project(hqListedMateIdentities, account.orgId));
+  },
+);
+export const shownHqListedMatesAtom = Atom.make((get): HqMatesRead => {
+  const account = get(accountReadsAtom);
+  return account?.orgId == null
+    ? NO_MATES
+    : get(account.data.project(hqListedMates, account.orgId));
+});

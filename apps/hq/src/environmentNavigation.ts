@@ -1,3 +1,4 @@
+import { chiefProjectIsVisible, readsChiefProject } from "./chiefOwnership.ts";
 import {
   HqNavigationJob,
   HqPushNavigationJob,
@@ -36,7 +37,18 @@ export interface EnvironmentSource {
   ) => StructureRead["apps"][number]["environments"];
 }
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
-export const readEnvironmentSource = Effect.fnUntraced(function* (sql: SqlClient.SqlClient) {
+export const readEnvironmentSource = Effect.fnUntraced(function* (
+  sql: SqlClient.SqlClient,
+  chiefs?: ReadonlyMap<string, string>,
+) {
+  const owners =
+    chiefs ??
+    new Map(
+      (yield* sql<{ readonly project_id: string; readonly user_id: string }>`
+    SELECT project_id, user_id FROM hq_chief WHERE revoked_at IS NULL`).map(
+        (row) => [row.project_id, row.user_id] as const,
+      ),
+    );
   const environments = yield* sql<{
     readonly environment_id: string;
     readonly project_id: string | null;
@@ -260,20 +272,29 @@ FROM standing s`;
     fingerprints: new Map([...groups].map(([appId, values]) => [appId, json(values)])),
     forApp: (userId, appId, facts, access) =>
       access.allow
-        ? (groups.get(appId) ?? []).map((value) => ({
-            ...value,
-            can:
-              value.target.kind === "git"
-                ? gitEnvironmentOffers(
-                    userId,
-                    (
-                      environments.find((row) => row.environment_id === value.id)?.project_ids ?? []
-                    ).map((project_id) => ({ project_id, kind: "" })),
-                    facts,
-                    value.tier,
-                  )
-                : environmentOffers(userId, value.target.projectId, facts),
-          }))
+        ? (groups.get(appId) ?? [])
+            .filter(
+              (value) =>
+                value.target.kind === "git" ||
+                (chiefProjectIsVisible(facts, userId, value.target.projectId, owners) &&
+                  (!owners.has(value.target.projectId) ||
+                    readsChiefProject(facts, userId, value.target.projectId, owners))),
+            )
+            .map((value) => ({
+              ...value,
+              can:
+                value.target.kind === "git"
+                  ? gitEnvironmentOffers(
+                      userId,
+                      (
+                        environments.find((row) => row.environment_id === value.id)?.project_ids ??
+                        []
+                      ).map((project_id) => ({ project_id, kind: "" })),
+                      facts,
+                      value.tier,
+                    )
+                  : environmentOffers(userId, value.target.projectId, facts),
+            }))
         : { refused: access.reason },
   } satisfies EnvironmentSource;
 });

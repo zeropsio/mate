@@ -25,7 +25,7 @@ import {
   projectProcessesAtom,
   projectServicesAtom,
   shownMateLinksAtom,
-  shownProjectsAtom,
+  shownMateListProjectsAtom as shownProjectsAtom,
   type ProjectServices,
 } from "@t3tools/client-runtime/data";
 

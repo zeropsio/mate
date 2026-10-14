@@ -15,6 +15,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
 import { AutoUpdatePolicy } from "./autoUpdate.ts";
 import { Backup } from "./backup.ts";
+import { chiefProjectIsVisible } from "./chiefOwnership.ts";
 import { Changes, ChangeRefused } from "./changes.ts";
 import { DeployKeys } from "./deployKeys.ts";
 import { Deploys } from "./deploys.ts";
@@ -294,8 +295,15 @@ const fixture = Effect.gen(function* () {
       } as unknown as StructureRead;
       return {
         ...read,
-        apps:
-          otherApp && !deleted
+        // Keep own invalid records available to exercise the scope's unavailable-Chief guard.
+        apps: !chiefProjectIsVisible(
+          org,
+          userId,
+          "P",
+          new Map(chiefRows.map((row) => [row.project_id, row.user_id])),
+        )
+          ? []
+          : otherApp && !deleted
             ? [...read.apps, { ...read.apps[0]!, id: "B", name: "Other app", projects: [] }]
             : read.apps,
       };
@@ -895,7 +903,56 @@ describe("revisioned HQ values", () => {
       }),
     ),
   );
-  it.effect("a person's own Chief reads as theirs, and someone else's as another's", () =>
+  it.effect.each(["untagged", "DELETING", "DELETED"] as const)(
+    "HQ navigation no longer calls an unavailable Chief mine: %s",
+    (state) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          f.chiefs([{ project_id: "P", user_id: "owner" }]);
+          yield* f.roles({
+            ...facts,
+            projects: [
+              ...facts.projects.map((project) => ({
+                ...project,
+                tags: state === "untagged" ? [] : ["chief"],
+                status: state === "untagged" ? "ACTIVE" : state,
+              })),
+              { ...facts.projects[0]!, id: "OTHER_CHIEF", tags: ["chief"] },
+            ],
+          });
+          const client = yield* f.connect("owner");
+          yield* client.subscribe([{ scope: nav }]);
+          const delivery = resetOf(yield* client.take);
+          const project = delivery.values.find((value) => value.key === "project:P")!.value as {
+            person: { chief?: string; chiefProjectId: string | null };
+          };
+          assert.strictEqual(project.person.chief, undefined);
+          assert.strictEqual(project.person.chiefProjectId, null);
+        }),
+      ),
+  );
+  it.effect("an ordinary Mate never discloses its person's Chief to another viewer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.chiefs([{ project_id: "PERSONAL", user_id: "owner" }]);
+        yield* f.roles({
+          ...facts,
+          projects: [...facts.projects, { ...facts.projects[0]!, id: "PERSONAL", tags: ["chief"] }],
+        });
+        const client = yield* f.connect("reader");
+        yield* client.subscribe([{ scope: nav }]);
+        const delivery = resetOf(yield* client.take);
+        const project = delivery.values.find((value) => value.key === "project:P")!.value as {
+          person: { chiefProjectId: string | null };
+        };
+        assert.strictEqual(project.person.chiefProjectId, null);
+        assert.notInclude(json(delivery.values), "PERSONAL");
+      }),
+    ),
+  );
+  it.effect("HQ navigation returns a person's own Chief and withholds another person's Chief", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const f = yield* fixture;
@@ -912,17 +969,23 @@ describe("revisioned HQ values", () => {
         });
         for (const [userId, chief] of [
           ["owner", "mine"],
-          ["reader", "another"],
+          ["reader", null],
         ] as const) {
           const client = yield* f.connect(userId);
           yield* client.subscribe([{ scope: nav }]);
           const delivery = resetOf(yield* client.take);
           yield* client.take;
-          const project = delivery.values.find((value) => value.key === "project:P")!.value as {
-            person: { chief?: string; chiefProjectId?: string | null };
-          };
-          assert.strictEqual(project.person.chief, chief);
-          assert.strictEqual(project.person.chiefProjectId, "P");
+          const value = delivery.values.find((value) => value.key === "project:P");
+          if (chief === null) {
+            assert.strictEqual(value, undefined);
+            assert.notInclude(json(delivery.values), '"projectId":"P"');
+          } else {
+            const project = value!.value as {
+              person: { chief?: string; chiefProjectId?: string | null };
+            };
+            assert.strictEqual(project.person.chief, chief);
+            assert.strictEqual(project.person.chiefProjectId, "P");
+          }
         }
       }),
     ),

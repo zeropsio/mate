@@ -33,6 +33,28 @@ const tables = Effect.gen(function* () {
 describe("migrate", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
+      "existing Chief registrations retain their application's identity after the schema expands",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const files = treeMigrations();
+            yield* migrate(files.filter((file) => file.name < "0056_"));
+            const [app] =
+              yield* sql`INSERT INTO hq_app (name, created_by) VALUES ('Chief', 'person') RETURNING id::text`;
+            yield* sql`INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
+          VALUES ('chief-project', ${app!.id}::uuid, 'mate', 'person')`;
+            yield* sql`INSERT INTO hq_chief (credential_hash, org_id, user_id, project_id)
+          VALUES ('migration-chief-hash', 'org', 'person', 'chief-project')`;
+            yield* migrate(files);
+            yield* sql`DELETE FROM hq_app_project WHERE project_id = 'chief-project'`;
+            assert.deepStrictEqual(yield* sql`SELECT app_id::text FROM hq_chief`, [
+              { app_id: app!.id },
+            ]);
+          }),
+        ),
+    );
+    it.effect(
       "applies the files in name order, several statements each, and records every one",
       () =>
         withSql(

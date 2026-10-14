@@ -24,7 +24,11 @@ import {
   type CandidateRow,
   type TakenBotNames,
 } from "@t3tools/client-runtime/zerops/projections";
-import { projectServicesAtom } from "@t3tools/client-runtime/data";
+import {
+  projectServicesAtom,
+  shownHqMateDirectoryAtom,
+  isListedMateProject,
+} from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 
 import {
@@ -35,7 +39,6 @@ import {
 } from "../state/zerops";
 import { sameValue } from "../lib/sameValue";
 import { invalidateZerops } from "./accountInvalidations";
-import { othersChiefsAtom } from "./ownChief";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsInventory } from "./inventoryContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -154,14 +157,12 @@ const NO_SERVICES: ZeropsEnvironmentServices = {
  * services listing; withheld as the rows are. Derived, with no writer: it reads the
  * account's registry, which starts over when the account closes.
  */
-export const candidateListingAtom = Atom.make(
+export const allCandidateListingAtom = Atom.make(
   (get): Shown<ReadonlyArray<ZeropsCandidatePresentation>> => {
     const rows = get(mateRowsAtom);
     const environments = get(zeropsEnvironmentsAtom);
     const connectedOrigins = authenticatedZeropsOrigins(environments);
     const connectionsByOrigin = zeropsConnectionsByOrigin(environments);
-    // Another person's Chief is drawn nowhere (`ownChief.ts`).
-    const othersChiefs = get(othersChiefsAtom);
     const presented = presentCandidates(rows, (row): ZeropsCandidatePresentation => {
       const candidate = withZeropsConnection(row, connectedOrigins);
       const resolved = get(projectServicesAtom(candidate.project.id)).services ?? null;
@@ -186,11 +187,38 @@ export const candidateListingAtom = Atom.make(
         ...(connection === undefined ? {} : { connection }),
       };
     });
-    return othersChiefs.size === 0
-      ? presented
-      : keepCandidates(presented, (candidate) => !othersChiefs.has(candidate.project.id));
+    return presented;
   },
 ).pipe(Atom.withLabel("zerops:candidate-listing"));
+
+/** Ordinary Mates and the personal header read the same presentation, partitioned by the data layer. */
+export const candidateListingAtom = Atom.make((get) => {
+  const directory = get(shownHqMateDirectoryAtom);
+  return keepCandidates(get(allCandidateListingAtom), (candidate) =>
+    isListedMateProject(directory, candidate.project),
+  );
+});
+
+/** Known-ID detail readers may read ordinary Mates and the Chief HQ identifies as this person's. */
+export const detailCandidateListingAtom = Atom.make((get) => {
+  const directory = get(shownHqMateDirectoryAtom);
+  return keepCandidates(
+    get(allCandidateListingAtom),
+    (candidate) =>
+      isListedMateProject(directory, candidate.project) ||
+      (directory.myChief.kind === "present" &&
+        directory.myChief.projectId === candidate.project.id),
+  );
+});
+
+export const ownChiefCandidateAtom = Atom.make((get) => {
+  const { myChief } = get(shownHqMateDirectoryAtom);
+  return myChief.kind === "present"
+    ? heldCandidates(get(allCandidateListingAtom)).rows.find(
+        (row) => row.project.id === myChief.projectId,
+      )
+    : undefined;
+});
 
 export const heldCandidateRowsAtom = Atom.make(
   (get) => heldCandidates(get(candidateListingAtom)).rows,
@@ -201,7 +229,26 @@ export function useHeldZeropsCandidates() {
   return useAtomValue(heldCandidateRowsAtom);
 }
 
-export function useZeropsCandidates(): {
+export const heldDetailCandidateRowsAtom = Atom.make(
+  (get) => heldCandidates(get(detailCandidateListingAtom)).rows,
+).pipe(Atom.withEquality(sameValue));
+
+/** A detail route keeps its own Chief available without adding it to any picker. */
+export function useHeldZeropsDetailCandidates() {
+  return useAtomValue(heldDetailCandidateRowsAtom);
+}
+
+export function useZeropsCandidates() {
+  return useCandidateRead(candidateListingAtom);
+}
+
+export function useZeropsDetailCandidates() {
+  return useCandidateRead(detailCandidateListingAtom);
+}
+
+function useCandidateRead(
+  listingAtom: Atom.Atom<Shown<ReadonlyArray<ZeropsCandidatePresentation>>>,
+): {
   /**
    * The active organization's candidates as knowledge (DESIGN §3), and the
    * only way they are handed out: a surface reads it through the
@@ -221,7 +268,7 @@ export function useZeropsCandidates(): {
   const { activeOrganization, organizationStatus, status } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const inventory = useZeropsInventory();
-  const listing = useAtomValue(candidateListingAtom);
+  const listing = useAtomValue(listingAtom);
   const wholeForPerson = useAtomValue(candidateListingWholeAtom);
   const canLoad = status === "signed-in" && organizationStatus === "selected";
   const isLoading = inventory.isLoading || !canLoad;

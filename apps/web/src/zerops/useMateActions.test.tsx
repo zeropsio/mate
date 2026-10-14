@@ -430,7 +430,7 @@ vi.mock("./zeropsDataContext", () => ({
   },
 }));
 vi.mock("./useZeropsCandidates", () => ({
-  useZeropsCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),
+  useZeropsDetailCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),
   useTakenBotNames: () => ({ names: [], complete: true }),
 }));
 vi.mock("@tanstack/react-router", () => ({

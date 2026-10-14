@@ -31,15 +31,16 @@ import { useRestartMate, useReviveFailedMate } from "./mateRestart";
 
 const mock = vi.hoisted(() => ({
   submit: vi.fn(),
+  hideChiefFromLists: false,
   toasts: [] as Array<{ readonly type: string; readonly title: string }>,
 }));
 vi.mock("./useZeropsCandidates", () => ({
-  useHeldZeropsCandidates: () => [
-    {
-      key: "p1:s1",
-      project: { id: "p1" },
-      service: { id: "s1", status: "SERVICE_FAILED" },
-    },
+  useHeldZeropsCandidates: () =>
+    mock.hideChiefFromLists
+      ? []
+      : [{ key: "p1:s1", project: { id: "p1" }, service: { id: "s1", status: "SERVICE_FAILED" } }],
+  useHeldZeropsDetailCandidates: () => [
+    { key: "p1:s1", project: { id: "p1" }, service: { id: "s1", status: "SERVICE_FAILED" } },
   ],
 }));
 vi.mock("./accountOperations", () => ({ useAccountOperations: () => ({ submit: mock.submit }) }));
@@ -63,6 +64,7 @@ function Probe() {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   mock.toasts.length = 0;
+  mock.hideChiefFromLists = false;
   mock.submit.mockReset();
 });
 afterEach(() => {
@@ -197,3 +199,25 @@ it.each([
     });
   },
 );
+
+it("revives the person's Chief from its detail even though no Mate list contains it", async () => {
+  mock.hideChiefFromLists = true;
+  mock.submit.mockResolvedValue({
+    requestId: "r1",
+    evidence: null,
+    progress: { stage: "accepted", operationId: "proc-start" },
+  });
+  await act(async () => {
+    create(<Probe />);
+  });
+  await act(async () => {
+    expect(revive("s1")).toBe(true);
+  });
+  expect(mock.submit).toHaveBeenCalledWith({
+    kind: "mate-restart",
+    orgId: "org-1",
+    projectId: "p1",
+    serviceId: "s1",
+    way: "stop-then-start",
+  });
+});
