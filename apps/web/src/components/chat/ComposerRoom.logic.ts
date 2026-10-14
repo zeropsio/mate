@@ -31,3 +31,42 @@ export function heldDraftRuns(prompt: string): ReadonlyArray<HeldDraftRun> {
   flush();
   return runs;
 }
+
+/** The transparent timeline room left when a measured ownership wait becomes read-along. */
+export interface ReadAlongRoom {
+  readonly threadKey: string;
+  readonly turnId: string | null;
+  readonly pendingHeight: number;
+  readonly heldHeight: number;
+}
+
+export function nextReadAlongRoom(
+  previous: ReadAlongRoom | null,
+  input: {
+    readonly threadKey: string;
+    readonly turnId: string | null;
+    readonly pendingHeight: number;
+    readonly readAlong: boolean;
+  },
+): ReadAlongRoom {
+  const sameConversation =
+    previous?.threadKey === input.threadKey && previous.turnId === input.turnId;
+  const heldHeight =
+    input.readAlong && sameConversation ? Math.max(previous.heldHeight, previous.pendingHeight) : 0;
+  if (
+    sameConversation &&
+    previous.pendingHeight === input.pendingHeight &&
+    previous.heldHeight === heldHeight
+  )
+    return previous;
+  return {
+    threadKey: input.threadKey,
+    turnId: input.turnId,
+    pendingHeight: input.pendingHeight,
+    heldHeight,
+  };
+}
+
+export function releaseReadAlongRoom(room: ReadAlongRoom | null): ReadAlongRoom | null {
+  return room === null || room.heldHeight === 0 ? room : { ...room, heldHeight: 0 };
+}

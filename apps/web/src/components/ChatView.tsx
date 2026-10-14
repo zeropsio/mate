@@ -223,6 +223,11 @@ import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { MateFaceAsMark } from "./zerops/primitives";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
+import {
+  nextReadAlongRoom,
+  releaseReadAlongRoom,
+  type ReadAlongRoom,
+} from "./chat/ComposerRoom.logic";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
 import { type CrewTimeline } from "./zerops/crew/CrewTaskCard";
@@ -1664,15 +1669,9 @@ function ConversationView(props: ChatViewProps) {
   // conversation left's inset for that frame, and moved.
   const [composerOverlaySettledFor, setComposerOverlaySettledFor] = useState(routeThreadKey);
   const composerOverlayHeight = composerElementHeight;
+  const [readAlongRoomState, setReadAlongRoom] = useState<ReadAlongRoom | null>(null);
   const composerAskRoom =
     composerAskingHeight > 0 ? Math.max(0, composerAskingHeight - composerOverlayHeight) : 0;
-  const warmTimelineAsk = useWarmTimelineAsk();
-  const rememberedInset = rememberedTimelineInset(routeThreadKey);
-  const timelineInsetMeasured = composerOverlaySettledFor === routeThreadKey;
-  const timelineInsetEnd =
-    composerOverlaySettledFor === routeThreadKey
-      ? composerOverlayHeight
-      : (rememberedInset ?? composerOverlayHeight);
   // Its own is measured by the next frame.
   useLayoutEffect(() => {
     if (composerOverlaySettledFor === routeThreadKey) return;
@@ -3260,6 +3259,25 @@ function ConversationView(props: ChatViewProps) {
           ownerName: admissionOwner.name,
         })
       : null;
+  const readAlongRoom = nextReadAlongRoom(readAlongRoomState, {
+    threadKey: routeThreadKey,
+    turnId: activeLatestTurn?.turnId ?? null,
+    pendingHeight:
+      admission.footer === "held" && (activeThread?.messages.length ?? 0) > 0
+        ? composerOverlayHeight
+        : 0,
+    readAlong: colleagueReadOnly !== null,
+  });
+  useLayoutEffect(() => {
+    if (readAlongRoom !== readAlongRoomState) setReadAlongRoom(readAlongRoom);
+  }, [readAlongRoom, readAlongRoomState]);
+  const warmTimelineAsk = useWarmTimelineAsk();
+  const rememberedInset = rememberedTimelineInset(routeThreadKey);
+  const timelineInsetMeasured = composerOverlaySettledFor === routeThreadKey;
+  const timelineInsetEnd =
+    composerOverlaySettledFor === routeThreadKey
+      ? Math.max(composerOverlayHeight, readAlongRoom.heldHeight)
+      : (rememberedInset ?? Math.max(composerOverlayHeight, readAlongRoom.heldHeight));
   // The agent the conversation runs on, where it is one the agents card signs in.
   const conversationInstanceId =
     activeProviderInstanceId ?? activeThread?.modelSelection.instanceId;
@@ -4625,6 +4643,7 @@ function ConversationView(props: ChatViewProps) {
   // to bring it back; content that underflows the viewport can't scroll at all.
   const onTimelinePersonInput = useCallback(
     (input: TimelinePersonInput) => {
+      if (input.kind !== "content-pointer") setReadAlongRoom(releaseReadAlongRoom);
       const contentScrollsUp = () => timelineRealContentOverflowsViewport();
       // The re-arm band, not the strict flag: streaming growth makes isAtEnd
       // flicker false for a frame before the follow scroll catches up.
