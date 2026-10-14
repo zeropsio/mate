@@ -45,7 +45,7 @@ import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { branchLabel } from "./mateIdentity.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
 import { REVIEW_LABEL } from "./reviewVerdict.ts";
-import { foldedStageHostnames } from "./serviceMap.ts";
+import { servicePairs } from "./servicePairs.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
 
 /** What the container says about one checkout (`subscribeVcsStatus`). */
@@ -583,8 +583,8 @@ export function gitActionAllowed(
 export function gitCheckoutHostnames(
   services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname" | "group">>,
 ): ReadonlyArray<string> {
-  const folded = foldedStageHostnames(services);
+  const { devOf } = servicePairs({ services });
   return services
-    .filter((service) => service.group === "runtimes" && !folded.has(service.hostname))
+    .filter((service) => service.group === "runtimes" && !devOf.has(service.hostname))
     .map((service) => service.hostname);
 }

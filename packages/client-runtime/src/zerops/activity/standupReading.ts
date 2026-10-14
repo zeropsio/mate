@@ -28,6 +28,7 @@
  *
  * Pure: the caller reads the topology and the processes and hands them here.
  */
+import { isStageHostname, servicePairs } from "../servicePairs.ts";
 import type { ActivityProcess } from "./dto.ts";
 import { CALCULATING_SENTENCE, readPipeline } from "./pipelineReadout.ts";
 
@@ -93,24 +94,17 @@ export function standupReadingOf(rows: ReadonlyArray<StandupServiceRow>): Standu
   };
 }
 
-/** zcp's `IsStageHostname`: a pair's stage half is named `…stage`. */
-export function isStageHostname(hostname: string): boolean {
-  return hostname.length > "stage".length && hostname.endsWith("stage");
+/** The halves of the pairs among a call's runtimes (`servicePairs`). */
+interface Halves {
+  readonly stages: ReadonlySet<string>;
+  readonly devs: ReadonlySet<string>;
 }
 
-/**
- * Whether a runtime is a half of a pair by zcp's rule (`pairRepositoryRuntimes`):
- * a stage `Xstage` beside its dev half `Xdev` or `X`. A runtime with no
- * partner — no repository, unpaired, a utility the platform built — is none
- * zcp stands up.
- */
-function hasPartner(hostname: string, hostnames: ReadonlySet<string>): boolean {
-  if (isStageHostname(hostname)) {
-    const stem = hostname.slice(0, -"stage".length);
-    return hostnames.has(`${stem}dev`) || hostnames.has(stem);
-  }
-  const stem = hostname.endsWith("dev") ? hostname.slice(0, -"dev".length) : hostname;
-  return hostnames.has(`${stem}stage`) || hostnames.has(`${hostname}stage`);
+function halvesOf(services: ReadonlyArray<StandupService>): Halves {
+  const { devOf } = servicePairs({
+    services: services.filter((service) => service.group === "runtimes"),
+  });
+  return { stages: new Set(devOf.keys()), devs: new Set(devOf.values()) };
 }
 
 const BUILD_ACTIONS: ReadonlySet<string> = new Set(["stack.build", "stack.deploy"]);
@@ -151,16 +145,16 @@ export function sentenceOf(
 type Rank = 0 | 1 | 2;
 
 /** Its place in the half's environment; null for one of neither half, or the platform's own. */
-function rankOf(
-  service: StandupService,
-  half: StandupHalf,
-  runtimes: ReadonlySet<string>,
-): Rank | null {
+/**
+ * A runtime with no partner — no repository, unpaired, a utility the platform built — is none zcp
+ * stands up: a utility of development, unless it is named as a stage half, which is of neither.
+ */
+function rankOf(service: StandupService, half: StandupHalf, halves: Halves): Rank | null {
   if (service.group === "data") return 0;
   if (service.group !== "runtimes") return null;
-  const stage = isStageHostname(service.hostname);
-  if (!hasPartner(service.hostname, runtimes)) return half === "development" && !stage ? 1 : null;
-  return stage === (half === "stage") ? 2 : null;
+  if (halves.stages.has(service.hostname)) return half === "stage" ? 2 : null;
+  if (halves.devs.has(service.hostname)) return half === "development" ? 2 : null;
+  return half === "development" && !isStageHostname(service.hostname) ? 1 : null;
 }
 
 const FAILED_STATUSES: ReadonlySet<string> = new Set([
@@ -197,12 +191,10 @@ function environment(
   own: ReadonlyMap<string, StandupServiceRow>,
   stands: (service: StandupService) => StandupServiceRow,
 ): StandupReading {
-  const runtimes = new Set(
-    services.filter((service) => service.group === "runtimes").map((service) => service.hostname),
-  );
+  const halves = halvesOf(services);
   const ranked = services.flatMap((service) => {
     // One of the call's own that its half would not hold stands with the runtimes.
-    const rank = rankOf(service, half, runtimes) ?? (own.has(service.hostname) ? 2 : null);
+    const rank = rankOf(service, half, halves) ?? (own.has(service.hostname) ? 2 : null);
     if (rank === null) return [];
     return [{ rank, row: own.get(service.hostname) ?? stands(service) }];
   });
@@ -231,11 +223,7 @@ export function readStandup(input: {
   const builds = input.processes
     .filter((process) => inWindow(process, sinceMs))
     .sort((left, right) => Date.parse(left.created) - Date.parse(right.created));
-  const runtimes = new Set(
-    input.services
-      .filter((service) => service.group === "runtimes")
-      .map((service) => service.hostname),
-  );
+  const halves = halvesOf(input.services);
   // The rows of the call's own: a runtime a build of its window names, and
   // one it will build that waits for its build to start.
   const own = new Map<string, StandupServiceRow>();
@@ -247,7 +235,7 @@ export function readStandup(input: {
     if (latest === undefined) {
       const waits =
         input.expected === undefined
-          ? !service.runsCode && rankOf(service, input.half, runtimes) === 2
+          ? !service.runsCode && rankOf(service, input.half, halves) === 2
           : input.expected.includes(service.hostname);
       if (waits) own.set(service.hostname, { hostname: service.hostname, state: "waits" });
       continue;

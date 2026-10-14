@@ -17,10 +17,7 @@
  */
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
-import {
-  devPartnerHostname,
-  foldedStageHostnames,
-} from "@t3tools/client-runtime/zerops/serviceMap";
+import { servicePairs } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsTopologyGroup } from "@t3tools/client-runtime/zerops/topology";
 
 import { isServiceBrowserUrl } from "./serviceBrowserPolicy";
@@ -77,15 +74,8 @@ const hostOf = (url: string) => url.replace(/^https?:\/\//u, "").replace(/\/$/u,
 
 export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddress> {
   const own = input.services.filter((service) => service.group !== "infrastructure");
-  const stages = foldedStageHostnames(own);
-  const byHostname = new Map(own.map((service) => [service.hostname, service]));
-  const devs = new Set<string>();
-  for (const service of own) {
-    const partner = stages.has(service.hostname)
-      ? devPartnerHostname(service, byHostname)
-      : undefined;
-    if (partner !== undefined) devs.add(partner);
-  }
+  const { devOf } = servicePairs({ services: own });
+  const devs = new Set(devOf.values());
 
   const addresses: Array<MateAddress> = [];
   const seenUrls = new Set<string>();
@@ -98,7 +88,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
   for (const service of own) {
     const route = service.routes.find((entry) => isServiceBrowserUrl(entry.url));
     if (route === undefined) continue;
-    const role = stages.has(service.hostname)
+    const role = devOf.has(service.hostname)
       ? "stage"
       : devs.has(service.hostname) || isDevHostname(service.hostname)
         ? "dev"

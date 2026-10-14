@@ -10,11 +10,8 @@
  *
  * Pure: no clock of its own, no platform globals.
  */
-import {
-  comingLine,
-  pairPreviewRoutes,
-  type ZeropsPublicRoute,
-} from "@t3tools/client-runtime/zerops";
+import { comingLine, type ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import { servicePairs } from "@t3tools/client-runtime/zerops/servicePairs";
 
 import {
   chipFace,
@@ -199,20 +196,23 @@ const isDevHostname = (hostname: string) => hostname.length > 3 && hostname.ends
 
 /**
  * A Mate's own addresses, each with what it is: its dev, the preview its pair's stage half serves
- * (`pairPreviewRoutes`), then any other public service by its name alone. Never the control
+ * (`servicePairs`), then any other public service by its name alone. Never the control
  * plane. `undefined` while its routes are unread — never none before the answer.
  */
 export function mateLinks(mate: SitesMateFacts): ReadonlyArray<SitesLink> | undefined {
   if (mate.routes === undefined) return undefined;
   const routes = mate.routes.filter((route) => route.service !== mate.controlPlane);
   const held = mate.hostnames ?? routes.map((route) => route.service);
-  const pairs = new Set(pairPreviewRoutes(routes, held).map((preview) => preview.service));
+  const { devOf } = servicePairs({ services: held.map((hostname) => ({ hostname })) });
+  // A pair's dev half is its dev where the pair has a preview to show.
   const devs = new Set(
-    [...pairs].map((base) => (held.includes(`${base}dev`) ? `${base}dev` : base)),
+    routes.flatMap((route) => {
+      const dev = devOf.get(route.service);
+      return dev === undefined ? [] : [dev];
+    }),
   );
   const roleOf = (service: string): SitesLinkRole | undefined => {
-    const base = /^(.+)stage$/u.exec(service)?.[1];
-    if (base !== undefined && pairs.has(base)) return "preview";
+    if (devOf.has(service)) return "preview";
     return devs.has(service) || isDevHostname(service) ? "dev" : undefined;
   };
   return routeMenuEntries(routes)

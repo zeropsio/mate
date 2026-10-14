@@ -78,6 +78,7 @@ import {
 import type { ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
+import { servicePairs } from "./servicePairs.ts";
 import { firstDeploy, stopImport, type FirstDeploy, type PlatformService } from "./stopComing.ts";
 import type { GitDelivery } from "./gitDelivery.ts";
 
@@ -650,19 +651,16 @@ export function pairPreviewRoutes(
   routes: ReadonlyArray<ZeropsPublicRoute>,
   hostnames: ReadonlyArray<string>,
 ): ReadonlyArray<GroupFlowPreview> {
-  const held = new Set(hostnames);
+  const { pairs, devOf } = servicePairs({
+    services: hostnames.map((hostname) => ({ hostname })),
+  });
+  const nameOf = new Map(pairs.map((pair) => [pair.dev, pair.name]));
   const named = new Map<string, string>();
   for (const route of routes) {
-    const pair = pairOf(route, held);
+    const pair = nameOf.get(devOf.get(route.service) ?? "");
     if (pair !== undefined && !named.has(pair)) named.set(pair, route.url);
   }
   return [...named].map(([service, url]) => ({ service, url }));
-}
-
-/** The pair a route's service is the stage half of, where its dev half stands beside it. */
-function pairOf(route: ZeropsPublicRoute, held: ReadonlySet<string>): string | undefined {
-  const base = /^(.+)stage$/u.exec(route.service)?.[1];
-  return base !== undefined && (held.has(`${base}dev`) || held.has(base)) ? base : undefined;
 }
 
 /** A place's public address, by the service it reaches. */

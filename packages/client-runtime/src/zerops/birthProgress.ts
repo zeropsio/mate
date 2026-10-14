@@ -44,6 +44,7 @@ import { type ObservedStep, observedSteps } from "./activity/observedSteps.ts";
 import type { MateSetupRuntimesState } from "./mateSetup.ts";
 import type { ZeropsContainerHealth } from "./containerHealth.ts";
 import type { RecipeRuntime, RecipeRuntimeRole } from "./recipeTier.ts";
+import { isStageHostname } from "./servicePairs.ts";
 import { isManagedDataService, isRuntimeService } from "./topology.ts";
 
 export interface BirthProcessFact {
@@ -546,7 +547,7 @@ export const RUNTIMES_IMPORT_FAILED = "The runtimes could not be added.";
  * The runtimes' facts, from what the Mate's view holds: the runtimes the press planned, where zcp's
  * import of them stands (`/mate/setup.json`'s `runtimes`), and the project's services as the
  * inventory lists them. Without a plan — another browser, a reload, a Mate made before — they are
- * read off the project's own runtimes, a stage half by zcp's `stage` suffix. Undefined for a Mate
+ * read off the project's own runtimes, a stage half by the pairing's stem (`isStageHostname`). Undefined for a Mate
  * that brings none up, or a project not read yet.
  */
 export function birthRuntimesFacts(input: {
@@ -586,7 +587,7 @@ export function birthRuntimesFacts(input: {
     import: reported ?? "imported",
     runtimes: runtimes.map((service) => ({
       hostname: service.name,
-      role: service.name.endsWith("stage") ? "stage" : "dev",
+      role: isStageHostname(service.name) ? "stage" : "dev",
       service: { id: service.id, status: service.status },
     })),
   };
