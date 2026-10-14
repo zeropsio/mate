@@ -254,6 +254,118 @@ it.each([
   }
 });
 
+it.each([
+  ["apps/web/src/main.tsx", false],
+  ["apps/mobile/src/main.tsx", true],
+  ["apps/desktop/src/main.ts", true],
+  ["packages/client-runtime/src/data.ts", true],
+  ["packages/contracts/src/index.ts", true],
+  ["packages/shared/src/index.ts", true],
+  ["packages/effect-acp/src/index.ts", false],
+  ["docs/user/mobile.md", false],
+  ["docs/renamed.ts\tapps/mobile/src/removed.ts", true],
+])(
+  "Decision: scoping by path, never by disabling the jobs: %s selects native clients = %s",
+  (path, selected) => {
+    const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-native-"));
+    const output = NodePath.join(directory, "output");
+    try {
+      const workflow = parse(
+        NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+      );
+      const run = workflow.jobs.changes.steps.find(
+        (step: { name: string }) => step.name === "Detect changed areas",
+      ).run;
+      const selection = run.slice(run.indexOf("paths="));
+      const result = NodeChildProcess.spawnSync("bash", ["-c", selection], {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...process.env, rows: path, PR_NUMBER: "", GITHUB_OUTPUT: output },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        NodeFS.readFileSync(output, "utf8"),
+        "ASSERTION: the real Changes selector must scope native clients to their own code and imported packages",
+      ).toMatch(new RegExp(`^native_clients=${selected}$`, "mu"));
+      for (const name of ["test_mobile", "mobile_native_static_analysis"]) {
+        expect(workflow.jobs[name].needs).toContain("changes");
+        expect(workflow.jobs[name].if).toContain("needs.changes.outputs.native_clients != 'false'");
+      }
+      const smoke = workflow.jobs.test_packages.steps.find(
+        (step: { name: string }) => step.name === "Smoke test desktop",
+      );
+      expect(workflow.jobs.test_packages.needs).toContain("changes");
+      expect(smoke.if).toContain("needs.changes.outputs.native_clients != 'false'");
+    } finally {
+      NodeFS.rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+it("native client selection follows app manifest dependencies without a pinned package list", () => {
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-import-"));
+  const output = NodePath.join(directory, "output");
+  try {
+    for (const [path, pkg] of [
+      ["apps/mobile", { dependencies: { "@fixture/new-reader": "workspace:*" } }],
+      ["apps/desktop", {}],
+      ["packages/new-reader", { name: "@fixture/new-reader" }],
+      ["packages/unrelated", { name: "@fixture/unrelated" }],
+    ] as const) {
+      NodeFS.mkdirSync(NodePath.join(directory, path), { recursive: true });
+      NodeFS.writeFileSync(NodePath.join(directory, path, "package.json"), JSON.stringify(pkg));
+    }
+    const run = jobs.changes!.steps.find((step) => step.name === "Detect changed areas")!.run!;
+    for (const [path, selected] of [
+      ["packages/new-reader/src/index.ts", true],
+      ["packages/unrelated/src/index.ts", false],
+    ] as const) {
+      NodeFS.writeFileSync(output, "");
+      const result = NodeChildProcess.spawnSync("bash", ["-c", run.slice(run.indexOf("paths="))], {
+        cwd: directory,
+        encoding: "utf8",
+        env: { ...process.env, rows: path, PR_NUMBER: "", GITHUB_OUTPUT: output },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(NodeFS.readFileSync(output, "utf8")).toMatch(
+        new RegExp(`^native_clients=${selected}$`, "mu"),
+      );
+    }
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it.each([
+  ["success", "success", 0],
+  ["skipped", "skipped", 0],
+  ["success", "skipped", 0],
+  ["failure", "skipped", 1],
+  ["skipped", "failure", 1],
+  ["cancelled", "success", 1],
+])(
+  "Release Smoke accepts path-skipped native jobs and rejects failed native checks: %s / %s",
+  (mobile, native, status) => {
+    const workflow = parse(
+      NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+    );
+    const job = workflow.jobs.release_smoke;
+    expect(job.needs).toContain("test_mobile");
+    expect(job.needs).toContain("mobile_native_static_analysis");
+    const verdict = job.steps.find(
+      (step: { name: string }) => step.name === "Require release smoke to pass",
+    );
+    const run = verdict.run
+      .replace("${{ needs.check.result }}", "success")
+      .replace("${{ needs.test_mobile.result }}", mobile)
+      .replace("${{ needs.mobile_native_static_analysis.result }}", native);
+    expect(
+      NodeChildProcess.spawnSync("bash", ["-e", "-c", run]).status,
+      "ASSERTION: skipped native jobs pass the release verdict while failures remain blocking",
+    ).toBe(status);
+  },
+);
+
 it("Decision: no test removed from CI coverage", () => {
   expect(
     jobs.chat_gate,
@@ -396,7 +508,7 @@ it("the Test verdict includes every scripts and HQ shard", () => {
   expect(
     workflow.jobs.test_packages.needs,
     "ASSERTION: package execution must not wait for the split suites",
-  ).toBe("prepare");
+  ).toEqual(["prepare", "changes"]);
   const command = workflow.jobs.test_packages.steps.find(
     (step: { name: string }) => step.name === "Test",
   ).run;
@@ -451,7 +563,11 @@ it("hosted web CI retains native compilation and dedicated native jobs", () => {
       workflow.jobs[job],
       "ASSERTION: native CI jobs remain covered during the hosted web test phase",
     ).toBeDefined();
-  expect(Object.keys(workflow.jobs.changes.outputs).sort()).toEqual(["chat", "resource_monitor"]);
+  expect(Object.keys(workflow.jobs.changes.outputs).sort()).toEqual([
+    "chat",
+    "native_clients",
+    "resource_monitor",
+  ]);
   expect(
     workflow.jobs.check.steps.find(
       (step: { name: string }) => step.name === "Test resource monitor",
@@ -943,7 +1059,7 @@ it("short Ubuntu checks share installed jobs without losing their commands or fa
   const capture = packages.steps.find(
     (step: { name: string }) => step.name === "Upload desktop smoke capture",
   );
-  expect(capture.if).toBe("always()");
+  expect(capture.if).toBe("always() && needs.changes.outputs.native_clients != 'false'");
   expect(capture.with.name).toBe("desktop-smoke-capture");
   expect(capture.with.path).toContain("desktop-smoke-log.txt");
   expect(
@@ -985,7 +1101,10 @@ it("short Ubuntu checks share installed jobs without losing their commands or fa
     (step: { name: string }) => step.name === "Require release smoke to pass",
   );
   for (const result of ["success", "failure", "cancelled", "skipped"]) {
-    const run = verdict.run.replace("${{ needs.check.result }}", result);
+    const run = verdict.run
+      .replace("${{ needs.check.result }}", result)
+      .replace("${{ needs.test_mobile.result }}", "skipped")
+      .replace("${{ needs.mobile_native_static_analysis.result }}", "skipped");
     expect(NodeChildProcess.spawnSync("bash", ["-e", "-c", run]).status).toBe(
       result === "success" ? 0 : 1,
     );
