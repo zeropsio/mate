@@ -450,6 +450,80 @@ describe("C: an engine Mate's run card in a live conversation", () => {
       }),
     );
 
+    it.effect("a reload during a streaming run paints at the end first", () =>
+      Effect.gen(function* () {
+        const { s, chat, provider } = yield* realLongConversation;
+        const release = yield* Deferred.make<void>();
+        yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined));
+        yield* provider.turn([{ kind: "wait", until: release }]);
+        yield* chat.when.send("Write me the long report");
+        const native = yield* provider.received;
+        const note = RuntimeItemId.make("long-report");
+        const append = (words: string) =>
+          provider.event(native.threadId, {
+            type: "content.delta",
+            itemId: note,
+            payload: { streamKind: "assistant_text", delta: `${words}\n\n` },
+          });
+        yield* append("The report, section by section.");
+        yield* chat.then.text("The report, section by section.");
+        yield* Effect.promise(() => waitForStillFrames(s.page));
+        yield* Effect.promise(() =>
+          s.page.evaluateOnNewDocument(() => {
+            const frames: Array<{ end: number; shown: boolean }> = [];
+            Reflect.set(window, "streamingReloadFrames", frames);
+            const sample = () => {
+              const outer = document.querySelector<HTMLElement>(".timeline-legend-list");
+              if (outer && outer.scrollHeight > outer.clientHeight + 4) {
+                let shown = outer.closest("[data-timeline-placing]") === null;
+                for (let node: HTMLElement | null = outer; node; node = node.parentElement) {
+                  const style = getComputedStyle(node);
+                  if (
+                    style.opacity === "0" ||
+                    style.visibility === "hidden" ||
+                    node.hasAttribute("inert")
+                  )
+                    shown = false;
+                }
+                frames.push({
+                  end: outer.scrollHeight - outer.clientHeight - outer.scrollTop,
+                  shown,
+                });
+              }
+              requestAnimationFrame(sample);
+            };
+            requestAnimationFrame(sample);
+          }),
+        );
+        yield* Effect.promise(async () => {
+          const reloading = s.page.reload();
+          await Effect.runPromise(append("Section 0 reads well and its numbers add up."));
+          await reloading;
+        });
+        yield* chat.then.text("The report, section by section.");
+        yield* Effect.promise(() => waitForStillFrames(s.page));
+        // Source receipts arrive after first paint; each append is observed before the next input.
+        for (const section of [1, 2, 3]) {
+          const words = `Section ${section} reads well and its numbers add up.`;
+          yield* append(words);
+          yield* chat.then.text(words);
+          yield* Effect.promise(() => waitForStillFrames(s.page));
+        }
+        const shown = yield* Effect.promise(() =>
+          s.page.evaluate(() =>
+            (
+              Reflect.get(window, "streamingReloadFrames") as Array<{ end: number; shown: boolean }>
+            ).filter((frame) => frame.shown),
+          ),
+        );
+        expect(shown.length, "ASSERTION: the reload's paint was sampled").toBeGreaterThan(10);
+        expect(
+          Math.max(...shown.map((frame) => frame.end)),
+          `ASSERTION: every painted frame stands at the streaming end: ${shown.map((frame) => Math.round(frame.end)).join(", ")}`,
+        ).toBeLessThan(40);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
     it.effect("a reload paints the conversation's end first and nothing it takes back", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* longConversation;
