@@ -1,7 +1,16 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Option from "effect/Option";
 
-import { type ChiefRead, chiefRead, keepIdentity, keepSearch, pinSearch } from "./chiefProxy.ts";
+import {
+  type ChiefRead,
+  chiefRead,
+  keepCosts,
+  keepGroupBy,
+  keepIdentity,
+  keepSearch,
+  pinGroupBy,
+  pinSearch,
+} from "./chiefProxy.ts";
 
 describe("the Chief's proxy lets through only what zcp's org mode reads", () => {
   // `OrgReader` and its transport on zcp's `feat/mastermate-org`
@@ -16,6 +25,12 @@ describe("the Chief's proxy lets through only what zcp's org mode reads", () => 
     ["GET", "service-stack/S1/env", { kind: "service", serviceId: "S1" }],
     ["GET", "project/P1/log", { kind: "project", projectId: "P1" }],
     ["GET", "project/P1/public-http-routing", { kind: "project", projectId: "P1" }],
+    ["POST", "public-port-routing/search", { kind: "search", of: "portRouting" }],
+    ["POST", "transaction-debit/cost-search", { kind: "costs" }],
+    ["POST", "transaction-debit/group-by-search", { kind: "groupBy", of: "cost" }],
+    ["POST", "stats-history/group-by-search", { kind: "groupBy", of: "usage" }],
+    // HQ's own answer, no Zerops read: who the Chief acts for and what they may do.
+    ["GET", "chief/person", { kind: "person" }],
   ];
   it.each(allowed)("%s %s is allowed", (method, path, read) => {
     expect(chiefRead(method, path)).toEqual(read);
@@ -38,6 +53,8 @@ describe("the Chief's proxy lets through only what zcp's org mode reads", () => 
     ["POST", "project/P1/env"],
     ["POST", "service-stack/S1/restart"],
     ["POST", "user-data"],
+    ["POST", "billing/client/ORG/payment"],
+    ["POST", "transaction-debit/ORG"],
   ])("%s %s is refused as a method that writes", (method, path) => {
     expect(chiefRead(method, path)).toEqual({ refused: "method" });
   });
@@ -57,6 +74,10 @@ describe("the Chief's proxy lets through only what zcp's org mode reads", () => 
     ["GET", "project/../client/ORG/user/list"],
     ["GET", "project/%2e%2e/log"],
     ["GET", ""],
+    ["GET", "billing/client/ORG/status"],
+    ["GET", "client/ORG/billing-info"],
+    ["POST", "card-payment/search"],
+    ["POST", "resource-consumption/group-by-search"],
   ])("%s %s is outside the allowlist", (method, path) => {
     expect(chiefRead(method, path)).toEqual({ refused: "path" });
   });
@@ -169,5 +190,106 @@ describe("a Chief's search answers only projects its person reaches", () => {
         ),
       ),
     ).toEqual({ id: "U", clientUserList: [{ clientId: "ORG" }] });
+  });
+});
+
+describe("a Chief's grouped search is pinned to HQ's org and keeps its range", () => {
+  it("keeps the range, the grouping and the terms, the org replaced by HQ's own", () => {
+    expect(
+      Option.getOrUndefined(
+        pinGroupBy(
+          {
+            search: [{ name: "clientId", operator: "eq", value: "ORG2" }],
+            from: "2026-10-01T00:00:00Z",
+            till: "2026-10-14T00:00:00Z",
+            timeZone: "UTC",
+            groupBy: "projectId",
+            timeGroupBy: "1d",
+            subscriptionName: "elsewhere",
+            receiverId: "R1",
+          },
+          "ORG",
+        ),
+      ),
+    ).toEqual({
+      search: [{ name: "clientId", operator: "eq", value: "ORG" }],
+      from: "2026-10-01T00:00:00Z",
+      till: "2026-10-14T00:00:00Z",
+      timeZone: "UTC",
+      groupBy: "projectId",
+      timeGroupBy: "1d",
+    });
+  });
+
+  it.each([
+    ["no terms list", { search: "x", from: "a", till: "b" }],
+    ["a range that is no text", { search: [], from: 1, till: "b" }],
+  ])("a body with %s is no grouped search", (_, body) => {
+    expect(Option.isNone(pinGroupBy(body, "ORG"))).toBe(true);
+  });
+});
+
+describe("a Chief's grouped answer keeps only projects its person reaches", () => {
+  const reaches = (projectId: string) => projectId === "P_IN";
+  const body = {
+    items: [
+      { projectId: "P_IN", sumTotalPrice: 2 },
+      { projectId: "P_OUT", sumTotalPrice: 5 },
+      { projectId: null, sumTotalPrice: 1 },
+    ],
+    totalHits: 3,
+  };
+
+  it("drops every item of a project outside its reach, and one of no project", () => {
+    expect(Option.getOrUndefined(keepGroupBy(body, { reaches, all: false }))).toEqual({
+      items: [{ projectId: "P_IN", sumTotalPrice: 2 }],
+      totalHits: 1,
+    });
+  });
+
+  it("answers whole a person who sees the org's finances", () => {
+    expect(Option.getOrUndefined(keepGroupBy(body, { reaches, all: true }))).toEqual(body);
+  });
+});
+
+describe("a Chief's costs answer only what its person may see of them", () => {
+  const reaches = (projectId: string) => projectId === "P_IN";
+  const period = (thisMonth: number, today: number) => ({ thisMonth, today });
+  const body = {
+    client: { id: "ORG", periodCost: period(10, 1) },
+    project: [
+      { id: "P_IN", periodCost: period(3, 0.5) },
+      { id: "P_OUT", periodCost: period(7, 0.5) },
+    ],
+    stack: [
+      { id: "S_IN", periodCost: period(3, 0.5) },
+      { id: "S_OUT", periodCost: period(7, 0.5) },
+    ],
+  };
+  const serviceProject = new Map([
+    ["S_IN", "P_IN"],
+    ["S_OUT", "P_OUT"],
+  ]);
+
+  it("answers whole a person who sees the org's finances", () => {
+    expect(Option.getOrUndefined(keepCosts(body, { reaches, all: true, serviceProject }))).toEqual(
+      body,
+    );
+  });
+
+  it("keeps another person to their projects, the org's total theirs alone", () => {
+    expect(Option.getOrUndefined(keepCosts(body, { reaches, all: false, serviceProject }))).toEqual(
+      {
+        client: { id: "ORG", periodCost: period(3, 0.5) },
+        project: [{ id: "P_IN", periodCost: period(3, 0.5) }],
+        stack: [{ id: "S_IN", periodCost: period(3, 0.5) }],
+      },
+    );
+  });
+
+  it("an answer in a shape it does not know is none", () => {
+    expect(Option.isNone(keepCosts({ items: [] }, { reaches, all: false, serviceProject }))).toBe(
+      true,
+    );
   });
 });

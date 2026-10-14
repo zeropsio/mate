@@ -17,7 +17,10 @@
  * above) — a search's items filtered, a read by id outside them refused. The person must be an
  * active member of the org on every call, over the view every reader shares (`roles.ts`, at most
  * 30 s old). A log access is Zerops' own answer, its log server's address and token passed on as
- * they are: zcp reads the log server itself.
+ * they are: zcp reads the log server itself. The org's costs answer whole a person who sees its
+ * finances (`canViewFinances`), and anyone else their projects alone; resource use answers only
+ * the person's projects. Who the person is — their name, org role and what it lets them do — is
+ * HQ's own answer (`chief/person`), so the Chief never takes HQ's read-only token for its person.
  *
  * @module chief
  */
@@ -38,8 +41,11 @@ import {
   type UpstreamAnswer,
   chiefPath,
   chiefRead,
+  keepCosts,
+  keepGroupBy,
   keepIdentity,
   keepSearch,
+  pinGroupBy,
   pinSearch,
 } from "./chiefProxy.ts";
 import { ChiefRefused, confirmingChiefRefusal } from "./chiefRefused.ts";
@@ -52,7 +58,13 @@ import { CHIEF_LIMIT, DOOR_LIMIT, DoorRateLimit, TooManyRequests } from "./rateL
 import { Roles } from "./roles.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import { mateOwner, recordedMateOwner } from "./usageAccess.ts";
-import { ZeropsApi, type ZeropsError, ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
+import {
+  ZeropsApi,
+  type ZeropsError,
+  type ZeropsMember,
+  ZeropsRefused,
+  ZeropsUnavailable,
+} from "./zerops/api.ts";
 
 /** Where HQ serves the proxy, under its own address. */
 export const CHIEF_PROXY_PATH = "/api/chief/zerops";
@@ -134,6 +146,21 @@ export const chiefCredentialHash = (credential: string) =>
 
 const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
 
+/**
+ * The person a Chief acts for, as HQ's view of the org has them (`chief/person`): what its own
+ * reads, as HQ's read-only token, never say. A proposal they approve runs as them, by this role.
+ */
+const personOf = (member: ZeropsMember) => ({
+  name: member.name,
+  roleCode: member.roleCode,
+  canViewFinances: member.canViewFinances === true,
+  canEditFinances: member.canEditFinances === true,
+  canCreateProjects: member.canCreateProjects,
+});
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 const ISO = (column: string) =>
   `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
 
@@ -180,6 +207,35 @@ export const chiefsLayer = (options: {
         Effect.fail(new ChiefRefused({ code, ...(reason === undefined ? {} : { reason }) }));
       const forward = (request: Parameters<ChiefUpstream["Service"]["forward"]>[0]) =>
         Effect.flatMap(own, upstream.forward(request));
+      /**
+       * Each of the org's services by its project, read as HQ: what keeps a person's costs to
+       * their projects' services. Unread, it is empty, and every service's cost is dropped.
+       */
+      const servicesOfOrg = (orgId: string) =>
+        forward({
+          method: "POST",
+          path: "service-stack/search",
+          query: "",
+          body: { search: [{ name: "clientId", operator: "eq", value: orgId }], limit: 1000 },
+        }).pipe(
+          Effect.map((answer) => {
+            const projects = new Map<string, string>();
+            if (answer.status < 200 || answer.status >= 300) return projects;
+            const body = Option.getOrUndefined(decodeJson(new TextDecoder().decode(answer.body)));
+            const items = isRecord(body) && Array.isArray(body["items"]) ? body["items"] : [];
+            for (const item of items as ReadonlyArray<unknown>) {
+              if (
+                isRecord(item) &&
+                item["clientId"] === orgId &&
+                typeof item["id"] === "string" &&
+                typeof item["projectId"] === "string"
+              ) {
+                projects.set(item["id"], item["projectId"]);
+              }
+            }
+            return projects;
+          }),
+        );
       /** Zerops' answer as it sent it, unless a 2xx's body is to be kept to the person's reach. */
       const kept = (
         answer: UpstreamAnswer,
@@ -372,14 +428,10 @@ export const chiefsLayer = (options: {
               return yield* new TooManyRequests();
             }
             const userId = holder.user_id;
-            if (
-              !view.members.some(
-                (member) =>
-                  member.userId === userId && member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
-              )
-            ) {
-              return yield* refused("forbidden", "not_active_member");
-            }
+            const person = view.members.find(
+              (member) => member.userId === userId && member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
+            );
+            if (person === undefined) return yield* refused("forbidden", "not_active_member");
             // A credential is its Chief's only while that project stands, tagged a Chief's.
             const chiefProject = view.projects.find((project) => project.id === holder.project_id);
             if (chiefProject === undefined || !chiefProject.tags.includes(CHIEF_TAG)) {
@@ -406,6 +458,43 @@ export const chiefsLayer = (options: {
                   yield* forward({ method: "GET", path, query: request.query }),
                   (body) => keepIdentity(body, view.orgId),
                 );
+              case "person":
+                return { kind: "json", status: 200, body: personOf(person) };
+              case "costs": {
+                const pinned = pinSearch(request.body, view.orgId);
+                if (Option.isNone(pinned)) return yield* refused("invalid", "not_a_search");
+                const answer = yield* forward({
+                  method: "POST",
+                  path,
+                  query: request.query,
+                  body: pinned.value,
+                });
+                const all = person.canViewFinances === true;
+                // Another person's services are kept by their projects: the org's, read as HQ.
+                const serviceProject = all
+                  ? new Map<string, string>()
+                  : yield* servicesOfOrg(view.orgId);
+                return yield* kept(answer, (body) =>
+                  keepCosts(body, { reaches, all, serviceProject }),
+                );
+              }
+              case "groupBy": {
+                const pinned = pinGroupBy(request.body, view.orgId);
+                if (Option.isNone(pinned)) return yield* refused("invalid", "not_a_search");
+                return yield* kept(
+                  yield* forward({
+                    method: "POST",
+                    path,
+                    query: request.query,
+                    body: pinned.value,
+                  }),
+                  (body) =>
+                    keepGroupBy(body, {
+                      reaches,
+                      all: read.of === "cost" && person.canViewFinances === true,
+                    }),
+                );
+              }
               case "catalogue":
                 return {
                   kind: "raw",

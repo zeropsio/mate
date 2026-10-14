@@ -28,6 +28,9 @@ export interface ZeropsMember {
   /** The member row's own id: what a project's `userRoles` name. */
   readonly clientUserId: string;
   readonly canCreateProjects: boolean;
+  /** Whether they see the org's billing (its costs whole), and change it; absent: no. */
+  readonly canViewFinances?: boolean;
+  readonly canEditFinances?: boolean;
 }
 
 export interface ZeropsProject {
