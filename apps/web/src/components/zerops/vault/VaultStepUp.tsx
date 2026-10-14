@@ -82,7 +82,15 @@ export function VaultStepUp({ onConfirmed }: { readonly onConfirmed: () => void 
           </a>
         ) : (
           <>
-            <span>Finish in the Zerops window.</span>
+            <span>
+              Finish in the Zerops window
+              {stage.kind === "waiting" ? (
+                <>
+                  , where it shows <span className="font-mono">{stage.userCode}</span>
+                </>
+              ) : null}
+              .
+            </span>
             {stage.kind === "waiting" ? (
               <button className={linkClass} onClick={() => run.current?.reopen()} type="button">
                 Open it again

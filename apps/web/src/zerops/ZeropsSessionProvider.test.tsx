@@ -166,6 +166,39 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     );
   });
 
+  it("adopts a device login's whole session only after the platform names its person", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab());
+
+    await expect(
+      tab.run(() => tab.session().adoptDeviceLogin({ accessToken: "revoked", refreshToken: "r" })),
+    ).rejects.toThrow();
+    expect(storedSession(harness)).toBeNull();
+
+    const approved = { ...harness.rest.issueSession("user-1"), expiresAt: "2026-10-19T00:00:00Z" };
+    await tab.run(() => tab.session().adoptDeviceLogin(approved));
+    expect(tab.session().status).toBe("signed-in");
+    expect(tab.accountId()).toBe("user-1");
+    expect(JSON.parse(storedSession(harness)!)).toEqual(approved);
+  });
+
+  it("signs a device-login session out here at once, then ends it at the platform", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab());
+    const approved = harness.rest.issueSession("user-1");
+    await tab.run(() => tab.session().adoptDeviceLogin(approved));
+
+    await tab.run(() => tab.session().signOut());
+
+    expect(tab.session().status).toBe("signed-out");
+    expect(storedSession(harness)).toBeNull();
+    await vi.waitFor(() =>
+      expect(
+        harness.rest.requests().filter(({ route }) => route === "POST /auth/logout"),
+      ).toHaveLength(1),
+    );
+  });
+
   it("switches accounts when a hand-over brings a different person", async () => {
     const harness = harnessWith();
     const tab = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/authorized" });

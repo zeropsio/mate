@@ -105,7 +105,12 @@ describe("runZeropsDeviceLogin", () => {
 
     await expect(run.outcome).resolves.toEqual({ kind: "approved", session });
     expect(opened[0]?.window?.location.href).toBe(`${VERIFY}&display=popup`);
-    expect(stages[1]).toEqual({ kind: "waiting", url: `${VERIFY}&display=popup`, blocked: false });
+    expect(stages[1]).toEqual({
+      kind: "waiting",
+      url: `${VERIFY}&display=popup`,
+      blocked: false,
+      userCode: "ABCD-EFGH",
+    });
     // Settled: the window is closed, since app.zerops.io's page does not close itself.
     expect(opened[0]?.window?.closed).toBe(true);
   });
@@ -127,7 +132,12 @@ describe("runZeropsDeviceLogin", () => {
     const { ports, stages, onStage } = tab({ blocked: true, checks: [{ status: "DENIED" }] });
     const run = runZeropsDeviceLogin({ kind: "login", apiBase: API, onStage, ports });
     await run.outcome;
-    expect(stages[1]).toEqual({ kind: "waiting", url: VERIFY, blocked: true });
+    expect(stages[1]).toEqual({
+      kind: "waiting",
+      url: VERIFY,
+      blocked: true,
+      userCode: "ABCD-EFGH",
+    });
   });
 
   it("brings the window back, or opens it again once it was closed", async () => {

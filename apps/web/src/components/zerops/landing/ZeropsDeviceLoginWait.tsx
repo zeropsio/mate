@@ -37,6 +37,11 @@ export function ZeropsDeviceLoginWait({
           <p className="text-sm text-muted-foreground">Finish in the Zerops window.</p>
         </>
       )}
+      {stage.kind === "waiting" ? (
+        <p className="text-xs text-muted-foreground">
+          Zerops shows <span className="font-mono text-foreground">{stage.userCode}</span>
+        </p>
+      ) : null}
       <p className="space-x-3 text-xs text-muted-foreground">
         {stage.kind === "waiting" && !blocked ? (
           <button

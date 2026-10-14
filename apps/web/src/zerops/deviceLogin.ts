@@ -47,9 +47,15 @@ export type ZeropsDeviceLoginStage =
   | { readonly kind: "opening" }
   /**
    * The consent page is open, or `blocked`: the browser kept the window from opening, and `url`
-   * is the link the person opens themselves.
+   * is the link the person opens themselves. The page shows `userCode` beside the request and asks
+   * the person to match it with the one shown here.
    */
-  | { readonly kind: "waiting"; readonly url: string; readonly blocked: boolean };
+  | {
+      readonly kind: "waiting";
+      readonly url: string;
+      readonly blocked: boolean;
+      readonly userCode: string;
+    };
 
 export interface ZeropsDeviceLoginRun {
   /** Settles once. Rejects only when the request could not start. */
@@ -181,7 +187,12 @@ export function runZeropsDeviceLogin(input: {
       const opened = zeropsWindow !== null && !zeropsWindow.closed ? zeropsWindow : null;
       consentUrl = linkFor(request.verificationUrl, opened !== null);
       if (opened !== null) opened.location.href = consentUrl;
-      input.onStage({ kind: "waiting", url: consentUrl, blocked: opened === null });
+      input.onStage({
+        kind: "waiting",
+        url: consentUrl,
+        blocked: opened === null,
+        userCode: request.userCode,
+      });
       return await pollZeropsDeviceLogin({
         request,
         check: () =>
