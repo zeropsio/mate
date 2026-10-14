@@ -355,6 +355,7 @@ const releaseDriverFixture = (options: {
   emptySource?: boolean;
   mismatchChecksum?: boolean;
   staleAttempt?: boolean;
+  secondParent?: boolean;
 }) => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "release-published-driver-"));
   const git = (...args: string[]) =>
@@ -373,6 +374,11 @@ const releaseDriverFixture = (options: {
     NodePath.join(root, ".github/workflows/release.yml"),
     "  verify:\nneeds: [build, verify]\n",
   );
+  if (options.secondParent) {
+    git("add", ".");
+    git("commit", "--quiet", "-m", "old main work");
+    git("checkout", "--quiet", "-b", "kh");
+  }
   NodeFS.writeFileSync(NodePath.join(root, "product.ts"), "released product");
   git("add", ".");
   git("commit", "--quiet", "-m", "released product");
@@ -385,6 +391,10 @@ const releaseDriverFixture = (options: {
   git("commit", "--quiet", "-m", "chore(release): mate 0.15.1");
   git("tag", "v0.15.1");
   git("checkout", "--quiet", "main");
+  if (options.secondParent) {
+    git("commit", "--quiet", "--allow-empty", "-m", "concurrent main work");
+    git("merge", "--quiet", "--no-ff", "kh", "-m", "Merge pull request #7 from zeropsio/kh");
+  }
   if (options.newSource) {
     if (options.emptySource) {
       git("commit", "--quiet", "--allow-empty", "-m", "green metadata-only commit");
@@ -519,6 +529,25 @@ it("new green product commits after a detached published tag are released even w
     expect(fixture.requests().some((args) => args.some((arg) => arg.endsWith("/rerun")))).toBe(
       false,
     );
+  } finally {
+    fixture.dispose();
+  }
+});
+
+it("release notes start after a previous release that reached main as a second parent", () => {
+  const fixture = releaseDriverFixture({
+    newSource: true,
+    initialConclusion: "success",
+    secondParent: true,
+  });
+  try {
+    const result = fixture.invoke();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("previous published: v0.15.1");
+    expect(result.stdout).toContain("- new green product");
+    expect(result.stdout).toContain("- concurrent main work");
+    expect(result.stdout).not.toContain("- old main work");
+    expect(result.stdout).not.toContain("- baseline");
   } finally {
     fixture.dispose();
   }
