@@ -462,6 +462,13 @@ export const WORK_STATUSES = [
 ] as const;
 /** The states after which background work never reports again. */
 export const WORK_ENDED: ReadonlySet<string> = new Set(["completed", "failed", "stopped", "lost"]);
+/**
+ * The states in which background work keeps its conversation working: it runs, or waits on the
+ * person. An idle helper finished its turn and rests until it is addressed again (Codex's
+ * `collabAgent` idle): it does nothing, so no conversation works on it, and the server and every
+ * client read the same set, so nothing reads as working with nothing to name.
+ */
+export const WORK_ALIVE: ReadonlySet<string> = new Set(["running", "waiting"]);
 
 const itemBodyFields = {
   person: {

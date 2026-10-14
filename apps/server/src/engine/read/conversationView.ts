@@ -19,6 +19,7 @@ import {
   RunEndSource,
   RunId,
   RunTrigger,
+  WORK_ALIVE,
   type ConversationAgent,
   type RunState,
   type RuntimeMode,
@@ -234,8 +235,7 @@ export const readConversationView = (conversationId: ConversationId) =>
       WHERE conversation_id = ${conversationId} AND kind = 'work' AND state = 'open'
     `;
     const alive = (yield* Effect.forEach(work, (row) => decodeBody(row.body_json))).flatMap(
-      (body) =>
-        body.kind === "work" && ["running", "waiting", "idle"].includes(body.status) ? [body] : [],
+      (body) => (body.kind === "work" && WORK_ALIVE.has(body.status) ? [body] : []),
     );
     const view: ConversationView = {
       conversationId,

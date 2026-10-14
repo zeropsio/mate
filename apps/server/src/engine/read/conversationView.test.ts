@@ -99,6 +99,60 @@ describe("a conversation's view", () => {
   );
 });
 
+type Agent = Parameters<Parameters<Effect.Success<typeof world>["agent"]>[0]>[0];
+/** A piece of background work the agent starts: a helper, a helper's own shell, its own shell. */
+const startsWork = (
+  agent: Agent,
+  thread: string,
+  id: string,
+  work: {
+    readonly kind: "helper" | "shell" | "monitor";
+    readonly title: string;
+    readonly helper?: string;
+  },
+) =>
+  agent.emit("task.started", thread, {
+    payload: {
+      taskId: id,
+      taskType:
+        work.kind === "helper" ? "local_agent" : work.kind === "monitor" ? "monitor" : "local_bash",
+      description: work.title,
+      ...(work.helper === undefined ? {} : { agentId: work.helper }),
+    },
+  });
+
+describe("a conversation's background work after its turn", () => {
+  // Codex's helper that finished its turn rests idle, resumable: the server read it as working
+  // while every client read it at rest, and the conversation said it still worked with nothing
+  // under it to name (Eli, 2026-10-14).
+  it.effect.each([
+    { status: "running", working: true },
+    { status: "waiting", working: true },
+    { status: "idle", working: false },
+  ])(
+    "keeps its conversation working only while it runs or waits on the person: $status",
+    ({ status, working }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          yield* w.tell({ _tag: "Send", text: "Review the api" });
+          yield* w.agent((agent, thread) =>
+            startsWork(agent, thread, "h1", { kind: "helper", title: "Review the diff" }),
+          );
+          yield* w.agent((agent, thread) =>
+            agent.emit("task.updated", thread, { payload: { taskId: "h1", status } }),
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const view = yield* viewOf(w);
+          const row = conversationRowOf(view!, { environmentId: "env", epoch: 1 });
+          assert.strictEqual(view?.background, working ? "working" : null);
+          assert.strictEqual(row.state.kind, working ? "working" : "idle");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});
+
 describe("a run a restart cut, as a person reads it", () => {
   const revision = { environmentId: "env", epoch: 1 };
 
