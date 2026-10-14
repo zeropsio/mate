@@ -364,4 +364,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" release-assets/* --generate-notes --verify-tag --latest
+        run: |
+          set -euo pipefail
+          # An upload can fail after GitHub creates the release record. A retry completes it.
+          if gh release view "$RELEASE_TAG" --json tagName > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber
+            gh release edit "$RELEASE_TAG" --latest
+          else
+            gh release create "$RELEASE_TAG" release-assets/* --generate-notes --verify-tag --latest
+          fi
