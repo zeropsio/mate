@@ -150,6 +150,12 @@ export interface AttachTarget extends PlacementTarget {
 }
 
 export interface Targets {
+  readonly connect_remote: { readonly projectIds: ReadonlyArray<string> };
+  readonly replace_remote_token: { readonly projectIds: ReadonlyArray<string> };
+  readonly update_remote_address: { readonly projectIds: ReadonlyArray<string> };
+  readonly disconnect_remote: { readonly projectIds: ReadonlyArray<string> };
+  readonly add_git_environment: { readonly projectIds: ReadonlyArray<string> };
+  readonly remove_git_environment: { readonly projectIds: ReadonlyArray<string> };
   readonly read_project: { readonly projectId: string };
   readonly observe_mate: { readonly projectId: string };
   readonly read_app: { readonly projectIds: ReadonlyArray<string> };
@@ -384,6 +390,14 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       return roleAtLeast(roleOn(request.target.projectId), "BASIC_USER")
         ? ALLOW
         : deny("not_mate_operator");
+    case "add_git_environment":
+      if (!writer) return deny("not_structure_writer");
+      return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
+    case "connect_remote":
+    case "replace_remote_token":
+    case "update_remote_address":
+    case "disconnect_remote":
+    case "remove_git_environment":
     case "create_app":
     case "rename_app":
     case "delete_app":

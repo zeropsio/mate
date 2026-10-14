@@ -186,6 +186,12 @@ const redeploy = (...projectIds: ReadonlyArray<string>): Request => ({
 });
 
 const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
+  connect_remote: [],
+  replace_remote_token: [],
+  update_remote_address: [],
+  disconnect_remote: [],
+  add_git_environment: [],
+  remove_git_environment: [],
   push_repo: [
     [
       "developer",
@@ -1814,5 +1820,42 @@ describe("Git release authority", () => {
         expected,
       );
     }
+  });
+});
+
+describe("Git target operations", () => {
+  const verbs = [
+    "connect_remote",
+    "replace_remote_token",
+    "update_remote_address",
+    "disconnect_remote",
+    "add_git_environment",
+    "remove_git_environment",
+  ] as const;
+  it.each(verbs)("%s uses the fresh structure authority and refuses role loss", (verb) => {
+    expect(
+      can(
+        { kind: "person", userId: "U" },
+        verb,
+        { projectIds: ["P"] },
+        factsOf({ ...BASE, orgRole: "OWNER" }),
+      ),
+    ).toEqual({ allow: true });
+    expect(
+      can(
+        { kind: "person", userId: "U" },
+        verb,
+        { projectIds: ["P"] },
+        factsOf({ ...BASE, override: "OWNER" }),
+      ),
+    ).toEqual({ allow: false, reason: "not_structure_writer" });
+    expect(
+      can(
+        { kind: "mate", projectId: "P" },
+        verb,
+        { projectIds: ["P"] },
+        factsOf({ ...BASE, orgRole: "OWNER" }),
+      ),
+    ).toEqual({ allow: false, reason: "wrong_principal" });
   });
 });

@@ -1,3 +1,5 @@
+import type { HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
+import { keepGitReceipt, readGitReceipt } from "./gitTargetReceipts.ts";
 /** Structure's Git lifecycle: no project, no external deletion, and no delivery executor. */
 import type {
   AddGitEnvironmentRequest,
@@ -56,24 +58,21 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
       new GitEnvironmentRefused({ reason });
     const allowed = Effect.fnUntraced(function* (userId: string, appId: string, adopting: boolean) {
       const view = yield* roles.forWrite;
-      if (!can({ kind: "person", userId }, "create_app", null, view).allow)
+      const projects = yield* sql<{
+        readonly project_id: string;
+      }>`SELECT project_id FROM hq_app_project WHERE app_id::text=${appId}`;
+      const verb = adopting ? "add_git_environment" : "remove_git_environment";
+      if (
+        !can(
+          { kind: "person", userId },
+          verb,
+          { projectIds: projects.map((p) => p.project_id) },
+          view,
+        ).allow
+      )
         return yield* refuse("forbidden");
       const app = yield* sql`SELECT 1 FROM hq_app WHERE id::text=${appId}`;
       if (app.length === 0) return yield* refuse("app_not_found");
-      if (adopting) {
-        const projects = yield* sql<{
-          readonly project_id: string;
-        }>`SELECT project_id FROM hq_app_project WHERE app_id::text=${appId}`;
-        if (
-          !can(
-            { kind: "person", userId },
-            "merge_change",
-            { projectIds: projects.map((p) => p.project_id) },
-            view,
-          ).allow
-        )
-          return yield* refuse("forbidden");
-      }
     });
     const repositories = (appId: string) => sql<{ readonly name: string }>`
     SELECT r.name FROM hq_repo r JOIN hq_repo_remote m ON m.app_id=r.app_id AND m.repo=r.name
@@ -137,7 +136,7 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
           return yield* effect;
         }),
       );
-    return {
+    const lifecycle = {
       previewGitEnvironment: (
         userId: string,
         appId: string,
@@ -301,6 +300,70 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
               ),
             );
             yield* changed;
+          }),
+        ),
+    };
+    const authorizeRequest = (userId: string, intent: HqGitTargetIntent) =>
+      Effect.gen(function* () {
+        const facts = yield* roles.forWrite;
+        if (facts.orgId !== intent.orgId) return yield* refuse("forbidden");
+        yield* allowed(userId, intent.appId, intent.kind !== "remove-git-environment");
+      });
+    return {
+      ...lifecycle,
+      gitTargetWrite: (
+        userId: string,
+        requestId: string,
+        intent: Extract<
+          HqGitTargetIntent,
+          {
+            readonly kind:
+              | "preview-git-environment"
+              | "add-git-environment"
+              | "remove-git-environment";
+          }
+        >,
+      ) =>
+        decidedFresh(
+          Effect.gen(function* () {
+            yield* authorizeRequest(userId, intent);
+            const receipt = yield* keepGitReceipt(
+              sql,
+              leader,
+              userId,
+              requestId,
+              intent,
+              Effect.gen(function* () {
+                switch (intent.kind) {
+                  case "preview-git-environment":
+                    return yield* lifecycle.previewGitEnvironment(
+                      userId,
+                      intent.appId,
+                      intent.request,
+                    );
+                  case "add-git-environment":
+                    yield* lifecycle.addGitEnvironment(userId, intent.appId, intent.request);
+                    return undefined;
+                  case "remove-git-environment":
+                    yield* lifecycle.removeGitEnvironment(
+                      userId,
+                      intent.appId,
+                      intent.environmentId,
+                      intent.loseUnresolvedHistory === true ? { loseUnresolvedHistory: true } : {},
+                    );
+                    return undefined;
+                }
+              }),
+            );
+            yield* changed;
+            return receipt;
+          }),
+        ),
+      gitTargetReceipt: (userId: string, requestId: string, intent: HqGitTargetIntent) =>
+        decidedFresh(
+          Effect.gen(function* () {
+            yield* authorizeRequest(userId, intent);
+            return yield* readGitReceipt(sql, userId, requestId, intent);
           }),
         ),
     };
