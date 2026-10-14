@@ -1,4 +1,4 @@
-import { Remotes, remoteForWire } from "./repoRemotes.ts";
+import { Remotes } from "./repoRemotes.ts";
 import { gitTargetValues } from "./gitTargetReceipts.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- scope incarnations are unique to this Core process.
 import * as NodeCrypto from "node:crypto";
@@ -706,22 +706,14 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                       GitError: () => Effect.succeed([]),
                     }),
                   );
-                  const repos = yield* changes.listRepos(entry.userId, scope.appId);
-                  const withRemotes = Option.isSome(remotes)
-                    ? yield* Effect.forEach(repos, (repo) =>
-                        Effect.map(
-                          remotes.value.get({ appId: scope.appId, repo: repo.name }),
-                          (remote) =>
-                            remote === undefined
-                              ? repo
-                              : { ...repo, remote: remoteForWire(remote) },
-                        ),
-                      )
-                    : repos;
+                  const repos = yield* (Option.isSome(remotes) ? remotes.value : changes).listRepos(
+                    entry.userId,
+                    scope.appId,
+                  );
                   data = [
                     ...(Option.isSome(remotes) ? yield* gitTargetValues(sql, scope.appId) : []),
                     { key: "releases", value: yield* releases.list(entry.userId, scope.appId) },
-                    { key: "repos", value: withRemotes },
+                    { key: "repos", value: repos },
                     ...mate,
                     {
                       key: "recipe:stage",

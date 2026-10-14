@@ -803,6 +803,28 @@ describe("repository credential custody", () => {
         ),
     );
     it.effect(
+      "Repository lists keep connections with their application and show a completed disconnect",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes } = yield* fixture;
+            yield* remotes.connect("custodian", input);
+            const connected = yield* remotes.listRepos("custodian", APP);
+            const remote = connected.find((repo) => repo.name === "web")?.remote;
+            assert.strictEqual(remote?.url, "https://github.com/krls2020/tst123.git");
+            assert.strictEqual(remote?.repositoryId, "1416745513");
+            assert.strictEqual(remote?.keptBy, "custodian");
+            assert.strictEqual(remote?.invalidSince, null);
+            assert.strictEqual(connected.find((repo) => repo.name === "worker")?.remote, null);
+            const other = yield* remotes.listRepos("custodian", OTHER);
+            assert.strictEqual(other.find((repo) => repo.name === "web")?.remote, null);
+            yield* remotes.disconnect("custodian", REF);
+            const disconnected = yield* remotes.listRepos("custodian", APP);
+            assert.strictEqual(disconnected.find((repo) => repo.name === "web")?.remote, null);
+          }),
+        ),
+    );
+    it.effect(
       "Decision L2b: disconnect refuses stage or production dependencies and deletes only HQ's seal and metadata, never host refs or tokens.",
       () =>
         Effect.scoped(

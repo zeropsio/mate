@@ -777,7 +777,7 @@ describe("a Mate's changes in HQ", () => {
           assert.isTrue(Exit.isFailure(yield* Effect.exit(next.gitHost.git)));
           // The HTTP door refuses a standby; the database read also serves an active Core whose
           // git is still opening after a takeover.
-          const repos = yield* next.changes.listRepos("owner", appId);
+          const repos = yield* next.remotes.listRepos("owner", appId);
           assert.deepStrictEqual({ repos }, listed.body);
         }),
     );
