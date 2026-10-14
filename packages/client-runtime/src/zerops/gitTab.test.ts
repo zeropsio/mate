@@ -681,39 +681,6 @@ describe("gitCheckoutHostnames", () => {
   });
 });
 
-describe("the second dev service of a pair is not shown as a repository in the Git tab", () => {
-  const tierOf = (devs: ReadonlyArray<string>) =>
-    [
-      "services:",
-      ...devs.flatMap((hostname) => [
-        `  - hostname: ${hostname}`,
-        "    type: nodejs@22",
-        "    zeropsSetup: dev",
-        "    buildFromGit: https://hq.example.com/git/app-1/app",
-      ]),
-      "  - hostname: appstage",
-      "    type: nodejs@22",
-      "    zeropsSetup: prod",
-      "    buildFromGit: https://hq.example.com/git/app-1/app",
-      "",
-    ].join("\n");
-  const runtimes = (...hostnames: ReadonlyArray<string>) =>
-    hostnames.map((hostname) => ({ hostname, group: "runtimes" as const }));
-
-  it.each([
-    { name: "one dev service (today)", devs: ["webdev"], shown: ["webdev"] },
-    {
-      name: "two dev services sharing a code volume (B)",
-      devs: ["webdev", "apidev"],
-      shown: ["webdev"],
-    },
-  ])("$name: one repository per pair", ({ devs, shown }) => {
-    expect(
-      gitCheckoutHostnames([...runtimes(...devs), ...runtimes("appstage")], tierOf(devs)),
-    ).toEqual(shown);
-  });
-});
-
 describe("gitBlock base branch", () => {
   it("is main, which every change in HQ goes onto", () => {
     expect(block(checkout({ headRef: "mate/mate-x" })).baseBranch).toBe("main");
