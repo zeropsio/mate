@@ -1,5 +1,5 @@
 import { scopeReset, scopeValue, nextScopeValue } from "../test/harness/scopes.ts";
-import { CanonicalHqNavigationApp } from "@t3tools/shared/hqStream";
+import { hqAppFamily } from "../../../packages/client-runtime/src/data/families/hqNavigation.ts";
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off globalTimers:off globalConsoleInEffect:off -- real HQ socket acceptance test.
 import { assert, describe, it } from "@effect/vitest";
 import { HqAttentionValue } from "@t3tools/shared/hqStream";
@@ -20,7 +20,6 @@ import {
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 
 const readAttention = Schema.decodeEffect(HqAttentionValue);
-const readCanonicalApp = Schema.decodeUnknownEffect(CanonicalHqNavigationApp);
 
 describe("HQ scoped socket", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -45,6 +44,28 @@ describe("HQ scoped socket", () => {
             body: { projectId: "P_MATE", kind: "stage", environment: { name: "zerops-stage" } },
           });
           yield* core.sql`INSERT INTO hq_environment(id,target,app_id,tier,name,sources,branch,delivery,created_by) VALUES ('git-mixed','git',${appId}::uuid,'stage','git-stage','{main}','staging','direct','owner')`;
+          yield* core.sql`INSERT INTO hq_rollout(app_id,cause,environment_id,environment_created_at,by)
+            SELECT app_id,'env_added',id,created_at,'owner' FROM hq_environment WHERE id='git-mixed'`;
+          const pushedEvidence = {
+            remote: "https://github.com/krls2020/tst123",
+            repositoryId: "123",
+            identity: "github",
+            ref: "refs/heads/staging",
+            sha: "a".repeat(40),
+            keptAt: "2026-10-14T00:00:00Z",
+            phase: "closed",
+            before: null,
+            writerDrained: true,
+            after: "a".repeat(40),
+            via: "answer",
+            at: "2026-10-14T00:00:00Z",
+            version: null,
+            processes: [],
+            nextActor: "none",
+            nextAction: "",
+          };
+          yield* core.sql`INSERT INTO hq_deploy_job(rollout_id,environment_id,kind,repo,sha,state,ended_at,ord,evidence)
+            SELECT id,'git-mixed','push','api',${"a".repeat(40)},'pushed',now(),0,${JSON.stringify(pushedEvidence)}::jsonb FROM hq_rollout WHERE environment_id='git-mixed'`;
           const socket = yield* core.socket(
             `/api/structure/ws?ticket=${yield* ticketFor(core.call, session)}`,
           );
@@ -55,7 +76,9 @@ describe("HQ scoped socket", () => {
             scopes: [{ scope: navigation }, { scope: detail }],
           });
           const reset = yield* scopeReset(socket, navigation);
-          const app = yield* readCanonicalApp(scopeValue(reset, `app:${appId}`));
+          const app =
+            hqAppFamily.hq!.decode(scopeValue(reset, `app:${appId}`), `app:${appId}`) ??
+            (yield* Effect.die(new Error("The account rejected the scoped Git navigation")));
           assert.isArray(app.environments);
           const environments = Array.isArray(app.environments) ? app.environments : [];
           const git = environments.find((row) => row.id === "git-mixed")!;
@@ -65,12 +88,16 @@ describe("HQ scoped socket", () => {
             delivery: "direct",
           });
           assert.notProperty(git, "projectId");
+          assert.strictEqual(git.jobs.length, 1);
+          assert.strictEqual(git.jobs[0]!.service, "api");
+          assert.strictEqual(git.jobs[0]!.sha, "a".repeat(40));
+          assert.strictEqual(git.jobs[0]!.state, "pushed");
           assert.strictEqual(
             environments.find((row) => row.name === "zerops-stage")!.target.kind,
             "zerops",
           );
           const first = yield* scopeReset(socket, detail);
-          assert.deepStrictEqual(app.can.release, { allow: false, reason: "no_production" });
+          assert.deepStrictEqual(app.can?.release, { allow: false, reason: "no_production" });
           const release = yield* core.call("POST", `/api/apps/${appId}/releases`, {
             session,
             body: {
@@ -82,7 +109,7 @@ describe("HQ scoped socket", () => {
           assert.strictEqual(release.status, 403);
           assert.deepStrictEqual(
             { allow: false, reason: (release.body as { readonly reason: string }).reason },
-            app.can.release,
+            app.can?.release,
           );
           assert.isUndefined(first.find((row) => row.key === "probe:api"));
           const probe = {

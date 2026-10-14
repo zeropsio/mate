@@ -90,7 +90,7 @@ WITH ranked AS (
          ) AS live_place
   FROM hq_deploy_job j
 )
-SELECT j.environment_id, j.id::text AS id, j.kind, j.service, j.sha, j.state, r.cause,
+SELECT j.environment_id, j.id::text AS id, j.kind, CASE j.kind WHEN 'push' THEN j.repo ELSE j.service END AS service, j.sha, j.state, r.cause,
        CASE r.cause WHEN 'merge' THEN r.sha WHEN 'release' THEN r.tag END AS ref,
        j.reason,
        j.app_version_id, j.process_id, j.evidence, j.steps, j.verified_version_id, j.requested_by,
