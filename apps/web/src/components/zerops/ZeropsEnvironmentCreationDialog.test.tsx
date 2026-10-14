@@ -198,6 +198,7 @@ function gitAuthority(can: HqOffers | undefined, current = true) {
   });
   return {
     repos: [],
+    takenNames: [],
     offered: { add: add.kind === "allowed", connect: false, replace: false },
     unavailableReason: hqOfferWords(add, { at: () => "12:00", rolesAnsweredAt: null }),
     setup: {
