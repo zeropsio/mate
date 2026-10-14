@@ -204,7 +204,7 @@ describe("the menu row", () => {
         kind: "working",
         since: 500,
         waitsOnHelpers: true,
-        work: { items: [helperWork], count: 1 },
+        work: { items: [helperWork], count: 1, helpers: 1 },
       },
     ],
     [
@@ -215,7 +215,7 @@ describe("the menu row", () => {
         since: 500,
         waitsOnHelpers: true,
         turnDue: true,
-        work: { items: [], count: 0 },
+        work: { items: [], count: 0, helpers: 0 },
       },
     ],
     [
@@ -272,7 +272,11 @@ describe("the menu row while work its turn started runs on", () => {
     {
       name: "names each piece of what it waits on, oldest first, while there are few",
       work: [job("Final batched browser check", 410), helperWork],
-      expected: { items: [job("Final batched browser check", 410), helperWork], count: 2 },
+      expected: {
+        items: [job("Final batched browser check", 410), helperWork],
+        count: 2,
+        helpers: 1,
+      },
     },
     {
       name: "names the first three of what it waits on and counts them all",
@@ -289,12 +293,40 @@ describe("the menu row while work its turn started runs on", () => {
           job("Wait for the final check to complete", 430),
         ],
         count: 4,
+        helpers: 0,
+      },
+    },
+    {
+      // Eli, 2026-10-14: three helpers and two of its own jobs read as "… · and 4 more — Its helpers".
+      name: "names the first few of its helpers and of its own jobs apart, and counts its helpers",
+      work: [
+        { ...helperWork, title: "UI overhaul + placement clarity", since: 401 },
+        { ...helperWork, title: "Swarm scale toward 500k", since: 402 },
+        { ...helperWork, title: "Walls, turrets-on-walls, craters, climb", since: 403 },
+        { ...helperWork, title: "Colossus: model, walk, pilot, orders", since: 404 },
+        job("Run the test suite", 405),
+        job("Serve the preview", 406),
+      ],
+      expected: {
+        items: [
+          { ...helperWork, title: "UI overhaul + placement clarity", since: 401 },
+          { ...helperWork, title: "Swarm scale toward 500k", since: 402 },
+          { ...helperWork, title: "Walls, turrets-on-walls, craters, climb", since: 403 },
+          job("Run the test suite", 405),
+          job("Serve the preview", 406),
+        ],
+        count: 6,
+        helpers: 4,
       },
     },
     {
       name: "cuts a long title to what shares a line",
       work: [job(`Check ${"every page ".repeat(20)}`, 410)],
-      expected: { items: [job(`Check ${"every page ".repeat(10)}eve…`, 410)], count: 1 },
+      expected: {
+        items: [job(`Check ${"every page ".repeat(10)}eve…`, 410)],
+        count: 1,
+        helpers: 0,
+      },
     },
   ])("$name", ({ work, expected }) => {
     const row = conversationRowOf(
@@ -329,12 +361,22 @@ describe("the menu row while a helper asks", () => {
           dismissible: true,
         }),
       ],
-      state: { kind: "working", since: 500, waitsOnHelpers: true, work: { items: [], count: 0 } },
+      state: {
+        kind: "working",
+        since: 500,
+        waitsOnHelpers: true,
+        work: { items: [], count: 0, helpers: 0 },
+      },
     },
     {
       name: "an ask nobody can answer any more leaves the helpers working",
       openRequests: [{ ...request(helperAsk), answerable: false }],
-      state: { kind: "working", since: 500, waitsOnHelpers: true, work: { items: [], count: 0 } },
+      state: {
+        kind: "working",
+        since: 500,
+        waitsOnHelpers: true,
+        work: { items: [], count: 0, helpers: 0 },
+      },
     },
   ])("$name", ({ openRequests, state }) => {
     const row = conversationRowOf(

@@ -171,24 +171,39 @@ export function afterWorkLines(work: BackgroundWork | undefined): ReadonlyArray<
       },
     ];
   }
-  if (work.count <= Math.min(work.items.length, AFTER_WORK_LINES)) {
-    return work.items.map((item, index) => ({
-      key: `${String(index)}:${String(item.since)}`,
-      title: workTitle(item),
-      word: item.of === "helper" ? "Its helper" : "Its own job",
-      helper: item.of === "helper",
-      startedAt: new Date(item.since).toISOString(),
-    }));
-  }
-  const helpers = work.items.every((item) => item.of === "helper");
-  const jobs = work.items.every((item) => item.of === "mate");
-  return [
-    {
-      key: "many",
-      title: `${workTitle(first)} · and ${String(work.count - 1)} more`,
-      word: helpers ? "Its helpers" : jobs ? "Its own jobs" : "Its helpers and own jobs",
-      helper: helpers,
-      startedAt: new Date(first.since).toISOString(),
-    },
+  const line = (item: BackgroundWork["items"][number], index: number): AfterWorkLine => ({
+    key: `${String(index)}:${String(item.since)}`,
+    title: workTitle(item),
+    word: item.of === "helper" ? "Its helper" : "Its own job",
+    helper: item.of === "helper",
+    startedAt: new Date(item.since).toISOString(),
+  });
+  if (work.count <= Math.min(work.items.length, AFTER_WORK_LINES)) return work.items.map(line);
+  // Many: a line for its helpers and one for its own jobs, each by its first and counted, so
+  // neither reads as the other (Eli, 2026-10-14).
+  const helpers = work.helpers ?? work.items.filter((item) => item.of === "helper").length;
+  const kinds = [
+    { of: "helper" as const, count: helpers, many: "Its helpers" },
+    { of: "mate" as const, count: work.count - helpers, many: "Its own jobs" },
   ];
+  // The kind started first leads, as the items are in the order they started.
+  const firstOfKind = (of: "helper" | "mate") => work.items.find((item) => item.of === of);
+  const ordered = kinds.toSorted(
+    (left, right) =>
+      work.items.indexOf(firstOfKind(left.of)!) - work.items.indexOf(firstOfKind(right.of)!),
+  );
+  return ordered.flatMap(({ of, count, many }) => {
+    const firstOf = firstOfKind(of);
+    if (count === 0 || firstOf === undefined) return [];
+    if (count === 1) return [line(firstOf, work.items.indexOf(firstOf))];
+    return [
+      {
+        key: `many:${of}`,
+        title: `${workTitle(firstOf)} · and ${String(count - 1)} more`,
+        word: many,
+        helper: of === "helper",
+        startedAt: new Date(firstOf.since).toISOString(),
+      },
+    ];
+  });
 }

@@ -239,9 +239,11 @@ export const readConversationView = (conversationId: ConversationId) =>
     const work = yield* sql<{
       readonly body_json: string;
       readonly by_kind: string | null;
+      readonly helper_id: string | null;
       readonly at: number;
     }>`
-      SELECT body_json, json_extract(by_json, '$.kind') AS by_kind, at FROM engine_item
+      SELECT body_json, json_extract(by_json, '$.kind') AS by_kind,
+        json_extract(by_json, '$.helperId') AS helper_id, at FROM engine_item
       WHERE conversation_id = ${conversationId} AND kind = 'work' AND state = 'open'
       ORDER BY opened_seq
     `;
@@ -250,9 +252,13 @@ export const readConversationView = (conversationId: ConversationId) =>
     )).flatMap(({ body, row }) =>
       body.kind === "work" && WORK_ALIVE.has(body.status) ? [{ body, row }] : [],
     );
-    // A helper's own job is its helper's work, never the Mate's own.
+    // A helper's own job is its helper's work, never the Mate's own; while its helper runs it is
+    // that helper's to name (Eli, 2026-10-14: its helpers' shells read as its own background jobs).
+    const helpersAlive = new Set(
+      alive.flatMap(({ body }) => (body.workKind === "helper" ? [body.work] : [])),
+    );
     const named = alive.flatMap(({ body, row }): ReadonlyArray<BackgroundWorkItem> =>
-      body.workKind === "monitor"
+      body.workKind === "monitor" || (row.helper_id !== null && helpersAlive.has(row.helper_id))
         ? []
         : [
             {

@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import { ZeropsApiError, type ZeropsOrganizationMember } from "../../../zerops/api.ts";
+import { presetMembership } from "../../../zerops/teamRoles.ts";
 import { appAccessExecutor, type AppAccessPlatform } from "./appAccess.ts";
 
 const ORG = "org-1";
@@ -21,6 +22,7 @@ function organization(
 ) {
   const calls: Array<string> = [];
   const readBack: Array<ReadonlyArray<string>> = [];
+  const readBackMembers: Array<ReadonlyArray<string>> = [];
   const failing = <A>(verb: Verb, run: () => A | Promise<A>) => {
     calls.push(verb);
     const failure = fail[verb];
@@ -103,11 +105,12 @@ function organization(
         );
       }),
   };
-  const executor = appAccessExecutor(platform, async (orgId, projectIds) => {
+  const executor = appAccessExecutor(platform, async (orgId, projectIds, memberIds = []) => {
     expect(orgId).toBe(ORG);
     readBack.push(projectIds);
+    readBackMembers.push(memberIds);
   });
-  return { executor, calls, readBack, members, grants, projects };
+  return { executor, calls, readBack, readBackMembers, members, grants, projects };
 }
 
 const member = (id: string, roleCode: string, status = "ACTIVE"): ZeropsOrganizationMember => ({
@@ -383,11 +386,58 @@ describe("inviting someone to the team", () => {
         email: "eva@example.com",
         invitee: { kind: "new", firstName: "Eva", lastName: "Dvořáková" },
         level,
-        role,
+        membership: presetMembership(role),
         projects: TWO_APPS,
       });
       expect(org.members.at(-1)).toMatchObject(membership);
       expect(org.grants["cu-new"]).toEqual(grants);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+});
+
+describe("inviting someone from the Team page, project by project", () => {
+  it.effect.each([
+    {
+      sentence: "A guest gets each project at the level set for it",
+      membership: presetMembership("guest"),
+      grants: [
+        { projectId: "prod", roleCode: "ADMIN" as const },
+        { projectId: "stage", roleCode: "READ_ONLY" as const },
+      ],
+      written: [
+        { projectId: "prod", roleCode: "ADMIN" },
+        { projectId: "stage", roleCode: "READ_ONLY" },
+      ],
+    },
+    {
+      sentence:
+        "A member who sees every project, invited with one hidden, gets no access written there",
+      membership: {
+        roleCode: "READ_ONLY",
+        canCreateProjects: false,
+        canViewFinances: false,
+        canEditFinances: false,
+      } as const,
+      grants: [
+        { projectId: "prod", roleCode: "NO_ACCESS" as const },
+        { projectId: "stage", roleCode: "READ_ONLY" as const },
+      ],
+      written: [{ projectId: "prod", roleCode: "NO_ACCESS" }],
+    },
+  ])("$sentence", ({ membership, grants, written }) =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-owner", "OWNER")]);
+      const receipt = yield* org.executor.invite("r1", {
+        kind: "invite-member",
+        orgId: ORG,
+        email: "eva@example.com",
+        invitee: { kind: "new", firstName: "Eva", lastName: "Dvořáková" },
+        membership,
+        grants,
+      });
+      expect(org.members.at(-1)).toMatchObject({ roleCode: membership.roleCode });
+      expect(org.grants["cu-new"]).toEqual(written);
       expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
     }),
   );
@@ -531,9 +581,57 @@ describe("setting who reaches some projects", () => {
     changes: ReadonlyArray<{
       clientUserId: string;
       projectId: string;
-      roleCode: "ADMIN" | "READ_ONLY" | null;
+      roleCode: "ADMIN" | "READ_ONLY" | "NO_ACCESS" | null;
     }>,
   ) => org.executor.setProjectAccess("r1", { kind: "set-project-access", orgId: ORG, changes });
+
+  it.effect.each([
+    {
+      sentence: "Zerops keeping a project visible to an admin says so, not that the viewer may not",
+      code: "noAccessRoleInvalid",
+      detail:
+        "'ADMIN' users cannot be given 'NO_ACCESS' on projects - they must retain visibility to all projects.",
+      message: "Zerops keeps every project visible to organization owners and admins.",
+    },
+    {
+      sentence: "A refusal Zerops gives a rule of its own is said in Zerops's words",
+      code: "somethingNew",
+      detail: "Projects can't be changed right now.",
+      message: "Projects can't be changed right now.",
+    },
+    {
+      sentence: "Zerops refusing the viewer's permission says who may change access",
+      code: "insufficientPermissions",
+      detail: "Insufficient permissions",
+      message: "Only an organization owner or admin can change who has access.",
+    },
+  ])("$sentence", ({ code, detail, message }) =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-adm", "ADMIN")],
+        {},
+        {
+          writeMemberProjectRoles: () =>
+            Promise.reject(new ZeropsApiError("Forbidden.", "forbidden", 403, code, detail)),
+        },
+      );
+      const answer = yield* Effect.result(
+        set(org, [{ clientUserId: "cu-adm", projectId: "prod", roleCode: "NO_ACCESS" }]),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        outcome: "definitive-refusal",
+        message,
+      });
+    }),
+  );
+
+  it.effect("Setting someone's project access reads their own grants again before it is done", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-ro", "READ_ONLY")]);
+      yield* set(org, [{ clientUserId: "cu-ro", projectId: "stage", roleCode: "NO_ACCESS" }]);
+      expect(org.readBackMembers).toEqual([["cu-ro"]]);
+    }),
+  );
 
   it.effect("Each person's change is one write of their own list, their other projects kept", () =>
     Effect.gen(function* () {

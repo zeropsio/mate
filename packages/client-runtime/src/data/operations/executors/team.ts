@@ -1,6 +1,6 @@
 /**
- * Who is on an organization's team, at Zerops (`operations/team.ts`): a member's role set to a
- * preset (`PUT /client-user/{id}`), a member taken off or an invitation withdrawn
+ * Who is on an organization's team, at Zerops (`operations/team.ts`): a member's membership set —
+ * a role and its three flags (`PUT /client-user/{id}`), a member taken off or an invitation withdrawn
  * (`DELETE /client-user/{id}`). The member's project grants are never touched by a role change.
  *
  * Each starts from the member list read now: someone gone is said so, and a change Zerops would
@@ -15,12 +15,12 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "../../../zerops/api.ts";
-import { membershipOfTeamRole, teamChangeRefusal } from "../../../zerops/teamRoles.ts";
+import { membershipOf, sameMembership, teamChangeRefusal } from "../../../zerops/teamRoles.ts";
 import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OwnerUnobservable, UncertainAcceptance } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
-import { verb } from "./write.ts";
+import { refusedInWords, verb } from "./write.ts";
 
 export type TeamPlatform = Pick<
   ZeropsApiClient,
@@ -35,11 +35,8 @@ const GONE = "They're no longer in this organization.";
 
 type Fault = StreamFault | UncertainAcceptance;
 
-/** Zerops refusing the viewer, in the words of who may. */
-const inWords = (fault: Fault): Fault =>
-  fault.outcome === "authoritative-denial"
-    ? { ...fault, outcome: "definitive-refusal", message: FORBIDDEN }
-    : fault;
+/** Zerops refusing the viewer, in the words of who may; any other refusal in Zerops's own. */
+const inWords = (fault: Fault): Fault => refusedInWords(fault, FORBIDDEN);
 
 const refused = (message: string) =>
   Effect.fail<StreamFault>({ outcome: "definitive-refusal", message });
@@ -80,29 +77,24 @@ export function teamExecutor(
     Effect.gen(function* () {
       const member = find(yield* listed(intent.orgId), intent.clientUserId);
       if (member === undefined) return yield* refused(GONE);
+      const target = intent.membership;
+      const was = membershipOf(member);
       const refusal = teamChangeRefusal({
         viewerRole: viewerRoleOf(intent.orgId),
         memberRole: member.roleCode,
-        role: intent.role,
+        roleCode: target.roleCode,
+        finances:
+          was.canViewFinances !== target.canViewFinances ||
+          was.canEditFinances !== target.canEditFinances,
       });
       if (refusal !== null) return yield* refused(refusal);
-      const target = membershipOfTeamRole(intent.role);
-      const holds = (one: ZeropsOrganizationMember) =>
-        one.roleCode === target.roleCode &&
-        (one.canCreateProjects ?? false) === target.canCreateProjects;
+      const holds = (one: ZeropsOrganizationMember) => sameMembership(membershipOf(one), target);
       if (holds(member)) {
         yield* Effect.promise(() => readBack(intent.orgId, member.id));
         return receiptOf(requestId, intent.orgId, { changed: false });
       }
       const written = yield* Effect.result(
-        verb(() =>
-          platform.updateOrganizationMember(member.id, {
-            ...target,
-            // Finances are Zerops HQ's: sent back as they were.
-            canViewFinances: member.canViewFinances ?? false,
-            canEditFinances: member.canEditFinances ?? false,
-          }),
-        ),
+        verb(() => platform.updateOrganizationMember(member.id, target)),
       );
       if (Result.isFailure(written)) {
         if (written.failure.outcome !== "uncertain-acceptance")
@@ -129,7 +121,7 @@ export function teamExecutor(
       const refusal = teamChangeRefusal({
         viewerRole: viewerRoleOf(intent.orgId),
         memberRole: member.roleCode,
-        role: null,
+        roleCode: null,
       });
       if (refusal !== null) return yield* refused(refusal);
       const removed = yield* Effect.result(

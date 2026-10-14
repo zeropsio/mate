@@ -2,7 +2,7 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  invitableGroups,
+  shownTeam,
   teamGrantIds,
   teamPeople,
   type TeamInput,
@@ -294,20 +294,56 @@ describe("what the viewer may change of the team", () => {
   });
 });
 
-describe("what an invitation may give", () => {
-  it("never offers a person's Chief as a project to give", () => {
-    const groups = [
-      {
-        groupId: "snap",
-        name: "Snap",
-        projects: [{ projectId: "snap-prod" }, { projectId: "snap-kai" }],
-      },
-      { groupId: "chief-ales", name: "Chief · Ales", projects: [{ projectId: "chief-ales-mate" }] },
-      { groupId: "beviro", name: "Beviro", projects: [{ projectId: "beviro-cleo" }] },
-    ];
-    expect(invitableGroups(groups, new Set(["chief-ales-mate"]))).toEqual([
-      { groupId: "beviro", name: "Beviro" },
-      { groupId: "snap", name: "Snap" },
+describe("finding someone on the team", () => {
+  const TEAM = people(
+    teamPeople(
+      input([
+        member("petra", "Petra Kralova", "OWNER"),
+        member("ota", "Ota Benes", "ADMIN"),
+        member("zora", "Zora Mala", "NO_ACCESS"),
+        member("ivo", "Ivo Novy", "NO_ACCESS", { status: "WAITING_AUTHORIZATION" }),
+        member("ada", "Ada Cerna", "NO_ACCESS"),
+      ]),
+    ),
+  );
+  const names = (list: ReturnType<typeof shownTeam>) => list.map(({ name }) => name);
+
+  it("The team is listed by name, invitations not joined yet last", () => {
+    expect(names(shownTeam(TEAM, ""))).toEqual([
+      "Ada Cerna",
+      "Ota Benes",
+      "Petra Kralova",
+      "Zora Mala",
+      "Ivo Novy",
+    ]);
+  });
+
+  it.each([
+    { query: "petra", found: ["Petra Kralova"] },
+    { query: "  MALA ", found: ["Zora Mala"] },
+    { query: "ota@example", found: ["Ota Benes"] },
+    { query: "nobody", found: [] },
+  ])("The search finds by name or e-mail, any case: $query", ({ query, found }) => {
+    expect(names(shownTeam(TEAM, query))).toEqual(found);
+  });
+
+  it("A card's badge is the preset's name, else Zerops's role in words", () => {
+    expect(
+      people(
+        teamPeople(
+          input([
+            member("a", "A", "OWNER"),
+            member("d", "D", "NO_ACCESS", { canCreateProjects: true }),
+            member("g", "G", "NO_ACCESS"),
+            member("b", "B", "BASIC_USER"),
+          ]),
+        ),
+      ).map(({ name, badge }) => [name, badge]),
+    ).toEqual([
+      ["A", "Owner"],
+      ["B", "Basic user"],
+      ["D", "Developer"],
+      ["G", "Guest"],
     ]);
   });
 });

@@ -15,14 +15,13 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import { planAppGrants, type ProjectGrantEntry } from "../../../zerops/appAccess.ts";
-import { membershipOfTeamRole } from "../../../zerops/teamRoles.ts";
 import { planMemberProjectGrants } from "../../../zerops/projectAccess.ts";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OwnerUnobservable, UncertainAcceptance } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
-import { verb } from "./write.ts";
+import { refusedInWords, verb } from "./write.ts";
 
 export type AppAccessPlatform = Pick<
   ZeropsApiClient,
@@ -49,17 +48,23 @@ export type AppAccessReadBack = (
 
 const ALREADY = "Already in this organization — change their access in the list.";
 const ALREADY_CODES = new Set(["userAlreadyConnectedToCompany", "duplicatedUser"]);
+/** Zerops refuses hiding a project from an owner or an admin (measured 2026-10-14). */
+const KEEPS_VISIBLE = "Zerops keeps every project visible to organization owners and admins.";
 
 type Fault = StreamFault | UncertainAcceptance;
 
-/** Zerops's refusal in the words a person needs: who may, someone already here, else Zerops's. */
+/**
+ * Zerops's refusal in the words a person needs: someone already here, a project an owner or admin
+ * must keep, who may — where Zerops said it is a permission — else what Zerops said.
+ */
 function inWords(fault: Fault, cause: { readonly forbidden: string }): Fault {
   if (fault.outcome === "uncertain-acceptance") return fault;
-  if ("code" in fault && fault.code !== undefined && ALREADY_CODES.has(fault.code))
+  const code = "code" in fault ? fault.code : undefined;
+  if (code !== undefined && ALREADY_CODES.has(code))
     return { ...fault, outcome: "definitive-refusal", message: ALREADY };
-  if (fault.outcome === "authoritative-denial")
-    return { ...fault, outcome: "definitive-refusal", message: cause.forbidden };
-  return fault;
+  if (code === "noAccessRoleInvalid")
+    return { ...fault, outcome: "definitive-refusal", message: KEEPS_VISIBLE };
+  return refusedInWords(fault, cause.forbidden);
 }
 
 const INVITE = { forbidden: "Only an organization owner or admin can invite." };
@@ -168,22 +173,21 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
 
   const invite = (requestId: string, intent: IntentOf<"invite-member">) =>
     Effect.gen(function* () {
-      const membership = {
-        ...(intent.role === undefined
-          ? {
-              // The organization opens nothing by itself: the app's grants are what they get.
-              roleCode: "NO_ACCESS",
-              // Someone who works on it adds their own Mate; someone who looks doesn't.
-              canCreateProjects: intent.level === "work",
-            }
-          : membershipOfTeamRole(intent.role)),
-        // Finances are Zerops HQ's.
+      const membership = intent.membership ?? {
+        // The organization opens nothing by itself: the app's grants are what they get.
+        roleCode: "NO_ACCESS",
+        // Someone who works on it adds their own Mate; someone who looks doesn't.
+        canCreateProjects: "level" in intent && intent.level === "work",
         canViewFinances: false,
         canEditFinances: false,
       };
-      // An owner or an admin reaches everything by their role: no project is theirs to be given.
+      // An owner or an admin reaches every app by their role: no app is theirs to be given. Each
+      // project's own level is written as it is set, a hidden one too.
       const projects =
-        membership.roleCode === "NO_ACCESS" ? intent.projects : { places: [], mates: [] };
+        "grants" in intent || membership.roleCode !== "NO_ACCESS"
+          ? { places: [], mates: [] }
+          : intent.projects;
+      const written = "grants" in intent ? intent.grants.map(({ projectId }) => projectId) : [];
       const { invitee } = intent;
       const sent = yield* Effect.result(
         Effect.mapError(
@@ -215,15 +219,23 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
               "Zerops took the invitation, but its member list doesn't show them yet.",
             );
       const plan = (current: ReadonlyArray<ProjectGrantEntry>) =>
-        planAppGrants({
-          current,
-          orgRole: membership.roleCode,
-          projects,
-          owned: [],
-          change: intent.level,
-        });
+        "grants" in intent
+          ? planMemberProjectGrants({
+              current,
+              orgRole: membership.roleCode,
+              changes: intent.grants,
+            })
+          : planAppGrants({
+              current,
+              orgRole: membership.roleCode,
+              projects,
+              owned: [],
+              change: intent.level,
+            });
       const granted = yield* Effect.result(writeGrants(member.id, plan));
-      yield* Effect.promise(() => readBack(intent.orgId, projects.places, [member.id]));
+      yield* Effect.promise(() =>
+        readBack(intent.orgId, [...projects.places, ...written], [member.id]),
+      );
       const result = { clientUserId: member.id };
       if (Result.isFailure(granted))
         return receiptOf(requestId, intent.orgId, result, {
@@ -312,6 +324,8 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
     Effect.gen(function* () {
       const projects = [...new Set(intent.changes.map(({ projectId }) => projectId))];
       const people = Map.groupBy(intent.changes, ({ clientUserId }) => clientUserId);
+      // Their own grants are read again too: a person's page shows what was saved, never less.
+      const named = [...people.keys()];
       const members = yield* verb(() => platform.listOrganizationMembers(intent.orgId));
       const found = [...people.keys()].map((id) => members.find((one) => one.id === id));
       // Nobody is written while anyone named has gone: the change is judged as a whole.
@@ -333,16 +347,16 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
           ),
         );
         if (Result.isFailure(granted)) {
-          yield* Effect.promise(() => readBack(intent.orgId, projects));
+          yield* Effect.promise(() => readBack(intent.orgId, projects, named));
           return yield* Effect.fail(granted.failure);
         }
         if (!granted.success.written) {
-          yield* Effect.promise(() => readBack(intent.orgId, projects));
+          yield* Effect.promise(() => readBack(intent.orgId, projects, named));
           return unobservable("Check their access, then choose again");
         }
         written += 1;
       }
-      yield* Effect.promise(() => readBack(intent.orgId, projects));
+      yield* Effect.promise(() => readBack(intent.orgId, projects, named));
       return receiptOf(requestId, intent.orgId, { written });
     });
 

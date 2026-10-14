@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { draftView } from "./accessDraft.logic";
 import { AddAccessPicker, ProjectAccessChips, type AccessPick } from "./ProjectAccessChips";
@@ -12,6 +12,19 @@ import {
   type AccessCandidate,
   type ProjectPeopleInput,
 } from "./projectPeople.logic";
+
+vi.mock("@tanstack/react-router", async (actual) => ({
+  ...(await actual<typeof import("@tanstack/react-router")>()),
+  Link: ({
+    children,
+    params,
+    to,
+  }: {
+    readonly children?: ReactNode;
+    readonly params: Readonly<Record<string, string>>;
+    readonly to: string;
+  }) => <a href={to.replace(/\$(\w+)/g, (_, key: string) => params[key] ?? "")}>{children}</a>,
+}));
 
 const ANNA: ZeropsOrganizationMember = {
   id: "cu-anna",
@@ -166,13 +179,41 @@ describe("changing who can work on a project", () => {
     expect(section?.querySelector('[data-zerops-surface="add-access"]')).toBeNull();
   });
 
-  it("An owner finds a menu on each person whose access they may change: an invitation's too, never their own", () => {
+  it("An owner finds a menu on each person whose access they may change: an invitation's and their own too", () => {
     const section = drawn({ roleCode: "OWNER", membershipId: "cu-anna" });
     expect(
       [...(section?.querySelectorAll('[aria-label$="\'s access"]') ?? [])].map((menu) =>
         menu.getAttribute("aria-label"),
       ),
-    ).toEqual(["Change Petr Novák's access", "Change iva@example.com's access"]);
+    ).toEqual([
+      "Change Anna Berg's access",
+      "Change Petr Novák's access",
+      "Change iva@example.com's access",
+    ]);
+  });
+
+  it("An admin finds no menu on an owner: Zerops refuses an admin that write", () => {
+    const section = drawn({ roleCode: "ADMIN", membershipId: "cu-someone" });
+    expect(section?.querySelector('[aria-label="Change Anna Berg\'s access"]')).toBeNull();
+  });
+
+  it("An owner or admin opens a person's own Team page from their chip", () => {
+    const section = sectionOf(
+      renderToStaticMarkup(
+        <ProjectAccessChips
+          personPage={() => true}
+          view={projectPeople({
+            ...input(KNOWN([ANNA, PETR])),
+            viewer: { roleCode: "OWNER", membershipId: "cu-anna" },
+          })}
+        />,
+      ),
+      "Project access",
+    );
+    expect([...(section?.querySelectorAll("a") ?? [])].map((a) => a.getAttribute("href"))).toEqual([
+      "/settings/team/cu-petr",
+      "/settings/team/cu-anna",
+    ]);
   });
 
   it("A change under way says so on the row, and a refused one is said under it", () => {
@@ -214,7 +255,9 @@ describe("a new project's access in a creation dialog", () => {
       ["Anna B.", "Full"],
       [],
     ]);
-    expect(section?.querySelectorAll('[aria-label$="\'s access"]').length).toBe(0);
+    expect(
+      section?.querySelector("ul > li")?.querySelector('[aria-label$="\'s access"]') ?? null,
+    ).toBeNull();
     expect(section?.querySelector('[data-zerops-surface="add-access"]')?.textContent).toBe(
       "Add access",
     );

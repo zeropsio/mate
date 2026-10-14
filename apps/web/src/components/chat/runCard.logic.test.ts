@@ -1706,6 +1706,20 @@ describe("what a Mate whose turn is over says it waits on, in its menu row", () 
       words: "Waiting for its helper and a background job",
     },
     {
+      name: "its helpers and its own jobs by the count of each, past the few it names",
+      work: {
+        items: [
+          helper("UI overhaul + placement clarity"),
+          helper("Swarm scale toward 500k"),
+          helper("Walls, turrets-on-walls, craters, climb"),
+          job("Run the test suite"),
+        ],
+        count: 6,
+        helpers: 4,
+      },
+      words: "Waiting for its helpers and 2 background jobs",
+    },
+    {
       name: "nothing still running: the turn on what it started is due",
       work: { items: [], count: 0 },
       words: "Finishing work it started",
