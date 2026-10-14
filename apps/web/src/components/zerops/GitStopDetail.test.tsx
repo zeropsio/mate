@@ -152,7 +152,7 @@ it("Removing Git production names the branch that stays and keeps its remote con
       "Removes production. github.com/acme/shop main stays as it is; Mate stops pushing to it.",
     );
     expect(host.textContent).toContain(
-      "The remote stays connected. Settings → Repositories manages it.",
+      "The remote stays connected. Manage it under Repositories on this project's page.",
     );
     await act(async () =>
       [...host.querySelectorAll("button")]

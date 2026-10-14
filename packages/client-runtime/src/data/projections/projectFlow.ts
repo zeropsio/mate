@@ -1,7 +1,9 @@
 /** One application's flow from keyed owner facts; reading it holds no app detail. */
 import { ProjectId } from "@t3tools/contracts";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import {
   canonicalGroupStopsOf,
+  codeRepositoriesOf,
   zeropsStops,
   type CanonicalGroupStops,
 } from "../../zerops/groupDeploys.ts";
@@ -106,6 +108,11 @@ export interface CanonicalProjectFlow extends Omit<
   readonly declarations: CanonicalGroupStops["declarations"];
   readonly environments: ReadonlyArray<CanonicalEnvironmentRow>;
   readonly environmentInputs: CanonicalGroupStops["environments"];
+  /**
+   * The repositories a Mate ships code to (`codeRepositoriesOf`), as HQ lists them; `undefined`
+   * until HQ said its repositories and the recipe's stage and production.
+   */
+  readonly codeRepos: ReadonlyArray<RepoListEntry> | undefined;
 }
 export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFlow | undefined> = {
   name: "canonicalProjectFlow",
@@ -130,7 +137,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
     if (fact.kind !== "known") return undefined;
     const app = fact.value;
     const detail = hqAppDetail.derive(read, key);
-    const { stage, production } = detail.recipes;
+    const { mate, stage, production } = detail.recipes;
     const recipe =
       stage === undefined || production === undefined
         ? undefined
@@ -138,6 +145,11 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
             stage: stage.state === "present" ? stage.importYaml : null,
             production: production.state === "present" ? production.importYaml : null,
           });
+    const code = codeRepositoriesOf(
+      [mate, stage, production].flatMap((tier) =>
+        tier?.state === "present" ? [tier.importYaml] : [],
+      ),
+    );
     const environments = canonicalAppEnvironments.derive(read, key).environments;
     const projectIds = [
       ...new Set(
@@ -260,6 +272,10 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
             },
       declarations: stops?.declarations ?? [],
       environmentInputs: stops?.environments ?? [],
+      codeRepos:
+        recipe === undefined || detail.repos === undefined
+          ? undefined
+          : detail.repos.filter(({ name }) => code.has(name)),
       environments: (stops?.environments ?? []).map((entry) =>
         canonicalStopRow(entry, (detail.releases ?? []).map(flowReleaseOf)),
       ),

@@ -76,7 +76,7 @@ export type HqRemoteRefusal = typeof HqRemoteRefusal.Type;
 
 const REMOTE_WORDS: Record<HqRemoteRefusalReason, string> = {
   remote_taken:
-    "This repository is already connected to another application. Disconnect it there (Settings → Repositories) or use another repository.",
+    "This repository is already connected to another project. Disconnect it under Repositories on that project's page, or use another repository.",
   no_key:
     "HQ cannot save this token yet. Ask your HQ administrator to configure its encryption key, then try again.",
   no_remote: "This repository has no connection. Connect it before continuing.",
@@ -110,7 +110,7 @@ export function remoteRefusalWords(
   refusal: Pick<HqRemoteRefusal, "reason" | "repository" | "applicationName" | "environments">,
 ): string {
   if (refusal.reason === "remote_taken" && refusal.applicationName) {
-    return `${refusal.repository ?? "This repository"} is already connected to ${refusal.applicationName}. Disconnect it there (Settings → Repositories) or use another repository.`;
+    return `${refusal.repository ?? "This repository"} is already connected to ${refusal.applicationName}. Disconnect it under Repositories on ${refusal.applicationName}'s page, or use another repository.`;
   }
   if (refusal.reason === "in_use" && refusal.environments?.length) {
     return `Git environments ${refusal.environments.join(", ")} still use this connection. Remove them before disconnecting it.`;

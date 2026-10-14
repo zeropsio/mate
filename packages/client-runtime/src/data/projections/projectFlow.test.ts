@@ -218,6 +218,97 @@ describe("Projects compact flow", () => {
     }
   });
 
+  it("A project's code repositories are those its dev and stage runtimes build from, never a utility's or a managed service's", () => {
+    const scope = hqAppDetailScope("org", "shop");
+    const hq = "https://hq.test/git/shop";
+    const mateTier = [
+      "services:",
+      "  - hostname: db",
+      "    type: postgresql:single@17",
+      "  - hostname: mailpit",
+      "    type: alpine@3.24",
+      "    buildFromGit: https://github.com/zeropsio/recipe-mailpit",
+      "  - hostname: medusadev",
+      "    type: alpine/nodejs@24",
+      `    buildFromGit: ${hq}/medusadev.git`,
+      "  - hostname: medusastage",
+      "    type: alpine/nodejs@24",
+      `    buildFromGit: ${hq}/medusadev.git`,
+      "",
+    ].join("\n");
+    const stageTier = [
+      "services:",
+      "  - hostname: mailpit",
+      "    type: alpine@3.24",
+      "    buildFromGit: https://github.com/zeropsio/recipe-mailpit",
+      "  - hostname: nextstore",
+      "    type: alpine/nodejs@24",
+      `    buildFromGit: ${hq}/nextstoredev.git`,
+      "",
+    ].join("\n");
+    const codeRepos = (tiers: Readonly<Record<string, string | null>>) => {
+      const f = fixture();
+      f.store.dispatch({
+        kind: "stream",
+        key: scope,
+        now: 0,
+        event: { kind: "demand", demanded: true },
+      });
+      f.store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
+      const records = [
+        {
+          id: "shop/repos",
+          value: {
+            kind: "repos" as const,
+            value: ["group", "mailpit", "medusadev", "nextstoredev", "db"].map((name) => ({
+              name,
+              mainHead: "b".repeat(40),
+              updatedAt: "2026-10-04T10:37:30.000Z",
+              remote: null,
+            })),
+          },
+        },
+        ...Object.entries(tiers).map(([tier, importYaml]) => ({
+          id: `shop/recipe:${tier}`,
+          value: {
+            kind: "recipe" as const,
+            value:
+              importYaml === null
+                ? { state: "absent" as const }
+                : { state: "present" as const, mainHead: "a".repeat(40), importYaml },
+          },
+        })),
+      ];
+      f.store.dispatch({ kind: "baseline-begin", scope, generation: 0 });
+      f.store.dispatch({
+        kind: "baseline-commit",
+        scope,
+        generation: 0,
+        via: "hq-stream",
+        members: records.map(({ id }) => id),
+        rows: records.map(({ id, value }) => ({
+          family: "hqAppDetail" as const,
+          id,
+          revision: { kind: "hq" as const, incarnation: "seed", revision: 100 },
+          value,
+        })),
+      });
+      try {
+        return canonicalProjectFlow
+          .derive(readsOfState(f.store.state()), key)
+          ?.codeRepos?.map(({ name }) => name);
+      } finally {
+        f.registry.dispose();
+      }
+    };
+    expect(codeRepos({ mate: mateTier })).toBeUndefined();
+    expect(codeRepos({ mate: mateTier, stage: stageTier, production: null })).toEqual([
+      "medusadev",
+      "nextstoredev",
+    ]);
+    expect(codeRepos({ stage: null, production: null })).toEqual([]);
+  });
+
   it("shows production's actual version while recipes and release history are unread", () => {
     const f = fixture();
     expect(f.read()?.environments[0]?.version.label).toBe("v1.2.3");
