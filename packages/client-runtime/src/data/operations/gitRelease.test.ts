@@ -23,17 +23,18 @@ const ATTACHMENT = {
   createdAt: AT,
   target: { kind: "git", branch: "production", delivery: "direct" },
 } as const;
+// HQ says one credential's instant two ways: its repositories trimmed, its preflight to the microsecond.
 const REMOTE = {
   url: "https://github.com/acme/api.git",
   repositoryId: "1",
-  keptAt: AT,
+  keptAt: "2026-10-13T09:59:34.64522Z",
   keptBy: "Zerops custodian",
   expiresAt: null,
   invalidSince: null,
 };
 const READY: HqGitReleasePreflight = {
   repo: "api",
-  remote: REMOTE,
+  remote: { ...REMOTE, keptAt: "2026-10-13T09:59:34.645220Z" },
   ref: "refs/heads/production",
   before: null,
   sha: API,
@@ -169,7 +170,8 @@ describe("a Git production's release", () => {
       const { store, flow } = gitProduction([READY]);
       if (flow === undefined) throw new Error("The Git production's flow must be read");
       const request = releaseRequestOf(flow.release, "v0.1.0");
-      if ("refused" in request) throw new Error(request.refused);
+      expect(request).not.toHaveProperty("refused");
+      if ("refused" in request) return;
       const { operations, requests } = hqRecording(store);
       yield* operations.submit({ ...request, orgId: "org", appId: "shop" });
       expect(requests).toEqual([
@@ -192,7 +194,7 @@ describe("a Git production's release", () => {
     { name: "a preflight of another commit", preflight: [{ ...READY, sha: "c".repeat(40) }] },
     {
       name: "a preflight of a replaced token",
-      preflight: [{ ...READY, remote: { ...REMOTE, keptAt: "2026-10-13T11:00:00Z" } }],
+      preflight: [{ ...READY, remote: { ...READY.remote, keptAt: "2026-10-13T11:00:00.000000Z" } }],
     },
   ])("A Git production release waits for HQ's ready preflight: $name", ({ preflight }) => {
     const { flow } = gitProduction(preflight);

@@ -157,7 +157,10 @@ export function readyGitPreflight(input: {
       review.ref !== `refs/heads/${input.branch}` ||
       review.remote.url !== remote.url ||
       review.remote.repositoryId !== remote.repositoryId ||
-      review.remote.keptAt !== remote.keptAt
+      // The same credential's instant: HQ's repositories trim it, its preflight keeps microseconds.
+      remote.keptAt === null ||
+      review.remote.keptAt === null ||
+      Date.parse(review.remote.keptAt) !== Date.parse(remote.keptAt)
     )
       return undefined;
     ready.push(review);
