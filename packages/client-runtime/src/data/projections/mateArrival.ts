@@ -706,6 +706,7 @@ export function mateArrival(
       readonly lacksCreation?: boolean;
     };
     readonly listedOnly?: boolean;
+    readonly admissionRefusal?: Extract<Reachability, { readonly kind: "refused-role" }> | null;
     readonly recovery?: MateRecovery;
     readonly cameUp?: boolean;
     readonly conversation?: Omit<Parameters<typeof conversationArrival>[0], "connected" | "cameUp">;
@@ -720,15 +721,16 @@ export function mateArrival(
     answerAwaited: input.link === undefined ? undefined : arrivalAwaitsAnswer(input.link),
   });
   const standing = input.recovery?.standing.kind;
-  const namedRefusal = isNamedChiefRefusal(input.link?.reachability);
+  const sourceReachability = input.admissionRefusal ?? input.link?.reachability;
+  const namedRefusal = isNamedChiefRefusal(sourceReachability);
   const unavailable = !namedRefusal && mateProjectUnavailable(input.recovery?.standing);
   const reachability: Reachability | null = namedRefusal
-    ? input.link!.reachability
+    ? sourceReachability!
     : unavailable
       ? { kind: "gone", because: standing === "deleted" ? "direct-not-found" : "direct-forbidden" }
       : input.listedOnly === true
         ? { kind: "refused-role" }
-        : (input.link?.reachability ?? null);
+        : (sourceReachability ?? null);
   const page = mateComingPage({
     coming: input.listedOnly === true || unavailable ? undefined : coming,
     candidate: input.listedOnly === true || unavailable ? undefined : input.candidate,

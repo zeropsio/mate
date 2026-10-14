@@ -131,6 +131,10 @@ const app = vi.hoisted(() => ({
   observeRefused: false,
   wholeForPerson: false,
   detailFailure: null as { readonly message: string } | null,
+  admissionRefusal: null as {
+    readonly kind: "refused-role";
+    readonly chiefOwnerName: string;
+  } | null,
   registration: {
     attempt: 0,
     state: "waiting",
@@ -146,6 +150,9 @@ vi.mock("~/zerops/useHqOffers", () => ({
 }));
 vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
 vi.mock("~/zerops/useMateRecovery", () => ({ useMateRecovery: () => app.recovery }));
+vi.mock("~/zerops/useHqMateRefusal", () => ({
+  useHqMateRefusal: () => app.admissionRefusal,
+}));
 vi.mock("~/zerops/useMenuMateReadings", () => ({
   useToldActivity: () => app.told,
   useLastKnownMateWords: () => undefined,
@@ -453,6 +460,7 @@ beforeEach(() => {
   app.birthProgress = false;
   app.wholeForPerson = false;
   app.detailFailure = null;
+  app.admissionRefusal = null;
 });
 afterEach(async () => {
   const { useComposerDraftStore } = await import("~/composerDraftStore");
@@ -478,11 +486,7 @@ describe("a Mate's own view while its link is made", () => {
       process: undefined,
     });
     app.detailFailure = { message: "Zerops refused this project's services." };
-    app.link = {
-      key: KEY,
-      environmentId: undefined,
-      reachability: { kind: "refused-role", chiefOwnerName: "Karlos" },
-    } satisfies MateLink;
+    app.admissionRefusal = { kind: "refused-role", chiefOwnerName: "Karlos" };
     openView();
     expect(said()).toContain("This is Karlos's Chief Mate.");
     expect(said()).not.toContain("Zerops refused this project's services.");
@@ -494,11 +498,6 @@ describe("a Mate's own view while its link is made", () => {
 
   it("shows whose Chief Mate it is when the direct-address refusal arrives after first paint", () => {
     app.listing = listingOf([]);
-    app.link = {
-      key: KEY,
-      environmentId: undefined,
-      reachability: { kind: "connecting", waitingOn: "exchange" },
-    } satisfies MateLink;
     openView();
     expect(said()).not.toContain("This is Karlos's Chief Mate.");
     app.recovery = liveRecovery({
@@ -507,11 +506,7 @@ describe("a Mate's own view while its link is made", () => {
       process: undefined,
     });
     app.detailFailure = { message: "Zerops refused this project's services." };
-    app.link = {
-      key: KEY,
-      environmentId: undefined,
-      reachability: { kind: "refused-role", chiefOwnerName: "Karlos" },
-    } satisfies MateLink;
+    app.admissionRefusal = { kind: "refused-role", chiefOwnerName: "Karlos" };
     act(() => tree?.update(comingView(PROJECT)));
     expect(said()).toContain("This is Karlos's Chief Mate.");
     expect(said()).not.toContain("opening the conversation");

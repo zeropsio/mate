@@ -1000,6 +1000,113 @@ describe("revisioned HQ values", () => {
       }),
     ),
   );
+  it.effect.each([
+    {
+      title: "a direct Chief address names its owner to another person",
+      viewer: "reader",
+      orgOwner: false,
+      ownerName: "Ada",
+      allowed: false,
+    },
+    {
+      title: "a direct Chief address names its owner to an org owner",
+      viewer: "reader",
+      orgOwner: true,
+      ownerName: "Ada",
+      allowed: false,
+    },
+    {
+      title: "the Chief owner reads attention by its direct address",
+      viewer: "owner",
+      orgOwner: false,
+      ownerName: "Ada",
+      allowed: true,
+    },
+    {
+      title: "a direct Chief address has an honest fallback when its owner's name is absent",
+      viewer: "reader",
+      orgOwner: false,
+      ownerName: " ",
+      allowed: false,
+    },
+  ])("$title", ({ viewer, orgOwner, ownerName, allowed }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.chiefs([{ project_id: "P", user_id: "owner" }]);
+        yield* f.roles({
+          ...facts,
+          members: facts.members.map((member) => ({
+            ...member,
+            name: member.userId === "owner" ? ownerName : member.name,
+            roleCode: member.userId === "reader" && orgOwner ? "OWNER" : member.roleCode,
+          })),
+          projects: facts.projects.map((project) => ({ ...project, tags: ["mate", "chief"] })),
+        });
+        const link = yield* f.overviews.connect("P");
+        yield* f.overviews.report("P", link, {
+          type: "overview",
+          full: true,
+          overview: overviewOf(),
+        });
+        const client = yield* f.connect(viewer);
+        yield* client.subscribe([{ scope: attention, ...(allowed ? {} : { knownKeys: ["P"] }) }]);
+        const first = yield* client.take;
+        if (allowed) {
+          assert.deepStrictEqual(
+            resetOf(first).values.map((value) => value.key),
+            ["P"],
+          );
+        } else {
+          assert.deepStrictEqual(resetOf(first).removals, [{ key: "P", reason: "no-access" }]);
+          assert.deepStrictEqual(yield* client.take, {
+            type: "scope-error",
+            scope: attention,
+            code: "chief_owner_required",
+            reason: ownerName.trim() || "another person",
+            disposition: "refused",
+          });
+        }
+      }),
+    ),
+  );
+  it.effect("ordinary and unknown direct addresses keep the same generic refusal", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const client = yield* f.connect("signer");
+        for (const projectId of ["P", "unknown"]) {
+          const scope = { kind: "attention", projectId } as const;
+          yield* client.subscribe([{ scope }]);
+          assert.deepStrictEqual(yield* client.take, {
+            type: "scope-error",
+            scope,
+            code: "forbidden",
+            reason: "no-access",
+            disposition: "refused",
+          });
+        }
+      }),
+    ),
+  );
+  it.effect("a stale Chief registration does not reveal ownership for an unknown address", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.chiefs([{ project_id: "unknown", user_id: "owner" }]);
+        const client = yield* f.connect("reader");
+        const scope = { kind: "attention", projectId: "unknown" } as const;
+        yield* client.subscribe([{ scope }]);
+        assert.deepStrictEqual(yield* client.take, {
+          type: "scope-error",
+          scope,
+          code: "forbidden",
+          reason: "no-access",
+          disposition: "refused",
+        });
+      }),
+    ),
+  );
   it.effect.each(
     Array.from([false, true], (runsWithoutSignIn) => ({
       title: `sign-in-free=${runsWithoutSignIn}: attention waits on the operating owner`,
