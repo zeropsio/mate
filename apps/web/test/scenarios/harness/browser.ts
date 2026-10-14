@@ -12,7 +12,7 @@ import puppeteer, {
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { ZEROPS_SESSION_STORAGE_KEY } from "../../../../../packages/client-runtime/src/zerops/session.ts";
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
-import { serve } from "./http.ts";
+import { deadline, serve } from "./http.ts";
 
 /** A positive send waits for the composer to acknowledge its text and offer Send or Queue. */
 export async function sendConversationMessage(page: Page, message: string, waitForReady = true) {
@@ -136,11 +136,24 @@ export async function openBrowser(
   const contextIdentities = new WeakMap<BrowserContext, string>();
   const clocks = new WeakMap<Page, ReturnType<typeof clientClock>>();
   const routeSetters = new Map<Page, () => Promise<void>>();
+  /** Windows a page opened, routed like it once their routing is on. */
+  const popups = new WeakMap<Page, Promise<void>>();
   const newPage = async (context: BrowserContext = scenarioContext) => {
     const page = await context.newPage();
     clocks.set(page, clientClock(page, wallClock));
-    await page.setBypassServiceWorker(true);
     await page.setViewport({ width: 1280, height: 900 });
+    await route(page);
+    return page;
+  };
+  // Every request leaves through the scenario's routes, or is blocked and reported.
+  const route = async (page: Page) => {
+    await page.setBypassServiceWorker(true);
+    page.on("popup", (popup) => {
+      if (popup === null) return;
+      const identity = identities.get(page);
+      if (identity !== undefined) identities.set(popup, identity);
+      popups.set(popup, route(popup));
+    });
     page.on("pageerror", (error) => {
       errors.push(String(error));
       pageErrors.push(String(error));
@@ -186,7 +199,7 @@ export async function openBrowser(
           if (!["localhost", "127.0.0.1"].includes(local.hostname))
             throw new Error("Fake route is not loopback");
           const headers = { ...request.headers() };
-          if (url.pathname === "/authorize-app")
+          if (url.pathname === "/authorize-app" || url.pathname === "/authorize-login")
             headers["x-scenario-person"] = identities.get(page) ?? "personal";
           delete headers.host;
           delete headers["content-length"];
@@ -270,7 +283,6 @@ export async function openBrowser(
     routeSetters.set(page, setRoutes);
     page.once("close", () => routeSetters.delete(page));
     await setRoutes();
-    return page;
   };
   const page = await newPage();
   return {
@@ -282,6 +294,27 @@ export async function openBrowser(
       return clock;
     },
     newContext,
+    /**
+     * The window `open` makes `page` open, once its routing is on. A window that navigates on its
+     * own before then leaves unrouted: open it blank and point it later (device login does).
+     */
+    popup: async (page: Page, open: () => Promise<void>) => {
+      let opened: (popup: Page | null) => void = () => {};
+      const popup = new Promise<Page>((resolve) => {
+        opened = (popup) => {
+          if (popup !== null) resolve(popup);
+        };
+      });
+      page.on("popup", opened);
+      try {
+        await open();
+        const window = await deadline(popup, "a window the page opened");
+        await popups.get(window);
+        return window;
+      } finally {
+        page.off("popup", opened);
+      }
+    },
     setPerson: (page: Page, token: string) => {
       const context = page.browserContext();
       const existing = contextIdentities.get(context);

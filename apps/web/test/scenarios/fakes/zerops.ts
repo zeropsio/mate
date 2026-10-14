@@ -1,6 +1,7 @@
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { scenarioWorld, type ScenarioWorld } from "./zeropsWorld.ts";
 import { ZeropsWrites } from "./zeropsWrites.ts";
+import { ZeropsDeviceLogin } from "./zeropsDeviceLogin.ts";
 import * as NodeEvents from "node:events";
 import { WebSocket } from "ws";
 import type { FakeWorld } from "../../../../hq/test/harness/zeropsFake.ts";
@@ -80,6 +81,8 @@ export class ZeropsFake {
   }
   origin = "";
   readonly writes: ZeropsWrites;
+  /** Device login, its consent page, and the sessions it issues. */
+  readonly deviceLogin: ZeropsDeviceLogin;
   private token = 0;
   socketTokenTtl = 60_000;
   private socketSerial = 0;
@@ -96,6 +99,7 @@ export class ZeropsFake {
   constructor(world: FakeWorld & Partial<ScenarioWorld>) {
     this.world = scenarioWorld(world);
     this.writes = new ZeropsWrites(this);
+    this.deviceLogin = new ZeropsDeviceLogin(this.world, () => this.clock.currentTimeMillis());
   }
 
   matches(row: EntityRow, search: SearchTerm[]) {
@@ -458,6 +462,26 @@ export class ZeropsFake {
         headers: fault.status === 429 ? { "Retry-After": String(fault.retryAfter ?? 1) } : {},
       };
     if (request.method === "OPTIONS") return { body: {} };
+    const device = await this.deviceLogin.handle(request, path);
+    if (device) return device;
+    // A device-login session acts as its person; one refused (expired, rotated, ended) is refused.
+    const sessionToken = request.headers.authorization?.replace(/^Bearer /u, "");
+    const person = this.deviceLogin.credential(sessionToken);
+    if (person === null) return this.error(401, "notAuthorized", "Not authorized");
+    if (person !== undefined) {
+      if (
+        /^\/(?:project-env|user-data)\/[^/]+\/reveal$/u.test(path) &&
+        !this.deviceLogin.inSudo(sessionToken!)
+      )
+        return this.error(403, "notInSudoMode", "Not in sudo mode");
+      request = { ...request, headers: { ...request.headers, authorization: `Bearer ${person}` } };
+    }
+    if (path === "/web-socket/login") {
+      const socketPerson = this.deviceLogin.credential(String(request.body.token));
+      if (socketPerson === null) return this.error(401, "notAuthorized", "Not authorized");
+      if (socketPerson !== undefined)
+        request = { ...request, body: { ...request.body, token: socketPerson } };
+    }
     if (path.startsWith("/scenario-logs/")) return { body: { items: [] } };
     if (path === "/authorize-app") {
       const origin = new URL(request.url.searchParams.get("origin")!);
