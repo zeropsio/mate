@@ -1,3 +1,4 @@
+import { tokenExpiryLabel } from "@t3tools/shared/hqChanges";
 import { HqGitProbeRefusalReason } from "@t3tools/shared/hqGitTargets";
 /** Read-only capability evidence. User role fields are never token permission proof. */
 import * as Clock from "effect/Clock";
@@ -78,8 +79,6 @@ export interface VerifiedRemote {
   readonly mergeSettings: boolean;
   readonly branchRules?: "none_on_plan";
 }
-export const tokenExpiryLabel = (expiresAt: string | null) =>
-  expiresAt === null ? "Expiry not reported" : `Token expires ${expiresAt}`;
 export class GithubProbes extends Context.Service<
   GithubProbes,
   {

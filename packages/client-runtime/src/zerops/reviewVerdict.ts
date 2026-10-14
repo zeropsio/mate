@@ -20,7 +20,7 @@
  * @module reviewVerdict
  */
 
-import type { HqRepoRemote } from "@t3tools/shared/hqChanges";
+import { tokenExpiryLabel, type HqRepoRemote } from "@t3tools/shared/hqChanges";
 import type { ChangePipeline } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
@@ -971,14 +971,12 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
   return { ...releaseVerdictOf(input, back), ...facts };
 }
 
-/** The same metadata warning on every Git surface; an absent expiry header leaves the date unknown. */
+/** The same metadata warning on every Git surface, quiet while the token has over two weeks left. */
 export function gitRemoteExpiry(remote: HqRepoRemote, now: number): string | undefined {
   const expiry = remote.expiresAt;
-  if (expiry == null) return "Expiry not reported";
-  if (Date.parse(expiry) <= now) return `Token expired ${expiry.slice(0, 10)}`;
-  if (Date.parse(expiry) - now <= 14 * 24 * 60 * 60 * 1_000)
-    return `Token expires ${expiry.slice(0, 10)}`;
-  return undefined;
+  return expiry != null && Date.parse(expiry) - now > 14 * 24 * 60 * 60 * 1_000
+    ? undefined
+    : tokenExpiryLabel(expiry, now);
 }
 
 /** The Git review formats HQ facts and the existing standing; it proves no receiver outcome. */

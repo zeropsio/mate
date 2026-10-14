@@ -54,6 +54,12 @@ export interface GitDelivery {
   readonly nextActor: "hq" | "person" | "none";
   readonly nextAction: string;
   readonly blocked: boolean;
+  /**
+   * Only HQ's last preflight or a push it refused as diverged blocks the release, and the review runs
+   * the preflight again on opening: a branch settled since then is released from there, so its door
+   * stays open while the release is blocked.
+   */
+  readonly recheck: boolean;
   readonly release: {
     readonly allowed: boolean;
     readonly reason: string | undefined;
@@ -204,16 +210,25 @@ export function gitDeliveryOf(
                 ? `Mate couldn't confirm the push of ${active?.ref ?? label}. ${blocker?.evidence?.nextAction ?? "Check the remote branch."}`
                 : `${label} wasn't pushed: ${result}`;
   const refusal = facts.repos?.find((repo) => repo.remote?.invalidSince != null);
-  const preflight = Object.values(facts.preflight ?? {}).find((entry) => {
+  const preflights = Object.values(facts.preflight ?? {}).filter((entry) => {
     const repo = facts.repos?.find((repo) => repo.name === entry.repo);
     return (
       repo?.mainHead === entry.sha &&
       repo.remote?.url === entry.remote.url &&
       repo.remote.keptAt === entry.remote.keptAt &&
-      entry.ref === `refs/heads/${target.branch}` &&
-      entry.verdict !== "ready"
+      entry.ref === `refs/heads/${target.branch}`
     );
   });
+  const preflight = preflights.find((entry) => entry.verdict !== "ready");
+  // HQ found the branch ready after its push refused it as diverged: the person settled it.
+  const diverged =
+    failed?.reason === "diverged" &&
+    !preflights.some(
+      (entry) =>
+        entry.repo === failed.repo &&
+        entry.verdict === "ready" &&
+        Date.parse(entry.checkedAt) > Date.parse(failed.job?.endedAt ?? failed.job?.at ?? ""),
+    );
   const failedRemote = facts.repos?.find((repo) => repo.name === failed?.repo)?.remote;
   const attempted = failed?.job?.evidence?.attempt;
   const replaced =
@@ -239,7 +254,7 @@ export function gitDeliveryOf(
             : preflight !== undefined
               ? (preflight.reason ??
                 `The remote preflight is ${preflight.verdict}; this release can't go out.`)
-              : failed?.reason === "diverged"
+              : diverged
                 ? "The remote branch has commits Mate doesn't, so this release can't go out."
                 : undefined;
   const actor =
@@ -262,6 +277,12 @@ export function gitDeliveryOf(
       (replaced ? undefined : failed?.job?.evidence?.nextAction) ??
       (credential ? "Replace token" : ""),
     blocked: reason !== undefined,
+    recheck:
+      target.delivery === "direct" &&
+      facts.live !== false &&
+      blocker === undefined &&
+      !credential &&
+      (preflight !== undefined || diverged),
     release: {
       allowed: reason === undefined,
       reason,

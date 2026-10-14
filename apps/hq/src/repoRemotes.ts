@@ -2,7 +2,12 @@ import { HqRemoteRefusalReason, remoteRefusalWords } from "@t3tools/shared/hqGit
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { HqGitTargetIntent, HqGitOperationReceipt } from "@t3tools/shared/hqGitTargets";
-import { RepoName, type HqRepoRemote, type HqRemoteProbe } from "@t3tools/shared/hqChanges";
+import {
+  RepoName,
+  tokenExpiryLabel,
+  type HqRepoRemote,
+  type HqRemoteProbe,
+} from "@t3tools/shared/hqChanges";
 import { keepGitReceipt, readGitReceipt, GitRequestRefused } from "./gitTargetReceipts.ts";
 /** The only owner of a repository's verified connection and sealed credential custody. */
 import * as Context from "effect/Context";
@@ -16,12 +21,7 @@ import { Changes, type ChangeRefused } from "./changes.ts";
 import type { GitError } from "@t3tools/hq-git";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { DeployKeys } from "./deployKeys.ts";
-import {
-  GithubProbes,
-  type ProbeRefused,
-  type VerifiedRemote,
-  tokenExpiryLabel,
-} from "./githubProbes.ts";
+import { GithubProbes, type ProbeRefused, type VerifiedRemote } from "./githubProbes.ts";
 import { remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";

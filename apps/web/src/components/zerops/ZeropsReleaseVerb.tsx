@@ -20,7 +20,8 @@ export function useReleaseOffer(
   );
   const gate = flow?.release.gate;
   return {
-    offered: gate?.allowed ?? false,
+    // A branch refused by an earlier preflight may be settled since: its review checks it again.
+    offered: gate?.allowed === true || flow?.release.git?.delivery?.recheck === true,
     reason: gate === undefined || gate.allowed ? undefined : gate.reason,
     releasing:
       flow?.release.inFlight !== undefined ||

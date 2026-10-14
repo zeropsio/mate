@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { HqGitAdoption, RepoListEntry } from "@t3tools/shared/hqChanges";
+import {
+  tokenExpiryLabel,
+  type HqGitAdoption,
+  type RepoListEntry,
+} from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import {
   gitAdoptionSentence,
   gitSetupBranchValid,
-  gitSetupExpiry,
   gitSetupRepositories,
   gitSetupRepository,
   gitSetupReview,
@@ -129,6 +132,6 @@ describe("direct Git setup", () => {
     "https://gitlab.com/team/app",
     "https://code.example/team/app",
   ])("labels unknown expiry once for %s", () =>
-    expect(gitSetupExpiry(null)).toBe("Expiry not reported"),
+    expect(tokenExpiryLabel(null)).toBe("Expiry not reported"),
   );
 });

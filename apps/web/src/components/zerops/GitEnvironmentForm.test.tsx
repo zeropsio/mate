@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HqGitAdoption, RepoListEntry } from "@t3tools/shared/hqChanges";
+import { gitRemoteExpiry } from "@t3tools/client-runtime/zerops";
 import { makeHqApi } from "@t3tools/client-runtime/zerops/hq";
 import { Dialog } from "../ui/dialog";
 import { GitEnvironmentForm, type GitEnvironmentFormProps } from "./GitEnvironmentForm";
@@ -397,6 +398,26 @@ describe("Git environment setup's real form", () => {
     expect(host.textContent?.match(/Expiry not reported/g)).toHaveLength(1);
     await click("Continue");
     expect(field("Branch").value).toBe("main");
+  });
+  it("A token test shows its expiry as the day the release review shows, never a raw instant", async () => {
+    const expiring = { ...remote, expiresAt: "2026-11-14T10:00:00Z" };
+    await draw({
+      repos: [],
+      setup: {
+        ...props.setup,
+        connect: vi.fn(async () => ({ ok: true as const, remote: expiring })),
+      },
+    });
+    await chooseRepository();
+    await enter(field("Token"), "candidate");
+    await click("Test");
+    await draw({ repos: [{ ...repositories[0]!, remote: expiring }, repositories[1]!] });
+    const results = host.querySelector('[aria-label="Token test results"]')!.textContent;
+    expect(results).toContain("Token expires 2026-11-14");
+    expect(results).not.toContain("T10:00");
+    expect(gitRemoteExpiry(expiring, Date.parse("2026-11-10T00:00:00Z"))).toBe(
+      "Token expires 2026-11-14",
+    );
   });
   it("a remote-tip refusal discards the displayed preview before another add", async () => {
     await draw({
