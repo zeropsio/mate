@@ -110,6 +110,7 @@ function flow(): ZeropsProjectFlow {
       },
     ],
     codeRepos: undefined,
+    mateTier: undefined,
     release: {
       gate: { allowed: true },
       permission: { allowed: true },

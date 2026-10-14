@@ -113,6 +113,8 @@ export interface CanonicalProjectFlow extends Omit<
    * until HQ said its repositories and the recipe's stage and production.
    */
   readonly codeRepos: ReadonlyArray<RepoListEntry> | undefined;
+  /** The Mate tier as `main` holds it: what pairs a Mate's dev with each part's preview; `undefined` while unread. */
+  readonly mateTier: string | undefined;
 }
 export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFlow | undefined> = {
   name: "canonicalProjectFlow",
@@ -276,6 +278,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
         recipe === undefined || detail.repos === undefined
           ? undefined
           : detail.repos.filter(({ name }) => code.has(name)),
+      mateTier: mate?.state === "present" ? mate.importYaml : undefined,
       environments: (stops?.environments ?? []).map((entry) =>
         canonicalStopRow(entry, (detail.releases ?? []).map(flowReleaseOf)),
       ),

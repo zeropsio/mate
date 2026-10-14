@@ -605,6 +605,48 @@ describe("groupFlowInputOf", () => {
     },
   ];
 
+  it("A Mate's three parts each show their preview, paired from the Mate tier the flow holds", () => {
+    const tier = [
+      "services:",
+      "  - hostname: appdev",
+      "    type: nodejs@22",
+      "    zeropsSetup: dev",
+      "    buildFromGit: https://hq.example.com/git/app-1/appdev",
+      ...["web", "api", "worker"].flatMap((part) => [
+        `  - hostname: ${part}stage`,
+        "    type: nodejs@22",
+        `    zeropsSetup: ${part}`,
+        "    buildFromGit: https://hq.example.com/git/app-1/appdev",
+      ]),
+      "",
+    ].join("\n");
+    const [wren] = members;
+    const input = groupFlowInputOf({
+      groupId: "g",
+      members: [
+        {
+          ...wren!,
+          routes: [route("webstage"), route("apistage"), route("workerstage")],
+          hostnames: ["appdev", "webstage", "apistage", "workerstage"],
+        },
+      ],
+      flow: {
+        mateTier: tier,
+        environments: [],
+        pullRequests: [],
+        merged: [],
+        release: { gate: { allowed: false, reason: "" }, suggestion: "", untold: [], contents: [] },
+      },
+      deployments: new Map(),
+      pending: [],
+    });
+    expect(input.mates[0]?.previews.map((preview) => preview.service)).toEqual([
+      "web",
+      "api",
+      "worker",
+    ]);
+  });
+
   it("takes the Mates, their previews and every stop from what the page holds", () => {
     const input = groupFlowInputOf({
       groupId: "g",
