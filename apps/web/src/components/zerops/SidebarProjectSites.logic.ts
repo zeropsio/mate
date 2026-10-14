@@ -10,7 +10,7 @@
  *
  * Pure: no clock of its own, no platform globals.
  */
-import { comingLine, type ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import { comingLine, placeAddresses, type ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { servicePairs } from "@t3tools/client-runtime/zerops/servicePairs";
 
 import {
@@ -338,7 +338,12 @@ export function filterSites(
   });
 }
 
-/** Production's first address, which a ⌘-click on the globe opens straight away. */
+/**
+ * Production's address, which a ⌘-click on the globe opens straight away — only where it is the
+ * only one (`placeAddresses`: a second port of a service is the same page). With several parts'
+ * addresses none stands for production: the click offers each to open (MODEL §6).
+ */
 export function productionUrl(production: ChipMenuModel | undefined): string | undefined {
-  return production?.stops[0]?.routes[0]?.url;
+  const addresses = placeAddresses(production?.stops.flatMap((stop) => stop.routes) ?? []);
+  return addresses.length === 1 ? addresses[0]?.url : undefined;
 }
