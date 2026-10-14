@@ -151,6 +151,12 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "packages/client-runtime/src/zerops/api.ts",
     "packages/client-runtime/src/zerops/hq/client.ts",
   ],
+  "packages/client-runtime/src/data/operations/deleteService.test.ts": [
+    "apps/hq/src/**",
+    "apps/mobile/src/**",
+    "apps/web/src/**",
+    "packages/client-runtime/src/**",
+  ],
   "packages/client-runtime/src/zerops/zcpFixtures.test.ts": [
     "packages/client-runtime/src/zerops/fixtures/zcp/**",
   ],
