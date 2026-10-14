@@ -1,3 +1,7 @@
+import type {
+  HqRemoteRefusalReason,
+  HqGitEnvironmentRefusalReason,
+} from "@t3tools/shared/hqGitTargets";
 import { describe, expect, it, vi } from "@effect/vitest";
 
 import {
@@ -558,6 +562,107 @@ describe("Git token refusals", () => {
       openSocket: NO_SOCKET,
     }).gitTargetWrite("token-test", intent, "candidate");
   };
+
+  const remoteCases = {
+    remote_taken:
+      "This repository is already connected to another application. Disconnect it there (Settings → Repositories) or use another repository.",
+    no_key:
+      "HQ cannot save this token yet. Ask your HQ administrator to configure its encryption key, then try again.",
+    no_remote: "This repository has no connection. Connect it before continuing.",
+    not_repo:
+      "This repository is no longer in the application. Choose a repository from its current list.",
+    not_structure_writer:
+      "Your role cannot change repository connections. Ask an organization owner or admin to do this.",
+    membership_unknown:
+      "Mate could not verify your organization membership. Try again when Zerops is available.",
+    custodian_removed:
+      "The person who supplied this token has left the organization. Replace the token.",
+    credential_invalid:
+      "The saved token was refused. Replace it with a token that can write to this repository.",
+    disconnect_required:
+      "Another repository is connected here. Remove its Git environments and disconnect it before connecting this one.",
+    address_review:
+      "The repository address changed. Review and confirm its new address before continuing.",
+    repository_changed:
+      "This address now points to a different repository. Check the address or disconnect the old repository before connecting another.",
+    changed:
+      "The connection changed while Mate checked it. Review the current connection and try again.",
+    in_use: "Git environments still use this connection. Remove them before disconnecting it.",
+    bad_address:
+      "This repository address is not supported. Enter its HTTPS address without credentials or query parameters.",
+    bad_repo: "This repository name is not valid. Choose a code repository with a valid name.",
+    bad_branch: "This branch name is not valid. Enter a valid Git branch name.",
+    key_unavailable: "HQ cannot open the saved token. Replace it with a new token.",
+  } satisfies Record<HqRemoteRefusalReason, string>;
+  it.each(Object.entries(remoteCases))(
+    "Every repository connection refusal explains %s and the next step",
+    async (reason, message) => {
+      await expect(refusal({ code: "remote_refused", reason })).rejects.toMatchObject({ message });
+    },
+  );
+
+  const environmentCases = {
+    forbidden:
+      "Your role cannot change Git environments. Ask an organization owner or admin to do this.",
+    app_not_found:
+      "This application is no longer available. Return to the application list and choose another.",
+    environment_not_found:
+      "This environment is no longer available. Refresh the application and choose another.",
+    production_taken:
+      "This application already has a production environment. Remove it before adding another.",
+    branch_taken:
+      "This branch already has a Git environment. Choose another branch or open its existing environment.",
+    environment_name_taken: "An environment already uses this name. Choose another name.",
+    environment_name_missing: "The environment needs a name. Enter one to continue.",
+    environment_name_long: "The environment name is too long. Use at most 63 characters.",
+    environment_name_invalid:
+      "The environment name is invalid. Start with a letter and use lowercase letters, digits and dashes.",
+    review_stale:
+      "The repositories changed since your review. Review them again before continuing.",
+    no_repositories:
+      "This application has no connected repositories. Connect a repository before adding a Git environment.",
+    history_loss_confirmation_required:
+      "This adoption would replace repository history. Review the changes and confirm the replacement to continue.",
+  } satisfies Record<HqGitEnvironmentRefusalReason, string>;
+  it.each(Object.entries(environmentCases))(
+    "Every Git environment refusal explains %s and the next step",
+    async (reason, message) => {
+      await expect(
+        refusal({ code: reason === "forbidden" ? "forbidden" : "conflict", reason }),
+      ).rejects.toMatchObject({ message });
+    },
+  );
+  it("Changed requests explain how to restart Git setup", async () => {
+    await expect(refusal({ code: "conflict", reason: "request_changed" })).rejects.toMatchObject({
+      message:
+        "This request was already used for different settings. Close Git setup and start it again.",
+    });
+  });
+  it.each(["remote_refused", "conflict", "invalid"])(
+    "Unknown Git setup refusals from %s never show raw codes",
+    async (code) => {
+      await expect(refusal({ code, reason: "newer_reason" })).rejects.toMatchObject({
+        message:
+          code === "remote_refused"
+            ? "Mate could not change this repository connection. Review its settings and try again."
+            : "Mate could not complete Git setup. Review the settings and try again.",
+      });
+    },
+  );
+
+  it("An occupied repository names only the application HQ allows the person to see", async () => {
+    await expect(
+      refusal({
+        code: "remote_refused",
+        reason: "remote_taken",
+        repository: "krls2020/tst123",
+        applicationName: "mate-rig-e2e-c",
+      }),
+    ).rejects.toMatchObject({
+      message:
+        "krls2020/tst123 is already connected to mate-rig-e2e-c. Disconnect it there (Settings → Repositories) or use another repository.",
+    });
+  });
 
   it.each([
     ["token_invalid", "GitHub rejected this token; replace it in GitHub's token settings."],

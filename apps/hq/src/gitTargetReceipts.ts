@@ -1,3 +1,4 @@
+import { HqGitRequestRefusalReason } from "@t3tools/shared/hqGitTargets";
 /** Request identity is committed with the owner's write, so a lost answer never repeats it. */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -12,7 +13,7 @@ import type { Leader } from "./leader.ts";
 export class GitRequestRefused extends Schema.TaggedError<GitRequestRefused>()(
   "GitRequestRefused",
   {
-    reason: Schema.Literal("request_changed"),
+    reason: HqGitRequestRefusalReason,
   },
 ) {}
 const encodeIntent = Schema.encodeSync(Schema.fromJsonString(HqGitTargetIntent));

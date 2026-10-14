@@ -332,6 +332,10 @@ export const failure = (error: {
         {
           code: "remote_refused",
           reason: error.reason,
+          ...(error.repository === undefined ? {} : { repository: error.repository }),
+          ...(error.applicationName === undefined
+            ? {}
+            : { applicationName: error.applicationName }),
           ...(error.url === undefined ? {} : { url: error.url }),
           ...(error.environments === undefined ? {} : { environments: error.environments }),
         },

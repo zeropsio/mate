@@ -231,6 +231,10 @@ export function GitEnvironmentForm({
                 >
                   Create the token on GitHub
                 </a>
+                <p className="text-sm">
+                  On GitHub, under Repository access choose Only select repositories and pick{" "}
+                  {repository.guide.repository} — the link cannot do it for you.
+                </p>
                 <p className="text-sm font-medium">On GitHub, check that it says</p>
                 <ul className="space-y-1 text-sm">
                   <li>Resource owner: {repository.guide.owner}</li>

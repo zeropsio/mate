@@ -1,3 +1,5 @@
+import * as Schema from "effect/Schema";
+import { HqGitProbeRefusalReason } from "@t3tools/shared/hqGitTargets";
 // @effect-diagnostics nodeBuiltinImport:off -- local HTTP/Git-discovery host.
 import * as NodeHttp from "node:http";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
@@ -374,47 +376,32 @@ describe("observed GitHub capabilities", () => {
 });
 
 describe("token refusal guidance", () => {
-  it.each([
-    [
-      "token_invalid",
+  const cases = {
+    token_invalid:
       "GitHub rejected this token (expired, revoked or mistyped). Create a replacement in GitHub token settings.",
-    ],
-    ["rate_limited", "The repository host asked Mate to wait."],
-    [
-      "sso",
-      "This token needs the organization's SSO authorization. Authorize it in the organization's GitHub SSO settings.",
-    ],
-    [
-      "archived",
+    rate_limited: "The repository host asked Mate to wait.",
+    sso: "This token needs the organization's SSO authorization. Authorize it in the organization's GitHub SSO settings.",
+    archived:
       "owner/repo is archived, so nothing can be pushed to it. Unarchive it in repository settings before testing again.",
-    ],
-    [
-      "push_not_granted",
+    push_not_granted:
       "This token can't push to owner/repo: under Repository access choose Only select repositories → owner/repo with Contents: Read and write. If owner approves tokens, it may still be pending.",
-    ],
-    [
-      "not_visible",
+    not_visible:
       "owner/repo doesn't exist, or your account can't see it. Check the repository address and this token's repository access in GitHub token settings.",
-    ],
-    [
-      "classic_scope",
+    classic_scope:
       "This is a classic token without repo. Create a fine-grained token with the link above, or add repo in GitHub token settings.",
-    ],
-    [
-      "pull_requests_only",
+    pull_requests_only:
       "main takes changes only through pull requests. Choose Open a pull request.",
-    ],
-    [
-      "unreachable",
+    unreachable:
       "The repository host could not be reached in time. Check the connection, then test this token again.",
-    ],
-    [
-      "could_not_verify",
+    could_not_verify:
       "Mate couldn't verify access to owner/repo. Check the repository address and this token's repository access in GitHub token settings, then test again.",
-    ],
-  ] as const)(
+  } satisfies Record<HqGitProbeRefusalReason, string>;
+  const isReason = Schema.is(HqGitProbeRefusalReason);
+  it.each(Object.entries(cases))(
     "A refused token test gives a concrete next action without a raw reason code: %s.",
     (reason, expected) => {
+      assert.isTrue(isReason(reason));
+      if (!isReason(reason)) throw new Error("Unknown probe reason");
       const refusal = new ProbeRefused({
         reason,
         hostKind: "github",

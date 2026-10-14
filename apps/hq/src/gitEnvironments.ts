@@ -1,3 +1,4 @@
+import { HqGitEnvironmentRefusalReason } from "@t3tools/shared/hqGitTargets";
 import type { HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { keepGitReceipt, readGitReceipt } from "./gitTargetReceipts.ts";
 /** Structure's Git lifecycle: no project, no external deletion, and no delivery executor. */
@@ -29,20 +30,7 @@ import { Rollouts } from "./rollouts.ts";
 export class GitEnvironmentRefused extends Schema.TaggedError<GitEnvironmentRefused>()(
   "GitEnvironmentRefused",
   {
-    reason: Schema.Literals([
-      "forbidden",
-      "app_not_found",
-      "environment_not_found",
-      "production_taken",
-      "branch_taken",
-      "environment_name_taken",
-      "environment_name_missing",
-      "environment_name_long",
-      "environment_name_invalid",
-      "review_stale",
-      "no_repositories",
-      "history_loss_confirmation_required",
-    ]),
+    reason: HqGitEnvironmentRefusalReason,
   },
 ) {}
 
