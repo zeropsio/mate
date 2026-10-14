@@ -2710,6 +2710,7 @@ function GitStopLine({
   return (
     <button
       className="py-2 text-sm font-medium"
+      data-zerops-environment-id={environment.id}
       type="button"
       onClick={() => {
         void navigate({
@@ -2772,6 +2773,7 @@ function ZeropsStopLine({
         // Fixed tracks, not a right-ragged flex: a version and a state that
         // start at a different x on every row cannot be read down the column.
         className="grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_6rem_7.5rem_1rem] items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
+        data-zerops-environment-id={environment.id}
         onClick={open}
         type="button"
       >

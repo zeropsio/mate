@@ -32,7 +32,9 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
           const section = [...document.querySelectorAll("main section")].find(
             (section) => section.querySelector("h2")?.textContent === "Environments",
           );
-          const rows = [...(section?.querySelectorAll("ul > li > button") ?? [])].flatMap((row) => {
+          const rows = [
+            ...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? []),
+          ].flatMap((row) => {
             const name = row.firstChild?.textContent?.trim();
             return name === undefined ? [] : [name];
           });
@@ -46,7 +48,9 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
           const section = [...document.querySelectorAll("main section")].find(
             (section) => section.querySelector("h2")?.textContent === "Environments",
           );
-          return [...(section?.querySelectorAll("ul > li > button") ?? [])].flatMap((row) => {
+          return [
+            ...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? []),
+          ].flatMap((row) => {
             const name = row.firstChild?.textContent?.trim();
             return name === undefined ? [] : [name];
           });
@@ -59,10 +63,12 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
         const section = [...document.querySelectorAll("main section")].find(
           (section) => section.querySelector("h2")?.textContent === "Environments",
         );
-        return [...(section?.querySelectorAll("ul > li > button") ?? [])].flatMap((row) => {
-          const name = row.firstChild?.textContent?.trim();
-          return name === undefined ? [] : [name];
-        });
+        return [...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? [])].flatMap(
+          (row) => {
+            const name = row.firstChild?.textContent?.trim();
+            return name === undefined ? [] : [name];
+          },
+        );
       }),
     ).toEqual(expected);
   });
@@ -75,7 +81,7 @@ export function openEnvironment(page: Page, appId: string, name: string, id: str
         const section = [...document.querySelectorAll("main section")].find(
           (section) => section.querySelector("h2")?.textContent === "Environments",
         );
-        return [...(section?.querySelectorAll("ul > li > button") ?? [])].find(
+        return [...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? [])].find(
           (row) => row.firstChild?.textContent?.trim() === name,
         );
       },
