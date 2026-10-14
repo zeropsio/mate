@@ -57,7 +57,9 @@ The loop:
   one sandbox case; no frame sampler). `--list` previews; `--base <ref>` changes the comparison.
   About five minutes: one blocking command, timeout at least ten minutes, never detached and polled.
   Then re-run only failed files and the gate once more.
-- Browser scenario shards run in the non-blocking `Signal` workflow on the same refs and pull requests;
+- Browser scenario shards run in the non-blocking `Signal` workflow on `kh-next`,
+  `kh-bisect/signal-**` and pull requests; other `kh-bisect/**` refs run CI only. Diagnostic and PR
+  pushes cancel older runs of the same workflow/ref; integration runs finish. Signal
   failures get one same-commit rerun for classification. CI keeps sign-in and state-only smoke blocking.
 - CI's Check job runs repo-wide `vp check`, ledger markdown included. Local
   `node scripts/ci-local.ts` only after touching guard ledgers, exceptions,
