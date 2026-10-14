@@ -5,6 +5,8 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
+import { stateOnlySmoke } from "./state-smoke-cases.ts";
+export { stateOnlySmoke } from "./state-smoke-cases.ts";
 import type { TimeoutRisk } from "./gate-timing-reporter.ts";
 import { failureSummary, gateLogDirectory, runLogged, stageSummary } from "./gate-log.ts";
 import { acquireGateSlot, gateSlotCount, gateSlotDirectory } from "./gate-slots.ts";
@@ -28,21 +30,7 @@ export const repositoryInvariants = [
   "scripts/mate-readiness.test.ts",
 ];
 
-export const stateOnlySmoke = {
-  "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts": [
-    "cold direct conversation URL opens the named Mate and its history",
-    "reload restores history",
-    "sending a message puts it in the durable visible conversation",
-    "approve an agent command and see it resolve",
-  ],
-  "apps/web/test/scenarios/areas/c-mate/engine-secret.scenario.ts": [
-    "a secret the person gives never reaches the Mate's records or its agent",
-  ],
-  "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts": [
-    "a published page that navigates itself by script sends nothing and is never shown",
-  ],
-} as const;
-
+// Local witnesses stay in the gate; full browser coverage runs in non-blocking Signal.
 // Full related scenario files, nearest first; edited and explicitly named files are uncapped.
 export const relatedScenarioLimit = 8;
 
@@ -863,6 +851,7 @@ function selectionHash(root: string, inventory: ReadonlyArray<string>): string {
   hash.update(JSON.stringify([process.version, inventory]));
   const inputs = [
     "scripts/gate-changed.ts",
+    "scripts/state-smoke-cases.ts",
     "scripts/gate-file-inputs.ts",
     "scripts/gate-timing-reporter.ts",
     "scripts/gate-smoke-reporter.ts",
