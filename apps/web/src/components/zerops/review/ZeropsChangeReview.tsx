@@ -66,6 +66,7 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { answeredDeploys } from "../ZeropsDeployAnswer";
 import {
   changeChecks,
+  changeReceipt,
   changeReadVerdict,
   mergeFoot,
   reviewKindLine,
@@ -606,6 +607,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     checks: model.pipeline?.checks ?? [],
   });
   const pipeline = model.pipeline;
+  const receipt = changeReceipt({ receipt: pull.receipt, head: pull.headSha });
   return (
     <ZeropsReviewSurface
       ask={
@@ -628,6 +630,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
               consequence: model.consequence,
               stage: props.stage,
               live: props.live,
+              warning: receipt?.warning,
             })
       }
       dismiss={over && !fromRelease ? "Close" : undefined}
@@ -719,6 +722,17 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       />
       {props.previews === undefined || props.previews.length === 0 ? null : (
         <ReviewTry previews={props.previews} />
+      )}
+      {receipt === undefined ? null : (
+        <ReviewSection aside={String(receipt.parts.length)} title="Parts">
+          <ul className="rv-check-list">
+            {receipt.parts.map((part) => (
+              <li key={part.setup}>
+                {part.setup} · {part.preview} · {part.words}
+              </li>
+            ))}
+          </ul>
+        </ReviewSection>
       )}
       <ReviewSection
         aside={
