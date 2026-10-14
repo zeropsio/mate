@@ -283,6 +283,10 @@
       "types": "./src/zerops/conversationWriter.ts",
       "default": "./src/zerops/conversationWriter.ts"
     },
+    "./zerops/appAccess": {
+      "types": "./src/zerops/appAccess.ts",
+      "default": "./src/zerops/appAccess.ts"
+    },
     "./zerops/mateAccess": {
       "types": "./src/zerops/mateAccess.ts",
       "default": "./src/zerops/mateAccess.ts"
