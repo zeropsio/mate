@@ -5,7 +5,7 @@
  */
 import type { WaitingChange } from "@t3tools/client-runtime/data";
 import { CheckIcon, CopyIcon, TriangleAlertIcon } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Children, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 
@@ -37,29 +37,43 @@ export interface SheetContext {
   readonly nowMs: number;
 }
 
+/**
+ * A section: its title, with the one thing it lets the person add at its end edge (blue: it
+ * acts); what waits elsewhere above its rows; its rows grouped in one container; and the form or
+ * prompt opened from it below them.
+ */
 export function SheetSection({
   title,
-  words,
+  action,
   part,
+  notice,
   children,
+  after,
 }: {
   readonly title: string;
-  readonly words: string;
+  readonly action?: ReactNode;
   readonly part: string;
-  readonly children: ReactNode;
+  readonly notice?: ReactNode;
+  readonly children?: ReactNode;
+  readonly after?: ReactNode;
 }) {
+  const rows = Children.toArray(children);
   return (
-    <section className="grid" data-addresses-part={part}>
-      <header className="flex min-w-0 items-baseline gap-2.5 pb-1.5">
-        <h3 className="shrink-0 font-semibold text-sm text-foreground">{title}</h3>
-        <span className="truncate text-xs text-muted-foreground">{words}</span>
+    <section className="grid gap-2" data-addresses-part={part}>
+      <header className="flex min-h-7 items-center justify-between gap-3">
+        <h3 className="font-semibold text-foreground text-sm">{title}</h3>
+        {action}
       </header>
-      {children}
+      {notice}
+      {rows.length === 0 ? null : (
+        <div className="rounded-xl border border-border/70 bg-card px-3.5">{rows}</div>
+      )}
+      {after}
     </section>
   );
 }
 
-/** One row: what it is and its line under, then its state, then its more. */
+/** One row: what it is, with its line under where it needs one, then its state, then its more. */
 export function SheetRow({
   name,
   sub,
@@ -75,19 +89,36 @@ export function SheetRow({
 }) {
   return (
     <div
-      className="grid min-h-13 grid-cols-[minmax(0,1fr)_auto_2rem] items-center gap-x-3.5 border-t border-border/60 py-2"
+      className={`grid min-h-11 items-center gap-x-3 border-t border-border/60 py-1.5 first:border-t-0 ${more === undefined ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto_2rem]"}`}
       data-addresses-row={data}
     >
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2 font-medium text-sm">{name}</div>
         {sub === undefined ? null : (
-          <div className="mt-px truncate text-xs text-muted-foreground">{sub}</div>
+          <div className="mt-px truncate text-muted-foreground text-xs">{sub}</div>
         )}
       </div>
       <div className="flex items-center justify-end gap-2">{end}</div>
-      <div className="flex justify-end">{more}</div>
+      {more === undefined ? null : <div className="flex justify-end">{more}</div>}
     </div>
   );
+}
+
+/** What kind of address a row holds, in the column its kind's rows share: "IPv6". */
+export function RowKind({ children }: { readonly children: ReactNode }) {
+  return <span className="w-9 shrink-0 font-medium text-muted-foreground text-xs">{children}</span>;
+}
+
+/** A row's facts beside its name or at its end, quieter than the name: "→ app · port 3000". */
+export function RowMeta({ children }: { readonly children: ReactNode }) {
+  return (
+    <span className="min-w-0 truncate font-normal text-muted-foreground text-xs">{children}</span>
+  );
+}
+
+/** A section with nothing in it yet, said once inside its container. */
+export function SheetEmpty({ children }: { readonly children: ReactNode }) {
+  return <p className="py-3 text-muted-foreground text-sm">{children}</p>;
 }
 
 /** A state's mark and its word, together. */

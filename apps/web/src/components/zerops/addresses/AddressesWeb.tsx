@@ -42,6 +42,8 @@ import {
   guardPress,
   guardTitle,
   OthersList,
+  RowMeta,
+  SheetEmpty,
   SheetRow,
   SheetSection,
   Trouble,
@@ -95,27 +97,56 @@ export function AddressesWeb({
     ctx.busy.has("add-domain") ||
     ctx.busy.has("publish-domains") ||
     [...ctx.busy].some((key) => key.startsWith("remove:"));
+  const adding = mode.kind === "add-domain";
   return (
     <SheetSection
+      action={
+        adding || place.webTargets.length === 0 ? null : (
+          <Button
+            disabled={ctx.hold}
+            onClick={() => setMode({ kind: "add-domain" })}
+            size="xs"
+            variant="ghost-primary"
+          >
+            <PlusIcon />
+            Add your domain
+          </Button>
+        )
+      }
+      after={
+        adding ? (
+          <AddDomainForm
+            ctx={ctx}
+            existing={place.domains.map((domain) => domain.domainName)}
+            onDone={() => setMode({ kind: "list" })}
+            onTaken={() => ctx.settle(mode)}
+            othersWaiting={othersWaiting}
+            targets={place.webTargets}
+          />
+        ) : (
+          <Trouble text={ctx.trouble.get("add-domain")} />
+        )
+      }
+      notice={
+        othersWaiting.length > 0 ? (
+          <WaitingNotice
+            busy={ctx.busy.has("publish-domains")}
+            held={ctx.hold}
+            kind="domain"
+            onPublish={
+              oursUnderWay
+                ? undefined
+                : () => void ctx.onWrite({ kind: "publish-domains", projectId: ctx.projectId })
+            }
+            others={othersWaiting}
+            placeName={ctx.placeName}
+            trouble={ctx.trouble.get("publish-domains")}
+          />
+        ) : null
+      }
       part="web"
       title="Web addresses"
-      words={`Where people open ${ctx.projectName} in a browser`}
     >
-      {othersWaiting.length > 0 ? (
-        <WaitingNotice
-          busy={ctx.busy.has("publish-domains")}
-          held={ctx.hold}
-          kind="domain"
-          onPublish={
-            oursUnderWay
-              ? undefined
-              : () => void ctx.onWrite({ kind: "publish-domains", projectId: ctx.projectId })
-          }
-          others={othersWaiting}
-          placeName={ctx.placeName}
-          trouble={ctx.trouble.get("publish-domains")}
-        />
-      ) : null}
       {byRouting(place.domains).map((group) => (
         <RoutingRows
           ctx={ctx}
@@ -139,34 +170,11 @@ export function AddressesWeb({
         />
       ))}
       {place.domains.length === 0 && place.zerops.length === 0 ? (
-        <p className="border-t border-border/60 py-3 text-muted-foreground text-sm">
+        <SheetEmpty>
           {place.webTargets.length === 0
             ? `Nothing in ${ctx.placeName} serves web pages yet.`
             : `${ctx.placeName} has no web address yet.`}
-        </p>
-      ) : null}
-      {mode.kind === "add-domain" ? (
-        <AddDomainForm
-          ctx={ctx}
-          existing={place.domains.map((domain) => domain.domainName)}
-          onDone={() => setMode({ kind: "list" })}
-          onTaken={() => ctx.settle(mode)}
-          othersWaiting={othersWaiting}
-          targets={place.webTargets}
-        />
-      ) : place.webTargets.length > 0 ? (
-        <div className="border-t border-border/60 pt-2">
-          <Trouble text={ctx.trouble.get("add-domain")} />
-          <Button
-            disabled={ctx.hold}
-            onClick={() => setMode({ kind: "add-domain" })}
-            size="sm"
-            variant="ghost"
-          >
-            <PlusIcon />
-            Add your domain
-          </Button>
-        </div>
+        </SheetEmpty>
       ) : null}
     </SheetSection>
   );
@@ -342,21 +350,23 @@ function DomainRow({
           )
         }
         name={
-          domain.face === "live" ? (
-            <a
-              className="inline-flex min-w-0 items-center gap-1 hover:underline"
-              href={domain.url}
-              rel="noreferrer"
-              target="_blank"
-            >
+          <>
+            {domain.face === "live" ? (
+              <a
+                className="inline-flex min-w-0 items-center gap-1 hover:underline"
+                href={domain.url}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className="truncate">{domain.domainName}</span>
+                <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0 opacity-60" />
+              </a>
+            ) : (
               <span className="truncate">{domain.domainName}</span>
-              <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0 opacity-60" />
-            </a>
-          ) : (
-            <span className="truncate">{domain.domainName}</span>
-          )
+            )}
+            <RowMeta>{targetWords(domain)}</RowMeta>
+          </>
         }
-        sub={targetWords(domain)}
       />
       <Trouble text={ctx.trouble.get(key)} />
       {asking ? (
@@ -414,18 +424,16 @@ function Records({
   const elsewhere = domains.filter((domain) => domain.face === "elsewhere");
   const nameServers = first.nameServers;
   return (
-    <div
-      className="mb-3 grid gap-2.5 rounded-lg border border-border/60 px-3.5 py-3 text-sm"
-      data-addresses-records={first.routingId}
-    >
+    <div className="grid gap-2.5 pb-3.5 text-sm" data-addresses-records={first.routingId}>
       {elsewhere.map((domain) => (
         <p className="text-xs" key={domain.domainName}>
           {domain.domainName} points at {domain.resolvedIps.join(", ")}, which isn't {ctx.placeName}
           . Change its records to these.
         </p>
       ))}
-      <div className="font-medium">
-        Add these records where you manage {first.domainName.replace(/^www\./u, "")}'s DNS
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="shrink-0 font-medium">Add these records at your DNS provider</span>
+        {nameServers.length === 0 ? null : <RowMeta>{nameServers[0]}</RowMeta>}
       </div>
       {records.length === 0 ? (
         <p className="text-muted-foreground text-xs">
@@ -460,25 +468,20 @@ function Records({
         </table>
       )}
       {bothRequired ? (
-        <p className="text-muted-foreground text-xs">
-          Keep both the A and the AAAA: the shared IPv4 finds {first.domainName} through its AAAA.
-        </p>
-      ) : null}
-      {nameServers.length > 0 ? (
-        <p className="text-muted-foreground text-xs">
-          Its DNS is answered by {nameServers.join(", ")}.
-        </p>
+        <p className="text-muted-foreground text-xs">Keep both: the shared IPv4 needs the AAAA.</p>
       ) : null}
       <div>
-        <Button
-          aria-expanded={ways}
-          onClick={() => setWays((open) => !open)}
-          size="xs"
-          variant="ghost-muted"
-        >
-          <ChevronRightIcon className={ways ? "rotate-90" : undefined} />
-          Other ways
-        </Button>
+        <div className="-ms-2">
+          <Button
+            aria-expanded={ways}
+            onClick={() => setWays((open) => !open)}
+            size="xs"
+            variant="ghost-muted"
+          >
+            <ChevronRightIcon className={ways ? "rotate-90" : undefined} />
+            Other ways
+          </Button>
+        </div>
         {ways ? (
           <div className="grid gap-1.5 pt-1.5 text-muted-foreground text-xs">
             {cnames.map((cname) => (
@@ -509,9 +512,6 @@ function Records({
         ) : null}
       </div>
       {first.routingId.startsWith("own:") ? null : <CheckAgain ctx={ctx} domain={first} />}
-      <p className="text-muted-foreground text-xs">
-        DNS changes usually show within 5–10 minutes, sometimes up to a day.
-      </p>
     </div>
   );
 }
@@ -528,8 +528,10 @@ function CheckAgain({
   const checked = checkedWords(domain.checkedAt, ctx.nowMs);
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-        {checked === null ? null : <span>{checked}</span>}
+      <div className="flex items-center justify-between gap-3 text-muted-foreground text-xs">
+        <span className="min-w-0">
+          {checked === null ? "" : `${checked} · `}Changes show within about 10 minutes.
+        </span>
         <Button
           disabled={busy || ctx.hold}
           onClick={() =>
@@ -575,35 +577,24 @@ function ZeropsRow({
       <SheetRow
         data={`zerops:${address.serviceName}`}
         end={
-          address.on ? (
-            <span className="inline-flex items-center gap-2">
-              {busy ? <Spinner aria-hidden="true" size="xs" tone="muted" /> : null}
-              <Switch
-                aria-label={label}
-                checked={!asking}
-                disabled={busy || ctx.hold}
-                onCheckedChange={(on) => {
-                  if (!on) setMode({ kind: "close-zerops", serviceId: address.serviceId });
-                }}
-              />
-            </span>
-          ) : (
-            <Button
+          <span className="inline-flex items-center gap-2">
+            {busy ? <Spinner aria-hidden="true" size="xs" tone="muted" /> : null}
+            <Switch
+              aria-label={label}
+              // Asked to close, or being opened: the switch already says where it goes.
+              checked={address.on ? !asking : busy}
               disabled={busy || ctx.hold}
-              onClick={() =>
-                void ctx.onWrite({
-                  kind: "enable-subdomain-access",
-                  projectId: ctx.projectId,
-                  serviceId: address.serviceId,
-                })
-              }
-              size="sm"
-              variant="outline"
-            >
-              {busy ? <Spinner aria-hidden="true" /> : null}
-              Open to the internet
-            </Button>
-          )
+              onCheckedChange={(on) => {
+                if (!on) setMode({ kind: "close-zerops", serviceId: address.serviceId });
+                else
+                  void ctx.onWrite({
+                    kind: "enable-subdomain-access",
+                    projectId: ctx.projectId,
+                    serviceId: address.serviceId,
+                  });
+              }}
+            />
+          </span>
         }
         name={
           address.on && first !== undefined ? (
@@ -622,10 +613,12 @@ function ZeropsRow({
               ))}
             </span>
           ) : (
-            <span className="truncate">{label}</span>
+            <>
+              <span className="truncate text-muted-foreground">{address.serviceName}</span>
+              <RowMeta>zerops.app address</RowMeta>
+            </>
           )
         }
-        sub={address.on ? `${label} · handy for testing` : "Closed"}
       />
       <Trouble text={ctx.trouble.get(key)} />
       {asking ? (
@@ -721,7 +714,7 @@ function AddDomainForm({
   const named = domains.join(" and ");
   return (
     <form
-      className="mt-1 grid gap-3 rounded-lg border border-border/60 px-3.5 py-3"
+      className="grid gap-3 rounded-xl border border-border/70 bg-card px-3.5 py-3"
       data-addresses-form="add-domain"
       ref={revealed}
       onSubmit={(event) => {
