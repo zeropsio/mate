@@ -108,6 +108,22 @@ describe("C: conversation images", () => {
         yield* s.given.project("Ada", { mate: true });
         const mate = s.drivers.realMates.get("Ada")!;
         const chat = mateChat(s);
+        // The answer record also draws a compact rendition; its initial read may outlast the chat picture.
+        const answerPreviews: Array<{ width: number; height: number; path: string }> = [];
+        const answerPicture = mate.gate.holdFrames((frame) => {
+          if (frame.isBinary) return false;
+          const preview = Buffer.from(frame.bytes)
+            .toString()
+            .match(/"representation":\{[^}]*"width":(\d+),"height":(\d+),"relativeUrl":"([^"]+)"/);
+          if (preview === null || Number(preview[1]) >= 160) return false;
+          answerPreviews.push({
+            width: Number(preview[1]),
+            height: Number(preview[2]),
+            path: preview[3]!,
+          });
+          return true;
+        });
+        yield* Effect.addFinalizer(() => Effect.sync(answerPicture.release));
         const keepWorking = yield* Deferred.make<void>();
         yield* mate.provider.turn([
           nativeStep(
@@ -161,6 +177,34 @@ describe("C: conversation images", () => {
           }),
         );
         yield* Effect.promise(() => waitForStillFrames(s.page));
+        yield* Effect.promise(() => answerPicture.held);
+        const answerSlot = yield* Effect.promise(() =>
+          s.page.$eval('[data-person-pictures] img[alt="steering.png"]', (image) => {
+            const box = image.getBoundingClientRect();
+            return {
+              width: Math.round(box.width * devicePixelRatio),
+              height: Math.round(box.height * devicePixelRatio),
+            };
+          }),
+        );
+        // A resize can cancel earlier demands. Wait for the rendition of the settled answer slot.
+        const answerPreview = answerPreviews
+          .filter(
+            (preview) => preview.width >= answerSlot.width && preview.height >= answerSlot.height,
+          )
+          .sort((a, b) => a.width * a.height - b.width * b.height)[0]!.path;
+        yield* Effect.promise(async () => {
+          const read = s.page
+            .waitForResponse(
+              (response) =>
+                response.request().method() === "GET" && response.url().endsWith(answerPreview),
+              { timeout: 8000 },
+            )
+            .then((response) => response.buffer());
+          answerPicture.release();
+          await read;
+          await waitForStillFrames(s.page);
+        });
         const before = yield* Effect.promise(() =>
           s.page.$eval(
             '[data-message-role="user"] img[data-image-src]',
@@ -182,7 +226,10 @@ describe("C: conversation images", () => {
             ),
           ),
         ).toBe(before);
-        expect(assetReads(mate).length).toBe(reads);
+        expect(
+          assetReads(mate).length,
+          "ASSERTION: continuing the turn starts no new asset read after its pictures settle",
+        ).toBe(reads);
         const landing = yield* Effect.promise(() =>
           s.page.evaluate(() => {
             const images = document.querySelectorAll<HTMLImageElement>(
