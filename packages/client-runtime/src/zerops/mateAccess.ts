@@ -20,6 +20,8 @@ export interface MateAccessProject {
   readonly userRoles?:
     | ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>
     | undefined;
+  /** The viewer's own grant, where the listing named theirs alone (`mine`) and nobody else's. */
+  readonly viewerRoleCode?: string | undefined;
   /**
    * Where HQ places it: its Mate's logins name who signed each of its agents in (D6), joined from
    * HQ's overview for whoever may operate it (`observe_mate`).
@@ -49,12 +51,15 @@ export function resolveMateVisibility(input: {
   readonly viewer: MateAccessViewer;
 }): RoleMateVisibility {
   if (input.project.clientId !== input.viewer.id) return "hidden";
+  const override = viewerOverride(input);
   // An override this membership cannot be matched against is no override: the
   // project named per-person roles and we cannot tell which one is ours.
-  if (input.project.userRoles?.length && input.viewer.membershipId.length === 0) return "hidden";
-  const override = input.project.userRoles?.find(
-    (entry) => entry.clientUserId === input.viewer.membershipId,
-  )?.roleCode;
+  if (
+    override === undefined &&
+    input.project.userRoles?.length &&
+    input.viewer.membershipId.length === 0
+  )
+    return "hidden";
 
   const answer = zeropsRoleAnswer({
     person: {
@@ -76,8 +81,19 @@ export function resolveMateVisibility(input: {
   return answer.mates[input.project.id] ?? "hidden";
 }
 
+/** The viewer's grant on this project: the one its roles name for them, else their own one. */
+function viewerOverride(input: {
+  readonly project: MateAccessProject;
+  readonly viewer: MateAccessViewer;
+}): string | undefined {
+  return (
+    input.project.userRoles?.find((entry) => entry.clientUserId === input.viewer.membershipId)
+      ?.roleCode ?? input.project.viewerRoleCode
+  );
+}
+
 /**
- * This viewer's effective role on this project: their override there when the
+ * This viewer's effective role on this project: their grant there when the
  * project names one, their org role otherwise.
  */
 export function resolveMateProjectRole(input: {
@@ -85,9 +101,7 @@ export function resolveMateProjectRole(input: {
   readonly viewer: MateAccessViewer;
 }): ZeropsOrgRole {
   if (input.project.clientId !== input.viewer.id) return "NO_ACCESS";
-  const override = input.project.userRoles?.find(
-    (entry) => entry.clientUserId === input.viewer.membershipId,
-  )?.roleCode;
+  const override = viewerOverride(input);
   return override === undefined ? asOrgRole(input.viewer.roleCode) : asOrgRole(override);
 }
 
@@ -151,7 +165,7 @@ export function mateOnlyOwnerOpensIt(ownerName?: string | undefined): string {
  * (`environmentHttp.ts`). Its whole purpose is that this case never reads as
  * the generic permission error: "the environment credential does not grant the
  * required access" is true and says nothing, and this is not a fault to
- * recover from — it is whose Mate it is.
+ * recover from — it is the role Zerops gives them in the project.
  */
 export const ZEROPS_READ_ONLY_DOOR_REASON = "zerops_read_only";
 

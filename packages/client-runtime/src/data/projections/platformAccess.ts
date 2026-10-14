@@ -22,17 +22,7 @@ export const platformAccess: Projection<PlatformAccessKey, PlatformAccess> = {
     if (fact.kind !== "known" || viewer === undefined) return { kind: "unknown" };
     const project = fact.value;
     if (project.clientId !== orgId) return { kind: "unknown" };
-    const own =
-      project.userRoles?.some(({ clientUserId }) => clientUserId === viewer.membershipId) === true
-        ? undefined
-        : project.viewerRoleCode;
-    const role = resolveMateProjectRole({
-      project:
-        own === undefined
-          ? project
-          : { ...project, userRoles: [{ clientUserId: viewer.membershipId, roleCode: own }] },
-      viewer,
-    });
+    const role = resolveMateProjectRole({ project, viewer });
     return role === "NO_ACCESS" ? { kind: "denied" } : { kind: "allowed", role };
   },
   equals: sameValue,

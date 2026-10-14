@@ -237,6 +237,31 @@ describe("the verbs a Mate offers (guide 0.8)", () => {
   });
 });
 
+// A listing row that names only the viewer's own grant (`mine`) keeps it as `viewerRoleCode`.
+describe("a member's own project grant decides their Mate as a named override does", () => {
+  const own = (roleCode: string) => ({ id: PROJECT, clientId: ORG, viewerRoleCode: roleCode });
+  it.each([
+    {
+      title: "a basic user who owns the project deletes and renames its Mate",
+      orgRole: "BASIC_USER",
+      grant: "OWNER",
+      visibility: "open",
+      verbs: { delete: true, rename: true, assign: false },
+    },
+    {
+      title: "an admin held read-only on the project sees its Mate listed, never opened",
+      orgRole: "ADMIN",
+      grant: "READ_ONLY",
+      visibility: "listed",
+      verbs: { delete: false, rename: false, assign: true },
+    },
+  ] as const)("$title", ({ orgRole, grant, visibility, verbs }) => {
+    const input = { project: own(grant), viewer: viewer(orgRole, { membershipId: "" }) };
+    expect(resolveMateVisibility(input)).toBe(visibility);
+    expect(resolveMateVerbs(input)).toEqual(verbs);
+  });
+});
+
 // The E2E run (F8): the list held 200 rows, nearly all integration tokens, and a token was its
 // default. A Mate is handed to a person, a member who has joined.
 describe("withMateProjectRole — handing a Mate over", () => {
