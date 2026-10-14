@@ -85,6 +85,7 @@ export class Remotes extends Context.Service<
   Remotes,
   {
     readonly changes: Stream.Stream<number>;
+    readonly listRepos: Changes["Service"]["listRepos"];
     readonly write: (
       userId: string,
       requestId: string,
@@ -358,6 +359,15 @@ export const repoRemotesLayer = Layer.effect(
     });
     const remotes: Remotes["Service"] = Remotes.of({
       changes: SubscriptionRef.changes(ticks),
+      listRepos: Effect.fn("Remotes.listRepos")(function* (userId, appId) {
+        const repos = yield* changes.listRepos(userId, appId);
+        return yield* Effect.forEach(repos, (repo) =>
+          Effect.map(remotes.get({ appId, repo: repo.name }), (remote) => ({
+            ...repo,
+            remote: remote === undefined ? null : remoteForWire(remote),
+          })),
+        );
+      }),
       receipt: (userId, requestId, intent) =>
         decidedFresh(
           Effect.gen(function* () {

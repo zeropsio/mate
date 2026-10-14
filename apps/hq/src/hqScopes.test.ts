@@ -25,6 +25,7 @@ import { makeMateOverviews, MateOverviews } from "./mateOverviews.ts";
 import { Official, type OfficialStatus } from "./official.ts";
 import { mateOffers } from "./offers.ts";
 import { Releases } from "./releases.ts";
+import { Remotes, remoteForWire, type RemoteRecord } from "./repoRemotes.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import {
   Structure,
@@ -75,7 +76,7 @@ const menuChange = {
   mergeability: "conflict",
   ready: false,
 } as const;
-const fixture = Effect.gen(function* () {
+const fixtureWithRemotes = Effect.fnUntraced(function* (remotes?: Remotes["Service"]) {
   let org = facts;
   let policyReads = 0;
   let policy = { orgId: "ORG", enabled: true, revision: 0 };
@@ -310,7 +311,10 @@ const fixture = Effect.gen(function* () {
         Effect.gen(function* () {
           policyReads++;
           if (!org.members.some((member) => member.userId === userId && member.status === "ACTIVE"))
-            return yield* new StructureRefused({ code: "forbidden", reason: "not_active_member" });
+            return yield* new StructureRefused({
+              code: "forbidden",
+              reason: "not_active_member",
+            });
           return policy;
         }),
       set: (_userId, enabled) =>
@@ -455,7 +459,11 @@ const fixture = Effect.gen(function* () {
     } as unknown as Leader["Service"]),
   );
   const context = yield* Layer.build(
-    hqScopesLayer("BUILD", Duration.seconds(30)).pipe(Layer.provide(services)),
+    hqScopesLayer("BUILD", Duration.seconds(30)).pipe(
+      Layer.provide(
+        remotes === undefined ? services : Layer.merge(services, Layer.succeed(Remotes, remotes)),
+      ),
+    ),
   );
   const hub = Context.get(context, HqScopes);
   const connect = (userId: string, sessionId = "session") =>
@@ -637,6 +645,7 @@ const fixture = Effect.gen(function* () {
     },
   };
 });
+const fixture = fixtureWithRemotes();
 const resetOf = (message: ScopeOutput) => {
   if (message.type !== "scope-reset" && message.type !== "scope-values")
     throw new Error("expected scope delivery");
@@ -1856,6 +1865,82 @@ describe("revisioned HQ values", () => {
           const reset = resetOf(yield* first.take);
           assert.include(json(reset.values), '"recipe:stage"');
           assert.strictEqual(reset.scope.kind, "app-detail");
+        }),
+      ),
+  );
+  it.effect(
+    "a disconnected repository is explicitly disconnected in its next application record",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const changes = yield* PubSub.unbounded<number>();
+          let remote: RemoteRecord | undefined = {
+            appId: "A",
+            repo: "appdev",
+            url: "https://github.com/krls2020/tst123.git",
+            urlKey: "github.com/krls2020/tst123",
+            host: "github.com",
+            hostRepoId: "123",
+            keptBy: "owner",
+            keptAt: "2026-10-14T10:00:00Z",
+            invalidSince: null,
+            expiresAt: null,
+            expiryLabel: "No expiry",
+            credentialState: "kept",
+          };
+          const repo = { name: "appdev", mainHead: null, updatedAt: "2026-10-14T10:00:00Z" };
+          const unused = () => Effect.die("Unexpected remote mutation in a scope read");
+          const f = yield* fixtureWithRemotes({
+            changes: Stream.fromPubSub(changes),
+            get: () => Effect.sync(() => remote),
+            listRepos: () =>
+              Effect.sync(() => [
+                {
+                  ...repo,
+                  remote: remote === undefined ? null : remoteForWire(remote),
+                },
+              ]),
+            write: unused,
+            receipt: unused,
+            connect: unused,
+            updateAddress: unused,
+            disconnect: unused,
+            forUse: unused,
+            invalidate: unused,
+          });
+          const client = yield* f.connect("owner");
+          yield* client.subscribe([{ scope: { kind: "app-detail", appId: "A" } }]);
+          const connected = resetOf(yield* client.take);
+          assert.deepStrictEqual(
+            connected.values.find((value) => value.key === "repos"),
+            {
+              key: "repos",
+              value: [
+                {
+                  ...repo,
+                  remote: {
+                    url: "https://github.com/krls2020/tst123.git",
+                    repositoryId: "123",
+                    expiresAt: null,
+                    invalidSince: null,
+                    keptAt: "2026-10-14T10:00:00Z",
+                    keptBy: "owner",
+                  },
+                },
+              ],
+            },
+          );
+          assert.strictEqual((yield* client.take).type, "scope-ready");
+          remote = undefined;
+          yield* PubSub.publish(changes, 1);
+          const disconnected = resetOf(yield* client.take);
+          assert.deepStrictEqual(
+            disconnected.values.find((value) => value.key === "repos"),
+            {
+              key: "repos",
+              value: [{ ...repo, remote: null }],
+            },
+          );
         }),
       ),
   );
