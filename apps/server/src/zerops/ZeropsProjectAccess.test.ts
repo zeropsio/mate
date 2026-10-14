@@ -13,7 +13,7 @@ import * as ServerConfig from "../config.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
-import { make as makeProjectAccess, RELAY_HOLDS } from "./ZeropsProjectAccess.ts";
+import { ACCESS_HOLDS, make as makeProjectAccess, RELAY_HOLDS } from "./ZeropsProjectAccess.ts";
 
 const PROJECT_ID = "TEST000000000000000023";
 const CLIENT_ID = "BBBBBBBBBBBBBBBBBBBBBB";
@@ -127,7 +127,7 @@ describe("ZeropsProjectAccess", () => {
             ageMs: 0,
             chief: { userId: JAN, ownerName: "Jan" },
           });
-          yield* TestClock.adjust(Duration.sum(RELAY_HOLDS, Duration.millis(1)));
+          yield* TestClock.adjust(Duration.sum(ACCESS_HOLDS, Duration.millis(1)));
         } else if (state === "ordinary" || state === "legacy") {
           yield* access.relayed({
             members: OWN,
@@ -161,6 +161,22 @@ describe("ZeropsProjectAccess", () => {
       ]);
       assert.deepStrictEqual(calls, []);
     }),
+  );
+
+  it.effect(
+    "a Chief stays its owner's between HQ's relays, while the Mate reads Zerops itself",
+    () =>
+      Effect.gen(function* () {
+        const { access, calls } = yield* accessOver({ enrolled: true });
+        yield* access.relayed({ members: OWN, ageMs: 0, chief: { userId: JAN, ownerName: "Jan" } });
+        yield* TestClock.adjust(Duration.sum(RELAY_HOLDS, Duration.millis(1)));
+        const read = yield* access.read;
+        assert.deepStrictEqual(read.ok ? [read.members, read.relayed] : read, [
+          [{ userId: JAN, role: "BASIC_USER", visibility: "open" }],
+          false,
+        ]);
+        assert.strictEqual(calls.length, 2);
+      }),
   );
 
   it.effect("answers from HQ's relay while it is fresh, reading nothing of Zerops", () =>

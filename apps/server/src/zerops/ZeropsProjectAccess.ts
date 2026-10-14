@@ -81,7 +81,15 @@ export class ZeropsProjectAccess extends Context.Service<
     }) => Effect.Effect<void>;
     /** HQ's relay while it holds ({@link RELAY_HOLDS} from HQ's read); none past that. */
     readonly relay: Effect.Effect<Option.Option<KnownAccess>>;
-    /** HQ's relay while it holds, else this Mate's own read; `ok: false` when neither answers. */
+    /**
+     * HQ's last Chief classification, held {@link ACCESS_HOLDS} from HQ's read: only HQ answers
+     * it, so between HQ's relays it holds as any unanswered answer does; `undefined` past that.
+     */
+    readonly chief: Effect.Effect<ChiefMateOwner | null | undefined>;
+    /**
+     * HQ's relay while it holds, else this Mate's own read narrowed to a held Chief's owner;
+     * `ok: false` when neither answers.
+     */
     readonly read: Effect.Effect<ProjectAccess>;
     /** Fires when HQ relays a different answer: who it lets in, never only its age. */
     readonly changes: Stream.Stream<void>;
@@ -186,18 +194,29 @@ export const make = Effect.gen(function* () {
       : Option.none<KnownAccess>();
   });
 
+  const chief = Effect.gen(function* () {
+    const last = yield* Ref.get(held);
+    const now = yield* Clock.currentTimeMillis;
+    return last !== undefined && accessHolds(last.readAtMs, now) ? last.chief : undefined;
+  });
+
   const read: ZeropsProjectAccess["Service"]["read"] = Effect.gen(function* () {
     const fresh = yield* relay;
     if (Option.isSome(fresh)) return fresh.value;
     if (environment === undefined) return { ok: false } as const;
-    return yield* readOwnAccess({ environment }).pipe(
+    const own = yield* readOwnAccess({ environment }).pipe(
       Effect.provideService(ZeropsOrgRead, orgRead),
     );
+    const owner = yield* chief;
+    return own.ok && owner != null
+      ? { ...own, members: restrictChiefAccess(own.members, owner), chief: owner }
+      : own;
   });
 
   return ZeropsProjectAccess.of({
     relayed,
     relay,
+    chief,
     read,
     changes: Stream.fromPubSub(moved),
   });

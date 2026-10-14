@@ -307,10 +307,12 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   const createdByUser = token.createdByUser;
   if (createdByUser === null) return yield* refused("not_member");
   // HQ's relay while it holds (`ZeropsProjectAccess`, R6): a creator it opens for is let in,
-  // and the member list is not read. A current explicit Chief refusal stands here; without
-  // that classification the read below retains today's platform-role admission.
+  // and the member list is not read. A held explicit Chief refusal stands here, between HQ's
+  // relays too; without that classification the read below retains today's platform-role
+  // admission.
   const projectAccess = yield* ZeropsProjectAccess;
   const access = Option.getOrUndefined(yield* projectAccess.relay);
+  const chief = yield* projectAccess.chief;
   const opened = access?.members.find(
     (entry) => entry.userId === createdByUser && entry.visibility === "open",
   );
@@ -321,9 +323,9 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
       role: opened.role,
     } satisfies ZeropsThrowawayCaller;
   }
-  if (access?.chief != null) {
+  if (chief != null && chief.userId !== createdByUser) {
     return yield* new ZeropsChiefOwnerRequiredError({
-      ownerName: access.chief.ownerName ?? "another person",
+      ownerName: chief.ownerName ?? "another person",
     });
   }
   const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });

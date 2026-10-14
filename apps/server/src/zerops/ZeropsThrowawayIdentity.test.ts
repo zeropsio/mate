@@ -184,6 +184,22 @@ describe("verifyThrowawayCaller", () => {
     }).pipe(Effect.provide(layer));
   });
 
+  it.effect("someone else's Chief Mate stays shut between HQ's relays", () => {
+    const { layer } = scene();
+    return Effect.gen(function* () {
+      const access = yield* ZeropsProjectAccessModule.ZeropsProjectAccess;
+      yield* access.relayed({
+        members: [],
+        ageMs: 40_000,
+        chief: { userId: "another-person", ownerName: "Ada" },
+      });
+      const answer = yield* verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
+        Effect.match({ onSuccess: () => "admitted", onFailure: (error) => error._tag }),
+      );
+      assert.strictEqual(answer, "ZeropsChiefOwnerRequiredError");
+    }).pipe(Effect.provide(layer));
+  });
+
   it.effect.each([
     {
       title: "someone else's Chief Mate is not opened by its direct address",

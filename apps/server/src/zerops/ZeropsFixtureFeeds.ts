@@ -659,6 +659,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       ZeropsProjectAccessModule.ZeropsProjectAccess.of({
         relayed: () => Effect.void,
         relay: Effect.succeed(Option.none()),
+        chief: Effect.undefined,
         read: Effect.succeed({ ok: false }),
         changes: Stream.empty,
       }),
