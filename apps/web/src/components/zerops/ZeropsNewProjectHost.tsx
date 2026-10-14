@@ -132,8 +132,7 @@ function NewProjectDialog() {
   // Create was pressed: its first Mate's view is on its way, and a second press makes nothing.
   const [creating, setCreating] = useState(false);
 
-  // The registry lives in the organization's HQ, where only its owners and admins create an
-  // application — a stricter gate than *can create projects*, and HQ's offer (`create_app`).
+  // HQ offers application creation to the people Zerops allows to create projects.
   const accountHq = useAccountHq(activeOrganization?.id);
   const { at } = useHqOffers();
   const addProject = resolveAddProjectVerb({

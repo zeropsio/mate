@@ -54,7 +54,7 @@ describe("mapRemoteEnvironmentError", () => {
     expect(mapRemoteEnvironmentError(forbidden("zerops_read_only"))).toMatchObject({
       _tag: "ConnectionBlockedError",
       reason: "read-only",
-      detail: "Only its owner opens this Mate.",
+      detail: "Your Zerops access to this Mate is read-only.",
     });
   });
 

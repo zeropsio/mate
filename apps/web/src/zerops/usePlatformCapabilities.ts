@@ -17,7 +17,9 @@ export function usePlatformCapabilities(environmentId: EnvironmentId | null) {
   return useProjection(
     platformCapabilities,
     project === null
-      ? null
+      ? account?.orgId == null
+        ? null
+        : { orgId: account.orgId, viewer: account.viewer }
       : {
           orgId: project.organization.organizationId,
           projectId: project.projectId,
