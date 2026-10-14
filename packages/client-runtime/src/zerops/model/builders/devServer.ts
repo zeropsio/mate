@@ -1,5 +1,5 @@
 import { operationClosing, sentenceCase } from "../../operations/phrases.ts";
-import type { ZeropsCall } from "../types.ts";
+import type { ZeropsCall, ZeropsOperationStep } from "../types.ts";
 import type { ZeropsCardPayload } from "../../cards/payloads.ts";
 import {
   type BuiltCardFields,
@@ -48,6 +48,68 @@ function devServerStepSucceeded(action: string, running: boolean): boolean {
   return action === "stop" ? !running : running;
 }
 
+/** What a dev server's row says of the supervisor's state: its step state and word. */
+const SERVER_STATES: Readonly<
+  Record<string, { readonly state: ZeropsOperationStep["state"]; readonly word: string }>
+> = {
+  running: { state: "done", word: "Running" },
+  starting: { state: "running", word: "Starting" },
+  crashed: { state: "failed", word: "Crashed" },
+  stopped: { state: "queued", word: "Stopped" },
+};
+
+/** `21:04`, in the reader's own clock; nothing for a time it cannot read. */
+function clockOf(iso: string): string | undefined {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return undefined;
+  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+}
+
+type DevServer = NonNullable<Extract<ZeropsCardPayload, { kind: "devServer" }>["servers"]>[number];
+
+/** `web :3000`, or `worker` for a server without a port. */
+const serverLabel = (server: DevServer) =>
+  server.port === undefined ? server.name : `${server.name} :${String(server.port)}`;
+
+/**
+ * One row per named server: its last known state, and when zcp read it — a server that falls
+ * over between calls shows here only after the agent's next call (MODEL §6), so the time says how
+ * old the word is.
+ */
+function serverStep(server: DevServer): ZeropsOperationStep {
+  const known = SERVER_STATES[server.status];
+  const exit = server.lastExit;
+  const exitClock = exit === undefined ? undefined : clockOf(exit.at);
+  const why =
+    server.status === "running"
+      ? server.verify?.httpStatus === undefined
+        ? undefined
+        : `HTTP ${String(server.verify.httpStatus)}`
+      : exit === undefined
+        ? undefined
+        : [
+            exit.code !== undefined
+              ? `exit ${String(exit.code)}`
+              : exit.signal !== undefined
+                ? exit.signal
+                : "exited",
+            exitClock === undefined ? undefined : `at ${exitClock}`,
+          ]
+            .filter((word) => word !== undefined)
+            .join(" ");
+  const read = clockOf(server.readAt);
+  const note = [why, read === undefined ? undefined : `read ${read}`]
+    .filter((word) => word !== undefined)
+    .join(" · ");
+  return {
+    id: `dev-server:${server.name}`,
+    label: serverLabel(server),
+    state: known?.state ?? "queued",
+    stateLabel: known?.word ?? sentenceCase(server.status),
+    ...(note.length > 0 ? { note } : {}),
+  };
+}
+
 export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
@@ -59,16 +121,18 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
   const { voice, voiceSource } = mateVoiceFor("devServer", subject);
 
   const steps =
-    card !== undefined
-      ? [
-          buildStep(
-            "dev-server",
-            DEV_SERVER_STEP_LABEL[card.action] ?? sentenceCase(card.action),
-            devServerStepSucceeded(card.action, card.running) ? "ACTIVE" : "FAILED",
-            devServerStepNote(card),
-          ),
-        ]
-      : [];
+    card?.servers !== undefined
+      ? card.servers.map(serverStep)
+      : card !== undefined
+        ? [
+            buildStep(
+              "dev-server",
+              DEV_SERVER_STEP_LABEL[card.action] ?? sentenceCase(card.action),
+              devServerStepSucceeded(card.action, card.running) ? "ACTIVE" : "FAILED",
+              devServerStepNote(card),
+            ),
+          ]
+        : [];
 
   const closing =
     phase === "running"
@@ -116,10 +180,13 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
         )
       : {}),
     steps,
-    // The subdomain URL is not part of this result — it comes from the
-    // client's own topology view as a prop the timeline supplies, never
-    // baked into the operation here.
-    links: [],
+    // The service's subdomain URL is not part of this result — it comes from the
+    // client's own topology view as a prop the timeline supplies, never baked
+    // into the operation here. Several named servers each bring their own
+    // port's address, as zcp read it from Zerops in this call.
+    links: (card?.servers ?? []).flatMap((server) =>
+      server.url === undefined ? [] : [{ label: serverLabel(server), url: server.url }],
+    ),
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
   };

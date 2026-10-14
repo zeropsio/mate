@@ -670,8 +670,8 @@ export function ZeropsOperationCard(props: {
   /**
    * `devServer` only: the subdomain URL resolved by the timeline's own
    * topology view (client-topology-view — server feed, not the tool result).
-   * Never sourced from `operation.links`, which stays empty for this kind:
-   * see `reduce.ts`'s `buildDevServerOperation` doc note.
+   * Never sourced from `operation.links`, which holds only the port addresses
+   * of a service running several named servers; such a card opens those instead.
    */
   readonly devServerUrl?: string;
   /**
@@ -742,7 +742,7 @@ export function ZeropsOperationCard(props: {
   };
 
   const openLink =
-    operation.kind === "devServer" && devServerUrl !== undefined
+    operation.kind === "devServer" && devServerUrl !== undefined && operation.links.length === 0
       ? { label: "Open", url: devServerUrl }
       : undefined;
   const links = openLink !== undefined ? [openLink, ...operation.links] : operation.links;

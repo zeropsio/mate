@@ -14,6 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { readZeropsCardSource } from "./cards/decode.ts";
 import { decodeZeropsCard } from "./cards/payloads.ts";
+import { buildDevServerFields } from "./model/builders/devServer.ts";
 import { flowChange } from "./projectFlow.ts";
 
 const dir = new URL("./fixtures/zcp/", import.meta.url);
@@ -138,6 +139,59 @@ describe("zcp contract fixtures", () => {
       hostname: "appdev",
       running: false,
       reason: "crashed",
+    });
+  });
+
+  describe("the dev-server card", () => {
+    const fields = (name: string) =>
+      buildDevServerFields({
+        id: "c1",
+        turnId: "t1",
+        toolName: "zerops_dev_server",
+        input: { hostname: "appdev", action: "status" },
+        status: "completed",
+        resultText: raw(name).toString("utf8"),
+        truncated: false,
+        startedAt: "2026-10-14T21:03:50.000Z",
+        anchorActivityId: "a1",
+        settledAt: "2026-10-14T21:04:00.000Z",
+        rowIds: new Set(["a1"]),
+        agentInternal: false,
+      });
+    /** `21:04`, in the reader's own clock. */
+    const clock = (iso: string) => {
+      const at = new Date(iso);
+      return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+    };
+
+    it("The dev-server card shows one row per named server with its last known state and when it was read", () => {
+      const card = fields("dev-server.three-servers-one-crashed.json");
+      const read = clock("2026-10-14T21:04:00Z");
+      expect(
+        card.steps.map(({ label, state, stateLabel, note }) => [label, state, stateLabel, note]),
+      ).toEqual([
+        ["web :3000", "done", "Running", `HTTP 200 · read ${read}`],
+        ["api :8080", "done", "Running", `HTTP 200 · read ${read}`],
+        [
+          "worker",
+          "failed",
+          "Crashed",
+          `exit 1 at ${clock("2026-10-14T21:03:10Z")} · read ${read}`,
+        ],
+      ]);
+      expect(card.links).toEqual([
+        { label: "web :3000", url: "https://appdev-1df2-3000.prg1.zerops.app" },
+        { label: "api :8080", url: "https://appdev-1df2-8080.prg1.zerops.app" },
+      ]);
+    });
+
+    it("A one-part app's dev-server card is today's: one step, no server name, no link of its own", () => {
+      const card = fields("dev-server.one-server.json");
+      expect(
+        card.steps.map(({ label, state, stateLabel, note }) => [label, state, stateLabel, note]),
+      ).toEqual([["Health check", "done", "Done", "HTTP 200"]]);
+      expect(card.links).toEqual([]);
+      expect(card.kicker).toBe("Dev server · appdev");
     });
   });
 
