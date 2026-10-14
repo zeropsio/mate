@@ -25,6 +25,23 @@ export function chiefQuestion(name: string, organization: string | undefined): s
 /** Whose Chief the viewer has: its project; null for none; undefined while that is not known. */
 export type OwnChief = string | null | undefined;
 
+/** The viewer's Chief from HQ's current person facts; absence needs a complete answer. */
+export function hqOwnChief(
+  facts: Readonly<Record<string, { readonly chief?: string | undefined }>>,
+  read: boolean,
+): OwnChief {
+  const mine = Object.entries(facts).find(([, fact]) => fact.chief === "mine")?.[0];
+  return mine ?? (read ? null : undefined);
+}
+
+/** Navigation to setup is offered before creation; the destination owns its permission check. */
+export function chiefSetupEntry(
+  own: OwnChief,
+  setup: "idle" | "running" | "failed" | "done",
+): boolean {
+  return own === null && setup === "idle";
+}
+
 /**
  * The Chiefs the viewer sees nowhere: every project tagged a Chief's but their own, and every one
  * while whose is not known, so none is drawn and then taken back.

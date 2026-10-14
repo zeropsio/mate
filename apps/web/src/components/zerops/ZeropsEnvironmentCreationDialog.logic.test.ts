@@ -556,7 +556,7 @@ describe("newMateWords — what the Mate's dialog says", () => {
       case: "a blank name",
       input: { groupName: "Acme Docs", botName: "  ", recipe: "recipe", waitingOn: null },
       words: {
-        button: "Add a Mate to Acme Docs",
+        button: "Add a project Mate to Acme Docs",
         line: undefined,
       },
     },

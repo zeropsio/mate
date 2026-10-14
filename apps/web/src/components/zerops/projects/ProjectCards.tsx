@@ -365,8 +365,8 @@ function CardMates<T>({
     (mate): mate is Extract<FlowMateEntry<T>, { kind: "listed" }> => mate.kind === "listed",
   );
   return (
-    <section aria-label="Mates" className="ov-sec ov-mates" data-zerops-step="mates">
-      <h3 className="ov-sec-name">Mates</h3>
+    <section aria-label="Project Mates" className="ov-sec ov-mates" data-zerops-step="mates">
+      <h3 className="ov-sec-name">Project Mates</h3>
       {shown.map(draw)}
       {unfolded ? folded.map(draw) : null}
       {folded.length > 0 && !unfolded ? (

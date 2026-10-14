@@ -50,7 +50,7 @@ describe("ZeropsEnvironmentCreationForm", () => {
   it("hands a Mate to a form of its own: who it is, its project named as it is", () => {
     const html = render({ role: "dev", defaultName: "Otto" });
     expect(html).toContain('data-zerops-surface="new-mate-form"');
-    expect(html).toContain(">New Mate on Acme Docs<");
+    expect(html).toContain(">Add a project Mate to Acme Docs<");
     expect(html).toContain("Add Otto to Acme Docs");
     expect(html).not.toContain("Environment");
     expect(html).not.toContain("Application");
