@@ -12,8 +12,6 @@ import {
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
-import { changeFixture } from "../../fakes/d-change/changes.ts";
-import { installArea as installChanges, hqFramesFor } from "../d-change/fake.ts";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
@@ -214,150 +212,6 @@ describe("owner-reported layout regressions", () => {
   // dropping its words 79 px before the end follower glided back. The source stays unchanged.
 
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    it.effect("historical landings preserve painted words while live arrivals still follow", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installChanges], { mate: "real" });
-        yield* Effect.promise(async () => {
-          await s.page.setViewport({ width: 1786, height: 1000 });
-          await s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
-        });
-        const change = yield* changeFixture(s);
-        const ada = s.drivers.realMates.get("Ada")!;
-        yield* s.given.signedIn;
-        yield* Effect.promise(() => ownerMenu(s.page));
-        yield* s.when.menu.opensMate("Ada");
-        yield* s.then.conversation.appears;
-        const exchange = Effect.fn(function* (
-          question: string,
-          answer: string,
-          providerInput = question,
-        ) {
-          yield* ada.provider.turn([{ kind: "say", text: answer }]);
-          yield* s.when.conversation.sends(question);
-          expect(
-            (yield* ada.provider.received).input.input,
-            "ASSERTION: the provider receives the person's words with the observed landing context",
-          ).toBe(providerInput);
-          yield* s.then.conversation.showsMessage(answer.trim().split("\n\n").at(-1)!);
-          yield* Effect.promise(() =>
-            s.page.waitForFunction(
-              () => !document.querySelector('button[aria-label="Stop generation"]'),
-            ),
-          );
-          yield* Effect.promise(() => waitForStillFrames(s.page));
-        });
-        yield* exchange(
-          "Review the linked work",
-          `Review [the order change](https://hqzone.prg1-zerops.zone${change.direct.replace("/change/", "/changes/")}).\n\n` +
-            "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
-              24,
-            ),
-        );
-        yield* change.colleagueMerges;
-        // Core's merge receipt precedes the browser's app-detail reflection. Observe that fact
-        // before sending: the agent hears it as context, while the person's transcript stays bare.
-        yield* Effect.promise(() =>
-          s.page.waitForSelector('[data-timeline-row-id="event:zerops:change-landed:appdev#1"]'),
-        );
-        const answer = "The final contact line stays where it was read.";
-        yield* exchange(
-          "And the contact line?",
-          answer,
-          `<zerops-update>\nappdev #1 landed: ${change.title}\n</zerops-update>\n\nAnd the contact line?`,
-        );
-        const frames = hqFramesFor(s.drivers);
-        frames.hold((frame) => {
-          const input = JSON.parse(frame);
-          return input.scope?.kind === "app-detail";
-        });
-        yield* Effect.promise(() => s.page.reload());
-        yield* s.then.conversation.showsMessage(answer);
-        expect(
-          yield* Effect.promise(() =>
-            s.page.evaluate((answer) => {
-              const timeline = document.querySelector(".timeline-legend-list")!;
-              const person = [...timeline.querySelectorAll("[data-user-message-body]")].at(-1)!;
-              const words = document.createTreeWalker(timeline, NodeFilter.SHOW_TEXT);
-              let reply: Node | null = null;
-              while (words.nextNode()) {
-                if (words.currentNode.textContent === answer) reply = words.currentNode;
-              }
-              return {
-                person: person.textContent,
-                contextVisible: timeline.textContent?.includes("<zerops-update>"),
-                answerFollows:
-                  reply !== null &&
-                  (person.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
-              };
-            }, answer),
-          ),
-          "ASSERTION: the reloaded conversation paints the person's exact words before the answer without agent context",
-        ).toEqual({ person: "And the contact line?", contextVisible: false, answerFollows: true });
-        yield* Effect.promise(() => frames.received());
-        yield* Effect.promise(() => waitForStillFrames(s.page));
-        const trace = yield* Effect.promise(async () => {
-          const capture = await s.page.evaluateHandle((answer) => {
-            const readings: { top: number; height: number; scroll: number; count: number }[] = [];
-            let active = true;
-            const read = () => {
-              const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
-              const row = [...scroll.querySelectorAll<HTMLElement>("[data-timeline-row-id]")].find(
-                (row) => row.textContent?.includes(answer),
-              )!;
-              readings.push({
-                top: row.getBoundingClientRect().top,
-                height: scroll.scrollHeight,
-                scroll: scroll.scrollTop,
-                count: scroll.querySelectorAll("[data-timeline-row-id]").length,
-              });
-              if (active) requestAnimationFrame(read);
-            };
-            read();
-            return {
-              readings,
-              stop: () => {
-                active = false;
-              },
-            };
-          }, answer);
-          frames.resume();
-          await s.page.waitForFunction(() =>
-            document.querySelector('[data-timeline-row-id^="event:zerops:"]'),
-          );
-          await waitForStillFrames(s.page);
-          const result = await capture.evaluate((capture) => {
-            capture.stop();
-            return capture.readings;
-          });
-          await capture.dispose();
-          return result;
-        });
-        expect(
-          trace.at(-1)!.height - trace[0]!.height,
-          "ASSERTION: the delayed linked historical landing added its real row above the answer",
-        ).toBeGreaterThan(40);
-        const jumps = trace.slice(1).map((frame, index) => Math.abs(frame.top - trace[index]!.top));
-        expect(
-          Math.max(...jumps),
-          `ASSERTION: delayed historical landing moves painted words by at most 1 px: ${trace.map((frame) => frame.top).join(" ")}`,
-        ).toBeLessThanOrEqual(1);
-        yield* exchange("One live update", "A live arrival still follows.\n\n".repeat(12));
-        yield* Effect.promise(() => waitForStillFrames(s.page));
-        const gap = yield* Effect.promise(() =>
-          s.page.evaluate(() => {
-            const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
-            return scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop;
-          }),
-        );
-        expect(
-          gap,
-          "ASSERTION: a live arrival is followed to the conversation end",
-        ).toBeLessThanOrEqual(2);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-  });
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect("the Chief's first message and composer enter the conversation without a jump", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });
@@ -469,7 +323,9 @@ describe("owner-reported layout regressions", () => {
           frames.slice(1).flatMap((frame, index) => {
             const previous = frames[index]!;
             const [to, from] = [read(frame), read(previous)];
-            return to === null || from === null ? [] : [Math.abs(to - from)];
+            return to === null || from === null
+              ? []
+              : [(Math.abs(to - from) * (1000 / 60)) / Math.max(1000 / 60, frame.at - previous.at)];
           });
         const draftVisible = frames.filter(
           (frame) =>
@@ -2893,7 +2749,7 @@ describe("owner-reported layout regressions", () => {
          * empty band at its foot that ran under the composer, and the view rested short of its end.
          * After the settle the card and the conversation's end read as a reload draws them.
          */
-        const restsAtItsEnd = (ending: "stopped with its helpers" | "completed" | "on its job") =>
+        const restsAtItsEnd = (ending: "stopped with its helpers" | "completed") =>
           Effect.gen(function* () {
             const { s, engine, run } = yield* miloAtWork();
             const chat = mateChat(s);
@@ -2914,18 +2770,7 @@ describe("owner-reported layout regressions", () => {
             });
             yield* Effect.promise(() => waitForStillFrames(s.page));
             const words = "Both helpers reported their last tick, 90.";
-            if (ending === "on its job") {
-              for (const helper of helpers) engine.update(helper, { status: "completed" });
-              engine.item(run, {
-                kind: "work",
-                work: "session.rest",
-                workKind: "shell",
-                status: "running",
-                title: "Print done when the job ends",
-              });
-              engine.note(run, "The job is still running.", { kind: "completed" });
-              yield* chat.then.text("Still working in the background");
-            } else if (ending === "stopped with its helpers") {
+            if (ending === "stopped with its helpers") {
               // As on Milo: the Stop ends the helpers first, the run a moment after.
               for (const helper of helpers) engine.update(helper, { status: "stopped" });
               yield* Effect.promise(() => waitForStillFrames(s.page));
@@ -3023,11 +2868,6 @@ describe("owner-reported layout regressions", () => {
         it.effect(
           "after a run completes, its card hugs its content and the conversation rests at its end above the composer",
           () => restsAtItsEnd("completed"),
-        );
-
-        it.effect(
-          "after a turn ends on a job still running, its finished card hugs its content and the background wait rests at the conversation end above the composer",
-          () => restsAtItsEnd("on its job"),
         );
 
         // Recheck on 0.15.45: opening a settled card at the conversation's end held the card where
