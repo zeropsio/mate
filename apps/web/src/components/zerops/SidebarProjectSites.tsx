@@ -1,4 +1,4 @@
-import { GitProductionRemoval } from "./GitStopDetail";
+import { ProductionRemoval } from "./GitStopDetail";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 /**
@@ -685,12 +685,10 @@ function PlaceSection({
         />
       )}
       {stop?.git?.environment === undefined ? null : (
-        <>
-          <GitPlaceEvidence appId={groupId} git={stop.git} />
-          {stop.environmentId === undefined ? null : (
-            <GitProductionRemoval appId={groupId} environmentId={stop.environmentId} />
-          )}
-        </>
+        <GitPlaceEvidence appId={groupId} git={stop.git} />
+      )}
+      {place !== "production" || stop?.environmentId === undefined ? null : (
+        <ProductionRemoval appId={groupId} environmentId={stop.environmentId} />
       )}
       {projectId === undefined ? null : (
         <PlaceAccess filtering={filtering} onRoutes={onRoutes} projectId={projectId} />

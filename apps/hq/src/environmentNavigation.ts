@@ -53,6 +53,7 @@ export const readEnvironmentSource = Effect.fnUntraced(function* (
     readonly environment_id: string;
     readonly project_id: string | null;
     readonly target: "zerops" | "git";
+    readonly created_for_production: boolean;
     readonly branch: string | null;
     readonly delivery: "direct" | null;
     readonly app_id: string;
@@ -64,7 +65,7 @@ export const readEnvironmentSource = Effect.fnUntraced(function* (
     readonly key_invalid: boolean;
     readonly project_ids: ReadonlyArray<string>;
   }>`
-SELECT e.id AS environment_id, e.project_id, e.target, e.branch, e.delivery, e.app_id::text AS app_id, e.tier, e.name, e.sources,
+SELECT e.id AS environment_id, e.project_id, e.target, e.created_for_production, e.branch, e.delivery, e.app_id::text AS app_id, e.tier, e.name, e.sources,
        (rank() OVER (PARTITION BY e.app_id ORDER BY e.declared_seq))::int AS "order",
        t.project_id IS NOT NULL AS key_held,
        t.invalid_since IS NOT NULL AS key_invalid,
@@ -258,6 +259,7 @@ FROM standing s`;
     return {
       ...common,
       target: { kind: "zerops", projectId: row.project_id },
+      ...(row.tier === "production" ? { deleteProjectOnRemoval: row.created_for_production } : {}),
       jobs: values.map((job) => decodeDeployJob(job)),
     };
   };
@@ -293,7 +295,17 @@ FROM standing s`;
                       facts,
                       value.tier,
                     )
-                  : environmentOffers(userId, value.target.projectId, facts),
+                  : environmentOffers(
+                      userId,
+                      value.target.projectId,
+                      facts,
+                      value.tier === "production"
+                        ? (
+                            environments.find((row) => row.environment_id === value.id)
+                              ?.project_ids ?? []
+                          ).map((project_id) => ({ project_id, kind: "" }))
+                        : undefined,
+                    ),
             }))
         : { refused: access.reason },
   } satisfies EnvironmentSource;

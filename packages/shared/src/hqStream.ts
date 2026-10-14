@@ -370,6 +370,7 @@ export const HqNavigationEnvironment = Schema.Struct({
   order: Schema.Number,
   keyHeld: Schema.Boolean,
   keyInvalid: Schema.Boolean,
+  deleteProjectOnRemoval: Schema.optionalKey(Schema.Boolean),
   can: Decisions,
   jobs: Schema.Array(HqNavigationJob),
   release: Schema.NullOr(ReleaseRollout),

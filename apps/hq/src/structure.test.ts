@@ -195,6 +195,7 @@ const environmentRow = (
 ) => ({
   id: projectId,
   target: { kind: "zerops" as const, projectId },
+  ...(tier === "production" ? { deleteProjectOnRemoval: false } : {}),
   projectId,
   tier,
   name,
@@ -740,7 +741,12 @@ describe("structure", () => {
                 environment.target.kind === "zerops" ? environment.target.projectId : undefined,
                 environment.can,
               ]),
-              [["P_PROD", { keep_deploy_token: { allow: true } }]],
+              [
+                [
+                  "P_PROD",
+                  { keep_deploy_token: { allow: true }, remove_production: { allow: true } },
+                ],
+              ],
             );
             // The org's writer is offered making an application, and makes one.
             assert.deepStrictEqual((yield* structure.read("owner")).can.create_app, {
@@ -3348,6 +3354,138 @@ describe("structure", () => {
 
 describe("original lifecycle receipts", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect.each([false, true])(
+      "Removing Zerops production keeps an attached project and deletes only a project created for that production: %s",
+      (created) =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const app = yield* structure.createApp("owner", "Production removal");
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "" },
+            });
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_PROD",
+              kind: "production",
+              created,
+            });
+            const before = (yield* structure.read("owner")).apps[0]!;
+            const environment = shown(before.environments)[0]!;
+            assert.strictEqual(environment.deleteProjectOnRemoval, created);
+            assert.deepStrictEqual(environment.can.remove_production, { allow: true });
+            const intent = {
+              kind: "remove-production" as const,
+              orgId: "ORG",
+              hqProjectId: "HQ",
+              projectId: "P_PROD",
+              appId: app.id,
+              deleteProject: created,
+            };
+            const record = yield* structure.lifecycleWrite("owner", "remove-original", intent);
+            assert.deepStrictEqual(record.productionRemoval, { deleteProject: created });
+            assert.strictEqual(record.projectName, "name of P_PROD");
+            const after = (yield* structure.read("owner")).apps[0]!;
+            assert.deepStrictEqual(shown(after.environments), []);
+            assert.deepStrictEqual(after.can.add_production, { allow: true });
+            assert.deepStrictEqual(
+              after.projects.map((project) => project.projectId),
+              ["P_MATE"],
+            );
+            assert.deepStrictEqual(
+              yield* sql`SELECT 1 FROM hq_press WHERE project_id='P_PROD'`,
+              [],
+            );
+            assert.strictEqual(
+              (yield* Ref.get(view)).projects.some((project) => project.id === "P_PROD"),
+              true,
+            );
+            assert.deepStrictEqual(
+              yield* structure.lifecycleWrite("owner", "remove-original", intent),
+              record,
+            );
+            assert.deepStrictEqual(
+              yield* structure.lifecycleReceipt("owner", "remove-original"),
+              record,
+            );
+          }),
+        ),
+    );
+
+    it.effect(
+      "Moving a production project never transfers proof that Mate created it for that production",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const app = yield* structure.createApp("owner", "Original production");
+            const destination = yield* structure.createApp("owner", "Attached production");
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_PROD",
+              kind: "production",
+              created: true,
+            });
+            yield* structure.moveProject("owner", "P_PROD", {
+              appId: destination.id,
+              kind: "production",
+            });
+            const moved = (yield* structure.read("owner")).apps.find(
+              (candidate) => candidate.id === destination.id,
+            )!;
+            assert.strictEqual(shown(moved.environments)[0]!.deleteProjectOnRemoval, false);
+          }),
+        ),
+    );
+
+    it.effect(
+      "Production removal requires the same role as creating production and the confirmed target fate",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const app = yield* structure.createApp("owner", "Guarded production");
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "" },
+            });
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_PROD",
+              kind: "production",
+              created: true,
+            });
+            const intent = {
+              kind: "remove-production" as const,
+              orgId: "ORG",
+              hqProjectId: "HQ",
+              projectId: "P_PROD",
+              appId: app.id,
+              deleteProject: true,
+            };
+            assert.strictEqual(
+              yield* reasonOf(structure.lifecycleWrite("dev", "denied", intent)),
+              "not_structure_writer",
+            );
+            assert.strictEqual(
+              yield* reasonOf(
+                structure.lifecycleWrite("owner", "mismatch", { ...intent, deleteProject: false }),
+              ),
+              "held_changed",
+            );
+            assert.strictEqual(
+              shown((yield* structure.read("owner")).apps[0]!.environments).length,
+              1,
+            );
+            assert.deepStrictEqual(
+              shown((yield* structure.read("dev")).apps[0]!.environments)[0]!.can.remove_production,
+              { allow: false, reason: "not_structure_writer" },
+            );
+          }),
+        ),
+    );
+
     it.effect.each(["present", "absent", "refused", "outage"] as const)(
       "key cleanup is retained only from source-proven absence: %s",
       (caseName) =>

@@ -7,7 +7,7 @@ import { HqEnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { AccountDataContext, type AccountData } from "~/zerops/accountData";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
-import { GitProductionRemoval } from "./GitStopDetail";
+import { ProductionRemoval } from "./GitStopDetail";
 
 const boundary = vi.hoisted(() => ({ remove: vi.fn<(...args: unknown[]) => Promise<void>>() }));
 vi.mock("~/zerops/useGitTargetOperations", () => ({
@@ -80,7 +80,7 @@ describe("Git production removal from account records", () => {
         root.render(
           <RegistryContext.Provider value={registry}>
             <AccountDataContext.Provider value={account as AccountData}>
-              <GitProductionRemoval appId="shop" environmentId="git-prod" />
+              <ProductionRemoval appId="shop" environmentId="git-prod" />
             </AccountDataContext.Provider>
           </RegistryContext.Provider>,
         ),
@@ -125,7 +125,7 @@ describe("Git production removal from account records", () => {
         root.render(
           <RegistryContext.Provider value={registry}>
             <AccountDataContext.Provider value={account as AccountData}>
-              <GitProductionRemoval appId="shop" environmentId="git-prod" />
+              <ProductionRemoval appId="shop" environmentId="git-prod" />
             </AccountDataContext.Provider>
           </RegistryContext.Provider>,
         ),
