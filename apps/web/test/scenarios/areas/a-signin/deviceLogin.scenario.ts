@@ -4,7 +4,7 @@ import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.t
 import { deviceLoginDist } from "../../harness/deviceLoginBundle.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installSignIn, sensitiveSharedValue } from "./fake.ts";
-import { account, vault, zeropsWindow } from "./dsl.ts";
+import { account, historyAddresses, vault, zeropsWindow } from "./dsl.ts";
 
 /** The device-login build, once `beforeAll` has it. */
 let dist = "";
@@ -111,6 +111,48 @@ describe("A: sign-in through the Zerops window", () => {
         yield* Effect.promise(() => s.page.bringToFront());
         yield* account(s.page).showsPerson("owner");
         yield* s.then.menu.row("Shop").appears();
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches HQ's card asking for a click, a second window, or the request left in an address:
+    // HQ approves from its note in the same tab and sends it home, signed in.
+    it.effect("opened from HQ's Mate card, Mate signs in with no click, in the same tab", () =>
+      Effect.gen(function* () {
+        const s = yield* deviceLoginScenario();
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        s.drivers.zerops.deviceLogin.approvesFromHq = true;
+        s.web.setPerson(s.page, "personal");
+        yield* Effect.promise(() => s.page.goto(`${s.web.origin}/?signin=hq`));
+        yield* account(s.page).showsPerson("owner");
+        yield* s.then.menu.row("Shop").appears();
+        const consent = yield* zeropsWindow(s).lastConsentPage;
+        expect(consent.searchParams.get("back")).toBe(`${s.web.origin}/?signin=hq-return`);
+        expect(consent.searchParams.has("display")).toBe(false);
+        // Mate's own entries hold no sign-in, and no entry holds the poll secret.
+        for (const address of yield* historyAddresses(s.page)) {
+          expect(address).not.toContain("poll-");
+          if (address.startsWith(s.web.origin)) expect(address).not.toMatch(/signin|device-/u);
+        }
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a denial at HQ reading as an error, or leaving the tab at HQ.
+    it.effect("a sign-in from HQ's card denied on HQ's card returns to the landing as it was", () =>
+      Effect.gen(function* () {
+        const s = yield* deviceLoginScenario();
+        s.web.setPerson(s.page, "personal");
+        // Opened without HQ's card, the consent page asks.
+        yield* Effect.promise(() => s.page.goto(`${s.web.origin}/?signin=hq`));
+        yield* Effect.promise(() =>
+          s.page.locator('::-p-aria(Deny[role="button"])').setTimeout(10_000).click(),
+        );
+        const window = zeropsWindow(s);
+        yield* window.says("Continue with your Zerops account");
+        const text = yield* Effect.promise(() => s.page.evaluate(() => document.body.innerText));
+        expect(text).not.toContain("Sign-in didn't finish");
+        expect(new URL(s.page.url()).search).toBe("");
         yield* s.then.noExternalNetwork;
       }),
     );

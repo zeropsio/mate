@@ -11,9 +11,10 @@
  * Nothing is delivered to this client's origin, so a client served from any origin collects its
  * own session; the consent page is the only place credentials are typed.
  *
- * The poll secret proves the poller started the request. It lives in memory only, never in
- * storage or a URL: a reload during sign-in starts over, and a request is cheap and lasts five
- * minutes.
+ * The poll secret proves the poller started the request. It never goes into a URL. A window
+ * sign-in holds it in memory only: a reload during sign-in starts over, and a request is cheap and
+ * lasts five minutes. A same-tab trip through the consent page (`back`) keeps it in that tab's own
+ * storage while the tab is away, and takes it out as the tab returns.
  *
  * Pure and platform-free: the fetch, the clock and the waiting belong to the client that calls
  * this (a tab, or the desktop main process).
@@ -182,7 +183,7 @@ function approvedSession(auth: unknown): ZeropsSession | null {
 export async function checkZeropsDeviceLogin(input: {
   readonly fetch: Fetch;
   readonly apiBase: string;
-  readonly request: ZeropsDeviceLoginRequest;
+  readonly request: Pick<ZeropsDeviceLoginRequest, "kind" | "requestId" | "pollSecret">;
 }): Promise<ZeropsDeviceLoginCheck> {
   let response: Response;
   try {
@@ -232,7 +233,7 @@ export async function checkZeropsDeviceLogin(input: {
  * plus a grace, on a 404, or when `signal` aborts.
  */
 export async function pollZeropsDeviceLogin(input: {
-  readonly request: ZeropsDeviceLoginRequest;
+  readonly request: Pick<ZeropsDeviceLoginRequest, "expiresAtMs" | "intervalMs">;
   readonly check: () => Promise<ZeropsDeviceLoginCheck>;
   /** Resolves after `ms`, or earlier when it is worth asking now; resolves at once on abort. */
   readonly wait: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -262,6 +263,7 @@ function isWebUrl(url: URL): boolean {
  * - `consentOrigin` swaps the page's origin (a local HQ).
  * - `intent: "register"` sends a signed-out person to sign-up.
  * - `popup` asks the page to close its window once decided.
+ * - `back` is where the page sends this same tab once decided (HQ follows only its own list).
  *
  * Only an http(s) link is opened: the window it goes to starts as this client's own
  * `about:blank`, where any other scheme would run in this origin.
@@ -271,6 +273,7 @@ export function zeropsDeviceLoginUrl(input: {
   readonly consentOrigin?: string;
   readonly intent?: ZeropsDeviceLoginIntent;
   readonly popup?: boolean;
+  readonly back?: string;
 }): string {
   const given = new URL(input.verificationUrl);
   if (!isWebUrl(given)) throw new Error("The Zerops consent link is not a web address.");
@@ -283,5 +286,6 @@ export function zeropsDeviceLoginUrl(input: {
   }
   if (input.intent !== undefined) url.searchParams.set("intent", input.intent);
   if (input.popup === true) url.searchParams.set("display", "popup");
+  if (input.back !== undefined) url.searchParams.set("back", input.back);
   return url.toString();
 }

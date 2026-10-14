@@ -51,6 +51,13 @@ describe("zeropsDeviceLoginUrl", () => {
     );
   });
 
+  it("names the way back for a trip in the same tab", () => {
+    const back = "https://mate.zerops.io/?signin=hq-return";
+    expect(zeropsDeviceLoginUrl({ verificationUrl: VERIFY, back })).toBe(
+      `${VERIFY}&back=${encodeURIComponent(back)}`,
+    );
+  });
+
   it("swaps only the origin for a local consent page", () => {
     expect(
       zeropsDeviceLoginUrl({ verificationUrl: VERIFY, consentOrigin: "http://localhost:5555" }),

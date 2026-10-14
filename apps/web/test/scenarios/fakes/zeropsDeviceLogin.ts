@@ -2,7 +2,8 @@
  * Zerops device login as the platform answers it (`client-runtime/zerops/deviceLogin`), and its
  * consent page: a request the client starts, the person approves or denies in the Zerops window,
  * the client collects by polling. An approved login is a session that renews itself and ends at
- * the platform; an approved sudo request puts the session that asked in sudo mode.
+ * the platform; an approved sudo request puts the session that asked in sudo mode. Like HQ's, the
+ * page sends a tab that asked to come back (`back`) home after either answer.
  *
  * Sessions are the person's: every other route sees the person's own credential (`credential`).
  */
@@ -54,6 +55,11 @@ export class ZeropsDeviceLogin {
   newcomer: Newcomer = { name: "newcomer", orgId: "NEWORG", orgName: "Newcomer" };
   /** Each consent page shown, by the address it was opened at. */
   readonly consentPages: URL[] = [];
+  /**
+   * HQ's Mate card left its note in the tab: a pending login that asks to come back is approved at
+   * once, without the card, and the tab is sent home.
+   */
+  approvesFromHq = false;
   private readonly ended = new Set<string>();
   private serial = 0;
   private held: { promise: Promise<void>; release: () => void } | undefined;
@@ -251,6 +257,12 @@ export class ZeropsDeviceLogin {
     const requestId = request.url.searchParams.get("request") ?? "";
     const pending = this.requests.get(requestId);
     if (!pending) return { status: 404, html: page("This request has expired.") };
+    const back = request.url.searchParams.get("back");
+    if (this.approvesFromHq && back !== null && pending.kind === "login") {
+      pending.status = "APPROVED";
+      pending.approved = this.issue(String(request.headers["x-scenario-person"] ?? "personal"));
+      return { status: 302, headers: { location: back }, body: {} };
+    }
     const register = request.url.searchParams.get("intent") === "register";
     const title =
       pending.kind === "sudo"
@@ -266,7 +278,7 @@ export class ZeropsDeviceLogin {
       html: page(
         `<h1>${escape(title)}</h1><p data-user-code>${escape(pending.userCode)}</p>
 <form method="post" action="${CONSENT_PATH}">
-<input type="hidden" name="request" value="${escape(requestId)}">${field("display")}${field("intent")}
+<input type="hidden" name="request" value="${escape(requestId)}">${field("display")}${field("intent")}${field("back")}
 <button name="decision" value="approve">Approve</button>
 <button name="decision" value="deny">Deny</button>
 </form>`,
@@ -276,7 +288,8 @@ export class ZeropsDeviceLogin {
 
   /**
    * The person's decision, as the person signed in to Zerops in that browser (the harness's
-   * `x-scenario-person`), or a new account for a sign-up. A popup closes itself after.
+   * `x-scenario-person`), or a new account for a sign-up. A popup closes itself after; a tab that
+   * asked to come back goes home.
    */
   private decide(request: WireRequest): WireResponse {
     const pending = this.requests.get(String(request.body.request));
@@ -291,6 +304,9 @@ export class ZeropsDeviceLogin {
           : String(request.headers["x-scenario-person"] ?? "personal");
       pending.approved = this.issue(person);
     }
+    const back = request.body.back;
+    if (typeof back === "string" && back !== "")
+      return { status: 302, headers: { location: back }, body: {} };
     const done = approve ? "Done. Return to Mate." : "Cancelled.";
     return {
       html: page(
