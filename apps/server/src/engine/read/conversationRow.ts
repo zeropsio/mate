@@ -115,16 +115,21 @@ export const ROW_WORK_NAMED = 3;
 const WORK_TITLE_MAX = 120;
 
 /**
- * What the conversation waits on after its turn, by name: the first few pieces, oldest first —
- * the one it started first is what the others wait on — and how many in all.
+ * What the conversation waits on after its turn, by name: the first few of its helpers and the
+ * first few of its own jobs, oldest first — the one it started first is what the others wait on —
+ * how many in all, and how many of them are its helpers', so neither kind is read as the other
+ * (Eli, 2026-10-14: three helpers and two jobs read as "and 4 more — Its helpers").
  */
 const workOf = (view: ConversationView): BackgroundWork => {
   const work = view.work ?? [];
+  const helpers = work.filter((item) => item.of === "helper");
+  const jobs = work.filter((item) => item.of !== "helper");
   return {
-    items: work
-      .slice(0, ROW_WORK_NAMED)
+    items: [...helpers.slice(0, ROW_WORK_NAMED), ...jobs.slice(0, ROW_WORK_NAMED)]
+      .toSorted((left, right) => work.indexOf(left) - work.indexOf(right))
       .map((item) => ({ ...item, title: rowText(item.title, WORK_TITLE_MAX) })),
     count: work.length,
+    helpers: helpers.length,
   };
 };
 

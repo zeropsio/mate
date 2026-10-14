@@ -731,7 +731,7 @@ export function afterWords(on: AfterWait | undefined): string {
 export function backgroundWorkWords(work: BackgroundWork): string {
   const [first] = work.items;
   if (first === undefined || work.count === 0) return "Finishing work it started";
-  const helpers = work.items.filter((item) => item.of === "helper").length;
+  const helpers = work.helpers ?? work.items.filter((item) => item.of === "helper").length;
   const jobs = work.count - helpers;
   if (jobs === 0) {
     if (work.count > 1) return "Waiting for its helpers";
@@ -740,8 +740,9 @@ export function backgroundWorkWords(work: BackgroundWork): string {
       : `Waiting for its helper: ${first.title}`;
   }
   if (helpers === 0) {
-    if (work.count === 1) return first.title ?? "Running a background job";
-    return `${first.title ?? "A background job"} · and ${work.count - 1} more`;
+    const firstJob = work.items.find((item) => item.of === "mate") ?? first;
+    if (work.count === 1) return firstJob.title ?? "Running a background job";
+    return `${firstJob.title ?? "A background job"} · and ${work.count - 1} more`;
   }
   const helperWords = helpers === 1 ? "its helper" : "its helpers";
   const jobWords = jobs === 1 ? "a background job" : `${jobs} background jobs`;
