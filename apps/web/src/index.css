@@ -5320,6 +5320,13 @@ code {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 6px 6px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 14%, transparent) transparent;
+}
+
+/* More below than shows: the last rows fade out at the bottom edge rather than end cut off. */
+.zerops-sites-scroll[data-more-below] {
+  mask-image: linear-gradient(to bottom, currentColor calc(100% - 32px), transparent);
 }
 
 /* A section: its head sticks while its rows pass under it; a hairline between two shown. */
@@ -5480,6 +5487,38 @@ code {
 .zerops-sites-link:focus-visible {
   background-color: var(--accent);
   color: var(--foreground);
+}
+
+/* A place's doors under its addresses: rows like them, their words on the names' edge and their
+   icon in the place mark's column. */
+.zerops-sites-door {
+  position: relative;
+  width: 100%;
+  text-align: start;
+}
+
+/* Centred on the heads' mark column: 10px in, 16px wide. */
+.zerops-sites-door > svg {
+  position: absolute;
+  inset-inline-start: 11px;
+  width: 14px;
+  height: 14px;
+}
+
+.zerops-sites-door:is(:hover, :focus-visible) {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+
+/* Adding its own domain acts: the action blue. */
+.zerops-sites-door[data-acts] {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.zerops-sites-door[data-acts]:is(:hover, :focus-visible) {
+  background-color: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: var(--primary);
 }
 
 .zerops-sites-service {

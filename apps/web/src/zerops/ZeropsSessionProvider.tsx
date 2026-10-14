@@ -54,6 +54,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { appBasePathHref } from "../basePath";
 import { randomUUID } from "../lib/utils";
 import { browserZeropsReauth } from "./reauth";
 import { installDevHooks } from "./devHooks";
@@ -116,6 +117,18 @@ export interface ZeropsSessionValue {
 
 import { ZeropsSessionContext } from "./sessionContext";
 export { useZeropsSession, useZeropsSessionOptional } from "./sessionContext";
+
+/**
+ * A person's own sign-out ends on the sign-in at the app's root: the address they were on belongs
+ * to the account they left. The router follows the history it hears about through `popstate`.
+ */
+function leaveForSignIn(): void {
+  const root = appBasePathHref();
+  const { pathname, search, hash } = window.location;
+  if (pathname === root && search === "" && hash === "") return;
+  window.history.replaceState(null, "", root);
+  window.dispatchEvent(new Event("popstate"));
+}
 
 /** How long before its expiry a device-login session renews itself. */
 const RENEW_AHEAD_MS = 24 * 60 * 60_000;
@@ -447,6 +460,7 @@ export function ZeropsSessionProvider({
       signOut: async () => {
         setLastRegistration(null);
         await signOutLocally();
+        leaveForSignIn();
       },
       lastRegistration,
       clearLastRegistration: () => {
