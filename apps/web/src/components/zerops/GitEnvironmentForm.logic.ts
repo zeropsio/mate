@@ -62,10 +62,6 @@ export function gitAdoptionSentence(review: HqGitAdoption): string {
     : `The first push changes ${review.changedFiles} files on ${where}. Mate's copy wins.`;
 }
 
-export function gitSetupExpiry(expiresAt: string | null): string {
-  return expiresAt === null ? "Expiry not reported" : `Token expires ${expiresAt}`;
-}
-
 /** Explain rejected local input without guessing its host or changing the address. */
 export function gitSetupRepositoryHint(address: string): string {
   const input = address.trim();

@@ -232,6 +232,12 @@ export const HqRepoRemote = Schema.Struct({
 });
 export type HqRepoRemote = typeof HqRepoRemote.Type;
 
+/** A token's expiry reads as its day on every Git surface; an absent expiry header leaves it unknown. */
+export const tokenExpiryLabel = (expiresAt: string | null, now?: number) =>
+  expiresAt === null
+    ? "Expiry not reported"
+    : `Token ${now !== undefined && Date.parse(expiresAt) <= now ? "expired" : "expires"} ${expiresAt.slice(0, 10)}`;
+
 /** Candidate token input is confined to the person-facing mutating remote verbs. */
 const RemoteToken = Schema.String.check(Schema.isMinLength(1));
 export const KeepRepoRemoteRequest = Schema.Struct({ url: HqRemoteUrl, token: RemoteToken });

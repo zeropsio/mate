@@ -1,5 +1,9 @@
 import { deriveEnvironmentName } from "@t3tools/shared/hqEnvironment";
-import type { HqGitAdoption, RepoListEntry } from "@t3tools/shared/hqChanges";
+import {
+  tokenExpiryLabel,
+  type HqGitAdoption,
+  type RepoListEntry,
+} from "@t3tools/shared/hqChanges";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import type { GitEnvironmentSetup } from "~/zerops/setUpEnvironment";
 import { Button } from "../ui/button";
@@ -15,7 +19,6 @@ import { Label } from "../ui/label";
 import {
   gitAdoptionSentence,
   gitSetupBranchValid,
-  gitSetupExpiry,
   gitSetupRepository,
   gitSetupRepositoryHint,
   gitSetupRepositories,
@@ -335,7 +338,7 @@ export function GitEnvironmentForm({
                   A release that changes .github/workflows needs Workflows: Read and write, which
                   Mate can’t test.
                 </li>
-                <li>{gitSetupExpiry(remote?.expiresAt ?? null)}</li>
+                <li>{tokenExpiryLabel(remote?.expiresAt ?? null)}</li>
               </ul>
             ) : null}
           </div>
