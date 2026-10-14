@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { previewLabel, servicePairs, type ServicePair } from "./servicePairs.ts";
+import { recipeTierServices } from "./recipeTier.ts";
+import { isStageHostname, previewLabel, servicePairs, type ServicePair } from "./servicePairs.ts";
 
 /** A Mate tier on `main` as zcp composes it: each runtime with its setup and its repository. */
 const tier = (
@@ -193,6 +194,26 @@ describe("servicePairs", () => {
       ["webstage", "appdev"],
       ["apistage", "appdev"],
     ]);
+  });
+});
+
+describe("servicePairs — literal names", () => {
+  it.each([
+    { case: "`dev` beside `stage`", hostnames: ["dev", "stage"], devOf: [["stage", "dev"]] },
+    {
+      case: "`x` beside `xdev` and `xstage`",
+      hostnames: ["x", "xdev", "xstage"],
+      devOf: [["xstage", "xdev"]],
+    },
+    { case: "a lone `stage` has no dev half", hostnames: ["stage"], devOf: [] },
+  ])("pairs $case", ({ hostnames, devOf }) => {
+    expect([...servicePairs({ services: runtimes(...hostnames) }).devOf]).toEqual(devOf);
+  });
+
+  it("every site names a runtime `stage` a stage half", () => {
+    expect(isStageHostname("stage")).toBe(true);
+    const services = recipeTierServices(tier([{ hostname: "stage", setup: "p", repository: "r" }]));
+    expect(services?.find((service) => service.hostname === "stage")?.role).toBe("stage");
   });
 });
 
