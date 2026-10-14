@@ -12,7 +12,7 @@ import {
   projectProcessesAtom,
   projectServicesAtom,
   shownMateLinksAtom,
-  shownProjectsAtom,
+  shownMateListProjectsAtom,
   type ProjectProcesses,
   type ProjectServices,
   type ServiceValue,
@@ -109,7 +109,7 @@ describe("the project picker's candidates", () => {
     session.activeId = "org-a";
     stage.machines = new Map();
 
-    const projectsAtom = shownProjectsAtom;
+    const projectsAtom = shownMateListProjectsAtom;
     const servicesAtom = projectServicesAtom("project-a");
     const activityAtom = projectProcessesAtom("project-a");
     // The organization's roster, as the account's store lists it.
@@ -148,7 +148,7 @@ describe("the project picker's candidates", () => {
       render();
       await settle();
       expect(runtime.registry.subscribe.mock.calls.map(([atom]) => atom)).toContain(
-        shownProjectsAtom,
+        shownMateListProjectsAtom,
       );
     },
   );
@@ -333,7 +333,7 @@ describe("the project picker's candidates", () => {
       await settle();
 
       vi.advanceTimersByTime(afterMs);
-      listenerOf(shownProjectsAtom)?.();
+      listenerOf(shownMateListProjectsAtom)?.();
       await settle();
       const row = rowOf(render().listing);
       expect(row?.group).toBe(group);
