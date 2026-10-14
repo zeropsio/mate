@@ -5,6 +5,7 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as TestClock from "effect/testing/TestClock";
@@ -30,6 +31,10 @@ import {
   layer as projectAccessLayer,
 } from "../zerops/ZeropsProjectAccess.ts";
 import { ZeropsSessionAdmissionLive } from "../zerops/zeropsFeedsLayer.ts";
+import * as ProcessRunner from "../processRunner.ts";
+import * as TerminalManager from "../terminal/Manager.ts";
+import type * as PtyAdapter from "../terminal/PtyAdapter.ts";
+import { layer as terminalsEndWithSessionLayer } from "../terminal/terminalsEndWithSession.ts";
 
 /** Pinned so dev-mode cookie tests can assert the port-scoped name. */
 const TEST_SERVER_PORT = 13_773;
@@ -379,84 +384,98 @@ it.layer(NodeServices.layer)("current admission for existing sessions", (it) => 
 
 // F1 (permission audit): an open bearer session outlived the person's org role. The bound is two
 // re-checks: a member list or HQ relay read just before the change holds one, the next reads it.
+const DEMOTED_PROJECT = "TEST000000000000000023";
+const jsonResponse = (body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+const beaListedAs = (roleCode: string) => ({
+  clientUserList: [
+    { id: "cu-owner", userId: "owner", roleCode: "OWNER", status: "ACTIVE" },
+    { id: "cu-bea", userId: "bea", roleCode, status: "ACTIVE" },
+  ],
+});
+const demotions = [
+  { case: "lowered to Developer while the Mate reads Zerops", to: "NO_ACCESS", hq: false },
+  { case: "lowered to Read only while the Mate reads Zerops", to: "READ_ONLY", hq: false },
+  { case: "lowered to Developer just after HQ relayed", to: "NO_ACCESS", hq: true },
+  { case: "lowered to Read only just after HQ relayed", to: "READ_ONLY", hq: true },
+];
+
+/** A Zerops Mate whose platform lists Bea as Admin until a test lowers her. */
+const makeDemotionScene = () => {
+  const zerops = { members: beaListedAs("ADMIN") };
+  const platform = Layer.mergeAll(
+    Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) =>
+        Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            request.url.endsWith("/user/list")
+              ? jsonResponse(zerops.members)
+              : jsonResponse({ id: DEMOTED_PROJECT, clientId: "org", userRoles: [] }),
+          ),
+        ),
+      ),
+    ),
+    Layer.succeed(ZeropsMateKey, snapshotOnlyReader("the-mates-own-zerops-key")),
+    ZeropsIdentityStatusLayer,
+  );
+  const layer = ZeropsMembershipWatchLayer.pipe(
+    Layer.provideMerge(
+      EnvironmentAuth.layer.pipe(
+        Layer.provide(ZeropsSessionAdmissionLive),
+        Layer.provideMerge(projectAccessLayer),
+        Layer.provideMerge(ZeropsOrgReadLayer),
+        Layer.provideMerge(platform),
+        Layer.provide(SqlitePersistenceMemory),
+        Layer.provide(ServerSecretStore.layer),
+      ),
+    ),
+    Layer.provide(makeServerConfigLayer({ zerops: zeropsTestEnvironment })),
+  );
+  return { zerops, layer };
+};
+
+/** Bea signs in through the door and holds a bearer session; with `hq`, HQ relayed her as Admin first. */
+const signInBea = Effect.fn("signInBea")(function* (hq: boolean) {
+  const auth = yield* EnvironmentAuth.EnvironmentAuth;
+  if (hq) {
+    yield* (yield* ZeropsProjectAccess).relayed({
+      ageMs: 0,
+      members: [
+        { userId: "owner", role: "OWNER", visibility: "open" },
+        { userId: "bea", role: "ADMIN", visibility: "open" },
+      ],
+    });
+  }
+  yield* TestClock.adjust(Duration.zero);
+  const issued = yield* auth.createPairingLink({
+    method: "zerops-throwaway",
+    subject: "zerops-user:bea",
+  });
+  const access = yield* auth.exchangeBootstrapCredentialForAccessToken(
+    issued.credential,
+    undefined,
+    requestMetadata,
+  );
+  const session = yield* auth.authenticateHttpRequest(makeBearerRequest(access.access_token));
+  return { access, session };
+});
+
 it.layer(NodeServices.layer)(
   "a person whose Zerops access ended loses their open session within 60 seconds",
   (it) => {
-    const PROJECT = "TEST000000000000000023";
-    const json = (body: unknown) =>
-      new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    const listing = (roleCode: string) => ({
-      clientUserList: [
-        { id: "cu-owner", userId: "owner", roleCode: "OWNER", status: "ACTIVE" },
-        { id: "cu-bea", userId: "bea", roleCode, status: "ACTIVE" },
-      ],
-    });
-
-    it.effect.each([
-      { case: "lowered to Developer while the Mate reads Zerops", to: "NO_ACCESS", hq: false },
-      { case: "lowered to Read only while the Mate reads Zerops", to: "READ_ONLY", hq: false },
-      { case: "lowered to Developer just after HQ relayed", to: "NO_ACCESS", hq: true },
-      { case: "lowered to Read only just after HQ relayed", to: "READ_ONLY", hq: true },
-    ])("$case", ({ to, hq }) => {
-      const zerops = { members: listing("ADMIN") };
-      const platform = Layer.mergeAll(
-        Layer.succeed(
-          HttpClient.HttpClient,
-          HttpClient.make((request) =>
-            Effect.succeed(
-              HttpClientResponse.fromWeb(
-                request,
-                request.url.endsWith("/user/list")
-                  ? json(zerops.members)
-                  : json({ id: PROJECT, clientId: "org", userRoles: [] }),
-              ),
-            ),
-          ),
-        ),
-        Layer.succeed(ZeropsMateKey, snapshotOnlyReader("the-mates-own-zerops-key")),
-        ZeropsIdentityStatusLayer,
-      );
-      const layer = ZeropsMembershipWatchLayer.pipe(
-        Layer.provideMerge(
-          EnvironmentAuth.layer.pipe(
-            Layer.provide(ZeropsSessionAdmissionLive),
-            Layer.provideMerge(projectAccessLayer),
-            Layer.provideMerge(ZeropsOrgReadLayer),
-            Layer.provideMerge(platform),
-            Layer.provide(SqlitePersistenceMemory),
-            Layer.provide(ServerSecretStore.layer),
-          ),
-        ),
-        Layer.provide(makeServerConfigLayer({ zerops: zeropsTestEnvironment })),
-      );
+    it.effect.each(demotions)("$case", ({ to, hq }) => {
+      const { zerops, layer } = makeDemotionScene();
       return Effect.gen(function* () {
         const auth = yield* EnvironmentAuth.EnvironmentAuth;
         const sessions = yield* SessionStore.SessionStore;
-        if (hq) {
-          yield* (yield* ZeropsProjectAccess).relayed({
-            ageMs: 0,
-            members: [
-              { userId: "owner", role: "OWNER", visibility: "open" },
-              { userId: "bea", role: "ADMIN", visibility: "open" },
-            ],
-          });
-        }
-        yield* TestClock.adjust(Duration.zero);
 
         // Bea signs in through the door and holds a bearer session and a live socket.
-        const issued = yield* auth.createPairingLink({
-          method: "zerops-throwaway",
-          subject: "zerops-user:bea",
-        });
-        const access = yield* auth.exchangeBootstrapCredentialForAccessToken(
-          issued.credential,
-          undefined,
-          requestMetadata,
-        );
-        const session = yield* auth.authenticateHttpRequest(makeBearerRequest(access.access_token));
+        const { access, session } = yield* signInBea(hq);
         const ticket = yield* auth.issueWebSocketTicket(session);
         const socket = yield* auth.authenticateWebSocketUpgrade(
           HttpServerRequest.fromWeb(
@@ -472,7 +491,7 @@ it.layer(NodeServices.layer)(
         );
         const later = yield* auth.issueWebSocketTicket(session);
 
-        zerops.members = listing(to);
+        zerops.members = beaListedAs(to);
         yield* TestClock.adjust(Duration.seconds(60));
 
         const http = yield* auth
@@ -500,6 +519,80 @@ it.layer(NodeServices.layer)(
     });
   },
 );
+
+// Decision: removal ends every channel within one bound, terminals included.
+it.layer(NodeServices.layer)("Terminals a removed person opened end with their session", (it) => {
+  it.effect.each(demotions)("$case", ({ to, hq }) => {
+    const { zerops, layer } = makeDemotionScene();
+    const signals: Array<string | undefined> = [];
+    const typed: Array<string> = [];
+    const pty: PtyAdapter.PtyAdapter["Service"] = {
+      spawn: () =>
+        Effect.succeed({
+          pid: 4242,
+          write: (data) => {
+            typed.push(data);
+          },
+          resize: () => undefined,
+          kill: (signal) => {
+            signals.push(signal);
+          },
+          onData: () => () => undefined,
+          onExit: () => () => undefined,
+        }),
+    };
+    const terminals = Layer.effect(
+      TerminalManager.TerminalManager,
+      Effect.gen(function* () {
+        const dir = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped({
+          prefix: "t3-revoked-terminals-",
+        });
+        return yield* TerminalManager.makeWithOptions({
+          logsDir: dir,
+          homeDir: dir,
+          ptyAdapter: pty,
+          processKillGraceMs: 1,
+          subprocessInspector: () =>
+            Effect.succeed({ hasRunningSubprocess: false, childCommand: null, processIds: [] }),
+        });
+      }),
+    ).pipe(Layer.provide(ProcessRunner.layer));
+    return Effect.gen(function* () {
+      const manager = yield* TerminalManager.TerminalManager;
+      const { session } = yield* signInBea(hq);
+      const terminal = { threadId: "thread-bea", terminalId: "default" };
+      yield* manager.open({
+        ...terminal,
+        cwd: process.cwd(),
+        cols: 80,
+        rows: 24,
+        openedBy: session.sessionId,
+      });
+
+      zerops.members = beaListedAs(to);
+      yield* TestClock.adjust(Duration.seconds(60));
+
+      yield* manager.write({ ...terminal, data: "echo still here\r" }).pipe(Effect.ignore);
+      expect({
+        // An interactive shell ignores SIGTERM; a hangup or a kill ends it.
+        shellEnded: signals.some((signal) => signal === "SIGHUP" || signal === "SIGKILL"),
+        typedAfterRemoval: typed,
+      }).toEqual({ shellEnded: true, typedAfterRemoval: [] });
+    }).pipe(
+      // A shell still open at teardown waits out its kill grace on the test clock: close it first
+      // so a red run fails instead of hanging.
+      Effect.ensuring(
+        Effect.gen(function* () {
+          const manager = yield* TerminalManager.TerminalManager;
+          yield* manager.close({ threadId: "thread-bea" }).pipe(Effect.ignore);
+        }),
+      ),
+      Effect.provide(
+        terminalsEndWithSessionLayer.pipe(Layer.provideMerge(terminals), Layer.provideMerge(layer)),
+      ),
+    );
+  });
+});
 
 it.layer(NodeServices.layer)("a refused session credential", (it) => {
   // A client tells a session that merely reached the end of its life (its door mints the next)
