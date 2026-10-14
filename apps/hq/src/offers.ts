@@ -1,3 +1,4 @@
+import { HQ_GIT_TARGET_VERBS, type HqGitTargetVerb } from "@t3tools/shared/hqOffers";
 /**
  * What HQ offers a person, beside what its structure streams them (`@t3tools/shared/hqOffers`):
  * each verb decided by `can` over the very target its write is enforced with — the builders here,
@@ -135,7 +136,12 @@ const CHANGE_VERBS = [
   "redeploy",
 ] as const;
 
-export type AppVerb = (typeof CHANGE_VERBS)[number] | "release" | "add_stage" | "add_production";
+export type AppVerb =
+  | (typeof CHANGE_VERBS)[number]
+  | HqGitTargetVerb
+  | "release"
+  | "add_stage"
+  | "add_production";
 
 /** The create flow's prospective project is owned by its creator; this is never write evidence. */
 const newEnvironmentOffer = (
@@ -182,6 +188,9 @@ export const appOffers = (
   ...(Object.fromEntries(
     CHANGE_VERBS.map((verb) => [verb, offer(userId, verb, appTarget(projects), facts)]),
   ) as HqOffersOf<(typeof CHANGE_VERBS)[number]>),
+  ...(Object.fromEntries(
+    HQ_GIT_TARGET_VERBS.map((verb) => [verb, offer(userId, verb, appTarget(projects), facts)]),
+  ) as HqOffersOf<HqGitTargetVerb>),
   release: offer(userId, "release", releaseTarget(projects, slots), facts),
   add_stage: newEnvironmentOffer(userId, projects, facts, "stage", slots),
   add_production: newEnvironmentOffer(userId, projects, facts, "production", slots),
@@ -219,6 +228,17 @@ export const environmentOffers = (
   facts: Facts,
 ): HqOffersOf<"keep_deploy_token"> => ({
   keep_deploy_token: offer(userId, "keep_deploy_token", { projectId }, facts),
+});
+
+/** Git targets reuse the same application write verdicts as their fresh owners. */
+export const gitEnvironmentOffers = (
+  userId: string,
+  projects: ReadonlyArray<AppProjectRow>,
+  facts: Facts,
+) => ({
+  keep_deploy_token: { allow: false as const, reason: "unknown_kind" as const },
+  remove_git_environment: offer(userId, "remove_git_environment", appTarget(projects), facts),
+  redeploy: offer(userId, "redeploy", appTarget(projects), facts),
 });
 
 /** A project placed into an application of `appProjects` as `to`: what a move is decided on. */

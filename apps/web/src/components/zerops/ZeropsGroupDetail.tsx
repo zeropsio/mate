@@ -1,3 +1,6 @@
+import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
+import type { GitRemoteActions } from "./GitRemoteSettings";
+import type { HqOffers } from "@t3tools/shared/hqOffers";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { GitStopDetailPage } from "./GitStopDetail";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
@@ -746,6 +749,7 @@ function KnownGroupDetail({
   readonly flow: ZeropsProjectFlow;
   readonly recipeFailure: ReturnType<typeof useHqRecipeFailure>;
 }) {
+  const gitTargets = useGitTargetOperations(groupId);
   const deployments = useStopDeploymentsShown();
   const verbs = useFlowVerbs();
   const environments = flow.environments;
@@ -830,6 +834,9 @@ function KnownGroupDetail({
       }
       environments={environments}
       repos={flow.repos}
+      gitActions={gitTargets.actions}
+      gitCan={gitTargets.can}
+      gitLive={gitTargets.live}
       slots={slots}
       onAdd={(tier) => {
         addEnvironment(groupId, tier);
@@ -887,6 +894,9 @@ function KnownGroupDetail({
  */
 export function ZeropsGroupPane({
   repos,
+  gitActions,
+  gitCan,
+  gitLive,
   readFailures,
   environments,
   slots,
@@ -919,6 +929,9 @@ export function ZeropsGroupPane({
   firstDeployOf,
 }: {
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
+  readonly gitActions?: GitRemoteActions | undefined;
+  readonly gitCan?: HqOffers | undefined;
+  readonly gitLive?: boolean | undefined;
   readonly readFailures?: React.ReactNode;
   /** What has landed on the repository, as HQ compares it. */
   readonly history: ZeropsHistoryState;
@@ -1041,6 +1054,9 @@ export function ZeropsGroupPane({
         <GitRemoteSettings
           repos={repos}
           appName={name ?? "Application"}
+          actions={gitActions}
+          can={gitCan}
+          live={gitLive}
           environments={environments}
         />
       </Section>
@@ -2694,6 +2710,7 @@ function GitStopLine({
   return (
     <button
       className="py-2 text-sm font-medium"
+      data-zerops-environment-id={environment.id}
       type="button"
       onClick={() => {
         void navigate({
@@ -2756,6 +2773,7 @@ function ZeropsStopLine({
         // Fixed tracks, not a right-ragged flex: a version and a state that
         // start at a different x on every row cannot be read down the column.
         className="grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_6rem_7.5rem_1rem] items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
+        data-zerops-environment-id={environment.id}
         onClick={open}
         type="button"
       >

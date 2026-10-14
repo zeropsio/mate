@@ -182,11 +182,13 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
       `  const api = makeHqApi(options);`,
       `  void client.readProjectEnv("o", "p");`,
       `  void hq.api.release("a", "b");`,
+      `  void hq.api.gitTargetWrite("request", intent, candidate);`,
+      `  void hq.api.gitTargetReceipt("request", intent);`,
       `  return [zerops, api];`,
       `}`,
     ].join("\n"),
     undefined,
-    4,
+    6,
   );
   webFile.invalid(
     "reports fetch handed on as a value",

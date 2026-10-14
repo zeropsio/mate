@@ -1,3 +1,4 @@
+import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
 import { HqLifecycleRecord, HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 // @effect-diagnostics nodeBuiltinImport:off -- opaque deletion handles use the existing HQ key and byte encoding.
 /**
@@ -213,7 +214,7 @@ export interface JobView {
 }
 
 /** A stage's or a production's environment as a reader of its application sees it. */
-export interface EnvironmentView {
+export interface ZeropsEnvironmentView {
   readonly id: string;
   readonly target: { readonly kind: "zerops"; readonly projectId: string };
   readonly projectId: string;
@@ -244,6 +245,18 @@ export interface EnvironmentView {
   /** Whether the rollout its attach asked for has ended; none where HQ did not bring it up. */
   readonly birth: EnvironmentBirth | null;
 }
+
+export type EnvironmentView =
+  | ZeropsEnvironmentView
+  | (Omit<ZeropsEnvironmentView, "target" | "projectId" | "jobs"> & {
+      readonly target: {
+        readonly kind: "git";
+        readonly branch: string;
+        readonly delivery: "direct";
+      };
+      readonly projectId?: never;
+      readonly jobs: ReadonlyArray<HqPushNavigationJob>;
+    });
 
 /** A Mate's state as the structure holds it: its record and its birth; its changes are `changes.ts`'. */
 export type MateRecordState = Omit<MateState, keyof MateChanges>;
@@ -384,6 +397,8 @@ export class Structure extends Context.Service<
      * Its repositories on disk are the caller's to remove, after it.
      */
     readonly deleteApp: (userId: string, appId: string) => Effect.Effect<void, WriteError>;
+    readonly gitTargetWrite: GitEnvironments["gitTargetWrite"];
+    readonly gitTargetReceipt: GitEnvironments["gitTargetReceipt"];
     readonly previewGitEnvironment: GitEnvironments["previewGitEnvironment"];
     readonly addGitEnvironment: GitEnvironments["addGitEnvironment"];
     readonly removeGitEnvironment: GitEnvironments["removeGitEnvironment"];
