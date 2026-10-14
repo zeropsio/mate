@@ -82,3 +82,78 @@ describe("a project's People section", () => {
     });
   });
 });
+
+describe("changing who can work on a project", () => {
+  const people = (viewer: ProjectPeopleInput["viewer"]) =>
+    projectPeople({
+      ...input({ known: true, status: "ready", refused: false, list: [ANNA, PETR, IVA] }),
+      viewerUserId: "u-anna",
+      ...(viewer === undefined ? {} : { viewer }),
+    });
+  const sectionOf = (markup: string) =>
+    new DOMParser()
+      .parseFromString(markup, "text/html")
+      .body.querySelector('section[aria-label="People"]');
+  const drawn = (
+    viewer: ProjectPeopleInput["viewer"],
+    extra: Partial<Parameters<typeof ProjectPeopleList>[0]> = {},
+  ) =>
+    sectionOf(
+      renderToStaticMarkup(
+        <ProjectPeopleList
+          onChange={() => {}}
+          onInvite={() => {}}
+          projectName="Shop"
+          view={people(viewer)}
+          {...extra}
+        />,
+      ),
+    );
+
+  it.each([
+    { role: "OWNER", invite: true },
+    { role: "ADMIN", invite: true },
+    { role: "BASIC_USER", invite: false },
+    { role: undefined, invite: false },
+  ])(
+    "Invite is offered at the foot of People to an owner or admin alone: $role",
+    ({ role, invite }) => {
+      const section = drawn(
+        role === undefined ? undefined : { roleCode: role, membershipId: "cu-anna" },
+      );
+      expect(section?.querySelector("button.ov-add")?.textContent ?? null).toBe(
+        invite ? "Invite" : null,
+      );
+    },
+  );
+
+  it("An owner finds a menu on each person whose access they may change: an invitation's too, never their own", () => {
+    const section = drawn({ roleCode: "OWNER", membershipId: "cu-anna" });
+    expect(
+      [...(section?.querySelectorAll('[aria-label$="\'s access"]') ?? [])].map((menu) =>
+        menu.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Change Petr Novák's access", "Change iva@example.com's access"]);
+  });
+
+  it("A change under way says so on the row, and a refused one is said under it", () => {
+    const section = drawn(
+      { roleCode: "OWNER", membershipId: "cu-anna" },
+      {
+        saving: new Set(["cu-petr"]),
+        troubles: { "cu-iva": "Only an organization owner or admin can change who has access." },
+      },
+    );
+    const lines = [...(section?.querySelectorAll("li") ?? [])].map((row) =>
+      [...row.querySelectorAll(".ov-mate-l2")].map((line) => line.textContent),
+    );
+    expect(lines).toEqual([
+      ["Owner · everything"],
+      ["Saving…"],
+      [
+        "Invited · not joined yet · Works on every project",
+        "Only an organization owner or admin can change who has access.",
+      ],
+    ]);
+  });
+});

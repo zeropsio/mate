@@ -1,7 +1,12 @@
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
-import { projectPeople, type ProjectPeopleInput, type ProjectPerson } from "./projectPeople.logic";
+import {
+  personMenu,
+  projectPeople,
+  type ProjectPeopleInput,
+  type ProjectPerson,
+} from "./projectPeople.logic";
 
 const member = (
   id: string,
@@ -414,5 +419,81 @@ describe("what is said when the people cannot be known", () => {
       }),
     );
     expect(lineOf(view, "Ada")).toBe("Read only here");
+  });
+});
+
+describe("what an owner or admin may change of each person's access", () => {
+  const MEMBERS = [
+    member("own", "Olga", "OWNER"),
+    member("adm", "Adam", "ADMIN"),
+    member("me", "Mia", "ADMIN"),
+    member("dev", "Dana", "NO_ACCESS"),
+    member("inv", "Ivo", "NO_ACCESS", { status: "WAITING_AUTHORIZATION" }),
+  ];
+  const view = (viewer: ProjectPeopleInput["viewer"]) =>
+    projectPeople(
+      input({
+        members: known(MEMBERS),
+        projects: [
+          ...PROD_AND_STAGE(
+            [
+              ["dev", "BASIC_USER"],
+              ["inv", "READ_ONLY"],
+            ],
+            [
+              ["dev", "BASIC_USER"],
+              ["inv", "READ_ONLY"],
+            ],
+          ),
+          mate("m-dana", "u-dev"),
+          mate("m-other", "u-adm"),
+        ],
+        viewerUserId: "u-me",
+        ...(viewer === undefined ? {} : { viewer }),
+      }),
+    );
+  const changes = (viewer: ProjectPeopleInput["viewer"]) =>
+    Object.fromEntries(people(view(viewer)).map((person) => [person.name, person.change]));
+
+  it("An admin changes a member's level, their own Mates kept out of it, and withdraws an invitation", () => {
+    expect(changes({ roleCode: "ADMIN", membershipId: "cu-me" })).toEqual({
+      Mia: null,
+      Olga: null,
+      Adam: null,
+      Dana: { clientUserId: "cu-dev", level: "work", end: "remove", owned: ["m-dana"] },
+      Ivo: { clientUserId: "cu-inv", level: "look", end: "withdraw", owned: [] },
+    });
+  });
+
+  it("Someone who isn't an owner or admin changes nobody's access, and invites nobody", () => {
+    expect(Object.values(changes({ roleCode: "BASIC_USER", membershipId: "cu-me" }))).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+    const shown = view({ roleCode: "BASIC_USER", membershipId: "cu-me" });
+    expect(shown.kind === "people" && shown.invite).toBe(false);
+  });
+
+  it("An owner or admin may invite people", () => {
+    const shown = view({ roleCode: "OWNER", membershipId: "cu-me" });
+    expect(shown.kind === "people" && shown.invite).toBe(true);
+  });
+
+  it("A person's menu offers the two levels, theirs checked, then the way out", () => {
+    expect(
+      personMenu({ clientUserId: "cu-dev", level: "work", end: "remove", owned: [] }, "Shop"),
+    ).toEqual([
+      { kind: "level", level: "work", label: "Can work on it", checked: true },
+      { kind: "level", level: "look", label: "Can only look", checked: false },
+      { kind: "end", end: "remove", label: "Remove from Shop" },
+    ]);
+    expect(
+      personMenu({ clientUserId: "cu-inv", level: null, end: "withdraw", owned: [] }, "Shop").at(
+        -1,
+      ),
+    ).toEqual({ kind: "end", end: "withdraw", label: "Withdraw invite" });
   });
 });

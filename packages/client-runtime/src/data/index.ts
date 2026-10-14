@@ -130,6 +130,7 @@ export {
 } from "./projections/addresses.ts";
 export { addonsScope, type ProjectIpv4Addon } from "./families/projectAddons.ts";
 export type { PortRoutingWrite } from "./operations/addressWrites.ts";
+export type { Invitee } from "./operations/appAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 export { mateVariables, type MateVariables } from "./projections/mateVariables.ts";
 export type {

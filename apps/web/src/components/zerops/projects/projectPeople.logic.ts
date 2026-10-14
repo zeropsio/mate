@@ -10,6 +10,12 @@
  */
 import type { ProjectGrantsRead } from "@t3tools/client-runtime/data";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import {
+  appAccessActions,
+  appAccessLevel,
+  type AppAccessLevel,
+  type AppProjects,
+} from "@t3tools/client-runtime/zerops/appAccess";
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   asOrgRole,
@@ -45,6 +51,20 @@ export interface ProjectPeopleInput {
   /** HQ's picture of a person, by Zerops user id: the one the menu draws a Mate's owner with. */
   readonly pictures: Readonly<Record<string, string | null | undefined>>;
   readonly viewerUserId: string | null;
+  /** Who is looking, as their membership names them; absent while it is not known. */
+  readonly viewer?: { readonly roleCode?: string; readonly membershipId: string } | undefined;
+}
+
+/** What the viewer may change of one person's access here. */
+export interface PersonChange {
+  /** Their membership (`clientUser`) id. */
+  readonly clientUserId: string;
+  /** The level they have here now; `null` where it is neither. */
+  readonly level: AppAccessLevel | null;
+  /** The way out: `remove` a member, `withdraw` an invitation. */
+  readonly end: "remove" | "withdraw";
+  /** The Mates here they own, which no change touches. */
+  readonly owned: ReadonlyArray<string>;
 }
 
 export interface ProjectPerson {
@@ -61,12 +81,19 @@ export interface ProjectPerson {
   readonly access: string;
   /** The second line: access, then their Mates here, an invitation first. */
   readonly line: string;
+  /** What the viewer may change of their access; `null` for nothing. */
+  readonly change: PersonChange | null;
 }
 
 export type ProjectPeopleView =
   | { readonly kind: "reading" }
   | { readonly kind: "unreadable"; readonly line: string }
-  | { readonly kind: "people"; readonly people: ReadonlyArray<ProjectPerson> };
+  | {
+      readonly kind: "people";
+      readonly people: ReadonlyArray<ProjectPerson>;
+      /** The viewer may invite someone: an organization owner or admin. */
+      readonly invite: boolean;
+    };
 
 type Access = "full" | "read" | "none";
 
@@ -110,6 +137,12 @@ function placesOf(projects: ProjectPeopleInput["projects"]): ReadonlyArray<Place
       : { projectId, label: word, inSentence: word.toLocaleLowerCase() };
   });
 }
+
+/** The group's projects as access to it is granted: where it runs, and its other Mates. */
+export const appProjectsOf = (projects: ProjectPeopleInput["projects"]): AppProjects => ({
+  places: projects.flatMap(({ projectId, kind }) => (kind === "mate" ? [] : [projectId])),
+  mates: projects.flatMap(({ projectId, kind }) => (kind === "mate" ? [projectId] : [])),
+});
 
 /** "a", "a and b", "a, b and c". */
 const listed = (words: ReadonlyArray<string>): string =>
@@ -171,6 +204,7 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
     return { kind: "reading" };
   }
 
+  const app = appProjectsOf(input.projects);
   const mateOwners = input.projects.flatMap(({ projectId, kind }) => {
     const owner = input.owners[projectId];
     return isMateKind(kind) && owner != null ? [owner] : [];
@@ -193,6 +227,19 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
     const mates = mateOwners.filter((owner) => owner === userId).length;
     const pending = (member.status ?? ZEROPS_ACTIVE_MEMBER_STATUS) !== ZEROPS_ACTIVE_MEMBER_STATUS;
     const avatar = member.user?.avatar;
+    const actions = appAccessActions({
+      viewer: input.viewer,
+      member: {
+        id: member.id,
+        ...(member.roleCode === undefined ? {} : { roleCode: member.roleCode }),
+        pending,
+      },
+    });
+    const owned = input.projects.flatMap(({ projectId, kind }) =>
+      isMateKind(kind) && userId !== undefined && input.owners[projectId] === userId
+        ? [projectId]
+        : [],
+    );
     // What they may do here: on its places, or by their role where it has none yet.
     const best = Math.min(
       ...(onPlaces.length === 0 ? [accessOf(role)] : onPlaces.map((one) => one.access)).map(
@@ -218,12 +265,30 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
         access,
         ...(mates === 0 ? [] : [mates === 1 ? "1 Mate" : `${mates} Mates`]),
       ].join(" · "),
+      change:
+        actions === null
+          ? null
+          : {
+              clientUserId: member.id,
+              level: appAccessLevel({
+                orgRole: member.roleCode,
+                grantOf: (projectId) =>
+                  input.grants[projectId]?.grants?.find(
+                    ({ clientUserId }) => clientUserId === member.id,
+                  )?.roleCode,
+                projects: app,
+                owned,
+              }),
+              end: actions.end,
+              owned,
+            },
     };
     return [{ person, rank: [person.you ? 0 : 1, pending ? 1 : 0, best, -roleRank(role)] }];
   });
 
   return {
     kind: "people",
+    invite: input.viewer !== undefined && roleAtLeast(input.viewer.roleCode, "ADMIN"),
     people: ranked
       .toSorted((a, b) => {
         for (const [index, value] of a.rank.entries()) {
@@ -244,3 +309,37 @@ const RANKS: ReadonlyArray<ZeropsOrgRole> = [
   "OWNER",
 ];
 const roleRank = (role: ZeropsOrgRole): number => RANKS.indexOf(role);
+
+export type PersonMenuEntry =
+  | {
+      readonly kind: "level";
+      readonly level: AppAccessLevel;
+      readonly label: string;
+      readonly checked: boolean;
+    }
+  | { readonly kind: "end"; readonly end: PersonChange["end"]; readonly label: string };
+
+export const LEVEL_WORDS: Readonly<Record<AppAccessLevel, string>> = {
+  work: "Can work on it",
+  look: "Can only look",
+};
+
+/** A person's menu: the two levels, theirs checked, then the way out of the project. */
+export function personMenu(
+  change: PersonChange,
+  projectName: string,
+): ReadonlyArray<PersonMenuEntry> {
+  return [
+    ...(["work", "look"] as const).map((level) => ({
+      kind: "level" as const,
+      level,
+      label: LEVEL_WORDS[level],
+      checked: change.level === level,
+    })),
+    {
+      kind: "end",
+      end: change.end,
+      label: change.end === "withdraw" ? "Withdraw invite" : `Remove from ${projectName}`,
+    },
+  ];
+}
