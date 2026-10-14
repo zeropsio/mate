@@ -10,8 +10,10 @@
  * for an address somebody opened.
  *
  * A service's FIRST browsable route is its address: a second port on the same
- * service is the same page to a reader, not another thing to look at. The
- * control plane serves Mate itself; browsing it from inside Mate is noise.
+ * service is the same page to a reader, not another thing to look at — except
+ * on a dev service running several named dev servers, where each port is a
+ * part of the application: "web :3000", "api :8080" (the monorepo model, §6).
+ * The control plane serves Mate itself; browsing it from inside Mate is noise.
  *
  * Pure: no React, no store.
  */
@@ -46,6 +48,14 @@ export interface MateAddressInput {
     readonly hostname: string;
     readonly group: ZeropsTopologyGroup;
     readonly routes: ReadonlyArray<{ readonly url: string }>;
+    /** The dev servers zcp last read on it (`ZeropsServiceRow.devServers`); absent while unread. */
+    readonly devServers?:
+      | ReadonlyArray<{
+          readonly name: string;
+          readonly port?: number | undefined;
+          readonly url?: string | undefined;
+        }>
+      | undefined;
   }>;
   /** The Mate's own project's role tag, where it is a stage or a production. */
   readonly ownRole?: GroupRole | undefined;
@@ -86,6 +96,16 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
   };
 
   for (const service of own) {
+    // Several named dev servers: each port is a part's address; one is the service's, as before.
+    const servers = service.devServers ?? [];
+    if (servers.length > 1)
+      for (const server of servers)
+        if (server.url !== undefined)
+          add(
+            server.port === undefined ? server.name : `${server.name} :${String(server.port)}`,
+            "dev",
+            server.url,
+          );
     const route = service.routes.find((entry) => isServiceBrowserUrl(entry.url));
     if (route === undefined) continue;
     const role = devOf.has(service.hostname)
