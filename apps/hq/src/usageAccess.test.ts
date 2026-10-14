@@ -23,6 +23,15 @@ const facts: OrgView = {
       roleCode: "READ_ONLY",
       canCreateProjects: false,
     },
+    {
+      userId: "carol",
+      clientUserId: "C-carol",
+      name: "Carol",
+      kind: "person",
+      status: "ACTIVE",
+      roleCode: "BASIC_USER",
+      canCreateProjects: false,
+    },
   ],
   projects: [
     {
@@ -35,6 +44,7 @@ const facts: OrgView = {
       userRoles: [
         { clientUserId: "C-alice", roleCode: "OWNER" },
         { clientUserId: "C-bob", roleCode: "NO_ACCESS" },
+        { clientUserId: "C-carol", roleCode: "NO_ACCESS" },
       ],
     },
   ],
@@ -44,14 +54,14 @@ describe("usage source access and current-owner grouping", () => {
     assert.isTrue(mayReadUsage(facts, "alice", "P", false));
     assert.isFalse(mayReadUsage(facts, "alice", "P", true));
     assert.isFalse(mayReadUsage(facts, "bob", "P", false));
-    assert.isTrue(mayReadUsage(facts, "bob", "P", true));
+    assert.isTrue(mayReadUsage(facts, "carol", "gone", true));
     assert.isFalse(mayReadUsage(facts, "bob", "missing", false));
     for (const status of ["INVITED", "SUSPENDED", "DELETED", "UNKNOWN"])
       assert.isFalse(
         mayReadUsage(
           { ...facts, members: facts.members.map((member) => ({ ...member, status })) },
-          "bob",
-          "P",
+          "carol",
+          "gone",
           true,
         ),
       );
@@ -59,11 +69,18 @@ describe("usage source access and current-owner grouping", () => {
       assert.isFalse(
         mayReadUsage(
           { ...facts, members: facts.members.map((member) => ({ ...member, roleCode })) },
-          "bob",
-          "P",
+          "carol",
+          "gone",
           true,
         ),
       );
+  });
+  it("a retired Mate's usage is read by no one who could not observe it while live", () => {
+    // An org Read only member never observed a Mate, live or retired.
+    assert.isFalse(mayReadUsage(facts, "bob", "gone", true));
+    assert.isFalse(mayReadUsage(facts, "bob", "P", true));
+    // A project Zerops still shows keeps its override over the retired record.
+    assert.isFalse(mayReadUsage(facts, "carol", "P", true));
   });
   it("an explicit OWNER resolves canonically and cannot fall through to login history", () => {
     const input = {
