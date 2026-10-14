@@ -577,19 +577,13 @@ jobs:
       - name: Ensure Electron runtime is installed
         run: vp run --filter @t3tools/desktop ensure:electron
 
-      # The scenario drivers run beside the package tests: one after the other, they made this the
-      # last job of the run. Their log follows the packages' so the two stay readable.
       - name: Test
+        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/monorepo' --filter '!@t3tools/scripts' --filter '!@t3tools/hq' test
+
+      - name: Test scenario drivers
         run: |
           vp run test:browser
-          vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenario-drivers --allowOnly=false > "$RUNNER_TEMP/scenario-drivers.log" 2>&1 &
-          drivers=$!
-          packages=0
-          vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/monorepo' --filter '!@t3tools/scripts' --filter '!@t3tools/hq' test || packages=$?
-          drivers_status=0
-          wait "$drivers" || drivers_status=$?
-          cat "$RUNNER_TEMP/scenario-drivers.log"
-          test "$packages" = 0 && test "$drivers_status" = 0
+          vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenario-drivers --allowOnly=false
 
       # Reuse Packages' Electron install for the complete Linux runtime smoke.
       - name: Build desktop pipeline

@@ -118,15 +118,10 @@ it("CI's Test job runs scenario-driver units after provisioning their browser", 
     step.run?.includes("--project scenario-drivers"),
   );
   expect(driver, "ASSERTION: scenario-driver units are covered by CI's Test job").toBeDefined();
-  const lines = driver?.run?.split("\n").filter(Boolean) ?? [];
-  expect(lines[0]).toBe("vp run test:browser");
-  expect(lines[1]).toBe(
-    'vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenario-drivers --allowOnly=false > "$RUNNER_TEMP/scenario-drivers.log" 2>&1 &',
-  );
-  expect(lines, "ASSERTION: a failed driver run fails the step").toContain(
-    'wait "$drivers" || drivers_status=$?',
-  );
-  expect(lines.at(-1)).toBe('test "$packages" = 0 && test "$drivers_status" = 0');
+  expect(driver?.run?.split("\n").filter(Boolean)).toEqual([
+    "vp run test:browser",
+    "vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenario-drivers --allowOnly=false",
+  ]);
 });
 
 it("CI's stdin selector considers every changed path, including the old side of renames", () => {
