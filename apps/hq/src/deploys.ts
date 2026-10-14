@@ -1,3 +1,6 @@
+import type { HqGitTargetIntent, HqGitOperationReceipt } from "@t3tools/shared/hqGitTargets";
+import { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
+import { keepGitReceipt, readGitReceipt, type GitRequestRefused } from "./gitTargetReceipts.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- a commit's archive comes from git as a Node stream;
 // a tier's digest is the system's SHA-256.
 /**
@@ -146,6 +149,8 @@ export interface DeploysOptions {
 }
 
 /** A person's ask HQ refused: a code, and the reason (a permission's, or the deploy's own). */
+const decodeDeliveryAnswer = Schema.decodeUnknownEffect(HqDeliveryAnswer);
+
 export class DeployRefused extends Schema.TaggedError<DeployRefused>()("DeployRefused", {
   code: Schema.Literals(["forbidden", "environment_not_found", "deploy_not_found", "conflict"]),
   reason: Schema.Literals([
@@ -165,6 +170,22 @@ export class Deploys extends Context.Service<
      * The rollout `rolloutId` run now: planned into its jobs once, each of its environments' next
      * job submitted where none builds, and where every job it asked for stands.
      */
+    readonly runGitAgain: (
+      userId: string,
+      requestId: string,
+      intent: Extract<HqGitTargetIntent, { readonly kind: "run-git-again" }>,
+    ) => Effect.Effect<
+      HqGitOperationReceipt,
+      DeployRefused | NotLeader | SqlError | ZeropsError | GitRequestRefused
+    >;
+    readonly gitReceipt: (
+      userId: string,
+      requestId: string,
+      intent: HqGitTargetIntent,
+    ) => Effect.Effect<
+      HqGitOperationReceipt | null,
+      DeployRefused | SqlError | ZeropsError | GitRequestRefused
+    >;
     readonly run: (rolloutId: string) => Effect.Effect<HqDeployAnswer, NotLeader | SqlError>;
     /** The rollout `event` wrote, run; nothing where it wrote none. */
     readonly runOf: (event: RolloutCause) => Effect.Effect<HqDeployAnswer, NotLeader | SqlError>;
@@ -1991,7 +2012,81 @@ export const deploysLayer = (
           Effect.fail(new DeployRefused({ code, reason })),
         );
 
+      const queueGitAgain = (
+        userId: string,
+        environment: Environment,
+        repo: string,
+        expectedSha?: string,
+      ) =>
+        Effect.gen(function* () {
+          const log = { userId, appId: environment.app_id, name: environment.name, service: repo };
+          const lock = yield* lockOf(environment.id);
+          return yield* Semaphore.withPermit(
+            lock,
+            leader.write(
+              Effect.gen(function* () {
+                const wanted = yield* wantedOf(environment);
+                const target = wanted.targets.find((target) => target.repo === repo);
+                if (target === undefined)
+                  return yield* refuse("deploy_not_found", "deploy_not_found", log);
+                if (expectedSha !== undefined && target.sha !== expectedSha)
+                  return yield* refuse("conflict", "deploy_superseded", log);
+                const blocked =
+                  yield* sql`SELECT id FROM hq_deploy_job WHERE environment_id=${environment.id} AND kind='push' AND state IN ('submitting','unresolved') LIMIT 1`;
+                if (blocked.length > 0) return yield* refuse("conflict", "deploy_running", log);
+                const [made] = yield* sql<{ readonly id: string }>`INSERT INTO hq_rollout
+            (app_id,cause,environment_id,environment_created_at,repo,sha,by,planned_at)
+            VALUES (${environment.app_id}::uuid,'run_again',${environment.id},${environment.created_at}::timestamptz,${target.repo},${target.sha},${userId},now()) RETURNING id::text`;
+                yield* makePushJob(made!.id, environment, target, userId);
+                return made!.id;
+              }),
+            ),
+          );
+        });
+      const gitEnvironment = Effect.fnUntraced(function* (
+        userId: string,
+        intent: HqGitTargetIntent,
+      ) {
+        const view = yield* roles.forWrite;
+        const log = { userId, appId: intent.appId };
+        if (view.orgId !== intent.orgId) return yield* refuse("forbidden", "app_not_seen", log);
+        if (!("environmentId" in intent))
+          return yield* refuse("environment_not_found", "environment_not_found", log);
+        const [row] = yield* sql<{
+          readonly name: string;
+        }>`SELECT name FROM hq_environment WHERE id=${intent.environmentId} AND app_id::text=${intent.appId} AND target='git'`;
+        if (!row) return yield* refuse("environment_not_found", "environment_not_found", log);
+        return yield* personsEnvironment(userId, intent.appId, row.name, log);
+      });
       return Deploys.of({
+        gitReceipt: (userId, requestId, intent) =>
+          decidedFresh(
+            Effect.gen(function* () {
+              yield* gitEnvironment(userId, intent);
+              return yield* readGitReceipt(sql, userId, requestId, intent);
+            }),
+          ),
+        runGitAgain: (userId, requestId, intent) =>
+          decidedFresh(
+            Effect.gen(function* () {
+              const environment = yield* gitEnvironment(userId, intent);
+              const receipt = yield* keepGitReceipt(
+                sql,
+                leader,
+                userId,
+                requestId,
+                intent,
+                Effect.gen(function* () {
+                  const rollout = yield* queueGitAgain(userId, environment, intent.repo);
+                  return yield* decodeDeliveryAnswer(yield* answerOf(rollout)).pipe(Effect.orDie);
+                }),
+                true,
+              );
+              yield* tick;
+              yield* worked(environment.id);
+              return receipt;
+            }),
+          ),
         operations: (appId) => operationRecords(sql, appId),
         blocker: (environmentId) =>
           Effect.map(openJob(environmentId), (job) =>
@@ -2063,30 +2158,7 @@ export const deploysLayer = (
               const log = { userId, appId, name, service };
               const environment = yield* personsEnvironment(userId, appId, name, log);
               if (environment.target === "git") {
-                const wanted = yield* wantedOf(environment);
-                const target = wanted.targets.find((target) => target.repo === service);
-                if (target === undefined)
-                  return yield* refuse("deploy_not_found", "deploy_not_found", log);
-                if (target.sha !== sha) return yield* refuse("conflict", "deploy_superseded", log);
-                const lock = yield* lockOf(environment.id);
-                const rollout = yield* Semaphore.withPermit(
-                  lock,
-                  leader.write(
-                    Effect.gen(function* () {
-                      const blocked =
-                        yield* sql`SELECT id FROM hq_deploy_job WHERE environment_id=${environment.id}
-                    AND kind='push' AND state IN ('submitting','unresolved') LIMIT 1`;
-                      if (blocked.length > 0)
-                        return yield* refuse("conflict", "deploy_running", log);
-                      const [made] = yield* sql<{ readonly id: string }>`INSERT INTO hq_rollout
-                    (app_id,cause,environment_id,environment_created_at,repo,sha,by,planned_at)
-                    VALUES (${appId}::uuid,'run_again',${environment.id},${environment.created_at}::timestamptz,
-                      ${target.repo},${target.sha},${userId},now()) RETURNING id::text`;
-                      yield* makePushJob(made!.id, environment, target, userId);
-                      return made!.id;
-                    }),
-                  ),
-                );
+                const rollout = yield* queueGitAgain(userId, environment, service, sha);
                 yield* tick;
                 return yield* run(rollout);
               }

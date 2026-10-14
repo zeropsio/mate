@@ -147,6 +147,9 @@ const fixture = (seed = false) =>
       views: Stream.empty,
     });
     const remotes = Remotes.of({
+      changes: Stream.empty,
+      write: () => Effect.die("Remote writes are outside this fixture"),
+      receipt: () => Effect.succeed(null),
       get: () => Effect.succeed(state.remote),
       connect: () => Effect.succeed(state.remote),
       updateAddress: () => Effect.succeed(state.remote),
