@@ -127,4 +127,34 @@ describe("the crew home and its services", () => {
   it.each(journeys)("$sentence", ({ journey, expected }) => {
     expect(journey(new CrewWorld())).toEqual(expected);
   });
+
+  it.each(["wake", "receipt"] as const)(
+    "thawing a host stops deploy polls before recovery finishes: %s",
+    (arrives) => {
+      const w = new CrewWorld();
+      w.apply(home(writer("backend")));
+      w.tell({ _tag: "Deploy", host: "appdev", phase: "started" }, { kind: "engine" });
+      w.tell({ _tag: "Recovered", bootId: "boot-2" as never }, { kind: "engine" });
+      w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
+      w.advance(DEFAULT_CREW_TIMING.thawOfferMs);
+      w.fire("deploy-poll", "appdev");
+      w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
+      if (arrives === "receipt") w.fire("deploy-poll", "appdev");
+
+      w.press({ _tag: "thawHost", host: "appdev" });
+      expect(w.pending("crew.recover", "appdev")).toBeDefined();
+      // Either input can already be in flight when the person asks to thaw.
+      if (arrives === "receipt") {
+        w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
+      } else {
+        w.fire("deploy-poll", "appdev");
+      }
+
+      expect(w.armed("deploy-poll")).toEqual([]);
+      expect(w.pending("crew.deploy.poll", "appdev")).toBeUndefined();
+      w.settle("crew.recover", "appdev", { lost: [] });
+      expect(w.state.hosts.appdev?.frozenSince).toBeNull();
+      expect(w.state.attention).toEqual([]);
+    },
+  );
 });
