@@ -17,7 +17,12 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { matesActivityOf, seenResultsOf, type MatesActivityInput } from "./mateActivity";
+import {
+  matesActivityOf,
+  seenResultsOf,
+  socketStands,
+  type MatesActivityInput,
+} from "./mateActivity";
 
 const ASKED = "2026-10-03T09:00:00.000Z";
 const DONE = "2026-10-03T09:05:00.000Z";
@@ -916,5 +921,23 @@ describe("matesActivityOf — the conversation the person is looking at", () => 
       return previous.get("p-vera")?.kind;
     });
     expect(kinds).toEqual(["working", "idle", "idle", "working"]);
+  });
+});
+
+describe("a Mate's own socket", () => {
+  it.each([
+    ["stands while connected", "connected", false, true],
+    ["stands while only blinking", "reconnecting", false, true],
+    [
+      "still stands while a wake replaces it, until the replacement answers or fails",
+      "connecting",
+      true,
+      true,
+    ],
+    ["does not stand while it connects for the first time", "connecting", false, false],
+    ["does not stand once offline", "offline", true, false],
+    ["does not stand once refused", "error", true, false],
+  ] as const)("%s", (_, phase, stoodBefore, stands) => {
+    expect(socketStands(phase, stoodBefore)).toBe(stands);
   });
 });

@@ -21,6 +21,8 @@ import type {
   ZeropsProposal,
 } from "@t3tools/client-runtime/zerops/model";
 
+import { recordsOf } from "../addresses/addresses.logic";
+
 /** What the person decided of one proposal, and how what they approved ended. */
 export type ProposalDecision =
   | { readonly state: "running"; readonly at: string }
@@ -279,6 +281,26 @@ const FACE_ORDER: ReadonlyArray<DomainFace> = [
 export interface DomainProposalState {
   readonly tone: "working" | "waiting" | "problem" | "live";
   readonly words: string;
+}
+
+/**
+ * The records an approved domain still needs at the person's DNS provider: those of its domains
+ * waiting for DNS or pointing elsewhere, as the addresses sheet lists them. Nothing once each
+ * answers, or while the project's IP addresses are unread.
+ */
+export function domainProposalRecords(
+  place: PlaceAddresses,
+  proposal: DomainProposal,
+): ReturnType<typeof recordsOf> | undefined {
+  if (place.state !== "ready") return undefined;
+  const waiting = place.domains.filter(
+    (each) =>
+      proposal.params.domains.includes(each.domainName) &&
+      (each.face === "dns" || each.face === "elsewhere"),
+  );
+  if (waiting.length === 0) return undefined;
+  const records = recordsOf(waiting, place.ips);
+  return records.records.length === 0 ? undefined : records;
 }
 
 /**

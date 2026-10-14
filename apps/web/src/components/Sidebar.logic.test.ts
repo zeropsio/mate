@@ -29,6 +29,7 @@ import {
   threadStatusPill,
   threadStatusRowPresentation,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
+  openMenuMate,
 } from "./Sidebar.logic";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import {
@@ -1127,5 +1128,62 @@ describe("sortLogicalProjectsForSidebar", () => {
         (project) => project.projectKey,
       ),
     ).toEqual(["logical-newer", "logical-older"]);
+  });
+});
+
+describe("the Mate the menu lights", () => {
+  const chief = { project: { id: "chief" }, environmentId: "env-chief" };
+  const shop = { project: { id: "shop" }, environmentId: "env-shop" };
+  const open = (
+    environmentId: string | undefined,
+    lookup: "found" | "absent" | "pending" | "unknown",
+    over: { readonly comingProjectId?: string; readonly birthId?: string } = {},
+  ) =>
+    openMenuMate({
+      comingProjectId: over.comingProjectId,
+      birthId: over.birthId,
+      environmentId,
+      chief,
+      lookup: () => (lookup === "found" ? { kind: "found", row: shop } : { kind: lookup }),
+    });
+
+  it.each([
+    [
+      "the Chief, whose conversation is open though the listing keeps it out",
+      open("env-chief", "absent"),
+      { id: "chief", resolving: false },
+    ],
+    [
+      "the Chief before the listing answers",
+      open("env-chief", "pending"),
+      { id: "chief", resolving: false },
+    ],
+    [
+      "a listed Mate, by its open conversation",
+      open("env-shop", "found"),
+      { id: "shop", resolving: false },
+    ],
+    [
+      "nothing yet while the listing has not found the open conversation",
+      open("env-other", "pending"),
+      { id: null, resolving: true },
+    ],
+    [
+      "nothing where the complete listing holds no such Mate",
+      open("env-other", "absent"),
+      { id: null, resolving: false },
+    ],
+    [
+      "nothing where no conversation is open",
+      open(undefined, "absent"),
+      { id: null, resolving: false },
+    ],
+    [
+      "a Mate still coming up, by its route",
+      open(undefined, "absent", { comingProjectId: "new" }),
+      { id: "new", resolving: false },
+    ],
+  ])("lights %s", (_, lit, expected) => {
+    expect(lit).toEqual(expected);
   });
 });

@@ -299,4 +299,24 @@ describe("the Chief's proposal to put a project on a domain", () => {
     await press("Open addresses");
     expect(useAddressesSheet.getState().target).toEqual({ orgId: "org", projectId: "pProd" });
   });
+
+  it("an approved domain waiting for DNS prints the records to add on its card", async () => {
+    operation = domainOffer;
+    source.decision = { state: "done", at: "2026-10-14T10:00:00.000Z" };
+    source.addresses = {
+      ...production([{ domainName: "www.contoso.com", face: "dns" }]),
+      ips: { v6: "2001:db8::1", sharedV4: "93.185.106.128", zoneHasSharedV4: false },
+    };
+    await draw();
+    const rows = [
+      ...document.querySelector("[data-dns-records] table")!.querySelectorAll("tbody tr"),
+    ].map((row) => [...row.querySelectorAll("td")].slice(0, 3).map((cell) => cell.textContent));
+    expect(rows).toEqual([
+      ["A", "www.contoso.com", "93.185.106.128"],
+      ["AAAA", "www.contoso.com", "2001:db8::1"],
+    ]);
+    expect(document.querySelector("[data-dns-records]")?.textContent).toContain(
+      "Keep both: the shared IPv4 needs the AAAA.",
+    );
+  });
 });

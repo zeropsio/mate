@@ -15,7 +15,7 @@ import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { environmentThreadShells } from "../state/threads";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { useUiStateStore } from "../uiStateStore";
-import { matesActivityOf } from "./mateActivity";
+import { matesActivityOf, socketStands } from "./mateActivity";
 import { threadOnScreenAtom } from "./threadOnScreen";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { threadAgentActivity } from "./agentActivity";
@@ -31,18 +31,21 @@ const visitsAtom = Atom.make((get) => {
 });
 const visitOfThreadAtom = Atom.family((key: string) => Atom.make((get) => get(visitsAtom)[key]));
 const environmentOfProjectAtom = Atom.family((projectId: string) =>
-  Atom.make((get) => {
+  Atom.make((get): { readonly id: EnvironmentId; readonly standing: boolean } | null => {
     const environment = get(zeropsEnvironmentsAtom).find(
       (entry) => entry.zeropsProjectId === projectId,
     );
-    return environment === undefined
-      ? null
-      : {
-          id: environment.environmentId,
-          standing:
-            environment.connection.phase === "connected" ||
-            environment.connection.phase === "reconnecting",
-        };
+    if (environment === undefined) return null;
+    const before = Option.getOrUndefined(
+      get.self<{ readonly id: EnvironmentId; readonly standing: boolean } | null>(),
+    );
+    return {
+      id: environment.environmentId,
+      standing: socketStands(
+        environment.connection.phase,
+        before?.id === environment.environmentId && before.standing,
+      ),
+    };
   }).pipe(
     Atom.withEquality(
       (a: { readonly id: EnvironmentId; readonly standing: boolean } | null, b) =>

@@ -16,6 +16,7 @@
  * that path goes with the old overview shape.
  */
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type { MateLimit } from "@t3tools/client-runtime/data";
 import type { MateAttentionRead } from "@t3tools/client-runtime/data";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
@@ -335,6 +336,17 @@ function wordlessChat(
     session: null,
     latestTurn: null,
   };
+}
+
+/**
+ * Whether a Mate's own socket stands: up, or only blinking. Replaced on a wake (a page restored
+ * from the back/forward cache, a long background), a socket that stood connects afresh, and it
+ * still stands until its replacement answers or fails: its row never rests for the swap.
+ */
+export function socketStands(phase: EnvironmentConnectionPhase, stoodBefore: boolean): boolean {
+  return (
+    phase === "connected" || phase === "reconnecting" || (phase === "connecting" && stoodBefore)
+  );
 }
 
 /**

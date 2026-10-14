@@ -1,6 +1,7 @@
 import * as React from "react";
 import { type AnimateLayoutChanges } from "@dnd-kit/sortable";
 import { statusLabel, statusPulses } from "@t3tools/client-runtime/zerops/statusPresentation";
+import type { CandidateLookup } from "@t3tools/client-runtime/zerops/projections";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
@@ -756,4 +757,36 @@ export function sortScopedProjectsForSidebar<
 export function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
   return label.endsWith(" ago") ? label.slice(0, -4) : label;
+}
+
+/** A row the menu can light: its project, and the environment its conversation lives in. */
+interface MenuMateRow {
+  readonly project: { readonly id: string };
+  readonly environmentId?: string | undefined;
+}
+
+/**
+ * The Mate whose conversation is open, for the menu to light. A Mate still coming up, or a new
+ * project's first Mate, is named by its route; any other by the environment its conversation lives
+ * in. The Chief is kept out of the listing for a top of its own, and its conversation is open all
+ * the same. `resolving`: the route names a Mate the listing has not found yet, unknown, not none.
+ */
+export function openMenuMate(input: {
+  readonly comingProjectId: string | undefined;
+  readonly birthId: string | undefined;
+  readonly environmentId: string | undefined;
+  readonly chief: MenuMateRow | undefined;
+  /** The listing's row for an open environment (`findCandidate`). */
+  readonly lookup: (environmentId: string) => CandidateLookup<MenuMateRow>;
+}): { readonly id: string | null; readonly resolving: boolean } {
+  if (input.comingProjectId !== undefined) return { id: input.comingProjectId, resolving: false };
+  if (input.birthId !== undefined) return { id: input.birthId, resolving: false };
+  const { environmentId } = input;
+  if (environmentId === undefined) return { id: null, resolving: false };
+  if (input.chief?.environmentId === environmentId)
+    return { id: input.chief.project.id, resolving: false };
+  const open = input.lookup(environmentId);
+  return open.kind === "found"
+    ? { id: open.row.project.id, resolving: false }
+    : { id: null, resolving: open.kind === "pending" || open.kind === "unknown" };
 }

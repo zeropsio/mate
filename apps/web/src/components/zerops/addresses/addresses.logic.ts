@@ -74,7 +74,9 @@ export function normalizeDomain(typed: string): string {
 
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 
+/** A domain name, or a wildcard over one (`*.shop.com`, every subdomain of shop.com). */
 function isDomainName(name: string): boolean {
+  if (name.startsWith("*.")) return isDomainName(name.slice(2));
   const labels = name.split(".");
   return (
     name.length <= 253 &&
@@ -249,13 +251,19 @@ export function recordsOf(
 ): {
   readonly records: ReadonlyArray<DnsRecord>;
   readonly bothRequired: boolean;
-  readonly cnames: ReadonlyArray<DnsRecord>;
+  /** The one-record way for each, and whether it reaches IPv4 yet (`dnsAdvice`). */
+  readonly cnames: ReadonlyArray<DnsRecord & { readonly ipv4: boolean }>;
+  /** What each wildcard's certificate needs, whichever way it points. */
+  readonly certificates: ReadonlyArray<DnsRecord>;
 } {
   const advice = domains.map((domain) => dnsAdvice(domain.domainName, ips));
   return {
     records: advice.flatMap((each) => each.records),
     bothRequired: advice.some((each) => each.bothRequired),
     cnames: advice.flatMap((each) => (each.cname === undefined ? [] : [each.cname])),
+    certificates: advice.flatMap((each) =>
+      each.certificate === undefined ? [] : [each.certificate],
+    ),
   };
 }
 
