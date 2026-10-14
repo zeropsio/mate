@@ -3169,11 +3169,14 @@ const pollDeploy = (b: Builder, host: string): void => {
   if (!pending) b.effect({ kind: "crew.deploy.poll", host }, host, { host });
 };
 
-const recover = (b: Builder, host: string): void => {
-  const pending = Object.values(b.state.effects).some(
+/** A host whose copies are being recovered is no longer read for its redeploy. */
+const recovering = (b: Builder, host: string): boolean =>
+  Object.values(b.state.effects).some(
     (effect) => effect.kind === "crew.recover" && effect.host === host,
   );
-  if (pending) return;
+
+const recover = (b: Builder, host: string): void => {
+  if (recovering(b, host)) return;
   b.cancel("deploy-poll", host, "the redeploy ended");
   b.cancel("thaw-offer", host, "the redeploy ended");
   const writers = membersInOrder(b.state).filter((member) => member.host === host);
@@ -3795,7 +3798,8 @@ const settled = (
     case "crew.deploy.poll": {
       const host = pending.host!;
       const record = b.state.hosts[host];
-      if (record?.frozenSince == null) return;
+      // A read that was in flight when the recovery began must not re-arm the polling it stopped.
+      if (record?.frozenSince == null || recovering(b, host)) return;
       const phase = valueOf("crew.deploy.poll", value).phase;
       if (phase === "ended") return recover(b, host);
       const timing = timingOf(b.state);
