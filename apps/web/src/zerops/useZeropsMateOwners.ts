@@ -2,7 +2,7 @@
  * Whose each Mate is, and who a surface names, as HQ names them.
  *
  * A Mate's owner is HQ's (`hqProjectPeople`): HQ decides who owns it and sends their name and
- * picture, so a load reads no member list for "Jan's Mate — only Jan opens it" (D5). Whoever else a
+ * picture, so a load reads no member list for "Jan's Mate — your Zerops access is read-only" (D5). Whoever else a
  * surface names — a login's signer, a remark's author — HQ's people name too. Somebody HQ names no
  * record of goes without a name, and a face without a badge.
  *
