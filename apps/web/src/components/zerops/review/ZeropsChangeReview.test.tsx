@@ -802,6 +802,37 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     });
   });
 
+  it("a newer push cancels Close confirmation; closing the reviewed head keeps its branch", async () => {
+    account.flowPull = merged({
+      repository: "apidev",
+      number: 1,
+      merged: false,
+      state: "open",
+      headSha: API_CHANGE.head ?? undefined,
+    });
+    detail.readout = READ_DETAIL;
+    await reviewed(async (host, rerender) => {
+      await pressed(host, "Close without merging…");
+      expect(host.textContent).toContain("Close #1 without merging?");
+      const newerHead = "e".repeat(40);
+      account.flowPull = { ...account.flowPull!, headSha: newerHead };
+      await rerender();
+      expect(host.textContent).not.toContain("Close #1 without merging?");
+      expect(account.verbs).toEqual([]);
+      await pressed(host, "Close without merging…");
+      expect(host.textContent).toContain("Close #1 without merging?");
+      await pressed(host, "Close without merging");
+      expect(account.verbs).toEqual([
+        ["close", "group-orchard", { repository: "apidev", number: 1 }, newerHead],
+      ]);
+      expect(host.textContent).toContain("Closed without merging");
+      expect(buttonsOf(host, "Merge")).toHaveLength(0);
+      expect(buttonsOf(host, "Close without merging…")).toHaveLength(0);
+      // The real close endpoint's branch retention is pinned by merge.test.ts:
+      // "a developer closes a change without merging: its branch stays, and takes no pushes".
+    });
+  });
+
   it("keeps it open when asked to, closing nothing", async () => {
     await reviewed(async (host) => {
       await pressed(host, "Close without merging…");
