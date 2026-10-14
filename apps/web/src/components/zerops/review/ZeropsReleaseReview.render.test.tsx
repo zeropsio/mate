@@ -109,6 +109,7 @@ function flow(): ZeropsProjectFlow {
         releaseVersion: { tag: "v1.0.0", path: "package.json" },
       },
     ],
+    codeRepos: undefined,
     release: {
       gate: { allowed: true },
       permission: { allowed: true },

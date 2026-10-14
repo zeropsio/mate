@@ -567,6 +567,7 @@ function KnownGroupAside({
       }
       environments={environments}
       repos={flow.repos}
+      codeRepos={flow.codeRepos}
       gitActions={gitTargets.actions}
       gitCan={gitTargets.can}
       gitLive={gitTargets.live}
@@ -603,6 +604,7 @@ function KnownGroupAside({
  */
 export function ZeropsGroupPane({
   repos,
+  codeRepos,
   gitActions,
   gitCan,
   gitLive,
@@ -625,6 +627,8 @@ export function ZeropsGroupPane({
   firstDeployOf,
 }: {
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
+  /** The repositories a Mate ships code to: what its Repositories section lists. */
+  readonly codeRepos?: ReadonlyArray<RepoListEntry> | undefined;
   readonly gitActions?: GitRemoteActions | undefined;
   readonly gitCan?: HqOffers | undefined;
   readonly gitLive?: boolean | undefined;
@@ -796,7 +800,7 @@ export function ZeropsGroupPane({
       <SideSection title="Repositories">
         <GitRemoteSettings
           appId={groupId}
-          repos={repos}
+          repos={codeRepos}
           appName={name ?? "Application"}
           actions={gitActions}
           can={gitCan}

@@ -122,6 +122,24 @@ function repositoryName(cloneUrl: string): string | undefined {
   return last.endsWith(".git") ? last.slice(0, -".git".length) : last;
 }
 
+/**
+ * The repositories a Mate ships code to, by name: those the tiers' dev and stage runtimes build
+ * from. A utility's public build (`mailpit` from github.com/zeropsio/recipe-mailpit) and a managed
+ * service name none, whatever HQ holds under their hostnames.
+ */
+export function codeRepositoriesOf(tiers: ReadonlyArray<string>): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const file of tiers) {
+    const repositories = recipeTierRepositories(file);
+    for (const { hostname, role } of recipeTierServices(file) ?? []) {
+      if (role !== "dev" && role !== "stage") continue;
+      const name = repositoryName(repositories.get(hostname) ?? "");
+      if (name !== undefined) names.add(name);
+    }
+  }
+  return names;
+}
+
 /** The recipe's stage and production tiers as `main` holds them; `null` where it holds none. */
 export function appRecipeOf(files: {
   readonly stage: string | null;

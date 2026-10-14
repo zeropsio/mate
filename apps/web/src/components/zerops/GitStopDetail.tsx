@@ -205,7 +205,7 @@ export function GitEnvironmentRemoval({
                 <p className="rv-note">Read the repository addresses before confirming removal.</p>
               )}
               <p className="rv-note">
-                The remote stays connected. Settings → Repositories manages it.
+                The remote stays connected. Manage it under Repositories on this project's page.
               </p>
             </>
           )}
