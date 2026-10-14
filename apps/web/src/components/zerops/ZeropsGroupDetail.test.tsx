@@ -1,5 +1,14 @@
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
-import { canonicalProjectFlow } from "@t3tools/client-runtime/data";
+import {
+  canonicalProjectFlow,
+  inventoryContents,
+  readsOfState,
+} from "@t3tools/client-runtime/data";
+import {
+  makeZeropsApiOrigin,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+} from "@t3tools/client-runtime/zerops/data";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 import {
@@ -2060,9 +2069,94 @@ const EMPTY_ROUTE_INVENTORY: Inventory = {
   projectRefs: new Map(),
   authority: new Map(),
   lost: new Set(),
+  deleted: [],
   isLoading: false,
   error: null,
 };
+
+it("a deleted production names its removal before opening runtime readers", () => {
+  const registry = AtomRegistry.make();
+  const store = mountRoster(registry, "org", [
+    { id: "production-project", name: "Shop - Production", status: "ACTIVE" },
+  ]);
+  mountHqNavigation(
+    registry,
+    "org",
+    {
+      structure: {
+        ungrouped: [],
+        apps: [
+          {
+            id: "shop",
+            name: "Shop",
+            projects: [],
+            environments: [
+              {
+                id: HqEnvironmentId.make("production-environment"),
+                target: { kind: "zerops", projectId: ProjectId.make("production-project") },
+                name: "Production",
+                tier: "production",
+                sources: ["release"],
+                order: 1,
+                keyHeld: true,
+                keyInvalid: false,
+                jobs: [],
+              },
+            ],
+          },
+        ],
+      },
+    },
+    store,
+  );
+  store.dispatch({
+    kind: "proven-deletion",
+    family: "project",
+    id: "production-project",
+    evidence: "projectNotFound",
+  });
+  const inventory = inventoryContents.derive(readsOfState(store.state()), {
+    organization: {
+      kind: "organization",
+      account: {
+        apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+        accountId: ZeropsAccountId.make("account"),
+      },
+      organizationId: ZeropsOrganizationId.make("org"),
+    },
+    viewer: { id: "org", name: "Org", membershipId: "owner", roleCode: "OWNER" },
+  });
+  platform.routeWitness = true;
+  platform.projectReads = [];
+  try {
+    let markup = "";
+    expect(() => {
+      markup = renderToStaticMarkup(
+        <RegistryContext.Provider value={registry}>
+          <AccountDataContext.Provider
+            value={
+              { data: store.data, orgId: "org", demandDetail: () => () => {} } as Pick<
+                AccountData,
+                "data" | "orgId" | "demandDetail"
+              > as AccountData
+            }
+          >
+            <InventoryContext.Provider value={inventory}>
+              <ZeropsStopDetailPage groupId="shop" environmentId="production-environment" />
+            </InventoryContext.Provider>
+          </AccountDataContext.Provider>
+        </RegistryContext.Provider>,
+      );
+    }).not.toThrow();
+    expect(markup).toContain("Production was removed.");
+    expect(markup).not.toContain("Stage was removed.");
+    expect(markup).not.toContain("Your access to this project changed.");
+    expect(platform.projectReads).toEqual([]);
+  } finally {
+    platform.routeWitness = false;
+    registry.dispose();
+  }
+});
 
 it.each(["empty", "refused"] as const)(
   "A placed stage keeps its runtime page while HQ has no environment row (%s).",

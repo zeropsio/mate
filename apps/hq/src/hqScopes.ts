@@ -132,7 +132,10 @@ const metadata = (error: unknown) =>
         (): { code?: string; reason?: string | null } => ({}),
       );
 const refusalProvesRemoval = (code: string) =>
-  code === "forbidden" || code === "usage_page_invalidated" || code.endsWith("_not_found");
+  code === "forbidden" ||
+  code === "chief_owner_required" ||
+  code === "usage_page_invalidated" ||
+  code.endsWith("_not_found");
 const refusalDisposition = (code: string) =>
   code === HQ_ZEROPS_REFUSED.code ||
   code === "unsupported" ||
@@ -469,6 +472,26 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             return { values: [{ key: "report", value: report }], removals: [] as HqRemoval[] };
           }
           const observable = observedProjects(view);
+          if (
+            scope.kind === "attention" &&
+            current.projectIds.has(scope.projectId) &&
+            current.facts.members.some(
+              (member) =>
+                member.userId === entry.userId &&
+                member.kind === "person" &&
+                member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
+            )
+          ) {
+            const ownerId = current.chiefOwners.get(scope.projectId);
+            if (ownerId !== undefined && ownerId !== entry.userId) {
+              return yield* new ScopeReadRefused({
+                code: "chief_owner_required",
+                reason:
+                  current.facts.members.find((member) => member.userId === ownerId)?.name.trim() ||
+                  "another person",
+              });
+            }
+          }
           // Permission comes first: unknown ids must not reveal source membership.
           if (!permitted(scope, current, entry.userId))
             return yield* new ScopeReadRefused({ code: "forbidden", reason: "no-access" });
@@ -840,7 +863,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   entry.journal.keys().map((key) => ({
                     key,
                     reason:
-                      code === "forbidden" || code === "usage_page_invalidated"
+                      code === "forbidden" ||
+                      code === "chief_owner_required" ||
+                      code === "usage_page_invalidated"
                         ? "no-access"
                         : "deleted",
                   })),
@@ -1352,7 +1377,10 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                             refusalProvesRemoval(target.failure.code)
                           ) {
                             const reason =
-                              target.failure.code === "forbidden" ? "no-access" : "deleted";
+                              target.failure.code === "forbidden" ||
+                              target.failure.code === "chief_owner_required"
+                                ? "no-access"
+                                : "deleted";
                             provenRemovals = subscription.knownKeys
                               .filter((key) => validKey(target.scope, key))
                               .map((key) => ({ key, reason }));

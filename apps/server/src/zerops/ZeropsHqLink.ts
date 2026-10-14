@@ -377,6 +377,7 @@ export const makeZeropsHqLink = (
               case "access":
                 return options.relayAccess({
                   members: message.value.members,
+                  ...(message.value.chief === undefined ? {} : { chief: message.value.chief }),
                   ageMs: message.value.ageMs,
                 });
               default:

@@ -50,7 +50,7 @@ describe("E: stage, production, release and rollback", () => {
             { timeout: 15_000 },
           );
           yield* a.when.click("Confirm removal");
-          yield* Effect.promise(() => removed);
+          expect((yield* Effect.promise(() => removed)).status()).toBe(200);
           const accepted = yield* f.s.drivers.core.sql<{
             readonly receipt: {
               readonly executor: string;

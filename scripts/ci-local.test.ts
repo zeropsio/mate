@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { parse } from "yaml";
 
+import { checkJobIds } from "./ci-blame.ts";
 import { checkSteps, selectSteps } from "./ci-local.ts";
 
 const WORKFLOW = `
@@ -52,6 +53,60 @@ it("CI and local Check run the lane's standalone scenario typecheck", () => {
 });
 
 describe("checkSteps", () => {
+  it("runs parallel Check jobs locally in order with one install and every validation", () => {
+    const workflow = `
+jobs:
+  check:
+    steps:
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+      - name: Check
+        run: vp check
+  check_guards:
+    env:
+      GUARD_MODE: strict
+    steps:
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+      - name: Guard
+        run: node guard.ts
+  check_types:
+    steps:
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+      - name: Typecheck
+        run: vpr typecheck
+  check_build:
+    steps:
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+      - name: Repeated validation
+        run: node guard.ts
+      - name: Build
+        run: vp run build
+  unrelated:
+    steps:
+      - run: echo unrelated
+`;
+    const steps = checkSteps(workflow);
+    expect(
+      steps.map((step) => step.run),
+      "ASSERTION: local Check keeps every worker validation and installs only once",
+    ).toEqual([
+      "vp install --frozen-lockfile",
+      "vp check",
+      "node guard.ts",
+      "vpr typecheck",
+      "node guard.ts",
+      "vp run build",
+    ]);
+    expect(steps.find((step) => step.name === "Guard")?.env).toEqual({ GUARD_MODE: "strict" });
+    expect(checkSteps(workflow, "check_guards").map((step) => step.run)).toEqual([
+      "vp install --frozen-lockfile",
+      "node guard.ts",
+    ]);
+  });
+
   it("keeps the job's own run steps in order, each with the job's env under its own", () => {
     expect(checkSteps(WORKFLOW)).toEqual([
       { name: "Lint", run: "vp check", env: { FORCE_COLOR: "0" }, workingDirectory: undefined },
@@ -149,7 +204,7 @@ it.each(["build", "typecheck", "tc"])(
 );
 
 it.each(["true", "false"])(
-  "Decision: native tests remain discoverable on GitHub Actions and excluded locally (GITHUB_ACTIONS=%s)",
+  "Decision: no app is outside the gate; native unit tests are discoverable locally and on GitHub Actions (GITHUB_ACTIONS=%s)",
   (githubActions) => {
     const result = NodeChildProcess.spawnSync(
       "vp",
@@ -164,12 +219,11 @@ it.each(["true", "false"])(
     const files = result.stdout
       .split("\n")
       .filter((line) => /^apps\/(?:mobile|desktop)\//u.test(line));
-    if (githubActions === "true") {
-      expect(files, "ASSERTION: CI discovers the existing mobile unit consumer").toContain(
-        "apps/mobile/src/state/workspaceModel.test.ts",
-      );
-      expect(files).toContain("apps/desktop/scripts/smoke-test.test.mjs");
-    } else expect(files).toEqual([]);
+    expect(
+      files,
+      "ASSERTION: every environment discovers the existing mobile unit consumer",
+    ).toContain("apps/mobile/src/state/workspaceModel.test.ts");
+    expect(files).toContain("apps/desktop/scripts/smoke-test.test.mjs");
   },
 );
 
@@ -181,7 +235,7 @@ it("Decision: CI keeps native compilation, mobile units, desktop smoke and mobil
   };
   const runs = (job: string) =>
     workflow.jobs[job]?.steps?.flatMap((step) => (step.run === undefined ? [] : [step.run])) ?? [];
-  expect(runs("check")).toContain("vpr typecheck");
+  expect(checkJobIds.flatMap(runs)).toContain("vpr typecheck");
   expect(runs("test_mobile"), "ASSERTION: CI still runs the native mobile unit task").toContain(
     "vp run --filter @t3tools/mobile test",
   );

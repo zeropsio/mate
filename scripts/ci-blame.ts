@@ -12,6 +12,9 @@ export const blameMatrices = {
 };
 const jobNames = {
   check: "Check",
+  check_guards: "Check Guards",
+  check_types: "Check Types",
+  check_build: "Check Build",
   chat_bundle: "Chat Contract bundle",
   state_smoke: "State Smoke",
   test: "Test",
@@ -25,6 +28,7 @@ const jobNames = {
   test_mobile: "Test Mobile",
   mobile_native_static_analysis: "Mobile Native Static Analysis",
 };
+export const checkJobIds = ["check", "check_guards", "check_types", "check_build"] as const;
 type MatrixJob = keyof typeof blameMatrices;
 
 export function blameSelection(ref: string, manifest: string | undefined) {
@@ -60,9 +64,13 @@ export function blameSelection(ref: string, manifest: string | undefined) {
         if (job in blameMatrices) matrices[job] = { include: blameMatrices[job as MatrixJob] };
       }
     }
-    if (selected.has("release_smoke")) selected.add("check");
+    if (selected.has("release_smoke")) {
+      for (const job of checkJobIds) selected.add(job);
+    }
     if (selected.has("state_smoke")) selected.add("chat_bundle");
-    if (selected.has("chat_bundle") || selected.has("check")) selected.add("changes");
+    if (selected.has("chat_bundle") || checkJobIds.some((job) => selected.has(job))) {
+      selected.add("changes");
+    }
     if (!selected.size) throw new Error("No known failed CI job in .ci-blame-jobs");
   }
   return { narrowed, selected: [...selected], matrices };

@@ -821,6 +821,7 @@ function Standins({ children }: { readonly children: ReactNode }) {
     projectRefs: new Map(),
     authority: new Map(),
     lost: new Set(),
+    deleted: [],
   };
   const data: ZeropsDataContextValue = {
     scope: {} as AccountScope,

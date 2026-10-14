@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import { hqOffer, type HqOffers } from "@t3tools/shared/hqOffers";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -24,7 +26,7 @@ function render(
   destination = false,
 ) {
   // The title and the way out are Base UI's, and both need the root's context.
-  root = createRoot(host);
+  root ??= createRoot(host);
   act(() =>
     root!.render(
       <Dialog open onOpenChange={() => {}}>
@@ -187,4 +189,63 @@ it("The destination is the first page while HQ authority is still arriving", () 
   expect(html).toContain("Where does it go?");
   expect(html).toContain(">Continue<");
   expect(html).not.toContain('data-zerops-surface="environment-creation-form"');
+});
+
+function gitAuthority(can: HqOffers | undefined, current = true) {
+  const add = hqOffer(can, "add_git_environment", {
+    current,
+    unavailableSince: current ? null : 0,
+  });
+  return {
+    repos: [],
+    takenNames: [],
+    offered: { add: add.kind === "allowed", connect: false, replace: false },
+    unavailableReason: hqOfferWords(add, { at: () => "12:00", rolesAnsweredAt: null }),
+    setup: {
+      connect: async () => ({ ok: false as const, reason: "refused" }),
+      preview: async () => [],
+      add: async () => {},
+    },
+    onAdded: () => {},
+  };
+}
+
+it.each([
+  {
+    situation: "a developer cannot add a Git production",
+    can: { add_git_environment: { allow: false, reason: "not_structure_writer" } },
+    current: true,
+    reason: "Only an owner or admin of the organization can do this.",
+  },
+  {
+    situation: "HQ has not answered Git production setup",
+    can: undefined,
+    current: true,
+    reason: "HQ has not said yet.",
+  },
+  {
+    situation: "HQ stopped answering Git production setup",
+    can: { add_git_environment: { allow: true } },
+    current: false,
+    reason: "HQ unavailable since 12:00.",
+  },
+])("says why the Git choice is unavailable when $situation", ({ can, current, reason }) => {
+  const html = render({ role: "prod", git: gitAuthority(can, current) });
+  expect(html).toContain(reason);
+  const choice = host.querySelectorAll('[role="radio"]')[1];
+  expect(choice?.getAttribute("aria-disabled")).toBe("true");
+});
+
+it("updates the Git choice's reason when HQ refuses setup after the form opens", () => {
+  const initial = render({
+    role: "prod",
+    git: gitAuthority({ add_git_environment: { allow: true } }),
+  });
+  expect(initial).not.toContain("Only an owner or admin of the organization can do this.");
+  const html = render({
+    role: "prod",
+    git: gitAuthority({ add_git_environment: { allow: false, reason: "not_structure_writer" } }),
+  });
+  expect(html).toContain("Only an owner or admin of the organization can do this.");
+  expect(host.querySelectorAll('[role="radio"]')[1]?.getAttribute("aria-disabled")).toBe("true");
 });

@@ -585,6 +585,20 @@ export const make = Effect.gen(function* () {
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
   const crypto = yield* Crypto.Crypto;
   const descriptor = yield* policy.getDescriptor();
+  const sessionAdmission = yield* EnvironmentAuthPolicy.SessionAdmission;
+  const verifyAdmission = (session: Pick<AuthenticatedSession, "subject">) =>
+    sessionAdmission(session.subject).pipe(
+      Effect.flatMap((allowed) =>
+        allowed
+          ? Effect.void
+          : Effect.fail(
+              new ServerAuthInvalidCredentialError({
+                diagnostic:
+                  "This session's access to the Mate could not be verified. Sign in again.",
+              }),
+            ),
+      ),
+    );
 
   const authenticateToken = (
     token: string,
@@ -609,6 +623,7 @@ export const make = Effect.gen(function* () {
         ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
       })),
       mapSessionVerificationErrors,
+      Effect.tap(verifyAdmission),
     );
 
   const authenticateRequest = (
@@ -921,6 +936,7 @@ export const make = Effect.gen(function* () {
                     ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
                   }),
             ),
+            Effect.tap(verifyAdmission),
           );
         }
       }

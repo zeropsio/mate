@@ -414,12 +414,69 @@ afterAll(() => {
   if (repositoryFixture) NodeFS.rmSync(repositoryFixture, { recursive: true, force: true });
 });
 
-it.each(["mobile", "desktop"])(
-  "Decision: during the test phase a change only in apps/%s runs typechecks without local tests or scenarios",
-  (client) => {
-    const files = ["src/scope.ts", "src/scope.test.ts", "test/scope.scenario.ts"].map((file) =>
-      NodePath.join(repositoryFixture, "apps", client, file),
+it.each([
+  {
+    title: "a change to a mobile source runs its mobile unit test",
+    source: "apps/mobile/src/gateSelectionFixture.ts",
+    clients: ["mobile"],
+  },
+  {
+    title: "a change to a desktop source runs its desktop unit test",
+    source: "apps/desktop/src/gateSelectionFixture.ts",
+    clients: ["desktop"],
+  },
+  {
+    title: "a change to a shared package runs the mobile and desktop tests that import it",
+    source: "packages/client-runtime/src/delayedStatus.ts",
+    clients: ["mobile", "desktop"],
+  },
+])("$title", ({ source, clients }) => {
+  const file = NodePath.join(repositoryFixture, source);
+  const original = NodeFS.existsSync(file) ? NodeFS.readFileSync(file, "utf8") : undefined;
+  const units = clients.map((client) => `apps/${client}/src/gateSelectionFixture.test.ts`);
+  try {
+    for (const unit of units) {
+      const path = NodePath.join(repositoryFixture, unit);
+      NodeFS.mkdirSync(NodePath.dirname(path), { recursive: true });
+      NodeFS.writeFileSync(
+        path,
+        source.startsWith("packages/")
+          ? 'import "@t3tools/client-runtime/delayed-status";\n'
+          : "export {};\n",
+      );
+    }
+    NodeFS.writeFileSync(file, (original ?? "") + "\nexport const gateSelectionFixture = true;\n");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
     );
+    expect(result.status, result.stderr).toBe(0);
+    const stages = result.stdout.split("\n");
+    for (const client of clients) {
+      expect(stages, "ASSERTION: every affected app keeps its typecheck").toContain(
+        `typecheck @t3tools/${client}: vp exec tsc --noEmit --incremental`,
+      );
+      expect(stages, "ASSERTION: the gate runs each affected app's selected unit test").toContain(
+        `related @t3tools/${client}: vp test run src/gateSelectionFixture.test.ts`,
+      );
+    }
+  } finally {
+    for (const unit of units)
+      NodeFS.rmSync(NodePath.join(repositoryFixture, unit), { force: true });
+    if (original === undefined) NodeFS.rmSync(file, { force: true });
+    else NodeFS.writeFileSync(file, original);
+  }
+});
+
+it.each(["mobile", "desktop"])(
+  "Decision: no app is outside the gate; a change only in apps/%s runs its typecheck and unit tests without browser scenarios",
+  (client) => {
+    const files = [
+      "src/nativeGateFixture.ts",
+      "src/nativeGateFixture.test.ts",
+      "test/nativeGateFixture.scenario.ts",
+    ].map((file) => NodePath.join(repositoryFixture, "apps", client, file));
     try {
       for (const file of files) {
         NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
@@ -431,59 +488,27 @@ it.each(["mobile", "desktop"])(
         { cwd: repositoryFixture, encoding: "utf8" },
       );
       expect(result.status, result.stderr).toBe(0);
-      const stages = result.stdout
-        .split("\n")
-        .filter((line) =>
-          /^(?:typecheck |related |edited scenario files:|state-only smoke:)/u.test(line),
-        );
+      const stages = result.stdout.split("\n");
       expect(
-        stages,
-        "ASSERTION: native-only edits keep compiling without local tests or scenarios",
-      ).toEqual([`typecheck @t3tools/${client}: vp exec tsc --noEmit --incremental`]);
+        stages.filter(
+          (line) =>
+            line.startsWith(`typecheck @t3tools/${client}:`) ||
+            line.startsWith(`related @t3tools/${client}:`),
+        ),
+        "ASSERTION: native-only edits run their typecheck and unit test",
+      ).toEqual([
+        `typecheck @t3tools/${client}: vp exec tsc --noEmit --incremental`,
+        `related @t3tools/${client}: vp test run src/nativeGateFixture.test.ts`,
+      ]);
+      expect(
+        stages.filter((line) => /^(?:edited scenario files:|state-only smoke:)/u.test(line)),
+        "ASSERTION: native-only edits run no browser scenarios",
+      ).toEqual([]);
     } finally {
       for (const file of files) NodeFS.rmSync(file, { force: true });
     }
   },
 );
-
-it("Decision: shared web logic typechecks desktop and mobile without running their local unit readers during the test phase", () => {
-  const shared = "packages/client-runtime/src/delayedStatus.ts";
-  const file = NodePath.join(repositoryFixture, shared);
-  const original = NodeFS.readFileSync(file, "utf8");
-  const units = ["web", "mobile", "desktop"].map((client) =>
-    NodePath.join(repositoryFixture, "apps", client, "src/hostedWebScopeFixture.test.ts"),
-  );
-  try {
-    for (const unit of units) {
-      NodeFS.mkdirSync(NodePath.dirname(unit), { recursive: true });
-      NodeFS.writeFileSync(unit, 'import "@t3tools/client-runtime/delayed-status";\n');
-    }
-    fixtureGit("add", ...units);
-    fixtureGit("commit", "-qm", "web and deferred client unit readers");
-    NodeFS.writeFileSync(file, original + "\nexport const hostedWebScopeFixture = true;\n");
-    const result = NodeChildProcess.spawnSync(
-      process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    const stages = result.stdout.split("\n").filter((line) => /^(typecheck |related )/u.test(line));
-    expect(stages.join("\n")).toContain("typecheck @t3tools/web:");
-    expect(stages.join("\n")).toContain("src/hostedWebScopeFixture.test.ts");
-    for (const client of ["mobile", "desktop"]) {
-      expect(stages, "ASSERTION: shared web edits keep native consumers compiling").toContain(
-        `typecheck @t3tools/${client}: vp exec tsc --noEmit --incremental`,
-      );
-    }
-    expect(
-      stages.filter((line) => /^related @t3tools\/(?:mobile|desktop)/u.test(line)),
-      "ASSERTION: shared web edits exclude local native unit readers",
-    ).toEqual([]);
-  } finally {
-    NodeFS.writeFileSync(file, original);
-    fixtureGit("reset", "--hard", "HEAD~1");
-  }
-});
 
 it.each([
   { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", stages: "A" },
@@ -509,7 +534,6 @@ it.each([
       comparison: "HEAD",
       existing: [path],
       paths: [path],
-      typecheckPaths: [path],
       // Rendering coverage is the builder's declaration; the app bundle is not a lane edge.
       inventory: stages.includes("C")
         ? [
@@ -614,7 +638,6 @@ it("the CLI and immutable gate graph select identical obligations for a real sou
       comparison: fixtureGit("rev-parse", "HEAD"),
       existing: [path],
       paths: [path],
-      typecheckPaths: [path],
       inventory: [],
       smokeFiles: Object.keys(stateOnlySmoke),
       slots: gateSlotCount(),
@@ -1361,7 +1384,6 @@ it("L2 runs invariants, touched typechecks, owned units, edited scenarios and fi
     comparison: "HEAD",
     existing: [path, "apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
     paths: [path, "apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
-    typecheckPaths: [path],
     inventory: ["apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
     smokeFiles: Object.keys(stateOnlySmoke),
     slots: 3,

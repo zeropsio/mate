@@ -14,6 +14,12 @@ export const HqLifecycleIntent = Schema.Union([
     to: Placement,
     rename: Schema.Struct({ from: Schema.String, name: Schema.String }),
   }),
+  Schema.Struct({
+    kind: Schema.Literal("remove-production"),
+    ...Target,
+    appId: Schema.String,
+    deleteProject: Schema.Boolean,
+  }),
   Schema.Struct({ kind: Schema.Literal("prepare-mate-deletion"), ...Target }),
   Schema.Struct({
     kind: Schema.Literal("complete-mate-deletion"),
@@ -33,6 +39,7 @@ export const HqLifecycleRecord = Schema.Struct({
   requestId: Schema.String,
   intent: HqLifecycleIntent,
   projectName: Schema.optionalKey(Schema.String),
+  productionRemoval: Schema.optionalKey(Schema.Struct({ deleteProject: Schema.Boolean })),
   result: Schema.optionalKey(
     Schema.Struct({ keyTokenId: Schema.NullOr(Schema.String), completion: Schema.String }),
   ),

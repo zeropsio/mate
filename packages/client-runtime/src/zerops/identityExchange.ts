@@ -235,7 +235,10 @@ export function exchangeFailureOf(cause: unknown): ExchangeFailure {
     switch (cause.reason) {
       case "permission":
       case "read-only":
-        return refusalFailure({ kind: "role" });
+        return refusalFailure({
+          kind: "role",
+          ...(cause.chiefOwnerName === undefined ? {} : { chiefOwnerName: cause.chiefOwnerName }),
+        });
       case "unsupported":
         return refusalFailure({ kind: "version" });
       case "authentication":

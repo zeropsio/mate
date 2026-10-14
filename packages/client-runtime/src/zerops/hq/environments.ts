@@ -94,6 +94,8 @@ export const HqEnvironment = Schema.Struct({
   keyHeld: Schema.Boolean,
   /** Whether the token held no longer answers, or reaches more than its project. */
   keyInvalid: Schema.Boolean,
+  /** True only when HQ proves it created this production target. Older HQs make no claim. */
+  deleteProjectOnRemoval: Schema.optionalKey(Schema.Boolean),
   /** Its newest jobs, newest first, and each service's newest live one where it is older. */
   jobs: Schema.Array(HqJob),
   /**

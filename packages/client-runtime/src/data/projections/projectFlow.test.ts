@@ -4,9 +4,14 @@ import { mountRoster } from "../../zerops/testing/accountRoster.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { hqAppFamily, hqAppsScope } from "../families/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
+import { hqAppDetailScope } from "../families/hqAppDetail.ts";
+import { inventoryPlacements } from "./inventory.ts";
+import { canonicalHqNavigation } from "./hqNavigation.ts";
+import { environmentSlots } from "../../zerops/groupEnvironments.ts";
 import { linkKeys } from "../model.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
+import { hqOffer } from "@t3tools/shared/hqOffers";
 import type { CanonicalHqEnvironment, HqJob } from "../../zerops/hq/environments.ts";
 import { environmentById } from "./appEnvironments.ts";
 import { canonicalProjectFlow, projectFlow } from "./projectFlow.ts";
@@ -110,6 +115,107 @@ describe("Projects compact flow", () => {
         ?.environments.map(({ id, target }) => ({ id, target })),
     ).toEqual([{ id: "prod", target: { kind: "zerops", projectId: "prod" } }]);
     f.registry.dispose();
+  });
+
+  it("Removing production offers its empty slot immediately while the Zerops project still exists", () => {
+    const f = fixture();
+    const scope = hqAppDetailScope("org", "shop");
+    f.store.dispatch({
+      kind: "stream",
+      key: scope,
+      now: 0,
+      event: { kind: "demand", demanded: true },
+    });
+    f.store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
+    f.store.dispatch({ kind: "baseline-begin", scope, generation: 0 });
+    f.store.dispatch({
+      kind: "baseline-commit",
+      scope,
+      generation: 0,
+      via: "hq-stream",
+      members: ["shop/recipe:stage", "shop/recipe:production"],
+      rows: ["stage", "production"].map((tier) => ({
+        family: "hqAppDetail" as const,
+        id: `shop/recipe:${tier}`,
+        revision: { kind: "hq" as const, incarnation: "seed", revision: 100 },
+        value: {
+          kind: "recipe" as const,
+          value: {
+            state: "present" as const,
+            mainHead: "a".repeat(40),
+            importYaml: "services:\n  - hostname: web\n    type: nodejs@24\n",
+          },
+        },
+      })),
+    });
+    const atom = f.store.data.project(canonicalProjectFlow, key);
+    const changes: Array<{ readonly read: boolean; readonly environments: number }> = [];
+    const stop = f.registry.subscribe(
+      atom,
+      (flow) => {
+        changes.push({
+          read: flow?.declarationsRead === true,
+          environments: flow?.environments.length ?? -1,
+        });
+      },
+      { immediate: true },
+    );
+    try {
+      expect(f.registry.get(atom)?.environments).toHaveLength(1);
+      seedHqNavigation(f.store, "org", {
+        presses: {},
+        structure: {
+          apps: [
+            {
+              id: "shop",
+              name: "Shop",
+              projects: [],
+              environments: [],
+              can: { add_production: { allow: true } },
+            },
+          ],
+          ungrouped: [],
+        },
+      });
+      const read = readsOfState(f.store.state());
+      const flow = f.registry.get(atom)!;
+      expect(read.fact("project", "prod").kind).toBe("known");
+      expect(inventoryPlacements.derive(read, "org")?.has("prod")).toBe(false);
+      expect(flow.declarationsRead).toBe(true);
+      expect(flow.environments).toEqual([]);
+      expect(changes.every((change) => change.read)).toBe(true);
+      expect(changes.at(-1)?.environments).toBe(0);
+      const can = canonicalHqNavigation.derive(read, "org").structure?.apps[0]?.can;
+      const rows = environmentSlots({
+        environments: flow.environments,
+        devstages: [],
+        pending: [],
+        halfMade: [],
+        recipeRead: flow.recipeRead,
+        recipeTiers: flow.recipeTiers,
+        offered: {
+          stage: false,
+          production:
+            hqOffer(can, "add_production", { current: true, unavailableSince: null }).kind ===
+            "allowed",
+        },
+        productionRuns: "unknown",
+        waiting: { count: 0, atLeast: false },
+        mainHasCode: true,
+        releaseOffered: false,
+        releasing: undefined,
+      });
+      expect(rows.find((row) => row.kind !== "devstage" && row.tier === "production")).toEqual({
+        kind: "slot",
+        tier: "production",
+        name: "Production",
+        line: "Not added",
+        add: true,
+      });
+    } finally {
+      stop();
+      f.registry.dispose();
+    }
   });
 
   it("shows production's actual version while recipes and release history are unread", () => {

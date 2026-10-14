@@ -1,4 +1,4 @@
-import { GitProductionRemoval } from "./GitStopDetail";
+import { ProductionRemoval } from "./GitStopDetail";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 /**
@@ -24,6 +24,7 @@ import {
   GlobeIcon,
   PlusIcon,
   SearchIcon,
+  SlidersHorizontalIcon,
 } from "lucide-react";
 import {
   useEffect,
@@ -44,8 +45,6 @@ import { usePublicAccess } from "~/zerops/usePublicAccess";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
-
-import { Button, InlineButton } from "../ui/button";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
@@ -417,6 +416,26 @@ export function SitesPanel({
     };
   }, [flash]);
 
+  // More below the fold fades out at the bottom edge, so the list never reads as cut off: read
+  // after each draw, as it scrolls and as it resizes.
+  useLayoutEffect(() => {
+    if (scroll.current !== null) markMoreBelow(scroll.current);
+  });
+  useEffect(() => {
+    const root = scroll.current;
+    if (root === null) return;
+    const mark = () => {
+      markMoreBelow(root);
+    };
+    root.addEventListener("scroll", mark, { passive: true });
+    const sized = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(mark);
+    sized?.observe(root);
+    return () => {
+      root.removeEventListener("scroll", mark);
+      sized?.disconnect();
+    };
+  }, []);
+
   const [copied, setCopied] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (copied === undefined) return;
@@ -554,13 +573,15 @@ export function SitesPanel({
               ) : (
                 <>
                   <MateHead
-                    manage={manage}
                     mate={faces.get(section.projectId)}
                     owner={section.owner}
                     projectId={section.projectId}
                     title={section.title}
                   />
                   {body}
+                  {filtering || manage === undefined ? null : (
+                    <ManageRow manage={manage} name={section.title} projectId={section.projectId} />
+                  )}
                 </>
               )}
             </section>
@@ -572,6 +593,13 @@ export function SitesPanel({
       </span>
     </div>
   );
+}
+
+/** Marks a scroll container that holds more below its fold (`data-more-below`). */
+function markMoreBelow(root: HTMLElement) {
+  const below = root.scrollTop + root.clientHeight < root.scrollHeight - 1;
+  if (below !== root.hasAttribute("data-more-below"))
+    root.toggleAttribute("data-more-below", below);
 }
 
 /** The bound routes with one place's as read, the same map where nothing changed. */
@@ -664,9 +692,6 @@ function PlaceSection({
             {row}
           </button>
         )}
-        {projectId === undefined || manage === undefined ? null : (
-          <ManageButton manage={manage} name={title} projectId={projectId} />
-        )}
         {projectId === undefined ? null : <ZeropsDoor name={title} projectId={projectId} />}
       </div>
       {filtering || projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
@@ -685,12 +710,10 @@ function PlaceSection({
         />
       )}
       {stop?.git?.environment === undefined ? null : (
-        <>
-          <GitPlaceEvidence appId={groupId} git={stop.git} />
-          {stop.environmentId === undefined ? null : (
-            <GitProductionRemoval appId={groupId} environmentId={stop.environmentId} />
-          )}
-        </>
+        <GitPlaceEvidence appId={groupId} git={stop.git} />
+      )}
+      {place !== "production" || stop?.environmentId === undefined ? null : (
+        <ProductionRemoval appId={groupId} environmentId={stop.environmentId} />
       )}
       {projectId === undefined ? null : (
         <PlaceAccess filtering={filtering} onRoutes={onRoutes} projectId={projectId} />
@@ -702,12 +725,18 @@ function PlaceSection({
       manage === undefined ? null : (
         <AddYourDomain manage={manage} projectId={projectId} />
       )}
+      {filtering || projectId === undefined || manage === undefined ? null : (
+        <ManageRow manage={manage} name={title} projectId={projectId} />
+      )}
     </>
   );
 }
 
-/** A place's own addresses sheet, from its head. */
-function ManageButton({
+/**
+ * A place's addresses sheet, under its addresses: a row like them that says what it opens, its
+ * words on the names' edge and its mark in the place mark's column.
+ */
+function ManageRow({
   manage,
   projectId,
   name,
@@ -717,17 +746,19 @@ function ManageButton({
   readonly name: string;
 }) {
   return (
-    <InlineButton
+    <button
       aria-label={`Manage the addresses of ${name}`}
+      className="zerops-sites-link zerops-sites-door"
       data-sites-nav=""
       data-zerops-surface="sidebar-project-sites-manage"
       onClick={() => {
         manage(projectId);
       }}
-      tone="muted"
+      type="button"
     >
-      Manage
-    </InlineButton>
+      <SlidersHorizontalIcon aria-hidden="true" />
+      Manage addresses
+    </button>
   );
 }
 
@@ -741,20 +772,19 @@ function AddYourDomain({
 }) {
   if (!useLacksOwnDomain(projectId)) return null;
   return (
-    <div className="px-1 pt-0.5">
-      <Button
-        data-sites-nav=""
-        data-zerops-surface="sidebar-project-sites-add-domain"
-        onClick={() => {
-          manage(projectId, "add-domain");
-        }}
-        size="xs"
-        variant="ghost-muted"
-      >
-        <PlusIcon aria-hidden="true" />
-        Add your domain
-      </Button>
-    </div>
+    <button
+      className="zerops-sites-link zerops-sites-door"
+      data-acts=""
+      data-sites-nav=""
+      data-zerops-surface="sidebar-project-sites-add-domain"
+      onClick={() => {
+        manage(projectId, "add-domain");
+      }}
+      type="button"
+    >
+      <PlusIcon aria-hidden="true" />
+      Add your domain
+    </button>
   );
 }
 
@@ -790,9 +820,7 @@ function MateHead({
   title,
   owner,
   projectId,
-  manage,
 }: {
-  readonly manage: ManageDoor | undefined;
   readonly mate: SitesMate | undefined;
   readonly title: string;
   readonly owner: string | undefined;
@@ -827,9 +855,6 @@ function MateHead({
           )}
         </span>
       </div>
-      {manage === undefined ? null : (
-        <ManageButton manage={manage} name={title} projectId={projectId} />
-      )}
       <ZeropsDoor name={title} projectId={projectId} />
     </div>
   );

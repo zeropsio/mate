@@ -7,7 +7,15 @@ import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
 import { makeAccountStore, type Projection } from "../store.ts";
-import { hqMates, hqMateOverview, hqMatePresence, hqMateLogins, hqMateReady } from "./hqMates.ts";
+import { mateArrival, mateNoticeDecision } from "./mateArrival.ts";
+import {
+  hqMates,
+  hqMateOverview,
+  hqMatePresence,
+  hqMateLogins,
+  hqMateReady,
+  hqMateRefusal,
+} from "./hqMates.ts";
 
 const presence = { online: true, since: "2026-10-07T00:00:00Z", overview: "live" } as const;
 const mate: MateOverview & { readonly presence: typeof presence } = {
@@ -21,6 +29,90 @@ const mate: MateOverview & { readonly presence: typeof presence } = {
 const key = (projectId: string) => ({ orgId: "org", projectId });
 
 describe("keyed HQ Mate readers", () => {
+  it("a targeted Chief refusal names its owner without listing their Chief", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    seedHqNavigation(store, "org", { mates: {} });
+    const refusal = store.data.project(hqMateRefusal, key("hidden-chief"));
+    const seen: unknown[] = [];
+    const stop = registry.subscribe(refusal, () => seen.push(registry.get(refusal)), {
+      immediate: true,
+    });
+    const fault = (orgId: string, projectId: string) =>
+      store.dispatch({
+        kind: "stream",
+        key: hqMateScope(orgId, projectId),
+        now: 100,
+        event: {
+          kind: "fault",
+          jitter: 0,
+          fault: { outcome: "definitive-refusal", code: "chief_owner_required", message: "Karlos" },
+        },
+      });
+    expect(registry.get(refusal)).toBeNull();
+    fault("org", "unrelated");
+    fault("another-org", "hidden-chief");
+    expect(registry.get(refusal)).toBeNull();
+    fault("org", "hidden-chief");
+    expect(registry.get(refusal)).toEqual({ kind: "refused-role", chiefOwnerName: "Karlos" });
+    const recovery = {
+      standing: { kind: "denied" },
+      status: undefined,
+      process: undefined,
+    } as const;
+    const arrival = mateArrival({
+      press: undefined,
+      candidate: undefined,
+      recovery,
+      admissionRefusal: registry.get(refusal),
+    });
+    expect(arrival.page).toEqual({
+      kind: "unreachable",
+      reachability: { kind: "refused-role", chiefOwnerName: "Karlos" },
+    });
+    expect(arrival.projectUnavailable).toBe(false);
+    expect(
+      mateNoticeDecision({
+        reachability: arrival.page?.kind === "unreachable" ? arrival.page.reachability : null,
+        conversationShown: false,
+        nowMs: 100,
+        mateName: "Mate",
+        recovery,
+      }),
+    ).toMatchObject({ phase: "reachability", recovery: null });
+    expect(seen).toEqual([null, { kind: "refused-role", chiefOwnerName: "Karlos" }]);
+    expect(registry.get(store.data.project(hqMates, "org")).mates).toEqual({});
+    expect(registry.get(store.data.project(hqMateOverview, key("hidden-chief")))).toBeNull();
+    expect([...store.state().memberships.get(placementsScope("org"))!.members.keys()]).toEqual([]);
+    stop();
+    registry.dispose();
+  });
+
+  it.each([
+    { outcome: "definitive-refusal", code: "forbidden" },
+    { outcome: "definitive-refusal", code: undefined },
+    { outcome: "transient", code: "chief_owner_required" },
+  ] as const)("a generic $outcome $code error does not claim Chief ownership", (fault) => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    store.dispatch({
+      kind: "stream",
+      key: hqMateScope("org", "hidden-chief"),
+      now: 100,
+      event: {
+        kind: "fault",
+        jitter: 0,
+        fault: {
+          outcome: fault.outcome,
+          ...(fault.code === undefined ? {} : { code: fault.code }),
+          message: "Karlos",
+        },
+      },
+    });
+    expect(registry.get(store.data.project(hqMateRefusal, key("hidden-chief")))).toBeNull();
+    registry.dispose();
+  });
+
   it("derives/publishes only A while retaining B, login and ready values and source revisions", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);

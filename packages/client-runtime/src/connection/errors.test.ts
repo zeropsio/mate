@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  EnvironmentId,
   EnvironmentAuthInvalidError,
   EnvironmentOperationForbiddenError,
   EnvironmentScopeRequiredError,
@@ -7,6 +8,12 @@ import {
 
 import { RemoteEnvironmentAuthUndeclaredStatusError } from "../rpc/http.ts";
 import { mapRemoteEnvironmentError } from "./errors.ts";
+import { exchangeFailureOf } from "../zerops/identityExchange.ts";
+import {
+  initialEnvironment,
+  transitionEnvironment,
+} from "../zerops/environments/environmentMachine.ts";
+import { selectReachability } from "../zerops/environments/reachability.ts";
 
 const forbidden = (reason: EnvironmentOperationForbiddenError["reason"]) =>
   new EnvironmentOperationForbiddenError({
@@ -95,5 +102,40 @@ describe("mapRemoteEnvironmentError", () => {
         }),
       ),
     ).toMatchObject({ _tag: "ConnectionBlockedError", reason: "permission" });
+  });
+});
+
+it("the direct Chief denial retains its owner through the connection and admission projection", () => {
+  const environmentId = EnvironmentId.make("chief");
+  const blocked = mapRemoteEnvironmentError(
+    new EnvironmentOperationForbiddenError({
+      code: "operation_forbidden",
+      reason: "zerops_chief_owner_required",
+      chiefOwnerName: "Karlos",
+      traceId: "chief-refusal",
+    }),
+  );
+  const initial = {
+    ...initialEnvironment({ record: environmentId }),
+    credential: {
+      kind: "exchanging" as const,
+      attempt: 1,
+      deadline: { wall: 1_000, mono: 1_000 },
+      reconnect: false,
+    },
+  };
+  const { state } = transitionEnvironment(
+    initial,
+    {
+      type: "EXCHANGE_FAILED",
+      attempt: 1,
+      failure: exchangeFailureOf(blocked),
+      descriptor: null,
+    },
+    { now: { wall: 0, mono: 0 }, random: () => 0 },
+  );
+  expect(selectReachability(state, environmentId)).toEqual({
+    kind: "refused-role",
+    chiefOwnerName: "Karlos",
   });
 });

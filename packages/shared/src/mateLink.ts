@@ -51,7 +51,7 @@ import * as Schema from "effect/Schema";
 
 import { UsageLinkUp, UsageLinkDown } from "./agentUsage.ts";
 import { MateChanges } from "./hqChanges.ts";
-import { MateAccessMember } from "./mateAccess.ts";
+import { ChiefMateOwner, MateAccessMember } from "./mateAccess.ts";
 import { HqAutoUpdatePolicy } from "./mateAutoUpdatePolicy.ts";
 
 export const MATE_LINK_TEXT_MAX = 280;
@@ -360,6 +360,8 @@ export const MateLinkDown = Schema.Union([
     /** How long before it was sent Zerops answered the view it was computed from. */
     ageMs: Count,
     members: Schema.Array(MateAccessMember),
+    /** Explicitly null for an ordinary Mate; absent only on older HQs. */
+    chief: Schema.optionalKey(Schema.NullOr(ChiefMateOwner)),
   }),
 ]);
 export type MateLinkDown = typeof MateLinkDown.Type;

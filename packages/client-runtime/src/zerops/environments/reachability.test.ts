@@ -659,6 +659,21 @@ describe("reachability over the machine's own transitions", () => {
     expect(selectReachability(again, ENV_A)).toEqual({ kind: "refused-role" });
   });
 
+  it("a Chief owner's refusal closes an existing session without another exchange", () => {
+    const blocked = transitionEnvironment(
+      connectedMachine(),
+      { type: "LINK", link: { phase: "blocked", reason: "permission", chiefOwnerName: "Karlos" } },
+      { now: at(NOW), random: () => 0.5 },
+    );
+    const verdict = selectReachability(blocked.state, ENV_A);
+    expect(verdict).toEqual({ kind: "refused-role", chiefOwnerName: "Karlos" });
+    expect(reachabilityPhrase(verdict, { nowMs: NOW, mateName: "Chief" })).toMatchObject({
+      text: "This is Karlos's Chief Mate.",
+      actions: [],
+    });
+    expect(blocked.effects.filter((effect) => effect.kind === "run")).toEqual([]);
+  });
+
   it("identity failed during a Zerops outage → retrying, no Restart (T-L21)", () => {
     const opened = drive(initialEnvironment({ record: ENV_A }), OPENING).machine;
     const failedAt = (attempt: number, checkedAt: string): EnvironmentEvent => ({

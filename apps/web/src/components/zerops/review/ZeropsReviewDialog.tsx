@@ -1,6 +1,6 @@
 /**
  * The review as a sheet over the page (D12): a decision deserves focus. It stands 12 px in from
- * the window's top, right and bottom, 460 wide, a scrim over what is behind it.
+ * the window's top, right and bottom, 520 wide, a scrim over what is behind it.
  *
  * It opens from the right — a short slide and a fade, its touch of scale grown from the thing
  * that was pressed, 240 ms — and closes in 160 ms (R7). Esc closes it, and so do × and a press

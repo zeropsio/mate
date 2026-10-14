@@ -1358,6 +1358,7 @@ describe("MessagesTimeline", () => {
       projectRefs: new Map(),
       authority: new Map(),
       lost: new Set(),
+      deleted: [],
     };
     const zeropsData: ZeropsDataContextValue = {
       scope: {} as AccountScope,
@@ -1442,6 +1443,7 @@ describe("MessagesTimeline — the conversation", () => {
       projectRefs: new Map(),
       authority: new Map(),
       lost: new Set(),
+      deleted: [],
     };
     const zeropsData: ZeropsDataContextValue = {
       scope: {} as AccountScope,

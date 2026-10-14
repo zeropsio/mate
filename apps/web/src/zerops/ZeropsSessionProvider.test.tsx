@@ -139,6 +139,20 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(JSON.parse(storedSession(harness)!)).toEqual(approved);
   });
 
+  // The owner, 2026-10-14: a sign-out left the address of a conversation of the account just left.
+  it("a person's sign-out ends on the sign-in at the app's root, leaving the account's address behind", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab(), {
+      path: "/feffad88-e0e7-4c55-abd9-4f48b7f002a4/d09cc390-0f61-4710-b5af-1135517f849e",
+    });
+    await tab.run(() => tab.session().adoptDeviceLogin(harness.rest.issueSession("user-1")));
+
+    await tab.run(() => tab.session().signOut());
+
+    expect(tab.session().status).toBe("signed-out");
+    expect(tab.navigations().at(-1)).toEqual({ via: "replaceState", url: "/" });
+  });
+
   it("signs a device-login session out here at once, then ends it at the platform", async () => {
     const harness = harnessWith();
     const tab = await mountTab(harness, harness.browser.openTab());

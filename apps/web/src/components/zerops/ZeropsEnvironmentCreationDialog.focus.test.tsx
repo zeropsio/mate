@@ -10,10 +10,15 @@ import {
 } from "./ZeropsEnvironmentCreationDialog";
 
 /** Where the dialog would hand the focus once it closes: its popup's `finalFocus`. */
-const popup = vi.hoisted(() => ({ finalFocus: undefined as undefined | (() => boolean) }));
+const popup = vi.hoisted(() => ({
+  finalFocus: undefined as undefined | (() => boolean | HTMLElement | null),
+}));
 vi.mock("../ui/dialog", async (original) => ({
   ...(await original<typeof import("../ui/dialog")>()),
-  DialogPopup: (props: { readonly finalFocus: () => boolean; readonly children: ReactNode }) => {
+  DialogPopup: (props: {
+    readonly finalFocus: () => boolean | HTMLElement | null;
+    readonly children: ReactNode;
+  }) => {
     popup.finalFocus = props.finalFocus;
     return props.children;
   },
@@ -31,13 +36,17 @@ afterEach(() => {
 });
 
 /** A stage with "Runs an agent" on, added: the dialog closes where it was opened. */
-const addStage = (landsElsewhere: boolean | undefined) => {
+const addStage = (
+  landsElsewhere: boolean | undefined,
+  fallbackFocus?: () => HTMLElement | null,
+) => {
   act(() => {
     tree = create(
       h(ZeropsEnvironmentCreationDialog, {
         open: true,
         onOpenChange: () => undefined,
         ...(landsElsewhere === undefined ? {} : { landsElsewhere }),
+        ...(fallbackFocus === undefined ? {} : { fallbackFocus }),
         defaultName: "Acme Docs - stage",
         defaultShapeFor: () => "seal" as const,
         defaultTintFor: () => "violet" as const,
@@ -121,4 +130,20 @@ it("A chosen Git target survives the recipe arriving after first paint", () => {
   );
   expect(tree!.root.findByProps({ "data-zerops-surface": "git-environment-form" })).toBeDefined();
   expect(props.onCreate).not.toHaveBeenCalled();
+});
+
+it("Closing setup returns focus to the surviving project menu when its original opener is gone", () => {
+  const opener = document.createElement("button");
+  const menu = document.createElement("button");
+  menu.scrollIntoView = vi.fn();
+  document.body.append(opener, menu);
+  opener.focus();
+  addStage(undefined, () => menu);
+  opener.remove();
+  expect(
+    popup.finalFocus?.(),
+    "ASSERTION: setup whose opener was removed returns focus to the surviving project menu",
+  ).toBe(menu);
+  expect(menu.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+  menu.remove();
 });
