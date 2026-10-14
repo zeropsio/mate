@@ -157,7 +157,10 @@ it("Decision: Signal never blocks merge, promotion or release; the blocking tier
     "utf8",
   );
   expect(signal.name).toBe("Signal");
-  expect(signal.on).toEqual(ci.on);
+  expect(signal.on).toEqual({
+    pull_request: ci.on.pull_request,
+    push: { branches: ["kh-next", "kh-bisect/**"] },
+  });
   expect(
     ci.jobs.chat_scenarios,
     "ASSERTION: browser shards cannot affect the blocking CI verdict",
@@ -678,27 +681,71 @@ it("main promotion reports successful required checks without repeating verified
   for (const [id, name] of Object.entries(required)) {
     const job = workflow.jobs[id];
     expect(job.name).toBe(name);
-    expect(job.if, `ASSERTION: ${name} must run to report promotion success`).toContain(
+    expect(job.if, `ASSERTION: ${name} cannot hide a failed preparation`).toContain(
       "needs.prepare.result == 'success'",
     );
-    const promotion = job.steps.filter(
-      (step: { if?: string }) => step.if === "needs.prepare.outputs.skip == 'true'",
-    );
-    expect(promotion, `ASSERTION: ${name} has exactly one promotion receipt`).toHaveLength(1);
-    const result = NodeChildProcess.spawnSync("bash", ["-e", "-c", promotion[0].run], {
-      encoding: "utf8",
-    });
-    expect(result.status, result.stderr).toBe(0);
-    for (const step of job.steps.filter(
-      (step: { if?: string }) => step.if !== "needs.prepare.outputs.skip == 'true'",
-    )) {
-      expect(step.if, `ASSERTION: ${name} never installs or verifies a promoted SHA`).toContain(
-        "needs.prepare.outputs.skip != 'true'",
+    if (id === "test" || id === "release_smoke") {
+      const receipt = job.steps.find(
+        (step: { name: string }) => step.name === "Report verified promotion",
       );
+      expect(receipt, `ASSERTION: ${name} explicitly reports the verified promotion`).toBeDefined();
+      expect(job.if).not.toContain("needs.prepare.outputs.skip");
+      expect(receipt.if).toBe("needs.prepare.outputs.skip == 'true'");
+      expect(NodeChildProcess.spawnSync("bash", ["-c", receipt.run]).status).toBe(0);
+      for (const step of job.steps.filter((step: { name: string }) => step.name !== receipt.name)) {
+        expect(step.if, `ASSERTION: ${name} never repeats verification on promotion`).toBe(
+          "needs.prepare.outputs.skip != 'true'",
+        );
+      }
+      continue;
     }
+    expect(job.if, `ASSERTION: ${name} skips verified work at job level`).toContain(
+      "needs.prepare.outputs.skip != 'true'",
+    );
   }
   expect(workflow.jobs.test_web.strategy.matrix.shard).toEqual([1, 2]);
   expect(workflow.jobs.test_server.strategy.matrix.shard).toEqual([1, 2, 3, 4]);
+});
+
+it("Decision: a SHA is tested once, on kh-next; main only re-verifies that receipt", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  for (const [id, job] of Object.entries(workflow.jobs) as [
+    string,
+    { if?: string; steps: { name: string; if?: string }[] },
+  ][]) {
+    if (["prepare", "test", "release_smoke"].includes(id)) continue;
+    expect(
+      job.if,
+      `ASSERTION: ${id} skips its entire runner when the SHA already passed on kh-next`,
+    ).toContain("needs.prepare.outputs.skip != 'true'");
+    expect(
+      job.steps.some((step) => step.name === "Report verified promotion"),
+      `ASSERTION: ${id} never allocates a runner just to repeat the receipt`,
+    ).toBe(false);
+    for (const skip of [true, false]) {
+      const condition = job
+        .if!.replace(/^\$\{\{\s*|\s*\}\}$/gu, "")
+        .replaceAll(
+          /contains\(fromJSON\(needs.prepare.outputs.jobs\), '[a-z_]+'\)/gu,
+          "true == true",
+        )
+        .replaceAll("!cancelled()", "true == true")
+        .replaceAll("needs.prepare.outputs.skip", `'${skip}'`)
+        .replaceAll(/needs\.[a-z_]+\.result/gu, "'success'")
+        .replaceAll(/needs\.changes\.outputs\.[a-z_]+/gu, "'true'")
+        .replaceAll("github.ref", "'refs/heads/main'")
+        .replaceAll("github.event_name", "'push'");
+      const result = NodeChildProcess.spawnSync("bash", ["-c", `[[ ${condition} ]]`], {
+        encoding: "utf8",
+      });
+      expect(
+        result.status,
+        `ASSERTION: ${id} ${skip ? "skips a verified SHA" : "runs for a fresh main SHA"}: ${result.stderr}`,
+      ).toBe(skip ? 1 : 0);
+    }
+  }
 });
 
 it.each([
@@ -1076,7 +1123,7 @@ it("short Ubuntu checks share installed jobs without losing their commands or fa
     const steps = check.steps.filter((step: { run?: string }) => step.run === command);
     expect(steps, `ASSERTION: Check retains ${command} once`).toHaveLength(1);
     expect(steps[0]["continue-on-error"]).toBeUndefined();
-    expect(steps[0].if).toContain("needs.prepare.outputs.skip != 'true'");
+    expect(workflow.jobs.check.if).toContain("needs.prepare.outputs.skip != 'true'");
     if (command.startsWith("cargo"))
       expect(steps[0].if).toContain("needs.changes.outputs.resource_monitor != 'false'");
   }
@@ -1147,8 +1194,11 @@ it.each([
     steps: { uses?: string; with?: Record<string, unknown> }[];
   };
   expect(name).toBe("cache");
-  expect(job.if).toBe("github.ref == 'refs/heads/main' && github.event_name == 'push'");
+  expect(job.if).toBe(
+    "needs.prepare.outputs.skip != 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'",
+  );
   const condition = job.if
+    .replaceAll("needs.prepare.outputs.skip", "'false'")
     .replaceAll("github.ref", '"$GITHUB_REF"')
     .replaceAll("github.event_name", '"$GITHUB_EVENT_NAME"');
   const verdict = NodeChildProcess.spawnSync(

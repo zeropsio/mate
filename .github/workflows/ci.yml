@@ -75,11 +75,10 @@ jobs:
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
           echo "Already verified on kh-next: ${skip}"
 
-  # Promotion can skip verification jobs, but must publish the stores for its new lockfile.
   cache:
     name: Check cache (${{ matrix.os }})
     needs: prepare
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: needs.prepare.outputs.skip != 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     permissions:
@@ -206,16 +205,11 @@ jobs:
   check:
     name: Check
     needs: [prepare, changes]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'check') }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'check') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Report verified promotion
-        if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This SHA passed full CI on kh-next.'
-
       - name: Checkout
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -225,7 +219,6 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Reject untracked package shells
-        if: needs.prepare.outputs.skip != 'true'
         run: |
           test -z "$(git ls-files packages/ssh packages/tailscale)" &&
             test ! -d packages/ssh -a ! -d packages/tailscale || {
@@ -234,7 +227,6 @@ jobs:
           }
 
       - name: Reject repository-owned PR assets
-        if: needs.prepare.outputs.skip != 'true'
         run: |
           files="$(git ls-files .github/pr-assets)"
           if test -n "$files"; then
@@ -243,7 +235,6 @@ jobs:
           fi
 
       - name: Restore pnpm metadata
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/cache/restore@v4
         with:
           # Cache metadata only; lockfile-verified.jsonl must never skip a later run's check.
@@ -253,7 +244,6 @@ jobs:
             pnpm-metadata-${{ runner.os }}-pnpm11-
 
       - name: Setup Vite+
-        if: needs.prepare.outputs.skip != 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -261,18 +251,15 @@ jobs:
           run-install: false
 
       - name: Resolve store path
-        if: needs.prepare.outputs.skip != 'true'
         id: paths
         shell: bash
         run: *store_path
 
       - name: Restore pnpm store
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/cache/restore@v4
         with: *pnpm_store
 
       - name: Install dependencies
-        if: needs.prepare.outputs.skip != 'true'
         env:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-metadata
@@ -280,80 +267,66 @@ jobs:
         run: *full_dependencies
 
       - name: Check workflow schema
-        if: needs.prepare.outputs.skip != 'true'
         working-directory: scripts
         env:
           ACTIONLINT_RELEASE: "1.7.12"
         run: vp exec github-actionlint -shellcheck= -pyflakes= ../.github/workflows/*.yml
 
       - name: Check imported.lock
-        if: needs.prepare.outputs.skip != 'true'
         run: node scripts/imported-lock.ts --check
 
       - name: Check showcase scenes
-        if: needs.prepare.outputs.skip != 'true'
         run: node scripts/showcase-scenes.ts --check
 
       # One AST scan reconciles every ledger and checks the identity ratchets.
       - name: Reconcile guard exceptions
-        if: needs.prepare.outputs.skip != 'true'
         run: node scripts/check-guard-exceptions.ts
 
       - name: Check runtime cycle ratchet
-        if: needs.prepare.outputs.skip != 'true'
         run: node scripts/check-runtime-cycles.ts
 
       - name: Check test sentence retention
-        if: needs.prepare.outputs.skip != 'true'
         run: node scripts/check-test-sentences.ts
 
       - name: Check CSS motion
-        if: needs.prepare.outputs.skip != 'true'
         run: node scripts/check-css-motion.ts
 
       - name: Check CSS theme tokens
-        if: needs.prepare.outputs.skip != 'true'
         run: node scripts/check-css-tokens.ts
 
       - name: Check generated theme tokens
-        if: needs.prepare.outputs.skip != 'true'
         run: node scripts/generate-theme-tokens.ts --check
 
       - name: Check
-        if: needs.prepare.outputs.skip != 'true'
         run: git ls-files -z -- . ':!:apps/desktop/**' ':!:apps/mobile/**' | xargs -0 vp check --no-error-on-unmatched-pattern
 
       - name: Typecheck
-        if: needs.prepare.outputs.skip != 'true'
         run: vpr typecheck
 
       - name: Typecheck scenarios
-        if: needs.prepare.outputs.skip != 'true'
         run: vp exec tsc --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json
 
       # `t3#build` depends on `@t3tools/web#build`: the production web and server
       # bundles, built on every run.
       - name: Build server bundle
-        if: needs.prepare.outputs.skip != 'true'
         run: vp run --filter t3 build
 
       # Reuse Check's Ubuntu checkout/install; retain individually named failure steps.
       - name: Setup Rust
-        if: needs.prepare.outputs.skip != 'true' && needs.changes.outputs.resource_monitor != 'false'
+        if: needs.changes.outputs.resource_monitor != 'false'
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
       - name: Check resource monitor formatting
-        if: needs.prepare.outputs.skip != 'true' && needs.changes.outputs.resource_monitor != 'false'
+        if: needs.changes.outputs.resource_monitor != 'false'
         run: cargo fmt --manifest-path native/resource-monitor/Cargo.toml -- --check
 
       - name: Test resource monitor
-        if: needs.prepare.outputs.skip != 'true' && needs.changes.outputs.resource_monitor != 'false'
+        if: needs.changes.outputs.resource_monitor != 'false'
         run: cargo test --locked --manifest-path native/resource-monitor/Cargo.toml
 
       - name: Exercise release-only workflow steps
-        if: needs.prepare.outputs.skip != 'true'
         run: node scripts/release-smoke.ts
 
   # Every job gated on the `changes` outputs below runs unless the gate said
@@ -363,16 +336,11 @@ jobs:
   chat_bundle:
     name: Chat Contract bundle
     needs: [prepare, changes]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.prepare.outputs.skip == 'true' || github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_bundle') }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_bundle') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Report verified promotion
-        if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This SHA passed full CI on kh-next.'
-
       - name: Checkout
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/checkout@v6
         with:
           sparse-checkout: |
@@ -381,7 +349,6 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Vite+
-        if: needs.prepare.outputs.skip != 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -389,29 +356,24 @@ jobs:
           run-install: false
 
       - name: Resolve store path
-        if: needs.prepare.outputs.skip != 'true'
         id: paths
         shell: bash
         run: *store_path
 
       - name: Restore pnpm store
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/cache/restore@v4
         with: *pnpm_store
 
       - name: Install dependencies
-        if: needs.prepare.outputs.skip != 'true'
         env: &verified_lockfile
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_TRUST_LOCKFILE: "true"
         run: &hosted_dependencies vp install --frozen-lockfile --filter='!@t3tools/mobile' --filter='!@t3tools/desktop'
 
       - name: Build the shared scenario bundle
-        if: needs.prepare.outputs.skip != 'true'
         run: vp exec node apps/web/test/scenarios/harness/build.ts
 
       - name: Upload the content-addressed scenario bundle
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: chat-scenario-bundle
@@ -423,16 +385,11 @@ jobs:
   state_smoke:
     name: State Smoke
     needs: [prepare, chat_bundle]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.chat_bundle.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && needs.chat_bundle.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Report verified promotion
-        if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This SHA passed full CI on kh-next.'
-
       - name: Checkout
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/checkout@v6
         with:
           sparse-checkout: |
@@ -441,7 +398,6 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Vite+
-        if: needs.prepare.outputs.skip != 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -449,37 +405,31 @@ jobs:
           run-install: false
 
       - name: Resolve store path
-        if: needs.prepare.outputs.skip != 'true'
         id: paths
         shell: bash
         run: *store_path
 
       - name: Restore pnpm store
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/cache/restore@v4
         with: *pnpm_store
 
       - name: Install dependencies
-        if: needs.prepare.outputs.skip != 'true'
         env: *verified_lockfile
         run: *hosted_dependencies
 
       - name: Cache the scenarios' Chrome for Testing
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/mate-test-browser
           key: mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
 
       - name: Download the shared scenario bundle
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/download-artifact@v4
         with:
           name: chat-scenario-bundle
           path: node_modules/.cache/mate-scenario-web
 
       - name: Certify sign-in and the state-only smoke
-        if: needs.prepare.outputs.skip != 'true'
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
         run: |
@@ -676,19 +626,14 @@ jobs:
   test_web:
     name: Test Web ${{ matrix.shard }}
     needs: prepare
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_web') }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_web') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.test_web) }}
     steps:
-      - name: Report verified promotion
-        if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This SHA passed full CI on kh-next.'
-
       - name: Checkout
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/checkout@v6
         with:
           sparse-checkout: |
@@ -697,7 +642,6 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Vite+
-        if: needs.prepare.outputs.skip != 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -705,23 +649,19 @@ jobs:
           run-install: false
 
       - name: Resolve store path
-        if: needs.prepare.outputs.skip != 'true'
         id: paths
         shell: bash
         run: *store_path
 
       - name: Restore pnpm store
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/cache/restore@v4
         with: *pnpm_store
 
       - name: Install dependencies
-        if: needs.prepare.outputs.skip != 'true'
         env: *verified_lockfile
         run: *hosted_dependencies
 
       - name: Test
-        if: needs.prepare.outputs.skip != 'true'
         run: vp run --filter @t3tools/web test --shard ${{ matrix.shard }}/${{ matrix.total }}
 
   # apps/server sets `fileParallelism: false`, so its files run strictly one at
@@ -732,19 +672,14 @@ jobs:
   test_server:
     name: Test Server ${{ matrix.shard }}
     needs: prepare
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_server') }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_server') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.test_server) }}
     steps:
-      - name: Report verified promotion
-        if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This SHA passed full CI on kh-next.'
-
       - name: Checkout
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/checkout@v6
         with:
           sparse-checkout: |
@@ -753,7 +688,6 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Vite+
-        if: needs.prepare.outputs.skip != 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -761,23 +695,19 @@ jobs:
           run-install: false
 
       - name: Resolve store path
-        if: needs.prepare.outputs.skip != 'true'
         id: paths
         shell: bash
         run: *store_path
 
       - name: Restore pnpm store
-        if: needs.prepare.outputs.skip != 'true'
         uses: actions/cache/restore@v4
         with: *pnpm_store
 
       - name: Install dependencies
-        if: needs.prepare.outputs.skip != 'true'
         env: *verified_lockfile
         run: *cross_client_dependencies
 
       - name: Test
-        if: needs.prepare.outputs.skip != 'true'
         env:
           T3CODE_TRANSFER_BUDGET_REPORT_PATH: ${{ runner.temp }}/t3code-transfer-budget.md
           T3CODE_TRANSFER_BUDGET_RESULT_PATH: ${{ runner.temp }}/thread-transfer-result.json
@@ -789,7 +719,7 @@ jobs:
           --allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
 
       - name: Certify engine oracles
-        if: needs.prepare.outputs.skip != 'true' && matrix.shard == 1
+        if: matrix.shard == 1
         run: |
           vp exec tsc --noEmit --incremental -p apps/web/test/engine-oracle/tsconfig.json
           vp -C apps/web test run --project engine-oracle test/engine-oracle/runCard.oracle.test.ts test/engine-oracle/mateHealth.oracle.test.ts --allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
@@ -799,7 +729,7 @@ jobs:
       # presence since only one shard writes it.
       - name: Detect transfer budget report
         id: transfer_budget
-        if: needs.prepare.outputs.skip != 'true' && (always())
+        if: (always())
         run: |
           if test -f "${{ runner.temp }}/thread-transfer-result.json"; then
             echo "present=true" >> "$GITHUB_OUTPUT"
@@ -808,7 +738,7 @@ jobs:
           fi
 
       - name: Publish transfer budget report
-        if: needs.prepare.outputs.skip != 'true' && (always() && steps.transfer_budget.outputs.present == 'true')
+        if: (always() && steps.transfer_budget.outputs.present == 'true')
         run: |
           if test -f "${{ runner.temp }}/t3code-transfer-budget.md"; then
             tee -a "$GITHUB_STEP_SUMMARY" < "${{ runner.temp }}/t3code-transfer-budget.md"

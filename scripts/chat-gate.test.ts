@@ -546,7 +546,7 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
   };
   // A false chat verdict must not prevent the shared bundle or its scenario consumers on main.
   expect(jobs.chat_bundle!.if).toBe(
-    "${{ !cancelled() && needs.prepare.result == 'success' && (needs.prepare.outputs.skip == 'true' || github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_bundle') }}",
+    "${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'chat_bundle') }}",
   );
   expect(blameSelection("refs/heads/main", undefined).selected).toContain("chat_bundle");
   const signal = parse(
