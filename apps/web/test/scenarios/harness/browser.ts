@@ -193,6 +193,12 @@ export async function openBrowser(
           await request.continue();
           return;
         }
+        // Faces fall back to Gravatar's for a member's e-mail (`memberPicture`): a third party no
+        // scenario fakes, so it answers nothing and initials stand in, as for a failed picture.
+        if (url.origin === "https://www.gravatar.com") {
+          await request.respond({ status: 404, body: "" });
+          return;
+        }
         const target = routes[url.origin];
         if (target) {
           const local = new URL(`${url.pathname}${url.search}`, target);
