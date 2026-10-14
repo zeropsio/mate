@@ -2,8 +2,9 @@
  * `crew.app.stop` (replay-safe, lane `host/<host>`): a crewmate's own app stopped with everything
  * it started — its supervisor's runtime entry removed, its process group stopped (`CrewApp.stop`).
  *
- * A stopped app's evidence is no such entry: a re-run after a crash that finds it gone signals
- * nothing and answers stopped.
+ * A stopped app's evidence is no such entry, or without a supervisor that answers, its pidfile
+ * gone or naming no live process: a re-run after a crash that finds it so signals nothing and
+ * answers stopped.
  *
  * @module zerops/crew/engine/effects/appStop
  */

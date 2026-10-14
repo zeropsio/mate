@@ -179,8 +179,25 @@ answer(1, { code: 1, error: "unknown verb " + verb });
 `;
 
 /**
+ * The far side's environment with a `setsid` on its PATH. Linux services have
+ * util-linux's; where this machine lacks one, a perl stand-in does the same
+ * `setsid(2)` and exec.
+ */
+export const remoteEnvWithSetsid = (): Readonly<Record<string, string>> => {
+  const found = NodeChildProcess.spawnSync("sh", ["-c", "command -v setsid"]).status === 0;
+  if (found) return TEST_IDENTITY;
+  const bin = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-bin-"));
+  NodeFS.writeFileSync(
+    NodePath.join(bin, "setsid"),
+    '#!/bin/sh\nexec perl -MPOSIX -e \'POSIX::setsid() or die "setsid: $!"; exec @ARGV or die "exec: $!"\' -- "$@"\n',
+    { mode: 0o755 },
+  );
+  return { ...TEST_IDENTITY, PATH: `${bin}:${process.env.PATH ?? ""}` };
+};
+
+/**
  * The far side's environment with the fake supervisor as `zcp-devsup` on its PATH
- * ({@link FAKE_SUPERVISOR}).
+ * ({@link FAKE_SUPERVISOR}), and a `setsid` for a supervisor that does not answer.
  */
 let supervisedEnv: Readonly<Record<string, string>> | undefined;
 
@@ -194,7 +211,8 @@ export const remoteEnvWithSupervisor = (): Readonly<Record<string, string>> => {
     { mode: 0o755 },
   );
   process.once("exit", () => NodeFS.rmSync(bin, { recursive: true, force: true }));
-  return (supervisedEnv = { ...TEST_IDENTITY, PATH: `${bin}:${process.env.PATH ?? ""}` });
+  const path = remoteEnvWithSetsid().PATH ?? process.env.PATH ?? "";
+  return (supervisedEnv = { ...TEST_IDENTITY, PATH: `${bin}:${path}` });
 };
 
 /** The fake supervisor's runtime entries in the service repository at `root`. */

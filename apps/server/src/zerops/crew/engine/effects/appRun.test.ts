@@ -21,7 +21,7 @@ import {
   TEST_HOST,
   waitUntil,
 } from "../../testing/crewGitFixture.ts";
-import { makeAppRun, noSupervisorWords, type AppRunPayload } from "./appRun.ts";
+import { makeAppRun, type AppRunPayload } from "./appRun.ts";
 import { CREW_EFFECT_KINDS } from "./shared.ts";
 
 /** Writes the port it was given and counts its starts, then waits - like a dev server. */
@@ -116,26 +116,31 @@ describe("crew.app.run", () => {
   );
 
   it.effect(
-    "a crew app on a dev service without the supervisor fails at once, saying its dev setup needs one",
+    "a crew app on a dev service whose supervisor does not answer starts under setsid, as before the supervisor",
     () =>
       withCrewEffects(
         (root) =>
-          Effect.gen(function* () {
-            const handler = yield* makeAppRun;
-            yield* createLane("backend");
-            supervisorDown(root);
-            const result = yield* attempt(handler, row());
-            assert.deepStrictEqual(
-              { result, starts: starts(root) },
-              {
-                result: {
-                  _tag: "Done",
-                  outcome: { kind: "failed", reason: noSupervisorWords(TEST_HOST) },
+          stopAfter(
+            Effect.gen(function* () {
+              const handler = yield* makeAppRun;
+              yield* createLane("backend");
+              supervisorDown(root);
+              const started = okValue(yield* attempt(handler, row())) as { readonly pid: number };
+              waitUntil(() => exists(root, ".crew/backend.port"));
+              assert.deepStrictEqual(
+                {
+                  started,
+                  pidfile: read(root, ".crew/backend.run.pid").trim(),
+                  starts: starts(root),
                 },
-                starts: 0,
-              },
-            );
-          }),
+                {
+                  started: { state: "running", pid: started.pid },
+                  pidfile: String(started.pid),
+                  starts: 1,
+                },
+              );
+            }),
+          ),
         SUPERVISED,
       ),
   );
