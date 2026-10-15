@@ -7,61 +7,62 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 
+/**
+ * The one action. `primary` is the single next step on a surface (blue acts), `secondary` sits
+ * beside it, `ghost` is a quiet tool, `destructive` only deletes or stops, `link` reads as a word.
+ * Sizes: `md` by default, `sm` in dense rows, `lg` only for a page's one hero action; `icon-sm` and
+ * `icon-md` are the square forms of `sm` and `md`. A button is a rectangle on the control radius;
+ * a label is a Badge pill, so an action never reads as a tag.
+ */
 const buttonVariants = cva(
-  "[--control-icon-color:currentColor] [&_svg]:-mx-0.5 relative inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-[var(--control-radius)] border font-medium text-base outline-none transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--control-radius)-1px)] pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 aria-disabled:cursor-not-allowed aria-disabled:opacity-64 sm:text-sm [&_svg:not([class*='text-'])]:text-[var(--control-icon-color)] [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "[--control-icon-color:currentColor] relative inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-control border font-medium outline-none transition-[background-color,border-color,color,box-shadow] duration-150 ease-out-strong pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 aria-disabled:cursor-not-allowed aria-disabled:opacity-64 [&_svg:not([class*='text-'])]:text-[var(--control-icon-color)] [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     defaultVariants: {
-      size: "default",
-      variant: "default",
+      size: "md",
+      variant: "primary",
     },
     variants: {
       size: {
-        compact:
-          "h-7 gap-1 rounded-md px-[calc(--spacing(2)-1px)] text-xs before:rounded-[calc(var(--radius-md)-1px)] [&_svg:not([class*='size-'])]:size-3.5",
-        default: "h-9 px-[calc(--spacing(3)-1px)] sm:h-8",
-        icon: "size-9 sm:size-8",
-        "icon-lg": "size-10 sm:size-9",
-        "icon-micro":
-          "size-5 rounded-sm p-0 before:rounded-[calc(var(--radius-sm)-1px)] [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-8 sm:size-7",
-        "icon-xl":
-          "size-11 sm:size-10 [&_svg:not([class*='size-'])]:size-5 sm:[&_svg:not([class*='size-'])]:size-4.5",
-        "icon-xs":
-          "size-7 sm:size-6 not-in-data-[slot=input-group]:[&_svg:not([class*='size-'])]:size-4 sm:not-in-data-[slot=input-group]:[&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-10 px-[calc(--spacing(3.5)-1px)] sm:h-9",
-        micro:
-          "h-5 gap-1 rounded-sm px-[calc(--spacing(1.5)-1px)] text-[11px] before:rounded-[calc(var(--radius-sm)-1px)] sm:text-[11px] [&_svg:not([class*='size-'])]:size-3 sm:[&_svg:not([class*='size-'])]:size-3",
-        sm: "h-8 gap-1.5 px-[calc(--spacing(2.5)-1px)] sm:h-7",
-        "sm-multiline":
-          "min-h-8 gap-1.5 px-[calc(--spacing(2.5)-1px)] py-[calc(--spacing(1)-1px)] whitespace-normal sm:min-h-7",
-        xl: "h-11 px-[calc(--spacing(4)-1px)] text-lg sm:h-10 sm:text-base [&_svg:not([class*='size-'])]:size-5 sm:[&_svg:not([class*='size-'])]:size-4.5",
-        xs: "h-7 gap-1 px-[calc(--spacing(2)-1px)] text-sm sm:h-6 sm:text-xs [&_svg:not([class*='size-'])]:size-4 sm:[&_svg:not([class*='size-'])]:size-3.5",
+        sm: "h-6 gap-1 px-[calc(--spacing(2)-1px)] text-caption [&_svg:not([class*='size-'])]:size-3.5",
+        md: "h-8 gap-1.5 px-[calc(--spacing(3)-1px)] text-body",
+        lg: "h-10 gap-2 px-[calc(--spacing(4)-1px)] text-body",
+        "icon-sm": "size-6 [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-md": "size-8",
+        // Migrating: deleted once every call site names a size above.
+        default: "h-8 gap-1.5 px-[calc(--spacing(3)-1px)] text-body",
+        compact: "h-6 gap-1 px-[calc(--spacing(2)-1px)] text-caption",
+        icon: "size-8",
+        "icon-lg": "size-8",
+        "icon-micro": "size-6",
+        "icon-xl": "size-8",
+        "icon-xs": "size-6",
+        micro: "h-6 gap-1 px-[calc(--spacing(2)-1px)] text-caption",
+        "sm-multiline": "h-8 gap-1.5 px-[calc(--spacing(3)-1px)] text-body",
+        xl: "h-10 gap-2 px-[calc(--spacing(4)-1px)] text-body",
+        xs: "h-6 gap-1 px-[calc(--spacing(2)-1px)] text-caption",
       },
       variant: {
-        default:
-          "not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] border-primary bg-primary text-primary-foreground shadow-primary/24 shadow-xs [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-primary/90",
-        destructive:
-          "not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] border-destructive bg-destructive text-white shadow-destructive/24 shadow-xs [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-destructive/90",
-        "destructive-outline":
-          "border-input bg-popover not-dark:bg-clip-padding text-destructive-foreground shadow-xs/5 not-disabled:not-active:not-data-pressed:before:shadow-[0_1px_--theme(--color-black/4%)] dark:bg-input/32 dark:not-disabled:before:shadow-[0_-1px_--theme(--color-white/2%)] dark:not-disabled:not-active:not-data-pressed:before:shadow-[0_-1px_--theme(--color-white/6%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:border-destructive/32 [:hover,[data-pressed]]:bg-destructive/4",
-        ghost:
-          "[--control-icon-color:var(--contrast-muted-foreground)] border-transparent text-foreground data-pressed:bg-accent [:hover,[data-pressed]]:bg-accent",
-        "ghost-muted":
-          "[--control-icon-color:currentColor] border-transparent text-muted-foreground data-pressed:bg-accent [:hover,[data-pressed]]:bg-accent [:hover,[data-pressed]]:text-foreground",
-        "ghost-primary":
-          "[--control-icon-color:currentColor] border-transparent font-medium text-primary data-pressed:bg-primary/8 [:hover,[data-pressed]]:bg-primary/8",
-        "ghost-destructive":
-          "[--control-icon-color:currentColor] border-transparent text-muted-foreground data-pressed:bg-accent [:hover,[data-pressed]]:bg-accent [:hover,[data-pressed]]:text-destructive",
-        glass:
-          "surface-glass [--control-icon-color:var(--contrast-muted-foreground)] rounded-full border-border/60 text-foreground shadow-sm before:rounded-full [:hover,[data-pressed]]:border-border",
-        link: "border-transparent underline-offset-4 [:hover,[data-pressed]]:underline",
-        outline:
-          "[--control-icon-color:var(--contrast-muted-foreground)] border-input bg-popover not-dark:bg-clip-padding text-foreground shadow-xs/5 not-disabled:not-active:not-data-pressed:before:shadow-[0_1px_--theme(--color-black/4%)] dark:bg-input/32 dark:not-disabled:before:shadow-[0_-1px_--theme(--color-white/2%)] dark:not-disabled:not-active:not-data-pressed:before:shadow-[0_-1px_--theme(--color-white/6%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-accent/50 dark:[:hover,[data-pressed]]:bg-input/64",
-        "warning-outline":
-          "border-warning/32 bg-warning-surface text-warning-foreground shadow-xs/5 [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:border-warning/40 [:hover,[data-pressed]]:bg-warning/16",
+        primary:
+          "border-primary bg-primary text-primary-foreground shadow-xs shadow-primary/24 not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-primary/90",
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground [:active,[data-pressed]]:bg-secondary/80 [:hover,[data-pressed]]:bg-secondary/90",
-        pill: "rounded-[var(--zerops-pill-radius)] border-primary bg-primary px-[calc(--spacing(3.5)-1px)] text-primary-foreground before:rounded-[var(--zerops-pill-radius)] [:hover,[data-pressed]]:bg-primary/90",
+          "[--control-icon-color:var(--contrast-muted-foreground)] border-input bg-popover text-foreground shadow-xs/5 [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-accent",
+        ghost:
+          "[--control-icon-color:var(--contrast-muted-foreground)] border-transparent text-foreground [:hover,[data-pressed]]:bg-accent",
+        destructive:
+          "border-destructive bg-destructive text-primary-foreground shadow-xs shadow-destructive/24 not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-destructive/90",
+        link: "border-transparent text-primary underline-offset-4 [:hover,[data-pressed]]:underline",
+        // Migrating: deleted once every call site names a variant above.
+        default:
+          "border-primary bg-primary text-primary-foreground [:hover,[data-pressed]]:bg-primary/90",
+        "destructive-outline": "border-destructive bg-destructive text-primary-foreground",
+        "ghost-destructive": "border-transparent text-foreground [:hover,[data-pressed]]:bg-accent",
+        "ghost-muted": "border-transparent text-foreground [:hover,[data-pressed]]:bg-accent",
+        "ghost-primary": "border-transparent text-foreground [:hover,[data-pressed]]:bg-accent",
+        glass: "border-transparent text-foreground [:hover,[data-pressed]]:bg-accent",
+        outline: "border-input bg-popover text-foreground [:hover,[data-pressed]]:bg-accent/50",
+        pill: "border-primary bg-primary text-primary-foreground [:hover,[data-pressed]]:bg-primary/90",
+        "warning-outline":
+          "border-input bg-popover text-foreground [:hover,[data-pressed]]:bg-accent/50",
       },
     },
   },
