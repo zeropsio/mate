@@ -128,8 +128,11 @@ export function useAddEnvironment(): (groupId: string, tier: HeldEnvironment["ti
   const navigate = useNavigate();
   return useCallback(
     (groupId, tier) => {
-      ask(groupId, tier);
-      void navigate({ to: "/zerops" });
+      // Asked once the projects page stands: asked first, a project page's own embedded list would
+      // take the ask and open the form there, only to lose it as the navigation unmounts that page.
+      void navigate({ to: "/zerops" }).then(() => {
+        ask(groupId, tier);
+      });
     },
     [ask, navigate],
   );
