@@ -233,3 +233,31 @@ it.each(["toolbar", "failed read"])(
     }
   },
 );
+
+it("offers no turn to pick while no turn has changes to show", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(() =>
+      root.render(
+        <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
+      ),
+    );
+    const scope = container.querySelector<HTMLButtonElement>('button[aria-label^="Diff scope"]');
+    expect(scope).not.toBeNull();
+    await act(async () => {
+      scope!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      scope!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      scope!.click();
+    });
+    const items = Array.from(
+      document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]'),
+    );
+    expect(items.map((item) => item.textContent)).toContain("Latest turn");
+    expect(items.map((item) => item.textContent)).not.toContain("Turn");
+  } finally {
+    await act(() => root.unmount());
+    container.remove();
+  }
+});

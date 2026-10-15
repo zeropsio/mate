@@ -621,33 +621,39 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                 <span>Latest turn</span>
               </DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Turn</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup value={selectedTurnValue} onValueChange={selectScopeValue}>
-                  {orderedTurnDiffSummaries.map((summary) => {
-                    const turnCount =
-                      summary.checkpointTurnCount ??
-                      inferredCheckpointTurnCountByTurnId[summary.turnId] ??
-                      "?";
-                    return (
-                      <DropdownMenuRadioItem
-                        key={summary.turnId}
-                        value={`turn:${summary.turnId}`}
-                        closeOnClick
-                      >
-                        <span className="flex items-center gap-2">
-                          <span>Turn {turnCount}</span>
-                          <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                            {formatShortTimestamp(summary.completedAt, settings.timestampFormat)}
+            {/* Only turns that changed something are listed: with none, no empty list to open. */}
+            {orderedTurnDiffSummaries.length === 0 ? null : (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Turn</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={selectedTurnValue}
+                    onValueChange={selectScopeValue}
+                  >
+                    {orderedTurnDiffSummaries.map((summary) => {
+                      const turnCount =
+                        summary.checkpointTurnCount ??
+                        inferredCheckpointTurnCountByTurnId[summary.turnId] ??
+                        "?";
+                      return (
+                        <DropdownMenuRadioItem
+                          key={summary.turnId}
+                          value={`turn:${summary.turnId}`}
+                          closeOnClick
+                        >
+                          <span className="flex items-center gap-2">
+                            <span>Turn {turnCount}</span>
+                            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                              {formatShortTimestamp(summary.completedAt, settings.timestampFormat)}
+                            </span>
                           </span>
-                        </span>
-                      </DropdownMenuRadioItem>
-                    );
-                  })}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+                        </DropdownMenuRadioItem>
+                      );
+                    })}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
         {selectedTurnId === null && selectedGitScope === "branch" && selectedGitSource?.baseRef && (
