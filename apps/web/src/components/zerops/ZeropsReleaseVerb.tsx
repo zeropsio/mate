@@ -57,17 +57,14 @@ export function ZeropsReleaseVerb({
   if (!release.offered && !release.releasing) return null;
   // A card's own solid button, as *Review change* is beside it: one look for what waits on you.
   return (
-    <button
-      className="ov-btn"
-      data-main="true"
+    <Button
       data-zerops-primary-action={REVIEW_RELEASE_LABEL}
       onClick={(event) => {
         release.onReview(event.currentTarget);
       }}
-      type="button"
     >
       {release.releasing ? flowVerbLabel("release", true) : label}
-    </button>
+    </Button>
   );
 }
 

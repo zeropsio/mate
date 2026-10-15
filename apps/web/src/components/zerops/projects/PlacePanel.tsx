@@ -25,6 +25,7 @@ import { useAccountOrgId, useDetailDemand, useProjection } from "~/zerops/Zerops
 
 import { PlaceDot, PlaceWords } from "./ProjectCards";
 import { panelAddresses, placeLabel, type PlaceLine } from "./projectCard.logic";
+import { Button } from "~/components/ui/button";
 
 /** Outside an account, or before its place is named: read as its listing says it. */
 const NOT_READ = Atom.make<PlaceAddresses>({
@@ -87,7 +88,7 @@ export function PlacePanel({
   readonly model: PlacePanelModel;
   /** Its application, whose places the addresses sheet's switch offers. */
   readonly groupId: string;
-  /** The page's buttons for it (`ov-btn`). */
+  /** The page's buttons for it: sm secondary Buttons. */
   readonly actions: ReactNode;
   /**
    * Drawn at a project page's width: both doors into the sheet. On a card one door is enough —
@@ -193,26 +194,26 @@ export function PlacePanel({
       <div className="ov-panel-acts">
         {actions}
         {manage === undefined || !said.offerDomain ? null : (
-          <button
-            className="ov-btn"
+          <Button
             onClick={() => {
               manage("add-domain");
             }}
-            type="button"
+            size="sm"
+            variant="secondary"
           >
             Put it on your domain
-          </button>
+          </Button>
         )}
         {manage === undefined || (said.offerDomain && !roomy) ? null : (
-          <button
-            className="ov-btn"
+          <Button
             onClick={() => {
               manage();
             }}
-            type="button"
+            size="sm"
+            variant="secondary"
           >
             Manage addresses
-          </button>
+          </Button>
         )}
       </div>
     </div>

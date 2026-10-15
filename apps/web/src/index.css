@@ -7322,43 +7322,6 @@ a.ov-card-site:hover {
   line-height: 18px;
 }
 
-.ov-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.ov-btn {
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 10px;
-  background: color-mix(in oklab, var(--foreground) 8%, transparent);
-  color: var(--foreground);
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    scale 160ms var(--ease-out-strong);
-}
-
-.ov-btn:hover {
-  background: color-mix(in oklab, var(--foreground) 13%, transparent);
-}
-
-.ov-btn[data-main] {
-  background: var(--foreground);
-  color: var(--background);
-}
-
-.ov-btn[data-main]:hover {
-  background: color-mix(in oklab, var(--foreground) 86%, var(--background));
-}
-
-.ov-btn:active {
-  scale: 0.97;
-}
-
-.ov-btn:focus-visible,
 .ov-fold:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
@@ -8478,13 +8441,6 @@ label.tm-advanced-row:not([data-disabled]) {
   display: none;
 }
 
-.ov-panel-acts .ov-btn {
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 13px;
-}
-
 /* A card's sections: on the card itself, a hairline over each. */
 .ov-sec {
   display: grid;
@@ -8834,7 +8790,6 @@ label.tm-advanced-row:not([data-disabled]) {
 
 @media (prefers-reduced-motion: reduce) {
   .ov-mate,
-  .ov-btn,
   .ov-nav,
   .ov-rail,
   .ov-fold,
@@ -8842,7 +8797,6 @@ label.tm-advanced-row:not([data-disabled]) {
     transition: opacity 150ms linear;
   }
 
-  .ov-btn:active,
   .ov-nav:active {
     scale: none;
   }

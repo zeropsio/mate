@@ -107,29 +107,6 @@ function ActionSpecimens() {
       </CensusLook>
 
       <CensusLook
-        files={5}
-        name="Overview buttons"
-        note="ov-btn, in index.css"
-        source="apps/web/src/components/zerops/projects/ProjectCards.tsx"
-        uses={19}
-      >
-        {(["plan", "question", "fix"] as const).map((kind) => (
-          <Specimen key={kind} label={`CardMateLiftActions lift="${kind}"`}>
-            <div className="flex items-center gap-2">
-              <CardMateLiftActions
-                lift={{ kind }}
-                name="Fen"
-                onApprove={noop}
-                onFix={noop}
-                onReply={noop}
-                onReview={noop}
-              />
-            </div>
-          </Specimen>
-        ))}
-      </CensusLook>
-
-      <CensusLook
         files={4}
         name="ComposerAskButton"
         note="composer-top-button: the ask's one blue button"
