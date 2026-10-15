@@ -90,7 +90,8 @@ export function addressesPlace(input: {
 
 /**
  * A project heading's ··· (round 5): Fold, Add a Mate and Open project first — the heading's own
- * verbs, none of them on it at rest — then its Addresses where it has a place, then moving it
+ * verbs, none of them on it at rest — then its Addresses where it has a place, Invite people for
+ * someone who may bring people in (the project picked in the invitation), then moving it
  * among the others, then adding a stage or a production it lacks, and where projects are added.
  * The New Mate dialog opens over the view on screen: Add a Mate goes nowhere.
  */
@@ -102,6 +103,8 @@ export function projectHeadingMenu(input: {
   readonly onOpen: () => void;
   /** Opens the addresses sheet for its place (`addressesPlace`); absent while it has none. */
   readonly onAddresses?: (() => void) | undefined;
+  /** Opens the invitation with this project picked; absent for someone who may not invite. */
+  readonly onInvite?: (() => void) | undefined;
   readonly reorder:
     | {
         readonly canMoveUp: boolean;
@@ -128,6 +131,7 @@ export function projectHeadingMenu(input: {
     ...(input.onAddMate === undefined ? [] : [item("Add a project Mate", input.onAddMate)]),
     item("Open project", input.onOpen),
     ...(input.onAddresses === undefined ? [] : [item("Addresses", input.onAddresses)]),
+    ...(input.onInvite === undefined ? [] : [item("Invite people", input.onInvite)]),
     separator,
     ...(reorder === undefined
       ? []

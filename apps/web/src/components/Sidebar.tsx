@@ -182,7 +182,7 @@ import { newMateView, useAddMate } from "../zerops/newMate";
 import { useAddMateOffer } from "../zerops/useHqOffers";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
-import { useRoleOffers } from "../zerops/usePlatformCapabilities";
+import { useRoleOffers, useTeamOffers } from "../zerops/usePlatformCapabilities";
 import { useCreations } from "../zerops/creations";
 import { newProjectView, placedNewProjects } from "../zerops/newProjectBirth";
 import {
@@ -1775,6 +1775,15 @@ export default function Sidebar() {
     void router.navigate({ to: "/zerops" });
   }, [isMobile, router, setOpenMobile]);
   useOverviewKey(zeropsSignedIn ? navigateToZeropsProjects : undefined);
+  // A project's ··· brings people into it: the invitation, the project picked.
+  const teamOffered = useTeamOffers();
+  const inviteToProject = useCallback(
+    (groupId: string) => {
+      if (isMobile) setOpenMobile(false);
+      void router.navigate({ to: "/settings/team/invite", search: { project: groupId } });
+    },
+    [isMobile, router, setOpenMobile],
+  );
 
   // The + asks for a Mate in one of the organization's projects, over whatever is on screen: only
   // those HQ offers a new Mate in, as the menu's own rows do.
@@ -3028,6 +3037,7 @@ export default function Sidebar() {
               reading={zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete}
               onNoticeAct={onZeropsNoticeAct}
               onAddMate={addMate}
+              onInvite={teamOffered.invite ? inviteToProject : undefined}
               onSetUp={onZeropsSetUp}
               getComing={zeropsComing}
               onOpenComing={openComingMate}

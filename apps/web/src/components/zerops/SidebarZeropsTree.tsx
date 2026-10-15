@@ -495,6 +495,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * (`useAddMate`). Absent — a harness — the heading's + does nothing.
    */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
+  /** Opens the invitation with this project picked; absent for someone who may not invite. */
+  readonly onInvite?: ((groupId: string) => void) | undefined;
   /** Opens the form that sets a stage or a production up; absent, its item opens the projects page. */
   readonly onSetUp?: ((groupId: string, tier: GroupEnvironmentTier) => void) | undefined;
   /**
@@ -699,6 +701,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   candidates,
   onSelect,
   onAddMate,
+  onInvite,
   onSetUp,
   getComing,
   onOpenComing,
@@ -2067,6 +2070,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               useAddressesSheet
                 .getState()
                 .open({ orgId: accountOrgId, projectId: place, groupId: group.groupId });
+            },
+      onInvite:
+        onInvite === undefined
+          ? undefined
+          : () => {
+              onInvite(group.groupId);
             },
       reorder: {
         canMoveUp: neighbours(group.groupId).indexOf(group.groupId) > 0,
