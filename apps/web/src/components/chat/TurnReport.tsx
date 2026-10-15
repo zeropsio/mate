@@ -53,6 +53,7 @@ import {
 import { useRunResultFacts } from "./runResultFacts";
 import { publishStripFiles } from "./resultStripFiles";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
+import { Button } from "~/components/ui/button";
 
 const NOTHING_RISING: ReadonlySet<string> = new Set();
 
@@ -143,14 +144,14 @@ function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfR
         <CrewTryIt environmentId={tryIt.environmentId} handle={tryIt.handle} title={row.title} />
       )}
       {review === null ? null : (
-        <button
+        <Button
           aria-label={`Review ${row.title}`}
-          className="run-result-action"
+          size="sm"
+          variant="link"
           onClick={(event) => openReview(review, { from: event.currentTarget })}
-          type="button"
         >
           Review
-        </button>
+        </Button>
       )}
       {url === null ? null : (
         <ServiceBrowserLink

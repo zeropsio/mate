@@ -142,12 +142,6 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
       "Home-made action: it opens the Chief's overview through the router and the right panel's store.",
   },
   {
-    name: "FixAction, RestartAction (run-result-action)",
-    source: "apps/web/src/components/chat",
-    reason:
-      "Home-made action: they ask a Mate to fix or restart through the Zerops session and account operations.",
-  },
-  {
     name: "Row-wide buttons (about 20 raw <button>)",
     source:
       "apps/web/src/components/sidebar/SidebarProjectTree.tsx, zerops/ZeropsDataTree.tsx, chat/RunChat.tsx, chat/DetailRow.tsx",

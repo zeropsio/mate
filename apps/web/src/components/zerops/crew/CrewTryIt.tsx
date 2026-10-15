@@ -11,6 +11,7 @@ import { CREW_TRY_IT_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { useCrewTry } from "../../../zerops/crew/useCrewTry";
+import { Button } from "~/components/ui/button";
 
 export function CrewTryIt({
   environmentId,
@@ -25,15 +26,15 @@ export function CrewTryIt({
   const tries = useCrewTry(environmentId, handle);
   if (tries === null || !tries.offered) return null;
   return (
-    <button
+    <Button
       aria-label={`${CREW_TRY_IT_WORD}: ${title}`}
-      className="run-result-action"
+      size="sm"
+      variant="link"
       data-crew-try-it={handle}
       disabled={!tries.enabled}
       onClick={tries.press}
-      type="button"
     >
       {CREW_TRY_IT_WORD}
-    </button>
+    </Button>
   );
 }

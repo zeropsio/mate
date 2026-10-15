@@ -9831,24 +9831,6 @@ button.run-bar:focus-visible {
   gap: 6px;
 }
 /* Blue is something to click (S3): a text action, never a filled button. */
-.run-result-action {
-  padding: 3px 8px;
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-  color: var(--color-info-foreground);
-  transition: background-color 150ms ease;
-}
-.run-result-action:hover {
-  background: color-mix(in oklab, var(--color-info-foreground) 10%, transparent);
-}
-/* *Try it* held while there is nothing it can open yet: another crewmate's work on dev. */
-.run-result-action:disabled {
-  opacity: 0.5;
-  cursor: default;
-  background: none;
-}
 .run-result-open {
   display: flex;
   align-items: center;
@@ -9865,7 +9847,6 @@ button.run-bar:focus-visible {
   background: var(--color-accent);
   color: var(--color-foreground);
 }
-.run-result-action:focus-visible,
 .run-result-files:focus-visible,
 .run-result-open:focus-visible,
 .run-result-tile:focus-visible {
