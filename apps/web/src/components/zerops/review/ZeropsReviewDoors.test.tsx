@@ -153,7 +153,7 @@ describe("the review's one button (R5)", () => {
   ] as const)("%s", (_case, state, disabled, keys, safe) => {
     const html = surface({ primary: { label: "Merge", onPress: () => {}, ...state } });
     const button = /<button[^>]*data-review-primary[^>]*>[\s\S]*?<\/button>/u.exec(html)?.[0] ?? "";
-    expect(button.includes(" disabled")).toBe(disabled);
+    expect(/\sdisabled(?:=""|[\s>])/u.test(button)).toBe(disabled);
     expect(button.includes("<kbd")).toBe(keys);
     expect(button).toContain(`data-safe="${safe}"`);
   });

@@ -26,6 +26,7 @@ import {
   ChangeReviewView as ProjectedChangeReviewView,
   type ChangeReviewViewProps,
 } from "~/components/zerops/review/ZeropsChangeReview";
+import { Button } from "~/components/ui/button";
 import { CrewTaskReviewView } from "~/components/zerops/review/ZeropsCrewTaskReview";
 import {
   ReleaseReviewView,
@@ -1287,18 +1288,17 @@ export function ReviewDialogTry({ openAtStart = false }: { readonly openAtStart?
   }, [open]);
   return (
     <div className="flex gap-3 px-2">
-      <button
-        className="rv-btn2"
+      <Button
         data-review-harness-open="ready"
         onClick={(event) => {
           setFrom(event.currentTarget);
           setRead(false);
           setOpen(true);
         }}
-        type="button"
+        variant="secondary"
       >
         Open the review as a dialog
-      </button>
+      </Button>
       <ZeropsReviewDialog
         from={from}
         labelledBy="review-try-title"
@@ -1438,17 +1438,16 @@ export function ReleaseDialogTry({ openAtStart }: { readonly openAtStart: boolea
   };
   return (
     <div className="flex gap-3 px-2">
-      <button
-        className="rv-btn2"
+      <Button
         data-review-harness-open="release"
         onClick={(event) => {
           setFrom(event.currentTarget);
           setOpen(true);
         }}
-        type="button"
+        variant="secondary"
       >
         Open the release as a dialog
-      </button>
+      </Button>
       <ZeropsReviewDialog
         from={from}
         labelledBy="release-try-title"

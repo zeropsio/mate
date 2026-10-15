@@ -11457,12 +11457,9 @@ a.message-file:focus-visible {
     scale: none;
     translate: none;
   }
-  /* Fades only: a file's chevron turns and the button gives without moving. */
+  /* Fades only: a file's chevron turns without moving. */
   .rv-chev {
     transition: none;
-  }
-  .rv-btn1:active {
-    transform: none;
   }
 }
 /* The sheet's top line: whose it is — a Mate's face and "Sage · Tea Shop", or the project — its
@@ -11528,10 +11525,7 @@ a.message-file:focus-visible {
 .rv-textbtn:focus-visible,
 .rv-link:focus-visible,
 .rv-fold-row:focus-visible,
-.rv-try:focus-visible,
-.rv-quiet:focus-visible,
-.rv-btn1:focus-visible,
-.rv-btn2:focus-visible {
+.rv-try:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
@@ -12538,53 +12532,6 @@ button.rv-relrow:hover .rv-relrow-go {
   color: var(--muted-foreground);
   text-wrap: pretty;
 }
-.rv-foot .rv-btn1,
-.rv-foot .rv-btn2 {
-  height: 38px;
-  padding: 0 16px;
-  border-radius: 12px;
-  font-size: 14px;
-}
-.rv-foot .rv-btn1 {
-  color: var(--background);
-  background: var(--foreground);
-}
-.rv-foot .rv-btn1 kbd {
-  background: color-mix(in oklab, var(--background) 18%, transparent);
-}
-.rv-foot .rv-btn1:disabled {
-  color: var(--muted-foreground);
-  background: color-mix(in oklab, var(--foreground) 10%, transparent);
-}
-.rv-foot .rv-btn2 {
-  box-shadow: none;
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-}
-.rv-foot .rv-btn2:hover {
-  background: color-mix(in oklab, var(--foreground) 10%, transparent);
-}
-/* A quiet word after the buttons: "Close without merging…", "Cancel". */
-.rv-quiet {
-  height: 30px;
-  padding: 0 8px;
-  border-radius: 8px;
-  font-size: 13px;
-  line-height: 18px;
-  white-space: nowrap;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition:
-    background-color 150ms ease,
-    color 150ms ease;
-}
-.rv-quiet:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-  color: var(--foreground);
-}
-.rv-quiet:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 /* The sheet's steps — a release and a change it carries — fill its height. */
 .rv-viewport > .rv > .rv-steps,
 .rv-viewport > .rv .rv-step[data-at="here"] {
@@ -12595,74 +12542,15 @@ button.rv-relrow:hover .rv-relrow-go {
   bottom: 0;
   max-height: none;
 }
-.rv-btn2 {
-  display: inline-flex;
-  height: 34px;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--foreground);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
-  cursor: pointer;
-  transition: background-color 150ms ease;
-}
-.rv-btn2:hover {
-  background: color-mix(in oklab, var(--foreground) 5%, transparent);
-}
-.rv-btn1 {
-  display: inline-flex;
-  height: 34px;
-  flex: none;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px 0 14px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--primary-foreground);
-  background: var(--primary);
-  cursor: pointer;
-  transition:
-    transform 120ms var(--ease-out-strong),
-    filter 150ms ease;
-}
-.rv-btn1:hover {
-  filter: brightness(1.06);
-}
-.rv-btn1:active {
-  transform: scale(0.97);
-}
-.rv-btn1 svg {
-  width: 14px;
-  height: 14px;
-}
-.rv-btn1 kbd {
-  padding: 2px 5px;
-  border-radius: 5px;
+/* The primary's keys: a chip in the button's own ink, enabled or waiting. */
+.rv-keys {
+  padding: 2px 4px;
+  border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
-  line-height: 14px;
-  background: color-mix(in oklab, var(--primary-foreground) 18%, transparent);
-}
-.rv-btn1:disabled {
-  color: var(--muted-foreground);
-  background: color-mix(in oklab, var(--foreground) 10%, transparent);
-  cursor: not-allowed;
-  filter: none;
-  transform: none;
-}
-/* A button waiting to take its keys keeps them, in its muted ink: nothing moves once it can. */
-.rv-btn1:disabled kbd {
-  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+  line-height: 16px;
+  background: color-mix(in oklab, currentColor 18%, transparent);
 }
 /* ==== end of review ==== */
 

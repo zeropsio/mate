@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { Fragment, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
 import { isMacPlatform } from "~/lib/utils";
 
@@ -229,8 +230,7 @@ export function ZeropsReviewSurface({
       <footer className="rv-foot">
         <div className="rv-btns">
           {primary === undefined ? null : (
-            <button
-              className="rv-btn1"
+            <Button
               data-review-primary=""
               data-safe={
                 primary.safe && primary.enabled && primary.busy !== true ? "true" : "false"
@@ -238,16 +238,17 @@ export function ZeropsReviewSurface({
               data-zerops-primary-action={primary.label}
               disabled={!primary.enabled || primary.busy === true}
               onClick={primary.onPress}
-              type="button"
             >
               {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
               {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
               {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
               {primary.busy === true ? `${primary.label}…` : (primary.text ?? primary.label)}
               {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
-                <kbd aria-hidden="true">{PRESS_KEYS}</kbd>
+                <kbd aria-hidden="true" className="rv-keys">
+                  {PRESS_KEYS}
+                </kbd>
               ) : null}
-            </button>
+            </Button>
           )}
           {settled === undefined ? null : (
             <span className="rv-settled">
@@ -256,25 +257,24 @@ export function ZeropsReviewSurface({
             </span>
           )}
           {ask === undefined ? null : (
-            <button className="rv-btn2" data-review-ask="" onClick={ask.onPress} type="button">
+            <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
               {ask.label}
-            </button>
+            </Button>
           )}
           {secondary === undefined ? null : (
-            <button
-              className="rv-quiet"
+            <Button
               data-review-secondary=""
               disabled={!secondary.enabled}
               onClick={secondary.onPress}
-              type="button"
+              variant="ghost"
             >
               {secondary.label}
-            </button>
+            </Button>
           )}
           {dismiss === undefined || frame === "page" ? null : (
-            <button className="rv-quiet" onClick={onClose} type="button">
+            <Button onClick={onClose} variant="ghost">
               {dismiss}
-            </button>
+            </Button>
           )}
         </div>
         <p className="rv-conseq">{consequence}</p>

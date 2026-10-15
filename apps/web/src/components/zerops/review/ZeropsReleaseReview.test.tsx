@@ -109,7 +109,7 @@ describe("ReleaseReviewView", () => {
       markup,
     )?.[0];
     expect(button).toBeDefined();
-    expect(button).not.toContain("disabled");
+    expect(button).not.toMatch(/\sdisabled(?:=""|[\s>])/u);
   });
 });
 
