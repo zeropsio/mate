@@ -54,9 +54,9 @@ describe("environmentCreationSteps", () => {
   it("labels each step from the plan, so a new step cannot arrive unlabelled", () => {
     const steps = environmentCreationSteps(progress(["done", "running", "queued"]), 10_000);
     expect(steps.map((step) => step.label)).toEqual([
-      "Creating the environment",
-      "Importing the application",
-      "Waiting for the services",
+      "Creating it",
+      "Adding its services",
+      "Starting its services",
     ]);
     expect(steps.map((step) => step.state)).toEqual(["done", "running", "queued"]);
   });
@@ -89,7 +89,7 @@ describe("ZeropsEnvironmentCreation", () => {
   it("names what it is creating and shows the checklist", () => {
     const html = render();
     expect(html).toContain("Creating Beviro CRM - production");
-    expect(html).toContain("Importing the application");
+    expect(html).toContain("Adding its services");
     expect(html).toContain('data-zerops-creation-outcome="running"');
   });
 

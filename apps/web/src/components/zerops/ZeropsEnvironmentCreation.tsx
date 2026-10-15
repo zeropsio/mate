@@ -160,13 +160,13 @@ export function ZeropsEnvironmentCreation({
         <h2 className="text-sm font-semibold text-foreground">{creationTitle(name, outcome)}</h2>
         <p className="text-xs text-muted-foreground">
           {outcome === undefined
-            ? "Each step is a platform call with your own token. A first import takes a couple of minutes."
+            ? "It takes a couple of minutes."
             : outcome.kind === "failed"
               ? outcome.projectExists
                 ? "The project exists; the rest did not happen. Fix it from the Zerops dashboard or delete it and try again."
                 : "Nothing was created."
               : outcome.kind === "handed-off"
-                ? "The agent's container is on its way — the wait continues below."
+                ? "Its Mate is on its way — the wait continues below."
                 : upNote(tier, outcome.deployments, nowMs, deployed)}
         </p>
       </div>
