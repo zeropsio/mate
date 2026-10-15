@@ -335,7 +335,7 @@ function ProviderEnvironmentSection(props: {
                       <Button
                         type="button"
                         size="icon-md"
-                        variant="ghost-destructive"
+                        variant="ghost"
                         className="size-8"
                         onClick={() => removeVariable(variable.id)}
                         aria-label={`Remove environment variable ${variable.name || index + 1}`}
@@ -620,7 +620,7 @@ export function ProviderInstanceCard({
               render={
                 <Button
                   size="icon-sm"
-                  variant="ghost-destructive"
+                  variant="ghost"
                   onClick={onDelete}
                   aria-label={`Delete provider instance ${instanceId}`}
                 >

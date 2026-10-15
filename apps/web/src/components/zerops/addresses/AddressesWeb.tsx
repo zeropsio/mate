@@ -106,7 +106,7 @@ export function AddressesWeb({
             disabled={ctx.hold}
             onClick={() => setMode({ kind: "add-domain" })}
             size="sm"
-            variant="ghost-primary"
+            variant="ghost"
           >
             <PlusIcon />
             Put it on your domain

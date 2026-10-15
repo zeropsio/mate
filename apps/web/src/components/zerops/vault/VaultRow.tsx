@@ -441,7 +441,7 @@ function RowBody(props: VaultRowProps) {
             Hide it
           </Button>
         )}
-        <Button disabled={busy} onClick={remove} size="sm" variant="ghost-destructive">
+        <Button disabled={busy} onClick={remove} size="sm" variant="ghost">
           Remove
         </Button>
       </div>
@@ -494,7 +494,7 @@ function RowBody(props: VaultRowProps) {
             />
           </p>
           <div className="flex justify-end gap-1.5">
-            <Button onClick={remove} size="sm" variant="ghost-destructive">
+            <Button onClick={remove} size="sm" variant="ghost">
               Remove anyway
             </Button>
             <Button onClick={() => setGuard(false)} size="sm" variant="secondary">

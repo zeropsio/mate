@@ -383,7 +383,7 @@ export function ThemeLibraryCard({
                                 : `Remove ${theme.label}`
                             }
                             size="icon-sm"
-                            variant="ghost-destructive"
+                            variant="ghost"
                             onClick={(event) => {
                               event.stopPropagation();
                               onRemove();

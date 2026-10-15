@@ -85,7 +85,7 @@ export function AddressesDirect({
             disabled={ctx.hold}
             onClick={() => setMode({ kind: "open-port" })}
             size="sm"
-            variant="ghost-primary"
+            variant="ghost"
           >
             <PlusIcon />
             Open a port

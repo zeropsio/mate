@@ -346,7 +346,7 @@ function McpServerDetails(props: {
                 disabled={pending !== null}
                 onClick={() => setArmed(true)}
                 size="sm"
-                variant="ghost-destructive"
+                variant="ghost"
               >
                 {MCP_WORDS.remove}
               </Button>
