@@ -566,7 +566,7 @@ describe("crewExactCommandRule — the lane form, for a driver that cannot rewri
 });
 
 describe("decideCrewTool — the dev server and a claim", () => {
-  const devServer = { port: 3000, command: "npm run dev -- --host 0.0.0.0" };
+  const devServer = { name: "web", port: 3000, command: "npm run dev -- --host 0.0.0.0", cwd: "." };
   const shaped = (turn: LiveGateContext["turn"]): LiveGateContext => ({
     ...writer,
     turn,
@@ -581,6 +581,12 @@ describe("decideCrewTool — the dev server and a claim", () => {
   };
   const fromCopy = { ...restart, workDir: "/var/www/.crew/backend" };
   const tool = "mcp__zerops__zerops_dev_server";
+  const run = (command: string) => ({ command });
+  const show = (cwd: string) =>
+    `ssh appdev ${shellQuote(
+      `zcp-devsup ctl --json stop web && zcp-devsup ctl --json run --name show-backend --cwd ${cwd} --port 3000 -- ${shellQuote(devServer.command)}`,
+    )}`;
+  const giveBack = `ssh appdev ${shellQuote("zcp-devsup ctl --json rm show-backend; zcp-devsup ctl --json start web")}`;
 
   check([
     ["the after-land restart from the tree", shaped("after-land"), tool, restart, ALLOW],
@@ -591,9 +597,11 @@ describe("decideCrewTool — the dev server and a claim", () => {
       { ...restart, command: devServer.command },
       ALLOW,
     ],
-    ["the release restart from the tree", shaped("claim-release"), tool, restart, ALLOW],
-    ["the claim restart from the copy", holder, tool, fromCopy, ALLOW],
+    ["the release restart from the tree", shaped("claim-release"), "Bash", run(giveBack), ALLOW],
+    ["the claim restart from the copy", holder, "Bash", run(show(".crew/backend")), ALLOW],
+    ["a claim turn's dev server tool call", holder, tool, fromCopy, DENY],
     ["any dev server call in an ordinary turn", writer, tool, restart, DENY],
+    ["a supervisor command in an ordinary turn", writer, "Bash", run(giveBack), DENY],
     [
       "a status call in an ordinary turn",
       writer,
@@ -602,14 +610,8 @@ describe("decideCrewTool — the dev server and a claim", () => {
       DENY,
     ],
     ["after-land from the copy", shaped("after-land"), tool, fromCopy, DENY],
-    ["the claim restart from the tree", holder, tool, restart, DENY],
-    [
-      "the claim restart from another copy",
-      holder,
-      tool,
-      { ...fromCopy, workDir: "/var/www/.crew/frontend" },
-      DENY,
-    ],
+    ["the claim restart from the tree", holder, "Bash", run(show(".")), DENY],
+    ["the claim restart from another copy", holder, "Bash", run(show(".crew/frontend")), DENY],
     ["without a port", shaped("after-land"), tool, { ...restart, port: undefined }, DENY],
     ["on another port", shaped("after-land"), tool, { ...restart, port: 8080 }, DENY],
     [

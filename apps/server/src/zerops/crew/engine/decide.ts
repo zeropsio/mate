@@ -81,6 +81,7 @@ import {
   taskCard,
   type SentCard,
 } from "./cards.ts";
+import { copyWorkDir } from "../CrewRuntime.ts";
 import {
   CREW_EFFECT_KINDS,
   type CrewDecision,
@@ -1640,16 +1641,9 @@ const pressed = (
       if (member.kind !== "writer" || member.runCommand === null) {
         throw wrongState(`@${member.handle} has no app to run`);
       }
+      if (press._tag === "appRun") return runApp(b, member, member.runCommand);
       b.effect(
-        press._tag === "appRun"
-          ? {
-              kind: "crew.app.run",
-              handle: member.handle,
-              host: member.host!,
-              command: member.runCommand,
-              ...laneEnvironmentOf(b.state, member),
-            }
-          : { kind: "crew.app.stop", handle: member.handle, host: member.host! },
+        { kind: "crew.app.stop", handle: member.handle, host: member.host! },
         member.handle,
         { handle: member.handle },
       );
@@ -2373,7 +2367,14 @@ const releaseClaim = (
   }
   const member = b.state.members[claim.handle];
   if (member === undefined || claim.devServer === null) return;
-  sendTurn(b, member, claimReleaseCard(host, claim.devServer), as, "claim-release", null);
+  sendTurn(
+    b,
+    member,
+    claimReleaseCard(host, member.handle, claim.devServer),
+    as,
+    "claim-release",
+    null,
+  );
 };
 
 /** A free crewmate's allowed claim turn goes out; a running run's dev grant allows a request. */
@@ -2391,7 +2392,12 @@ const claimTurn = (b: Builder, member: MemberRecord): boolean => {
     sendTurn(
       b,
       member,
-      claimStartCard(member.host, claim.devServer, claim.workDir ?? `.crew/${member.handle}`),
+      claimStartCard(
+        member.host,
+        member.handle,
+        claim.devServer,
+        claim.workDir ?? copyWorkDir(member.handle, claim.devServer),
+      ),
       claim.grantedBy ?? b.envelope.principal,
       "claim-start",
       null,
@@ -3258,9 +3264,33 @@ const thaw = (
         { handle: member.handle },
       );
     }
+    // A redeploy drops the supervisor's crew apps (spec-mate §2.8a.2): the engine adds them again.
+    if (
+      member.app === "running" &&
+      member.runCommand !== null &&
+      member.lane?.state === "ready" &&
+      !lost.includes(member.handle)
+    ) {
+      runApp(b, member, member.runCommand);
+    }
     const open = openTaskOf(b.state, member.handle);
     if (open?.state === "merging" && !open.checkpointing) mergeIn(b, open);
   }
+};
+
+/** A writer's own app run on its crew port, by the dev service's supervisor. */
+const runApp = (b: Builder, member: MemberRecord, command: string): void => {
+  b.effect(
+    {
+      kind: "crew.app.run",
+      handle: member.handle,
+      host: member.host!,
+      command,
+      ...laneEnvironmentOf(b.state, member),
+    },
+    member.handle,
+    { handle: member.handle },
+  );
 };
 
 /* ------------------------------------------------------------ the rest of the engine */
@@ -4074,7 +4104,7 @@ const claimRead = (
           sendTurn(
             b,
             member,
-            claimReleaseCard(host, claim.devServer),
+            claimReleaseCard(host, member.handle, claim.devServer),
             claim.grantedBy ?? { kind: "engine" },
             "claim-release",
             null,

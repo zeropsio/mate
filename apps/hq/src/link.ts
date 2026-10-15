@@ -253,8 +253,9 @@ export const serveMateLink = (
               continue;
             }
             if (read.kind === "message" && read.message.type === "overview") {
-              yield* report(overviews.report(projectId, link, read.message));
-              // A write that fails is the next overview's to repeat; it never ends the link.
+              // Signers are recorded before the overview is: an owner its logins name is never
+              // in a state sent without their signers. A write that fails is the next
+              // overview's to repeat; it never ends the link.
               yield* Effect.ignore(
                 structure.recordSigners(
                   projectId,
@@ -263,6 +264,7 @@ export const serveMateLink = (
                   ),
                 ),
               );
+              yield* report(overviews.report(projectId, link, read.message));
             }
           }
         }

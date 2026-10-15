@@ -335,7 +335,7 @@ function ChangeReviewData({
   }, [run.reading]);
   const runRef = run.threadRef;
   const project = useGroupName(target.groupId);
-  const previews = useMatePreviews(pull.mateProjectId);
+  const previews = useMatePreviews(pull.mateProjectId, flow?.mateTier);
 
   return (
     <ChangeReviewView

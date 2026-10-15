@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import { CrewWorld, OPTIONS, OTHER, home, newTask, writer } from "./crewDecideFixture.ts";
 
-const DEV = { port: 3000, command: "npm run dev" } as const;
+const DEV = { name: "web", port: 3000, command: "npm run dev", cwd: "." } as const;
 const READ = { served: { by: "tree" }, devServer: DEV, workDir: ".crew/backend" } as const;
 
 const claim = (w: CrewWorld) => w.state.claims.appdev?.state ?? "none";

@@ -166,7 +166,7 @@ export function servicesDeploying(services: ReadonlyArray<string>): string {
 }
 
 /** `app`, `app and api`, `app, api and web`. */
-function serviceNames(services: ReadonlyArray<string>): string {
+export function serviceNames(services: ReadonlyArray<string>): string {
   return services.length < 2
     ? services.join("")
     : `${services.slice(0, -1).join(", ")} and ${services.at(-1) ?? ""}`;

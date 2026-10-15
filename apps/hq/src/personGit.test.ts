@@ -111,7 +111,12 @@ describe("person HTTPS Git credentials (E199)", () => {
       "stores only a digest for twelve hours, denies expired or departed holders, and checks the organization",
       () =>
         Effect.gen(function* () {
-          const { call, fake, url } = yield* startCore(true, { viewTtl: Duration.zero });
+          // Each request checks its holder; the reconcile that revokes a departed person's
+          // sessions and git passwords (structure.test.ts) would answer 401 for them instead.
+          const { call, fake, url } = yield* startCore(true, {
+            viewTtl: Duration.zero,
+            reconcileEvery: Duration.infinity,
+          });
           yield* untilHealth(call, "active");
           const owner = yield* sessionFor(call, "door-owner");
           const reader = yield* sessionFor(call, "door-reader");

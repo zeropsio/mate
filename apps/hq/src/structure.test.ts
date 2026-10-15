@@ -3066,11 +3066,32 @@ describe("structure", () => {
           ]);
 
           // One planned into no job there — every service already runs it — landed as planned.
-          yield* release("v0.3.0", true);
+          const third = yield* release("v0.3.0", true);
           assert.deepStrictEqual((yield* standing)[1], [
             "P_PROD",
             ["v0.3.0", true, true, "string", true, []],
           ]);
+          // A part its tier dropped, which HQ stopped: the mark rides to the client as written.
+          yield* sql`
+            UPDATE hq_rollout SET left_out = jsonb_build_array(jsonb_build_object(
+              'environment_id', 'P_PROD', 'project_id', 'P_PROD', 'service', 'worker', 'sha', '',
+              'job', NULL, 'reason', 'stopped', 'stopped', jsonb_build_object('rollbackTo', 'v0.1.0')))
+            WHERE id = ${third}::bigint`;
+          const leftOutOf = Effect.map(structure.read("dev"), (read) =>
+            read.apps
+              .flatMap((app) => shown(app.environments))
+              .flatMap(({ release: rollout }) => rollout?.leftOut ?? []),
+          );
+          assert.deepStrictEqual(yield* leftOutOf, [
+            {
+              service: "worker",
+              sha: "",
+              job: null,
+              reason: "stopped",
+              stopped: { rollbackTo: "v0.1.0" },
+            },
+          ]);
+          yield* sql`UPDATE hq_rollout SET left_out = '[]'::jsonb WHERE id = ${third}::bigint`;
 
           // Review #2 (web, client): a release HQ records with no rollout of its own — made before
           // rollouts were, or recorded from git — deploys nothing more: ended, as it was made, and

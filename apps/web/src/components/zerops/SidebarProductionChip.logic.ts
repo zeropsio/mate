@@ -29,6 +29,7 @@ import {
   cannotTellWhatRuns,
   changesCountWords,
   sameCommit,
+  serviceNames,
   type FlowReleaseRow,
   type GroupEnvironmentRowInput,
   type GroupFlowProduction,
@@ -112,8 +113,8 @@ export interface ReleaseFailure {
   readonly at: string | undefined;
   /** The words for it: the failed deploy's message, as HQ records it, or the broker's recorded refusal reason. */
   readonly error: string | undefined;
-  /** The service whose deploy failed. */
-  readonly service: string | undefined;
+  /** The services whose deploys failed, by the order the release lists them. */
+  readonly services: ReadonlyArray<string>;
 }
 
 /**
@@ -138,17 +139,23 @@ export function releaseFailureOf(input: {
       kind: "refused",
       at: release.taggedAt,
       error: wordsOf(release.detail),
-      service: undefined,
+      services: [],
     };
   }
-  const entry = release.failedEntry;
-  const failed = entry === undefined ? undefined : failedDeploy(input.environmentInputs, entry);
+  const entries = release.failedEntries;
+  // One failed deploy's words and time are the release's; several each keep their own, said where
+  // each service is.
+  const [entry] = entries;
+  const failed =
+    entry === undefined || entries.length > 1
+      ? undefined
+      : failedDeploy(input.environmentInputs, entry);
   return {
     tag: release.tag,
     kind: "deploy-failed",
     at: failed === undefined ? undefined : (failed.endedAt ?? failed.at),
     error: wordsOf(failed?.reason ?? undefined),
-    service: entry?.service,
+    services: entries.map((failedEntry) => failedEntry.service),
   };
 }
 
@@ -985,7 +992,9 @@ export function stageMenu(input: {
 /** How a release did not go through: "failed deploying app", "was refused". */
 function failedHow(failure: ReleaseFailure): string {
   if (failure.kind === "refused") return "was refused";
-  return failure.service === undefined ? "failed" : `failed deploying ${failure.service}`;
+  return failure.services.length === 0
+    ? "failed"
+    : `failed deploying ${serviceNames(failure.services)}`;
 }
 
 /**

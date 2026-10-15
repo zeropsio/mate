@@ -3028,6 +3028,25 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `DELETE /service-stack/{id}` — the service and its data, gone for good: a person's confirmed
+   * Delete alone asks it (`delete-service`). Answered with its delete process.
+   */
+  async deleteService(
+    serviceId: string,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{ readonly processId: string | undefined }> {
+    const process = await this.#request<{ readonly id?: unknown }>(
+      `/service-stack/${serviceId}`,
+      { method: "DELETE" },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    return { processId: typeof process?.id === "string" ? process.id : undefined };
+  }
+
+  /**
    * `GET /project/{id}/public-http-routing` — the project's routings of its own domains, each
    * domain with its certificate's state (`sslStatus`: `WAITING_FOR_DNS`, `ACTIVE`, …).
    */

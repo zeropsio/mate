@@ -15,7 +15,9 @@ import {
 import {
   exists,
   read,
-  remoteEnvWithSetsid,
+  remoteEnvWithSupervisor,
+  supervisorCalls,
+  supervisorDown,
   TEST_HOST,
   waitUntil,
 } from "../../testing/crewGitFixture.ts";
@@ -39,7 +41,7 @@ const row = (attemptNumber = 1) =>
     attempt: attemptNumber,
   });
 
-const SETSID = { remoteEnv: remoteEnvWithSetsid() };
+const SUPERVISED = { remoteEnv: remoteEnvWithSupervisor() };
 
 /** The app stopped after the test, whatever it asserted. */
 const stopAfter = <A, E, R>(body: Effect.Effect<A, E, R>) =>
@@ -71,7 +73,7 @@ describe("crew.app.run", () => {
             );
           }),
         ),
-      SETSID,
+      SUPERVISED,
     ),
   );
 
@@ -92,7 +94,7 @@ describe("crew.app.run", () => {
               assert.deepStrictEqual({ again, starts: starts(root) }, { again: first, starts: 1 });
             }),
           ),
-        SETSID,
+        SUPERVISED,
       ),
   );
 
@@ -105,11 +107,41 @@ describe("crew.app.run", () => {
           NodeFS.rmSync(`${root}/.crew/backend`, { recursive: true, force: true });
           const missing = okValue(yield* attempt(handler, row()));
           assert.deepStrictEqual(
-            { missing, log: exists(root, ".crew/backend.run.log"), starts: starts(root) },
-            { missing: { state: "lane-missing" }, log: false, starts: 0 },
+            { missing, asked: supervisorCalls(root).length, starts: starts(root) },
+            { missing: { state: "lane-missing" }, asked: 0, starts: 0 },
           );
         }),
-      SETSID,
+      SUPERVISED,
     ),
+  );
+
+  it.effect(
+    "a crew app on a dev service whose supervisor does not answer starts under setsid, as before the supervisor",
+    () =>
+      withCrewEffects(
+        (root) =>
+          stopAfter(
+            Effect.gen(function* () {
+              const handler = yield* makeAppRun;
+              yield* createLane("backend");
+              supervisorDown(root);
+              const started = okValue(yield* attempt(handler, row())) as { readonly pid: number };
+              waitUntil(() => exists(root, ".crew/backend.port"));
+              assert.deepStrictEqual(
+                {
+                  started,
+                  pidfile: read(root, ".crew/backend.run.pid").trim(),
+                  starts: starts(root),
+                },
+                {
+                  started: { state: "running", pid: started.pid },
+                  pidfile: String(started.pid),
+                  starts: 1,
+                },
+              );
+            }),
+          ),
+        SUPERVISED,
+      ),
   );
 });

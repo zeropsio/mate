@@ -32,6 +32,7 @@ import {
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 import type { TaskCounters } from "../crewMachines.ts";
+import type { DevServerShape } from "../CrewRuntime.ts";
 import type { PromptVersions } from "../crewVersions.ts";
 import type { RotationReason } from "../rotationDecision.ts";
 
@@ -302,8 +303,9 @@ export interface ClaimRecord {
   readonly reason: string | null;
   /** Allowed while the crewmate's turn ran: the claim turn goes out at its end. */
   readonly grantWaiting: boolean;
-  /** The dev server the claim restarts, as the grant read it. */
-  readonly devServer: { readonly port: number; readonly command: string } | null;
+  /** The declared dev server the claim stands the copy in for, as the grant read it. */
+  readonly devServer: DevServerShape | null;
+  /** Where the copy runs the dev server, in the repository, as the grant read it. */
   readonly workDir: string | null;
   /** Whose press or run allowed it. */
   readonly grantedBy: Principal | null;

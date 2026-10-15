@@ -14,25 +14,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { readZeropsCardSource } from "./cards/decode.ts";
 import { decodeZeropsCard } from "./cards/payloads.ts";
+import { buildDevServerFields } from "./model/builders/devServer.ts";
 import { flowChange } from "./projectFlow.ts";
 
 const dir = new URL("./fixtures/zcp/", import.meta.url);
 const raw = (name: string) => NodeFS.readFileSync(new URL(name, dir));
 const json = (name: string): Record<string, unknown> => JSON.parse(raw(name).toString("utf8"));
 const decodeEnvelope = Schema.decodeUnknownSync(ZeropsStateEnvelope);
-
-interface Snapshot {
-  readonly hostname: string;
-  readonly stages?: ReadonlyArray<{ readonly hostname: string; readonly setup?: string }>;
-  readonly devServers?: ReadonlyArray<{
-    readonly name: string;
-    readonly port?: number;
-    readonly status: string;
-    readonly readAt: string;
-  }>;
-}
-const services = (envelope: Record<string, unknown>) =>
-  envelope.services as ReadonlyArray<Snapshot>;
 
 describe("zcp contract fixtures", () => {
   it("are byte copies of the zcp commit SOURCE.json names", () => {
@@ -52,6 +40,16 @@ describe("zcp contract fixtures", () => {
     }
   });
 
+  it("decodes today's single-pair envelope to exactly the snapshots zcp sent", () => {
+    const today = json("envelope.single-pair.today.json");
+    const decoded = decodeEnvelope(today);
+    expect(decoded.services).toEqual(today.services);
+    expect(decoded.services.map((service) => [service.stages, service.devServers])).toEqual([
+      [undefined, undefined],
+      [undefined, undefined],
+    ]);
+  });
+
   it("decodes today's single-pair envelope with its stage and setups", () => {
     const [dev, stage] = decodeEnvelope(json("envelope.single-pair.today.json")).services;
     expect([dev?.hostname, dev?.stageHostname, dev?.setupName, dev?.stageSetupName]).toEqual([
@@ -66,14 +64,12 @@ describe("zcp contract fixtures", () => {
   it("still decodes every envelope that carries stages and dev servers", () => {
     for (const name of ["envelope.single-pair.json", "envelope.three-parts.json"]) {
       const decoded = decodeEnvelope(json(name));
-      expect(decoded.services.map((service) => service.hostname)).toEqual(
-        services(json(name)).map((service) => service.hostname),
-      );
+      expect(decoded.services).toEqual(json(name).services);
     }
   });
 
   it("names one stage and one dev server under the hostname for a single pair", () => {
-    const [dev] = services(json("envelope.single-pair.json"));
+    const [dev] = decodeEnvelope(json("envelope.single-pair.json")).services;
     expect(dev?.stages).toEqual([{ hostname: "appstage", setup: "prod" }]);
     expect(dev?.devServers?.map((server) => [server.name, server.port, server.status])).toEqual([
       ["appdev", 3000, "running"],
@@ -81,7 +77,7 @@ describe("zcp contract fixtures", () => {
   });
 
   it("carries every preview and every dev server of a three-part app", () => {
-    const [dev] = services(json("envelope.three-parts.json"));
+    const [dev] = decodeEnvelope(json("envelope.three-parts.json")).services;
     expect(dev?.stages).toEqual([
       { hostname: "webstage", setup: "web" },
       { hostname: "apistage", setup: "api" },
@@ -93,6 +89,33 @@ describe("zcp contract fixtures", () => {
       ["web", 3000, "running", "2026-10-14T21:04:00Z"],
       ["api", 8080, "running", "2026-10-14T21:04:00Z"],
       ["worker", undefined, "crashed", "2026-10-14T21:04:00Z"],
+    ]);
+    expect(dev?.devServers?.map((server) => [server.url, server.verify, server.lastExit])).toEqual([
+      [
+        "https://appdev-1df2-3000.prg1.zerops.app",
+        { ok: true, httpStatus: 200, at: "2026-10-14T21:04:00Z" },
+        undefined,
+      ],
+      [
+        "https://appdev-1df2-8080.prg1.zerops.app",
+        { ok: true, httpStatus: 200, at: "2026-10-14T21:04:00Z" },
+        undefined,
+      ],
+      [undefined, undefined, { code: 1, at: "2026-10-14T21:03:10Z" }],
+    ]);
+  });
+
+  it("reads the dev servers a zerops_dev_server result's envelope carries", () => {
+    const devServersOf = (name: string) =>
+      decodeEnvelope(json(name).envelope).services[0]?.devServers?.map((server) => [
+        server.name,
+        server.status,
+      ]);
+    expect(devServersOf("dev-server.one-server.json")).toEqual([["appdev", "running"]]);
+    expect(devServersOf("dev-server.three-servers-one-crashed.json")).toEqual([
+      ["web", "running"],
+      ["api", "running"],
+      ["worker", "crashed"],
     ]);
   });
 
@@ -116,6 +139,61 @@ describe("zcp contract fixtures", () => {
       hostname: "appdev",
       running: false,
       reason: "crashed",
+    });
+  });
+
+  describe("the dev-server card", () => {
+    const fields = (name: string) =>
+      buildDevServerFields({
+        id: "c1",
+        turnId: "t1",
+        toolName: "zerops_dev_server",
+        input: { hostname: "appdev", action: "status" },
+        status: "completed",
+        resultText: raw(name).toString("utf8"),
+        truncated: false,
+        startedAt: "2026-10-14T21:03:50.000Z",
+        anchorActivityId: "a1",
+        settledAt: "2026-10-14T21:04:00.000Z",
+        rowIds: new Set(["a1"]),
+        agentInternal: false,
+      });
+    /** `21:04`, in the reader's own clock. */
+    const clock = (iso: string) =>
+      new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).format(Date.parse(iso));
+
+    it("The dev-server card shows one row per named server with its last known state and when it was read", () => {
+      const card = fields("dev-server.three-servers-one-crashed.json");
+      const read = clock("2026-10-14T21:04:00Z");
+      expect(
+        card.steps.map(({ label, state, stateLabel, note }) => [label, state, stateLabel, note]),
+      ).toEqual([
+        ["web :3000", "done", "Running", `read ${read}`],
+        ["api :8080", "done", "Running", `read ${read}`],
+        [
+          "worker",
+          "failed",
+          "Crashed",
+          `exit 1 at ${clock("2026-10-14T21:03:10Z")} · read ${read}`,
+        ],
+      ]);
+      expect(card.links).toEqual([
+        { label: "web :3000", url: "https://appdev-1df2-3000.prg1.zerops.app" },
+        { label: "api :8080", url: "https://appdev-1df2-8080.prg1.zerops.app" },
+      ]);
+    });
+
+    it("A one-part app's dev-server card is today's: one step, no server name, no link of its own", () => {
+      const card = fields("dev-server.one-server.json");
+      expect(
+        card.steps.map(({ label, state, stateLabel, note }) => [label, state, stateLabel, note]),
+      ).toEqual([["Health check", "done", "Done", "HTTP 200"]]);
+      expect(card.links).toEqual([]);
+      expect(card.kicker).toBe("Dev server · appdev");
     });
   });
 

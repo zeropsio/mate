@@ -1,10 +1,11 @@
 /**
  * `crew.app.run` (replay-safe, lane `host/<host>`): a crewmate's own app started in its copy on
- * its crew port (`CrewApp.run`, unchanged: `setsid`, its log and pidfile beside the copy).
+ * its crew port, as the dev service's supervisor's runtime entry (`CrewApp.run`).
  *
- * An app's evidence is its pidfile naming a live process: `run` starts nothing while one does.
- * Run again after a crash, the handler finds the app its earlier attempt started and answers with
- * it, so an app is never started twice.
+ * An app's evidence is the supervisor's entry: `run` of one already running as asked starts
+ * nothing; without a supervisor that answers, its pidfile naming a live process does the same
+ * (`CrewApp`). Run again after a crash, the handler finds the app its earlier attempt started and
+ * answers with it, so an app is never started twice.
  *
  * @module zerops/crew/engine/effects/appRun
  */

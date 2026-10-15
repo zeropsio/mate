@@ -1,5 +1,4 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 
 import { assert, describe, it } from "@effect/vitest";
@@ -23,17 +22,19 @@ import {
   attempt,
   createLane,
   type CrewEffectServices,
-  devServerPidFile,
   effectRow,
   okValue,
   personCommits,
   withCrewEffects,
 } from "../testing/crewEffectFixture.ts";
 import {
+  DEV_SERVER,
   exists,
   git,
   read,
-  remoteEnvWithSetsid,
+  remoteEnvWithSupervisor,
+  serveDev,
+  stopSupervised,
   TEST_HOST,
   waitUntil,
   write,
@@ -44,7 +45,7 @@ import { CREW_EFFECT_KINDS, type CrewEffectKind, type CrewEffectPayload } from "
 import { crewDeliveryLayer, CrewDelivery } from "./effects/deliver.ts";
 import { laneKey } from "./effects/shared.ts";
 
-const SETSID = { remoteEnv: remoteEnvWithSetsid() };
+const SUPERVISED = { remoteEnv: remoteEnvWithSupervisor() };
 const BACKEND = ConversationId.make("crew-main-backend-1");
 const ANA: Principal = { kind: "person", subject: "ana" };
 const CREW: Principal = { kind: "crew", startedBy: "ana" };
@@ -148,19 +149,11 @@ const landedWork = (root: string) =>
     });
   });
 
-/** zcp's dev server as its pidfile names it, run from `cwd` until the scope closes. */
-const devServer = (root: string, cwd: string) =>
+/** The supervisor serves dev from `from` until the scope closes. */
+const devServer = (root: string, from: Parameters<typeof serveDev>[1]) =>
   Effect.acquireRelease(
-    Effect.sync(() => {
-      const child = NodeChildProcess.spawn("sleep", ["30"], { cwd, stdio: "ignore" });
-      NodeFS.writeFileSync(devServerPidFile(root), `${child.pid}\n`);
-      return child;
-    }),
-    (child) =>
-      Effect.sync(() => {
-        child.kill("SIGKILL");
-        NodeFS.rmSync(devServerPidFile(root), { force: true });
-      }),
+    Effect.sync(() => serveDev(root, from)),
+    () => Effect.sync(() => stopSupervised(root)),
   );
 
 /* ------------------------------------------------------------ ports */
@@ -649,12 +642,7 @@ const rows: ReadonlyArray<Row> = [
       Effect.scoped(
         Effect.gen(function* () {
           yield* createLane("backend");
-          write(
-            root,
-            "zerops.yaml",
-            "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n",
-          );
-          yield* devServer(root, lane(root));
+          yield* devServer(root, { handle: "backend" });
           return yield* value("crew.claim.read", {
             host: TEST_HOST,
             handle: "backend",
@@ -663,10 +651,10 @@ const rows: ReadonlyArray<Row> = [
         }),
       ),
     ),
-    expected: (root) => ({
+    expected: () => ({
       served: { by: "crewmate", handle: "backend" },
-      devServer: { port: 3000, command: "sleep 30" },
-      workDir: `${root}/.crew/backend`,
+      devServer: { ...DEV_SERVER, cwd: "." },
+      workDir: ".crew/backend",
     }),
   },
   {
@@ -675,12 +663,7 @@ const rows: ReadonlyArray<Row> = [
       Effect.scoped(
         Effect.gen(function* () {
           yield* createLane("backend");
-          write(
-            root,
-            "zerops.yaml",
-            "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n",
-          );
-          yield* devServer(root, lane(root));
+          yield* devServer(root, { handle: "backend" });
           return yield* value("crew.claim.read", {
             host: TEST_HOST,
             handle: "backend",
@@ -689,10 +672,10 @@ const rows: ReadonlyArray<Row> = [
         }),
       ),
     ),
-    expected: (root) => ({
+    expected: () => ({
       served: { by: "crewmate", handle: "backend" },
-      devServer: { port: 3000, command: "sleep 30" },
-      workDir: `${root}/.crew/backend`,
+      devServer: { ...DEV_SERVER, cwd: "." },
+      workDir: ".crew/backend",
     }),
   },
   {
@@ -1007,7 +990,7 @@ describe("the crew's effects on the git core", () => {
         Effect.map(row.scene(root, told).pipe(Effect.provide(ports(told))), (actual) => {
           assert.deepStrictEqual(actual, row.expected(root));
         }),
-      SETSID,
+      SUPERVISED,
     );
   });
 

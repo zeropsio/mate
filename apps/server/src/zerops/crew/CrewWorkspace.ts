@@ -39,11 +39,15 @@
  * apply).
  *
  * **Self-deploys and container replacement** keep `.git` but not the lane
- * directories, or revert the disk. `freeze` stops lane writes on a host;
+ * directories, or revert the disk. Before a deploy pushes the service, zcp runs
+ * the crew's save (`<git-common-dir>/t3-crew-save`, written with the first lane
+ * and at every boot sweep): each copy's uncommitted and untracked work becomes
+ * a commit on `refs/t3/crew/saved/<handle>`, which `.git` carries through the
+ * deploy. `freeze` stops lane writes on a host;
  * `recover` prunes worktrees, verifies every `crew/<handle>` and every
  * recorded landing's `Crew-Assignment:` trailer in H's first-parent history,
- * and re-adds the lanes only when nothing was lost - or names what was lost
- * and leaves those copies missing. Either way the host thaws. The boot `sweep` re-derives lane state from git,
+ * and re-adds the lanes only when nothing was lost, each with its saved work -
+ * or names what was lost and leaves those copies missing. Either way the host thaws. The boot `sweep` re-derives lane state from git,
  * not from the tables. `rebuild` re-adds one copy a person selects.
  *
  * @module CrewWorkspace
@@ -349,6 +353,61 @@ export const EXCLUDE_LINE = script(
     `mkdir -p "$(dirname "$exclude")" && ` +
     `{ grep -qxF '.crew/' "$exclude" 2>/dev/null || printf '%s\\n' '.crew/' >> "$exclude"; } || exit 1\n`,
 );
+
+/** Where the save before a deploy keeps a copy's uncommitted and untracked work. */
+export const savedRef = (handle: string): string => `refs/t3/crew/saved/${handle}`;
+
+const SAVED = shellVariable("ref");
+
+/**
+ * The save zcp runs before a deploy pushes the service, `<git-common-dir>/t3-crew-save`. A
+ * redeploy keeps `.git` and loses `.crew/`, so each copy's uncommitted and untracked work becomes a
+ * commit on {@link savedRef}, built in a scratch index: the copy, its branch and its index stay as
+ * they were. A clean copy drops its save; a save that fails stops the deploy.
+ */
+const SAVE_SCRIPT =
+  "#!/bin/sh\n" +
+  "# Zerops Mate's crew: zcp runs this before a deploy pushes this service.\n" +
+  "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES\n" +
+  'cd "$(dirname "$0")/.." || exit 1\n' +
+  "scratch=$(mktemp -d) || exit 1\n" +
+  "trap 'rm -rf \"$scratch\"' EXIT\n" +
+  "for copy in .crew/*; do\n" +
+  '  [ -f "$copy/.git" ] || continue\n' +
+  `  ref=${savedRef("")}\${copy#.crew/}\n` +
+  '  rm -f "$scratch/index"\n' +
+  `  ( cd "$copy" && export GIT_INDEX_FILE="$scratch/index" && ${git("integration", ["read-tree", "HEAD"])} && ${git("integration", ["add", "-A"])} &&\n` +
+  `    tree=$(${git("integration", ["write-tree"])}) &&\n` +
+  `    if [ "$tree" = "$(${git("integration", ["rev-parse", "HEAD^{tree}"])})" ]; then\n` +
+  `      ! ${git("integration", ["rev-parse", "-q", "--verify", SAVED])} >/dev/null || ${git("integration", ["update-ref", "-d", SAVED])}\n` +
+  "    else\n" +
+  `      commit=$(${git("integration", ["commit-tree", shellVariable("tree"), "-p", "HEAD", "-m", "crew: work saved before a deploy"])}) && ${git("integration", ["update-ref", SAVED, shellVariable("commit")])}\n` +
+  "    fi\n" +
+  "  ) || { printf 'crew: %s could not be saved before the deploy\\n' \"$copy\" >&2; exit 1; }\n" +
+  "done\n";
+
+/** Idempotent: the crew's {@link SAVE_SCRIPT} where zcp looks for it. */
+const SAVE_LINE = script(
+  `save=$(${git("integration", ["rev-parse", "--git-common-dir"])})/t3-crew-save || exit 1\n` +
+    `printf '%s' ${shellQuote(SAVE_SCRIPT)} > "$save.tmp" && chmod 755 "$save.tmp" && mv -f "$save.tmp" "$save" || exit 1\n`,
+);
+
+/**
+ * A re-added copy takes back the work saved before the deploy that lost it, when the save was made
+ * on the tip the copy is at; the save is dropped once it is back, and kept if it does not apply.
+ */
+const restoreSaved = (handle: string): string => {
+  const ref = savedRef(handle);
+  return (
+    `if base=$(${git("integration", ["rev-parse", "-q", "--verify", `${ref}^`])}); then\n` +
+    `  [ "$base" != "$(${laneGit(handle)(["rev-parse", "HEAD"])})" ] || { ${git("integration", ["diff", "--binary", `${ref}^`, ref])} | ${laneGit(handle)(["apply", "--binary"])} && ${git("integration", ["update-ref", "-d", ref])}; }\n` +
+    `fi\n`
+  );
+};
+
+/** The save of a copy a deploy did not take, dropped: its work is still in the copy. */
+const dropSaved = (handle: string): string =>
+  `! ${git("integration", ["rev-parse", "-q", "--verify", savedRef(handle)])} >/dev/null || ${git("integration", ["update-ref", "-d", savedRef(handle)])} || exit 1\n`;
 
 /**
  * Makes a lane's `.git` file name its gitdir relative to the lane. Git before
@@ -707,19 +766,16 @@ export const make = Effect.gen(function* () {
         return { _tag: "lost", landings: lost, branches, wip } satisfies RecoverOutcome;
       }
       const readded = present.filter((lane) => !lane.dir).map((lane) => lane.handle);
-      if (readded.length > 0) {
-        yield* runLane(
-          host,
-          "recover",
-          readded
-            .map(
-              (handle) =>
-                `${git("integration", ["worktree", "add", "-q", laneDirectory(handle), laneBranch(handle)])} || exit 1\n` +
-                relativeGitdir(handle),
-            )
-            .join(""),
-        );
-      }
+      const back = present
+        .map((lane) =>
+          lane.dir
+            ? dropSaved(lane.handle)
+            : `${git("integration", ["worktree", "add", "-q", laneDirectory(lane.handle), laneBranch(lane.handle)])} || exit 1\n` +
+              relativeGitdir(lane.handle) +
+              restoreSaved(lane.handle),
+        )
+        .join("");
+      if (back !== "") yield* runLane(host, "recover", back);
       const setups: Record<string, CheckOutcome> = {};
       for (const handle of readded) {
         yield* seenThroughMount(host, handle);
@@ -745,7 +801,8 @@ export const make = Effect.gen(function* () {
       const out = yield* runLane(
         host,
         "sweep",
-        `${git("integration", ["for-each-ref", "--format=%(refname)"])} 2>&1 >/dev/null | sed -n 's/^warning: ignoring broken ref /broken\t/p'\n` +
+        (lanes.length > 0 ? SAVE_LINE : "") +
+          `${git("integration", ["for-each-ref", "--format=%(refname)"])} 2>&1 >/dev/null | sed -n 's/^warning: ignoring broken ref /broken\t/p'\n` +
           lanes
             .map((row) => {
               const lg = laneGit(row.lane);
@@ -945,6 +1002,7 @@ export const make = Effect.gen(function* () {
         spec.host,
         "create",
         EXCLUDE_LINE +
+          SAVE_LINE +
           `H=$(${git("integration", ["rev-parse", "-q", "--verify", "HEAD^{commit}"])}) || { printf 'status\\tno-head\\n'; exit 0; }\n` +
           `if [ -e ${directory} ]; then\n` +
           relativeGitdir(spec.handle) +

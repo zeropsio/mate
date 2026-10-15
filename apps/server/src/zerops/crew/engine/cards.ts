@@ -7,6 +7,7 @@
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { CrewCard, CrewTaskSource } from "@t3tools/contracts";
 
+import { backToTreeCommand, type DevServerShape, showOnDevCommand } from "../CrewRuntime.ts";
 import type { TaskRecord } from "./state.ts";
 
 export interface SentCard {
@@ -178,30 +179,27 @@ const noticeCard = (
   },
 });
 
-export interface DevServerShape {
-  readonly port: number;
-  readonly command: string;
-}
-
 /** The claim turn after a grant: the dev server runs from the crewmate's copy. */
-export const claimStartCard = (host: string, devServer: DevServerShape, workDir: string) =>
+export const claimStartCard = (
+  host: string,
+  handle: string,
+  devServer: DevServerShape,
+  workDir: string,
+) =>
   noticeCard(
     "claim-start",
     `Show your work on ${host}`,
-    `The person lets ${host}'s dev server run from your copy. Restart it with zerops_dev_server: ` +
-      `action=restart hostname=${host} port=${devServer.port} ` +
-      `processMatch="${devServer.command}" command="${devServer.command}" workDir=${workDir}. ` +
-      "Nothing else.",
+    `The person lets ${host}'s dev server run from your copy. Run exactly this one command: ` +
+      `${showOnDevCommand(host, handle, devServer, workDir)}. Nothing else.`,
     host,
   );
 
 /** The release turn: *Back to my tree*, a report, or a timeout. */
-export const claimReleaseCard = (host: string, devServer: DevServerShape) =>
+export const claimReleaseCard = (host: string, handle: string, devServer: DevServerShape) =>
   noticeCard(
     "claim-release",
     `Give ${host} back`,
-    `${host}'s dev server goes back to the person's tree. Restart it with zerops_dev_server: ` +
-      `action=restart hostname=${host} port=${devServer.port} ` +
-      `processMatch="${devServer.command}", no workDir. Nothing else.`,
+    `${host}'s dev server goes back to the person's tree. Run exactly this one command: ` +
+      `${backToTreeCommand(host, handle, devServer)}. Nothing else.`,
     host,
   );

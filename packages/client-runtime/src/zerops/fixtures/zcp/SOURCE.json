@@ -1,9 +1,10 @@
 {
-  "zcpCommit": "c817f80ba05d2494c338ad95fbd5e6f34703ccb5",
+  "zcpCommit": "8a9615f41616bea9ae56266043a09a8e84d7a28d",
   "files": {
-    "dev-server.one-server.json": "8f322749fad5319420c64134b6d18fe25a36a21eb111caa63f7128f292089dfa",
-    "dev-server.three-servers-one-crashed.json": "cf8fd806d87a48e5d813b1df99361e6816dfcd167541ad0f2386ea0c29780de0",
-    "dev-servers.declaration.json": "992fb2a588be938389a95a187a059ea694e0904265d73cfa1c804c6e351cc56c",
+    "dev-server.one-server.json": "49ac8aeef4a74b110a46d7dbcb65587882201a4fec654c68af36a45d5af7981c",
+    "dev-server.running-http-404.json": "88bd0e180ac18c0ab4c6713d648f3605c2213929757289fdf491e27a1ac725ed",
+    "dev-server.three-servers-one-crashed.json": "a90cf7f324d1c1ade67831abc2d78352e6b4608aa9ccc5aa6bce3e207c12d208",
+    "dev-servers.declaration.json": "b0d9a8ce92cba3760959f3f492392ec62f59bd3921de6aa709db2c828443d3e2",
     "envelope.single-pair.json": "e9ac1a56ba5f68944ea3dfdde2064a442d600acb9174b9e1c553ee68c62b474a",
     "envelope.single-pair.today.json": "b8171a75012d8985af51e7d00eea0c69495f0f1b114e47f53d543e8a8ff31bf6",
     "envelope.three-parts.json": "9361e9f7ac798ffdf60bfa77da2e6975240ee24e3fa130fc1bb21add42afcfb0",

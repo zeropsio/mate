@@ -30,7 +30,7 @@
  * A folded stage row carries no position of its own — it is nested under
  * its dev partner and follows it automatically.
  */
-import type { ZeropsLifecycle } from "@t3tools/contracts";
+import type { ZeropsDevServer, ZeropsLifecycle } from "@t3tools/contracts";
 
 import type { ZeropsStatPair } from "./api.ts";
 import type { Known } from "./knowledge/index.ts";
@@ -170,6 +170,11 @@ export interface ZeropsServiceRow {
   readonly stageRoutesFolded?: boolean;
   /** Production projects this service feeds, from the lifecycle envelope. */
   readonly production: ReadonlyArray<ZeropsProductionLink>;
+  /**
+   * The dev servers the lifecycle envelope last read on this service, each with
+   * its `readAt`. Absent until a call has read them: not read, never none running.
+   */
+  readonly devServers?: ReadonlyArray<ZeropsDevServer>;
 }
 
 export interface ZeropsServiceMapGroup {
@@ -513,6 +518,15 @@ const productionOf = (
   return (snapshot?.feedsProduction ?? []).map(parseZeropsProductionLaunch);
 };
 
+/** The dev servers zcp last read on a service; none while the lifecycle is not known. */
+export const devServersOf = (
+  hostname: string,
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): ReadonlyArray<ZeropsDevServer> | undefined =>
+  lifecycle?.state === "known"
+    ? lifecycle.value.envelope?.services.find((entry) => entry.hostname === hostname)?.devServers
+    : undefined;
+
 /**
  * The map to render, or undefined when there is nothing to render at all —
  * `useProjectTopology` has not produced a view yet (no session, no resolved
@@ -594,6 +608,7 @@ export function buildZeropsServiceMap(
                 stageRoutesFolded: zeropsRoutesFolded(zeropsRouteChoices(stage)),
               }),
           production: productionOf(entry.hostname, lifecycle),
+          ...withKey("devServers", devServersOf(entry.hostname, lifecycle)),
         };
       }),
   })).filter((group) => group.rows.length > 0);

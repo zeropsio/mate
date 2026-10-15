@@ -4069,7 +4069,7 @@ function ConversationView(props: ChatViewProps) {
     },
     [activeThreadRef],
   );
-  const mateAddresses = useMateAddresses(activeThreadEnvironmentId);
+  const mateAddresses = useMateAddresses(activeThreadEnvironmentId, activeThreadId);
   // Browser opens its own view and nothing else: each public address opens
   // as its own tab only when a person picks it (the header's links, the view's list).
   const addBrowserSurface = useCallback(() => {

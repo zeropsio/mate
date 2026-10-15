@@ -41,7 +41,12 @@ import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepos
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { CrewPlatformProcesses } from "../crewDeployState.ts";
-import { makeServiceRepository, serviceRepository, TEST_IDENTITY } from "./crewGitFixture.ts";
+import {
+  makeServiceRepository,
+  remoteEnvWithSupervisor,
+  serviceRepository,
+  TEST_IDENTITY,
+} from "./crewGitFixture.ts";
 
 /** The person who presses: Alex, in his own session. */
 export const KAREL: TurnPrincipal = {
@@ -65,11 +70,6 @@ export const ZEROPS = resolveZeropsEnvironment({
 export interface CrewWorld {
   readonly root: string;
   readonly workspace: string;
-  /**
-   * zcp's dev-server pidfile as this world's engine reads it: the world's own, so no other run on
-   * the machine writes it under the engine.
-   */
-  readonly devServerPidFile: string;
   readonly admitted: Ref.Ref<
     ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
   >;
@@ -358,7 +358,7 @@ export const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray
           ).pipe(Effect.andThen(runner.run(input)), Effect.interruptible),
       });
     }),
-  ).pipe(Layer.provide(localSshProcessRunnerLayer(TEST_IDENTITY)));
+  ).pipe(Layer.provide(localSshProcessRunnerLayer(remoteEnvWithSupervisor())));
 
 /**
  * One world's fixture: a fresh service repository, the Mate's workspace and the fakes' records,
@@ -374,7 +374,6 @@ export const makeFixtureWorld = Effect.gen(function* () {
   const world: CrewWorld = {
     root,
     workspace,
-    devServerPidFile: NodePath.join(workspace, "zcp-dev-server.log.pid"),
     admitted: yield* Ref.make<
       ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
     >([]),

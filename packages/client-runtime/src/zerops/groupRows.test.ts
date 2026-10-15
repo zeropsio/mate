@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 import { gitEnvironment, gitRemote, gitPreflight } from "../data/__fixtures__/hqWire.ts";
 import { gitDeliveryOf } from "./gitDelivery.ts";
@@ -363,6 +364,49 @@ describe("environmentRow", () => {
   });
 });
 
+describe('An environment row reads "<sha> · N parts" and names each part that differs', () => {
+  const base = { projectId: "p-stage", name: "Acme - stage", tier: "stage" as const };
+  const OLD = "9f1e0d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e";
+  it.each([
+    {
+      name: "one part reads as today",
+      services: [{ hostname: "app", repository: "app", appVersionName: `main ${SHA.slice(0, 7)}` }],
+      line: "main · 3f9c1b2",
+    },
+    {
+      name: "three parts at one commit",
+      services: ["web", "api", "worker"].map((hostname) => ({
+        hostname,
+        repository: "app",
+        appVersionName: `main ${SHA.slice(0, 7)}`,
+      })),
+      line: "main · 3f9c1b2 · 3 parts",
+    },
+    {
+      name: "three parts, one still on an older commit and one not deployed",
+      services: [
+        { hostname: "web", repository: "app", appVersionName: `main ${SHA.slice(0, 7)}` },
+        { hostname: "api", repository: "app", appVersionName: `main ${SHA.slice(0, 7)}` },
+        { hostname: "worker", repository: "app", appVersionName: `main ${OLD.slice(0, 7)}` },
+        { hostname: "cron", repository: "app" },
+      ],
+      line: "main · 3f9c1b2 · 4 parts · cron not deployed · worker on 9f1e0d7",
+    },
+    {
+      // Two codebases are two repositories, each one part: no count, as today.
+      name: "a split application of two repositories",
+      services: [
+        { hostname: "medusa", repository: "medusa", appVersionName: `main ${SHA.slice(0, 7)}` },
+        { hostname: "store", repository: "store", appVersionName: `main ${OLD.slice(0, 7)}` },
+      ],
+      line: "main · 3f9c1b2",
+    },
+  ])("$name", ({ services, line }) => {
+    const row = environmentRow({ ...base, sources: ["main"], services });
+    expect(row.line).toBe(line);
+  });
+});
+
 const readGitEnvironment = Schema.decodeUnknownSync(HqGitNavigationEnvironment);
 
 it("a Git row reads the shared hand-over verdict without a service version or green live tone", () => {
@@ -392,4 +436,146 @@ it("a Git row reads the shared hand-over verdict without a service version or gr
     deploys: [],
   });
   expect(row.git).toBe(git);
+});
+
+describe("an environment of several parts", () => {
+  const OTHER = "a1a2a3a4a5a6a7a8a9a0a1a2a3a4a5a6a7a8a9a0";
+  const part = (
+    hostname: string,
+    state: HqJob["state"] | undefined,
+    version: string | undefined,
+    repository = "app",
+  ): EnvironmentServiceState => ({ ...service(hostname, state, { version }), repository });
+  const stage = { projectId: "p-stage", name: "Acme - stage", tier: "stage" as const };
+  const production = {
+    projectId: "p-prod",
+    name: "Acme - production",
+    tier: "production" as const,
+    sources: "release" as const,
+  };
+  const rollout = (leftOut: ReleaseRollout["leftOut"]): ReleaseRollout => ({
+    id: "r-1",
+    tag: "v1.2.0",
+    planned: true,
+    ended: true,
+    endedAt: "2026-10-02T10:01:00.000Z",
+    leftOut,
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly input: Omit<Parameters<typeof environmentRow>[0], "projectId" | "name" | "tier">;
+    readonly tier?: "production";
+    readonly line: string;
+  }>([
+    {
+      name: "a one-part environment row names the version exactly as today",
+      input: { sources: ["main"], services: [part("app", "live", SHA)] },
+      line: "main · 3f9c1b2",
+    },
+    {
+      name: "three parts on one commit read the commit and how many parts",
+      input: {
+        sources: ["main"],
+        services: [part("api", "live", SHA), part("web", "live", SHA), part("worker", "live", SHA)],
+      },
+      line: "main · 3f9c1b2 · 3 parts",
+    },
+    {
+      name: "a part on another commit is named with the commit it runs",
+      input: {
+        sources: ["main"],
+        services: [
+          part("api", "live", SHA),
+          part("web", "live", OTHER),
+          part("worker", "live", SHA),
+        ],
+      },
+      line: "main · 3f9c1b2 · 3 parts · web on a1a2a3a",
+    },
+    {
+      name: "a building, a failed and a not deployed part are each named",
+      input: {
+        sources: ["main"],
+        services: [
+          part("api", "live", SHA),
+          part("cron", undefined, undefined),
+          part("web", "building", OTHER),
+          part("worker", "failed", SHA),
+        ],
+      },
+      line: "main · 3f9c1b2 · 4 parts · cron not deployed · web building · worker failed",
+    },
+    {
+      name: "a service of another repository is not a part of this one",
+      input: {
+        sources: ["main"],
+        services: [part("api", "live", SHA), part("site", "live", OTHER, "site")],
+      },
+      line: "main · 3f9c1b2",
+    },
+    {
+      name: "a part a rollback stopped says so, and names nothing it ran",
+      tier: "production",
+      input: {
+        sources: "release",
+        services: [
+          part("api", "live", `${SHA} v1.2.0 u-jan`),
+          part("web", "live", `${SHA} v1.2.0 u-jan`),
+          part("worker", "live", `${OTHER} v1.1.0 u-jan`),
+        ],
+        release: rollout([
+          {
+            service: "worker",
+            sha: OTHER,
+            job: null,
+            reason: "stopped",
+            stopped: { rollbackTo: "v1.0.0" },
+          },
+        ]),
+      },
+      line: "release · v1.2.0 · 3 parts · worker stopped by rollback to v1.0.0",
+    },
+    {
+      name: "a part a release stopped says so",
+      tier: "production",
+      input: {
+        sources: "release",
+        services: [
+          part("api", "live", `${SHA} v1.2.0 u-jan`),
+          part("worker", "live", `${OTHER} v1.1.0 u-jan`),
+        ],
+        release: rollout([
+          {
+            service: "worker",
+            sha: OTHER,
+            job: null,
+            reason: "stopped",
+            stopped: { rollbackTo: null },
+          },
+        ]),
+      },
+      line: "release · v1.2.0 · 2 parts · worker stopped",
+    },
+    {
+      name: "a part a release left out because it already runs the commit is not an exception",
+      tier: "production",
+      input: {
+        sources: "release",
+        services: [
+          part("api", "live", `${SHA} v1.2.0 u-jan`),
+          part("worker", "live", `${SHA} v1.1.0 u-jan`),
+        ],
+        release: rollout([
+          { service: "worker", sha: SHA, job: null, reason: "worker already runs 3f9c1b2" },
+        ]),
+      },
+      line: "release · v1.2.0 · 2 parts",
+    },
+  ])("$name", ({ input, tier, line }) => {
+    const row = environmentRow({ ...(tier === undefined ? stage : production), ...input });
+    expect(row.line).toBe(line);
+    // The parts are the row's own field too, which the group page says under the version.
+    expect(row.parts).toBe(/\d+ parts.*$/u.exec(line)?.[0]);
+  });
 });

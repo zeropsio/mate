@@ -21,9 +21,10 @@
  *   git runs only read-only subcommands, and the payload is rewritten to run
  *   in the copy with `CREW_PORT`, the crewmate's `env:` and a timeout. A
  *   command already in exactly that form runs as it is, so a driver that
- *   cannot rewrite a call (Codex) runs it too.
- *   `zerops_dev_server` only in the after-land, claim and release turns, in
- *   exactly their shape.
+ *   cannot rewrite a call (Codex) runs it too. A claim or release turn also
+ *   runs its one supervisor command exactly as its card names it; no other
+ *   command drives the supervisor (`zcp-devsup`).
+ *   `zerops_dev_server` only in the after-land turn, in exactly its shape.
  * - **Readers and the lead:** no `Write`, `Edit` or `Bash`.
  * - **Refused roots:** the workspace's `.zcp` and `.mate`, `~/.claude`,
  *   `~/.codex`, `~/.t3`, `/proc`, and every `.git` internal.
@@ -37,6 +38,7 @@ import type { CrewMemberKind } from "@t3tools/contracts";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import type { CrewLane } from "./CrewDefinition.ts";
+import { backToTreeCommand, type DevServerShape, showOnDevCommand } from "./CrewRuntime.ts";
 
 /** The SPI's `ToolDecision` shape (`spi/threadToolPolicy.ts`). */
 export type GateDecision =
@@ -73,8 +75,8 @@ export interface LiveGateContext {
   readonly turn: GateTurn;
   /** This crewmate holds the Show-on-dev claim on its host. */
   readonly holdsClaim: boolean;
-  /** The dev server a shaped turn restarts: its port and full command. */
-  readonly devServer?: { readonly port: number; readonly command: string };
+  /** The declared dev server a shaped turn moves: its name, port, full command and cwd. */
+  readonly devServer?: DevServerShape;
   readonly payloadTimeoutSeconds: number;
 }
 
@@ -393,6 +395,18 @@ export const crewExactCommandRule = (ctx: GateContext): string | undefined => {
   ].join("\n");
 };
 
+/** The one supervisor command a claim or release turn runs on the dev service. */
+const claimTurnCommand = (ctx: LiveGateContext, lane: CrewLane): string | undefined => {
+  if (ctx.devServer === undefined) return undefined;
+  if (ctx.turn === "claim-start") {
+    return showOnDevCommand(lane.host, ctx.member.handle, ctx.devServer);
+  }
+  if (ctx.turn === "claim-release") {
+    return backToTreeCommand(lane.host, ctx.member.handle, ctx.devServer);
+  }
+  return undefined;
+};
+
 const decideCommand = (ctx: LiveGateContext, args: Record<string, unknown>): GateDecision => {
   const { lane } = ctx.member;
   if (ctx.member.kind !== "writer" || lane === undefined) {
@@ -400,6 +414,8 @@ const decideCommand = (ctx: LiveGateContext, args: Record<string, unknown>): Gat
   }
   const form = `Run commands as ssh ${lane.host} "<command>"; they run in your copy.`;
   const command = typeof args.command === "string" ? args.command : "";
+  const claimCommand = claimTurnCommand(ctx, lane);
+  if (claimCommand !== undefined && command === claimCommand) return allow;
   const words = shellWords(command);
   if (!words || words[0] !== "ssh" || words.length < 3) return deny(form);
   if (words[1] !== lane.host) return deny(form);
@@ -413,6 +429,14 @@ const decideCommand = (ctx: LiveGateContext, args: Record<string, unknown>): Gat
         new RegExp(`^\\s*cd\\s+${escapeRegExp(lane.remoteRoot)}/?\\s*(?:&&|;)\\s*`, "u"),
         "",
       );
+  // The supervisor serves the person's dev server: a crewmate drives it only by its claim command.
+  if (/(?:^|[\s;&|(])zcp-devsup(?:$|[\s;&|)])/u.test(payload)) {
+    return deny(
+      claimCommand === undefined
+        ? "The dev server is the person's; ask to show your work on dev instead."
+        : `Run exactly: ${claimCommand}`,
+    );
+  }
   const refused = laneEscape(payload, lane) ?? gitRefusal(payload);
   if (refused) return deny(refused);
   // Already its lane form: it runs as it is, so a driver that cannot rewrite a call runs it too.
@@ -421,12 +445,10 @@ const decideCommand = (ctx: LiveGateContext, args: Record<string, unknown>): Gat
 };
 
 /**
- * `zerops_dev_server` exists for three short turns only (CONCEPT §3.3): the
- * after-land and release restarts run from the tree (no `workDir`), the claim
- * restart from the copy. Each names the port and the full command, so the
- * stop inside a restart can never `pkill` another server by its first token,
- * and none takes its own `logFile`, so what dev serves stays readable from
- * the default pidfile.
+ * `zerops_dev_server` exists for the after-land turn only (CONCEPT §3.3): its
+ * restart runs from the tree (no `workDir`), names the port and the full
+ * command, and takes no `logFile` of its own. A claim or release turn moves
+ * the dev server with its one supervisor command instead (`claimTurnCommand`).
  */
 const decideDevServer = (ctx: LiveGateContext, args: Record<string, unknown>): GateDecision => {
   const { lane } = ctx.member;
@@ -435,7 +457,8 @@ const decideDevServer = (ctx: LiveGateContext, args: Record<string, unknown>): G
   }
   const expected = ctx.devServer;
   if (expected === undefined) return deny("The dev server's command is not known yet.");
-  const workDir = ctx.turn === "claim-start" ? lane.remoteDir : undefined;
+  const claimCommand = claimTurnCommand(ctx, lane);
+  if (claimCommand !== undefined) return deny(`Run exactly: ${claimCommand}`);
   const shape =
     args.action === "restart" &&
     args.hostname === lane.host &&
@@ -443,12 +466,12 @@ const decideDevServer = (ctx: LiveGateContext, args: Record<string, unknown>): G
     args.processMatch === expected.command &&
     (args.command === undefined || args.command === expected.command) &&
     args.logFile === undefined &&
-    args.workDir === workDir;
+    args.workDir === undefined;
   return shape
     ? allow
     : deny(
         `Restart exactly: action=restart hostname=${lane.host} port=${expected.port} ` +
-          `processMatch="${expected.command}"${workDir ? ` workDir=${workDir}` : " and no workDir"}.`,
+          `processMatch="${expected.command}" and no workDir.`,
       );
 };
 

@@ -15,7 +15,8 @@ import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { EnvironmentId, MessageId, TurnId, type BackgroundWork } from "@t3tools/contracts";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { reduceZeropsOperations, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import THREE_DEV_SERVERS_RESULT from "../../../../packages/client-runtime/src/zerops/fixtures/zcp/dev-server.three-servers-one-crashed.json?raw";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { enrollmentRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
@@ -222,6 +223,27 @@ function withoutTarget(overrides: Partial<ZeropsOperation>): ZeropsOperation {
 
 /** A made-up Mate's own working branch, as zcp names its pushes. */
 const MATE_BRANCH_VERSION = "mate/mate-Pq7Zr0TestProject0000A 227b804";
+
+/** A three-part app's dev servers as zcp reads them, through the card's own builder. */
+const THREE_DEV_SERVERS = reduceZeropsOperations(
+  [
+    {
+      id: "c-dev-servers",
+      turnId: "t1",
+      toolName: "zerops_dev_server",
+      input: { hostname: "appdev", action: "status" },
+      status: "completed",
+      resultText: THREE_DEV_SERVERS_RESULT,
+      truncated: false,
+      startedAt: ago(31),
+      anchorActivityId: "a-dev-servers",
+      settledAt: ago(30),
+      rowIds: new Set(["a-dev-servers"]),
+      agentInternal: false,
+    },
+  ],
+  { projectId: undefined, builds: () => "running" },
+).operations[0]!;
 
 /** What the owner's guestbook run did, made up: a deploy, a check of every service, a dev server found down. */
 const GUESTBOOK: ReadonlyArray<RecordItem> = [
@@ -1198,6 +1220,27 @@ function Harness() {
             </Card>
           </State>
         ))}
+        <State
+          label="A three-part app's dev servers"
+          note="One row per named server: its state, its last exit where it crashed, and when zcp read it; each server with an address is a link."
+        >
+          <Card>
+            <RunChat
+              row={record({
+                turnKey: "dev-servers",
+                items: [
+                  {
+                    kind: "operation",
+                    key: "operation:c-dev-servers",
+                    at: ago(30),
+                    operation: THREE_DEV_SERVERS,
+                  },
+                ],
+                now: THINKING_NOW,
+              })}
+            />
+          </Card>
+        </State>
         <State
           label="The guestbook card"
           note="A deploy from the Mate's branch, a check of every service, a dev server found down: the dock waits while that is the latest line."

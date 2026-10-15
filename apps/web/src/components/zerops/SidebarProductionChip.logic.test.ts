@@ -65,7 +65,7 @@ const FAILED_RELEASE: ReleaseFailure = {
   kind: "deploy-failed",
   at: "2026-09-29T10:41:00Z",
   error: "The build step exited with code 2 while installing packages.",
-  service: "app",
+  services: ["app"],
 };
 
 type ChipInput = Parameters<typeof productionChip>[0];
@@ -764,7 +764,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     standing: undefined,
     word: "Approved",
     rollBack: false,
-    failedEntry: undefined,
+    failedEntries: [],
     ...over,
   });
   const failedSha = "a".repeat(40);
@@ -834,7 +834,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
             tag: "v0.1.57",
             standing: "deploy-failed",
             word: "Deploy failed",
-            failedEntry: { service: "app", commit: failedSha },
+            failedEntries: [{ service: "app", commit: failedSha }],
           }),
           release({ tag: "v0.1.56", standing: "live", word: "Live" }),
         ],
@@ -845,7 +845,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
       kind: "deploy-failed",
       at: "2026-09-29T10:41:00Z",
       error: "The build step exited with code 2 while installing packages.",
-      service: "app",
+      services: ["app"],
     });
   });
 
@@ -857,7 +857,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
             tag: "v0.1.57",
             standing: "deploy-failed",
             word: "Deploy failed",
-            failedEntry: { service: "app", commit: failedSha.slice(0, 7) },
+            failedEntries: [{ service: "app", commit: failedSha.slice(0, 7) }],
           }),
         ],
         environmentInputs: environments,
@@ -896,7 +896,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
             tag: "v0.1.57",
             standing: "deploy-failed",
             word: "Deploy failed",
-            failedEntry: { service: "app", commit: failedSha },
+            failedEntries: [{ service: "app", commit: failedSha }],
           }),
         ],
         environmentInputs: refused,
@@ -927,7 +927,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
       kind: "refused",
       at: "2026-09-29T10:40:00Z",
       error: "the tag's commit failed its checks",
-      service: undefined,
+      services: [],
     });
   });
 
@@ -940,7 +940,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
         release({
           tag: "v0.1.57",
           standing: "deploy-failed",
-          failedEntry: { service: "app", commit: failedSha },
+          failedEntries: [{ service: "app", commit: failedSha }],
         }),
       ],
     },
@@ -956,7 +956,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
           release({
             tag: "v0.1.57",
             standing: "deploy-failed",
-            failedEntry: { service: "app", commit: "c".repeat(40) },
+            failedEntries: [{ service: "app", commit: "c".repeat(40) }],
           }),
         ],
         environmentInputs: environments,
@@ -966,7 +966,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
       kind: "deploy-failed",
       at: undefined,
       error: undefined,
-      service: "app",
+      services: ["app"],
     });
   });
 });
@@ -1067,7 +1067,7 @@ describe("productionMenu — what production's menu says, per state", () => {
           kind: "refused",
           at: undefined,
           error: "the tag's commit failed its checks",
-          service: undefined,
+          services: [],
         },
       }).stops[0]?.note,
     ).toBe(

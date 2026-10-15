@@ -154,10 +154,26 @@ export const ReleaseRollout = Schema.Struct({
       sha: Schema.String,
       job: Schema.NullOr(Schema.String),
       reason: Schema.String,
+      /**
+       * HQ stopped the service because the release's tier does not declare it: by a rollback to
+       * `rollbackTo`, or by an ordinary release where that is `null`. Absent for anything else.
+       */
+      stopped: Schema.optionalKey(Schema.Struct({ rollbackTo: Schema.NullOr(Schema.String) })),
     }),
   ),
 }).check(Schema.makeFilter((value) => releaseTargetMatches({ ...value, entries: [] })));
 export type ReleaseRollout = typeof ReleaseRollout.Type;
+
+/**
+ * A service HQ stopped because its environment's tier no longer declares it: by a stage's recipe
+ * change, a release, or a rollback to the release `rollbackTo` (none for the first two). It stands
+ * stopped until a tier declares it again or a person deletes it; HQ never deletes it.
+ */
+export const TierStop = Schema.Struct({
+  service: Schema.String,
+  rollbackTo: Schema.NullOr(Schema.String),
+});
+export type TierStop = typeof TierStop.Type;
 
 /** At least one service, and each once: what a release message can carry. */
 const Entries = Schema.Array(GitReleaseEntry).check(

@@ -28,7 +28,7 @@
 import { ProjectId } from "@t3tools/contracts";
 import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
 import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
-import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
+import type { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import type { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 
 import { type GroupEnvironment, type GroupEnvironmentTier } from "./groupEnvironments.ts";
@@ -78,6 +78,8 @@ export interface GroupEnvironmentRowInput {
   readonly releaseFailures?: ReadonlyArray<ReleaseDeployFailure>;
   /** HQ bringing it up (`HqEnvironment.birth`). */
   readonly birth?: EnvironmentBirth | null | undefined;
+  /** The services HQ stopped because its tier no longer declares them (`HqEnvironment.tierStops`). */
+  readonly tierStops?: ReadonlyArray<TierStop> | undefined;
 }
 
 export type CanonicalGroupEnvironmentRowInput = Omit<GroupEnvironmentRowInput, "projectId"> &
@@ -273,6 +275,7 @@ export function canonicalEnvironmentRowInputsOf(input: {
         ...(recipeServices === undefined ? {} : { recipeServices }),
         ...(environment.release === undefined ? {} : { release: environment.release }),
         ...(releaseFailures.length === 0 ? {} : { releaseFailures }),
+        ...(environment.tierStops === undefined ? {} : { tierStops: environment.tierStops }),
         birth: environment.birth,
       };
     });

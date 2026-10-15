@@ -7,6 +7,7 @@ import {
   buildZeropsGroupTree,
   pairPreviewRoutes,
   placeAddresses,
+  type GroupFlowAddress,
   type GroupFlowPreview,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -14,8 +15,6 @@ import { useMemo } from "react";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
-
-import { soleSite } from "../projects/projectCard.logic";
 
 /** The project's name, as the menu names it. */
 export function useGroupName(groupId: string): string | undefined {
@@ -42,32 +41,40 @@ const NO_PREVIEWS: ReadonlyArray<ReviewPreview> = [];
  * change touched (the owner, 2026-10-11: "there are multiple services, backend, frontend, how do
  * you know?").
  */
-export function useMatePreviews(mateProjectId: string): ReadonlyArray<ReviewPreview> {
+export function useMatePreviews(
+  mateProjectId: string,
+  /** The Mate tier on `main` (`ZeropsProjectFlow.mateTier`). */
+  mateTier: string | undefined,
+): ReadonlyArray<ReviewPreview> {
   const { listing } = useZeropsDetailCandidates();
   return useMemo(() => {
     const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
-    const previews = pairPreviewRoutes(row?.routes ?? [], row?.services?.hostnames ?? []);
+    const previews = pairPreviewRoutes(row?.routes ?? [], row?.services?.hostnames ?? [], mateTier);
     return previews.length === 0
       ? NO_PREVIEWS
       : previews.map((preview) => ({
           ...preview,
           host: preview.url.replace(/^[a-z]+:\/\//iu, "").replace(/\/+$/u, ""),
         }));
-  }, [listing, mateProjectId]);
+  }, [listing, mateProjectId, mateTier]);
 }
 
 /**
- * The address production answers at, where it serves one service: "Production now … at
- * shop.acme.com". A production of several services is said without one (`soleSite`).
+ * The addresses production answers at, one per service (`placeAddresses`): "Production now … at
+ * shop.acme.com" where it serves one, and each part's own row where it runs several
+ * (`productionNow`).
  */
-export function useProductionHost(projectId: string | undefined): string | undefined {
+export function useProductionAddresses(
+  projectId: string | undefined,
+): ReadonlyArray<GroupFlowAddress> {
   const { listing } = useZeropsCandidates();
   return useMemo(() => {
-    if (projectId === undefined) return undefined;
+    if (projectId === undefined) return NO_ADDRESSES;
     const row = heldCandidates(listing).rows.find((entry) => entry.project.id === projectId);
-    return soleSite(placeAddresses(row?.routes ?? []));
+    return placeAddresses(row?.routes ?? []);
   }, [listing, projectId]);
 }
+const NO_ADDRESSES: ReadonlyArray<GroupFlowAddress> = [];
 
 /** The stage that follows `main`: where a merge lands first. */
 export function mainStageOf(

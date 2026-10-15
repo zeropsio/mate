@@ -39,6 +39,7 @@ import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAcc
  * `groupHistory.ts`'s (rule R5).
  */
 import { StopReadAgain } from "./StopReadAgain";
+import { StopTierStops } from "./StopTierStops";
 import {
   cannotTellWhatRuns,
   buildZeropsGroupTree,
@@ -83,15 +84,19 @@ import {
   notInZerops,
   serviceRows,
   stopCardTitle,
-  stopFailedDeploy,
+  rowsRunningAgain,
+  stopFailedDeploys,
   stopKeyGap,
   stopMetaLine,
+  stopTierStops,
   stopTone,
   stopVerdict,
   stopView,
   type Deployment,
   type RunAgain,
+  type StopFailedDeploy,
   type StopServiceRow,
+  type StopTierStop,
   type StopVerdict,
   type StopView,
 } from "@t3tools/client-runtime/zerops/flow";
@@ -1021,10 +1026,10 @@ function ZeropsProjectStopDetailPage({
           age: formatRelativeTimeLabel,
           firstDeploy,
         });
-  const failedDeploy =
+  const failedDeploys =
     flow === undefined || stop === undefined
-      ? undefined
-      : stopFailedDeploy({ tier: stop.tier, rows: services, releases: flow.releases });
+      ? NO_FAILED_DEPLOYS
+      : stopFailedDeploys({ tier: stop.tier, rows: services, releases: flow.releases });
   // *Run again* asks HQ, by its rule for who develops the application.
   const mayRunAgain = useEnvironmentDeployOffer()(projectId);
   const mayKeepKey = useKeepDeployKeyOffer();
@@ -1062,7 +1067,8 @@ function ZeropsProjectStopDetailPage({
   const view = stopView({ deployment, row: stop, nowMs });
   const live = flow.releases.find((entry) => entry.standing === "live");
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
-  const redeploy = failedDeploy?.redeploy;
+  // One failed part is asked again from the verdict; several, each from its own row.
+  const redeploy = failedDeploys.length === 1 ? failedDeploys[0]?.redeploy : undefined;
   // How many changes production lacks, at least that many where HQ stopped counting.
   const notLive =
     flow.release.summary === undefined
@@ -1072,7 +1078,7 @@ function ZeropsProjectStopDetailPage({
     tier: stop.tier,
     view,
     releasing: flow.release.inFlight ?? (release.releasing ? release.tag : undefined),
-    failed: failedDeploy === undefined ? undefined : { ...failedDeploy, mayRunAgain },
+    failed: failedDeploys.map((entry) => ({ ...entry, mayRunAgain })),
     waiting: notLive.count,
     waitingAtLeast: notLive.atLeast,
     untold: production ? flow.release.untold : NO_UNTOLD,
@@ -1144,6 +1150,11 @@ function ZeropsProjectStopDetailPage({
             ? undefined
             : notInZerops({ recipeServices: declared.recipeServices, platform })
         }
+        tierStops={
+          declared === undefined || withheld !== null
+            ? undefined
+            : stopTierStops({ tierStops: declared.tierStops, platform })
+        }
         deployAnswer={deployAnswer}
         runAgain={
           redeploy === undefined || !mayRunAgain
@@ -1162,7 +1173,7 @@ function ZeropsProjectStopDetailPage({
           platform.state !== "known" ||
           platform.coverage !== "complete"
             ? undefined
-            : services
+            : rowsRunningAgain(services, failedDeploys)
         }
         stop={stop}
         tags={tags}
@@ -1229,6 +1240,8 @@ interface StopAddService {
 }
 
 const NOTHING_MISSING: ReadonlyArray<string> = [];
+const NO_TIER_STOPS: ReadonlyArray<StopTierStop> = [];
+const NO_FAILED_DEPLOYS: ReadonlyArray<StopFailedDeploy> = [];
 
 /** A stop's role, as its tag reads beside its name. */
 const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
@@ -1356,6 +1369,7 @@ export function ZeropsStopPane({
   deployAgain,
   addService,
   notInZerops = NOTHING_MISSING,
+  tierStops = NO_TIER_STOPS,
   deployAnswer,
   services: readServices,
   stop,
@@ -1399,6 +1413,8 @@ export function ZeropsStopPane({
   readonly addService?: StopAddService | undefined;
   /** The services the stop's tier declares and its project lacks (`notInZerops`). */
   readonly notInZerops?: ReadonlyArray<string> | undefined;
+  /** The services HQ stopped because the tier no longer declares them (`stopTierStops`). */
+  readonly tierStops?: ReadonlyArray<StopTierStop> | undefined;
   /** What HQ answered of the deploys the last verb pressed here asked for. */
   readonly deployAnswer?: HqDeployAnswer | undefined;
   /** What `main` has that this production does not; nothing for a stage. */
@@ -1599,6 +1615,13 @@ export function ZeropsStopPane({
                 </li>
               ))}
             </ul>
+          )}
+          {stop.target.kind !== "zerops" || tierStops.length === 0 ? null : (
+            <StopTierStops
+              projectId={stop.target.projectId}
+              rowClassName={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")}
+              rows={tierStops}
+            />
           )}
           {otherDeploys === undefined ? null : (
             <ZeropsDeployAnswer
@@ -1844,7 +1867,7 @@ function StopServiceLine({
         </span>
       ) : row.job === undefined ? null : (
         <span
-          className="flex min-w-0 flex-col pb-2 text-xs leading-4 text-muted-foreground"
+          className="flex min-w-0 flex-col items-start pb-2 text-xs leading-4 text-muted-foreground"
           data-zerops-surface="stop-service-job"
           data-zerops-job-state={row.job.state}
         >
@@ -2145,6 +2168,12 @@ function ZeropsStopLine({
         )}
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>
+      {/* An application of several parts: how many, and each that differs from the version. */}
+      {environment.parts === undefined ? null : (
+        <span className="block truncate px-2 pb-2 text-xs text-muted-foreground">
+          {environment.parts}
+        </span>
+      )}
       {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
     </li>
   );

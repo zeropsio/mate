@@ -13,9 +13,6 @@
  *   lane's commits since its task started, for a new stint's seed.
  * - **Your tree**: its dirty paths (*Deliver*'s draft names them) and which
  *   landing commits a remote branch already holds (delivered).
- * - **The dev server** zcp started on the service (`DEV_SERVER_PIDFILE`,
- *   written by `zerops_dev_server` before it execs the command): its command
- *   line, which a shaped turn restarts it with.
  * - **A crewmate's changes** for `crew_diff`, cut to what a tool answer carries.
  *
  * @module CrewReads
@@ -26,7 +23,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
-import { DevServerPidFile } from "./CrewRuntime.ts";
 import {
   CrewShell,
   field,
@@ -90,8 +86,6 @@ export interface CrewReadsService {
     host: string,
     commits: ReadonlyArray<string>,
   ) => Effect.Effect<ReadonlySet<string>, CrewReadError>;
-  /** The command line of the dev server zcp started, if one runs. */
-  readonly devServerCommand: (host: string) => Effect.Effect<string | undefined, CrewReadError>;
   /** A crewmate's changes against your tree, optionally one path. */
   readonly diff: (
     host: string,
@@ -124,7 +118,6 @@ const LOCKFILE_PATHSPECS = [
 
 export const make = Effect.gen(function* () {
   const shell = yield* CrewShell;
-  const devServerPidFile = yield* DevServerPidFile;
   const read = (host: string, operation: string, body: string) =>
     runFields(shell, host, operation, body, READ_TIMEOUT);
 
@@ -212,22 +205,6 @@ export const make = Effect.gen(function* () {
             .join("") + "true\n",
         ).pipe(Effect.map((out) => new Set(fieldsOf(out, "delivered"))));
 
-  const devServerCommand: CrewReadsService["devServerCommand"] = (host) =>
-    read(
-      host,
-      "devServerCommand",
-      `pid=$(cat ${shellQuote(devServerPidFile)} 2>/dev/null) || exit 0\n` +
-        `case "$pid" in ''|*[!0-9]*) exit 0 ;; esac\n` +
-        `kill -0 "$pid" 2>/dev/null || exit 0\n` +
-        `command=$(tr '\\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || command=$(ps -o command= -p "$pid")\n` +
-        `printf 'command\\t%s\\n' "$(printf '%s' "$command" | sed 's/ *$//')"\n`,
-    ).pipe(
-      Effect.map((out) => {
-        const command = field(out, "command")?.trim();
-        return command === undefined || command === "" ? undefined : command;
-      }),
-    );
-
   const diff: CrewReadsService["diff"] = (host, handle, path) =>
     shell
       .run(
@@ -266,7 +243,6 @@ export const make = Effect.gen(function* () {
     laneLog,
     dirtyPaths,
     delivered,
-    devServerCommand,
     diff,
     lockfileHash,
   });

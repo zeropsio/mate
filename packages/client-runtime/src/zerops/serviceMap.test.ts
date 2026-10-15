@@ -389,6 +389,37 @@ describe("buildZeropsServiceMap", () => {
 
     expect(view?.groups[0]?.rows[0]?.production).toEqual([]);
   });
+
+  it("a dev row carries the dev servers its envelope last read", () => {
+    const devServers = [
+      { name: "web", port: 3000, status: "running", readAt: "2026-10-14T21:04:00Z" },
+      { name: "worker", status: "crashed", readAt: "2026-10-14T21:04:00Z" },
+    ];
+    const view = buildZeropsServiceMap(
+      topology([service({ hostname: "appdev" })]),
+      lifecycle({
+        envelope: { services: [{ hostname: "appdev", devServers }] },
+      } as unknown as Partial<ZeropsLifecycle>),
+    );
+
+    expect(view?.groups[0]?.rows[0]?.devServers).toEqual(devServers);
+  });
+
+  it("a row whose envelope has not read its dev servers carries none", () => {
+    const unread = buildZeropsServiceMap(topology([service({ hostname: "appdev" })]), {
+      state: "unread",
+      waitingFor: null,
+    });
+    const today = buildZeropsServiceMap(
+      topology([service({ hostname: "appdev" })]),
+      lifecycle({
+        envelope: { services: [{ hostname: "appdev", stageHostname: "appstage" }] },
+      } as unknown as Partial<ZeropsLifecycle>),
+    );
+
+    expect(unread?.groups[0]?.rows[0]).not.toHaveProperty("devServers");
+    expect(today?.groups[0]?.rows[0]).not.toHaveProperty("devServers");
+  });
 });
 
 describe("buildZeropsServiceMap — the row's identity", () => {

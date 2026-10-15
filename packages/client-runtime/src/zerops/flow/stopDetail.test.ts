@@ -29,9 +29,11 @@ import {
   openStopLabel,
   serviceRows,
   stopCardTitle,
-  stopFailedDeploy,
+  stopFailedDeploys,
+  rowsRunningAgain,
   stopKeyGap,
   stopMetaLine,
+  stopTierStops,
   stopVerdict,
   type StopFailedDeploy,
   type StopFailure,
@@ -98,7 +100,7 @@ const BASE: VerdictInput = {
   tier: "production",
   view: LIVE,
   releasing: undefined,
-  failed: undefined,
+  failed: [],
   waiting: 0,
   waitingAtLeast: false,
   untold: [],
@@ -133,12 +135,12 @@ describe("stopVerdict", () => {
     },
     {
       name: "a deploy in flight",
-      input: { view: PENDING, failed: FAILED },
+      input: { view: PENDING, failed: [FAILED] },
       expected: { tone: "busy", text: "Deploying…", detail: undefined, verb: null },
     },
     {
       name: "failed with what still runs, asked again by one who may",
-      input: { failed: FAILED },
+      input: { failed: [FAILED] },
       expected: {
         tone: "failed",
         text: "The deploy of v0.1.14 failed on nextstore.",
@@ -148,7 +150,7 @@ describe("stopVerdict", () => {
     },
     {
       name: "failed with what still runs and how long it has",
-      input: { failed: { ...FAILED, running: { label: "v0.1.13", since: "6m ago" } } },
+      input: { failed: [{ ...FAILED, running: { label: "v0.1.13", since: "6m ago" } }] },
       expected: {
         tone: "failed",
         text: "The deploy of v0.1.14 failed on nextstore.",
@@ -162,11 +164,13 @@ describe("stopVerdict", () => {
       name: "held at migration, in HQ's words, run by one who may",
       input: {
         tier: "stage",
-        failed: {
-          ...FAILED,
-          label: "9c41d2e",
-          message: "Held at migration: nextstore runs 47ae139; Run brings it to 9c41d2e.",
-        },
+        failed: [
+          {
+            ...FAILED,
+            label: "9c41d2e",
+            message: "Held at migration: nextstore runs 47ae139; Run brings it to 9c41d2e.",
+          },
+        ],
       },
       expected: {
         tone: "failed",
@@ -180,7 +184,7 @@ describe("stopVerdict", () => {
       name: "a deploy key that no longer works, over the deploy it failed",
       input: {
         tier: "stage",
-        failed: FAILED,
+        failed: [FAILED],
         keyGap: { kind: "invalid", project: "Shop - stage" },
       },
       expected: {
@@ -195,7 +199,7 @@ describe("stopVerdict", () => {
       name: "no deploy key yet, over the deploy it failed",
       input: {
         tier: "production",
-        failed: FAILED,
+        failed: [FAILED],
         keyGap: { kind: "missing", project: "Shop - production" },
       },
       expected: {
@@ -208,7 +212,7 @@ describe("stopVerdict", () => {
     },
     {
       name: "failed with nothing known to run, for one who may not ask it again",
-      input: { failed: { ...FAILED, running: undefined, mayRunAgain: false } },
+      input: { failed: [{ ...FAILED, running: undefined, mayRunAgain: false }] },
       expected: {
         tone: "failed",
         text: "The deploy of v0.1.14 failed on nextstore.",
@@ -1273,6 +1277,54 @@ describe("notInZerops — what the recipe declares and the project lacks", () =>
   });
 });
 
+describe("A stop offers Delete only on a service its tier no longer declares, never on a rollback's stop", () => {
+  it.each<{
+    readonly name: string;
+    readonly tierStops: Parameters<typeof stopTierStops>[0]["tierStops"];
+    readonly platform: Shown<ReadonlyArray<StopService>>;
+    readonly rows: ReturnType<typeof stopTierStops>;
+  }>([
+    {
+      name: "a one-part app: HQ stopped nothing",
+      tierStops: undefined,
+      platform: PLATFORM,
+      rows: [],
+    },
+    {
+      name: "the tier dropped worker",
+      tierStops: [{ service: "worker", rollbackTo: null }],
+      platform: PLATFORM,
+      rows: [
+        {
+          hostname: "worker",
+          line: "its tier no longer declares it",
+          deletable: { serviceId: "id-worker" },
+        },
+      ],
+    },
+    {
+      name: "a rollback stopped worker",
+      tierStops: [{ service: "worker", rollbackTo: "v0.1.0" }],
+      platform: PLATFORM,
+      rows: [{ hostname: "worker", line: "stopped by rollback to v0.1.0", deletable: undefined }],
+    },
+    {
+      name: "a person already deleted it",
+      tierStops: [{ service: "cron", rollbackTo: null }],
+      platform: PLATFORM,
+      rows: [],
+    },
+    {
+      name: "the services not read yet",
+      tierStops: [{ service: "worker", rollbackTo: null }],
+      platform: { state: "unread", waitingFor: null },
+      rows: [],
+    },
+  ])("$name", ({ tierStops, platform, rows }) => {
+    expect(stopTierStops({ tierStops, platform })).toEqual(rows);
+  });
+});
+
 describe("stopFailedDeploy", () => {
   const SHA_N13 = "47ae139000000000000000000000000000000000";
   const SHA_N14 = "9c41d2e000000000000000000000000000000000";
@@ -1303,13 +1355,13 @@ describe("stopFailedDeploy", () => {
     standing: undefined,
     word: "Approved",
     rollBack: false,
-    failedEntry: undefined,
+    failedEntries: [],
     ...over,
   });
   const FAILED_14 = releaseRow("v0.1.14", {
     standing: "deploy-failed",
     word: "Deploy failed",
-    failedEntry: { service: "nextstore", commit: SHA_N14 },
+    failedEntries: [{ service: "nextstore", commit: SHA_N14 }],
   });
   const LIVE_13 = releaseRow("v0.1.13", { standing: "live", word: "Live" });
 
@@ -1449,7 +1501,119 @@ describe("stopFailedDeploy", () => {
       expected: undefined,
     },
   ])("$name", ({ tier, rows, releases, expected }) => {
-    expect(stopFailedDeploy({ tier, rows, releases })).toEqual(expected);
+    expect(stopFailedDeploys({ tier, rows, releases })).toEqual(
+      expected === undefined ? [] : [expected],
+    );
+  });
+});
+
+describe("Stop detail and release list every failed part, each with its own Run again", () => {
+  const SHA_A = "a1a2a3a000000000000000000000000000000000";
+  const SHA_W = "e1e2e3e000000000000000000000000000000000";
+  const row = (hostname: string, over: Partial<StopServiceRow> = {}): StopServiceRow => ({
+    hostname,
+    repository: "app",
+    sha: SHA_A,
+    commit: "a1a2a3a",
+    line: undefined,
+    tone: "good",
+    word: "Deployed",
+    status: "Deployed",
+    runs: { label: "a1a2a3a", since: undefined },
+    routes: [],
+    offers: [],
+    failed: undefined,
+    job: undefined,
+    drift: undefined,
+    ...over,
+  });
+  const failedRow = (hostname: string, sha: string, jobId: string) =>
+    row(hostname, {
+      tone: "bad",
+      failed: { jobId, sha, message: `${hostname} did not build` },
+      job: { state: "failed", line: `${sha.slice(0, 7)} failed 2m ago`, reason: undefined },
+    });
+  const STAGE = [failedRow("web", SHA_W, "8"), row("api"), failedRow("worker", SHA_W, "9")];
+
+  it("a stage lists each part whose deploy failed, by hostname", () => {
+    expect(
+      stopFailedDeploys({ tier: "stage", rows: STAGE, releases: [] }).map((entry) => [
+        entry.service,
+        entry.label,
+        entry.redeploy,
+        entry.message,
+      ]),
+    ).toEqual([
+      ["web", "e1e2e3e", { service: "web", sha: SHA_W, after: "8" }, "web did not build"],
+      ["worker", "e1e2e3e", { service: "worker", sha: SHA_W, after: "9" }, "worker did not build"],
+    ]);
+  });
+
+  it("a production lists each part its newest failed release failed on", () => {
+    const release: FlowReleaseRow = {
+      tag: "v0.2.0",
+      verdict: "approved",
+      detail: undefined,
+      line: "",
+      entries: [],
+      taggedAt: "2026-09-25T07:00:00Z",
+      standing: "deploy-failed",
+      word: "Deploy failed",
+      rollBack: false,
+      failedEntries: [
+        { service: "worker", commit: SHA_W },
+        { service: "web", commit: SHA_W },
+      ],
+    };
+    expect(
+      stopFailedDeploys({ tier: "production", rows: STAGE, releases: [release] }).map((entry) => [
+        entry.service,
+        entry.label,
+        entry.redeploy?.after,
+      ]),
+    ).toEqual([
+      ["web", "v0.2.0", "8"],
+      ["worker", "v0.2.0", "9"],
+    ]);
+  });
+
+  it.each<{ name: string; failed: VerdictInput["failed"]; text: string }>([
+    {
+      name: "one release that failed on two parts names both",
+      failed: [
+        { ...FAILED, service: "api" },
+        { ...FAILED, service: "nextstore" },
+      ],
+      text: "The deploy of v0.1.14 failed on api and nextstore.",
+    },
+    {
+      name: "two commits that failed on three parts name the parts",
+      failed: [
+        { ...FAILED, label: "a1a2a3a", service: "api" },
+        { ...FAILED, label: "e1e2e3e", service: "web" },
+        { ...FAILED, label: "e1e2e3e", service: "worker" },
+      ],
+      text: "The deploys failed on api, web and worker.",
+    },
+  ])("the verdict over $name, and leaves Run again to each part", ({ failed, text }) => {
+    expect(stopVerdict({ ...BASE, failed })).toEqual({
+      tone: "failed",
+      text,
+      detail: undefined,
+      verb: null,
+    });
+  });
+
+  it("each failed part's row offers its own Run again where several failed, and none where one did", () => {
+    const several = stopFailedDeploys({ tier: "stage", rows: STAGE, releases: [] });
+    expect(rowsRunningAgain(STAGE, several).map((entry) => entry.job?.redeploy)).toEqual([
+      { service: "web", sha: SHA_W, after: "8" },
+      undefined,
+      { service: "worker", sha: SHA_W, after: "9" },
+    ]);
+    const one = [failedRow("web", SHA_W, "8"), row("api")];
+    const single = stopFailedDeploys({ tier: "stage", rows: one, releases: [] });
+    expect(rowsRunningAgain(one, single)).toBe(one);
   });
 });
 
@@ -1500,7 +1664,7 @@ it("Git detail and metadata describe the push destination without a service or p
       afterMs: 0,
     },
     releasing: undefined,
-    failed: undefined,
+    failed: [],
     waiting: 0,
     waitingAtLeast: false,
     untold: [],

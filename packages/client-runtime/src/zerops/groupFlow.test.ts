@@ -1235,6 +1235,46 @@ describe("pairPreviewRoutes", () => {
       previews,
     );
   });
+  /** A Mate tier on `main` whose `appdev` builds every part from one repository. */
+  const tier = (parts: ReadonlyArray<string>) =>
+    [
+      "services:",
+      "  - hostname: appdev",
+      "    type: nodejs@22",
+      "    zeropsSetup: dev",
+      "    buildFromGit: https://hq.example.com/git/app-1/appdev",
+      ...parts.flatMap((part) => [
+        `  - hostname: ${part === "app" ? "app" : part}stage`,
+        "    type: nodejs@22",
+        `    zeropsSetup: ${part === "app" ? "prod" : part}`,
+        "    buildFromGit: https://hq.example.com/git/app-1/appdev",
+      ]),
+      "",
+    ].join("\n");
+
+  it.each([
+    {
+      case: "Each part shows its own preview, by the part its tier names",
+      routes: [route("webstage"), route("apistage"), route("appdev")],
+      hostnames: ["appdev", "webstage", "apistage", "workerstage"],
+      tier: tier(["web", "api", "worker"]),
+      previews: [
+        ["web", "https://webstage-1a2b-3000.prg1.zerops.app"],
+        ["api", "https://apistage-1a2b-3000.prg1.zerops.app"],
+      ],
+    },
+    {
+      case: "a one-part app's preview is today's, by its pair's name",
+      routes: [route("appstage"), route("appdev")],
+      hostnames: ["appdev", "appstage"],
+      tier: tier(["app"]),
+      previews: [["app", "https://appstage-1a2b-3000.prg1.zerops.app"]],
+    },
+  ])("$case", ({ routes, hostnames, tier: file, previews }) => {
+    expect(
+      pairPreviewRoutes(routes, hostnames, file).map((preview) => [preview.service, preview.url]),
+    ).toEqual(previews);
+  });
 });
 
 it("A listed environment replaces its target's creation while another project keeps its own coming stage.", () => {

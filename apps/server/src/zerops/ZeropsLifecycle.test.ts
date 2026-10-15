@@ -221,6 +221,62 @@ describe("ZeropsLifecycle", () => {
     ),
   );
 
+  it.effect(
+    "keeps a dev service's last dev-server read when a later envelope did not read them",
+    () =>
+      withLifecycle((lifecycle) =>
+        Effect.gen(function* () {
+          const read = (devServers: ReadonlyArray<Record<string, unknown>> | undefined) =>
+            claudeEvent({
+              toolName: "mcp__zerops__zerops_dev_server",
+              text: JSON.stringify({
+                hostname: "kanbandev",
+                envelope: {
+                  ...JSON.parse(envelopeJsonText("develop-active")),
+                  services: [
+                    {
+                      hostname: "kanbandev",
+                      typeVersion: "nodejs@22",
+                      runtimeClass: "dynamic",
+                      status: "ACTIVE",
+                      bootstrapped: true,
+                      ...(devServers === undefined ? {} : { devServers }),
+                    },
+                  ],
+                },
+              }),
+            });
+          const servers = function* () {
+            return (yield* lifecycle.get(THREAD)).envelope?.services[0]?.devServers?.map(
+              (server) => [server.name, server.status, server.readAt],
+            );
+          };
+
+          yield* lifecycle.ingest(
+            read([
+              { name: "web", port: 3000, status: "running", readAt: "2026-10-14T21:04:00Z" },
+              { name: "worker", status: "crashed", readAt: "2026-10-14T21:04:00Z" },
+            ]),
+          );
+          yield* lifecycle.ingest(read(undefined));
+          expect(
+            yield* servers(),
+            "ASSERTION: an envelope that did not read keeps the last read",
+          ).toEqual([
+            ["web", "running", "2026-10-14T21:04:00Z"],
+            ["worker", "crashed", "2026-10-14T21:04:00Z"],
+          ]);
+
+          yield* lifecycle.ingest(
+            read([{ name: "web", port: 3000, status: "stopped", readAt: "2026-10-14T21:09:00Z" }]),
+          );
+          expect(yield* servers(), "a newer read replaces the whole list").toEqual([
+            ["web", "stopped", "2026-10-14T21:09:00Z"],
+          ]);
+        }),
+      ),
+  );
+
   it.effect("ignores tools that are not Zerops tools", () =>
     withLifecycle((lifecycle) =>
       Effect.gen(function* () {

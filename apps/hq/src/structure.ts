@@ -26,7 +26,7 @@ import type { MateChanges } from "@t3tools/shared/hqChanges";
 import type { HqOffersOf } from "@t3tools/shared/hqOffers";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import type { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
-import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
+import type { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import type { MateState } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
@@ -247,6 +247,8 @@ export interface ZeropsEnvironmentView {
   readonly release: ReleaseRollout | null;
   /** Whether the rollout its attach asked for has ended; none where HQ did not bring it up. */
   readonly birth: EnvironmentBirth | null;
+  /** The services HQ stopped because its tier no longer declares them; absent where none. */
+  readonly tierStops?: ReadonlyArray<TierStop>;
 }
 
 export type EnvironmentView =

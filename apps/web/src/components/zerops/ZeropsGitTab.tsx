@@ -42,6 +42,7 @@ import { useComposerDraftStore } from "../../composerDraftStore";
 import { mergedMain } from "../../zerops/useZeropsChangeDetail";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { checkoutPathFor, useGitRemoteReads } from "../../zerops/useZeropsGitRemoteProbe";
+import { useZeropsGroupRecipe } from "../../zerops/useZeropsGroupRecipe";
 import { useVcsPullAction } from "../../state/sourceControlActions";
 import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
@@ -163,9 +164,15 @@ export interface ZeropsGitTabProps {
 
 export function ZeropsGitTab(props: ZeropsGitTabProps) {
   const topology = useProjectTopology(props.threadRef?.environmentId ?? null);
+  // The Mate tier on `main` says which dev services share a pair's code (one repository per pair).
+  const recipe = useZeropsGroupRecipe({ appId: props.appId, tier: "mate", enabled: true });
+  const tierYaml = recipe.tier?.yaml;
   const repositories = useMemo(
-    () => (topology.view === undefined ? undefined : gitCheckoutHostnames(topology.view.services)),
-    [topology.view],
+    () =>
+      topology.view === undefined
+        ? undefined
+        : gitCheckoutHostnames(topology.view.services, tierYaml),
+    [topology.view, tierYaml],
   );
   if (repositories === undefined)
     return (

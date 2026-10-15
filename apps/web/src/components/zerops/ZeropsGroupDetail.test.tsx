@@ -24,7 +24,7 @@ import {
 import {
   serviceRows,
   stopKeyGap,
-  stopFailedDeploy,
+  stopFailedDeploys,
   stopVerdict,
   stopView,
   type Deployment,
@@ -733,7 +733,7 @@ function renderStop(input: StopCase): string {
     tier: input.tier,
     view,
     releasing: undefined,
-    failed: input.failed,
+    failed: input.failed === undefined ? [] : [input.failed],
     waiting: waiting.total,
     waitingAtLeast: waiting.atLeast,
     untold: input.untold ?? [],
@@ -968,7 +968,7 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
       nowMs: NOW,
       age: () => "1h ago",
     });
-    const failed = stopFailedDeploy({ tier: "stage", rows, releases: [] });
+    const [failed] = stopFailedDeploys({ tier: "stage", rows, releases: [] });
     const document = new Window().document;
     document.body.innerHTML = renderStop({
       tier: "stage",

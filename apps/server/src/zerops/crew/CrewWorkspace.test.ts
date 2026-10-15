@@ -19,9 +19,13 @@ import {
   TEST_HOST,
   withCrewService,
   write,
+  zcpDeploys,
 } from "./testing/crewGitFixture.ts";
 
 const BACKEND: CrewWorkspace.LaneSpec = { crew: "game", handle: "backend", host: TEST_HOST };
+
+/** Where the save before a self-deploy keeps the backend copy's work. */
+const SAVED = "refs/t3/crew/saved/backend";
 
 type CrewGit = Layer.Success<ReturnType<typeof crewGitLayer>>;
 
@@ -477,6 +481,89 @@ describe("CrewWorkspace", () => {
             frozen: Option.getOrUndefined(yield* store.getLane("game", "backend"))?.frozenSince,
           },
           { recovered: ["backend"], setup: true, wip: "export {};\n", tip, frozen: null },
+        );
+      }),
+    ),
+  );
+
+  it.effect(
+    "a copy's uncommitted and untracked work is saved before a self-deploy runs and comes back with its copy",
+    () =>
+      withLanes((root) =>
+        Effect.gen(function* () {
+          const workspace = yield* CrewWorkspace.CrewWorkspace;
+          const store = yield* CrewStore.CrewStore;
+          yield* store.putMember(memberRow("backend"));
+          yield* workspace.create(BACKEND);
+          const tip = git(root, ["rev-parse", "crew/backend"]);
+          write(root, ".crew/backend/README.md", "edited, not committed\n");
+          write(root, ".crew/backend/notes/plan.md", "untracked\n");
+          zcpDeploys(root);
+          yield* workspace.freeze(TEST_HOST);
+          NodeFS.rmSync(`${root}/.crew`, { recursive: true, force: true });
+          const recovered = yield* workspace.recover(TEST_HOST, [BACKEND]);
+          assert.deepStrictEqual(
+            {
+              recovered: recovered._tag === "recovered" ? recovered.readded : recovered,
+              edited: read(root, ".crew/backend/README.md"),
+              untracked: read(root, ".crew/backend/notes/plan.md"),
+              status: git(`${root}/.crew/backend`, ["status", "--porcelain"]),
+              tip: git(root, ["rev-parse", "crew/backend"]),
+              saved: gitExit(root, ["rev-parse", "-q", "--verify", SAVED]),
+            },
+            {
+              recovered: ["backend"],
+              edited: "edited, not committed\n",
+              untracked: "untracked\n",
+              status: "M README.md\n?? notes/",
+              tip,
+              saved: 1,
+            },
+          );
+        }),
+      ),
+  );
+
+  it.effect("a copy a deploy did not take keeps its work, and its save is dropped", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        const store = yield* CrewStore.CrewStore;
+        yield* store.putMember(memberRow("backend"));
+        yield* workspace.create(BACKEND);
+        write(root, ".crew/backend/notes/plan.md", "untracked\n");
+        zcpDeploys(root);
+        const saved = gitExit(root, ["rev-parse", "-q", "--verify", SAVED]);
+        yield* workspace.freeze(TEST_HOST);
+        write(root, ".crew/backend/notes/plan.md", "edited after the save\n");
+        const recovered = yield* workspace.recover(TEST_HOST, [BACKEND]);
+        assert.deepStrictEqual(
+          {
+            saved,
+            recovered: recovered._tag === "recovered" ? recovered.readded : recovered,
+            untracked: read(root, ".crew/backend/notes/plan.md"),
+            after: gitExit(root, ["rev-parse", "-q", "--verify", SAVED]),
+          },
+          { saved: 0, recovered: [], untracked: "edited after the save\n", after: 1 },
+        );
+      }),
+    ),
+  );
+
+  it.effect("a Mate without a crew has no save before its deploys: they run as before", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.sweep(TEST_HOST);
+        write(root, "notes.txt", "the person's own\n");
+        zcpDeploys(root);
+        assert.deepStrictEqual(
+          {
+            hook: exists(root, ".git/t3-crew-save"),
+            refs: git(root, ["for-each-ref", "--format=%(refname)", "refs/t3"]),
+            status: git(root, ["status", "--porcelain"]),
+          },
+          { hook: false, refs: "", status: "?? notes.txt" },
         );
       }),
     ),

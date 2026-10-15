@@ -617,7 +617,11 @@ function Release({
       gate={{ allowed: true }}
       permission={{ allowed: true }}
       hasStage
-      production={{ at: minutesAgo(60 * 24 * 4), host: "beviro.app" }}
+      production={{
+        at: minutesAgo(60 * 24 * 4),
+        addresses: [{ service: "app", url: "https://beviro.app" }],
+        parts: [{ hostname: "app", version: "v0.1.12" }],
+      }}
       replaces={{ kind: "release", tag: "v0.1.56" }}
       stage={{ name: "stage", at: minutesAgo(110) }}
       name="Beviro"
@@ -1177,7 +1181,7 @@ export const REVIEW_STATES: ReadonlyArray<{
         outcome={{
           kind: "failed",
           detail: "The deploy of app failed",
-          service: "app",
+          services: ["app"],
           at: minutesAgo(2),
         }}
         press={{ kind: "done" }}

@@ -213,12 +213,12 @@ describe("a flip imports a crew's open work waiting on you, its finished work bo
         });
         world.settle("crew.claim.read", "appdev", {
           served: { by: "crewmate", handle: "ana" },
-          devServer: { port: 3000, command: "npm run dev" },
+          devServer: { name: "web", port: 3000, command: "npm run dev", cwd: "." },
           workDir: ".crew/ana",
         });
         expect(world.state.claims["appdev"]).toMatchObject({
           state: "held",
-          devServer: { port: 3000, command: "npm run dev" },
+          devServer: { name: "web", port: 3000, command: "npm run dev", cwd: "." },
           workDir: ".crew/ana",
         });
       },
@@ -229,7 +229,7 @@ describe("a flip imports a crew's open work waiting on you, its finished work bo
         const world = flipped(v1);
         world.settle("crew.claim.read", "appdev", {
           served: { by: "tree" },
-          devServer: { port: 3000, command: "npm run dev" },
+          devServer: { name: "web", port: 3000, command: "npm run dev", cwd: "." },
           workDir: ".crew/ana",
         });
         expect(world.state.claims["appdev"]).toBeUndefined();
@@ -363,7 +363,7 @@ const crewHandlers: ReadonlyArray<EffectHandler> = [
       Effect.succeed(
         ok({
           served: { by: "crewmate", handle: "ana" },
-          devServer: { port: 3000, command: "npm run dev" },
+          devServer: { name: "web", port: 3000, command: "npm run dev", cwd: "." },
           workDir: ".crew/ana",
         }),
       ),

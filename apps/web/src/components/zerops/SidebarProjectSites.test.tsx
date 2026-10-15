@@ -276,10 +276,26 @@ describe("the project's addresses", () => {
 
   it("opens production's first address in a new tab on a ⌘-click, without the popover", async () => {
     const open = vi.spyOn(window, "open").mockImplementation(() => null);
-    await mount();
+    await mount({
+      production: () => ({
+        stops: [stop({ name: "production", routes: [route("app", "quill.example.com")] })],
+      }),
+    });
     await press(surface("sidebar-project-sites"), { metaKey: true });
     expect(open).toHaveBeenCalledWith("https://quill.example.com", "_blank", "noopener,noreferrer");
     expect(surface("sidebar-project-sites-popover")).toBeNull();
+  });
+
+  it("a ⌘-click on a production of several addresses opens their list instead of the first", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    await mount();
+    await press(surface("sidebar-project-sites"), { metaKey: true });
+    expect(open).not.toHaveBeenCalled();
+    expect(surface("sidebar-project-sites-popover")).not.toBeNull();
+    expect(listed()[0]).toEqual([
+      "Production",
+      ["https://quill.example.com", "https://api.quill.example.com"],
+    ]);
   });
 
   it("offers a filter over more than eight addresses, and Esc clears it before it closes", async () => {

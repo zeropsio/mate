@@ -529,6 +529,8 @@ export function tiersAddable(input: {
 
 /** The part of a group's project flow `groupFlow` reads. */
 export interface GroupFlowReads {
+  /** The Mate tier as `main` holds it (`servicePairs`); `undefined` while unread. */
+  readonly mateTier?: string | undefined;
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
@@ -597,7 +599,7 @@ export function groupFlowInputOf(input: {
             {
               projectId: member.projectId,
               name: member.mate.name,
-              previews: pairPreviewRoutes(member.routes, member.hostnames),
+              previews: pairPreviewRoutes(member.routes, member.hostnames, flow?.mateTier),
               waiting: member.mate.waiting,
               ...(member.mate.failed === true ? { failed: true } : {}),
               ...(member.mate.working === true ? { working: true } : {}),

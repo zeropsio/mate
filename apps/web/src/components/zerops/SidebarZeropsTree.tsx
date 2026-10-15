@@ -391,6 +391,7 @@ function groupIdOf(
  */
 function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
   return {
+    mateTier: flow.mateTier,
     environments: [...flow.environments.values()],
     pullRequests: flow.pullRequests,
     merged: flow.merged ?? [],
@@ -440,6 +441,8 @@ export interface SidebarProjectFlow {
    */
   readonly releaseSummary?: { readonly total: number; readonly atLeast: boolean } | undefined;
   readonly releaseContents?: ReadonlyArray<Moved> | undefined;
+  /** The Mate tier as `main` holds it, which pairs each Mate's previews (`servicePairs`). */
+  readonly mateTier?: string | undefined;
   /** Production's services whose commit cannot be told: nothing is said to wait on them. */
   readonly releaseUntold?: ReadonlyArray<string> | undefined;
   /**

@@ -12,7 +12,7 @@ import { HqDecision } from "./hqOffers.ts";
 import { AppReadValue } from "./hqAppReads.ts";
 import { CompareQuery, CompareResponse, RepoName, HqChange } from "./hqChanges.ts";
 import { EnvironmentBirth, HqDeployOutcome, HqPushOutcome } from "./hqDeploys.ts";
-import { ReleaseRollout, HqReleaseTarget } from "./hqRelease.ts";
+import { ReleaseRollout, HqReleaseTarget, TierStop } from "./hqRelease.ts";
 
 export { HqAttentionValue };
 
@@ -375,6 +375,7 @@ export const HqNavigationEnvironment = Schema.Struct({
   jobs: Schema.Array(HqNavigationJob),
   release: Schema.NullOr(ReleaseRollout),
   birth: Schema.NullOr(EnvironmentBirth),
+  tierStops: Schema.optionalKey(Schema.Array(TierStop)),
 });
 export type HqNavigationEnvironment = typeof HqNavigationEnvironment.Type;
 /** @deprecated Use CanonicalHqNavigationEnvironments at the HQ read boundary. */
