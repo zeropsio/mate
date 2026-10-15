@@ -732,8 +732,8 @@ const SO_FAR: ReadonlyArray<RecordItem> = [
     at: ago(18),
     entry: call({
       id: "k1",
-      label: "Watch the pull request's checks",
-      toolTitle: "Watch the pull request's checks",
+      label: "Watch the change's checks",
+      toolTitle: "Watch the change's checks",
       tone: "info",
       sourceActivityKind: "task.completed",
       taskId: "bk1",
