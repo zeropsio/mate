@@ -1168,6 +1168,7 @@
         "apps/web/src/components/zerops/projects/ProjectCards.tsx",
         "apps/web/src/components/zerops/projects/OverviewFilters.tsx",
         "apps/web/src/components/zerops/projects/OverviewStandIn.tsx",
+        "apps/web/src/components/zerops/projects/ArrivalWelcome.tsx",
         "apps/web/src/components/zerops/projects/PlacePanel.tsx",
         "apps/web/src/components/zerops/projects/projectCard.logic.ts",
         "apps/web/src/components/zerops/projects/overviewSlots.tsx",
