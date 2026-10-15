@@ -131,6 +131,11 @@ describe("ZEROPS_THEME", () => {
     ["secondaryLabel", "surface"],
   ] as const satisfies ReadonlyArray<readonly [ThemeColorRole, ThemeColorRole]>;
 
+  it.each(appearances)("keeps an action's ink legible on the %s destructive fill", (appearance) => {
+    const colors = colorsFor(appearance);
+    expect(contrastRatio(colors.messageActionForeground, colors.error)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it.each(appearances)("keeps every named %s text pair at WCAG AA", (appearance) => {
     const colors = colorsFor(appearance);
     for (const [foreground, background] of textPairs) {
