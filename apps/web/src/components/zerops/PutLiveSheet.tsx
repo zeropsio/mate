@@ -18,9 +18,8 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 
-/** A quiet way out beside the words: blue words, their text on the words' edge. */
-const TEXT_BUTTON =
-  "menu-textbtn -ms-2 self-start outline-none focus-visible:ring-2 focus-visible:ring-ring";
+/** A quiet way out beside the words: a link Button, its text on the words' edge. */
+const QUIET_WAY_OUT = "-ms-2 self-start";
 
 export function PutLiveSheet({
   model,
@@ -65,9 +64,9 @@ export function PutLiveSheet({
               </ul>
             )}
             {onSeeCode === undefined ? null : (
-              <button className={TEXT_BUTTON} onClick={onSeeCode} type="button">
+              <Button className={QUIET_WAY_OUT} onClick={onSeeCode} size="sm" variant="link">
                 See the code
-              </button>
+              </Button>
             )}
           </section>
           <section aria-label="Where" className="flex flex-col gap-1">
@@ -77,9 +76,9 @@ export function PutLiveSheet({
           </section>
           <p className="text-muted-foreground text-sm">{model.later}</p>
           {onSetUpYourself === undefined ? null : (
-            <button className={TEXT_BUTTON} onClick={onSetUpYourself} type="button">
+            <Button className={QUIET_WAY_OUT} onClick={onSetUpYourself} size="sm" variant="link">
               Set up production yourself…
-            </button>
+            </Button>
           )}
         </div>
       </DialogPanel>

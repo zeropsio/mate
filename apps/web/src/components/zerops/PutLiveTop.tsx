@@ -79,15 +79,15 @@ export function PutLiveRow(props: PutLiveRowProps) {
         actions={
           <>
             {address === undefined ? null : (
-              <button
-                className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              <Button
                 onClick={() => {
                   props.onCopy(address.url);
                 }}
-                type="button"
+                size="sm"
+                variant="link"
               >
                 {props.copied ? "Copied" : "Copy link"}
-              </button>
+              </Button>
             )}
             <DismissButton onDismiss={props.onDismiss} />
           </>

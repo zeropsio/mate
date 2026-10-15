@@ -201,8 +201,8 @@ function EnvironmentDestinationForm(props: ZeropsEnvironmentCreationFormProps) {
 }
 
 /** The sheet's quiet ways out: blue words, their text on the words' edge. */
-const SHEET_LINK =
-  "menu-textbtn -ms-2 self-start outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50";
+/** A quiet way out of the sheet: a link Button, its text on the words' edge. */
+const SHEET_LINK = "-ms-2 self-start";
 
 function EnvironmentSheet(
   props: ZeropsEnvironmentCreationFormProps & {
@@ -250,19 +250,20 @@ function EnvironmentSheet(
             </p>
           </section>
           <div className="flex flex-col gap-1">
-            <button className={SHEET_LINK} onClick={props.onYourself} type="button">
+            <Button className={SHEET_LINK} onClick={props.onYourself} size="sm" variant="link">
               Set it up yourself…
-            </button>
+            </Button>
             {props.git === undefined ? null : (
               <>
-                <button
+                <Button
                   className={SHEET_LINK}
                   disabled={!gitOffered}
                   onClick={props.onGit}
-                  type="button"
+                  size="sm"
+                  variant="link"
                 >
                   Use a branch in your Git repository instead…
-                </button>
+                </Button>
                 {gitOffered ? null : (
                   <p className="text-muted-foreground text-xs">
                     {props.git.unavailableReason ?? "HQ has not said yet."}
