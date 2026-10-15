@@ -177,6 +177,67 @@ describe("the crew's observer", () => {
     ),
   );
 
+  it.effect(
+    "a dev server start that moved the dev service onto the supervisor is a deploy of it: frozen, then recovered",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const item = ItemId.make("mate/r/1/i/3");
+          const message =
+            'zcp moved appdev onto the dev-server supervisor: setup "dev" in zerops.yaml now installs and runs zcp-devsup, and appdev was redeployed once with uncommitted work kept. Dev server web is running.';
+          const world = yield* scene({
+            [MATE]: [
+              {
+                _tag: "ItemClosed",
+                ...header(MATE, 1),
+                runId: null,
+                itemId: item,
+                body: {
+                  kind: "call",
+                  step: "mcp",
+                  tool: { name: "mcp__zerops__zerops_dev_server", server: "zerops" },
+                  words: null,
+                  state: "done",
+                  endedAt: null,
+                  result: {
+                    toolName: "zerops_dev_server",
+                    resultText: JSON.stringify({ running: true, message }),
+                  },
+                },
+              } as unknown as EngineEvent,
+              {
+                _tag: "ItemClosed",
+                ...header(MATE, 2),
+                runId: null,
+                itemId: ItemId.make("mate/r/1/i/4"),
+                body: {
+                  kind: "call",
+                  step: "mcp",
+                  tool: { name: "mcp__zerops__zerops_dev_server", server: "zerops" },
+                  words: null,
+                  state: "done",
+                  endedAt: null,
+                  result: {
+                    toolName: "zerops_dev_server",
+                    resultText: JSON.stringify({
+                      running: true,
+                      message: "Dev server web is running.",
+                    }),
+                  },
+                },
+              } as unknown as EngineEvent,
+            ],
+          });
+          assert.deepStrictEqual(
+            world.told.map(({ input }) =>
+              input._tag === "Deploy" ? `${input.host} ${input.phase}` : input._tag,
+            ),
+            ["appdev started", "appdev ended", "Observed"],
+          );
+        }),
+      ),
+  );
+
   it.effect("a deploy call a restart cut off is no deploy's end: it may still run", () =>
     Effect.scoped(
       Effect.gen(function* () {

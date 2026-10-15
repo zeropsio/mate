@@ -101,6 +101,31 @@ export const deployOf = (
 };
 
 /**
+ * The dev service a finished `zerops_dev_server` call moved onto the dev-server supervisor: zcp
+ * redeploys it once for the move and says so in the `message` of its JSON result ("zcp moved <host>
+ * onto the dev-server supervisor: …", zcp `devServerMigration.sentence`). That redeploy is a deploy
+ * of the host, known only when the call returns.
+ */
+export const supervisorMigrationOf = (
+  event: KnownEngineEvent,
+): { readonly itemId: string; readonly host: string } | undefined => {
+  if (event._tag !== "ItemClosed") return undefined;
+  const body = event.body;
+  if (body.kind !== "call" || toolNameOf(body.tool.name) !== "zerops_dev_server") return undefined;
+  const text = body.result?.resultText;
+  if (text === undefined) return undefined;
+  let message: unknown;
+  try {
+    message = (JSON.parse(text) as { readonly message?: unknown } | null)?.message;
+  } catch {
+    return undefined;
+  }
+  if (typeof message !== "string") return undefined;
+  const host = message.match(/^zcp moved (\S+) onto the dev-server supervisor:/)?.[1];
+  return host === undefined ? undefined : { itemId: event.itemId, host };
+};
+
+/**
  * Runs the observer in the caller's scope. Catch-ups run one conversation at a time on one fiber,
  * in the order their changes came.
  */
@@ -136,6 +161,18 @@ export const observeCrew = (inputs: CrewObserverInputs): Effect.Effect<void, nev
           if (events.length === 0) break;
           if (!crewmate) {
             for (const event of events) {
+              const migration = supervisorMigrationOf(event);
+              if (migration !== undefined) {
+                yield* inputs.tell(
+                  { _tag: "Deploy", host: migration.host, phase: "started" },
+                  `deploy:${migration.itemId}:started`,
+                );
+                yield* inputs.tell(
+                  { _tag: "Deploy", host: migration.host, phase: "ended" },
+                  `deploy:${migration.itemId}:ended`,
+                );
+                continue;
+              }
               const deploy = deployOf(event);
               if (deploy === undefined) continue;
               if (!deploy.ended && !deploying.has(deploy.itemId)) {

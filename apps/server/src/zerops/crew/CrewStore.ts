@@ -284,7 +284,6 @@ export interface CrewStoreChange {
     | "lane"
     | "assignment"
     | "host"
-    | "claim"
     | "memory"
     | "stint"
     | "run";
@@ -324,13 +323,7 @@ export interface CrewStoreService {
   ) => Effect.Effect<ReadonlyArray<CrewLanding>, CrewStoreError>;
   readonly putHost: (row: CrewHostRow) => Effect.Effect<void, CrewStoreError>;
   readonly getHost: (host: string) => Effect.Effect<Option.Option<CrewHostRow>, CrewStoreError>;
-  readonly getClaim: (host: string) => Effect.Effect<Option.Option<CrewClaimRow>, CrewStoreError>;
   readonly claims: (crew: string) => Effect.Effect<ReadonlyArray<CrewClaimRow>, CrewStoreError>;
-  /** Read, change and write a host's claim in one transaction; `none` deletes it. */
-  readonly updateClaim: (
-    host: string,
-    change: (claim: Option.Option<CrewClaimRow>) => Option.Option<CrewClaimRow>,
-  ) => Effect.Effect<Option.Option<CrewClaimRow>, CrewStoreError>;
   /** A crewmate's memory, oldest change first. */
   readonly memory: (
     crew: string,
@@ -620,7 +613,7 @@ export const make = Effect.gen(function* () {
       } satisfies CrewAssignmentRow;
     });
 
-  const selectClaims = (where: "host" | "crew", key: string) =>
+  const selectClaims = (key: string) =>
     sql<CrewClaimRow>`
       SELECT
         host, crew, member, lane, state,
@@ -630,36 +623,9 @@ export const make = Effect.gen(function* () {
         expires_at AS "expiresAt",
         released_at AS "releasedAt"
       FROM crew_claim
-      WHERE ${where === "host" ? sql`host = ${key}` : sql`crew = ${key}`}
+      WHERE crew = ${key}
       ORDER BY host
     `.pipe(Effect.mapError(sqlError("claims")));
-
-  const getClaim: CrewStoreService["getClaim"] = (host) =>
-    selectClaims("host", host).pipe(Effect.map((rows) => Option.fromNullishOr(rows[0])));
-
-  const writeClaim = (host: string, claim: Option.Option<CrewClaimRow>) =>
-    Option.match(claim, {
-      onNone: () => sql`DELETE FROM crew_claim WHERE host = ${host}`,
-      onSome: (row) => sql`
-        INSERT INTO crew_claim (
-          host, crew, member, lane, state, requested_at, granted_by, granted_at,
-          expires_at, released_at
-        ) VALUES (
-          ${host}, ${row.crew}, ${row.member}, ${row.lane}, ${row.state}, ${row.requestedAt},
-          ${row.grantedBy}, ${row.grantedAt}, ${row.expiresAt}, ${row.releasedAt}
-        )
-        ON CONFLICT (host) DO UPDATE SET
-          crew = excluded.crew,
-          member = excluded.member,
-          lane = excluded.lane,
-          state = excluded.state,
-          requested_at = excluded.requested_at,
-          granted_by = excluded.granted_by,
-          granted_at = excluded.granted_at,
-          expires_at = excluded.expires_at,
-          released_at = excluded.released_at
-      `,
-    }).pipe(Effect.mapError(sqlError("updateClaim")));
 
   const getLane: CrewStoreService["getLane"] = (crew, lane) =>
     selectLanes("lane", crew, lane).pipe(Effect.map((rows) => Option.fromNullishOr(rows[0])));
@@ -1015,31 +981,7 @@ export const make = Effect.gen(function* () {
         Effect.mapError(sqlError("markFlushed")),
         Effect.andThen(publish({ crew, table: "definition" })),
       ),
-    getClaim,
-    claims: (crew) => selectClaims("crew", crew),
-    updateClaim: (host, change) =>
-      sql
-        .withTransaction(
-          Effect.gen(function* () {
-            const before = yield* getClaim(host);
-            const after = change(before);
-            yield* writeClaim(host, after);
-            return { before, after };
-          }),
-        )
-        .pipe(
-          Effect.catchTags({ SqlError: (cause) => Effect.fail(sqlError("updateClaim")(cause)) }),
-          Effect.tap(({ before, after }) =>
-            Option.match(
-              Option.orElse(after, () => before),
-              {
-                onNone: () => Effect.void,
-                onSome: (row) => publish({ crew: row.crew, table: "claim" }),
-              },
-            ),
-          ),
-          Effect.map(({ after }) => after),
-        ),
+    claims: (crew) => selectClaims(crew),
     memory: (crew, member) =>
       sql<MemorySqlRow>`
         SELECT
