@@ -732,7 +732,8 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       input: activity({
         kind: "working",
         face: "working",
-        task: MATE_STAND_UP_MESSAGE,
+        task: undefined,
+        standUp: true,
         subject: "Clone the code into appdev",
         snippet: undefined,
         liveStep: { words: "Deploying appdev" },
@@ -747,7 +748,9 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       input: activity({
         kind: "connecting",
         face: "working",
-        task: MATE_STAND_UP_MESSAGE,
+        task: undefined,
+        subject: undefined,
+        standUp: true,
         snippet: undefined,
         awaitingWords: true,
       }),
@@ -761,7 +764,9 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       input: activity({
         kind: "failed",
         face: "idle",
-        task: MATE_STAND_UP_MESSAGE,
+        task: undefined,
+        subject: undefined,
+        standUp: true,
         snippet: undefined,
         errorLine: "Build of appdev failed.",
       }),

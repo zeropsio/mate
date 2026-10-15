@@ -216,6 +216,11 @@ export interface ZeropsAgentActivity {
   /** The conversation's scoped key — what its unsent draft is kept under. */
   readonly threadKey: string;
   /**
+   * Its latest ask is the stand-up its person's sign-in sent (`MATE_STAND_UP_MESSAGE`): never their
+   * words, so no subject or task, but its run is the Mate setting up, and its end no reply unseen.
+   */
+  readonly standUp?: true;
+  /**
    * The last task as the person asked it, whatever the subject says
    * meanwhile — the menu row's second line while the subject names the step
    * the Mate is on.
@@ -457,7 +462,10 @@ export function threadAgentActivity(
   nowMs = Date.now(),
   limit = projectMateLimit(thread, nowMs),
 ): ZeropsAgentActivity {
-  const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
+  const standUp = isMateStandUpAsk(thread.latestUserMessagePreview?.text.trim() ?? "");
+  // The stand-up's end is no reply the person has not seen: its turn is drawn out of their sight.
+  const visitedAt = standUp ? (thread.latestTurn?.completedAt ?? lastVisitedAt) : lastVisitedAt;
+  const visited = visitedAt == null ? {} : { lastVisitedAt: visitedAt };
   const usageLimited = limit.kind === "limited";
   const resolved = resolveThreadStatus({ ...thread, ...visited }, limit.kind);
   return {
@@ -482,6 +490,7 @@ export function threadAgentActivity(
       ? { limitHistory: { provider: limit.provider, resetsAt: limit.resetsAt } }
       : {}),
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+    ...(standUp ? { standUp: true as const } : {}),
     task: agentActivitySubject(thread, "idle"),
     ...(thread.latestUserMessageAt === null ? {} : { askedAt: thread.latestUserMessageAt }),
     ...agentActivityLiveStep(thread, resolved.kind),
@@ -686,10 +695,14 @@ export function rowAgentActivity(
   const { state } = row;
   const threadId = ThreadId.make(row.conversationId);
   const endedAt = row.latestRun?.endedAt ?? null;
-  const unread = hasUnseenCompletion({
-    latestTurn: endedAt === null ? null : { completedAt: isoOf(endedAt) },
-    lastVisitedAt,
-  });
+  const standUp = row.subject !== null && isMateStandUpAsk(row.subject.trim());
+  // The stand-up's end is no reply the person has not seen: its run is drawn out of their sight.
+  const unread =
+    !standUp &&
+    hasUnseenCompletion({
+      latestTurn: endedAt === null ? null : { completedAt: isoOf(endedAt) },
+      lastVisitedAt,
+    });
   const told = kindOf(state);
   const kind: ThreadStatusKind = told === "idle" && unread ? "done" : told;
   const usageLimited = limit.kind === "limited";
@@ -734,6 +747,7 @@ export function rowAgentActivity(
       ? { limitHistory: { provider: limit.provider, resetsAt: limit.resetsAt } }
       : {}),
     threadKey: scopedThreadKey(scopeThreadRef(environmentId, threadId)),
+    ...(standUp ? { standUp: true as const } : {}),
     task: agentActivitySubject(words, "idle"),
     // Engine rows own state and words; their matching overview still owns the live step.
     ...agentActivityLiveStep(main?.id === threadId ? main : {}, kind),
