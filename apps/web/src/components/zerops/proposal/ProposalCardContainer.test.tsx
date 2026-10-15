@@ -349,7 +349,7 @@ describe("an access proposal's real card", () => {
         ],
       },
     } satisfies ZeropsProposal,
-  } as ZeropsOperation;
+  } as unknown as ZeropsOperation;
   const members = (list: ReadonlyArray<{ id: string; name: string; email: string }>) => ({
     fact: { kind: "known" },
     members: list.map(({ id, name, email }) => ({
