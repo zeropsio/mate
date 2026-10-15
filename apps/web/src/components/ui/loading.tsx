@@ -9,9 +9,10 @@ import { Skeleton } from "./skeleton";
  * lines at their final size and place, painted once and replaced by the real thing in one frame.
  * Never a "Loading…" word in the middle of a page. Its name is for assistive technology only.
  *
- * `shape` draws a ready stand-in; `children` draws a surface's own (built from `Skeleton`).
+ * `shape` draws a ready stand-in; `children` draws a surface's own (built from `Skeleton`). `room`
+ * holds a surface's whole room and paints nothing: for code that arrives in a beat.
  */
-type LoadingShape = "line" | "lines" | "rows" | "cards" | "page";
+type LoadingShape = "room" | "line" | "lines" | "rows" | "cards" | "page";
 
 function LoadingRows({ count }: { readonly count: number }) {
   return (
@@ -58,6 +59,9 @@ function LoadingCards({ count }: { readonly count: number }) {
 
 function LoadingShapeView({ shape, count }: { readonly shape: LoadingShape; count: number }) {
   switch (shape) {
+    // A surface whose code arrives in a beat: its room held, nothing painted that it takes back.
+    case "room":
+      return null;
     case "line":
       return <Skeleton className="h-3 w-40" />;
     case "lines":
@@ -94,7 +98,11 @@ function Loading({
     <div
       aria-busy="true"
       aria-label={label}
-      className={cn("min-w-0", className)}
+      className={cn(
+        "min-w-0",
+        shape === "room" && "flex h-full min-h-32 flex-1 self-stretch",
+        className,
+      )}
       data-slot="loading"
       role="status"
       {...props}

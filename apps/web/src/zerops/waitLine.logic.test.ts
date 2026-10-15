@@ -67,8 +67,9 @@ describe("routePendingLine — what a route says while its code loads", () => {
   it.each([
     { pathname: "/zerops", line: READING_PROJECTS_LINE },
     { pathname: "/", line: READING_PROJECTS_LINE },
-    { pathname: "/settings/general", line: "Loading…" },
-    { pathname: "/env-1/thread-1", line: "Loading…" },
+    // Any other route holds its room and says nothing: its code arrives in a beat.
+    { pathname: "/settings/general", line: null },
+    { pathname: "/env-1/thread-1", line: null },
   ])(
     "The overview's route loading says the overview's one wait: $pathname",
     ({ pathname, line }) => {

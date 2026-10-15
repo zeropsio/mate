@@ -2,7 +2,7 @@
  * The conversation's right panel, standing in while the conversation is on its way
  * (`conversationPanelStandIn`): the same panel at the same width, its tabs and its layout controls
  * in their places and inert, its surface waiting with the one look the conversation's panel waits
- * with (`SurfaceLoading`), so nothing moves when the conversation takes over.
+ * with (`Loading`, its room held), so nothing moves when the conversation takes over.
  */
 import type { ReactNode } from "react";
 
@@ -12,7 +12,7 @@ import { RIGHT_PANEL_KINDS, type RightPanelAvailability } from "~/rightPanelKind
 import { useRightPanelStore, type ThreadRightPanelState } from "~/rightPanelStore";
 
 import { RightPanelTabs } from "../RightPanelTabs";
-import { SurfaceLoading } from "../SurfaceLoading";
+import { Loading } from "../ui/loading";
 import { conversationPanelStandIn } from "./conversationPanelStandIn.logic";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./PanelLayoutControls";
 
@@ -75,7 +75,7 @@ export function useConversationPanelStandIn(
         onAddTerminal={nothing}
         liveAgentCount={0}
       >
-        <SurfaceLoading />
+        <Loading label="The panel" shape="room" />
       </RightPanelTabs>
     </>
   );

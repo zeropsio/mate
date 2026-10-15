@@ -10,7 +10,7 @@ import {
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { XIcon } from "lucide-react";
 import { Button } from "../ui/button";
-import { SurfaceLoading } from "../SurfaceLoading";
+import { Loading } from "../ui/loading";
 import { useThemeEditorStore } from "./themeEditorStore";
 
 const ThemeEditorPanel = lazy(() =>
@@ -145,7 +145,7 @@ export function ThemeEditorHost() {
               <XIcon />
             </Button>
           </div>
-          <SurfaceLoading />
+          <Loading label="The theme editor" shape="room" />
         </div>
       }
     >

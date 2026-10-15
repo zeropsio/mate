@@ -38,7 +38,7 @@ import {
 import { mateLoginAsAgentRow } from "@t3tools/client-runtime/zerops/logins";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
-import { SurfaceLoading } from "../SurfaceLoading";
+import { Loading } from "../ui/loading";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -858,7 +858,7 @@ function SignInTerminal({
     <Suspense
       fallback={
         <div className="h-32">
-          <SurfaceLoading />
+          <Loading label="The sign-in" shape="room" />
         </div>
       }
     >

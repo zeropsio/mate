@@ -82,7 +82,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
     source:
       "apps/web/src/components/zerops/RouteStandIn.tsx, apps/web/src/components/chat/ConversationPanelStandIn.tsx",
     reason:
-      "They read the composer's draft store and the right panel's store; their looks are the held room and SurfaceLoading, both shown.",
+      "They read the composer's draft store and the right panel's store; their look is the held room, shown.",
   },
   {
     name: "Waiting: native progress bar",

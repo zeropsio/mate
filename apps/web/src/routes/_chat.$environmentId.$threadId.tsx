@@ -19,7 +19,7 @@ import * as Option from "effect/Option";
 
 import { SidebarInset } from "~/components/ui/sidebar";
 import { MateOpeningView } from "~/components/zerops/MateLinkStage";
-import { SurfaceLoading } from "~/components/SurfaceLoading";
+import { Loading } from "~/components/ui/loading";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
@@ -31,7 +31,7 @@ function ChatThreadRoutePending() {
   const mate = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
   return threadRef === null || mate.kind === "nobody" ? (
     <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">
-      <SurfaceLoading />
+      <Loading label="The conversation" shape="room" />
     </SidebarInset>
   ) : (
     <MateOpeningView threadRef={threadRef} />

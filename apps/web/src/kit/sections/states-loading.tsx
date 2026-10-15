@@ -4,7 +4,6 @@ import { DiffPanelHeaderSkeleton, DiffPanelLoadingState } from "~/components/Dif
 import { RefreshFilesButton } from "~/components/files/FileBrowserPanel";
 import { SourceControlSectionSkeleton } from "~/components/settings/SourceControlSettings";
 import { DesktopUpdateStatusIcon } from "~/components/sidebar/DesktopUpdateStatusIcon";
-import { SurfaceLoading } from "~/components/SurfaceLoading";
 import { UsageSummarySkeleton } from "~/components/usage/UsagePage";
 import { ConversationFooterStandIn } from "~/components/zerops/ConversationFooterStandIn";
 import { ReviewSkeleton } from "~/components/zerops/review/ZeropsReviewSurface";
@@ -32,8 +31,7 @@ function LoadingCensus() {
         places={[
           "apps/web/src/components/zerops/WaitLine.tsx:14 WaitLine",
           "apps/web/src/components/zerops/WaitLine.tsx:29 PageWaitLine (19 uses)",
-          "apps/web/src/components/SurfaceLoading.tsx:10 SurfaceLoading (20 uses)",
-          "apps/web/src/components/SurfaceLoading.tsx:25 RoutePending",
+          "apps/web/src/components/RoutePending.tsx RoutePending (the overview's route only)",
           "apps/web/src/components/chat/ConversationPanelStandIn.tsx:28 useConversationPanelStandIn",
           "apps/web/src/components/zerops/landing/ZeropsDeviceLoginWait.tsx:36",
           "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:191",
@@ -44,11 +42,6 @@ function LoadingCensus() {
       >
         <Specimen label='<WaitLine text="Reading your projects…" />'>
           <WaitLine text="Reading your projects…" />
-        </Specimen>
-        <Specimen label="<SurfaceLoading />" source="apps/web/src/components/SurfaceLoading.tsx">
-          <StateFrame>
-            <SurfaceLoading />
-          </StateFrame>
         </Specimen>
       </CensusLook>
 
