@@ -6,6 +6,7 @@ import type { Shown } from "./knowledge/known.ts";
 
 import {
   COMPARE_COUNT_MAX,
+  HQ_FIRST_COMMIT,
   type CompareCommit,
   type CompareResponse,
 } from "@t3tools/shared/hqChanges";
@@ -251,6 +252,39 @@ describe("what moves, as HQ answered the comparisons", () => {
         },
       ],
     });
+  });
+
+  it("counts no change in the empty first commit HQ starts a repository on", () => {
+    const first: CompareRead = { repository: "app", query: { head: API }, services: ["app"] };
+    const hqFirst: CompareCommit = {
+      sha: OLD,
+      subject: HQ_FIRST_COMMIT.subject,
+      authorName: HQ_FIRST_COMMIT.authorName,
+      at: "2026-10-01T10:00:00.000Z",
+      change: null,
+    };
+    const answer = (commits: ReadonlyArray<CompareCommit>): CompareResponse => ({
+      base: null,
+      head: API,
+      commits,
+      truncated: false,
+      total: commits.length,
+    });
+    const moved = (commits: ReadonlyArray<CompareCommit>) => {
+      const known = movedCommits({
+        reads: [first],
+        answers: new Map([[compareReadKey(first), answer(commits)]]),
+        failures: new Map(),
+      });
+      return known.state === "known"
+        ? known.moved.map((entry) => [entry.commits.map((c) => c.subject), entry.total])
+        : known.state;
+    };
+    expect(moved([commit(API, "Recipe box (#1)"), hqFirst])).toEqual([[["Recipe box (#1)"], 1]]);
+    // A person's own first commit is a change like any other, whatever it is called.
+    expect(moved([commit(API, "Recipe box (#1)"), { ...hqFirst, authorName: "Ada" }])).toEqual([
+      [["Recipe box (#1)", "Initial commit"], 2],
+    ]);
   });
 
   it("is still reading while a comparison is unanswered: never nothing moving", () => {

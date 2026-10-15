@@ -25,6 +25,7 @@
  * @module reconcile
  */
 import type { GitError, HqGit, Repo } from "@t3tools/hq-git";
+import { HQ_FIRST_COMMIT } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import {
   GitReleaseEntry,
@@ -50,7 +51,7 @@ const isReleaseTag = Schema.is(ReleaseTag);
 const BY = "restore";
 
 /** Who writes HQ's own commits. */
-const HQ_AUTHOR = { name: "HQ", email: "hq@hq.invalid" };
+const HQ_AUTHOR = { name: HQ_FIRST_COMMIT.authorName, email: "hq@hq.invalid" };
 
 /**
  * A repository made in git, before any record names it: created, and its `main` an empty tree's
@@ -69,7 +70,8 @@ export const madeRepo = (git: HqGit, repo: Repo) =>
     yield* git.commitFiles(repo, "refs/heads/main", {
       files: {},
       expectedHead: null,
-      message: "Initial commit",
+      // How a comparison knows it, and counts no change in it (`HQ_FIRST_COMMIT`).
+      message: HQ_FIRST_COMMIT.subject,
       author: HQ_AUTHOR,
     });
   });
