@@ -14,12 +14,12 @@ import { cn } from "~/lib/utils";
  * done or running, `warning` for what needs the person, `danger` for what broke.
  */
 const badgeVariants = cva(
-  "relative inline-flex min-w-0 shrink-0 items-center gap-1 whitespace-nowrap font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&_svg:not([class*='size-'])]:size-3 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "relative inline-flex min-w-0 shrink-0 items-center gap-1 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&_svg:not([class*='size-'])]:size-3 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     defaultVariants: { tone: "neutral", form: "pill" },
     variants: {
       form: {
-        pill: "h-5 rounded-full px-2 text-caption",
+        pill: "h-5 overflow-hidden rounded-full px-2 font-medium text-caption",
         // The dot form takes the size and ink of the words around it.
         dot: "gap-1.5",
       },

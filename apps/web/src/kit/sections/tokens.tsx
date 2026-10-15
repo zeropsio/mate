@@ -61,7 +61,7 @@ function TokenSpecimens() {
         <div className="flex flex-col gap-3">
           {Object.entries(TYPE_SCALE).map(([step, { fontSize, lineHeight }]) => (
             <div className="flex items-baseline gap-4" key={step}>
-              <code className="w-44 shrink-0 font-mono text-caption text-muted-foreground">
+              <code className="w-48 shrink-0 font-mono text-caption text-muted-foreground">
                 text-{step} · {fontSize}/{lineHeight}
               </code>
               <span className={TYPE_CLASS[step as keyof typeof TYPE_SCALE]}>
@@ -102,7 +102,7 @@ function TokenSpecimens() {
         <div className="flex flex-col gap-3">
           {Object.entries(MOTION.duration).map(([step, ms]) => (
             <div className="flex items-center gap-4" key={step}>
-              <code className="w-44 shrink-0 font-mono text-caption text-muted-foreground">
+              <code className="w-48 shrink-0 font-mono text-caption text-muted-foreground">
                 --duration-{step} · {ms} ms
               </code>
               <MotionSpecimen step={step as keyof typeof MOTION.duration} />
