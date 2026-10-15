@@ -924,6 +924,22 @@ describe("a card's latest changes", () => {
       stage: stageOn(6),
       rows: [["Mate: the group's import files", false, "Setup files, not app code"]],
     },
+    {
+      case: "any other change to the setup repository: setup files too, as the release notes leave it out",
+      open: [],
+      merged: [
+        pull({
+          repository: "group",
+          kind: "recipe",
+          number: 2,
+          title: "Raise the stage's memory",
+          merged: true,
+          mergedAt: "2026-10-09T09:00:00Z",
+        }),
+      ],
+      stage: stageOn(6),
+      rows: [["Raise the stage's memory", false, "Setup files, not app code"]],
+    },
   ])("says $case", ({ open, merged: landed, stage, production = true, rows }) => {
     expect(
       cardChanges({ open, merged: landed, releases, stage, production, limit: 5 }).map((change) => [

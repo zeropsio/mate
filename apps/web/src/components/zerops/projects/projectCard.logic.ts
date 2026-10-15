@@ -12,7 +12,6 @@
 import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/data";
 import {
   changeState,
-  isRecipeProposal,
   placeAddresses,
   PRODUCTION_DEPLOYING,
   type FlowPullRequest,
@@ -750,17 +749,19 @@ export function cardChanges(input: {
       return {
         pull,
         open: false,
-        words: isRecipeProposal(pull)
-          ? "Setup files, not app code"
-          : took !== undefined
-            ? `In ${took.tag}`
-            : on(stage?.runs)
-              ? "On stage"
-              : on(stage?.deploying)
-                ? "Deploying to stage…"
-                : input.production
-                  ? "Not released yet"
-                  : "Merged",
+        // Every change to the setup repository, as `broughtBy` leaves them out of a release.
+        words:
+          pull.kind === "recipe"
+            ? "Setup files, not app code"
+            : took !== undefined
+              ? `In ${took.tag}`
+              : on(stage?.runs)
+                ? "On stage"
+                : on(stage?.deploying)
+                  ? "Deploying to stage…"
+                  : input.production
+                    ? "Not released yet"
+                    : "Merged",
         tone: "off",
         at: pull.mergedAt,
       };
