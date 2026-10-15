@@ -14,7 +14,7 @@ function GroupSpecimens() {
         <Group>
           <Button variant="outline">Deploy</Button>
           <GroupSeparator />
-          <Button aria-label="More deploy choices" size="icon" variant="outline">
+          <Button aria-label="More deploy choices" size="icon-md" variant="outline">
             <ChevronDownIcon />
           </Button>
         </Group>

@@ -33,7 +33,7 @@ function TooltipSpecimens() {
             <Specimen key={side} label={specimenLabel({ side })}>
               <Tooltip>
                 <TooltipTrigger
-                  render={<Button aria-label={`Tooltip ${side}`} size="icon" variant="ghost" />}
+                  render={<Button aria-label={`Tooltip ${side}`} size="icon-md" variant="ghost" />}
                 >
                   <InfoIcon />
                 </TooltipTrigger>

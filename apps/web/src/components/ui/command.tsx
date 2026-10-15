@@ -69,7 +69,7 @@ function CommandDialogPopup({
           <CommandDialogPrimitive.Close
             aria-label="Close"
             className="absolute end-2 top-2"
-            render={<Button size="icon" variant="ghost" />}
+            render={<Button size="icon-md" variant="ghost" />}
           >
             <XIcon />
           </CommandDialogPrimitive.Close>

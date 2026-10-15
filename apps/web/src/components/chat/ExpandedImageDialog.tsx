@@ -80,7 +80,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           {preview.images.length > 1 && (
             <Button
               type="button"
-              size="icon"
+              size="icon-md"
               variant="ghost"
               className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
               aria-label="Previous image"
@@ -137,7 +137,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           {preview.images.length > 1 && (
             <Button
               type="button"
-              size="icon"
+              size="icon-md"
               variant="ghost"
               className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
               aria-label="Next image"

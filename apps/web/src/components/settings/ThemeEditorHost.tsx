@@ -138,7 +138,7 @@ export function ThemeEditorHost() {
           <div className="absolute end-2 top-2">
             <Button
               aria-label="Close the theme editor"
-              size="icon"
+              size="icon-md"
               variant="ghost"
               onClick={closeThemeEditor}
             >

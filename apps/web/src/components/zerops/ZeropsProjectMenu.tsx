@@ -68,7 +68,7 @@ export function ZeropsProjectMenu({
           <Button
             aria-label={label}
             className="size-7 text-muted-foreground"
-            size="icon"
+            size="icon-md"
             variant="ghost"
           />
         }

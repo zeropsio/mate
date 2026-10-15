@@ -101,7 +101,7 @@ function MenuSpecimens() {
     <SpecimenGrid>
       <Specimen label="<MenuTrigger render={<Button />}> · every item kind">
         <Menu>
-          <MenuTrigger render={<Button aria-label="Project menu" size="icon" variant="ghost" />}>
+          <MenuTrigger render={<Button aria-label="Project menu" size="icon-md" variant="ghost" />}>
             <MoreHorizontalIcon />
           </MenuTrigger>
           <MenuPopup>

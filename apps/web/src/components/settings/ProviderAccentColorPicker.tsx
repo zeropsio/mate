@@ -300,7 +300,7 @@ export function ProviderAccentColorPicker(props: {
         />
         <Button
           type="button"
-          size="icon"
+          size="icon-md"
           variant="ghost"
           className={cn(
             "size-7 shrink-0 text-muted-foreground transition-opacity",
