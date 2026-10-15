@@ -1703,7 +1703,7 @@ function TokenStreamingWarningDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <Button variant="ghost-muted" className="sm:mr-auto" onClick={onConfirm}>
+          <Button variant="ghost" className="sm:mr-auto" onClick={onConfirm}>
             Use token by token
           </Button>
           <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>

@@ -41,7 +41,7 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
     return (
       <Button
         size="sm"
-        variant="ghost-muted"
+        variant="ghost"
         data-prompt-stash-badge="true"
         aria-label={`Stashed prompts: ${props.count}. Open stash.`}
         aria-expanded={props.menuOpen}

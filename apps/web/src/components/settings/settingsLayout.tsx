@@ -93,7 +93,7 @@ export function PolicyTooltip({ children }: { readonly children: string }) {
       <TooltipTrigger
         delay={200}
         render={
-          <Button size="icon-sm" variant="ghost-muted" aria-label="Background policy details">
+          <Button size="icon-sm" variant="ghost" aria-label="Background policy details">
             <InfoIcon className="size-3.5" />
           </Button>
         }
@@ -217,7 +217,7 @@ export function SettingResetButton({
         render={
           <Button
             size="icon-sm"
-            variant="ghost-muted"
+            variant="ghost"
             aria-label={`Reset ${label} to default`}
             disabled={disabled}
             onClick={(event) => {

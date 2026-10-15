@@ -127,7 +127,7 @@ function ExpandableHeaderSearch({
               <Button
                 type="button"
                 size="icon-sm"
-                variant="ghost-muted"
+                variant="ghost"
                 onClick={() => onOpenChange(true)}
                 aria-label="Search keybindings"
               >
@@ -855,7 +855,7 @@ function KeybindingTableRow({
               render={
                 <Button
                   type="button"
-                  variant="ghost-muted"
+                  variant="ghost"
                   size="icon-md"
                   className="size-7 sm:size-7"
                   disabled={isSaving}
@@ -1012,7 +1012,7 @@ function NewKeybindingTableRow({
             render={
               <Button
                 type="button"
-                variant="ghost-muted"
+                variant="ghost"
                 size="icon-md"
                 className="size-7"
                 disabled={isSaving}
@@ -1196,7 +1196,7 @@ export function KeybindingsSettingsPanel() {
                   <Button
                     type="button"
                     size="icon-sm"
-                    variant="ghost-muted"
+                    variant="ghost"
                     onClick={() => setIsAddingBinding(true)}
                     aria-label="Add keybinding"
                   >
@@ -1212,7 +1212,7 @@ export function KeybindingsSettingsPanel() {
                   <Button
                     type="button"
                     size="icon-sm"
-                    variant="ghost-muted"
+                    variant="ghost"
                     disabled={!keybindingsConfigPath}
                     onClick={openKeybindingsFile}
                     aria-label="Open keybindings.json"

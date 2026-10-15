@@ -74,7 +74,7 @@ export function ComposerVaultAsk(props: ComposerVaultAskProps) {
               onClick={props.onNotNow}
               size="md"
               type="button"
-              variant="ghost-muted"
+              variant="ghost"
             >
               Not now
             </Button>
@@ -150,7 +150,7 @@ export function ComposerVaultAsk(props: ComposerVaultAskProps) {
                 onClick={() => setShown((current) => !current)}
                 size="icon-md"
                 type="button"
-                variant="ghost-muted"
+                variant="ghost"
               >
                 {shown ? <EyeOffIcon /> : <EyeIcon />}
               </Button>

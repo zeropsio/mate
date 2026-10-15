@@ -140,7 +140,7 @@ export function ServiceBrowserPanel({
             Browsers block most cookies here, so sign-ins and carts need a new tab.
           </p>
           <Button
-            variant="ghost-muted"
+            variant="ghost"
             size="sm"
             className="shrink-0"
             onClick={() => setCookieNoteRead(true)}

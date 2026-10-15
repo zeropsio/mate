@@ -322,7 +322,7 @@ function DomainRow({
                   <Button
                     aria-label={`More for ${domain.domainName}`}
                     size="icon-md"
-                    variant="ghost-muted"
+                    variant="ghost"
                   />
                 }
               >
@@ -453,7 +453,7 @@ function Records({
             aria-expanded={ways}
             onClick={() => setWays((open) => !open)}
             size="sm"
-            variant="ghost-muted"
+            variant="ghost"
           >
             <ChevronRightIcon className={ways ? "rotate-90" : undefined} />
             Other ways

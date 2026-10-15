@@ -116,7 +116,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
       >
         <div className="flex h-7 items-center justify-end px-2 pt-1">
           <Button
-            variant="ghost-muted"
+            variant="ghost"
             size="icon-sm"
             aria-label="Close stash"
             onPointerDown={(event) => event.preventDefault()}

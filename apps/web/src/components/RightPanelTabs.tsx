@@ -639,7 +639,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       aria-label="Add a page"
                       className="shrink-0"
                       size="icon-sm"
-                      variant="ghost-muted"
+                      variant="ghost"
                     />
                   }
                 >

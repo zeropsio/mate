@@ -1008,7 +1008,7 @@ export function MateComingHeader({
             data-chat-header-ghost
             inert
             size="icon-md"
-            variant="ghost-muted"
+            variant="ghost"
           >
             <EllipsisIcon className="size-4" />
           </Button>

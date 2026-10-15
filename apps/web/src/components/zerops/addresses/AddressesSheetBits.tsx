@@ -154,7 +154,7 @@ export function CopyButton({ value }: { readonly value: string }) {
         );
       }}
       size="icon-sm"
-      variant="ghost-muted"
+      variant="ghost"
     >
       {copied ? <CheckIcon /> : <CopyIcon />}
     </Button>

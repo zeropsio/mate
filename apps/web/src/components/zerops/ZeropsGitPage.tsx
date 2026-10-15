@@ -131,7 +131,7 @@ export function ZeropsGitOverview({
           ).map(([value, label]) => (
             <Button
               key={value}
-              variant={view === value ? "secondary" : "ghost-muted"}
+              variant={view === value ? "secondary" : "ghost"}
               size="md"
               aria-pressed={view === value}
               onClick={() => {
@@ -364,7 +364,7 @@ export function ZeropsGitPage() {
               Repositories and open changes across your projects.
             </p>
           </div>
-          <Button variant="ghost-muted" size="md" onClick={readAgain}>
+          <Button variant="ghost" size="md" onClick={readAgain}>
             Read again
           </Button>
         </div>

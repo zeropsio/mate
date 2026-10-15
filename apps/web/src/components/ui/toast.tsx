@@ -130,7 +130,7 @@ function CopyErrorButton({ text }: { text: string }) {
         render={
           <Button
             size="icon-sm"
-            variant="ghost-muted"
+            variant="ghost"
             aria-label={label}
             className="[--control-icon-color:currentColor] rounded-md text-muted-foreground/80 hover:bg-transparent hover:text-muted-foreground"
             onClick={() => copyToClipboard(text)}

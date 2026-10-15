@@ -368,7 +368,7 @@ export function AddProviderInstanceDialog({
                   <Button
                     type="button"
                     size="md"
-                    variant="ghost-muted"
+                    variant="ghost"
                     className="h-7 px-2 text-xs"
                     onClick={() => setAccentColor("")}
                   >

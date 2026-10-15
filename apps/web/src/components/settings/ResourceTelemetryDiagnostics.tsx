@@ -493,7 +493,7 @@ function ProcessTreeName({
       {hasChildren ? (
         <Button
           size="icon-sm"
-          variant="ghost-muted"
+          variant="ghost"
           onClick={() => onToggle(process)}
           aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
         >

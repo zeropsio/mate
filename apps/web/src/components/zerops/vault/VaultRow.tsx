@@ -110,7 +110,7 @@ function CopyReference({ text, label }: { readonly text: string; readonly label?
           copyToClipboard(text, undefined);
         }}
         size={label === undefined ? "icon-sm" : "sm"}
-        variant="ghost-muted"
+        variant="ghost"
       >
         {label === undefined ? null : <span className="font-mono font-normal">{label}</span>}
         {isCopied ? <CheckIcon /> : <CopyIcon />}
@@ -340,7 +340,7 @@ function RowBody(props: VaultRowProps) {
               disabled={revealing}
               onClick={() => void show()}
               size="icon-md"
-              variant="ghost-muted"
+              variant="ghost"
             >
               {revealing ? <Spinner size="xs" /> : <EyeIcon />}
             </Button>
@@ -352,7 +352,7 @@ function RowBody(props: VaultRowProps) {
               aria-label={reveal ? "Hide" : "Show"}
               onClick={() => setReveal((current) => !current)}
               size="icon-md"
-              variant="ghost-muted"
+              variant="ghost"
             >
               {reveal ? <EyeOffIcon /> : <EyeIcon />}
             </Button>
@@ -364,7 +364,7 @@ function RowBody(props: VaultRowProps) {
               aria-label="Copy"
               onClick={() => copyToClipboard(revealed ?? value.value ?? "", undefined)}
               size="icon-md"
-              variant="ghost-muted"
+              variant="ghost"
             >
               {isCopied ? <CheckIcon /> : <CopyIcon />}
             </Button>
@@ -376,7 +376,7 @@ function RowBody(props: VaultRowProps) {
               aria-label="Make up a value"
               onClick={() => setDraft(generateVaultValue())}
               size="icon-md"
-              variant="ghost-muted"
+              variant="ghost"
             >
               <DicesIcon />
             </Button>
@@ -436,7 +436,7 @@ function RowBody(props: VaultRowProps) {
         <CopyReference label={reference.own} text={reference.own} />
         <span className="grow" />
         {!masked ? null : (
-          <Button disabled={busy} onClick={() => setLocking(true)} size="sm" variant="ghost-muted">
+          <Button disabled={busy} onClick={() => setLocking(true)} size="sm" variant="ghost">
             <EyeOffIcon />
             Hide it
           </Button>
@@ -457,7 +457,7 @@ function RowBody(props: VaultRowProps) {
             still show it to yourself here, and your apps still get it.
           </p>
           <div className="flex justify-end gap-1.5">
-            <Button onClick={() => setLocking(false)} size="sm" variant="ghost-muted">
+            <Button onClick={() => setLocking(false)} size="sm" variant="ghost">
               Cancel
             </Button>
             <Button
@@ -569,7 +569,7 @@ function VaultManagedRow({
               aria-label={shown === null ? "Show" : "Hide"}
               onClick={() => (shown === null ? void show() : setShown(null))}
               size="icon-sm"
-              variant="ghost-muted"
+              variant="ghost"
             >
               {shown === null ? <EyeIcon /> : <EyeOffIcon />}
             </Button>

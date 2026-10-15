@@ -642,12 +642,7 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
               render={
                 <MenuTrigger
                   render={
-                    <Button
-                      type="button"
-                      variant="ghost-muted"
-                      size="icon-sm"
-                      aria-label={copyLabel}
-                    />
+                    <Button type="button" variant="ghost" size="icon-sm" aria-label={copyLabel} />
                   }
                 />
               }
@@ -853,7 +848,7 @@ function MarkdownCodeBlock({
                 render={
                   <Button
                     type="button"
-                    variant={wrapped ? "secondary" : "ghost-muted"}
+                    variant={wrapped ? "secondary" : "ghost"}
                     size="icon-sm"
                     aria-pressed={wrapped}
                     onClick={() => setWrapped((value) => !value)}
@@ -872,7 +867,7 @@ function MarkdownCodeBlock({
                 render={
                   <Button
                     type="button"
-                    variant="ghost-muted"
+                    variant="ghost"
                     size="icon-sm"
                     onClick={() => onRunShellCommand(command)}
                     aria-label="Run in terminal"
@@ -889,7 +884,7 @@ function MarkdownCodeBlock({
               render={
                 <Button
                   type="button"
-                  variant="ghost-muted"
+                  variant="ghost"
                   size="icon-sm"
                   onClick={handleCopy}
                   aria-label={copyLabel}
@@ -947,7 +942,7 @@ function MarkdownMermaidCodeBlock({
               render={
                 <Button
                   type="button"
-                  variant="ghost-muted"
+                  variant="ghost"
                   size="icon-sm"
                   onClick={() => setShowCode((value) => !value)}
                   aria-label={toggleLabel}

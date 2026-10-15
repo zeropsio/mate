@@ -320,7 +320,7 @@ function WorkflowScriptView({
         </span>
         <Button
           size="icon-sm"
-          variant="ghost-muted"
+          variant="ghost"
           onClick={onClose}
           aria-label="Close script"
           className="ml-auto"
@@ -468,12 +468,7 @@ function ExpandedWorkflowSection({
         <span className="ml-auto font-mono normal-case text-muted-foreground/80">
           {settled}/{members.length} settled
         </span>
-        <Button
-          size="icon-sm"
-          variant="ghost-muted"
-          onClick={onCollapse}
-          aria-label="Collapse workflow"
-        >
+        <Button size="icon-sm" variant="ghost" onClick={onCollapse} aria-label="Collapse workflow">
           <ChevronDown aria-hidden className="size-3" />
         </Button>
       </div>

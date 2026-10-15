@@ -125,7 +125,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
                   aria-label="Generate a value"
                   onClick={() => setValue(generateVaultValue())}
                   size="icon-sm"
-                  variant="ghost-muted"
+                  variant="ghost"
                 />
               }
             >
@@ -158,7 +158,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
             {sensitive ? "nobody reads it back once saved" : ""}
           </span>
           <span className="grow" />
-          <Button onClick={props.onCancel} size="sm" variant="ghost-muted">
+          <Button onClick={props.onCancel} size="sm" variant="ghost">
             Cancel
           </Button>
           <Button disabled={!canSave} onClick={save} size="sm">
@@ -243,7 +243,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
         <span className="font-medium text-line">{scopeName(props.scope)}</span>
         <span className="text-xs text-muted-foreground">as text</span>
         <span className="grow" />
-        <Button onClick={props.onCancel} size="sm" variant="ghost-muted">
+        <Button onClick={props.onCancel} size="sm" variant="ghost">
           Cancel
         </Button>
         <Button
@@ -365,7 +365,7 @@ export function VaultReview(props: VaultReviewProps) {
             ? "Applying"
             : `Apply ${applied.length} change${applied.length === 1 ? "" : "s"}`}
         </Button>
-        <Button onClick={props.onBack} size="sm" variant="ghost-muted">
+        <Button onClick={props.onBack} size="sm" variant="ghost">
           Back to text
         </Button>
         <span className="ml-auto truncate text-xs text-muted-foreground">

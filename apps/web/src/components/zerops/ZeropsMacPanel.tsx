@@ -50,7 +50,7 @@ export function MacCommand({ command }: { readonly command: string }) {
           );
         }}
         size="icon-sm"
-        variant="ghost-muted"
+        variant="ghost"
       >
         {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
       </Button>

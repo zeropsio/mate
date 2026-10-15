@@ -69,7 +69,7 @@ export function MateNameInput({
                   onClick={onAnother}
                   size="icon-sm"
                   type="button"
-                  variant="ghost-muted"
+                  variant="ghost"
                 />
               }
             >

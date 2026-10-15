@@ -211,7 +211,7 @@ function PortRow({
                   <Button
                     aria-label={`More for port ${port.publicPort}`}
                     size="icon-md"
-                    variant="ghost-muted"
+                    variant="ghost"
                   />
                 }
               >
@@ -400,7 +400,7 @@ function PortForm({
             onClick={() => setRanges(ranges.filter((_, at) => at !== index))}
             size="icon-md"
             type="button"
-            variant="ghost-muted"
+            variant="ghost"
           >
             <XIcon />
           </Button>

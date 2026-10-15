@@ -221,7 +221,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                 <Button
                   type="button"
                   size="icon-sm"
-                  variant="ghost-muted"
+                  variant="ghost"
                   className="shrink-0"
                   aria-label="Clear settings search"
                   onClick={() => {

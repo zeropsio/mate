@@ -935,7 +935,7 @@ export function EnvironmentProviderSettings({
                     render={
                       <Button
                         size="sm"
-                        variant="ghost-muted"
+                        variant="ghost"
                         disabled={isRefreshingProviders}
                         aria-busy={isRefreshingProviders}
                         onClick={() => void refreshProviders()}
@@ -959,7 +959,7 @@ export function EnvironmentProviderSettings({
                     render={
                       <Button
                         size="icon-sm"
-                        variant="ghost-muted"
+                        variant="ghost"
                         onClick={() => setIsAddInstanceDialogOpen(true)}
                         aria-label="Add provider"
                       >
@@ -1004,7 +1004,7 @@ export function EnvironmentProviderSettings({
                       render={
                         <Button
                           size="icon-sm"
-                          variant="ghost-muted"
+                          variant="ghost"
                           disabled={isRefreshingProviders}
                           onClick={() => void refreshProviders()}
                           aria-label="Refresh provider status"

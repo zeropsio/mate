@@ -168,7 +168,7 @@ function RestartLine(props: {
           >
             Restart
           </Button>
-          <Button onClick={() => setAsking(false)} size="sm" variant="ghost-muted">
+          <Button onClick={() => setAsking(false)} size="sm" variant="ghost">
             Cancel
           </Button>
         </div>

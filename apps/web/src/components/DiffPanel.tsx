@@ -686,7 +686,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
               }}
             >
               <ComboboxTrigger
-                render={<Button variant="ghost-muted" size="sm" />}
+                render={<Button variant="ghost" size="sm" />}
                 className="min-w-0 max-w-48"
                 aria-label={`Change comparison target. Currently ${selectedGitSource.baseRef}`}
               >

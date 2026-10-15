@@ -66,7 +66,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({
             ref={ref}
             type="button"
             size={size}
-            variant={variant === "ghost" ? "ghost-muted" : variant}
+            variant={variant === "ghost" ? "ghost" : variant}
             className={className}
           />
         }

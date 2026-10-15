@@ -98,7 +98,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
             render={
               <Button
                 size="icon-sm"
-                variant="ghost-muted"
+                variant="ghost"
                 className="-mr-1 shrink-0"
                 onClick={(event) => {
                   event.stopPropagation();

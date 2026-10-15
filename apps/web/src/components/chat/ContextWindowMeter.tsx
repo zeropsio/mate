@@ -46,7 +46,7 @@ export function ContextWindowMeter(props: {
         render={
           <Button
             size="icon-md"
-            variant="ghost-muted"
+            variant="ghost"
             className="size-7"
             aria-label={
               usage.maxTokens !== null && usedPercentage

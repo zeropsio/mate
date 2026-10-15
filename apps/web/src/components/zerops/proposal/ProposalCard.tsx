@@ -281,7 +281,7 @@ function ProposalFoot(props: ProposalCardProps) {
               Set up Chief
             </Button>
           )}
-          <Button onClick={props.onDecline} size="sm" variant="ghost-muted">
+          <Button onClick={props.onDecline} size="sm" variant="ghost">
             Decline
           </Button>
           {props.approveBlocked === undefined || props.onSetUpChief !== undefined ? null : (

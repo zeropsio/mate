@@ -1652,11 +1652,11 @@ function ConversationPane({ open }: { readonly open: string }) {
               aria-label="More header actions"
               data-chat-header-ghost
               size="icon-md"
-              variant="ghost-muted"
+              variant="ghost"
             >
               <EllipsisIcon className="size-4" />
             </Button>
-            <Button data-chat-header-ghost size="md" variant="ghost-muted">
+            <Button data-chat-header-ghost size="md" variant="ghost">
               <ZeropsMark className="size-3.5 shrink-0" />
               <span className="hidden text-line @3xl/header-actions:inline">Open in Zerops</span>
             </Button>

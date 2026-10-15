@@ -466,7 +466,7 @@ export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) 
             className="ms-2 shrink-0"
             onClick={notice.onDismiss}
             size="icon-sm"
-            variant="ghost-muted"
+            variant="ghost"
           >
             <XIcon className="size-3.5" />
           </Button>
@@ -570,7 +570,7 @@ export function ErrorLine({
         className="mt-1"
         onClick={onDismiss}
         size="icon-sm"
-        variant="ghost-muted"
+        variant="ghost"
       >
         <XIcon />
       </Button>

@@ -181,7 +181,7 @@ export function CustomModelEditor({
       </label>
       <Button
         size="icon-sm"
-        variant="ghost-muted"
+        variant="ghost"
         aria-label="Remove choice"
         onClick={() =>
           updateDescriptor(descriptor.key, {
@@ -260,7 +260,7 @@ export function CustomModelEditor({
         </Select>
         <Button
           size="icon-sm"
-          variant="ghost-muted"
+          variant="ghost"
           aria-label={`Remove option ${index + 1}`}
           onClick={() => removeDescriptor(descriptor.key)}
         >
@@ -273,7 +273,7 @@ export function CustomModelEditor({
           <Button
             type="button"
             size="sm"
-            variant="ghost-muted"
+            variant="ghost"
             className="-ml-2 self-start"
             onClick={() =>
               updateDescriptor(descriptor.key, {
@@ -353,7 +353,7 @@ export function CustomModelEditor({
                 key={preset.id}
                 type="button"
                 size="sm"
-                variant="ghost-muted"
+                variant="ghost"
                 className={cn("-ml-2 first:ml-0")}
                 onClick={() => addDescriptor(descriptorFromPreset(preset))}
               >
@@ -364,7 +364,7 @@ export function CustomModelEditor({
           <Button
             type="button"
             size="sm"
-            variant="ghost-muted"
+            variant="ghost"
             onClick={() => addDescriptor(emptyEditorDescriptor())}
           >
             <PlusIcon className="size-3" />

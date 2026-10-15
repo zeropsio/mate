@@ -35,7 +35,7 @@ export function CrewRunsOnControl({
         data-crew-runs-on
         onClick={onEdit}
         size="sm"
-        variant="ghost-muted"
+        variant="ghost"
       >
         <span className="truncate">{label}</span>
       </Button>
@@ -54,7 +54,7 @@ export function CrewRunsOnControl({
             className="-ms-2.5 min-w-0"
             data-crew-runs-on
             size="sm"
-            variant="ghost-muted"
+            variant="ghost"
           />
         }
       >

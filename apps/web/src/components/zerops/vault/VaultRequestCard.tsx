@@ -139,7 +139,7 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
                 for it under another name.
               </p>
               <div className="flex items-center gap-2">
-                <Button onClick={props.onNotNow} size="sm" variant="ghost-muted">
+                <Button onClick={props.onNotNow} size="sm" variant="ghost">
                   Not now
                 </Button>
               </div>
@@ -171,7 +171,7 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
                   disabled={open === null}
                   onClick={() => setShown((current) => !current)}
                   size="icon-sm"
-                  variant="ghost-muted"
+                  variant="ghost"
                 >
                   {shown ? <EyeOffIcon /> : <EyeIcon />}
                 </Button>
@@ -202,7 +202,7 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
                   {busy ? <Spinner size="xs" /> : null}
                   Put in vault
                 </Button>
-                <Button disabled={busy} onClick={props.onNotNow} size="sm" variant="ghost-muted">
+                <Button disabled={busy} onClick={props.onNotNow} size="sm" variant="ghost">
                   Not now
                 </Button>
               </div>

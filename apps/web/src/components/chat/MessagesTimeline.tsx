@@ -2577,7 +2577,7 @@ function TimelineMinimapNavigationButton({
           onClick={onClick}
           size="icon-sm"
           type="button"
-          variant="ghost-muted"
+          variant="ghost"
         >
           <Icon className="size-4 text-foreground/90" />
         </Button>
@@ -3404,7 +3404,7 @@ export function QueuedMessageTimelineRow({
                   <Button
                     type="button"
                     size="icon-sm"
-                    variant="ghost-muted"
+                    variant="ghost"
                     onPointerDown={(event) => event.preventDefault()}
                     // Held back while an answer is due, never pressed to do nothing: it says why.
                     aria-disabled={state.send.disabled ? true : undefined}
@@ -3434,7 +3434,7 @@ export function QueuedMessageTimelineRow({
                   <Button
                     type="button"
                     size="icon-sm"
-                    variant="ghost-muted"
+                    variant="ghost"
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => ctx.onRemoveQueuedMessage(queuedMessage.id)}
                     aria-label="Cancel and return to the composer"
@@ -4076,7 +4076,7 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
             <Button
               type="button"
               size="sm"
-              variant="ghost-muted"
+              variant="ghost"
               aria-expanded={expanded}
               onClick={() => setExpanded((value) => !value)}
               className="-ml-1"

@@ -213,7 +213,7 @@ function CommandFooterAction({
   return (
     <Button
       {...props}
-      variant="ghost-muted"
+      variant="ghost"
       size="sm"
       className={cn("h-auto px-2 text-xs hover:bg-transparent", className)}
     />

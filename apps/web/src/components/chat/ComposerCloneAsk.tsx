@@ -62,7 +62,7 @@ export function ComposerCloneAsk({
     <ComposerAsk
       actions={
         <>
-          <Button onClick={actions.remove} size="md" variant="ghost-muted">
+          <Button onClick={actions.remove} size="md" variant="ghost">
             Remove project
           </Button>
           <ComposerAskButton onClick={actions.retry}>Retry</ComposerAskButton>

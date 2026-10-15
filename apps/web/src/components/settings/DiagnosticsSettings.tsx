@@ -282,7 +282,7 @@ function TraceIdCell({ traceId }: { traceId: string }) {
           render={
             <Button
               size="icon-sm"
-              variant="ghost-muted"
+              variant="ghost"
               aria-label={copied ? "Copied trace ID" : "Copy trace ID"}
               onClick={() => copyToClipboard(traceId)}
             >
@@ -331,7 +331,7 @@ function ProcessNameCell({
       {hasChildren ? (
         <Button
           size="icon-sm"
-          variant="ghost-muted"
+          variant="ghost"
           aria-label={isExpanded ? `Collapse ${name}` : `Expand ${name}`}
           onClick={() => onToggle(process.pid)}
         >
@@ -750,7 +750,7 @@ function DiagnosticsRefreshButton({
         render={
           <Button
             size="icon-sm"
-            variant="ghost-muted"
+            variant="ghost"
             disabled={isPending}
             onClick={onClick}
             aria-label={label}
@@ -1084,7 +1084,7 @@ export function DiagnosticsSettingsPanel() {
                 render={
                   <Button
                     size="icon-sm"
-                    variant="ghost-muted"
+                    variant="ghost"
                     disabled={!observability?.logsDirectoryPath || isOpeningLogsDirectory}
                     onClick={openLogsDirectory}
                     aria-label="Open logs folder"

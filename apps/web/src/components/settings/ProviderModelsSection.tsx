@@ -302,7 +302,7 @@ export function ProviderModelsSection({
                       render={
                         <Button
                           size="icon-sm"
-                          variant="ghost-muted"
+                          variant="ghost"
                           onClick={() => handleToggleFavorite(model.slug)}
                           aria-label={`${isFavorite ? "Remove" : "Add"} ${model.name} ${
                             isFavorite ? "from" : "to"
@@ -323,7 +323,7 @@ export function ProviderModelsSection({
                       render={
                         <Button
                           size="icon-sm"
-                          variant="ghost-muted"
+                          variant="ghost"
                           disabled={!canMoveUp}
                           onClick={() => handleMove(model.slug, -1)}
                           aria-label={`Move ${model.name} up`}
@@ -339,7 +339,7 @@ export function ProviderModelsSection({
                       render={
                         <Button
                           size="icon-sm"
-                          variant="ghost-muted"
+                          variant="ghost"
                           disabled={!canMoveDown}
                           onClick={() => handleMove(model.slug, 1)}
                           aria-label={`Move ${model.name} down`}
@@ -356,7 +356,7 @@ export function ProviderModelsSection({
                         render={
                           <Button
                             size="icon-sm"
-                            variant="ghost-muted"
+                            variant="ghost"
                             onClick={() => handleToggleHidden(model.slug)}
                             aria-label={`${isHidden ? "Show" : "Hide"} ${model.name}`}
                           />
@@ -379,7 +379,7 @@ export function ProviderModelsSection({
                         render={
                           <Button
                             size="icon-sm"
-                            variant="ghost-muted"
+                            variant="ghost"
                             aria-label={`Edit ${model.name}`}
                             aria-expanded={editingSlug === model.slug}
                             onClick={() =>
@@ -401,7 +401,7 @@ export function ProviderModelsSection({
                         render={
                           <Button
                             size="icon-sm"
-                            variant="ghost-muted"
+                            variant="ghost"
                             aria-label={`Remove ${model.slug}`}
                             onClick={() => handleRemove(model.slug)}
                           />

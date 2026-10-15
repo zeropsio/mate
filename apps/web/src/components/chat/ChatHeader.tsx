@@ -713,7 +713,7 @@ export const ChatHeader = memo(function ChatHeader({
                   aria-label="More header actions"
                   data-chat-header-ghost
                   size="icon-md"
-                  variant="ghost-muted"
+                  variant="ghost"
                 />
               }
             >

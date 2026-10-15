@@ -2999,7 +2999,7 @@ export default function Sidebar() {
                               </span>
                               <Button
                                 size="icon-sm"
-                                variant="ghost-muted"
+                                variant="ghost"
                                 aria-label={`Add source to ${project.displayName}`}
                                 title={`Add source to ${project.displayName}`}
                                 className="ml-auto"
@@ -3014,7 +3014,7 @@ export default function Sidebar() {
                               </Button>
                               <Button
                                 size="icon-sm"
-                                variant="ghost-muted"
+                                variant="ghost"
                                 aria-label={`Project settings for ${project.displayName}`}
                                 title={`Project settings for ${project.displayName}`}
                                 onPointerDown={(event) => event.stopPropagation()}

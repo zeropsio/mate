@@ -303,7 +303,7 @@ function DiscoveryItemRow({
             {hasDetails ? (
               <Button
                 size="sm"
-                variant="ghost-muted"
+                variant="ghost"
                 onClick={() => setIsExpanded((open) => !open)}
                 aria-expanded={isExpanded}
                 aria-label={`Toggle ${item.label} details`}
@@ -524,7 +524,7 @@ export function SourceControlSettingsPanel() {
         render={
           <Button
             size="icon-sm"
-            variant="ghost-muted"
+            variant="ghost"
             onClick={handleScan}
             disabled={discovery.isPending}
             aria-label="Rescan server environment"
