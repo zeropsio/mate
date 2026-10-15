@@ -2,7 +2,12 @@ import { CheckpointRef, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { TurnDiffSummary } from "../types";
-import { runChangesSeen, turnDiffSummariesOf } from "./turnDiffSummaries.logic";
+import {
+  runChangesRead,
+  runChangesSeen,
+  runChangesSupport,
+  turnDiffSummariesOf,
+} from "./turnDiffSummaries.logic";
 
 const turn = (count: number, files: ReadonlyArray<string>): TurnDiffSummary => ({
   turnId: TurnId.make(`turn-${count}`),
@@ -62,4 +67,30 @@ describe("the turns the Diff page offers", () => {
   ])("reads a Mate's run changes again once a run starts or ends ($seen)", ({ latest, seen }) => {
     expect(runChangesSeen(latest)).toBe(seen);
   });
+});
+
+describe("a Mate's server and its run changes", () => {
+  it.each([
+    { capabilities: { runChanges: true }, support: "supported" },
+    { capabilities: {}, support: "needs-update" },
+    { capabilities: undefined, support: "unknown" },
+  ] as const)(
+    "a Mate's server is asked for its run changes only once it says it reads them ($support)",
+    ({ capabilities, support }) => {
+      expect(runChangesSupport(capabilities)).toBe(support);
+    },
+  );
+
+  it.each([
+    { support: "needs-update", failed: true, read: false, shown: "needs-update" },
+    { support: "unknown", failed: false, read: false, shown: "reading" },
+    { support: "supported", failed: true, read: false, shown: "failed" },
+    { support: "supported", failed: false, read: false, shown: "reading" },
+    { support: "supported", failed: false, read: true, shown: "read" },
+  ] as const)(
+    "a Mate that cannot read its run changes yet is never said to have failed ($shown)",
+    ({ support, failed, read, shown }) => {
+      expect(runChangesRead({ support, failed, read })).toBe(shown);
+    },
+  );
 });

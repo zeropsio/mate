@@ -52,6 +52,7 @@ import { resolveThreadRouteRef } from "../threadRoutes";
 import { useClientSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
+import { ZeropsMateUpdateControl } from "./zerops/ZeropsMateUpdateControl";
 import { recallCheckoutIsRepo } from "./ChatView.logic";
 import {
   diffScope,
@@ -940,6 +941,15 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
         />
       ) : shownSelection.kind === "no-turns" && runChangesRead === "reading" ? (
         <DiffPanelLoadingState label="Loading changes..." />
+      ) : shownSelection.kind === "no-turns" &&
+        runChangesRead === "needs-update" &&
+        activeThread ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-xs text-muted-foreground">
+          <p>This Mate shows its changes here after its next update.</p>
+          <ZeropsMateUpdateControl environmentId={activeThread.environmentId}>
+            {({ line }) => line}
+          </ZeropsMateUpdateControl>
+        </div>
       ) : shownSelection.kind === "no-turns" && runChangesRead === "failed" ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Couldn't read this conversation's changes.

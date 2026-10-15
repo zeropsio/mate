@@ -18,7 +18,7 @@ const input = vi.hoisted(() => ({
   turns: {
     turnDiffSummaries: [] as ReadonlyArray<unknown>,
     inferredCheckpointTurnCountByTurnId: {},
-    runChangesRead: "read" as "read" | "reading" | "failed",
+    runChangesRead: "read" as "read" | "reading" | "failed" | "needs-update",
   },
 }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
@@ -112,6 +112,13 @@ vi.mock("../state/query", async (importOriginal) => ({
     refresh:
       key === "preview" || key === "local" || key === "remote" ? input.refreshes[key] : () => {},
   }),
+}));
+vi.mock("./zerops/ZeropsMateUpdateControl", () => ({
+  ZeropsMateUpdateControl: ({
+    children,
+  }: {
+    children: (view: { line: ReactNode; menuActions: [] }) => ReactNode;
+  }) => children({ line: <button type="button">Update</button>, menuActions: [] }),
 }));
 vi.mock("./ui/combobox", () => {
   const Part = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
@@ -271,6 +278,10 @@ it("offers no turn to pick while no turn has changes to show", async () => {
 it.each([
   { read: "reading" as const, says: "Loading changes..." },
   { read: "failed" as const, says: "Couldn't read this conversation's changes." },
+  {
+    read: "needs-update" as const,
+    says: "This Mate shows its changes here after its next update.",
+  },
 ])(
   "the Diff page never says nothing changed while a Mate's runs are $read",
   async ({ read, says }) => {
@@ -306,3 +317,38 @@ it.each([
     }
   },
 );
+
+it("a Mate whose server predates run changes says it shows them after its update, never that it couldn't read them", async () => {
+  input.repo = false;
+  input.turns = {
+    turnDiffSummaries: [],
+    inferredCheckpointTurnCountByTurnId: {},
+    runChangesRead: "needs-update",
+  };
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(() =>
+      root.render(
+        <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
+      ),
+    );
+    expect(container.textContent).toContain(
+      "This Mate shows its changes here after its next update.",
+    );
+    expect(Array.from(container.querySelectorAll("button"), (b) => b.textContent)).toContain(
+      "Update",
+    );
+    expect(container.textContent).not.toContain("Couldn't read");
+  } finally {
+    await act(() => root.unmount());
+    container.remove();
+    input.repo = true;
+    input.turns = {
+      turnDiffSummaries: [],
+      inferredCheckpointTurnCountByTurnId: {},
+      runChangesRead: "read",
+    };
+  }
+});
