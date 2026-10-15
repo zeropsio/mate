@@ -99,13 +99,13 @@ export function VaultStepUp({ onConfirmed }: { readonly onConfirmed: () => void 
             )}
             {stage.kind === "waiting" ? (
               <button className={linkClass} onClick={() => run.current?.reopen()} type="button">
-                Open it again
+                Reopen the Zerops window
               </button>
             ) : null}
           </>
         )}
         <button className={linkClass} onClick={cancel} type="button">
-          Cancel
+          Cancel sign-in
         </button>
       </p>
     );

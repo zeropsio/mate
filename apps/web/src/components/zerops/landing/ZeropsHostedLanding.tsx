@@ -153,7 +153,7 @@ export function ZeropsHostedLanding() {
   return (
     <ZeropsLandingShell
       title="Sign in to Mate"
-      description="Sign in with your Zerops account to open your projects."
+      description="Mates are coding agents that build and ship your apps on Zerops."
     >
       {device.kind === "waiting" ? (
         <ZeropsDeviceLoginWait

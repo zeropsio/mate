@@ -678,7 +678,7 @@ function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined 
   ).flatMap(([tier, offered, label]) => (offered ? [{ tier, label }] : []));
   if (options.length === 0) return undefined;
   // What runs it, as it is: the Mate's preview runs its own copy for trying it out, never the
-  // stage (the onboarding run asked "Where should it run?" beside "Your recipe box is online").
+  // stage (a first run asked "Where should it run?" beside "Your shop front is online").
   const base = input.pull.baseBranch;
   const preview = `${input.mateName}'s preview is only for trying it out.`;
   return {

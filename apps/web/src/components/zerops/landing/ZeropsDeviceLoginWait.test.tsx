@@ -23,7 +23,7 @@ describe("ZeropsDeviceLoginWait", () => {
     );
     expect(markup).toContain("Finish in the Zerops window.");
     expect(markup).toContain("ABCD-EFGH");
-    expect(markup).toContain("Open it again");
+    expect(markup).toContain("Reopen the Zerops window");
     expect(markup).toContain("Cancel");
   });
 
@@ -44,7 +44,7 @@ describe("ZeropsDeviceLoginWait", () => {
     expect(markup).toContain("Your browser kept the Zerops window from opening.");
     expect(markup).toContain(`href="${CONSENT}"`);
     expect(markup).toContain('target="_blank"');
-    expect(markup).not.toContain("Open it again");
+    expect(markup).not.toContain("Reopen the Zerops window");
   });
 
   it("offers only Cancel while the request is still starting", () => {
@@ -52,7 +52,7 @@ describe("ZeropsDeviceLoginWait", () => {
       <ZeropsDeviceLoginWait onCancel={noop} onReopen={noop} stage={{ kind: "opening" }} />,
     );
     expect(markup).toContain("Finish in the Zerops window.");
-    expect(markup).not.toContain("Open it again");
+    expect(markup).not.toContain("Reopen the Zerops window");
     expect(markup).toContain("Cancel");
   });
 
@@ -95,8 +95,8 @@ describe("ZeropsDeviceLoginWait", () => {
     expect(markup).toContain("the code in the Zerops window may have changed");
     expect(markup).not.toContain("If Zerops shows a code");
     expect(markup).toContain("WXYZ-0002");
-    expect(markup.indexOf("Open it again")).toBeLessThan(markup.indexOf("WXYZ-0002"));
-    expect(markup.match(/Open it again/gu)).toHaveLength(1);
+    expect(markup.indexOf("Reopen the Zerops window")).toBeLessThan(markup.indexOf("WXYZ-0002"));
+    expect(markup.match(/Reopen the Zerops window/gu)).toHaveLength(1);
     expect(markup).toContain("Cancel");
   });
 });

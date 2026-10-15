@@ -41,7 +41,7 @@ export function ZeropsDeviceLoginWait({
             The sign-in was renewed, so the code in the Zerops window may have changed.
           </p>
           <Button className="w-full" onClick={onReopen}>
-            Open it again
+            Reopen the Zerops window
           </Button>
         </>
       ) : (
@@ -63,7 +63,7 @@ export function ZeropsDeviceLoginWait({
             className="underline underline-offset-2 hover:text-foreground"
             onClick={onReopen}
           >
-            Open it again
+            Reopen the Zerops window
           </button>
         ) : null}
         <button
@@ -71,7 +71,7 @@ export function ZeropsDeviceLoginWait({
           className="underline underline-offset-2 hover:text-foreground"
           onClick={onCancel}
         >
-          Cancel
+          Cancel sign-in
         </button>
       </p>
     </div>

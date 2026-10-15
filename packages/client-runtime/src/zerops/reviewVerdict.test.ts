@@ -1290,7 +1290,7 @@ describe("changeReview: where should it run (the one question)", () => {
     });
   });
 
-  // The onboarding run: "Where should it run?" beside the Mate's "Your recipe box is online" and a
+  // The onboarding run: "Where should it run?" beside the Mate's "Your shop front is online" and a
   // service named appstage — as if nothing ran it, or the preview were the stage.
   it.each([
     [
