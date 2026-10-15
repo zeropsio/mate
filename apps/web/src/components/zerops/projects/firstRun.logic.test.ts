@@ -10,7 +10,7 @@ describe("an account with no project, by what its role may do", () => {
       reachesEveryProject: true,
       heading: "Start a project",
       offersNewProject: true,
-      says: "your team's HQ before it",
+      says: "Name a project and it is up in a few minutes.",
     },
     {
       who: "a Developer",

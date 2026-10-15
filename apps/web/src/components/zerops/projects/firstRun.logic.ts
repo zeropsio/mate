@@ -13,7 +13,7 @@ export interface FirstRunWords {
 }
 
 const MATE_IS =
-  "A Mate is a coding agent with a dev environment of its own and one conversation you come back to.";
+  "A Mate is a coding agent with a workspace of its own and one conversation you come back to.";
 
 export function firstRunWords(input: {
   readonly create: boolean;
@@ -23,7 +23,7 @@ export function firstRunWords(input: {
     return input.reachesEveryProject
       ? {
           heading: "Start a project",
-          body: `${MATE_IS} Name a project and it is up in a few minutes, your team's HQ before it.`,
+          body: `${MATE_IS} Name a project and it is up in a few minutes.`,
           newProject: true,
         }
       : {
