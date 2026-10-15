@@ -142,6 +142,29 @@ describe("readZeropsProposal", () => {
         params: { domains: ["contoso.com", "www.contoso.com"], port: 9000 },
       },
     ],
+    [
+      "access names every project it is written on and each person at their level",
+      // zcp's own document, as zerops_org_propose_access answers it.
+      `{"proposal":{"id":"11111111-2222-3333-4444-555555555555","kind":"access.set","summary":"Access to Contoso: Dana full access, greta@example.com read only","reason":"asked","projectId":"pProd","projectName":"Contoso","params":{"projects":[{"id":"pProd","name":"Contoso - production"},{"id":"pAlba","name":"Contoso - Alba"}],"people":[{"person":"Dana","level":"full"},{"person":"greta@example.com","level":"read"}]}},"note":"Nothing has run. The person approves or declines it on the card."}`,
+      {
+        id: "11111111-2222-3333-4444-555555555555",
+        kind: "access.set",
+        summary: "Access to Contoso: Dana full access, greta@example.com read only",
+        reason: "asked",
+        projectId: "pProd",
+        projectName: "Contoso",
+        params: {
+          projects: [
+            { id: "pProd", name: "Contoso - production" },
+            { id: "pAlba", name: "Contoso - Alba" },
+          ],
+          people: [
+            { person: "Dana", level: "full" },
+            { person: "greta@example.com", level: "read" },
+          ],
+        },
+      },
+    ],
   ])("%s", (_title, text, expected) => {
     expect(readZeropsProposal("zerops_org_propose", text)).toEqual(expected);
   });
@@ -196,6 +219,27 @@ describe("readZeropsProposal", () => {
       "an ask of the Chief that names no asking project",
       "zerops_propose_ask_chief",
       result({ ...base, projectId: undefined, kind: "chief.message", params: { words: "Hi" } }),
+    ],
+    [
+      "access at a level Mate does not give",
+      "zerops_org_propose_access",
+      result({
+        ...base,
+        kind: "access.set",
+        params: {
+          projects: [{ id: "p", name: "P" }],
+          people: [{ person: "Dana", level: "owner" }],
+        },
+      }),
+    ],
+    [
+      "access that names nobody",
+      "zerops_org_propose_access",
+      result({
+        ...base,
+        kind: "access.set",
+        params: { projects: [{ id: "p", name: "P" }], people: [] },
+      }),
     ],
     ["a result that is not JSON", "zerops_org_restart", "Restarted medusa."],
     ["a result with no proposal", "zerops_org_projects", JSON.stringify({ projects: [] })],
