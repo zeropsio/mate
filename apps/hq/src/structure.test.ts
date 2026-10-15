@@ -2792,11 +2792,11 @@ describe("structure", () => {
             },
           ];
           // dev develops Shop through P_MATE (Basic user there) and reads its stage's project;
-          // maker sees Shop only through a Read only grant on P_TEAM.
+          // maker reads Shop through a Read only grant on P_TEAM, and with it its changes (the
+          // owner, 2026-10-15) — its stage, whose project Zerops hides from them, not.
           assert.deepStrictEqual(yield* read("dev"), seen);
-          // Refused, and said so: never an empty list that reads as "no environments".
           assert.deepStrictEqual(yield* read("maker"), [
-            { projects: ["P_TEAM"], environments: { refused: "changes_not_seen" } },
+            { projects: ["P_TEAM"], environments: [] },
           ]);
           assert.deepStrictEqual(yield* read("nobody"), []);
         }),

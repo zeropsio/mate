@@ -1080,29 +1080,37 @@ describe("a Mate's changes in HQ", () => {
           (yield* call("GET", `/api/apps/${appId}/changes/appdev/1`, { session: dev })).body,
           hidden,
         );
-        // As main's Gitea read: a Read only grant on the Mate shows the application, not its
-        // changes; Basic user shows them too.
-        const granted = (roleCode: string, status: number) =>
-          Effect.gen(function* () {
-            const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
-            Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode }] });
-            return yield* list(dev).pipe(
-              Effect.filterOrFail((answer) => answer.status === status),
-              Effect.retry(Schedule.spaced(Duration.millis(50))),
-              Effect.timeout(Duration.seconds(5)),
-            );
-          });
-        assert.deepStrictEqual((yield* granted("READ_ONLY", 403)).body, {
-          code: "forbidden",
-          reason: "changes_not_seen",
-        });
-        yield* granted("BASIC_USER", 200);
-        // D23: code and recipe merges use write rights, even before production exists.
-        for (const repo of ["appdev", "group"]) {
-          const missing = yield* call("POST", `/api/apps/${appId}/changes/${repo}/99/merge`, {
+        // A Read only grant on the Mate shows the application and its changes (the owner,
+        // 2026-10-15), never a merge of them; Basic user merges.
+        const grant = (roleCode: string) => {
+          const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
+          Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode }] });
+        };
+        const mergeMissing = (repo: string) =>
+          call("POST", `/api/apps/${appId}/changes/${repo}/99/merge`, {
             session: dev,
             body: { expectedHead: "0".repeat(40) },
           });
+        const until = <A extends { readonly status: number }, E, R>(
+          read: Effect.Effect<A, E, R>,
+          status: number,
+        ) =>
+          read.pipe(
+            Effect.filterOrFail((answer) => answer.status === status),
+            Effect.retry(Schedule.spaced(Duration.millis(50))),
+            Effect.timeout(Duration.seconds(5)),
+          );
+        grant("READ_ONLY");
+        yield* until(list(dev), 200);
+        assert.deepStrictEqual((yield* mergeMissing("appdev")).body, {
+          code: "forbidden",
+          reason: "not_app_developer",
+        });
+        grant("BASIC_USER");
+        yield* until(mergeMissing("appdev"), 404);
+        // D23: code and recipe merges use write rights, even before production exists.
+        for (const repo of ["appdev", "group"]) {
+          const missing = yield* mergeMissing(repo);
           assert.deepStrictEqual(
             [missing.status, missing.body],
             [404, { code: "change_not_found", reason: "change_not_found" }],
