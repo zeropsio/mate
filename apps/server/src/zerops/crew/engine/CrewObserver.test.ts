@@ -183,8 +183,7 @@ describe("the crew's observer", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const item = ItemId.make("mate/r/1/i/3");
-          const message =
-            'zcp moved appdev onto the dev-server supervisor: setup "dev" in zerops.yaml now installs and runs zcp-devsup, and appdev was redeployed once with uncommitted work kept. Dev server web is running.';
+          const message = "Dev server web is running.";
           const world = yield* scene({
             [MATE]: [
               {
@@ -199,9 +198,14 @@ describe("the crew's observer", () => {
                   words: null,
                   state: "done",
                   endedAt: null,
+                  input: 'mcp__zerops__zerops_dev_server: {"action":"start","hostname":"appdev"}',
                   result: {
                     toolName: "zerops_dev_server",
-                    resultText: JSON.stringify({ running: true, message }),
+                    resultText: JSON.stringify({
+                      running: true,
+                      message,
+                      migratedToSupervisor: true,
+                    }),
                   },
                 },
               } as unknown as EngineEvent,
