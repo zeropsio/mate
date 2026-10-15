@@ -30,9 +30,9 @@ describe("a person's face, as the Zerops app draws one", () => {
       url: "https://ext/e.png",
     },
     {
-      sentence: "Else Gravatar's for their e-mail, its pattern where they have none",
+      sentence: "Else Gravatar's real picture for their e-mail, never a pattern: none answers 404",
       input: { email: " Petra.Kralova@Example.com " },
-      url: `https://www.gravatar.com/avatar/${md5("petra.kralova@example.com")}?s=160&d=identicon`,
+      url: `https://www.gravatar.com/avatar/${md5("petra.kralova@example.com")}?s=160&d=404`,
     },
     { sentence: "Nothing known: their initials stand in", input: {}, url: null },
   ])("$sentence", ({ input, url }) => {
