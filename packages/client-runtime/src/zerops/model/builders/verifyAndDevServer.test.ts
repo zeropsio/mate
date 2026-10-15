@@ -194,5 +194,6 @@ describe("buildDevServerFields — a service of several named dev servers", () =
     expect(fields.statusWord).not.toMatch(/not running/i);
     expect(fields.closing).not.toMatch(/did not come up|not running/i);
     expect(fields.closing).toContain("name the one you mean");
+    expect(fields.refused).toBe(true);
   });
 });

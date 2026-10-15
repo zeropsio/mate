@@ -2179,8 +2179,8 @@ export function devServerRunning(operation: ZeropsOperation): boolean | null {
   if (operation.kind !== "devServer" || operation.phase === "running") return null;
   // A log read checks nothing about the server.
   if (devServerAction(operation) === "logs") return null;
-  // A call that failed before reading any server (zcp refused its parameters) found nothing.
-  if (operation.phase === "failed") return operation.steps.length === 0 ? null : false;
+  // A call zcp refused before reading any server found nothing; any other failure is a start that did not come up.
+  if (operation.phase === "failed") return operation.refused === true ? null : false;
   if (operation.statusWord === "Not running") return false;
   if (operation.statusWord === "Running") return true;
   const step = operation.steps[0];

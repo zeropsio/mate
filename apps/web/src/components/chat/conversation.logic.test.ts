@@ -1724,8 +1724,20 @@ describe("standingIncidents — what the dock under the now line says of a servi
     },
     {
       name: "a refused call that read no server is a failed call, not a server found not running",
-      ops: [dev("s1", 1, "Status", false, { phase: "failed", steps: [], statusWord: "Failed" })],
+      ops: [
+        dev("s1", 1, "Status", false, {
+          phase: "failed",
+          steps: [],
+          statusWord: "Failed",
+          refused: true,
+        }),
+      ],
       shows: [],
+    },
+    {
+      name: "a start that failed with no result still says start failed",
+      ops: [dev("s1", 1, "Start", false, { phase: "failed", steps: [], statusWord: "Failed" })],
+      shows: [["appdev", "start failed", "failed"]],
     },
     {
       name: "a routine start: nothing",
