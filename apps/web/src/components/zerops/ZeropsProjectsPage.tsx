@@ -2527,11 +2527,13 @@ export function ZeropsProjectsContent({
         renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
         setUpProduction={({ group }) =>
-          addableTiers(group).includes("production") && !groupIsEmpty(group) && !creationRunning
-            ? () => {
-                requestEnvironment(group.groupId, "prod");
-              }
-            : undefined
+          !addableTiers(group).includes("production") || groupIsEmpty(group)
+            ? undefined
+            : creationRunning
+              ? "busy"
+              : () => {
+                  requestEnvironment(group.groupId, "prod");
+                }
         }
         renderCardPeople={overview.renderCardPeople}
         renderReleaseVerb={({ group, flow }) => {

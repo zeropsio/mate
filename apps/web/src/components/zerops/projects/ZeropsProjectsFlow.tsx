@@ -166,10 +166,11 @@ export interface ZeropsProjectsFlowProps<T> {
   /**
    * Sets up a project's production, where it has none and HQ offers it to this person: its card
    * offers it where production is said (the owner, 2026-10-12: "why instead of 'no production'
-   * empty state not have a button to setup prod").
+   * empty state not have a button to setup prod"). `"busy"` while another environment is being
+   * set up: the button stays, not to be pressed.
    */
   readonly setUpProduction?:
-    | ((entry: ProjectsFlowGroup<T>) => (() => void) | undefined)
+    | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
     | undefined;
   /** The people on a project, beside its name, where more than one. */
   readonly renderCardPeople?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;

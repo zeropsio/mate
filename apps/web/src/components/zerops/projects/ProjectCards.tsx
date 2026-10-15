@@ -202,14 +202,28 @@ function PlainPanel({ line }: { readonly line: PlaceLine }) {
   );
 }
 
-/** A place not set up yet, by its way to be: its name, and the button that sets it up. */
-function SetUpPanel({ line, onSetUp }: { readonly line: PlaceLine; readonly onSetUp: () => void }) {
+/**
+ * A place not set up yet, by its way to be: its name, and the button that sets it up — kept, not
+ * to be pressed, while another environment is being set up (`"busy"`).
+ */
+function SetUpPanel({
+  line,
+  onSetUp,
+}: {
+  readonly line: PlaceLine;
+  readonly onSetUp: (() => void) | "busy";
+}) {
   return (
     <div className="ov-panel" data-zerops-place-setup={line.kind}>
       <div className="ov-panel-head">
         <b className="ov-panel-name">{placeLabel(line)}</b>
       </div>
-      <button className="ov-setup" onClick={onSetUp} type="button">
+      <button
+        className="ov-setup"
+        disabled={onSetUp === "busy"}
+        onClick={onSetUp === "busy" ? undefined : onSetUp}
+        type="button"
+      >
         <PlusIcon aria-hidden="true" className="size-3.5" />
         {`Set up ${placeLabel(line).toLowerCase()}`}
       </button>
