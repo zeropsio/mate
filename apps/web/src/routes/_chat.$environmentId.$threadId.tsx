@@ -1,3 +1,5 @@
+import { useAtomValue } from "@effect/atom-react";
+import { shownHqMenuNavigationAtom } from "@t3tools/client-runtime/data";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
@@ -71,8 +73,20 @@ function ChatThreadRouteView() {
   const readFailed = Option.isSome(
     useEnvironmentThread(threadRef?.environmentId ?? null, threadRef?.threadId ?? null).error,
   );
+  // HQ's answer names the header and adds rows of its own: an arrival waits for it too.
+  const directoryAnswered = useAtomValue(
+    shownHqMenuNavigationAtom,
+    (navigation) =>
+      navigation.read === "read" ||
+      navigation.refusal !== null ||
+      navigation.capped ||
+      navigation.updateRequired,
+  );
   const patienceSpent = usePatienceSpent(
-    threadRef !== null && serverThreadShell !== null && serverThreadDetail === null
+    threadRef !== null &&
+      !conversationShown &&
+      (serverThreadShell !== null || serverThreadDetail !== null) &&
+      (serverThreadDetail === null || !directoryAnswered)
       ? `${threadRef.environmentId}/${threadRef.threadId}`
       : null,
     THREAD_READ_PATIENCE_MS,
@@ -83,6 +97,8 @@ function ChatThreadRouteView() {
     conversationShown,
     nobodyLivesHere: routeMate.kind === "nobody",
     readGivenUp: readFailed || patienceSpent,
+    directoryAnswered,
+    promotedDraft: draftThreadExists,
   });
   // Once shown, the pane keeps its conversation through a switch to one still being read.
   if (stage === "conversation" && !conversationShown) setConversationShown(true);

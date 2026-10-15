@@ -610,7 +610,15 @@ describe("owner-reported layout regressions", () => {
             s.page.waitForSelector('[role="textbox"]', { visible: true, timeout: 8000 }),
           );
           const mate = s.drivers.realMates.get("Chief")!;
-          yield* mate.provider.turn([{ kind: "say", text: "I will look into your organization." }]);
+          yield* mate.provider.turn([
+            {
+              kind: "say",
+              text: [
+                "I will look into your organization.",
+                ...Array.from({ length: 30 }, (_, line) => `- Project ${line + 1} is running.`),
+              ].join("\n"),
+            },
+          ]);
           yield* s.when.conversation.sends("Look into my organization.");
           yield* s.then.conversation.showsMessage("I will look into your organization.");
           yield* Effect.promise(async () => {
