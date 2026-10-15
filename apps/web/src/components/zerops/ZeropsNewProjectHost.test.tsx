@@ -42,6 +42,8 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
     user: { id: "u-ada" },
     client: {},
   }),
+  // No role remembered from the session: the offers read the membership alone.
+  useZeropsSessionOptional: () => null,
 }));
 // HQ's writes are the account's operations: still under way while the dialog closes.
 vi.mock("~/zerops/accountOperations", () => ({

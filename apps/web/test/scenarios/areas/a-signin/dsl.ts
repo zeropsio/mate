@@ -206,8 +206,6 @@ export function zeropsWindow(s: Scenario, page: Page = s.page) {
       if (!shown) throw new Error("No consent page was shown");
       return shown;
     }),
-    /** The platform forgets every open request, as it does after five minutes. */
-    expires: Effect.sync(() => deviceLogin.expireRequests()),
     says: (text: string) =>
       Effect.promise(() =>
         page.waitForFunction(

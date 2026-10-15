@@ -475,6 +475,7 @@ import {
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
   resolveDraftHeroState,
+  helpersSessionLive,
   colleagueMateReadOnly,
   composerOpenFocus,
   conversationContentPending,
@@ -2602,7 +2603,10 @@ function ConversationView(props: ChatViewProps) {
   // Agents surface, live strip, and workflow cards. v2Projection is null
   // until orchestration-v2 lands (source precedence lives in the derive).
   // sessionLive derives interruption for agents orphaned by session death.
-  const agentSessionLive = phase !== "disconnected";
+  const agentSessionLive = helpersSessionLive({
+    phase,
+    backgroundLiveness: activeThreadShell?.backgroundLiveness,
+  });
   const agentPanelModel = useMemo(
     () =>
       keptAgentPanelModel(

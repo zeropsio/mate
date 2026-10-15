@@ -314,6 +314,28 @@ describe("a card's production", () => {
     expect(withheld).not.toContain("Set up production");
     expect(withheld).toContain("Not released yet");
   });
+
+  // The onboarding run: while a stage was being set up the button gave way to "Not released yet",
+  // as if adding the stage had made a production too, and came back a minute later.
+  it("keeps production's setup in its place while another environment is set up, not to be pressed", () => {
+    const busy = mount(
+      <ZeropsProjectsFlow<Item>
+        {...FLOW_PROPS}
+        groups={[entry([WREN])]}
+        setUpProduction={() => "busy"}
+      />,
+    );
+    const button = busy.root.findAll(
+      (node) => node.type === "button" && node.children.includes("Set up production"),
+    );
+    expect(button.map((node) => node.props.disabled)).toEqual([true]);
+    expect(
+      section(
+        render({ groups: [entry([WREN])], setUpProduction: () => "busy" }),
+        'data-zerops-group="aaa"',
+      ),
+    ).not.toContain("Not released yet");
+  });
 });
 
 describe("a card's release", () => {

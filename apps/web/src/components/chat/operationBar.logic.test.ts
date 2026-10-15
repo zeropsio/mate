@@ -141,7 +141,7 @@ describe("the docked bar of an operation", () => {
 
   it.each([
     { kind: "standup", subject: "development", shows: "Development" },
-    { kind: "standup", subject: "stage", shows: "Stage" },
+    { kind: "standup", subject: "stage", shows: "Preview" },
     { kind: "deploy", subject: "appdev", shows: "Deploy · appdev" },
   ] as const)("names a $kind as $shows", ({ kind, subject, shows }) => {
     expect(

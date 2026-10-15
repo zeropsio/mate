@@ -1,6 +1,6 @@
 /**
  * The Mate's public addresses in the conversation's top bar: one compact
- * control, each address with what it is (dev, stage, production). A pick opens
+ * control, each address with what it is (dev, preview, stage, production). A pick opens
  * it as its own tab in the panel's Browser; the row's arrow, or ⌘-click, opens
  * it in a new browser tab. Nothing is drawn while the Mate has no address.
  *

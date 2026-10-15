@@ -123,6 +123,32 @@ describe("a new project's access, before it exists", () => {
     });
   });
 
+  it.each([
+    { creatorRole: "OWNER", changesOwner: true },
+    { creatorRole: "ADMIN", changesOwner: false },
+    { creatorRole: "BASIC_USER", changesOwner: false },
+    { creatorRole: "NO_ACCESS", changesOwner: false },
+  ])(
+    "A $creatorRole creator gives the new project its people, and changes an owner's access only as an owner",
+    ({ creatorRole, changesOwner }) => {
+      const list = MEMBERS.map((one) =>
+        one.id === "cu-me" ? { ...one, roleCode: creatorRole } : one,
+      );
+      const view = draftView(
+        draft({
+          members: { known: true, status: "ready", refused: false, list },
+          list: [{ clientUserId: "cu-ro", roleCode: "READ_ONLY" }],
+        }),
+      );
+      if (view.kind !== "people") throw new Error("the draft is not drawn");
+      const chip = (name: string) => view.people.find((person) => person.name === name);
+      expect(chip("Olga")?.change !== null).toBe(changesOwner);
+      // Whom the creator brings in stays theirs to change, and more can be added.
+      expect(chip("Rob")?.change).not.toBeNull();
+      expect(view.invite).toBe(true);
+    },
+  );
+
   it("The draft shows everyone the project will reach: roles and chosen grants alike", () => {
     const view = draftView(draft({ list: [{ clientUserId: "cu-ro", roleCode: "READ_ONLY" }] }));
     expect(view.kind === "people" && view.people.map(({ name, level }) => [name, level])).toEqual([

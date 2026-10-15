@@ -1,4 +1,5 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
@@ -108,6 +109,16 @@ function IndexDraftLanding() {
       ]),
     [deleting, listing],
   );
+  const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
+  const colleagues = useMemo(
+    () =>
+      new Set(
+        Object.entries(projectPeople).flatMap(([projectId, people]) =>
+          people.owned === true && people.mine === false ? [projectId] : [],
+        ),
+      ),
+    [projectPeople],
+  );
   const handleNewThread = useNewThreadHandler();
   const navigate = useNavigate();
   const { environmentId: targetSearch } = Route.useSearch();
@@ -149,8 +160,9 @@ function IndexDraftLanding() {
         : { kind: "thread", ref: scopeThreadRef(project.environmentId, primary.id) };
     };
 
-    // HQ names unopened Mates too; opening only the chosen route holds its lease (A9).
-    const hqMate = hqHomeMate(hqMates?.mates ?? null, unavailable);
+    // HQ names unopened Mates too; opening only the chosen route holds its lease (A9). A
+    // colleague's Mate is never where the reader left off: a member's first visit is the overview.
+    const hqMate = hqHomeMate(hqMates?.mates ?? null, unavailable, colleagues);
     const target = homeTarget({
       target:
         targetEnvironmentId === null
@@ -197,6 +209,7 @@ function IndexDraftLanding() {
     );
   }, [
     activeOrganization,
+    colleagues,
     hqMates,
     hqMatesRead,
     unavailable,

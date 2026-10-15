@@ -449,7 +449,7 @@ function OpeningSequence({
             }
             secondary={
               openingLimitWords(scene.activity, scene.name || "The Mate", scene.timestampFormat) ??
-              "Picking up where you left off."
+              "Picking up where it left off."
             }
             actions={null}
           />

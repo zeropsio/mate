@@ -23,6 +23,7 @@ import {
   type MateSetup,
   type MateSetupFailure,
 } from "@t3tools/client-runtime/zerops/mateSetup";
+import { TAKING_LONGER_LINE } from "@t3tools/client-runtime/data";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import {
@@ -98,6 +99,8 @@ export function arrivalHeadline(mate: Named, kind: ArrivalKind): string {
 export interface ArrivalSentenceContext {
   /** Coming up: how long it has taken so far, wall ms; undefined while unknown. */
   readonly elapsedMs?: number | undefined;
+  /** Coming up past its cap, on the verdict that says so (`comingSentence`). */
+  readonly late?: boolean | undefined;
   /** A colleague's view: the name of who added it, where it is known. */
   readonly addedBy?: string | undefined;
   /** Its creation stopped, or a step outlasted its cap: why, in its own words. */
@@ -109,17 +112,16 @@ export interface ArrivalSentenceContext {
   readonly agentReady?: boolean | undefined;
 }
 
-/** How long a Mate takes from the press until it answers, measured (a wizard birth, 2026-09-22). */
-export const MATE_ARRIVAL_TYPICAL_MS = 160_000;
-
 /**
- * How long is left while it comes up, from how long it has taken: honest to the measured birth —
- * first connect at +160 s — and never a count down past it.
+ * How long is left while it comes up, from how long it has taken — honest to the measured births
+ * (+160 s for a wizard birth, 2026-09-22; +202 s for an Add, 2026-10-15), never a count down past
+ * them — and late only on the verdict that says so (`late`): the container machine's, once a read
+ * since its cap finds it not up, or its first build's past its grace. The clock alone never does.
  */
-export function comingSentence(elapsedMs: number | undefined): string {
+export function comingSentence(elapsedMs: number | undefined, late = false): string {
+  if (late) return TAKING_LONGER_LINE;
   // What comes after is the steps' last row, with what the person signs it in with.
-  if (elapsedMs === undefined || elapsedMs < 60_000) return "About two minutes.";
-  if (elapsedMs < 120_000) return "About a minute left.";
+  if (elapsedMs === undefined || elapsedMs < 120_000) return "Usually two to four minutes.";
   return "Almost there.";
 }
 
@@ -132,7 +134,7 @@ export function arrivalSentence(
   const name = mate.name;
   switch (kind) {
     case "coming":
-      return context.why ?? comingSentence(context.elapsedMs);
+      return context.why ?? comingSentence(context.elapsedMs, context.late);
     case "coming-failed":
       return context.why ?? "";
     case "sign-in":
@@ -306,8 +308,11 @@ const WORKSPACE_STEP_IDS: ReadonlySet<string> = new Set([
   "connect",
 ]);
 
-/** How long its workspace takes once its project stands, measured (2026-09-22: +25 s → +160 s). */
-const WORKSPACE_ABOUT = "about 2 min";
+/**
+ * How long its workspace takes once its project stands, measured: +25 s → +160 s (2026-09-22),
+ * +36 s → +202 s (2026-10-15).
+ */
+const WORKSPACE_ABOUT = "about 2–3 min";
 
 const timeOf = (
   startedAt: string | undefined,

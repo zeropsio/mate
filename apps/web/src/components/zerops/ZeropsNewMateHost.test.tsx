@@ -25,6 +25,8 @@ vi.mock("~/state/entities", () => ({
 }));
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ status: "signed-in", activeOrganization: ORGANIZATION }),
+  // No role remembered from the session: the offers read the membership alone.
+  useZeropsSessionOptional: () => null,
 }));
 vi.mock("~/zerops/useEnvironmentCreation", () => ({ useEnvironmentCreation: () => vi.fn() }));
 // The account's operations: the creation's steps run there once Add is pressed.

@@ -16,6 +16,8 @@ const person = (fields: {
   waitsOnViewer: boolean;
   chiefProjectId?: string | null;
   mine?: boolean;
+  role?: string;
+  mayWrite?: boolean;
 }) => ({
   role: "DEVELOPER",
   mayWrite: true,
@@ -50,6 +52,14 @@ const rows: ReadonlyArray<Row> = [
   placement("nobody", { ownerUserId: null, waitsOnViewer: false }, {}),
   // HQ named an owner it sends no person record of: nobody is drawn.
   placement("ghost", { ownerUserId: "u-ghost", waitsOnViewer: false }, {}),
+  // A read-only viewer, who may not operate this Mate: HQ withholds who signs it in and owns it.
+  placement(
+    "guest",
+    { ownerUserId: null, waitsOnViewer: false, role: "READ_ONLY", mayWrite: false },
+    {},
+  ),
+  // A Mate the reader may read and not operate: HQ sends it no overview, so no signer.
+  placement("watched", { ownerUserId: "u-jan", waitsOnViewer: false, mayWrite: false }, {}),
   {
     family: "hqPerson",
     id: "u-jan",
@@ -103,6 +113,31 @@ const removed = apply(read, [
 const people = (state: AccountState) => hqProjectPeople.derive(readsOfState(state), ORG);
 
 describe("hqProjectPeople", () => {
+  it("a Mate is the reader's own only where HQ names them its person", () => {
+    const next = apply(read, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: generations,
+        reset: false,
+        rows: [
+          {
+            ...placement("ada", { ownerUserId: "u-jan", waitsOnViewer: false, mine: true }, {}),
+            revision: { ...revision, revision: 2 },
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(people(next).ada?.mine).toBe(true);
+    expect(people(read).bob?.mine).toBe(false);
+  });
+  it("a Mate the reader may not operate says nothing of its sign-in, which HQ does not tell them", () => {
+    expect(people(read).watched).toMatchObject({ signedInNow: undefined, everSignedIn: undefined });
+    // A Mate the reader operates says whether anybody ever signed in, nobody included.
+    expect(people(read).nobody).toMatchObject({ signedInNow: {}, everSignedIn: {} });
+  });
+
   it("a Mate's Chief identity arrives from HQ after first paint and never from its reader", () => {
     expect(people(read).ada?.chief).toBeUndefined();
     const next = apply(read, [
@@ -187,6 +222,7 @@ describe("hqProjectPeople", () => {
       project: "ada",
       expected: {
         owned: true,
+        mine: false,
         owner: { userId: "u-jan", name: "Jan Novák", avatarUrl: "https://img/jan.png" },
         waitsOnViewer: true,
         signedInNow: { "claude-code": "u-jan" },
@@ -198,6 +234,7 @@ describe("hqProjectPeople", () => {
       project: "bob",
       expected: {
         owned: true,
+        mine: false,
         owner: { userId: "u-eva", name: "Eva", avatarUrl: null },
         waitsOnViewer: false,
         signedInNow: {},
@@ -209,6 +246,7 @@ describe("hqProjectPeople", () => {
       project: "nobody",
       expected: {
         owned: false,
+        mine: false,
         owner: null,
         waitsOnViewer: false,
         signedInNow: {},
@@ -220,10 +258,23 @@ describe("hqProjectPeople", () => {
       project: "ghost",
       expected: {
         owned: true,
+        mine: false,
         owner: null,
         waitsOnViewer: false,
         signedInNow: {},
         everSignedIn: {},
+      },
+    },
+    {
+      name: "a viewer who may not operate it is told nothing of who signed it in or owns it",
+      project: "guest",
+      expected: {
+        owned: undefined,
+        owner: null,
+        mine: false,
+        waitsOnViewer: false,
+        signedInNow: undefined,
+        everSignedIn: undefined,
       },
     },
   ])("$name", ({ project, expected }) => {
@@ -261,6 +312,7 @@ describe("hqProjectPeople", () => {
     ]);
     expect(people(partial).ada).toEqual({
       owned: true,
+      mine: false,
       owner: null,
       waitsOnViewer: true,
       signedInNow: { "claude-code": "u-jan" },

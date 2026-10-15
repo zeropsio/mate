@@ -62,13 +62,15 @@ function firstLine(text: string): string {
 }
 
 /**
- * What names the operation on its bar: the half a stand-up stands up, an
+ * What names the operation on its bar: the half a stand-up stands up (its development, or the
+ * Mate's preview of it), an
  * import and how many services it creates, a deploy and its service.
  */
 export function operationSubject(operation: ZeropsOperation): string {
   switch (operation.kind) {
     case "standup":
-      return operation.subject === "stage" ? "Stage" : "Development";
+      // The stand-up's stage half is the Mate's preview, never the project's stage.
+      return operation.subject === "stage" ? "Preview" : "Development";
     case "import": {
       const count = operation.steps.length;
       if (count === 1) return `Import · ${operation.steps[0]?.label ?? ""}`;

@@ -130,6 +130,8 @@ export {
   type ZeropsAddress,
 } from "./projections/addresses.ts";
 export { addonsScope, type ProjectIpv4Addon } from "./families/projectAddons.ts";
+export { creditForecast } from "./projections/creditForecast.ts";
+export { creditScope } from "./families/organizationCredit.ts";
 export type { PortRoutingWrite } from "./operations/addressWrites.ts";
 export type { Invitee, InviteeCheck } from "./operations/appAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
@@ -239,6 +241,8 @@ export {
   projectStandingAtom,
   projectProcessesAtom,
   projectServicesAtom,
+  creditForecastAtom,
+  creditReadGenerationAtom,
   projectsServicesAtom,
   projectUsageAtom,
   NOT_READ_VAULT,
@@ -318,8 +322,13 @@ export { moveRemainder, type MoveRemainder } from "./projections/moveRemainder.t
 export type { MoveProjectIntent } from "./operations/moveProject.ts";
 
 export {
+  creditOffers,
   platformMembership,
   platformCapabilities,
+  platformViewer,
+  projectRoleOffers,
+  roleOffers,
+  type PlatformCapabilities,
   type PlatformCapabilitiesKey,
 } from "./projections/platformCapabilities.ts";
 export { readsOfState } from "./store.ts";

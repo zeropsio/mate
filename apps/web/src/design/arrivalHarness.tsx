@@ -758,7 +758,7 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
       kind: "reaching",
       face: "sleep",
       headline: "Wren is opening the conversation.",
-      sentence: "Picking up where you left off.",
+      sentence: "Picking up where it left off.",
       below: null,
     };
   if (state.coming === "reaching") {

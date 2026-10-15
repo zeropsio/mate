@@ -16,7 +16,13 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Radio, RadioGroup } from "../ui/radio-group";
 import { AccessBadge } from "../zerops/projects/ProjectAccessChips";
 import type { GivenLevel } from "../zerops/projects/projectPeople.logic";
-import type { AccessProject, ProjectChip, ProjectChipAction } from "./teamMember.logic";
+import type { OrgRoleCode } from "@t3tools/client-runtime/zerops/teamRoles";
+import {
+  projectAccessIntro,
+  type AccessProject,
+  type ProjectChip,
+  type ProjectChipAction,
+} from "./teamMember.logic";
 
 const PICK_WORDS: Readonly<Record<GivenLevel, string>> = {
   read: "Read",
@@ -25,6 +31,9 @@ const PICK_WORDS: Readonly<Record<GivenLevel, string>> = {
 };
 
 export function MemberProjectAccess({
+  memberRole,
+  createsProjects,
+  viewerGives,
   chips,
   candidates,
   levels,
@@ -32,6 +41,12 @@ export function MemberProjectAccess({
   onChoose,
   onAdd,
 }: {
+  /** The role being given or held: what it reaches by itself heads the section. */
+  readonly memberRole: OrgRoleCode;
+  /** The person may create projects (a Developer), and so reaches the ones they create. */
+  readonly createsProjects: boolean;
+  /** The viewer may give this person projects: what they reach is said as theirs to add. */
+  readonly viewerGives: boolean;
   readonly chips: ReadonlyArray<ProjectChip>;
   /** The projects without a level of their own yet: what the picker offers. */
   readonly candidates: ReadonlyArray<AccessProject>;
@@ -48,8 +63,7 @@ export function MemberProjectAccess({
         <span className="tm-block-text">
           <h2 className="tm-block-title">Project access</h2>
           <span className="tm-block-desc">
-            Set custom project-specific access for this user. By default, users have access to all
-            projects based on their global team role.
+            {projectAccessIntro({ roleCode: memberRole, createsProjects, viewerGives })}
           </span>
         </span>
         {editable && candidates.length > 0 ? (

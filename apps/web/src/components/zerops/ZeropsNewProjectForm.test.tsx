@@ -331,7 +331,7 @@ describe("ZeropsNewProjectForm — what happens next", () => {
     type(tree, PROJECT_FIELD, "Acme Shop");
     type(tree, MATE_FIELD, "Vera");
     expect(nextSteps(tree)).toEqual([
-      ["Acme Shop and Vera come up", "about 1½–2 min"],
+      ["Acme Shop and Vera come up", "about 2–4 min"],
       ["You sign Vera in with your Claude or ChatGPT subscription", ""],
       ["You tell Vera what to build", ""],
     ]);

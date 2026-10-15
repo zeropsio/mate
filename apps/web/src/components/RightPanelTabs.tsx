@@ -51,7 +51,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./RightPanelShell";
-import { tabsOutOfView } from "./RightPanelTabs.logic";
+import { hiddenTabsLabel, tabsOutOfView } from "./RightPanelTabs.logic";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 
 interface RightPanelTabsProps {
@@ -679,7 +679,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           ref={tabListRef}
           hideScrollbars
           scrollFade
-          className={cn("min-w-0 flex-1", ownsDesktopTitleBar && "drag-region")}
+          // As wide as its tabs, and no wider than the bar leaves it: the add button follows them.
+          className={cn("w-auto min-w-0", ownsDesktopTitleBar && "drag-region")}
           data-right-panel-tab-list
         >
           <div className="flex h-full w-max min-w-full items-center gap-1">
@@ -731,72 +732,81 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                 </div>
               );
             })}
-            {hasSurfaces ? (
-              <Menu open={addSurfaceMenuOpen} onOpenChange={setAddSurfaceMenuOpen}>
-                <MenuTrigger
-                  render={
-                    <Button
-                      ref={addSurfaceTriggerRef}
-                      aria-label="Add panel surface"
-                      className="shrink-0"
-                      size="icon-xs"
-                      variant="ghost-muted"
-                    />
-                  }
-                >
-                  <Plus className="size-3.5" />
-                </MenuTrigger>
-                <MenuPopup
-                  align="start"
-                  side="bottom"
-                  sideOffset={6}
-                  onKeyDownCapture={handleAddSurfaceMenuKeyDown}
-                >
-                  {addSurfaceActions.map((action) => {
-                    const Icon = action.icon;
-                    return (
-                      <SurfaceMenuItem
-                        key={action.label}
-                        available={action.available}
-                        disabledReason={SURFACE_DISABLED_REASONS[action.kind]}
-                        shortcut={action.shortcut}
-                        onClick={action.onClick}
-                      >
-                        <Icon />
-                        {action.label}
-                      </SurfaceMenuItem>
-                    );
-                  })}
-                </MenuPopup>
-              </Menu>
-            ) : null}
           </div>
         </ScrollArea>
-        {hiddenSurfaces.length > 0 ? (
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  aria-label={`${hiddenSurfaces.length} more tabs`}
-                  className="shrink-0"
-                  data-right-panel-hidden-tabs
-                  size="icon-xs"
-                  variant="ghost-muted"
-                />
-              }
-            >
-              <ChevronDown className="size-3.5" />
-            </MenuTrigger>
-            <MenuPopup align="end" side="bottom" sideOffset={6}>
-              {hiddenSurfaces.map((surface) => (
-                <MenuItem key={surface.id} onClick={() => props.onActivate(surface)}>
-                  <SurfaceIcon surface={surface} theme={resolvedTheme} />
-                  {surfaceTitle(surface, props.terminalLabelsById)}
-                </MenuItem>
-              ))}
-            </MenuPopup>
-          </Menu>
-        ) : null}
+        {/* Outside the strip that scrolls: however many tabs are open, another page is one press
+            away, and the tabs the strip cuts off are listed beside it. */}
+        <div
+          className={cn(
+            "flex flex-auto shrink-0 items-center gap-1",
+            ownsDesktopTitleBar && "drag-region",
+          )}
+        >
+          {hasSurfaces ? (
+            <Menu open={addSurfaceMenuOpen} onOpenChange={setAddSurfaceMenuOpen}>
+              <MenuTrigger
+                render={
+                  <Button
+                    ref={addSurfaceTriggerRef}
+                    aria-label="Add panel surface"
+                    className="shrink-0"
+                    size="icon-xs"
+                    variant="ghost-muted"
+                  />
+                }
+              >
+                <Plus className="size-3.5" />
+              </MenuTrigger>
+              <MenuPopup
+                align="start"
+                side="bottom"
+                sideOffset={6}
+                onKeyDownCapture={handleAddSurfaceMenuKeyDown}
+              >
+                {addSurfaceActions.map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <SurfaceMenuItem
+                      key={action.label}
+                      available={action.available}
+                      disabledReason={SURFACE_DISABLED_REASONS[action.kind]}
+                      shortcut={action.shortcut}
+                      onClick={action.onClick}
+                    >
+                      <Icon />
+                      {action.label}
+                    </SurfaceMenuItem>
+                  );
+                })}
+              </MenuPopup>
+            </Menu>
+          ) : null}
+          {hiddenSurfaces.length > 0 ? (
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    aria-label={hiddenTabsLabel(hiddenSurfaces.length)}
+                    className="shrink-0"
+                    data-right-panel-hidden-tabs
+                    size="icon-xs"
+                    variant="ghost-muted"
+                  />
+                }
+              >
+                <ChevronDown className="size-3.5" />
+              </MenuTrigger>
+              <MenuPopup align="end" side="bottom" sideOffset={6}>
+                {hiddenSurfaces.map((surface) => (
+                  <MenuItem key={surface.id} onClick={() => props.onActivate(surface)}>
+                    <SurfaceIcon surface={surface} theme={resolvedTheme} />
+                    {surfaceTitle(surface, props.terminalLabelsById)}
+                  </MenuItem>
+                ))}
+              </MenuPopup>
+            </Menu>
+          ) : null}
+        </div>
         {props.layoutControls}
       </div>
       <div

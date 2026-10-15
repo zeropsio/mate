@@ -677,12 +677,12 @@ describe("the release sheet's lines", () => {
     [
       "every change on the stage",
       { changes: 4, stage: "stage", since: "14:10", onStage: { total: 4, running: 4 } },
-      "4 changes, tested on stage since 14:10.",
+      "4 changes, on stage since 14:10.",
     ],
     [
       "one change, the stage's time unknown",
       { changes: 1, stage: "stage", since: undefined, onStage: { total: 1, running: 1 } },
-      "1 change, tested on stage.",
+      "1 change, on stage.",
     ],
     [
       "some not on the stage yet",

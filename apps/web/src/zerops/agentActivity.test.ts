@@ -1435,3 +1435,64 @@ describe("rowAgentActivity — an engine Mate's menu state off its own row", () 
     ]);
   });
 });
+
+// The stand-up a sign-in sent runs out of the person's sight: its run is the Mate setting up, and
+// its end leaves no reply the person has not seen (a run, 2026-10-15: a working clock beside
+// "Nothing asked yet" for three minutes, then a smiling face with nothing to open).
+describe("a Mate's stand-up, as its activity says it", () => {
+  const STAND_UP = "Stand up development of the project.";
+  const asked = {
+    role: "user",
+    text: STAND_UP,
+    createdAt: "2026-09-05T10:00:00.000Z",
+  } as const;
+  const ran = {
+    turnId: TurnId.make("turn-1"),
+    requestedAt: "2026-09-05T10:00:00.000Z",
+    startedAt: "2026-09-05T10:00:01.000Z",
+    assistantMessageId: null,
+  } as const;
+
+  it("is setting up while its stand-up runs, whatever its conversation is read from", () => {
+    const thread = threadAgentActivity(
+      shell({
+        title: STAND_UP,
+        latestUserMessagePreview: asked,
+        latestTurn: { ...ran, state: "running", completedAt: null },
+      } as never),
+      undefined,
+    );
+    expect(thread).toMatchObject({ kind: "working", standUp: true });
+    const engine = rowAgentActivity(
+      row({
+        subject: STAND_UP,
+        snippet: null,
+        state: { kind: "working", since: STARTED, waitsOnHelpers: false },
+      }),
+      ENV,
+      undefined,
+    );
+    expect(engine).toMatchObject({ kind: "working", standUp: true });
+  });
+
+  it("leaves no unseen reply once its stand-up is done", () => {
+    const thread = threadAgentActivity(
+      shell({
+        title: STAND_UP,
+        latestUserMessagePreview: asked,
+        latestTurn: { ...ran, state: "completed", completedAt: "2026-09-05T10:03:00.000Z" },
+      } as never),
+      "2026-09-05T09:00:00.000Z",
+    );
+    expect(thread).toMatchObject({ unread: false, standUp: true });
+    expect(thread.face).not.toBe("done");
+    const engine = rowAgentActivity(row({ subject: STAND_UP }), ENV, "2026-10-08T08:00:00.000Z");
+    expect(engine).toMatchObject({ kind: "idle", unread: false, standUp: true });
+  });
+
+  it("is no stand-up once the person asked something of their own", () => {
+    const engine = rowAgentActivity(row(), ENV, "2026-10-08T08:00:00.000Z");
+    expect(engine.standUp).toBeUndefined();
+    expect(engine.unread).toBe(true);
+  });
+});

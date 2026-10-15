@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { runZeropsDeviceLogin, type ZeropsDeviceLoginStage } from "./deviceLogin";
 
@@ -43,7 +43,13 @@ function tab(options: {
   readonly blocked?: boolean;
   readonly checks?: ReadonlyArray<unknown>;
   readonly start?: Response;
+  /** Requests the API starts, in turn: each a `req-<n>` with its own code. */
+  readonly renewals?: boolean;
+  /** The clock: advanced by `step` milliseconds every wait. */
+  readonly step?: number;
 }) {
+  let now = 0;
+  let started = 0;
   const opened: Array<{ url: string; window: FakeWindow | null }> = [];
   const requests: Array<{ url: string; authorization: string | null }> = [];
   const checks = [...(options.checks ?? [])];
@@ -60,6 +66,16 @@ function tab(options: {
         const next = checks.shift();
         return next instanceof Response ? next : json(200, next ?? { status: "PENDING" });
       }
+      started += 1;
+      if (options.renewals === true && started > 1)
+        return json(200, {
+          requestId: `req-${started}`,
+          pollSecret: `secret-${started}`,
+          userCode: `CODE-000${started}`,
+          verificationUrl: VERIFY.replace("req-1", `req-${started}`),
+          expiresIn: 300,
+          interval: 3,
+        });
       return (
         options.start ??
         json(200, {
@@ -72,14 +88,17 @@ function tab(options: {
         })
       );
     },
-    nowMs: () => 0,
-    wait: async () => undefined,
+    nowMs: () => now,
+    wait: async () => {
+      now += options.step ?? 0;
+    },
     appCode: "zcli",
     consentOrigin: undefined,
   };
   return {
     opened,
     requests,
+    started: () => started,
     stages,
     ports,
     onStage: (stage: ZeropsDeviceLoginStage) => stages.push(stage),
@@ -110,6 +129,7 @@ describe("runZeropsDeviceLogin", () => {
       url: `${VERIFY}&display=popup`,
       blocked: false,
       userCode: "ABCD-EFGH",
+      windowMayBeOlder: false,
     });
     // Settled: the window is closed, since app.zerops.io's page does not close itself.
     expect(opened[0]?.window?.closed).toBe(true);
@@ -137,6 +157,7 @@ describe("runZeropsDeviceLogin", () => {
       url: VERIFY,
       blocked: true,
       userCode: "ABCD-EFGH",
+      windowMayBeOlder: false,
     });
   });
 
@@ -187,5 +208,106 @@ describe("runZeropsDeviceLogin", () => {
     const run = runZeropsDeviceLogin({ kind: "login", apiBase: API, onStage, ports });
     await expect(run.outcome).rejects.toMatchObject({ code: "deviceLoginAppInvalid" });
     expect(opened[0]?.window?.closed).toBe(true);
+  });
+
+  it("keeps the Zerops window the person is using open when a code expires, and renews the code", async () => {
+    const { opened, ports, stages, onStage } = tab({
+      renewals: true,
+      checks: [new Response(null, { status: 404 }), { status: "PENDING" }],
+    });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let waits = 0;
+    const run = runZeropsDeviceLogin({
+      kind: "login",
+      apiBase: API,
+      onStage,
+      // The first request's wait passes, its check finds it expired; the renewed one waits.
+      ports: { ...ports, wait: () => (++waits > 1 ? held : Promise.resolve()) },
+    });
+    await vi.waitFor(() => expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002" }));
+    const window = opened[0]?.window;
+    expect(window?.closed).toBe(false);
+    // Not navigated: the person may be halfway through signing up in it.
+    expect(window?.location.href).toBe(`${VERIFY}&display=popup`);
+    expect(stages.at(-1)).toEqual({
+      kind: "waiting",
+      url: `${VERIFY.replace("req-1", "req-2")}&display=popup`,
+      blocked: false,
+      userCode: "CODE-0002",
+      windowMayBeOlder: true,
+    });
+    run.cancel();
+    release();
+    await expect(run.outcome).resolves.toEqual({ kind: "cancelled" });
+  });
+
+  it("points the window at the renewed request when the person opens it again", async () => {
+    const { opened, ports, stages, onStage } = tab({
+      renewals: true,
+      checks: [new Response(null, { status: 404 })],
+    });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let waits = 0;
+    const run = runZeropsDeviceLogin({
+      kind: "login",
+      apiBase: API,
+      onStage,
+      ports: { ...ports, wait: () => (++waits > 1 ? held : Promise.resolve()) },
+    });
+    await vi.waitFor(() => expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002" }));
+    run.reopen();
+    const window = opened[0]?.window;
+    expect(window?.location.href).toBe(`${VERIFY.replace("req-1", "req-2")}&display=popup`);
+    expect(window?.focused).toBe(1);
+    run.cancel();
+    release();
+    await run.outcome;
+  });
+
+  it("says the Zerops window may show an older code once the request is renewed, until the person opens it again", async () => {
+    const { ports, stages, onStage } = tab({
+      renewals: true,
+      checks: [new Response(null, { status: 404 })],
+    });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let waits = 0;
+    const run = runZeropsDeviceLogin({
+      kind: "login",
+      apiBase: API,
+      onStage,
+      ports: { ...ports, wait: () => (++waits > 1 ? held : Promise.resolve()) },
+    });
+    await vi.waitFor(() => expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002" }));
+    expect(stages.find((stage) => stage.kind === "waiting")).toMatchObject({
+      userCode: "ABCD-EFGH",
+      windowMayBeOlder: false,
+    });
+    expect(stages.at(-1)).toMatchObject({ windowMayBeOlder: true });
+    run.reopen();
+    expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002", windowMayBeOlder: false });
+    run.cancel();
+    release();
+    await run.outcome;
+  });
+
+  it("stops renewing after half an hour and leaves the window as the person left it", async () => {
+    const { opened, ports, onStage, started } = tab({
+      renewals: true,
+      step: 60_000,
+      checks: Array.from({ length: 100 }, () => ({ status: "PENDING" })),
+    });
+    const run = runZeropsDeviceLogin({ kind: "login", apiBase: API, onStage, ports });
+    await expect(run.outcome).resolves.toEqual({ kind: "expired" });
+    expect(started()).toBeGreaterThan(1);
+    expect(opened[0]?.window?.closed).toBe(false);
   });
 });

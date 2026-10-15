@@ -1,7 +1,9 @@
 /**
  * A Mate's public addresses, each with what it is to the person: the dev they
- * work on, the stage they check, the production people use — and any other
- * public service by its name alone.
+ * work on, the Mate's preview of it (the stage half of its dev/stage pair), the
+ * project's stage they check, the production people use — and any other public
+ * service by its name alone. The preview is never called stage: the onboarding
+ * run's owner held two addresses named stage and kept the preview's as the app.
  *
  * The owner, 2026-10-03: "the browser automatically opens all tabs, imo it
  * shouldnt and you should be able to open each separately". Picking Browser
@@ -24,7 +26,7 @@ import type { ZeropsTopologyGroup } from "@t3tools/client-runtime/zerops/topolog
 
 import { isServiceBrowserUrl } from "./serviceBrowserPolicy";
 
-export type MateAddressRole = "dev" | "stage" | "production";
+export type MateAddressRole = "dev" | "preview" | "stage" | "production";
 
 export interface MateAddress {
   /**
@@ -70,6 +72,7 @@ export interface MateAddressInput {
 
 const ROLE_ORDER: ReadonlyArray<MateAddressRole | undefined> = [
   "dev",
+  "preview",
   "stage",
   "production",
   undefined,
@@ -108,13 +111,13 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
           );
     const route = service.routes.find((entry) => isServiceBrowserUrl(entry.url));
     if (route === undefined) continue;
+    const projectRole = input.ownRole === undefined ? undefined : ADDRESS_ROLE[input.ownRole];
+    // A pair's half is the Mate's preview, unless its project is itself the stage or production.
     const role = devOf.has(service.hostname)
-      ? "stage"
+      ? (projectRole ?? "preview")
       : devs.has(service.hostname) || isDevHostname(service.hostname)
         ? "dev"
-        : input.ownRole === undefined
-          ? undefined
-          : ADDRESS_ROLE[input.ownRole];
+        : projectRole;
     add(service.hostname, role, route.url);
   }
   const environments = input.environments ?? [];

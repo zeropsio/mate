@@ -28,6 +28,7 @@ describe("mateAddressOpenTarget", () => {
 describe("mateAddressRoleWord", () => {
   it.each([
     { role: "dev", expected: "Dev" },
+    { role: "preview", expected: "Preview" },
     { role: "stage", expected: "Stage" },
     { role: "production", expected: "Production" },
     { role: undefined, expected: undefined },

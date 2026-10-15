@@ -1,5 +1,6 @@
 "use client";
 
+import { useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { folderListingPresentation } from "./CommandPalette.logic";
 
 import {
@@ -714,6 +715,7 @@ export function OpenCommandPaletteDialog(props: {
   // Behind the organization's gate (ADR 0001) nothing is offered to make.
   const pathname = useLocation({ select: (location) => location.pathname });
   const gated = useHqGate(pathname).gate.kind !== "open";
+  const roleOffered = useRoleOffers();
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const [query, setQuery] = useState(props.initialQuery ?? "");
   const deferredQuery = useDeferredValue(query);
@@ -1776,7 +1778,7 @@ export function OpenCommandPaletteDialog(props: {
     },
   });
 
-  if (!gated) {
+  if (!gated && roleOffered.newProject) {
     actionItems.push({
       kind: "action",
       value: "action:add-project",

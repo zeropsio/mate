@@ -11,6 +11,8 @@ import {
   OrchestrationGetTurnDiffResult,
   type OrchestrationGetFullThreadDiffInput,
   type OrchestrationGetFullThreadDiffResult,
+  type OrchestrationGetRunChangesInput,
+  type OrchestrationGetRunChangesResult,
   type OrchestrationGetTurnDiffInput,
   type OrchestrationGetTurnDiffResult as OrchestrationGetTurnDiffResultType,
   type ThreadId,
@@ -35,6 +37,8 @@ import type { CheckpointServiceError } from "./Errors.ts";
 import { checkpointRefForThreadTurn } from "./Utils.ts";
 import { readLegacyWorkspaceDiff } from "./LegacyWorkspaceDiff.ts";
 import { WorkspaceHistory } from "./WorkspaceHistory.ts";
+import type { CaptureJournalError } from "./WorkspaceCaptureJournal.ts";
+import { engineRunChangedSomething, engineRunTurns } from "./EngineRunTurns.ts";
 import { workspaceHistoryRange } from "./WorkspaceHistoryRange.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
 
@@ -59,6 +63,14 @@ export class CheckpointDiffQuery extends Context.Service<
     readonly getFullThreadDiff: (
       input: OrchestrationGetFullThreadDiffInput,
     ) => Effect.Effect<OrchestrationGetFullThreadDiffResult, CheckpointServiceError>;
+
+    /**
+     * A Mate engine conversation's runs that changed its workspace, as their captures recorded
+     * them: each one a turn whose diff `getTurnDiff` reads by the run's ordinal.
+     */
+    readonly getRunChanges: (
+      input: OrchestrationGetRunChangesInput,
+    ) => Effect.Effect<OrchestrationGetRunChangesResult, CaptureJournalError>;
   }
 >()("t3/checkpointing/CheckpointDiffQuery") {}
 
@@ -107,6 +119,68 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  /** The conversation's engine runs as turns; none where nothing records their captures. */
+  const engineTurns = (threadId: ThreadId) =>
+    Option.isNone(workspaceHistory)
+      ? Effect.succeed([])
+      : workspaceHistory.value
+          .runs(threadId)
+          .pipe(Effect.map((runs) => engineRunTurns(threadId, runs)));
+
+  /**
+   * A range of an engine conversation's runs, read from their own captures; undefined where the
+   * range is none of its runs' (an older thread's turns), which the projection's record answers.
+   */
+  const readEngineRange = Effect.fn("CheckpointDiffQuery.readEngineRange")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly fromTurnCount: number;
+    readonly toTurnCount: number;
+    readonly ignoreWhitespace: boolean;
+    readonly rootId?: string | undefined;
+    readonly runId?: string | undefined;
+  }) {
+    if (Option.isNone(workspaceHistory)) return undefined;
+    const turns = yield* engineTurns(input.threadId).pipe(
+      // An unreadable journal leaves the range to the projection's record.
+      Effect.catchTags({ CaptureJournalError: () => Effect.succeed([]) }),
+    );
+    const history = workspaceHistoryRange(turns, input.fromTurnCount, input.toTurnCount);
+    if (history === undefined) return undefined;
+    const range = {
+      threadId: input.threadId,
+      fromTurnCount: input.fromTurnCount,
+      toTurnCount: input.toTurnCount,
+    };
+    if (input.runId !== undefined && input.runId !== history.runId)
+      return {
+        ...range,
+        diff: "",
+        coverage: "unknown" as const,
+        roots: [
+          {
+            rootId: input.rootId ?? "unknown",
+            label: "History changed",
+            pathPrefix: "",
+            status: "identity-unresolved" as const,
+            reason:
+              "The selected run has changed. Reload the conversation before opening its diff.",
+          },
+        ],
+      };
+    const result = yield* workspaceHistory.value.read(history, {
+      ignoreWhitespace: input.ignoreWhitespace,
+      ...(input.rootId !== undefined ? { rootId: input.rootId } : {}),
+    });
+    return { ...range, ...result };
+  });
+
+  const getRunChanges: CheckpointDiffQuery["Service"]["getRunChanges"] = Effect.fn(
+    "CheckpointDiffQuery.getRunChanges",
+  )(function* (input) {
+    const turns = yield* engineTurns(input.threadId);
+    return { threadId: input.threadId, turns: turns.filter(engineRunChangedSomething) };
+  });
+
   const getTurnDiff: CheckpointDiffQuery["Service"]["getTurnDiff"] = Effect.fn("getTurnDiff")(
     function* (input) {
       const operation = "CheckpointDiffQuery.getTurnDiff";
@@ -133,6 +207,9 @@ export const make = Effect.gen(function* () {
         }
         return emptyDiff;
       }
+
+      const engineRange = yield* readEngineRange({ ...input, ignoreWhitespace });
+      if (engineRange !== undefined) return engineRange;
 
       const threadContext = yield* projectionSnapshotQuery
         .getThreadCheckpointContext(input.threadId)
@@ -318,6 +395,9 @@ export const make = Effect.gen(function* () {
       return emptyDiff satisfies OrchestrationGetFullThreadDiffResult;
     }
 
+    const engineRange = yield* readEngineRange({ ...input, fromTurnCount: 0, ignoreWhitespace });
+    if (engineRange !== undefined) return engineRange;
+
     if (Option.isSome(workspaceHistory)) {
       const context = yield* projectionSnapshotQuery.getThreadCheckpointContext(input.threadId);
       if (Option.isSome(context)) {
@@ -437,6 +517,7 @@ export const make = Effect.gen(function* () {
   return CheckpointDiffQuery.of({
     getTurnDiff,
     getFullThreadDiff,
+    getRunChanges,
   });
 });
 

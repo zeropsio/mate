@@ -331,6 +331,14 @@ describe("ZeropsServiceMap — the card", () => {
     expect(html.match(/data-zerops-service-row=/gu)).toHaveLength(1);
   });
 
+  it("names a pair's nested half the Mate's preview, never its project's stage", () => {
+    const html = render(
+      topology([service({ hostname: "kanbandev" }), service({ hostname: "kanbanstage" })]),
+    );
+    expect(html).toContain("<span>preview</span>");
+    expect(html).not.toContain("<span>stage</span>");
+  });
+
   it("marks a transient service without animating it", () => {
     const html = render(
       topology([service({ hostname: "kanbandev", status: "CREATING", transient: true })]),
@@ -614,6 +622,36 @@ describe("ZeropsServiceDetail — the pop", () => {
     expect(html).toContain('href="https://kanbandev-26a7.prg1.zerops.app"');
     expect(html).toContain('href="https://kanbandev-26a7-3000.prg1.zerops.app"');
     expect(html).toContain("kanbandev-26a7-3000.prg1.zerops.app</span>");
+  });
+
+  it("names a stage partner's routes as its stage's, never as the dev service's own", () => {
+    const html = renderDetail(
+      topology([
+        service({
+          hostname: "appdev",
+          routes: [
+            {
+              port: 3000,
+              url: "https://appdev-1-3000.zerops.app",
+              host: "appdev-1-3000.zerops.app",
+            },
+          ],
+        }),
+        service({
+          hostname: "appstage",
+          routes: [
+            {
+              port: 3000,
+              url: "https://appstage-1-3000.zerops.app",
+              host: "appstage-1-3000.zerops.app",
+            },
+          ],
+        }),
+      ]),
+    );
+
+    expect(html).toContain("appdev-1-3000.zerops.app</span>");
+    expect(html).toContain("appstage · appstage-1-3000.zerops.app</span>");
   });
 
   it("offers a production project as a linked route", () => {

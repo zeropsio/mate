@@ -160,6 +160,16 @@ describe("jumpGroups — what a query finds, grouped", () => {
     expect(labels(value)).toEqual([{ group: "Projects", items }]);
   });
 
+  it.each(["", "new"])(
+    "never offers a new project to a role that may not create projects (%j typed)",
+    (value) => {
+      const items = jumpGroups(INDEX, value, [], new Set(), false).flatMap((group) =>
+        group.items.map((item) => item.value),
+      );
+      expect(items).not.toContain("new-project");
+    },
+  );
+
   it("offers a new project to an account with no project yet", () => {
     expect(
       jumpGroups({ ...INDEX, mates: [], projects: [] }, "", []).map((group) => ({

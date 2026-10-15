@@ -91,3 +91,93 @@ describe("a card's changes", () => {
     expect(opened).toHaveBeenCalledWith(OPEN);
   });
 });
+
+describe("a card with no change to list", () => {
+  it.each([
+    {
+      case: "HQ told it none",
+      known: true,
+      failure: undefined,
+      says: "No changes yet",
+    },
+    {
+      case: "HQ refuses its changes to this person",
+      known: true,
+      failure:
+        "You need at least Basic user access to one of this project's Zerops projects to see its changes.",
+      says: "You need at least Basic user access",
+    },
+    { case: "HQ has not told them yet", known: false, failure: undefined, says: null },
+  ])("says only what is true when $case", async ({ known, failure, says }) => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <CardChanges
+          changes={[]}
+          changesFailure={failure}
+          changesKnown={known}
+          mateName={() => undefined}
+          onOpen={() => {}}
+        />,
+      );
+    });
+    unmounts.push(() => root.unmount());
+    const text = container.textContent ?? "";
+    if (says === null) expect(text).toBe("Changes");
+    else expect(text).toContain(says);
+    if (failure !== undefined) expect(text).not.toContain("No changes yet");
+  });
+});
+
+it("holds the line of a card's changes while HQ has not told them, so the card does not grow when they land", async () => {
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <CardChanges
+        changes={[]}
+        changesKnown={false}
+        mateName={() => undefined}
+        onOpen={() => {}}
+      />,
+    );
+  });
+  unmounts.push(() => root.unmount());
+  const section = container.querySelector('[aria-label="Changes"]');
+  expect(section?.querySelector('[aria-hidden="true"]')).not.toBeNull();
+  expect(container.textContent).toBe("Changes");
+});
+
+// The onboarding run: a guest's card read "No changes yet — a Mate opens one as it works" beside a
+// production running v0.1.0, while HQ withheld the project's changes from her.
+describe("a card's changes it may not read", () => {
+  it.each([
+    { case: "withheld", unknown: "Needs Basic user access", says: "Needs Basic user access" },
+    { case: "known to be none", unknown: undefined, says: "No changes yet" },
+  ])(
+    "says why where its changes are $case, never that there are none",
+    async ({ unknown, says }) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <CardChanges
+            changes={[]}
+            changesKnown
+            mateName={() => undefined}
+            onOpen={() => {}}
+            unknown={unknown}
+          />,
+        );
+      });
+      unmounts.push(() => {
+        root.unmount();
+        container.remove();
+      });
+      expect(container.textContent).toContain(says);
+      if (unknown !== undefined) expect(container.textContent).not.toContain("No changes yet");
+    },
+  );
+});

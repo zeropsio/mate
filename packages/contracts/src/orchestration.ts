@@ -36,6 +36,7 @@ export const ORCHESTRATION_WS_METHODS = {
   getWorkflowScript: "orchestration.getWorkflowScript",
   getTurnDiff: "orchestration.getTurnDiff",
   getFullThreadDiff: "orchestration.getFullThreadDiff",
+  getRunChanges: "orchestration.getRunChanges",
   searchThreads: "orchestration.searchThreads",
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   subscribeShell: "orchestration.subscribeShell",
@@ -2113,6 +2114,27 @@ export type OrchestrationGetFullThreadDiffInput = typeof OrchestrationGetFullThr
 export const OrchestrationGetFullThreadDiffResult = ThreadTurnDiff;
 export type OrchestrationGetFullThreadDiffResult = typeof OrchestrationGetFullThreadDiffResult.Type;
 
+/**
+ * A conversation's runs that changed its workspace, as the Mate's server recorded their capture:
+ * each run a turn the Diff page offers, numbered by the run's ordinal, its history the diff reads.
+ */
+export const OrchestrationGetRunChangesInput = Schema.Struct({
+  threadId: ThreadId,
+  /**
+   * What the reader last saw of the conversation's runs (its latest run, and whether it ended):
+   * a newer sight is a new read. The server answers from its record either way.
+   */
+  seen: Schema.optionalKey(Schema.String),
+});
+export type OrchestrationGetRunChangesInput = typeof OrchestrationGetRunChangesInput.Type;
+
+export const OrchestrationGetRunChangesResult = Schema.Struct({
+  threadId: ThreadId,
+  /** The runs that changed something, oldest first. */
+  turns: Schema.Array(OrchestrationCheckpointSummary),
+});
+export type OrchestrationGetRunChangesResult = typeof OrchestrationGetRunChangesResult.Type;
+
 export const OrchestrationThreadSearchSource = Schema.Literals(["user", "assistant"]);
 export type OrchestrationThreadSearchSource = typeof OrchestrationThreadSearchSource.Type;
 
@@ -2203,6 +2225,10 @@ export const OrchestrationRpcSchemas = {
     input: OrchestrationGetFullThreadDiffInput,
     output: OrchestrationGetFullThreadDiffResult,
   },
+  getRunChanges: {
+    input: OrchestrationGetRunChangesInput,
+    output: OrchestrationGetRunChangesResult,
+  },
   searchThreads: {
     input: OrchestrationSearchThreadsInput,
     output: OrchestrationSearchThreadsResult,
@@ -2251,6 +2277,14 @@ export class OrchestrationGetTurnDiffError extends Schema.TaggedError<Orchestrat
 
 export class OrchestrationGetFullThreadDiffError extends Schema.TaggedError<OrchestrationGetFullThreadDiffError>()(
   "OrchestrationGetFullThreadDiffError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
+export class OrchestrationGetRunChangesError extends Schema.TaggedError<OrchestrationGetRunChangesError>()(
+  "OrchestrationGetRunChangesError",
   {
     message: TrimmedNonEmptyString,
     cause: Schema.optional(Schema.Defect()),

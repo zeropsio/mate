@@ -81,6 +81,7 @@ import {
   queuedSendOutcome,
   sendStepAfterUploads,
   threadErrorEntryUnchanged,
+  helpersSessionLive,
 } from "./ChatView.logic";
 
 const environmentId = EnvironmentId.make("environment-local");
@@ -2504,5 +2505,36 @@ describe("colleagueMateReadOnly", () => {
       notice: "Wren is Jan Novák's Mate — you can read along.",
       waitingLabel: "Waiting for Jan Novák",
     });
+  });
+});
+
+describe("helpersSessionLive", () => {
+  it.each([
+    {
+      name: "A helper still running after its Mate's turn ended is never called stopped",
+      phase: "disconnected" as const,
+      backgroundLiveness: "working" as const,
+      live: true,
+    },
+    {
+      name: "A session still watching its background work keeps its helpers",
+      phase: "disconnected" as const,
+      backgroundLiveness: "monitoring" as const,
+      live: true,
+    },
+    {
+      name: "A running turn keeps its helpers",
+      phase: "running" as const,
+      backgroundLiveness: null,
+      live: true,
+    },
+    {
+      name: "Helpers of a session that ended with nothing left running are stopped",
+      phase: "disconnected" as const,
+      backgroundLiveness: null,
+      live: false,
+    },
+  ])("$name", ({ phase, backgroundLiveness, live }) => {
+    expect(helpersSessionLive({ phase, backgroundLiveness })).toBe(live);
   });
 });

@@ -27,6 +27,7 @@ import { environmentServerConfigsAtom } from "./server";
 import {
   allEnvironmentProjectSnapshotsReadyAtom,
   allEnvironmentShellsBootstrappedAtom,
+  environmentsWithSnapshotAtom,
 } from "./shell";
 import { environmentThreadDetails, environmentThreadShells } from "./threads";
 
@@ -137,6 +138,12 @@ export function useThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
 
 export function useAllEnvironmentShellsBootstrapped(): boolean {
   return useAtomValue(allEnvironmentShellsBootstrappedAtom);
+}
+
+/** Whether an environment's conversations have been read: its shell's snapshot arrived. */
+export function useEnvironmentConversationsRead(environmentId: EnvironmentId | null): boolean {
+  const read = useAtomValue(environmentsWithSnapshotAtom);
+  return environmentId !== null && read.has(environmentId);
 }
 
 export function useAllEnvironmentProjectSnapshotsReady(): boolean {

@@ -43,6 +43,7 @@ identifiers and comments keep their code names.
 | stage half of a dev/stage pair                 | **preview**                                  |
 | deploying a crewmate's work                    | **Deploy to {host}**                         |
 | group stage project                            | **stage**                                    |
+| a Mate's recipe proposal, import files         | **setup files**                              |
 | agent on a crew                                | **crewmate**                                 |
 | orchestrator                                   | **lead**                                     |
 | crew intent, brief                             | **goal**                                     |

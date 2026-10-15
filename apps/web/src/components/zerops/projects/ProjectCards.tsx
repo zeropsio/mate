@@ -202,14 +202,28 @@ function PlainPanel({ line }: { readonly line: PlaceLine }) {
   );
 }
 
-/** A place not set up yet, by its way to be: its name, and the button that sets it up. */
-function SetUpPanel({ line, onSetUp }: { readonly line: PlaceLine; readonly onSetUp: () => void }) {
+/**
+ * A place not set up yet, by its way to be: its name, and the button that sets it up — kept, not
+ * to be pressed, while another environment is being set up (`"busy"`).
+ */
+function SetUpPanel({
+  line,
+  onSetUp,
+}: {
+  readonly line: PlaceLine;
+  readonly onSetUp: (() => void) | "busy";
+}) {
   return (
     <div className="ov-panel" data-zerops-place-setup={line.kind}>
       <div className="ov-panel-head">
         <b className="ov-panel-name">{placeLabel(line)}</b>
       </div>
-      <button className="ov-setup" onClick={onSetUp} type="button">
+      <button
+        className="ov-setup"
+        disabled={onSetUp === "busy"}
+        onClick={onSetUp === "busy" ? undefined : onSetUp}
+        type="button"
+      >
         <PlusIcon aria-hidden="true" className="size-3.5" />
         {`Set up ${placeLabel(line).toLowerCase()}`}
       </button>
@@ -230,12 +244,19 @@ function ChangeAge({ at }: { readonly at: string | undefined }) {
  */
 export function CardChanges({
   changes,
+  changesKnown = true,
+  changesFailure,
   releases = [],
   face,
   mateName,
   onOpen,
+  unknown,
 }: {
   readonly changes: ReadonlyArray<CardChange>;
+  /** HQ has told the project's changes: until then none listed is no answer (`changesKnown`). */
+  readonly changesKnown?: boolean;
+  /** Why they are not told — HQ refuses them to this person, or does not answer — in its words. */
+  readonly changesFailure?: string | undefined;
   /** Newest first, as the flow lists them. */
   readonly releases?: ReadonlyArray<{
     readonly tag: string;
@@ -246,13 +267,24 @@ export function CardChanges({
   readonly face?: ((projectId: string) => ReactNode) | undefined;
   readonly mateName: (projectId: string) => string | undefined;
   readonly onOpen: (change: CardChange, from: HTMLElement) => void;
+  /** Why its changes are not known, where HQ did not tell them (`changesUnknownOf`). */
+  readonly unknown?: string | undefined;
 }) {
   const rows = cardChangeRows(changes, releases);
   return (
     <section aria-label="Changes" className="ov-sec" data-zerops-surface="card-changes">
       <h3 className="ov-sec-name">Changes</h3>
       {rows.length === 0 ? (
-        <p className="ov-sec-empty">No changes yet — a Mate opens one as it works.</p>
+        unknown !== undefined ? (
+          <p className="ov-sec-empty">{unknown}</p>
+        ) : changesFailure !== undefined ? (
+          <p className="ov-sec-empty">{changesFailure}</p>
+        ) : changesKnown ? (
+          <p className="ov-sec-empty">No changes yet — a Mate opens one as it works.</p>
+        ) : (
+          // Until HQ answers, its line's place is held: the card does not grow when it lands.
+          <p aria-hidden="true" className="ov-sec-empty" data-zerops-changes-held="" />
+        )
       ) : (
         <ul className="ov-changes">
           {rows.map((row) => {
@@ -449,7 +481,8 @@ function ProjectCard<T>({
   );
   const ready = cardReady(flow);
   const releaseDoor = ready === undefined ? null : props.renderReleaseVerb?.(entry);
-  const lines = placeLines({ flow, ...props.cardPlaces?.(entry), nowMs });
+  const placeFacts = props.cardPlaces?.(entry);
+  const lines = placeLines({ flow, ...placeFacts, nowMs });
   // Production first — what a person runs for others — then each stage behind it.
   const places = [
     ...lines.filter((line) => line.kind === "production"),
@@ -513,13 +546,14 @@ function ProjectCard<T>({
       {ready === undefined ? null : (
         <section className="ov-sec" data-zerops-card-ready="true">
           <p className="ov-ready-title">{readyTitle(ready)}</p>
-          <p className="ov-ready-line">{readyLine(ready)}</p>
+          <p className="ov-ready-line">{readyLine(ready, placeFacts?.releaseOnStage)}</p>
           {drawn(releaseDoor) ? <div className="ov-acts">{releaseDoor}</div> : null}
         </section>
       )}
       <CardMates all={page !== undefined} entry={entry} onAdd={page?.onAddMate} props={props} />
       {page?.people}
-      {unknown.kind === "unread" ? (
+      {/* Its changes say why they are unknown where the card draws them. */}
+      {unknown.kind === "unread" && props.renderChanges === undefined ? (
         <p className="ov-card-note" data-zerops-row-line="unread">
           {unknown.text}
         </p>

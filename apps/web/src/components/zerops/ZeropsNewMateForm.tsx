@@ -23,7 +23,7 @@ import type { EnvironmentRecipeChoice, ZeropsMateFace } from "@t3tools/client-ru
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { useEffect, useEffectEvent, useId, useState } from "react";
+import { useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
 
 import { Button } from "../ui/button";
 import {
@@ -85,6 +85,8 @@ export interface ZeropsNewMateFormProps {
   readonly onCreate: (choice: NewMateChoice) => void;
   /** Who will reach its project, as people chips; absent, the form says nothing of access. */
   readonly access?: ProjectAccessSlot | undefined;
+  /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
+  readonly forecast?: ReactNode;
 }
 
 /** A room that opens and gives itself back in one move: a grid row from 0fr to 1fr. */
@@ -105,6 +107,7 @@ export function ZeropsNewMateForm({
   onCancel,
   onCreate,
   access,
+  forecast,
 }: ZeropsNewMateFormProps) {
   const id = useId();
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
@@ -287,6 +290,7 @@ export function ZeropsNewMateForm({
                   {access(setUserRoles)}
                 </div>
               )}
+              {forecast}
             </div>
           </DialogPanel>
         </div>

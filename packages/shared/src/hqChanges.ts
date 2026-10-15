@@ -493,6 +493,12 @@ export type ChangeCommit = typeof ChangeCommit.Type;
 /** How many commits a comparison names at most: the git layer's bound on a log (`@t3tools/hq-git`). */
 export const COMPARE_COMMITS_MAX = 100;
 
+/**
+ * The empty first commit HQ starts every repository it makes on (`madeRepo`), as a comparison names
+ * it: by HQ, landed by no change. It carries no code, so it is nobody's change to release.
+ */
+export const HQ_FIRST_COMMIT = { authorName: "HQ", subject: "Initial commit" } as const;
+
 /** How far a comparison counts: the git layer's bound on a walk of history. */
 export const COMPARE_COUNT_MAX = 10000;
 

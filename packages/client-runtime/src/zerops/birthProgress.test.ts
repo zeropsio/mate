@@ -2,10 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsService } from "./api.ts";
 import {
+  birthClockRuns,
   birthCopyServices,
   birthRuntimesFacts,
   deriveBirthProgress,
   type BirthFacts,
+  type BirthProgress,
+  type BirthStep,
   type BirthProcessFact,
   type BirthRuntimesFacts,
   type BirthStepId,
@@ -1007,5 +1010,94 @@ describe("birthCopyServices", () => {
     { case: "a project not read yet", planned: undefined, services: undefined },
   ])("names none for $case", ({ planned, services }) => {
     expect(birthCopyServices({ planned, services })).toBeUndefined();
+  });
+});
+
+describe("the birth's clock", () => {
+  const at = (minutes: number) => `2026-09-22T10:0${5 - minutes}:00Z`;
+  const progressOf = (steps: ReadonlyArray<BirthStep>): BirthProgress => {
+    const failed = steps.find((step) => step.state === "failed") ?? null;
+    return {
+      steps,
+      active: steps.find((step) => step.state === "active") ?? null,
+      failed,
+      doneCount: steps.filter((step) => step.state === "done").length,
+      total: steps.length,
+      complete: steps.at(-1)?.state === "done",
+      startedAt: at(3),
+    };
+  };
+  const step = (id: BirthStepId, state: BirthStep["state"], times: Partial<BirthStep> = {}) =>
+    ({ id, label: id, state, ...times }) as BirthStep;
+  const containerDone = [
+    step("project", "done", { startedAt: at(3), endedAt: at(2) }),
+    step("container", "done", { startedAt: at(2), endedAt: at(1) }),
+    step("public-access", "done"),
+    step("mate", "active"),
+    step("connect", "waiting"),
+  ];
+
+  it.each([
+    {
+      sentence: "A workspace whose container is up keeps counting while its Mate has not answered",
+      steps: containerDone,
+      stopped: false,
+      runs: true,
+    },
+    {
+      sentence: "A step running from a known start keeps counting",
+      steps: [
+        step("project", "done", { startedAt: at(3), endedAt: at(2) }),
+        step("container", "active", { startedAt: at(2) }),
+        step("public-access", "waiting"),
+        step("mate", "waiting"),
+        step("connect", "waiting"),
+      ],
+      stopped: false,
+      runs: true,
+    },
+    {
+      sentence: "A birth that failed stops counting",
+      steps: [
+        step("project", "done", { startedAt: at(3), endedAt: at(2) }),
+        step("container", "failed", { startedAt: at(2), endedAt: at(1) }),
+        step("public-access", "waiting"),
+        step("mate", "waiting"),
+        step("connect", "waiting"),
+      ],
+      stopped: false,
+      runs: false,
+    },
+    {
+      sentence: "A birth whose setup stopped stops counting",
+      steps: containerDone,
+      stopped: true,
+      runs: false,
+    },
+    {
+      sentence: "A Mate that is up stops counting",
+      steps: [
+        step("project", "done", { startedAt: at(3), endedAt: at(2) }),
+        step("container", "done", { startedAt: at(2), endedAt: at(1) }),
+        step("public-access", "done"),
+        step("mate", "done"),
+        step("connect", "done"),
+      ],
+      stopped: false,
+      runs: false,
+    },
+  ])("$sentence", ({ steps, stopped, runs }) => {
+    expect(birthClockRuns(progressOf(steps), stopped)).toBe(runs);
+  });
+
+  it("A birth with no start known has no clock to count", () => {
+    const { startedAt: _startedAt, ...unstarted } = progressOf([
+      step("project", "active"),
+      step("container", "waiting"),
+      step("public-access", "waiting"),
+      step("mate", "waiting"),
+      step("connect", "waiting"),
+    ]);
+    expect(birthClockRuns(unstarted, false)).toBe(false);
   });
 });

@@ -7,12 +7,13 @@
  * derived into a `BirthProgress` (`@t3tools/client-runtime/zerops/birthProgress`).
  *
  * The only state this hook owns is a 1-second clock for the elapsed label
- * and the active build substep's live duration — it ticks only while a known
- * started step has no end and the birth has not failed.
+ * and the active build substep's live duration — it ticks while the birth runs
+ * (`birthClockRuns`): until it is up, failed, or its setup stopped (`stopped`).
  */
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  birthClockRuns,
   deriveBirthProgress,
   type BirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
@@ -29,6 +30,8 @@ export interface UseZeropsBirthProgressResult {
 
 export function useZeropsBirthProgress(
   input: UseZeropsBirthProgressInput | null,
+  /** Its setup stopped, as its arrival says: its times stand where it stopped. */
+  stopped = false,
 ): UseZeropsBirthProgressResult | null {
   const projectId = input === null ? null : input.candidate.project.id;
   const { processes } = useProjectActivity(projectId);
@@ -40,13 +43,7 @@ export function useZeropsBirthProgress(
   }, [input, processes, nowMs]);
 
   const hidden = input === null;
-  const ticking =
-    progress !== null &&
-    progress.failed === null &&
-    progress.steps.some(
-      (step) =>
-        step.state === "active" && step.startedAt !== undefined && step.endedAt === undefined,
-    );
+  const ticking = progress !== null && birthClockRuns(progress, stopped);
   useEffect(() => {
     if (hidden || !ticking) return;
     const id = setInterval(() => setNowMs(Date.now()), 1_000);
