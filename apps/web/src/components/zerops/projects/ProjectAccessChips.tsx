@@ -48,6 +48,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { PersonAvatar } from "../primitives";
 import {
+  ACCESS_LEVEL_LINES,
   asksFirst,
   BADGE_WORDS,
   personMenu,
@@ -473,6 +474,19 @@ export function AddAccessPicker({
           ))}
         </ul>
       )}
+      <dl
+        aria-label="What Read and Full give"
+        className="grid gap-1 px-3 pt-2 text-xs text-muted-foreground"
+      >
+        {(["read", "full"] as const).map((level) => (
+          <div key={level}>
+            <dt className="inline font-medium text-foreground">
+              {level === "read" ? "Read" : "Full"}:
+            </dt>{" "}
+            <dd className="inline">{ACCESS_LEVEL_LINES[level]}</dd>
+          </div>
+        ))}
+      </dl>
       <div className="ov-pick-foot">
         <Button disabled={picks.length === 0} onClick={() => onAdd(picks)} size="sm">
           {picks.length > 1 ? `Add ${picks.length} people` : "Add people"}

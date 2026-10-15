@@ -330,6 +330,18 @@ describe("adding people already in the organization", () => {
     expect(added[0]?.map(({ level }) => level)).toEqual(["full"]);
   });
 
+  it("Read and Full are each explained in one line where they are chosen", () => {
+    const host = mount(() => {});
+    expect(
+      [...host.querySelectorAll('[aria-label="What Read and Full give"] > div')].map(
+        (line) => line.textContent,
+      ),
+    ).toEqual([
+      "Read: Follows the work and opens the app; changes nothing.",
+      "Full: Works with the project's Mates and changes the project.",
+    ]);
+  });
+
   it("The search narrows the people by name or e-mail", () => {
     const host = mount(() => {});
     const search = host.querySelector<HTMLInputElement>('input[type="search"]')!;
