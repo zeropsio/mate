@@ -1,4 +1,3 @@
-import { onBrowserStorageFull } from "../lib/storage";
 import { accountLocalStorage } from "./accountLifetime";
 
 export interface DraftStorage {
@@ -6,112 +5,121 @@ export interface DraftStorage {
   /** Whether the value landed. */
   setItem(key: string, value: string): boolean;
   removeItem(key: string): void;
+  keys(): string[];
 }
 
-type TabStorage = Pick<Storage, "getItem" | "setItem">;
+export interface PersistedValue {
+  state: Record<string, unknown>;
+  version: number;
+}
 
-/** How many branches of a key outlive their tabs: each holds a whole copy of the drafts. */
-const KEPT_BRANCHES = 8;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** When a branch's document opened; a branch from before ids carried it is the oldest. */
-const openedAt = (branchId: string) => {
-  const dot = branchId.indexOf(".");
-  return dot === -1 ? 0 : Number.parseInt(branchId.slice(0, dot), 36) || 0;
-};
-
-/** Each document writes a fresh branch, including duplicated tabs. A reload
- * starts from that tab's previous branch; a new tab starts from the account's
- * last saved branch. Another tab can never overwrite the active branch. A key
- * keeps at most eight branches: the oldest of closed tabs go first. */
-export function createDraftStorage(
-  storage: DraftStorage & { keys(): string[] },
-  tabStorage: () => TabStorage,
-  makeId: () => string,
-  now: () => number = Date.now,
-): DraftStorage & { evict(): void } {
-  let previousBranch: string | null = null;
-  let branchId: string | undefined;
-  const branch = () => {
-    if (branchId !== undefined) return branchId;
-    const key = "mate:draft-tab:v1";
-    try {
-      previousBranch = tabStorage().getItem(key);
-    } catch {
-      /* Memory-only tab. */
-    }
-    branchId = `${now().toString(36)}.${makeId()}`;
-    try {
-      tabStorage().setItem(key, branchId);
-    } catch {
-      /* Memory-only tab. */
-    }
-    return branchId;
+/**
+ * A persisted state kept one key per entry: `name` holds the version, `name:field` a field that is
+ * not a record and `name:field:key` one entry of a record field. A tab writes only the keys whose
+ * value changed since it last read or wrote them and removes only keys it knew, so tabs editing
+ * different entries never overwrite each other; on the same entry the last writer wins.
+ */
+export function createEntryStorage(storage: DraftStorage) {
+  /** Each key's value as this tab last read or wrote it. */
+  const known = new Map<string, string>();
+  const owns = (name: string, key: string) => key === name || key.startsWith(`${name}:`);
+  const forget = (name: string) => {
+    for (const key of known.keys()) if (owns(name, key)) known.delete(key);
   };
-  const branchKey = (key: string, id: string) => `${key}:tab:${id}`;
-  /** Removes `key`'s branches beyond this tab's, its previous one, the latest and the `kept` newest. */
-  const prune = (key: string, kept: number) => {
-    const prefix = `${key}:tab:`;
-    const keep = new Set([branch(), previousBranch, storage.getItem(`${key}:latest`)]);
-    const others = storage
-      .keys()
-      .filter((stored) => stored.startsWith(prefix))
-      .map((stored) => stored.slice(prefix.length))
-      .filter((id) => !keep.has(id))
-      .toSorted((left, right) => openedAt(right) - openedAt(left));
-    for (const id of others.slice(kept)) storage.removeItem(branchKey(key, id));
-  };
-  const pruned = new Set<string>();
-  const pruneOnce = (key: string) => {
-    if (pruned.has(key)) return;
-    pruned.add(key);
-    prune(key, KEPT_BRANCHES - 2);
+  /** Whether every changed entry landed; one that did not is written again next time. */
+  const setItem = (name: string, value: PersistedValue): boolean => {
+    const next = new Map([[name, String(value.version)]]);
+    for (const [field, fieldValue] of Object.entries(value.state)) {
+      if (fieldValue === undefined) continue;
+      if (!isRecord(fieldValue)) {
+        next.set(`${name}:${field}`, JSON.stringify(fieldValue));
+        continue;
+      }
+      for (const [key, entry] of Object.entries(fieldValue)) {
+        next.set(`${name}:${field}:${key}`, JSON.stringify(entry));
+      }
+    }
+    let landed = true;
+    for (const [key, json] of next) {
+      if (known.get(key) === json) continue;
+      if (storage.setItem(key, json)) known.set(key, json);
+      else landed = false;
+    }
+    for (const key of known.keys()) {
+      if (!owns(name, key) || next.has(key)) continue;
+      storage.removeItem(key);
+      known.delete(key);
+    }
+    return landed;
   };
   return {
-    getItem(key) {
-      pruneOnce(key);
-      const own = storage.getItem(branchKey(key, branch()));
-      if (own !== null) return own;
-      const latest = storage.getItem(`${key}:latest`);
-      const previous =
-        previousBranch === null ? null : storage.getItem(branchKey(key, previousBranch));
-      const inherited =
-        previous ?? (latest === null ? null : storage.getItem(branchKey(key, latest)));
-      // Materialize a resumed branch even when the user makes no edit. Otherwise
-      // a second reload would lose the chain and read another tab's latest draft.
-      const materialized =
-        inherited !== null && storage.setItem(branchKey(key, branch()), inherited);
-      if (materialized && previous !== null && previousBranch !== null) {
-        // This tab's previous load lives on in this branch; a duplicate of the tab
-        // that still points at it starts from the latest branch instead.
-        storage.removeItem(branchKey(key, previousBranch));
-        if (latest === previousBranch) storage.setItem(`${key}:latest`, branch());
+    getItem(name: string): PersistedValue | null {
+      forget(name);
+      const version = storage.getItem(name);
+      if (version === null) return null;
+      known.set(name, version);
+      const state: Record<string, unknown> = {};
+      for (const key of storage.keys()) {
+        if (!key.startsWith(`${name}:`)) continue;
+        const json = storage.getItem(key);
+        if (json === null) continue;
+        known.set(key, json);
+        const path = key.slice(name.length + 1);
+        const colon = path.indexOf(":");
+        const value: unknown = JSON.parse(json);
+        if (colon === -1) {
+          state[path] = value;
+          continue;
+        }
+        const field = path.slice(0, colon);
+        const record = isRecord(state[field]) ? state[field] : (state[field] = {});
+        record[path.slice(colon + 1)] = value;
       }
-      return inherited;
+      return { state, version: Number(version) };
     },
-    setItem(key, value) {
-      pruneOnce(key);
-      const landed = storage.setItem(branchKey(key, branch()), value);
-      // The latest pointer never names a branch that was not written.
-      if (landed) storage.setItem(`${key}:latest`, branch());
-      return landed;
+    setItem,
+    /** Writes a value taken from elsewhere whole, over what this tab knew; removes nothing. */
+    adopt(name: string, value: PersistedValue): boolean {
+      forget(name);
+      return setItem(name, value);
     },
-    removeItem(key) {
-      // A tombstone prevents an intentional clear from resurrecting a prior branch.
-      storage.setItem(branchKey(key, branch()), "");
+    removeItem(name: string): void {
+      forget(name);
+      for (const key of storage.keys()) if (owns(name, key)) storage.removeItem(key);
     },
-    /** A full origin keeps only this tab's branches and the latest of every key. */
-    evict() {
-      for (const stored of storage.keys()) {
-        if (stored.endsWith(":latest")) prune(stored.slice(0, -":latest".length), 0);
-      }
+    /** One entry of a record field as stored now. */
+    readEntry(name: string, field: string, key: string): unknown {
+      const json = storage.getItem(`${name}:${field}:${key}`);
+      return json === null ? null : JSON.parse(json);
     },
   };
 }
 
-export const accountDraftStorage = createDraftStorage(
-  accountLocalStorage,
-  () => window.sessionStorage,
-  () =>
-    Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) => part.toString(16)).join("-"),
-);
-onBrowserStorageFull(() => accountDraftStorage.evict());
+/**
+ * Until October 2026 every page load kept a whole copy of a key under `key:tab:<id>`, with
+ * `key:latest` naming the copy written last. `land` takes that copy's value; every copy goes once it
+ * landed (or when there is none to keep).
+ */
+export function foldDraftBranches(
+  storage: DraftStorage,
+  key: string,
+  land: (value: string) => boolean,
+): void {
+  const prefix = `${key}:tab:`;
+  const pointer = storage.getItem(`${key}:latest`);
+  const latest = pointer === null ? null : `${prefix}${pointer}`;
+  // The other copies go first: on a full origin they are the room the latest needs to land.
+  for (const stored of storage.keys()) {
+    if (stored.startsWith(prefix) && stored !== latest) storage.removeItem(stored);
+  }
+  if (latest === null) return;
+  const value = storage.getItem(latest);
+  if (value !== null && value !== "" && !land(value)) return;
+  storage.removeItem(latest);
+  storage.removeItem(`${key}:latest`);
+}
+
+export const accountEntryStorage = createEntryStorage(accountLocalStorage);
