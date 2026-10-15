@@ -106,7 +106,7 @@ function expectOnePaint(frames: ReadonlyArray<OverviewFrame>, cards: number) {
   const runs = standing.filter((on, at) => on && (at === 0 || !standing[at - 1])).length;
   expect(runs, `The stand-in is painted once:\n${trace}`).toBeLessThanOrEqual(1);
   const last = frames.slice(0, first).findLast((frame) => frame.standIn !== null)?.standIn;
-  if (last !== undefined) {
+  if (last !== undefined && last !== null) {
     const painted = frames[first]!;
     expect(
       near(last.card, painted.cardAt),
