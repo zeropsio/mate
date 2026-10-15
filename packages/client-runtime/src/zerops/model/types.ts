@@ -346,6 +346,8 @@ export interface ZeropsOperation {
   readonly batch?: true;
   /** `deploy` only: the call delivered by pushing to a git remote (zcp's git-push strategy). */
   readonly strategy?: "git-push";
+  /** `devServer` only: zcp refused the call's parameters (INVALID_PARAMETER), so it read no server. */
+  readonly refused?: true;
   /**
    * `deploy` with the git-push strategy only: the change the push lands through
    * in HQ — the change a run's result follows — by its repository's name and its

@@ -192,6 +192,9 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
       server.url === undefined ? [] : [{ label: serverLabel(server), url: server.url }],
     ),
     target: { hostname: subject },
+    ...(phase === "failed" && decoded.document?.code === "INVALID_PARAMETER"
+      ? { refused: true as const }
+      : {}),
     hasResult: decoded.document !== undefined,
   };
 }

@@ -121,6 +121,35 @@ function ServiceName({ row, className }: { row: ZeropsServiceRow; className?: st
 }
 
 /**
+ * The named dev servers a dev service runs, one line each. One server is the
+ * service itself (named after its hostname) and adds nothing to the card.
+ */
+function DevServers({ servers }: { servers: ZeropsServiceRow["devServers"] }) {
+  if (servers === undefined || servers.length < 2) return null;
+  return (
+    <ul
+      className="mt-1 flex min-w-0 flex-col gap-0.5 text-xs leading-snug text-muted-foreground"
+      data-zerops-service-devservers
+    >
+      {servers.map((server) => (
+        <li
+          key={server.name}
+          className="flex min-w-0 items-baseline justify-between gap-2"
+          data-zerops-service-devserver={server.name}
+        >
+          <span className="min-w-0 truncate tabular-nums">
+            {server.port === undefined ? server.name : `${server.name} :${String(server.port)}`}
+          </span>
+          <span className="shrink-0">
+            {server.status.charAt(0).toUpperCase() + server.status.slice(1)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
  * A service's top line, shared by a card and by the stage folded into it.
  *
  * Both halves of a dev/stage pair are services, so both read the same way:
@@ -655,6 +684,7 @@ function ServiceCardBody({ row, usageRead }: { row: ZeropsServiceRow; usageRead:
         title={row.title}
         tone={row.tone}
       />
+      <DevServers servers={row.devServers} />
       <ServiceResources row={row} usageRead={usageRead} />
       {row.stage === undefined ||
       row.stageTone === undefined ||

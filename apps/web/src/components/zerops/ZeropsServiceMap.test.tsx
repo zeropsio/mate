@@ -12,6 +12,7 @@ import type {
   ZeropsTopologyService,
   ZeropsTopologyView,
 } from "@t3tools/client-runtime/zerops/topology";
+import liveThreeServersFixture from "../../../../../packages/client-runtime/src/zerops/model/builders/__fixtures__/dev-server.live-three-servers.json" with { type: "json" };
 import { ZeropsDataLinkContext } from "./dataLink";
 import { ZeropsServiceDetail, ZeropsServiceMap, type ZeropsMateOnMap } from "./ZeropsServiceMap";
 
@@ -113,7 +114,30 @@ const renderDetail = (view: ZeropsTopologyView, lifecycle?: ZeropsLifecycle): st
   return renderToStaticMarkup(<ZeropsServiceDetail row={row!} />);
 };
 
+const liveThreeServers: { envelope: unknown } = liveThreeServersFixture;
+
 describe("ZeropsServiceMap — the card", () => {
+  it("a dev row names each dev server zcp read, with its port and state", () => {
+    const html = render(topology([service({ hostname: "e1pnpm" })]), {
+      lifecycle: { envelope: liveThreeServers.envelope } as unknown as ZeropsLifecycle,
+    });
+    const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    expect(html).toContain("data-zerops-service-devservers");
+    for (const named of ["web :3000", "api :8080", "worker"]) expect(text).toContain(named);
+    expect(html.match(/data-zerops-service-devserver="/g)).toHaveLength(3);
+  });
+
+  it("a one-part dev row names no dev server: its hostname is already its name", () => {
+    const envelope = JSON.parse(JSON.stringify(liveThreeServers.envelope)) as {
+      services: Array<{ devServers: Array<{ name: string }> }>;
+    };
+    envelope.services[0]!.devServers = [{ name: "e1pnpm" }];
+    const html = render(topology([service({ hostname: "e1pnpm" })]), {
+      lifecycle: { envelope } as unknown as ZeropsLifecycle,
+    });
+    expect(html).not.toContain("data-zerops-service-devserver");
+  });
+
   it("draws a Data button on data-group cards only, and only when an opener is in context", () => {
     const view = topology([
       service({ hostname: "app", group: "runtimes" }),

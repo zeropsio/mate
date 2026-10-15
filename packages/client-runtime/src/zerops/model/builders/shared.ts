@@ -66,6 +66,8 @@ export interface BuiltCardFields {
   readonly batch?: true;
   /** `deploy` only: delivered by a push to a git remote. */
   readonly strategy?: "git-push";
+  /** `devServer` only: zcp refused the call's parameters, so it read no server. */
+  readonly refused?: true;
   /** `deploy` with the git-push strategy only: the pull request the branch lands through. */
   readonly pullRequest?: ZeropsOperationPullRequest;
   readonly resultStatus?: string;
