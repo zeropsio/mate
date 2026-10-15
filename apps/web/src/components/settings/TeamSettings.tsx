@@ -99,13 +99,20 @@ export function TeamList({
         ) : shown.length === 0 ? (
           <p className="tm-empty">Nobody matches “{query.trim()}”.</p>
         ) : (
-          <ul aria-label="People" className="tm-cards">
-            {shown.map((person) => (
-              <li className="grid" key={person.key}>
-                <PersonCard person={person} />
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul aria-label="People" className="tm-cards">
+              {shown.map((person) => (
+                <li className="grid" key={person.key}>
+                  <PersonCard person={person} />
+                </li>
+              ))}
+            </ul>
+            {view.kind === "people" && view.people.length === 1 && view.invite.length > 0 ? (
+              <p className="tm-empty" data-part="alone">
+                Only you so far. People you invite sign in with their own Zerops account.
+              </p>
+            ) : null}
+          </>
         )}
       </div>
     </SettingsSection>
