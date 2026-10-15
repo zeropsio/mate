@@ -132,7 +132,7 @@ function LiveProgress({ ending }: { readonly ending: "done" | "failed" }) {
     <Progress
       at={at}
       endedAtMs={over ? startedAtMs + STEPS.length * 3000 : null}
-      estimateMs={10_000}
+      estimateMs={15_000}
       identity={String(startedAtMs)}
       label="Setting up Recipe Box"
       nowMs={nowMs}
