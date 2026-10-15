@@ -22,7 +22,7 @@ const pressOf = (startedAt: number, pressedAt: number | undefined): MatePress =>
   organizationId: "org",
   startedAt,
   ...(pressedAt === undefined ? {} : { pressedAt }),
-  placement: { groupId: "g", groupName: "Recipe Box", kind: "mate", displayName: "Alba" },
+  placement: { groupId: "g", groupName: "Shop Front", kind: "mate", displayName: "Alba" },
   container: true,
   state: { kind: "pressing" },
 });
@@ -99,7 +99,7 @@ describe("one clock per Mate", () => {
           placed === undefined
             ? undefined
             : mateBornLineText(pendingBornLine({ startedAt: placed.startedAt }), nowMs),
-        page: arrivalSteps(progress, { name: "Alba", project: "Recipe Box" }, nowMs).find(
+        page: arrivalSteps(progress, { name: "Alba", project: "Shop Front" }, nowMs).find(
           (step) => step.state === "active",
         )?.time,
         card: renderToStaticMarkup(<ZeropsBirthLine nowMs={nowMs} progress={progress} />).includes(
