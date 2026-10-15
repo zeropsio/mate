@@ -1,11 +1,9 @@
 import { ProviderInstanceId } from "@t3tools/contracts";
-import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import { HelperMark, StatusDot as HelperStatusDot } from "~/components/AgentsPanel";
 import { AvailabilityDot } from "~/components/chat/AgentAvailability";
 import { ComposerStashBadge } from "~/components/chat/ComposerStashBadge";
 import { ComposerTasksBadge } from "~/components/chat/ComposerTasksBadge";
-import { ToneDot } from "~/components/chat/DetailRow";
 import { SkillChip } from "~/components/chat/SkillInlineText";
 import { TerminalContextInlineChip } from "~/components/chat/TerminalContextInlineChip";
 import {
@@ -25,19 +23,17 @@ import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
-const TONES: readonly ServiceStatusToneId[] = ["ok", "busy", "attention", "failed", "off"];
 const HELPER_STATUSES = ["running", "waiting", "idle", "completed", "failed", "cancelled"] as const;
-const PRIMITIVES = "apps/web/src/components/zerops/primitives";
 const AGENTS_PANEL = "apps/web/src/components/AgentsPanel.tsx";
 
 function LabelSpecimens() {
   return (
     <CensusLooks>
       <CensusCount
-        components={30}
-        files={50}
-        kit="the kit has Badge with 9 variants, rendered in 10 files"
-        looks={16}
+        components={13}
+        files={14}
+        kit="the kit has Badge with 5 tones and a dot form, rendered in 30 files"
+        looks={6}
       />
 
       <CensusLook files={1} name="8 px status dots" note="a dot with a ping, no word" uses={1}>
@@ -56,14 +52,7 @@ function LabelSpecimens() {
         </CensusComponent>
       </CensusLook>
 
-      <CensusLook files={8} name="6 px bare dots" note="a state's colour with no word" uses={14}>
-        <CensusComponent name="ToneDot" source="apps/web/src/components/chat/DetailRow.tsx">
-          {TONES.map((tone) => (
-            <Specimen key={tone} label={specimenLabel({ tone })}>
-              <ToneDot tone={tone} />
-            </Specimen>
-          ))}
-        </CensusComponent>
+      <CensusLook files={6} name="6 px bare dots" note="a state's colour with no word" uses={12}>
         <CensusComponent
           name="AvailabilityDot"
           source="apps/web/src/components/chat/AgentAvailability.tsx"
