@@ -598,7 +598,7 @@ export function ProviderInstanceCard({
         </code>
       ) : null}
       {driverOption?.badgeLabel ? (
-        <Badge variant="warning" size="sm" className="shrink-0">
+        <Badge tone="warning" size="sm" className="shrink-0">
           {driverOption.badgeLabel}
         </Badge>
       ) : null}

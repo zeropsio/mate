@@ -76,7 +76,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
             </span>
           ) : null}
           {props.unavailable ? (
-            <Badge variant="outline" size="sm">
+            <Badge tone="neutral" size="sm">
               Unavailable
             </Badge>
           ) : null}

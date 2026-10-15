@@ -340,7 +340,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             <ZapIcon aria-label="Fast mode on" className="size-3.5 shrink-0 fill-current" />
           ) : null}
           {selectedModel?.isUnavailable ? (
-            <Badge variant="outline" size="sm">
+            <Badge tone="neutral" size="sm">
               Unavailable
             </Badge>
           ) : null}
@@ -419,7 +419,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
           </Tooltip>
           {selectedModel?.isUnavailable ? (
-            <Badge variant="outline" size="sm">
+            <Badge tone="neutral" size="sm">
               Unavailable
             </Badge>
           ) : null}

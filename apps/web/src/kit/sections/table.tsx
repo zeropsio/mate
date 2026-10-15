@@ -12,14 +12,14 @@ import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
 
 const ROWS = [
-  { name: "storefront", runtime: "Node.js 22", state: "Running", variant: "success" as const },
-  { name: "db", runtime: "PostgreSQL 16", state: "Running", variant: "success" as const },
-  { name: "cache", runtime: "Valkey 7.2", state: "Stopped", variant: "secondary" as const },
+  { name: "storefront", runtime: "Node.js 22", state: "Running", tone: "success" as const },
+  { name: "db", runtime: "PostgreSQL 16", state: "Running", tone: "success" as const },
+  { name: "cache", runtime: "Valkey 7.2", state: "Stopped", tone: "neutral" as const },
   {
     name: "a-service-with-a-name-long-enough-to-wrap-or-truncate",
     runtime: "Go 1.23",
     state: "Needs attention",
-    variant: "warning" as const,
+    tone: "warning" as const,
   },
 ];
 
@@ -47,7 +47,7 @@ export default defineKitSection({
                 <TableCell>{row.name}</TableCell>
                 <TableCell>{row.runtime}</TableCell>
                 <TableCell>
-                  <Badge variant={row.variant}>{row.state}</Badge>
+                  <Badge tone={row.tone}>{row.state}</Badge>
                 </TableCell>
               </TableRow>
             ))}

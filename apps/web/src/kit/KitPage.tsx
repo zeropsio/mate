@@ -100,7 +100,7 @@ function KitFrame({
         <SidebarHeader>
           <div className="flex items-center justify-between gap-2 px-2 pt-1">
             <h1 className="m-0 font-semibold text-sm">Kit</h1>
-            <Badge variant="outline">{sections.length} sections</Badge>
+            <Badge tone="neutral">{sections.length} sections</Badge>
           </div>
         </SidebarHeader>
         <SidebarContent>
@@ -264,8 +264,8 @@ function KitSectionView({ section }: { readonly section: KitSection }) {
           <h2 className="m-0 font-semibold text-lg" id={`${section.id}-title`}>
             {section.title}
           </h2>
-          <Badge variant="outline">{section.group}</Badge>
-          <Badge variant="secondary">{section.kind}</Badge>
+          <Badge tone="neutral">{section.group}</Badge>
+          <Badge tone="neutral">{section.kind}</Badge>
         </div>
         <p className="m-0 text-muted-foreground text-sm">{section.purpose}</p>
         <code className="font-mono text-muted-foreground/70 text-xs">{section.source}</code>

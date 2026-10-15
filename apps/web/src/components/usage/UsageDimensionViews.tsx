@@ -73,7 +73,7 @@ export function OwnerName({
     <span className="flex min-w-0 items-center gap-1.5">
       <span className="truncate">{owner.name}</span>
       {owner.isViewer ? (
-        <Badge size="sm" variant="secondary">
+        <Badge size="sm" tone="neutral">
           You
         </Badge>
       ) : null}

@@ -285,12 +285,12 @@ function DiscoveryItemRow({
               <span className="truncate text-sm font-medium text-foreground">{item.label}</span>
               {version ? <code className="text-xs text-muted-foreground">{version}</code> : null}
               {isVcsNotReady(item) ? (
-                <Badge variant="warning" size="sm">
+                <Badge tone="warning" size="sm">
                   Coming Soon
                 </Badge>
               ) : null}
               {authStatus?.badge ? (
-                <Badge variant={authStatus.badge} size="sm">
+                <Badge tone={authStatus.badge} size="sm">
                   {authStatus.label}
                 </Badge>
               ) : null}
