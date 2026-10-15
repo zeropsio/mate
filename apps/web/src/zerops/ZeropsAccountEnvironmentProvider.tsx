@@ -24,6 +24,8 @@ import { webEnvironmentPorts } from "./environmentPorts";
 import { useAccountStoreForAdapters } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
+import { Button } from "../components/ui/button";
+import { Failure } from "../components/ui/failure";
 
 /** The verified session mounts the account's Mate adapter. Zerops has one transport, in AccountData. */
 export function ZeropsAccountEnvironmentProvider({
@@ -175,14 +177,18 @@ export function ZeropsDataStartupFailure({
   readonly signOut: () => void;
 }) {
   return (
-    <div role="alert" className="p-8">
-      Could not start Zerops data. {message}{" "}
-      <button type="button" onClick={retry}>
-        Try again
-      </button>{" "}
-      <button type="button" onClick={signOut}>
-        Sign out
-      </button>
-    </div>
+    <Failure
+      action={
+        <>
+          <Button onClick={retry}>Try again</Button>
+          <Button onClick={signOut} variant="ghost">
+            Sign out
+          </Button>
+        </>
+      }
+      cause="Mate couldn't start reading your Zerops account."
+      details={message}
+      size="page"
+    />
   );
 }
