@@ -183,8 +183,16 @@ export function SettingsRow({
       className={cn("rounded-xl", children ? "pb-1" : undefined, className)}
     >
       <Row
-        badges={resetAction}
-        control={control}
+        control={
+          resetAction || control ? (
+            <>
+              {/* Before the control, in the room it has: its line's height, so showing it never
+                  grows the row. */}
+              {resetAction ? <span className="-my-1 flex">{resetAction}</span> : null}
+              {control}
+            </>
+          ) : undefined
+        }
         line={
           lined ? (
             <>
