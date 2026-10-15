@@ -94,6 +94,8 @@ import {
   type ReviewReleaseRow,
 } from "./ZeropsReviewSurface";
 import { answeredDeploys } from "../ZeropsDeployAnswer";
+import { jobInFlight } from "@t3tools/client-runtime/zerops/hq";
+import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
 
 type ReleaseTarget = Extract<ReviewTarget, { readonly kind: "release" | "rollback" }>;
 
@@ -295,6 +297,8 @@ function ReleaseData({
   const productionProject =
     production?.target.kind === "zerops" ? production.target.projectId : undefined;
   const productionAddresses = useProductionAddresses(productionProject);
+  // Its Where row follows HQ's deploys of it: released is said with them, never before.
+  const followed = useDeployAnswerFollowing(answeredDeploys(press)).answer;
   const {
     outcome,
     held: keep,
@@ -305,6 +309,7 @@ function ReleaseData({
     held,
     press,
     clockMs,
+    deploying: followed?.jobs.some(jobInFlight) === true,
     read: (tag) =>
       releaseFacts({
         tag,
