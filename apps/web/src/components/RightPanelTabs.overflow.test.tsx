@@ -116,7 +116,7 @@ describe("RightPanelTabs overflow", () => {
   ])("names the tabs the strip cuts off as $label", ({ stripWidth, label }) => {
     layOut(stripWidth);
     render();
-    expect(host.querySelector("[data-right-panel-hidden-tabs]")?.getAttribute("aria-label")).toBe(
+    expect(host.querySelector("[data-slot='tab-strip-more']")?.getAttribute("aria-label")).toBe(
       label,
     );
   });

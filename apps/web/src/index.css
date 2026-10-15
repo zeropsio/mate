@@ -8531,44 +8531,6 @@ label.tm-advanced-row:not([data-disabled]) {
   margin-top: -6px;
 }
 
-.ov-filter {
-  display: inline-flex;
-  height: 30px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 12px;
-  border-radius: 999px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong),
-    scale 160ms var(--ease-out-strong);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .ov-filter:hover {
-    background: color-mix(in oklab, var(--foreground) 5%, transparent);
-    color: var(--foreground);
-  }
-}
-
-.ov-filter:active {
-  scale: 0.96;
-}
-
-.ov-filter[data-current] {
-  background: color-mix(in oklab, var(--foreground) 8%, transparent);
-  color: var(--foreground);
-}
-
-.ov-filter:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
 .ov-filter-count {
   min-width: 18px;
   height: 18px;
@@ -8583,7 +8545,7 @@ label.tm-advanced-row:not([data-disabled]) {
   font-variant-numeric: tabular-nums;
 }
 
-.ov-filter[data-show="waiting"] .ov-filter-count {
+[data-show="waiting"] > .ov-filter-count {
   background: var(--zerops-status-attention-surface);
   color: var(--zerops-status-attention-text);
 }

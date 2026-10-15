@@ -69,7 +69,6 @@ import {
   NumberFieldIncrement,
   NumberFieldInput,
 } from "../ui/number-field";
-import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
@@ -77,7 +76,7 @@ import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import { UsageProviderSettings } from "./UsageProviderSettings";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
 import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
-import { providerSettingsTabClassName } from "./providerSettingsTabs";
+import { Tab, TabStrip } from "../ui/tab-strip";
 import { searchableSetting } from "./settingsSearch";
 import {
   backgroundActivityOverrideSettings,
@@ -250,11 +249,21 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
   const deviceTabs =
     !onlyPrimaryDevice && options.length > 0 ? (
       <>
-        <ScrollArea radius="none" hideScrollbars scrollFade className="h-11 min-w-0">
-          <div
-            role="group"
-            aria-label="Devices"
-            className="flex h-full w-max min-w-full border-b border-border/70 px-3 sm:px-4"
+        <div
+          aria-label="Devices"
+          className="flex h-11 min-w-0 items-center border-b border-border/70 px-3 sm:px-4"
+          role="group"
+        >
+          <TabStrip
+            activeId={effectiveEnvironmentId}
+            items={options.map((environment) => ({
+              id: environment.environmentId,
+              label: environment.label,
+            }))}
+            onSelect={(id) => {
+              const found = options.find((environment) => environment.environmentId === id);
+              if (found !== undefined) setSelectedEnvironmentId(found.environmentId);
+            }}
           >
             {options.map((environment) => {
               const Icon = providerEnvironmentIcon(environment);
@@ -265,32 +274,34 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
                 <Tooltip key={environment.environmentId}>
                   <TooltipTrigger
                     render={
-                      <button
-                        type="button"
+                      <Tab
+                        active={selected}
                         aria-pressed={selected}
-                        className={cn(providerSettingsTabClassName(selected), "gap-2 text-left")}
                         onClick={() => setSelectedEnvironmentId(environment.environmentId)}
-                      >
-                        <Icon className="size-3.5 shrink-0" aria-hidden />
-                        <span className="max-w-40 truncate">{environment.label}</span>
-                        <ConnectionStatusDot
-                          dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
-                          pingClassName={connectionPhasePingClassName(environment.connection.phase)}
-                        />
-                        <span className="sr-only">
-                          {detail}, {statusText}
-                        </span>
-                      </button>
+                        render={<button type="button" />}
+                        size="md"
+                        tabId={environment.environmentId}
+                      />
                     }
-                  />
+                  >
+                    <Icon className="size-3.5 shrink-0" aria-hidden />
+                    <span className="max-w-40 truncate">{environment.label}</span>
+                    <ConnectionStatusDot
+                      dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
+                      pingClassName={connectionPhasePingClassName(environment.connection.phase)}
+                    />
+                    <span className="sr-only">
+                      {detail}, {statusText}
+                    </span>
+                  </TooltipTrigger>
                   <TooltipPopup side="top">
                     {detail} · {statusText}
                   </TooltipPopup>
                 </Tooltip>
               );
             })}
-          </div>
-        </ScrollArea>
+          </TabStrip>
+        </div>
         <p className="px-3 pt-2 text-xs text-muted-foreground sm:px-4">
           Only Mates the app is connected to.
         </p>

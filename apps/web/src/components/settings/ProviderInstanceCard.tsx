@@ -43,7 +43,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DriverOption } from "./providerDriverMeta";
-import { providerSettingsTabClassName } from "./providerSettingsTabs";
+import { Tab, TabStrip } from "../ui/tab-strip";
 import { ProviderSettingsForm } from "./ProviderSettingsForm";
 import { ProviderModelsSection } from "./ProviderModelsSection";
 import { ProviderInstanceIcon, providerInstanceInitials } from "../chat/ProviderInstanceIcon";
@@ -803,25 +803,38 @@ export function ProviderInstanceCard({
         </div>
       </div>
 
-      <div className="flex h-11 shrink-0 border-b border-border/70 px-1">
-        {driverOption !== undefined ? (
-          <button
-            type="button"
-            aria-pressed={visibleTab === "models"}
-            className={providerSettingsTabClassName(visibleTab === "models")}
-            onClick={() => setActiveTab("models")}
-          >
-            Models
-          </button>
-        ) : null}
-        <button
-          type="button"
-          aria-pressed={visibleTab === "configuration"}
-          className={providerSettingsTabClassName(visibleTab === "configuration")}
-          onClick={() => setActiveTab("configuration")}
+      <div className="flex h-11 shrink-0 items-center border-b border-border/70 px-2">
+        <TabStrip
+          activeId={visibleTab}
+          items={[
+            ...(driverOption !== undefined ? [{ id: "models", label: "Models" }] : []),
+            { id: "configuration", label: "Configuration" },
+          ]}
+          onSelect={(id) => setActiveTab(id === "models" ? "models" : "configuration")}
         >
-          Configuration
-        </button>
+          {driverOption !== undefined ? (
+            <Tab
+              active={visibleTab === "models"}
+              aria-pressed={visibleTab === "models"}
+              onClick={() => setActiveTab("models")}
+              render={<button type="button" />}
+              size="md"
+              tabId="models"
+            >
+              Models
+            </Tab>
+          ) : null}
+          <Tab
+            active={visibleTab === "configuration"}
+            aria-pressed={visibleTab === "configuration"}
+            onClick={() => setActiveTab("configuration")}
+            render={<button type="button" />}
+            size="md"
+            tabId="configuration"
+          >
+            Configuration
+          </Tab>
+        </TabStrip>
       </div>
 
       <div

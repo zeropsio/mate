@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { tabsOutOfView } from "./RightPanelTabs.logic";
+import { tabsOutOfView } from "./tabStrip.logic";
 
 describe("tabsOutOfView", () => {
   // Ten tabs in a 540 px panel cut "…ff" and "…les" off with nothing to reach them (stress run 3).

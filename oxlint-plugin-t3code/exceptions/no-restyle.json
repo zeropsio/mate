@@ -264,14 +264,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/RightPanelTabs.tsx",
-    "kind": "Literal",
-    "fingerprint": "<ScrollArea> drag-region in \"drag-region\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> bg-sidebar-row-active in \"bg-sidebar-row-active text-sidebar-foreground\"",

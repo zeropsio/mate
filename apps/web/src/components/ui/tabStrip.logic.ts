@@ -15,7 +15,7 @@ export function tabsOutOfView<Id extends string>(
     .map((tab) => tab.id);
 }
 
-/** The overflow menu's name: how many tabs the strip cuts off. */
+/** The overflow menu's name: how many tabs the strip cuts off. Its face says "3 more". */
 export function hiddenTabsLabel(count: number): string {
   return count === 1 ? "1 more tab" : `${count} more tabs`;
 }

@@ -5,6 +5,7 @@
  */
 import { Link } from "@tanstack/react-router";
 
+import { Tab } from "../../ui/tab-strip";
 import { MateFace } from "../primitives";
 import type { OverviewShow } from "./projectsView.logic";
 
@@ -38,40 +39,45 @@ export function OverviewFilters({
         const words = (
           <>
             {filter.label}
-            {count === undefined || count === 0 ? null : (
-              <span className="ov-filter-count">{count}</span>
-            )}
+            {/* Its count even at none: the filter says what it holds before it is pressed. */}
+            {count === undefined ? null : <span className="ov-filter-count">{count}</span>}
           </>
         );
         if (onShow !== undefined) {
           return (
-            <button
+            <Tab
+              active={current}
               aria-pressed={current}
-              className="ov-filter"
-              data-current={current ? "" : undefined}
               data-show={filter.show ?? "all"}
               key={filter.label}
               onClick={() => onShow(filter.show)}
-              type="button"
+              render={<button type="button" />}
+              size="md"
+              tabId={filter.show ?? "all"}
             >
               {words}
-            </button>
+            </Tab>
           );
         }
         return (
           // Current only on its own address: by default an empty search is a part of every other,
           // and All read as current under each filter too.
-          <Link
-            activeOptions={{ exact: true }}
-            className="ov-filter"
-            data-current={current ? "" : undefined}
+          <Tab
+            active={current}
             data-show={filter.show ?? "all"}
             key={filter.label}
-            search={filter.show === undefined ? {} : { show: filter.show }}
-            to="/zerops"
+            render={
+              <Link
+                activeOptions={{ exact: true }}
+                search={filter.show === undefined ? {} : { show: filter.show }}
+                to="/zerops"
+              />
+            }
+            size="md"
+            tabId={filter.show ?? "all"}
           >
             {words}
-          </Link>
+          </Tab>
         );
       })}
     </nav>
