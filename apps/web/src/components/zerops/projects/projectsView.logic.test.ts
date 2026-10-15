@@ -9,6 +9,7 @@ import {
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { HqEnvironmentId, ProjectId, type EnvironmentId } from "@t3tools/contracts";
 import { environmentRow } from "./flowTestFixtures";
 import { describe, expect, it } from "vite-plus/test";
@@ -33,6 +34,7 @@ import {
   projectRowLine,
   withoutOfficialHq,
   shownUngrouped,
+  overviewPaints,
 } from "./projectsView.logic";
 
 /** One comparison HQ answered for `appdev`: what a release would put live. */
@@ -1130,4 +1132,96 @@ it("Every Add door accepts HQ Git authority without a recipe and still holds occ
   expect(tiersAddable({ ...input, hq: [{ id: "git-prod", tier: "production" }] })).toEqual([
     "stage",
   ]);
+});
+
+describe("overviewPaints — the overview paints its projects once, whole", () => {
+  const known = (
+    coverage: "complete" | "partial",
+    freshness: "live" | "revalidating",
+  ): Shown<ReadonlyArray<never>> => ({
+    state: "known",
+    value: [],
+    asOf: { atMs: 0 } as never,
+    coverage,
+    freshness: freshness === "live" ? { kind: "live" } : { kind: "revalidating", sinceMs: 0 },
+  });
+  const reading: Shown<ReadonlyArray<never>> = { state: "reading", sinceMs: 0, attempt: 1 };
+  const failed: Shown<ReadonlyArray<never>> = {
+    state: "failed",
+    failure: { kind: "transient" } as never,
+    atMs: 0,
+    attempt: 1,
+    retryAtMs: null,
+  };
+  const base = { sourcesSettled: true, waitedOut: false, drawn: false, troubled: false };
+  it.each([
+    {
+      name: "The overview waits while its projects are first read",
+      listing: reading,
+      ...base,
+      paints: false,
+    },
+    {
+      name: "The overview waits while its projects are read in part",
+      listing: known("partial", "live"),
+      ...base,
+      paints: false,
+    },
+    {
+      name: "The overview waits for the first read to finish, never saying Updating…",
+      listing: known("complete", "revalidating"),
+      ...base,
+      paints: false,
+    },
+    {
+      name: "The overview waits for the menu's sources, so both land together",
+      listing: known("complete", "live"),
+      ...base,
+      sourcesSettled: false,
+      paints: false,
+    },
+    {
+      name: "The overview paints once its projects and the menu's sources are read",
+      listing: known("complete", "live"),
+      ...base,
+      paints: true,
+    },
+    {
+      name: "A failed read paints the page, which says so",
+      listing: failed,
+      ...base,
+      paints: true,
+    },
+    {
+      name: "Zerops not answering paints the page, which says so",
+      listing: reading,
+      ...base,
+      troubled: true,
+      paints: true,
+    },
+    {
+      name: "Past the wait, what is read paints",
+      listing: known("partial", "revalidating"),
+      ...base,
+      sourcesSettled: false,
+      waitedOut: true,
+      paints: true,
+    },
+    {
+      name: "Past the wait, nothing read yet still waits",
+      listing: reading,
+      ...base,
+      waitedOut: true,
+      paints: false,
+    },
+    {
+      name: "Once painted, a read again never takes the page back",
+      listing: reading,
+      ...base,
+      drawn: true,
+      paints: true,
+    },
+  ])("$name", ({ name: _name, paints, ...input }) => {
+    expect(overviewPaints(input)).toBe(paints);
+  });
 });

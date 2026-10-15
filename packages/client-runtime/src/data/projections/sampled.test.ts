@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ORG } from "../__fixtures__/account.ts";
+import { ORG, pastGrace } from "../__fixtures__/account.ts";
 import { locationsScope } from "../families/organizationLocations.ts";
 import { memberRolesScope } from "../families/memberProjectRoles.ts";
 import { membersScope } from "../families/organizationMembers.ts";
@@ -63,6 +63,8 @@ describe("a sampled read, as a screen reads it", () => {
   it.each<{
     readonly name: string;
     readonly inputs: ReadonlyArray<AccountInput>;
+    /** The grace of each stream still in one ran out. */
+    readonly pastGrace?: boolean;
     readonly expected: Partial<MembersRead>;
   }>([
     {
@@ -110,9 +112,25 @@ describe("a sampled read, as a screen reads it", () => {
       expected: { members: [ANNA], status: "loading", settled: false, refused: false },
     },
     {
+      name: "A first failed read retried within the grace still reads as reading",
+      inputs: [...begun(MEMBERS), failed(MEMBERS, "transient")],
+      expected: { members: [], status: "loading", settled: false, refused: false },
+    },
+    {
       name: "its read lost on the way, nothing read: failed, retried",
       inputs: [...begun(MEMBERS), failed(MEMBERS, "transient")],
+      pastGrace: true,
       expected: { members: [], status: "failed", settled: false, refused: false },
+    },
+    {
+      name: "A revalidation retried within the grace reads as reading, its value shown",
+      inputs: [
+        ...begun(MEMBERS),
+        ...answered(MEMBERS, "organizationMembers", [ANNA]),
+        revalidating(MEMBERS),
+        failed(MEMBERS, "transient"),
+      ],
+      expected: { members: [ANNA], status: "loading", settled: false, refused: false },
     },
     {
       name: "a revalidation lost on the way: the value stays, not settled",
@@ -122,6 +140,7 @@ describe("a sampled read, as a screen reads it", () => {
         revalidating(MEMBERS),
         failed(MEMBERS, "transient"),
       ],
+      pastGrace: true,
       expected: { members: [ANNA], status: "failed", settled: false, refused: false },
     },
     {
@@ -129,8 +148,9 @@ describe("a sampled read, as a screen reads it", () => {
       inputs: [...begun(MEMBERS), failed(MEMBERS, "authoritative-denial")],
       expected: { members: [], status: "failed", settled: false, refused: true },
     },
-  ])("$name", ({ inputs, expected }) => {
-    const reads = readsOfState(apply(emptyAccount, inputs));
+  ])("$name", ({ inputs, pastGrace: graceRanOut, expected }) => {
+    const state = apply(emptyAccount, inputs);
+    const reads = readsOfState(graceRanOut === true ? pastGrace(state) : state);
     expect(organizationMembers.derive(reads, { orgId: ORG, clientId: ORG })).toMatchObject(
       expected,
     );
@@ -151,12 +171,14 @@ describe("a sampled read, as a screen reads it", () => {
 
   it("answers each service's agents apart: read, failed, and not read yet", () => {
     const reads = readsOfState(
-      apply(emptyAccount, [
-        ...begun(agentsScope(ORG, "s1")),
-        ...answered(agentsScope(ORG, "s1"), "serviceAgents", ["codex"]),
-        ...begun(agentsScope(ORG, "s2")),
-        failed(agentsScope(ORG, "s2"), "transient"),
-      ]),
+      pastGrace(
+        apply(emptyAccount, [
+          ...begun(agentsScope(ORG, "s1")),
+          ...answered(agentsScope(ORG, "s1"), "serviceAgents", ["codex"]),
+          ...begun(agentsScope(ORG, "s2")),
+          failed(agentsScope(ORG, "s2"), "transient"),
+        ]),
+      ),
     );
     const agents = servicesAgents.derive(reads, { orgId: ORG, serviceIds: ["s1", "s2", "s3"] });
     expect(agents.s1).toMatchObject({ value: ["codex"], status: "ready" });
@@ -186,12 +208,14 @@ describe("a sampled read, as a screen reads it", () => {
 
 it("a failed sampled revalidation retains its PublicRead and failure without claiming ready", () => {
   const reads = readsOfState(
-    apply(emptyAccount, [
-      ...begun(MEMBERS),
-      ...answered(MEMBERS, "organizationMembers", [ANNA]),
-      revalidating(MEMBERS),
-      failed(MEMBERS, "transient"),
-    ]),
+    pastGrace(
+      apply(emptyAccount, [
+        ...begun(MEMBERS),
+        ...answered(MEMBERS, "organizationMembers", [ANNA]),
+        revalidating(MEMBERS),
+        failed(MEMBERS, "transient"),
+      ]),
+    ),
   );
   expect(organizationMembers.derive(reads, { orgId: ORG, clientId: ORG })).toMatchObject({
     members: [ANNA],

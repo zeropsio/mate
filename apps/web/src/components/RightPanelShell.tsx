@@ -60,6 +60,8 @@ export function PreviewPanelShell(props: {
   widthStorageKey?: string;
   /** Overrides the initial width (px) before the user has resized the panel. */
   defaultWidth?: number;
+  /** A panel standing in for one on its way: seen in its place, never reached. */
+  inert?: boolean;
   children: ReactNode;
 }) {
   const isInline = props.mode === "inline";
@@ -88,6 +90,7 @@ export function PreviewPanelShell(props: {
       )}
       style={isInline && !props.maximized ? { width: `${width}px` } : undefined}
       data-preview-panel-mode={props.mode}
+      inert={props.inert}
       data-preview-panel-maximized={props.maximized ? "true" : "false"}
     >
       {isInline && !props.maximized ? <RightPanelResizeHandle handlers={handlers} /> : null}

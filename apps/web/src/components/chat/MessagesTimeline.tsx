@@ -213,6 +213,7 @@ import {
   type TimelineRowActivityState,
   type TimelineRowSharedState,
 } from "./timelineContext";
+import { makeTimelineRowReads, TimelineRowReadsCtx } from "./timelineRowReads";
 import type { DockModel } from "./conversationDock.logic";
 import {
   ErrorLine,
@@ -862,6 +863,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The list stands where it stays: a reading position put back, or the end
   // reached. Until then it is out of sight (`data-timeline-placing`).
   const [listPlaced, setListPlaced] = useState(false);
+  // Rows still reading what they show keep the conversation out of sight while it is placed.
+  const [rowReads] = useState(makeTimelineRowReads);
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
@@ -915,6 +918,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       // the scrolls it hears: the list's own reading goes stale mid-glide.
       follows: () => followingEndRef.current,
       room: () => followRoomRef.current,
+      // Placed out of sight, it stands at its end at once, so it is shown standing still.
+      unseen: () => !listPlacedRef.current,
       placeEnd: () => {
         void listRef.current?.scrollToEnd({ animated: false, viewOffset: followRoomRef.current });
       },
@@ -2049,6 +2054,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         ),
       );
     };
+    const placingSince = performance.now();
     const tick = () => {
       frame = null;
       if (cancelled) return;
@@ -2057,6 +2063,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         {
           listReady,
           offBy: target === null ? null : viewport.scrollTop - target,
+          elapsedMs: performance.now() - placingSince,
+          rowsReading: rowReads.reading(),
         },
         stableFrames,
       );
@@ -2065,11 +2073,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         if (noticeResize === null) finish();
         return;
       }
-      if (judged.verdict === "correct" && target !== null) {
+      if ((judged.verdict === "correct" || judged.verdict === "settle") && target !== null) {
         scrollOwn(viewport, target);
-        // The loaded rows and this measured anchor are now placed. Streaming may move the end
-        // every frame, so verify the scroll we applied instead of waiting for silence.
-        if (noticeResize === null && Math.abs(viewport.scrollTop - target) <= 1) {
+        // Hidden until the rows' late measurements stop moving it (LegendList places rows a
+        // frame late), so the first frame shown is the settled one; a Mate streaming its answer
+        // moves the end every frame, so past the deadline it shows where it now stands.
+        if (judged.verdict === "settle" && noticeResize === null) {
           finish();
           return;
         }
@@ -2246,7 +2255,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   return (
     <>
       <div className="h-full min-h-0" data-conversation-content="">
-        {content}
+        <TimelineRowReadsCtx value={rowReads}>{content}</TimelineRowReadsCtx>
       </div>
       {kept?.shown === false || pauseStageId !== null ? null : (
         <ConversationOpeningStage

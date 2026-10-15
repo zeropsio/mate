@@ -10,8 +10,9 @@
  * blink, a smile — and stops once every mark has landed on its pose. What
  * starts motion again re-arms it: the pointer, a hover, a mark mounting or
  * coming into view, and one timer for what is scheduled (the next blink or
- * glance about, falling asleep). The idle bob and a waking Mate's swell are
- * the stylesheet's (`MateMark.css`), never a frame of script.
+ * glance about, falling asleep). Once the person has been away 45 s nothing is
+ * scheduled at all, a held mark's blink included. The idle bob and a waking
+ * Mate's swell are the stylesheet's (`MateMark.css`), never a frame of script.
  *
  * Nothing here touches React state: a mark updates by writing attributes on
  * nodes it already holds, and only those whose value changed.
@@ -519,9 +520,10 @@ function tick(
   mark.rotY = lerpTo(mark.rotY, rotYTarget, 5.5, dt);
   moving ||= mark.rotX !== rotXTarget || mark.rotY !== rotYTarget;
 
-  // Lids, with a blink folded in while idle.
+  // Lids, with a blink folded in while idle — only while the person is about: a held mark never
+  // falls asleep, so a menu of faces would otherwise keep the loop running all day.
   let [targetOpen, targetWide, targetLift] = MATE_MARK_LIDS[state] ?? MATE_MARK_LIDS.idle;
-  if (!reduced && (state === "idle" || state === "working") && awake) {
+  if (!reduced && !pointer.asleep && (state === "idle" || state === "working") && awake) {
     if (mark.blinkAt < 0 && now >= mark.nextBlink) mark.blinkAt = now;
     if (mark.blinkAt >= 0) {
       if (now - mark.blinkAt < 140) targetOpen = 0;

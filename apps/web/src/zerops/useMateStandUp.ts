@@ -17,6 +17,7 @@ import { useThreadShells } from "../state/entities";
 import { zeropsMateAt } from "./mateIdentities";
 import {
   mateStandUpAskLine,
+  mateStandUpConversation,
   mateStandUpHoldsComposer,
   type MateStandUpConversation,
 } from "./mateStandUp";
@@ -46,10 +47,12 @@ export function useMateStandUpAskLine(threadRef: ScopedThreadRef | null): string
 
 export function useMateStandUp(input: {
   readonly environmentId: EnvironmentId | null;
-  /** The conversation on screen while it is read live from its Mate — never a cached copy. */
+  /** The server conversation on screen, as read so far; null for a draft. */
   readonly threadRef: ScopedThreadRef | null;
-  /** The messages it holds, as read live. */
+  /** The messages it holds, as read so far. */
   readonly messageCount: number;
+  /** It is read live from its Mate, not a copy being read again (`mateStandUpConversation`). */
+  readonly live: boolean;
 }): {
   readonly holdsComposer: boolean;
   readonly sendFailed: boolean;
@@ -57,7 +60,7 @@ export function useMateStandUp(input: {
   readonly retrying: boolean;
   readonly retry: () => Promise<void>;
 } {
-  const { environmentId, threadRef, messageCount } = input;
+  const { environmentId, threadRef, messageCount, live } = input;
   const directory = useZeropsMateDirectory();
   const whoLivesHere = environmentId === null ? null : zeropsMateAt(directory, environmentId);
   const marker = whoLivesHere?.kind === "mate" ? whoLivesHere.mate.standUp : undefined;
@@ -74,8 +77,11 @@ export function useMateStandUp(input: {
       ).primary?.id === threadRef.threadId,
     [threadRef, threads],
   );
-  const conversation: MateStandUpConversation =
-    threadRef === null || !main ? "unknown" : messageCount === 0 ? "empty" : "started";
+  const conversation: MateStandUpConversation = mateStandUpConversation({
+    main: threadRef === null ? null : main,
+    messageCount,
+    live,
+  });
   const origin = useMateOfEnvironment(environmentId)?.origin ?? undefined;
   const own = marker !== undefined && marker.by === viewer;
   const { setup } = useMateSetup(

@@ -29,6 +29,17 @@ export function bootWaitLine(conversationRoute: boolean): string | null {
   return conversationRoute ? null : READING_PROJECTS_LINE;
 }
 
+/** What any other surface says while its code loads. */
+export const LOADING_LINE = "Loading…";
+
+/**
+ * What the router says while a route's code loads: on the overview's route, the overview's own
+ * wait, so a reload says one line from the boot frame to the cards; anywhere else, that it loads.
+ */
+export function routePendingLine(pathname: string): string {
+  return pathname === "/" || pathname === "/zerops" ? READING_PROJECTS_LINE : LOADING_LINE;
+}
+
 /**
  * How long until a wait's line shows: `null` never (no words), 0 at once — the same words are
  * already on screen, or the beat has passed — else what is left of the beat.

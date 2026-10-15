@@ -670,6 +670,54 @@ describe("agentActivityAt", () => {
   ] as const)("is %s", (_, thread, expected) => {
     expect(agentActivityAt(thread)).toBe(expected);
   });
+
+  // The owner, 2026-10-15: "the 'last active' is not reliable". A row's time is the last thing a
+  // person would call activity in the conversation, never a bump of the chat's own record.
+  it.each([
+    {
+      name: "A failed run dates the row by its end",
+      thread: shell({ latestTurn: { ...turn, state: "error" } }),
+      at: turn.completedAt,
+    },
+    {
+      name: "An interrupted run dates the row by its end",
+      thread: shell({ latestTurn: { ...turn, state: "interrupted" } }),
+      at: turn.completedAt,
+    },
+    {
+      name: "A restart never re-dates a Mate's row",
+      thread: shell({
+        latestTurn: turn,
+        latestUserMessageAt: turn.requestedAt,
+        updatedAt: "2026-09-05T18:00:00.000Z",
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-09-05T18:00:00.000Z",
+        },
+      }),
+      at: turn.completedAt,
+    },
+    {
+      name: "A message the person sent after the last run ended dates the row",
+      thread: shell({ latestTurn: turn, latestUserMessageAt: "2026-09-05T10:07:00.000Z" }),
+      at: "2026-09-05T10:07:00.000Z",
+    },
+    {
+      name: "A run at work dates the row by its start, whatever is sent into it",
+      thread: shell({
+        latestTurn: { ...turn, state: "running", completedAt: null },
+        latestUserMessageAt: "2026-09-05T10:03:00.000Z",
+      }),
+      at: turn.startedAt,
+    },
+  ])("$name", ({ thread, at }) => {
+    expect(agentActivityAt(thread)).toBe(at);
+  });
 });
 
 describe("mateFaceFor", () => {
@@ -1344,6 +1392,38 @@ describe("rowAgentActivity — an engine Mate's menu state off its own row", () 
     );
     expect(rowAgentActivity(row({ latestRun: null }), ENV, undefined, STARTED).at).toBe(
       "2026-10-08T09:05:00.000Z",
+    );
+  });
+
+  const RESTARTED = ENDED + 3_600_000;
+  it.each([
+    {
+      name: "A failed run dates the row by its end",
+      patch: {
+        state: { kind: "failed", errorLine: "Claude crashed" },
+        latestRun: { id: "run-1", end: { kind: "crashed", reason: "crashed" }, endedAt: ENDED },
+        at: RESTARTED,
+      },
+      at: ENDED,
+    },
+    {
+      name: "A restart never re-dates a Mate's row",
+      patch: { at: RESTARTED },
+      at: ENDED,
+    },
+    {
+      name: "A question dates the row by when it was asked, not by a restart",
+      patch: {
+        state: { kind: "waiting", on: "question", words: "Which page?" },
+        latestRun: { id: "run-2", end: null, endedAt: null },
+        askedAt: STARTED + 60_000,
+        at: RESTARTED,
+      },
+      at: STARTED + 60_000,
+    },
+  ])("$name (an engine row)", ({ patch, at }) => {
+    expect(rowAgentActivity(row(patch), ENV, undefined, STARTED).at).toBe(
+      new Date(at).toISOString(),
     );
   });
 

@@ -174,6 +174,92 @@ describe("matesActivityOf — a Mate that publishes its attention", () => {
     );
   });
 
+  // The owner, 2026-10-15: "unread is not highlighted at all". One rule wherever a Mate is drawn:
+  // its main chat's latest result — finished or failed — newer than what this person has seen.
+  // HQ counts what the person saw on any device; this device's visit is ahead of HQ where it
+  // proves the result seen, and the only word on a failure, which HQ does not count.
+  const FAILED: Partial<MateAttention> = {
+    waiting: 1,
+    questions: [{ threadId: ThreadId.make("t1"), kind: "failed", turnId: null }],
+  };
+  const FAILED_MAIN = {
+    ...VERA,
+    main: {
+      ...VERA.main!,
+      session: { status: "error" as const, lastError: "The build broke" },
+      latestTurn: { ...VERA.main!.latestTurn!, state: "error" as const },
+    },
+  };
+  const BEFORE = ASKED;
+  const AFTER = "2026-10-03T09:06:00.000Z";
+  const MARKED = new Date(Date.parse(DONE) - 1).toISOString();
+  it.each([
+    { name: "HQ counts it unseen, never opened here", unseen: 1, visit: undefined, unread: true },
+    {
+      name: "HQ says it was seen on another device, never opened here",
+      unseen: 0,
+      visit: undefined,
+      unread: false,
+    },
+    {
+      name: "opened here after it ended, before HQ hears so",
+      unseen: 1,
+      visit: AFTER,
+      unread: false,
+    },
+    { name: "HQ silent, opened here before it ended", unseen: null, visit: BEFORE, unread: true },
+    { name: "HQ silent, never opened here", unseen: null, visit: undefined, unread: false },
+    { name: "marked unread here, HQ counting it seen", unseen: 0, visit: MARKED, unread: true },
+    {
+      name: "a failed run, opened here before it failed",
+      says: FAILED,
+      overview: FAILED_MAIN,
+      unseen: 0,
+      visit: BEFORE,
+      unread: true,
+    },
+    {
+      name: "a failed run, opened here since",
+      says: FAILED,
+      overview: FAILED_MAIN,
+      unseen: 0,
+      visit: AFTER,
+      unread: false,
+    },
+    {
+      name: "at work, HQ counting an earlier result unseen",
+      says: { working: 1 },
+      overview: { ...VERA, main: { ...VERA.main!, latestTurn: { ...WORKING.latestTurn! } } },
+      unseen: 1,
+      visit: undefined,
+      unread: false,
+    },
+  ])(
+    "A Mate is unread while its latest result is newer than what this person has seen: $name",
+    ({ says, overview, unseen, visit, unread }) => {
+      const activity = read({
+        attention: attention(said(says), true, unseen),
+        overviews: new Map([["p-vera", overview ?? VERA]]),
+        lastVisitedAtById: visit === undefined ? {} : { "env-vera:t1": visit },
+      });
+      expect(activity?.unread).toBe(unread);
+    },
+  );
+
+  it("A Mate's engine row unread follows the same rule: a failed run not seen yet", () => {
+    const failedRow = engineRow("t1", {
+      state: { kind: "failed", errorLine: "The build broke" },
+      latestRun: { id: "run-1", end: { kind: "crashed", reason: "x" }, endedAt: Date.parse(DONE) },
+    });
+    const of = (visit: string, unseen: number) =>
+      read({
+        attention: attention(said(FAILED), true, unseen),
+        overviews: onEngine(failedRow),
+        lastVisitedAtById: { "env-vera:t1": visit },
+      })?.unread;
+    expect([of(BEFORE, 0), of(AFTER, 0)]).toEqual([true, false]);
+  });
+
   it("reads the words of the chat the attention names off its shell where this page holds it", () => {
     const shell = { ...WORKING, title: "Fix the build" };
     const activity = read({
@@ -207,6 +293,21 @@ describe("matesActivityOf — a Mate that publishes its attention", () => {
       expect(activity?.snippet).toBeUndefined();
     },
   );
+
+  it("A new chat HQ's overview does not name yet is dated by its own result, not HQ's last word of another", () => {
+    const ended = "2026-10-03T08:00:00.000Z";
+    const activity = read({
+      attention: attention(
+        said({
+          mainThreadId: "t9" as never,
+          results: [{ threadId: "t9", turnId: "turn-9", completedAt: ended }] as never,
+        }),
+        true,
+        1,
+      ),
+    });
+    expect(activity).toMatchObject({ threadId: "t9", at: ended, unread: true });
+  });
 
   it("says nothing of a chat no words of which are held, nor HQ's overview of any", () => {
     expect(

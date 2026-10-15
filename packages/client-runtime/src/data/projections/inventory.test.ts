@@ -60,6 +60,8 @@ it.each(["live", "recovering", "outage", "partial", "refused", "denied"] as cons
         now: 0,
         event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "503" } },
       });
+      // An outage is a reconnect still failing once its grace ran out.
+      for (const input of graceOver(store.state())) store.dispatch(input);
     }
     if (state === "partial") {
       store.dispatch({ kind: "baseline-begin", scope, generation: 1 });

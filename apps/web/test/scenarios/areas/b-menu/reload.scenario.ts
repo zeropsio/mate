@@ -2,6 +2,7 @@ import { resizeMenu } from "../../harness/browser.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
+import { READING_PROJECTS_LINE } from "../../../../src/zerops/waitLine.logic.ts";
 import { menuScenario } from "./dsl.ts";
 
 /** The menu column's width, each time it changes, from the reloaded document's first frame. */
@@ -130,8 +131,83 @@ describe("B: menu reload", () => {
   });
 });
 
+/** What a reloaded conversation's page showed: its wait lines, and its scroll once shown. */
+interface ConversationArrival {
+  readonly lines: string[];
+  readonly scrolls: number[];
+}
+
+// Runs in every new document: each wait line the page (never the menu) shows, then the
+// conversation's scroll, frame by frame, for its first 40 frames shown.
+function recordConversationArrival() {
+  const arrival: ConversationArrival = { lines: [], scrolls: [] };
+  (window as unknown as { conversationArrival: ConversationArrival }).conversationArrival = arrival;
+  const sample = () => {
+    for (const line of document.querySelectorAll<HTMLElement>("[data-zerops-wait-line]")) {
+      if (line.closest('[data-sidebar="sidebar"], #boot-shell-menu') !== null) continue;
+      if (line.getBoundingClientRect().height === 0) continue;
+      const text = line.innerText.trim();
+      if (arrival.lines.at(-1) !== text) arrival.lines.push(text);
+    }
+    const shown = document.querySelector(
+      "[data-timeline-thread]:not([data-timeline-placing]) .timeline-legend-list",
+    );
+    if (shown !== null) arrival.scrolls.push(Math.round(shown.scrollTop));
+    if (arrival.scrolls.length < 40) requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+}
+
+/** Exchanges enough to scroll, their rows' heights unlike the list's estimate. */
+const LONG_HISTORY = Array.from(
+  { length: 12 },
+  (_, index) =>
+    `Step ${index + 1}: read the cart.\n\n\`\`\`ts\n${Array.from(
+      { length: 2 + (index % 4) * 2 },
+      (_, line) => `const line${line} = await cart.read(${line});`,
+    ).join("\n")}\n\`\`\``,
+);
+
 describe("owner-reported layout regressions", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "a reload of a Mate's conversation waits with the Mate's opening alone, and its first frame stands where it stays",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* menuScenario();
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.project("Ada", { mate: true, app: "Shop" });
+          for (const said of LONG_HISTORY) yield* s.colleague.said("Ada", said);
+          yield* s.given.signedIn;
+          yield* s.when.menu.opensMate("Ada");
+          yield* s.then.conversation.appears;
+          const arrival = yield* Effect.promise(async () => {
+            await s.page.evaluateOnNewDocument(recordConversationArrival);
+            await s.page.reload({ waitUntil: "domcontentloaded" });
+            await s.page.waitForFunction(
+              () =>
+                ((window as unknown as { conversationArrival?: ConversationArrival })
+                  .conversationArrival?.scrolls.length ?? 0) >= 40,
+              { timeout: 20_000 },
+            );
+            return s.page.evaluate(
+              () =>
+                (window as unknown as { conversationArrival: ConversationArrival })
+                  .conversationArrival,
+            );
+          });
+          expect(
+            arrival.lines.filter((line) => line === "Loading…" || line === READING_PROJECTS_LINE),
+            `The page's wait lines after the reload: ${arrival.lines.join(" → ")}`,
+          ).toEqual([]);
+          const first = arrival.scrolls[0]!;
+          expect(
+            Math.max(...arrival.scrolls.map((top) => Math.abs(top - first))),
+            `The conversation's scroll, frame by frame once shown: ${arrival.scrolls.join(" → ")}`,
+          ).toBeLessThanOrEqual(1);
+          expect(first, "The conversation opens scrolled down to its end").toBeGreaterThan(0);
+        }),
+    );
     it.effect(
       "a reload never empties the menu: it shows the loading rows from its first frame until the Mates' rows replace them",
       () =>

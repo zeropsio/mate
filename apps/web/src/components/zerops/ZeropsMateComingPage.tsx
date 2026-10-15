@@ -945,26 +945,35 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 export function MateComingFrame({
   header,
   composer = null,
+  panel = null,
   children,
 }: {
   readonly header: ReactNode;
   /** What stands where its conversation's composer will (`ConversationFooterStandIn`). */
   readonly composer?: ReactNode;
+  /**
+   * Its conversation's right panel standing in beside it (`useConversationPanelStandIn`): the page
+   * splits as the conversation will, from its first frame.
+   */
+  readonly panel?: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
-      <div
-        className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground"
-        data-zerops-surface="mate-coming-page"
-      >
-        <WorkspacePageHeader className="relative bg-background" data-chat-header>
-          {header}
-        </WorkspacePageHeader>
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          {children}
-          {composer}
+      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div
+          className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground"
+          data-zerops-surface="mate-coming-page"
+        >
+          <WorkspacePageHeader className="relative bg-background" data-chat-header>
+            {header}
+          </WorkspacePageHeader>
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            {children}
+            {composer}
+          </div>
         </div>
+        {panel}
       </div>
     </SidebarInset>
   );
@@ -979,8 +988,11 @@ export function MateComingHeader({
   mate,
   standsIn = null,
   arriving = false,
+  besidePanel = false,
   face,
 }: {
+  /** Its conversation's panel stands beside it, holding the layout controls (`MateComingFrame`). */
+  readonly besidePanel?: boolean;
   /** A new Mate coming up: its face and name only. */
   readonly arriving?: boolean;
   /** The pose the stage under it wears (`arrivalHeaderFace`); else its own (`mateFaceFor`). */
@@ -1025,7 +1037,13 @@ export function MateComingHeader({
         />
       )}
       <span className="flex size-4 shrink-0" />
-      <div className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25">
+      <div
+        className={
+          besidePanel
+            ? "flex shrink-0 items-center justify-end gap-1 pr-0"
+            : "flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25"
+        }
+      >
         {standsIn === null ? null : (
           <Button
             aria-label="More header actions"
@@ -1047,7 +1065,7 @@ export function MateComingHeader({
           </span>
         )}
       </div>
-      {standsIn === null ? null : (
+      {standsIn === null || besidePanel ? null : (
         <div
           className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]"
           data-workspace-titlebar-controls

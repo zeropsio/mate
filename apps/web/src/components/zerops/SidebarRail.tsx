@@ -21,7 +21,7 @@ import {
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { PanelLeftOpenIcon } from "lucide-react";
-import { useMemo, type ComponentProps, type CSSProperties, type ReactNode } from "react";
+import { useMemo, type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -33,6 +33,7 @@ import { useWaitsOnViewer } from "~/zerops/useZeropsMateOwners";
 
 import { MateMark } from "../MateMark";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { MateDot } from "./MateDot";
 import { MateOwnerMark } from "./MateOwnerMark";
 import { MateFace } from "./primitives";
 import { ownerBadge, ownerMark, type BadgeSeat } from "./SidebarMateRow.logic";
@@ -250,18 +251,7 @@ function RailDotMark({
   readonly tint: MateTintId | undefined;
 }) {
   if (dot === undefined) return null;
-  return (
-    <i
-      aria-hidden="true"
-      className="menu-rail-dot"
-      data-dot={dot}
-      style={
-        dot === "working" && tint !== undefined
-          ? ({ "--menu-rail-tint": `var(--zerops-mate-tint-${tint})` } as CSSProperties)
-          : undefined
-      }
-    />
-  );
+  return <MateDot place="corner" tint={tint} tone={dot} />;
 }
 
 /** A Mate's face as its menu row wears it: a colleague's paler, their mark on its corner. */

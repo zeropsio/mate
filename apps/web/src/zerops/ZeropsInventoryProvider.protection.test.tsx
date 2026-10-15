@@ -1,6 +1,7 @@
 import { RegistryContext } from "@effect/atom-react";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { platformInventory } from "@t3tools/client-runtime/data";
+import { graceOver } from "@t3tools/client-runtime/data/fixtures";
 import { AtomRegistry } from "effect/reactivity";
 import { act, createElement } from "react";
 import { afterEach, expect, it, vi } from "vite-plus/test";
@@ -143,6 +144,8 @@ it.each(["denial", "outage"] as const)(
             now: 0,
             event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "503" } },
           });
+          // The outage is said once the reconnect's grace ran out.
+          for (const input of graceOver(store.state())) store.dispatch(input);
         });
         expect(container.textContent).toContain("Zerops isn't answering. Trying again…");
         expect(renders).toBe(before);

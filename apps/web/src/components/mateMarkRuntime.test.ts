@@ -237,6 +237,20 @@ describe("the live mark's loop", () => {
     expect(page.advance(1_000).frames).toBeGreaterThan(10);
   });
 
+  it.each([{ forced: "idle" }, { forced: "working" }] as const)(
+    "a mark held $forced stops blinking once the person is away 45 s, and blinks again on their return",
+    ({ forced }) => {
+      const page = fakePage();
+      page.mount(forced, { awake: true });
+      page.advance(47_000);
+      expect(page.pending()).toEqual({ frames: 0, timers: 0 });
+      expect(page.advance(30_000)).toEqual({ frames: 0, writes: 0 });
+      page.loop.pointerMove(10, 10);
+      page.advance(1_000);
+      expect(page.advance(8_000).frames).toBeGreaterThan(10);
+    },
+  );
+
   it.each([
     { forced: "waking" },
     { forced: "sleep" },

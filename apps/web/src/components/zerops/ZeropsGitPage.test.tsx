@@ -200,12 +200,42 @@ describe("Git overview slice 1", () => {
     expect(repositoryNames()).toEqual(["todo/appdev"]);
   });
   it("Unread changes remain visible in Open changes", async () => {
-    // Explicit undefined is an unread source, not a successful empty list.
-    await mount(page([{ ...project("todo", "Todo"), changes: undefined }]));
+    // Explicit undefined is an unread source, not a successful empty list; its read stays under
+    // way, so the page shows what it has once the first read's patience runs out.
+    vi.useFakeTimers();
+    try {
+      await mount(page([{ ...project("todo", "Todo"), changes: undefined }]));
+      await act(() => vi.advanceTimersByTime(2_000));
+    } finally {
+      vi.useRealTimers();
+    }
     expect(repositoryNames()).toEqual(["todo/appdev", "todo/group"]);
     expect(host.textContent).toContain("Changes not read yet.");
     expect(host.textContent).toContain("0 known open changes");
     expect(host.textContent).not.toContain("No open changes.");
+  });
+  it("The first read paints its repositories once, never offering its own arrivals as an update", async () => {
+    await mount(page([project("b", "Bravo"), { ...project("a", "Alpha"), read: undefined }]));
+    expect(host.textContent).toContain("Reading repositories and changes…");
+    expect(repositoryNames()).toEqual([]);
+    await mount(page([project("b", "Bravo"), project("a", "Alpha")]));
+    expect(repositoryNames()).toEqual(["a/appdev", "b/appdev"]);
+    expect(host.textContent).not.toContain("The repository list has changed.");
+    expect(host.textContent).not.toContain("Reading repositories and changes…");
+  });
+  it("A first read that takes long shows what it has read so far", async () => {
+    vi.useFakeTimers();
+    try {
+      await mount(page([project("b", "Bravo"), { ...project("a", "Alpha"), read: undefined }]));
+      expect(repositoryNames()).toEqual([]);
+      await act(() => vi.advanceTimersByTime(2_000));
+      expect(repositoryNames()).toEqual(["b/appdev"]);
+      await mount(page([project("b", "Bravo"), project("a", "Alpha")]));
+      expect(repositoryNames()).toEqual(["a/appdev", "b/appdev"]);
+      expect(host.textContent).not.toContain("The repository list has changed.");
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("Background facts do not reorder displayed repositories", async () => {
     await mount(page([project("z", "Zebra"), project("b", "Bravo")]));

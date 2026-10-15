@@ -4,6 +4,7 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  mateStandUpConversation,
   isMateStandUpAsk,
   MATE_STAND_UP_MESSAGE,
   mateStandUpAskLine,
@@ -64,6 +65,22 @@ describe("the stand-up's words", () => {
     ["stand up development of the project.", false],
   ])("know the ask by its exact words: %j is %s", (text, ask) => {
     expect(isMateStandUpAsk(text)).toBe(ask);
+  });
+});
+
+describe("mateStandUpConversation", () => {
+  it("A conversation that already holds messages gives the composer back while it is still being read", () => {
+    expect(mateStandUpConversation({ main: true, messageCount: 3, live: false })).toBe("started");
+  });
+
+  it("Only a conversation read live from its Mate is known to be empty", () => {
+    expect(mateStandUpConversation({ main: true, messageCount: 0, live: true })).toBe("empty");
+    expect(mateStandUpConversation({ main: true, messageCount: 0, live: false })).toBe("unknown");
+  });
+
+  it("The stand-up speaks of the Mate's main conversation alone", () => {
+    expect(mateStandUpConversation({ main: false, messageCount: 0, live: true })).toBe("unknown");
+    expect(mateStandUpConversation({ main: null, messageCount: 0, live: true })).toBe("unknown");
   });
 });
 

@@ -9,6 +9,7 @@ import {
   openMateReveal,
   slackAfterScroll,
   slackForFold,
+  type MateReveal,
 } from "./SidebarProjects.logic";
 
 describe("landingAfterDraw — a reveal lands on the draw after its ask, or never", () => {
@@ -175,22 +176,45 @@ describe("newProjectOffered — New project at the menu's foot (D11)", () => {
 });
 
 describe("openMateReveal", () => {
+  const MILO = "env-milo";
+  const FEN = "env-fen";
+  const seen = (conversation: string | null, shown: string | null, owed = false): MateReveal => ({
+    conversation,
+    shown,
+    owed,
+  });
   // Stress run 3 (+17:00): the open Mate was found after the menu drew, the menu then slid to it.
   it.each([
-    ["a reload on an open Mate", { seen: "milo", open: "milo", resolving: false }, undefined],
+    [
+      "a reload on an open Mate",
+      { seen: seen(MILO, "milo"), conversation: MILO, open: "milo", resolving: false },
+      undefined,
+    ],
     [
       "a reload while the open Mate is still being found",
-      { seen: undefined, open: null, resolving: true },
+      { seen: undefined, conversation: MILO, open: null, resolving: true },
       undefined,
     ],
     [
       "a reload's open Mate found after the menu drew",
-      { seen: undefined, open: "milo", resolving: false },
+      { seen: seen(MILO, null), conversation: MILO, open: "milo", resolving: false },
       undefined,
     ],
-    ["a Mate opened from elsewhere", { seen: "milo", open: "fen", resolving: false }, "fen"],
-    ["a Mate opened where none was", { seen: null, open: "fen", resolving: false }, "fen"],
-    ["no Mate open", { seen: "milo", open: null, resolving: false }, undefined],
+    [
+      "a Mate opened from elsewhere",
+      { seen: seen(MILO, "milo"), conversation: FEN, open: "fen", resolving: false },
+      "fen",
+    ],
+    [
+      "a Mate opened where none was",
+      { seen: seen(null, null), conversation: FEN, open: "fen", resolving: false },
+      "fen",
+    ],
+    [
+      "no Mate open",
+      { seen: seen(MILO, "milo"), conversation: null, open: null, resolving: false },
+      undefined,
+    ],
   ] as const)(
     "A reload leaves the menu where it was; only a Mate opened afterwards scrolls into view: %s",
     (_case, input, reveal) => {
@@ -198,12 +222,66 @@ describe("openMateReveal", () => {
     },
   );
 
+  /** Each draw's reveal, the caller marking a revealed row as shown, as the menu does. */
+  const walk = (
+    draws: ReadonlyArray<{
+      readonly conversation: string | null;
+      readonly open: string | null;
+      readonly resolving?: boolean;
+    }>,
+  ) => {
+    let state: MateReveal | undefined;
+    return draws.map(({ conversation, open, resolving = false }) => {
+      const next = openMateReveal({ seen: state, conversation, open, resolving });
+      state =
+        next.reveal === undefined ? next.seen : { conversation, shown: next.reveal, owed: false };
+      return next.reveal;
+    });
+  };
+
   it("The open Mate a reload finds late is the one it opened on, not one opened afterwards", () => {
-    const found = openMateReveal({ seen: undefined, open: "milo", resolving: false });
-    expect(openMateReveal({ seen: found.seen, open: "milo", resolving: false }).reveal).toBe(
-      undefined,
-    );
-    expect(openMateReveal({ seen: found.seen, open: "fen", resolving: false }).reveal).toBe("fen");
+    expect(
+      walk([
+        { conversation: MILO, open: null, resolving: true },
+        { conversation: MILO, open: "milo" },
+        { conversation: MILO, open: "milo" },
+        { conversation: FEN, open: "fen" },
+      ]),
+    ).toEqual([undefined, undefined, undefined, "fen"]);
+  });
+
+  it("A reload's open Mate the listing first misses and finds later is not scrolled to", () => {
+    expect(
+      walk([
+        { conversation: MILO, open: null, resolving: true },
+        { conversation: MILO, open: null },
+        { conversation: MILO, open: null, resolving: true },
+        { conversation: MILO, open: "milo" },
+      ]),
+    ).toEqual([undefined, undefined, undefined, undefined]);
+  });
+
+  it("A Mate opened afterwards is scrolled to once, however often its rows are drawn again", () => {
+    expect(
+      walk([
+        { conversation: MILO, open: "milo" },
+        { conversation: FEN, open: null, resolving: true },
+        { conversation: FEN, open: null },
+        { conversation: FEN, open: "fen" },
+        { conversation: FEN, open: null, resolving: true },
+        { conversation: FEN, open: "fen" },
+      ]),
+    ).toEqual([undefined, undefined, undefined, "fen", undefined, undefined]);
+  });
+
+  it("A Mate lit by a press is brought into view, and not again when its conversation opens", () => {
+    expect(
+      walk([
+        { conversation: MILO, open: "milo" },
+        { conversation: MILO, open: "fen" },
+        { conversation: FEN, open: "fen" },
+      ]),
+    ).toEqual([undefined, "fen", undefined]);
   });
 });
 

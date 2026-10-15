@@ -12,6 +12,7 @@ import type { AuthGateState } from "../environments/primary/auth";
 import {
   awaitDoorEnvironmentCount,
   countDoorEnvironments,
+  doorWaitsForEnvironments,
   type DoorDecision,
   type DoorRegistry,
   resolveDoor,
@@ -1099,6 +1100,30 @@ describe("an unpaired server with a usable environment", () => {
     const decision = resolveDoor(gate, { pathname: "/pair", environmentCount: 1 });
     expect(decision.shell).toBe("bare");
     expect(decision.redirect).toBeNull();
+  });
+});
+
+describe("doorWaitsForEnvironments", () => {
+  const conversation = "/env-1/thread-1";
+  it.each([
+    { label: "the hosted app", gate: { status: "hosted-static" } as AuthGateState },
+    { label: "a signed-in server", gate: { status: "authenticated" } as AuthGateState },
+  ])(
+    "A conversation's address in $label opens without waiting for the environment catalog",
+    ({ gate }) => {
+      expect(doorWaitsForEnvironments(gate, conversation)).toBe(false);
+    },
+  );
+
+  it("An unpaired server's door waits for the catalog, since a usable environment lets the person in", () => {
+    const gate: AuthGateState = {
+      status: "requires-auth",
+      auth: authDescriptor(["one-time-token"]),
+    };
+    expect(doorWaitsForEnvironments(gate, conversation)).toBe(true);
+    expect(resolveDoor(gate, { pathname: conversation, environmentCount: 0 }).redirect).not.toBe(
+      resolveDoor(gate, { pathname: conversation, environmentCount: 1 }).redirect,
+    );
   });
 });
 

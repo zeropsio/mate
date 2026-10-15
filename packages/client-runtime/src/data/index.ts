@@ -43,6 +43,7 @@ export {
   hqMateLogins,
   hqMateReady,
   hqMates,
+  hqMatesAnswered,
   type HqMatesRead,
 } from "./projections/hqMates.ts";
 export {
@@ -253,6 +254,7 @@ export {
   shownAttentionProjectsAtom,
   shownMatesAttentionAtom,
   shownHqMatesAtom,
+  shownHqMatesAnsweredAtom,
   shownHqNavigationAtom,
   shownHqMenuNavigationAtom,
   shownCanonicalHqMenuNavigationAtom,

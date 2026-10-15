@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  addressOpensConversation,
   draftIdFromPathname,
   environmentIdFromAddress,
   environmentIdFromPathname,
@@ -48,4 +49,22 @@ describe("draftIdFromPathname", () => {
   ])("%s → %s", (pathname, expected) => {
     expect(draftIdFromPathname(pathname)).toBe(expected);
   });
+});
+
+describe("addressOpensConversation", () => {
+  it.each<[string, string, boolean]>([
+    ["/mate/env-1/thread-1", "/mate", true],
+    ["/mate/draft/draft-1", "/mate", true],
+    ["/env-1/thread-1", "", true],
+    ["/mate/zerops", "/mate", false],
+    ["/mate/mate/project-1", "/mate", false],
+    ["/mate/settings/general", "/mate", false],
+    ["/mate", "/mate", false],
+    ["/other/env-1/thread-1", "/mate", false],
+  ])(
+    "A reload of %s (served at '%s') opens a conversation, its code fetched at boot: %s",
+    (pathname, basePath, opens) => {
+      expect(addressOpensConversation(pathname, basePath)).toBe(opens);
+    },
+  );
 });

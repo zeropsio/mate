@@ -239,6 +239,7 @@ import { ProjectCluster, type ClusterFace } from "./SidebarProjectCluster";
 import {
   landingAfterDraw,
   openMateReveal,
+  type MateReveal,
   menuDrawsLoadingRows,
   slackAfterScroll,
   slackForFold,
@@ -520,6 +521,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly activeProjectResolving?: boolean | undefined;
   /**
+   * The open conversation as the route names it, whether or not its Mate is found: what a reload
+   * opened on is never scrolled to; one opened afterwards is, once (`openMateReveal`).
+   */
+  readonly activeConversation?: string | null | undefined;
+  /**
    * What this agent is doing right now.
    *
    * Injected because the answer is a thread's status through the one resolver
@@ -699,6 +705,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   onOpenGroup,
   activeProjectId,
   activeProjectResolving = false,
+  activeConversation,
   getActivity,
   keyedReadings = false,
   getConversationsRead,
@@ -802,8 +809,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const projectLatest = useRef(new Map<string, ProjectLatest>()).current;
   const projectRefs = useRef(new Map<string, ProjectRefs>()).current;
   const projectShared = useRef(new Map<string, ProjectShared>()).current;
-  // The header's Sites and Review open what a row's globe and Review tag open (`projectPartsShown`).
-  useEffect(() => {
+  // The header's Sites and Review open what a row's globe and Review tag open (`projectPartsShown`):
+  // handed over before paint, so the header gains them in the frame the menu draws them.
+  useLayoutEffect(() => {
     showProjectParts(projectShared.values());
   });
   const projectRefsOf = (id: string): ProjectRefs => {
@@ -836,14 +844,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
   // page — stands in view in the menu: its row scrolled to the nearest edge
   // once it is drawn (a new Mate's row comes a moment after its view, so every
-  // draw looks until it is there). Not the one open at mount, even found late:
-  // a reload leaves the menu where it was (`openMateReveal`).
-  const shownActiveRef = useRef<string | null | undefined>(
-    activeProjectResolving ? undefined : (activeProjectId ?? null),
-  );
+  // draw looks until it is there), once. Not the conversation open at mount,
+  // even found late: a reload leaves the menu where it was (`openMateReveal`).
+  const shownActiveRef = useRef<MateReveal | undefined>(undefined);
   useEffect(() => {
+    const conversation = activeConversation ?? null;
     const next = openMateReveal({
       seen: shownActiveRef.current,
+      conversation,
       open: activeProjectId ?? null,
       resolving: activeProjectResolving,
     });
@@ -853,7 +861,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       `[data-zerops-mate-row="${CSS.escape(next.reveal)}"]`,
     );
     if (row == null) return;
-    shownActiveRef.current = next.reveal;
+    shownActiveRef.current = { conversation, shown: next.reveal, owed: false };
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     row.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
   });
@@ -2575,6 +2583,7 @@ function GroupRowWords<T extends RosterCandidate>({
           <MateSlot
             at={lead.activity?.at}
             slot={state.view.slot}
+            unseen={state.view.unseen}
             timestampFormat={timestampFormat}
             tint={lead.tint}
           />
@@ -3185,6 +3194,8 @@ export function MenuMateLine<T extends RosterCandidate>({
   /** Draws what its reading says: the face's state, and its line where the caller keeps it. */
   readonly children: (read: {
     readonly face: MateMarkState;
+    /** A result not seen (`MateRowView.unseen`). */
+    readonly unseen: boolean;
     readonly state: MateRowState;
     readonly second: MateRowSecond;
     readonly line: ReactNode;
@@ -3207,6 +3218,7 @@ export function MenuMateLine<T extends RosterCandidate>({
   });
   return children({
     face: view.face,
+    unseen: view.unseen,
     state: view.state,
     second,
     line: (
@@ -3924,8 +3936,9 @@ function MateRowView<T extends RosterCandidate>({
           </span>
           {badge === null ? null : <MateOwnerMark seat={badge} />}
         </span>
-        {/* The name 15/21 — 600 while a result is unseen — its crew after it, the time at its end;
-            the one line under it, 14/20. No dot: the face carries the state. */}
+        {/* The name 15/21 — 600 while a result is unseen, the unread dot before its time — its
+            crew after it, the time at its end; the one line under it, 14/20. No other dot: the
+            face carries the state. */}
         <span className="flex min-w-0 flex-col">
           <span className="flex h-5.5 min-w-0 items-center gap-2">
             <span
@@ -3984,6 +3997,7 @@ function MateRowView<T extends RosterCandidate>({
                 <MateSlot
                   at={activity?.at}
                   slot={view.slot}
+                  unseen={view.unseen}
                   timestampFormat={timestampFormat}
                   tint={tint}
                 />
@@ -4315,12 +4329,15 @@ function MateSecondLine({
 function MateSlot({
   slot,
   at,
+  unseen,
   timestampFormat,
   tint,
 }: {
   readonly slot: MateRowSlot;
   /** When it last did something, for the age. */
   readonly at: string | undefined;
+  /** A result not seen (`MateRowView.unseen`): the unread dot hangs before the age. */
+  readonly unseen: boolean;
   readonly timestampFormat: TimestampFormat;
   /** Its Mate's colour: the working clock wears it. */
   readonly tint: MateTintId;
@@ -4362,7 +4379,9 @@ function MateSlot({
       );
     }
     case "age":
-      return <SidebarMateAge at={at} className={cn(TIME_CLASS, fadeIn)} />;
+      return (
+        <SidebarMateAge at={at} className={cn("relative", TIME_CLASS, fadeIn)} unseen={unseen} />
+      );
   }
 }
 

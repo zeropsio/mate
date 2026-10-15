@@ -10,6 +10,7 @@ import { useClientSettings } from "~/hooks/useSettings";
  * stands asleep over its name with them, on one axis (`stageSpeaks`).
  */
 import { ConversationOpeningStage } from "../chat/ConversationOpeningStage";
+import { useConversationPanelStandIn } from "../chat/ConversationPanelStandIn";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
@@ -112,6 +113,11 @@ function MateLinkStageOf({
   const activity = useToldActivity(projectId ?? "");
   // Try now asks its Mate again, its exchange as well as its link, as the banner's does.
   const tryAgain = useTryMateAgain();
+  // Where its conversation's panel was left open, the page splits now, as the conversation will.
+  const panel = useConversationPanelStandIn(
+    threadKey,
+    at.kind === "mate" && at.mate.chief === true,
+  );
   if (at.kind === "nobody" && failure === null) return <MateLinkWords voice={voice} />;
   // Before the directory names who lives here, the stage is the named one's with the face, the
   // name and the header's place held: its verbs, its processes and its words need
@@ -120,20 +126,16 @@ function MateLinkStageOf({
   const askAgain = askAgainLabel(voice.actions);
   const onTryNow = askAgain === null ? undefined : () => tryAgain(environmentId);
   const mate = known === null ? null : { ...known, connected: false };
+  const header =
+    mate === null ? null : <MateComingHeader besidePanel={panel !== null} mate={mate} />;
   if (failure !== null)
     return (
-      <MateComingFrame
-        composer={composer}
-        header={mate === null ? null : <MateComingHeader mate={mate} />}
-      >
+      <MateComingFrame composer={composer} header={header} panel={panel}>
         <MateDetailFailure mate={mate} message={failure.message} again={again} />
       </MateComingFrame>
     );
   return (
-    <MateComingFrame
-      composer={composer}
-      header={mate === null ? null : <MateComingHeader mate={mate} />}
-    >
+    <MateComingFrame composer={composer} header={header} panel={panel}>
       {voice.opening === true ||
       (voice.text === null &&
         !voice.processes &&

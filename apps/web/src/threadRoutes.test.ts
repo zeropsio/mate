@@ -8,6 +8,7 @@ import {
   buildThreadRouteParams,
   resolveActiveThreadRouteRef,
   resolveThreadRouteRenderState,
+  resolveThreadRouteStage,
   resolveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "./threadRoutes";
@@ -141,5 +142,75 @@ describe("threadRoutes", () => {
         draftThreadExists: has.draft === true,
       }),
     ).toBe(expected);
+  });
+});
+
+describe("resolveThreadRouteStage", () => {
+  const base = {
+    renderState: "loading" as const,
+    serverThreadShellExists: true,
+    conversationShown: false,
+    nobodyLivesHere: false,
+    readGivenUp: false,
+    directoryAnswered: true,
+    promotedDraft: false,
+  };
+
+  it("A reload holds the Mate's opening until its conversation's messages are read, never a pane without them", () => {
+    expect(resolveThreadRouteStage(base)).toBe("opening");
+    expect(resolveThreadRouteStage({ ...base, serverThreadShellExists: false })).toBe("opening");
+    expect(resolveThreadRouteStage({ ...base, renderState: "ready" })).toBe("conversation");
+  });
+
+  it("A conversation already on screen stays while the next one's messages are read", () => {
+    expect(resolveThreadRouteStage({ ...base, conversationShown: true })).toBe("conversation");
+    expect(
+      resolveThreadRouteStage({
+        ...base,
+        conversationShown: true,
+        serverThreadShellExists: false,
+      }),
+    ).toBe("opening");
+  });
+
+  it("A conversation whose messages cannot be read still opens, its composer ready, after a short wait", () => {
+    expect(resolveThreadRouteStage({ ...base, readGivenUp: true })).toBe("conversation");
+    // Its list entry is what the conversation draws from: without one, the opening stands.
+    expect(
+      resolveThreadRouteStage({ ...base, readGivenUp: true, serverThreadShellExists: false }),
+    ).toBe("opening");
+  });
+
+  it("A reload holds the Mate's opening until HQ has answered, so what it names lands with the conversation", () => {
+    const unanswered = { ...base, renderState: "ready" as const, directoryAnswered: false };
+    expect(resolveThreadRouteStage(unanswered)).toBe("opening");
+    expect(resolveThreadRouteStage({ ...unanswered, readGivenUp: true })).toBe("conversation");
+    expect(resolveThreadRouteStage({ ...unanswered, conversationShown: true })).toBe(
+      "conversation",
+    );
+  });
+
+  it("A promoted draft's conversation stays on screen whatever HQ has said", () => {
+    expect(
+      resolveThreadRouteStage({
+        ...base,
+        renderState: "ready",
+        directoryAnswered: false,
+        promotedDraft: true,
+      }),
+    ).toBe("conversation");
+  });
+
+  it("A conversation that is gone says so, whoever lives there", () => {
+    expect(resolveThreadRouteStage({ ...base, renderState: "missing" })).toBe("missing");
+    expect(
+      resolveThreadRouteStage({ ...base, renderState: "missing", nobodyLivesHere: true }),
+    ).toBe("missing");
+  });
+
+  it("An environment no Mate lives in opens its conversation from its listing, with no Mate's view", () => {
+    const nobody = { ...base, nobodyLivesHere: true };
+    expect(resolveThreadRouteStage(nobody)).toBe("conversation");
+    expect(resolveThreadRouteStage({ ...nobody, serverThreadShellExists: false })).toBe("quiet");
   });
 });
