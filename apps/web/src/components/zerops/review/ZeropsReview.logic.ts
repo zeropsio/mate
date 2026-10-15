@@ -633,7 +633,11 @@ function changesWords(n: number): string {
   return `${String(n)} ${n === 1 ? "change" : "changes"}`;
 }
 
-/** Under a release's title: how many changes, and where they were tried. */
+/**
+ * Under a release's title: how many changes, and whether the stage runs them — never that they
+ * were tested there: running on a stage is no test anybody ran (the onboarding run's owner read
+ * "tested on stage" of a stage nobody had opened).
+ */
 export function releaseLine(input: {
   readonly changes: number;
   /** The stage that follows `main`, by name. */
@@ -647,7 +651,7 @@ export function releaseLine(input: {
   const onStage = input.onStage;
   if (input.stage !== undefined && onStage !== undefined && onStage.total > 0) {
     if (onStage.running >= onStage.total) {
-      return `${changes}, tested on ${input.stage}${input.since === undefined ? "" : ` since ${input.since}`}.`;
+      return `${changes}, on ${input.stage}${input.since === undefined ? "" : ` since ${input.since}`}.`;
     }
     return `${changes}, ${String(onStage.running)} of them on ${input.stage} so far.`;
   }
