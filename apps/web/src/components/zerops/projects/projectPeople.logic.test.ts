@@ -791,7 +791,7 @@ describe("each person as a chip", () => {
     expect(chip(view, "Ada King Lovelace")).toMatchObject({
       short: "Ada L.",
       email: "ada@example.com",
-      role: "Developer",
+      role: "Works on every project",
     });
     expect([shortName("Bo"), shortName("cy@example.com")]).toEqual(["Bo", "cy@example.com"]);
   });

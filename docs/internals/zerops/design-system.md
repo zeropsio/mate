@@ -46,8 +46,9 @@ One word for each thing:
 - **release** — "Putting {version} live", "{service} gets {version}". No commit hash stands on a surface.
 - **setup**, **setup files** — never recipe or import files.
 - **Read access**, **Full access** — sentence case, each explained once where it is chosen.
-- **Owner**, **Admin**, **Developer**, **Guest** — the roles, as the invite names them. Zerops's own role codes
-  (Basic user → Developer, no access → Guest) appear only where a Zerops role itself is chosen.
+- **Owner**, **Admin**, **Developer**, **Guest** — the roles, as the invite names them; the menu's foot says
+  "{organization} · {role}" for every role. A Zerops role no preset names reads by what it reaches (**Works on every
+  project**, **Sees every project**); a Zerops role code appears only where a Zerops role itself is chosen.
 - **page** — what the side panel opens; never surface.
 - **Zerops Control Plane** — never zcp.
 
@@ -97,7 +98,8 @@ Source words and the product words that replace them:
 - healthy → **Running**
 - log in, logged in, log out → **sign in, signed in, sign out**
 - Sign in an agent → **Sign {Mate} in**
-- Basic user (a role's name) → **Developer**; Member (no access) → **Guest**
+- Basic user, Read only (an organization's role) → **Works on every project**, **Sees every project**; at least
+  Basic user access (a project's) → **more than Read access**; Member → the role's own name
 - surface → **page**
 - container (a Mate's) → **its computer**; closed off → **private network ready**
 

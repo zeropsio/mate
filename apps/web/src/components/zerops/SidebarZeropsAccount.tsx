@@ -8,7 +8,7 @@
  * One row says both, in the two lines a messenger uses for a person, and the
  * places fold into its menu where a name is cheaper than a glyph.
  *
- * The viewer's photo, name and role ("Owner of Acme"), then one ··· whose menu holds Show and
+ * The viewer's photo, name and role ("Acme · Owner"), then one ··· whose menu holds Show and
  * Order, the organization, the places and Sign out. On the rail the photo alone opens it.
  */
 

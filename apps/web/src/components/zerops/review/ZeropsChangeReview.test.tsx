@@ -509,7 +509,7 @@ describe("ChangeReviewView: an open change", () => {
     });
     expect(footOf(html)).not.toContain("<button");
     expect(textOf(html)).toContain(
-      "You need at least Basic user access to one of this project's Zerops projects to do this.",
+      "You need more than Read access to one of this project's Zerops projects to do this.",
     );
   });
 
@@ -824,12 +824,12 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
       close: false,
       why: {
         merge:
-          "You need at least Basic user access to one of this project's Zerops projects to do this.",
+          "You need more than Read access to one of this project's Zerops projects to do this.",
       },
     };
     await reviewed((host) => {
       expect(host.textContent).toContain("src/api.ts");
-      expect(host.textContent).toContain("You need at least Basic user access");
+      expect(host.textContent).toContain("You need more than Read access");
       expect(buttonsOf(host, "Merge")).toHaveLength(0);
       expect(account.verbs).toEqual([]);
     });

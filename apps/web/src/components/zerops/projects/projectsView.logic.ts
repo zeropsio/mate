@@ -292,7 +292,7 @@ export function changesUnknownOf(input: {
 export const CHANGES_UNKNOWN_LINE: { readonly [U in ChangesUnknown]: string } = {
   failed: "HQ didn’t answer",
   // The refusal's own access (`changes_not_seen`), short enough for a step.
-  unseen: "Needs Developer access",
+  unseen: "Needs more than Read access",
 };
 
 /** The newest code change that landed — what a quiet row names. */

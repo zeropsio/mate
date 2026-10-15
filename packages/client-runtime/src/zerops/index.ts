@@ -37,6 +37,7 @@ export {
   canCreateProjectsInOrganization,
   resolveActiveZeropsOrganization,
   zeropsOrganizationRoleLabel,
+  zeropsRoleWords,
   type ZeropsOrganizationSelectionInput,
 } from "./accountScope.ts";
 

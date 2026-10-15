@@ -47,6 +47,10 @@ export const LEGACY_VOCABULARY_PATTERNS = [
     pattern: /\bsign in (?:a|an|the|your) (?:coding )?agents?\b/iu,
     say: "Sign {Mate} in with Claude or ChatGPT",
   },
-  { name: "Basic user", pattern: /\bBasic user\b/iu, say: "Developer" },
+  {
+    name: "Basic user",
+    pattern: /\bBasic user\b/iu,
+    say: "Works on every project, or more than Read access",
+  },
   { name: "surface", pattern: /\b(?:a|this|that) surface\b/iu, say: "page" },
 ] as const;

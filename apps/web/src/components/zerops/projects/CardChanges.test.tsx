@@ -104,8 +104,8 @@ describe("a card with no change to list", () => {
       case: "HQ refuses its changes to this person",
       known: true,
       failure:
-        "You need at least Basic user access to one of this project's Zerops projects to see its changes.",
-      says: "You need at least Basic user access",
+        "You need more than Read access to one of this project's Zerops projects to see its changes.",
+      says: "You need more than Read access",
     },
     { case: "HQ has not told them yet", known: false, failure: undefined, says: null },
   ])("says only what is true when $case", async ({ known, failure, says }) => {
@@ -153,7 +153,11 @@ it("holds the line of a card's changes while HQ has not told them, so the card d
 // production running v0.1.0, while HQ withheld the project's changes from her.
 describe("a card's changes it may not read", () => {
   it.each([
-    { case: "withheld", unknown: "Needs Developer access", says: "Needs Developer access" },
+    {
+      case: "withheld",
+      unknown: "Needs more than Read access",
+      says: "Needs more than Read access",
+    },
     { case: "known to be none", unknown: undefined, says: "No changes yet" },
   ])(
     "says why where its changes are $case, never that there are none",

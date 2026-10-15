@@ -18,13 +18,13 @@ const organization = (name: string, id = name): ZeropsOrganization => ({
 });
 
 // What the viewer is in the organization the list shows, under their name
-// at the top of the menu — as the approved prototype drew it: "Owner of …".
+// at the top of the menu, one shape for every role: "… · Owner".
 describe("sidebarAccountRoleLine", () => {
   it.each([
-    ["OWNER", "Owner of Northwind s.r.o."],
-    ["ADMIN", "Admin of Northwind s.r.o."],
-    ["BASIC_USER", "Northwind s.r.o. · Basic user"],
-    [undefined, "Northwind s.r.o. · Member"],
+    ["OWNER", "Northwind s.r.o. · Owner"],
+    ["ADMIN", "Northwind s.r.o. · Admin"],
+    ["BASIC_USER", "Northwind s.r.o. · Works on every project"],
+    [undefined, "Northwind s.r.o."],
   ])("%s: %s", (roleCode, line) => {
     expect(
       sidebarAccountRoleLine({
@@ -43,9 +43,9 @@ describe("sidebarAccountRoleLine", () => {
 // The foot says the same line under the viewer's name, the organization's name its own part.
 describe("sidebarAccountRoleParts", () => {
   it.each([
-    ["OWNER", ["Owner of ", "Acme", ""]],
-    ["ADMIN", ["Admin of ", "Acme", ""]],
-    ["BASIC_USER", ["", "Acme", " · Basic user"]],
+    ["OWNER", ["", "Acme", " · Owner"]],
+    ["ADMIN", ["", "Acme", " · Admin"]],
+    ["BASIC_USER", ["", "Acme", " · Works on every project"]],
   ] as const)("%s: %j", (roleCode, [before, name, after]) => {
     expect(sidebarAccountRoleParts({ ...organization("Acme"), roleCode })).toEqual({
       before,

@@ -10,7 +10,7 @@ import { RELEASE_NOTHING_NEW_ON_MAIN, type ReleaseGate } from "./release.ts";
 /** HQ's rule refusing the person the release, in its words (`releasePermission`). */
 const NOT_A_RELEASER = {
   allowed: false,
-  reason: "You need at least Basic user access to this project's production to release it.",
+  reason: "You need more than Read access to this project's production to release it.",
 } as const;
 import {
   changeReview,
@@ -514,7 +514,7 @@ describe("releaseReview", () => {
         state: "release-blocked",
         tone: "attention",
         title: "Only releasers can release",
-        why: "You need at least Basic user access to this project's production to release it",
+        why: "You need more than Read access to this project's production to release it",
       },
     ],
     [
@@ -733,7 +733,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         state: "rollback-blocked",
         tone: "attention",
         title: "Only releasers can roll back",
-        why: "You need at least Basic user access to this project's production to release it",
+        why: "You need more than Read access to this project's production to release it",
       },
       "Production keeps running v0.1.57.",
     ],
@@ -1076,7 +1076,7 @@ describe("changeReview: Merge, offered by HQ's rule (T8a)", () => {
     expect(review.verdict.state).toBe("ready");
     expect(review.primary).toBeUndefined();
     expect(review.consequence).toBe(
-      "You need at least Basic user access to one of this project's Zerops projects to do this.",
+      "You need more than Read access to one of this project's Zerops projects to do this.",
     );
   });
 

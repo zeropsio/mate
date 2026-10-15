@@ -940,7 +940,7 @@ describe("projectRowLine — a project row's second line", () => {
     [
       "HQ's rule withholds its changes from this person: it says why",
       { flow: FLOWS.merge, changesUnknown: "unseen" },
-      { kind: "unread", text: "Needs Developer access" },
+      { kind: "unread", text: "Needs more than Read access" },
     ],
     [
       "its changes unknown, a Mate stopped on an error: the Mate first",

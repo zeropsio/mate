@@ -11,7 +11,7 @@
  * Pure: the member list, the grants and whose each Mate is arrive read.
  */
 import type { ProjectGrantsRead } from "@t3tools/client-runtime/data";
-import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import { zeropsRoleWords, type ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { appAccessActions, type AppProjects } from "@t3tools/client-runtime/zerops/appAccess";
 import type {
   ProjectAccessChange,
@@ -157,15 +157,6 @@ export const levelOf = (role: string | undefined): AccessLevel | null => {
   const held = asOrgRole(role);
   if (roleAtLeast(held, "ADMIN")) return "full";
   return held === "BASIC_USER" ? "basic" : held === "READ_ONLY" ? "read" : null;
-};
-
-/** Who someone is to the organization, in a word. */
-const ORG_ROLE_WORDS: Readonly<Record<ZeropsOrgRole, string>> = {
-  OWNER: "Owner",
-  ADMIN: "Admin",
-  BASIC_USER: "Developer",
-  READ_ONLY: "Read only",
-  NO_ACCESS: "Guest",
 };
 
 /** "Ada L." — a first name and the last name's initial; a single word or an address as it is. */
@@ -339,7 +330,7 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
         email: member.user?.email,
       }),
       email: member.user?.email?.trim() || null,
-      role: ORG_ROLE_WORDS[role],
+      role: zeropsRoleWords({ roleCode: role, canCreateProjects: member.canCreateProjects }) ?? "",
     };
     const access = accessWords(role, onPlaces);
     if (access === null && onMates.length === 0) {

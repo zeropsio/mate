@@ -68,12 +68,12 @@ describe("SidebarZeropsAccount", () => {
   it("says the viewer's role in the organization under their name, beside one ···", () => {
     const page = markupDom(render({ activeOrganization: { ...ACME, roleCode: "OWNER" } }));
     expect(page.querySelector('[data-zerops-surface="sidebar-account-role"]')?.textContent).toBe(
-      "Owner of Acme",
+      "Acme · Owner",
     );
     // The photo, name and role are the one control, its ··· inside it.
     const control = page.querySelector('[data-zerops-surface="sidebar-account"]');
     expect(control?.textContent).toContain("Ada");
-    expect(control?.textContent).toContain("Owner of Acme");
+    expect(control?.textContent).toContain("Acme · Owner");
     expect(control?.querySelector("svg")).not.toBeNull();
     expect(control?.getAttribute("aria-label")).toBe("Account: Ada");
   });
@@ -110,7 +110,7 @@ describe("SidebarZeropsAccountMenu", () => {
   it("names the account in full, and what it is in the organization the list shows", () => {
     const html = renderMenu({ activeOrganization: { ...ZEROPS, roleCode: "OWNER" } });
     expect(html).toContain("Ada Lovelace");
-    expect(html).toContain("Owner of Zerops");
+    expect(html).toContain("Zerops · Owner");
     expect(html).not.toContain("ada@example.com");
     expect(renderMenu({ activeOrganization: null })).toContain("ada@example.com");
   });

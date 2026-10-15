@@ -223,7 +223,11 @@ describe("t3code/no-legacy-vocabulary", () => {
       name: "sign in an agent",
       say: "Sign {Mate} in with Claude or ChatGPT",
     },
-    { copy: "Needs Basic user access", name: "Basic user", say: "Developer" },
+    {
+      copy: "Needs Basic user access",
+      name: "Basic user",
+      say: "Works on every project, or more than Read access",
+    },
     { copy: "Open a surface", name: "surface", say: "page" },
   ];
 

@@ -1873,7 +1873,7 @@ it("An environment page explains HQ's refusal in words without opening project r
       </RegistryContext.Provider>,
     );
     expect(markup).toContain(
-      "You need at least Basic user access to one of this project&#x27;s Zerops projects to see its changes.",
+      "You need more than Read access to one of this project&#x27;s Zerops projects to see its changes.",
     );
     expect(markup).not.toContain("changes_not_seen");
     expect(platform.projectReads).toEqual([]);

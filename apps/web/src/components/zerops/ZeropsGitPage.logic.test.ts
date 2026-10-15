@@ -98,7 +98,7 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
   it("explains a refused read instead of claiming there are no repositories", () => {
     expect(state({ apps: [app({ read: false })] })).toMatchObject({
       kind: "refused",
-      reason: expect.stringContaining("Basic user"),
+      reason: expect.stringContaining("more than Read access"),
     });
   });
 
