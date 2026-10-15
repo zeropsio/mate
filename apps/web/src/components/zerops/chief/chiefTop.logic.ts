@@ -109,3 +109,13 @@ export function chiefPageView(input: {
           : MAY_NOT_CREATE;
   return { kind: "offer", blocked };
 }
+
+/**
+ * The Chief's row title in two parts: the words before its noun, which give way first when the
+ * menu is narrow, and the noun itself — "Chief", "Chief Mate" — which always stays whole.
+ */
+export function chiefNameParts(title: string): { readonly head: string; readonly noun: string } {
+  const at = title.lastIndexOf("Chief");
+  if (at <= 0) return { head: "", noun: title };
+  return { head: title.slice(0, at).trimEnd(), noun: title.slice(at) };
+}

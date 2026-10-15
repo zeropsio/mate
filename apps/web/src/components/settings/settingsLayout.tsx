@@ -14,6 +14,7 @@ import {
 import { cn } from "../../lib/utils";
 import { WorkspacePageContainer, type WorkspacePageWidth } from "../WorkspacePageContainer";
 import { Button } from "../ui/button";
+import { Row } from "../ui/row";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 interface SettingsSearchTargetContextValue {
@@ -163,35 +164,30 @@ export function SettingsRow({
   children?: ReactNode;
 }) {
   const targetRef = useSettingsSearchTarget<HTMLDivElement>(rowProps.id);
+  const lined = Boolean(description) || Boolean(status);
 
   return (
     <div
       {...rowProps}
       ref={targetRef}
       tabIndex={rowProps.id ? -1 : rowProps.tabIndex}
-      className={cn("rounded-xl px-3 sm:px-4", children ? "pt-3 pb-1" : "py-3", className)}
+      className={cn("rounded-xl", children ? "pb-1" : undefined, className)}
     >
-      <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)] sm:items-center sm:gap-8">
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex min-h-5 items-center gap-1.5">
-            <h3 className="text-sm font-medium text-foreground">{title}</h3>
-            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
-              {resetAction}
-            </span>
-          </div>
-          {description ? (
-            <p className="max-w-xl text-xs leading-normal text-muted-foreground/80">
+      <Row
+        badges={resetAction}
+        control={control}
+        line={
+          lined ? (
+            <>
               {description}
-            </p>
-          ) : null}
-          {status ? <div className="pt-0.5 text-xs text-muted-foreground">{status}</div> : null}
-        </div>
-        {control ? (
-          <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
-            {control}
-          </div>
-        ) : null}
-      </div>
+              {status ? <span className="block pt-0.5 text-muted-foreground">{status}</span> : null}
+            </>
+          ) : undefined
+        }
+        lineWraps
+        size="sm"
+        title={title}
+      />
       {children}
     </div>
   );

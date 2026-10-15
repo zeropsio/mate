@@ -11,6 +11,7 @@ import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 
 import { Alert, AlertDescription, AlertTitle } from "../../ui/alert";
 import { Button } from "../../ui/button";
+import { Row } from "../../ui/row";
 import { Spinner } from "../../ui/spinner";
 import type { AddressWrite, FaceTone } from "./addresses.logic";
 
@@ -66,7 +67,9 @@ export function SheetSection({
       </header>
       {notice}
       {rows.length === 0 ? null : (
-        <div className="rounded-xl border border-border/70 bg-card px-3.5">{rows}</div>
+        <div className="divide-y divide-border/60 rounded-xl border border-border/70 bg-card">
+          {rows}
+        </div>
       )}
       {after}
     </section>
@@ -88,19 +91,14 @@ export function SheetRow({
   readonly data?: string;
 }) {
   return (
-    <div
-      className={`grid min-h-11 items-center gap-x-3 border-t border-border/60 py-1.5 first:border-t-0 ${more === undefined ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto_2rem]"}`}
+    <Row
+      control={more}
       data-addresses-row={data}
-    >
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2 font-medium text-sm">{name}</div>
-        {sub === undefined ? null : (
-          <div className="mt-px truncate text-muted-foreground text-xs">{sub}</div>
-        )}
-      </div>
-      <div className="flex items-center justify-end gap-2">{end}</div>
-      {more === undefined ? null : <div className="flex justify-end">{more}</div>}
-    </div>
+      line={sub}
+      meta={end}
+      size="sm"
+      title={<span className="flex min-w-0 items-center gap-2">{name}</span>}
+    />
   );
 }
 

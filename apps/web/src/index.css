@@ -3226,22 +3226,9 @@ code {
 /* ==== Pass 16 · the menu's rows ==== */
 
 @layer components {
-  /* A Mate's row: its corners, and the ones a row's own hover paints. The
-     grid, the padding and the type are the row's utilities; only what no
-     scale holds lives here. */
-  /* A Mate's row: a 36 px face in a 36 px column, 12 px to the words — its name and time, and one
-     line under them, its answer (the owner, 2026-10-12: "just go with answer") — 59 px, 8 px
-     inside the row's own band. The face spans both lines, edge to edge with the words. */
-  .menu-row {
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr);
-    column-gap: 12px;
-    align-items: start;
-    min-height: 63px;
-    padding: 11px 10px;
-    border-radius: 12px;
-  }
-
+  /* A Mate's row is the kit's `Row` at its `lg` size: a 36 px face in a 36 px column, 12 px to the
+     words — its name and time, and one line under them, its answer (the owner, 2026-10-12: "just
+     go with answer") — 63 px, 8 px inside the row's own band. */
   /* One scale for the menu: a project 16/600, a name 15/21, every line under a name 14/22, the
      time and counts 12/16, muted and tabular. */
   .menu-name {
@@ -3627,8 +3614,15 @@ code {
     gap: 6px;
   }
 
-  /* Between a project's name and its Mate's: room on both sides, the dot after it. */
+  /* Between a project's name and its Mate's: room on both sides, the dot after it. It gives way
+     before either name does, a whole mark at a time (the marks after a name are the row's badges,
+     which do the same). */
   .menu-name .menu-marks {
+    flex: 0 100000 auto;
+    flex-wrap: wrap;
+    min-width: 0;
+    height: 18px;
+    overflow: hidden;
     margin-inline: 7px 1px;
   }
 
@@ -4101,7 +4095,7 @@ code {
 
   /* A Mate under its open group's row: its whole unit 18 px in, so the group's Mates read as its
      and its band and hover start where it does. */
-  .menu-unit:has(.menu-row-kid) {
+  .menu-unit:has([data-slot="row"][data-kid]) {
     margin-inline-start: 18px;
   }
 
@@ -4147,7 +4141,7 @@ code {
     pointer-events: auto;
   }
 
-  [data-tags] .menu-row .menu-line2:not(.menu-line2 .menu-line2) {
+  [data-tags] [data-slot="row"] .menu-line2:not(.menu-line2 .menu-line2) {
     padding-inline-start: calc(var(--menu-tags-w, 0px) + 6px);
   }
 
@@ -4449,7 +4443,7 @@ code {
   }
 
   /* Under its project's row the face stands 28 px, 4 px into its column: the seat moves with it. */
-  .menu-row-kid .menu-face-cut,
+  [data-slot="row"][data-kid] .menu-face-cut,
   .menu-rail-face[data-kid] .menu-face-cut {
     -webkit-mask-image: radial-gradient(
       circle 10px at 26px 26px,
@@ -5919,21 +5913,42 @@ code {
   /* The org's own Mate, set apart from every project's: its title in the menu's heaviest weight,
      tracked tight, "Mate" in the mark's teal. */
   .menu-chief-name {
-    overflow: hidden;
+    display: flex;
+    column-gap: 0.25em;
+    min-width: 0;
     font-size: 16px;
     line-height: 21px;
     font-weight: 650;
     letter-spacing: -0.01em;
     color: var(--sidebar-foreground);
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  /* Whose Chief, or what to do with it, gives way first; the noun stays whole. */
+  .menu-chief-name-head {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .menu-chief-name-noun {
+    flex: none;
+  }
+
+  /* One line, never two: what does not fit ends in an ellipsis. */
   .menu-chief-line {
     display: flex;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .menu-chief-line > * {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .menu-chief-count {

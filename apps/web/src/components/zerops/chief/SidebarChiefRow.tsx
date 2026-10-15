@@ -20,7 +20,7 @@ import { MateOwnerMark } from "../MateOwnerMark";
 import { ownerMark } from "../SidebarMateRow.logic";
 import { SidebarWaitingPopover, type WaitingVerbs } from "../SidebarWaiting";
 import { waitingSummary, type WaitingItem } from "../SidebarWaiting.logic";
-import type { ChiefSetupRowState } from "./chiefTop.logic";
+import { chiefNameParts, type ChiefSetupRowState } from "./chiefTop.logic";
 import { carryBandToChief } from "./chiefLitTravel";
 
 export interface SidebarChiefRowProps {
@@ -38,6 +38,21 @@ export interface SidebarChiefRowProps {
   readonly waiting?:
     | { readonly items: ReadonlyArray<WaitingItem>; readonly verbs: WaitingVerbs }
     | undefined;
+}
+
+/** The title, its noun whole: the words before "Chief" give way first in a narrow menu. */
+function ChiefName({ title }: { readonly title: string }) {
+  const { head, noun } = chiefNameParts(title);
+  return (
+    <span className="menu-chief-name" data-waiting-line="">
+      {head === "" ? null : (
+        <>
+          <span className="menu-chief-name-head">{head}</span>{" "}
+        </>
+      )}
+      <span className="menu-chief-name-noun">{noun}</span>
+    </span>
+  );
 }
 
 export function SidebarChiefRow({
@@ -106,9 +121,9 @@ export function SidebarChiefRow({
             )}
           </span>
           <span className="menu-chief-words">
-            <span className="menu-chief-name" data-waiting-line="">
-              {title ?? (account === null ? "Chief Mate" : `${account.name}'s Chief Mate`)}
-            </span>
+            <ChiefName
+              title={title ?? (account === null ? "Chief Mate" : `${account.name}'s Chief Mate`)}
+            />
             {shown === null ? null : <span className="menu-chief-line">{shown}</span>}
           </span>
         </span>
