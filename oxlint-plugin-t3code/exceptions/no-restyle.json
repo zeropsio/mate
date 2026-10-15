@@ -552,22 +552,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/ComposerPendingApprovalActions.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> font-normal in \"font-normal\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPendingApprovalActions.tsx",
-    "kind": "TemplateElement",
-    "fingerprint": "<Button> px-2.5 in } h-auto min-h-7 max-w-full px-2.5 py-1.5${",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerPendingReviewComments.tsx",
     "kind": "Literal",
     "fingerprint": "<TooltipPopup> leading-tight in \"max-w-96 whitespace-pre-wrap leading-tight\"",

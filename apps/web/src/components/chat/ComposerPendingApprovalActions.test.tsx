@@ -52,39 +52,6 @@ vi.mock("../ui/button", () => ({
   },
 }));
 
-// Approve is the ask's one blue button, the composer top's own.
-vi.mock("./ComposerAsk", () => ({
-  ComposerAskButton: ({
-    children,
-    "data-approval-action-tone": tone,
-    "data-approval-decision": decision,
-    disabled,
-    onClick,
-  }: {
-    readonly children: unknown;
-    readonly "data-approval-action-tone": string;
-    readonly "data-approval-decision": string;
-    readonly disabled?: boolean;
-    readonly onClick: (event: never) => void;
-  }) => {
-    buttonState.actions.push({
-      decision,
-      onClick: () => onClick(undefined as never),
-      tone,
-      variant: "ask",
-    });
-    return (
-      <button
-        data-approval-action-tone={tone}
-        data-approval-decision={decision}
-        disabled={disabled}
-      >
-        {children as string}
-      </button>
-    );
-  },
-}));
-
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 
 describe("ComposerPendingApprovalActions", () => {
@@ -114,7 +81,7 @@ describe("ComposerPendingApprovalActions", () => {
     expect(rowActions.map(({ decision, tone, variant }) => ({ decision, tone, variant }))).toEqual([
       { decision: "acceptForSession", tone: "secondary", variant: "secondary" },
       { decision: "decline", tone: "quiet", variant: "ghost" },
-      { decision: "accept", tone: "primary", variant: "ask" },
+      { decision: "accept", tone: "primary", variant: "primary" },
     ]);
     // The overflow trigger is the one button without a decision.
     expect(buttonState.actions).toHaveLength(rowActions.length + 1);

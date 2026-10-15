@@ -10191,41 +10191,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 /* C3: the one blue button on the composer's top — Review, Approve, Save to
    vault — blue is for what can be clicked (S3), and the ask around it stays
    neutral. */
-.composer-top-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  /* 30 px on one line; a provider's long label wraps inside it. */
-  min-height: 30px;
-  padding: 6px 12px;
-  border-radius: 9px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-size: var(--text-line);
-  font-weight: 500;
-  line-height: 18px;
-  white-space: nowrap;
-  cursor: pointer;
-  outline: none;
-  transition:
-    transform 120ms cubic-bezier(0.23, 1, 0.32, 1),
-    filter 150ms ease;
-}
-
-.composer-top-button:hover:not(:disabled) {
-  filter: brightness(1.06);
-}
-
-.composer-top-button:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-.composer-top-button:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
 /* The strip's ×: quiet beside Review, the one button that asks for anything. */
 .composer-top-dismiss {
   display: grid;
@@ -10368,22 +10333,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   [data-chat-composer-overlay]:has([data-composer-full])::before {
     animation: none;
     transition: none;
-  }
-}
-
-.composer-top-button:focus-visible {
-  box-shadow:
-    0 0 0 2px var(--card),
-    0 0 0 4px var(--ring);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .composer-top-button {
-    transition: filter 150ms ease;
-  }
-
-  .composer-top-button:active:not(:disabled) {
-    transform: none;
   }
 }
 

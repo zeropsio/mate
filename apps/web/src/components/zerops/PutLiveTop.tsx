@@ -30,7 +30,8 @@ import { useOpenReview } from "~/zerops/review";
 import { useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 
-import { ComposerAsk, ComposerAskButton } from "../chat/ComposerAsk";
+import { ComposerAsk } from "../chat/ComposerAsk";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useProductionAddresses } from "./review/reviewReads";
 import { MateFace } from "./primitives";
@@ -118,7 +119,7 @@ export function PutLiveRow(props: PutLiveRowProps) {
       <ComposerAsk
         actions={
           <>
-            <ComposerAskButton
+            <Button
               onClick={
                 action === "again"
                   ? props.onAgain
@@ -128,7 +129,7 @@ export function PutLiveRow(props: PutLiveRowProps) {
               }
             >
               {FAILURE_ACTION[action]}
-            </ComposerAskButton>
+            </Button>
             <DismissButton onDismiss={props.onDismiss} />
           </>
         }

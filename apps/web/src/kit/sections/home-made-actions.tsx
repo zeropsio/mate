@@ -1,6 +1,5 @@
 import { ArchiveRestoreIcon } from "lucide-react";
 
-import { ComposerAskButton } from "~/components/chat/ComposerAsk";
 import { ComposerPlaceLine } from "~/components/chat/ComposerPlace";
 import { ComposerPrimaryActions } from "~/components/chat/ComposerPrimaryActions";
 import { MessageCopyButton } from "~/components/chat/MessageCopyButton";
@@ -104,21 +103,6 @@ function ActionSpecimens() {
             </DrillButton>
           </Specimen>
         </CensusComponent>
-      </CensusLook>
-
-      <CensusLook
-        files={4}
-        name="ComposerAskButton"
-        note="composer-top-button: the ask's one blue button"
-        source="apps/web/src/components/chat/ComposerAsk.tsx"
-        uses={6}
-      >
-        <Specimen label="Review">
-          <ComposerAskButton>Review</ComposerAskButton>
-        </Specimen>
-        <Specimen label="disabled">
-          <ComposerAskButton disabled>Approve</ComposerAskButton>
-        </Specimen>
       </CensusLook>
 
       <CensusLook

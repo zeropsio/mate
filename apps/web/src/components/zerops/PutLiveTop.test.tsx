@@ -1,8 +1,11 @@
+import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { PutLiveRun } from "~/zerops/putLive.logic";
 
+import { visitElements } from "../../test/reactElementTree";
+import { Button } from "../ui/button";
 import { PutLiveRow, type PutLiveRowProps } from "./PutLiveTop";
 import { ZeropsNextStepStrip, type ZeropsNextStepStripModel } from "./ZeropsNextStepBanner";
 
@@ -90,7 +93,16 @@ describe("the change waiting, while the project has no production", () => {
     );
     expect(markup).toContain(">Put it live<");
     expect(markup).toContain(">Review<");
-    expect(markup.match(/composer-top-button/gu)).toHaveLength(1);
+    const primary: unknown[] = [];
+    visitElements(
+      ZeropsNextStepStrip({ onPutLive, onReview: () => {}, strip: STRIP }) as ReactElement,
+      (element) => {
+        if (element.type === Button && (element.props.variant ?? "primary") === "primary")
+          primary.push(element.props.children);
+        return false;
+      },
+    );
+    expect(primary).toEqual(["Put it live"]);
   });
 
   it("keeps Review as its one button once a production exists", () => {

@@ -23,9 +23,9 @@ const buttonVariants = cva(
     },
     variants: {
       size: {
-        sm: "h-6 gap-1 px-[calc(--spacing(2)-1px)] text-caption [&_svg:not([class*='size-'])]:size-3.5",
-        md: "h-8 gap-1.5 px-[calc(--spacing(3)-1px)] text-body",
-        lg: "h-10 gap-2 px-[calc(--spacing(4)-1px)] text-body",
+        sm: "min-h-6 gap-1 px-[calc(--spacing(2)-1px)] py-px text-caption [&_svg:not([class*='size-'])]:size-3.5",
+        md: "min-h-8 gap-1.5 px-[calc(--spacing(3)-1px)] py-[calc(--spacing(1)-1px)] text-body",
+        lg: "min-h-10 gap-2 px-[calc(--spacing(4)-1px)] py-[calc(--spacing(1)-1px)] text-body",
         "icon-sm": "size-6 [&_svg:not([class*='size-'])]:size-3.5",
         "icon-md": "size-8",
       },

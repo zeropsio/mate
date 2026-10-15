@@ -39,7 +39,7 @@ import { usePutLive, type PutLiveAsk } from "../../zerops/putLive";
 import { useZeropsMate } from "../../zerops/useZeropsMates";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ComposerAskButton } from "../chat/ComposerAsk";
+import { Button } from "../ui/button";
 import { MateFace } from "./primitives";
 import { useConversationGroup, usePutLiveOffered, usePutLiveRow } from "./PutLiveTop";
 
@@ -197,25 +197,24 @@ export function ZeropsNextStepStrip({
         <p className="truncate text-muted-foreground text-line leading-4.5">{strip.detail}</p>
       </div>
       {onPutLive === undefined ? (
-        <ComposerAskButton
+        <Button
           onClick={(event) => {
             onReview(strip.target, event.currentTarget);
           }}
         >
           Review
-        </ComposerAskButton>
+        </Button>
       ) : (
         <div className="flex items-center gap-2">
-          <button
-            className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          <Button
             onClick={(event) => {
               onReview(strip.target, event.currentTarget);
             }}
-            type="button"
+            variant="ghost"
           >
             Review
-          </button>
-          <ComposerAskButton onClick={onPutLive}>Put it live</ComposerAskButton>
+          </Button>
+          <Button onClick={onPutLive}>Put it live</Button>
         </div>
       )}
       {dismissButton(strip.target, onDismiss)}
