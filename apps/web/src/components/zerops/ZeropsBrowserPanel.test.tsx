@@ -181,17 +181,24 @@ describe("ZeropsBrowserPanel", () => {
     expect(ZeropsBrowserPanel({ threadRef: null })).toBeNull();
   });
 
-  it("says the agent hasn't opened a browser yet when the state is no-browser", () => {
-    feedState.browserStream = { status: "no-browser" };
-    hooks.beginRender();
-    const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
-    expect(findByAttribute(tree, "data-zerops-browser-unavailable")).toBeNull();
-    const body = visitElements(
-      tree,
-      (element) => element.props.children === "The agent hasn't opened a browser yet.",
-    );
-    expect(body).not.toBeNull();
-  });
+  // A Mate's headless test browsers never reach this panel, so "hasn't opened
+  // a browser yet" read as false after it had tested in its own (2026-10-15).
+  it.each([
+    { mateName: "Fen", line: "When Fen opens a browser to show you something, it appears here." },
+    {
+      mateName: undefined,
+      line: "When the agent opens a browser to show you something, it appears here.",
+    },
+  ])(
+    "before any browser to show, says by name where the Mate's browser will appear ($mateName)",
+    ({ mateName, line }) => {
+      feedState.browserStream = { status: "no-browser" };
+      hooks.beginRender();
+      const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF, mateName });
+      expect(findByAttribute(tree, "data-zerops-browser-unavailable")).toBeNull();
+      expect(findByAttribute(tree, "data-zerops-browser-none")?.props.children).toBe(line);
+    },
+  );
 
   // The agent's browser lives only for each 3-7 s tool call: between calls
   // Milo's panel said "hasn't opened a browser yet" (stress run 2, 2026-10-09).
@@ -203,12 +210,7 @@ describe("ZeropsBrowserPanel", () => {
     };
     hooks.beginRender();
     const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
-    expect(
-      visitElements(
-        tree,
-        (element) => element.props.children === "The agent hasn't opened a browser yet.",
-      ),
-    ).toBeNull();
+    expect(findByAttribute(tree, "data-zerops-browser-none")).toBeNull();
     const last = findByAttribute(tree, "data-zerops-browser-last");
     expect(visitElements(last, (element) => element.props.label === "Not live")).not.toBeNull();
     expect(findByAttribute(last, "data-zerops-browser-last-seen")?.props.children).toBe(
