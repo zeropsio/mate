@@ -29,7 +29,7 @@ const membership = (
   canEditFinances: edit,
 });
 
-describe("a person's role, as four cards and Advanced", () => {
+describe("a person's role, as four cards and Fine-tune permissions", () => {
   it("The cards come in legacy's order, theirs lit", () => {
     expect(
       roleCards("OWNER", presetMembership("developer"), true).map(({ label, selected }) => [
@@ -69,13 +69,13 @@ describe("a person's role, as four cards and Advanced", () => {
     ).toEqual(disabled);
   });
 
-  it("A combination no card names lights none and names itself on Advanced", () => {
+  it("A combination no card names lights none and names itself on Fine-tune permissions", () => {
     const value = membership("BASIC_USER", true);
     expect(roleCards("OWNER", value, true).some(({ selected }) => selected)).toBe(false);
     expect(advancedChoices("OWNER", value, true).custom).toBe("Custom (Basic user)");
   });
 
-  it("Advanced offers the five Zerops roles and three flags, an admin editor's finances locked", () => {
+  it("Fine-tune permissions offers the five Zerops roles and three flags, an admin editor's finances locked", () => {
     const choices = advancedChoices("ADMIN", membership("NO_ACCESS", true), true);
     expect(choices.roles.map(({ label, active, disabled }) => [label, active, disabled])).toEqual([
       ["Owner", false, true],

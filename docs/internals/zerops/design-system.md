@@ -101,6 +101,7 @@ Source words and the product words that replace them:
 - Basic user, Read only (an organization's role) → **Works on every project**, **Sees every project**; at least
   Basic user access (a project's) → **more than Read access**; Member → the role's own name
 - surface → **page**
+- Set custom accesses → **Choose projects**; Advanced (a role's Zerops settings) → **Fine-tune permissions**
 - container (a Mate's) → **its computer**; closed off → **private network ready**
 
 ## 3. Visual grammar

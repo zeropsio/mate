@@ -124,7 +124,7 @@ describe("a person's own page", () => {
     ]);
   });
 
-  it("Their own grants are project chips by Mate names, then Set custom accesses", () => {
+  it("Their own grants are project chips by Mate names, then Choose projects", () => {
     const shown = page("zora", OWNER, { "snap-prod": "ADMIN", "snap-stage": "READ_ONLY" });
     expect(shown.chips).toEqual([
       ["Snap · production", "Full"],

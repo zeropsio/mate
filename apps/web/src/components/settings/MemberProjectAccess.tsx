@@ -74,7 +74,7 @@ export function MemberProjectAccess({
               }
             >
               <PlusIcon aria-hidden="true" />
-              Set custom accesses
+              Choose projects
             </PopoverTrigger>
             <PopoverPopup align="end" padding="none" width="lg">
               {open ? (

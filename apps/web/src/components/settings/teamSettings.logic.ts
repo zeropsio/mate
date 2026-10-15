@@ -124,7 +124,7 @@ export const TEAM_ROLE_WORDS: Readonly<Record<TeamRole, string>> = {
   guest: "Guest",
 };
 
-/** A Zerops role in plain words, as *Advanced* names it. */
+/** A Zerops role in plain words, as *Fine-tune permissions* names it. */
 export const ROLE_CODE_WORDS = {
   OWNER: "Owner",
   ADMIN: "Admin",

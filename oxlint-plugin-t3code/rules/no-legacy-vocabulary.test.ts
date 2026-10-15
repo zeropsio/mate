@@ -228,6 +228,11 @@ describe("t3code/no-legacy-vocabulary", () => {
       name: "Basic user",
       say: "Works on every project, or more than Read access",
     },
+    {
+      copy: "Set custom accesses",
+      name: "accesses",
+      say: "access, or what it opens: Choose projects",
+    },
     { copy: "Open a surface", name: "surface", say: "page" },
   ];
 

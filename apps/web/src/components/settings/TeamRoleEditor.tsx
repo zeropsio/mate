@@ -76,7 +76,7 @@ export function TeamRoleEditor({
         type="button"
       >
         <ChevronDownIcon aria-hidden="true" className="size-4" data-open={shown || undefined} />
-        <span>Advanced</span>
+        <span>Fine-tune permissions</span>
         {advanced.custom === null ? null : (
           <span className="tm-advanced-custom">· {advanced.custom}</span>
         )}

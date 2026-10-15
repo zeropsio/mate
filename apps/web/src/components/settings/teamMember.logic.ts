@@ -56,7 +56,7 @@ export const PRESET_WORDS: Readonly<
   },
 };
 
-/** What each Zerops role gives by itself, as *Advanced* explains it. */
+/** What each Zerops role gives by itself, as *Fine-tune permissions* explains it. */
 export const ROLE_CODE_DESCRIPTIONS: Readonly<Record<OrgRoleCode, string>> = {
   OWNER: "Full control over all projects, company settings, billing, and team.",
   ADMIN: "Full control over all projects. Can manage users below Admin. No access to billing.",
@@ -130,7 +130,7 @@ export function roleCards(
 }
 
 export interface AdvancedChoices {
-  /** "Custom (Basic user)" where no card is lit: Advanced opens by itself on it. */
+  /** "Custom (Basic user)" where no card is lit: Fine-tune permissions opens by itself on it. */
   readonly custom: string | null;
   readonly roles: ReadonlyArray<{
     readonly roleCode: OrgRoleCode;
@@ -149,7 +149,7 @@ export interface AdvancedChoices {
   }>;
 }
 
-/** *Advanced*: each Zerops role and flag, what is set, and what the editor may not change. */
+/** *Fine-tune permissions*: each Zerops role and flag, what is set, and what the editor may not change. */
 export function advancedChoices(
   editorRole: string | undefined,
   value: OrgMembership,
