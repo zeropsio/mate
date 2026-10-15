@@ -7,8 +7,6 @@ export type { LivenessLineProps, LivenessState, VisibleLivenessState } from "./L
 export { MicroLabel } from "./MicroLabel";
 export type { MicroLabelProps } from "./MicroLabel";
 export { MintPanel } from "./MintPanel";
-export { Pill } from "./Pill";
-export type { PillProps, PillTone } from "./Pill";
 export { formatStepDuration, ProcessSteps } from "./ProcessSteps";
 export type { ProcessStep, ProcessStepsProps, ProcessStepState } from "./ProcessSteps";
 export { StatusDot } from "./StatusDot";

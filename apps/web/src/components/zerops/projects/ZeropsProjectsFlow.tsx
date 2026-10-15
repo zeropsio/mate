@@ -18,9 +18,11 @@ import type {
   ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
+import { PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { MateFace, Pill, type MateFaceSize } from "../primitives";
+import { Button } from "../../ui/button";
+import { MateFace, type MateFaceSize } from "../primitives";
 import { firstRunWords } from "./firstRun.logic";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
@@ -203,7 +205,10 @@ function FirstRun({
         <p className="text-sm leading-6 text-muted-foreground">{words.body}</p>
       </div>
       {words.newProject && onCreateProject !== undefined ? (
-        <Pill disabled={creating} label="New project" onClick={onCreateProject} />
+        <Button disabled={creating} onClick={onCreateProject}>
+          <PlusIcon aria-hidden="true" />
+          New project
+        </Button>
       ) : null}
     </section>
   );

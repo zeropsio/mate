@@ -76,7 +76,7 @@ describe("first run", () => {
     expect(html).toContain('data-zerops-surface="first-run"');
     expect(html).toContain("Start a project");
     expect(html).toContain('data-mate-face-size="64"');
-    expect(html).toContain('data-zerops-primitive="pill"');
+    expect(html).toContain("New project</button>");
   });
 
   it("drops the invitation once the account has a project", () => {
@@ -94,7 +94,7 @@ describe("first run", () => {
     expect(html).toContain('data-zerops-surface="first-run"');
     expect(html).toContain("Nothing is shared with you yet");
     expect(html).not.toContain("Start a project");
-    expect(html).not.toContain('data-zerops-primitive="pill"');
+    expect(html).not.toContain("New project</button>");
   });
 
   it("tells a Developer given nothing yet that shared projects appear here, beside New project", () => {
@@ -105,7 +105,7 @@ describe("first run", () => {
     });
     expect(html).toContain("Start a project");
     expect(html).toContain("Projects your team gives you access to appear here");
-    expect(html).toContain('data-zerops-primitive="pill"');
+    expect(html).toContain("New project</button>");
   });
 });
 

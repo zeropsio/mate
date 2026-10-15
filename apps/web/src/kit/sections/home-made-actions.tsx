@@ -9,7 +9,6 @@ import { SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
 import { DrillButton } from "~/components/usage/UsageDimensionViews";
 import { CopyButton } from "~/components/zerops/addresses/AddressesSheetBits";
 import { CrewPress, CrewTextButton } from "~/components/zerops/crew/CrewParts";
-import { Pill } from "~/components/zerops/primitives";
 import { CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
@@ -171,22 +170,6 @@ function ActionSpecimens() {
         <Specimen label={specimenLabel({ compact: true })}>
           <ComposerPrimaryActions {...SEND_AT_REST} compact />
         </Specimen>
-      </CensusLook>
-
-      <CensusLook
-        files={2}
-        name="Pill"
-        note="a rounded-full button, three tones"
-        source="apps/web/src/components/zerops/primitives/Pill.tsx"
-        uses={2}
-      >
-        {(["primary", "secondary", "outline"] as const).flatMap((tone) =>
-          (["default", "sm"] as const).map((size) => (
-            <Specimen key={`${tone}-${size}`} label={specimenLabel({ tone, size })}>
-              <Pill label="Deploy" size={size} tone={tone} />
-            </Specimen>
-          )),
-        )}
       </CensusLook>
 
       <CensusLook

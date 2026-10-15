@@ -21,7 +21,6 @@ import {
   LivenessLine,
   MicroLabel,
   MintPanel,
-  Pill,
   ProcessSteps,
   StatusDot,
 } from "./primitives";
@@ -154,7 +153,6 @@ it("renders the complete primitive probe from existing showcase facts", () => {
   const primitivesMarkup = scenes
     .flatMap((scene) => [
       renderToStaticMarkup(<MicroLabel>{scene.title}</MicroLabel>),
-      renderToStaticMarkup(<Pill label={scene.title} />),
       renderToStaticMarkup(<MintPanel>{scene.title}</MintPanel>),
       renderToStaticMarkup(<KeyChip>{scene.id}</KeyChip>),
     ])
@@ -165,7 +163,6 @@ it("renders the complete primitive probe from existing showcase facts", () => {
     "status-dot",
     "micro-label",
     "chip",
-    "pill",
     "mint-panel",
     "process-steps",
     "key-chip",
