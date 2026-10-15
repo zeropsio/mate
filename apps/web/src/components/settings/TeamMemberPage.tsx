@@ -181,6 +181,8 @@ export function TeamMemberView({
         ) : (
           <MemberProjectAccess
             memberRole={memberRole}
+            createsProjects={person.membership.canCreateProjects}
+            viewerGives={accessEditable}
             candidates={candidates}
             chips={chips}
             editable={accessEditable}

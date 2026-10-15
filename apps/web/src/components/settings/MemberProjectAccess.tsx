@@ -32,6 +32,8 @@ const PICK_WORDS: Readonly<Record<GivenLevel, string>> = {
 
 export function MemberProjectAccess({
   memberRole,
+  createsProjects,
+  viewerGives,
   chips,
   candidates,
   levels,
@@ -41,6 +43,10 @@ export function MemberProjectAccess({
 }: {
   /** The role being given or held: what it reaches by itself heads the section. */
   readonly memberRole: OrgRoleCode;
+  /** The person may create projects (a Developer), and so reaches the ones they create. */
+  readonly createsProjects: boolean;
+  /** The viewer may give this person projects: what they reach is said as theirs to add. */
+  readonly viewerGives: boolean;
   readonly chips: ReadonlyArray<ProjectChip>;
   /** The projects without a level of their own yet: what the picker offers. */
   readonly candidates: ReadonlyArray<AccessProject>;
@@ -56,7 +62,9 @@ export function MemberProjectAccess({
       <div className="tm-block-head">
         <span className="tm-block-text">
           <h2 className="tm-block-title">Project access</h2>
-          <span className="tm-block-desc">{projectAccessIntro(memberRole)}</span>
+          <span className="tm-block-desc">
+            {projectAccessIntro({ roleCode: memberRole, createsProjects, viewerGives })}
+          </span>
         </span>
         {editable && candidates.length > 0 ? (
           <Popover onOpenChange={setOpen} open={open}>

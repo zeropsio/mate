@@ -219,6 +219,8 @@ export function TeamInviteView({
           <section aria-label="Project access" className="tm-section">
             <MemberProjectAccess
               memberRole={membership.roleCode}
+              createsProjects={membership.canCreateProjects}
+              viewerGives
               candidates={projects.filter(({ projectId }) => draft[projectId] === undefined)}
               chips={chips}
               editable={!pending}
