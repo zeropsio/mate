@@ -6,8 +6,9 @@
  *
  * The journal reads through an executor-side read of the env file (`executors/hqBirthReads.ts`)
  * and writes each slot as an `hq-birth-note` operation run to its end. A claim is a lease on who
- * goes on: renewed at each step, never waited out — a live claim of another browser stops this one
- * at once. No credential value is admitted to a record or a receipt.
+ * goes on: renewed at each step and through each long wait — a live claim of another browser stops
+ * this one at once. A lease that ran out with nobody taking it is still its holder's; a claim slot
+ * written after it is ownership lost. No credential value is admitted to a record or a receipt.
  */
 import * as Schema from "effect/Schema";
 
@@ -115,6 +116,8 @@ export interface HqBirthJournalPorts {
   readonly append: (projectId: string, key: string, content: string) => Promise<void>;
   /** The claim's lease alone. */
   readonly now: () => number;
+  /** Runs `tick` every `ms` until stopped: the claim renewed while a long wait is pending. */
+  readonly every: (ms: number, tick: () => Promise<void>) => () => void;
   readonly newId: () => string;
 }
 
@@ -169,8 +172,35 @@ export class HqBirthJournal {
     const slot = lastSlot(await this.ports.read(this.projectId), "CLAIM");
     if (slot === undefined || slot.index !== this.claimIndex) throw new HqBirthClaimLost();
     const claim = decodeClaim(slot.content);
-    if (claim.owner !== this.owner || claim.until <= this.ports.now()) throw new HqBirthClaimLost();
+    if (claim.owner !== this.owner) throw new HqBirthClaimLost();
+    // Lapsed or not, nobody wrote after it: renewing appends the slot a taker would take, so a
+    // renewal racing another browser's acquire loses to it.
     if (claim.until - this.ports.now() < HQ_BIRTH_CLAIM_MS / 2) await this.claim(slot.index + 1);
+  }
+
+  /**
+   * The claim kept live while `wait` is pending, so another browser opening Mate follows this one.
+   * Renewals run one at a time and end before the wait's result is returned, never racing the next
+   * step's own; a renewal that failed stops the birth once the wait ends, in its own words.
+   */
+  async holding<T>(wait: Promise<T>): Promise<T> {
+    let renewing = Promise.resolve();
+    let failure: { readonly cause: unknown } | undefined;
+    const renew = async () => {
+      if (failure !== undefined) return;
+      try {
+        await this.assertOwned();
+      } catch (cause) {
+        failure = { cause };
+      }
+    };
+    const stop = this.ports.every(HQ_BIRTH_CLAIM_MS / 3, () => (renewing = renewing.then(renew)));
+    const result = await wait.finally(() => {
+      stop();
+      return renewing;
+    });
+    if (failure !== undefined) throw failure.cause;
+    return result;
   }
 
   async save(record: HqBirthRecord): Promise<void> {
@@ -214,7 +244,7 @@ export class HqBirthJournal {
     await this.append(key, JSON.stringify({ state: "started", handles }));
     let result: Readonly<Record<string, string>>;
     try {
-      // Check again after the intent write: a paused tab does not act with an expired claim.
+      // Check again after the intent write: a tab paused while another browser took over does not act.
       await this.assertOwned();
       result = await call();
     } catch (cause) {

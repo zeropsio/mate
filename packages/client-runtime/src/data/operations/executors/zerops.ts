@@ -255,6 +255,11 @@ export function makeZeropsExecutor(input: {
           demandDetail: input.demandDetail,
         }),
         now: input.nowMs,
+        every: (ms, tick) => {
+          // @effect-diagnostics-next-line globalTimers:off -- HQ birth's one timer port; plain promises, no Effect runtime.
+          const timer = setInterval(() => void tick(), ms);
+          return () => clearInterval(timer);
+        },
         newBirthId: input.makeId,
       },
     });
