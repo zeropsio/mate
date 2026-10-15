@@ -1,5 +1,3 @@
-export { Chip } from "./Chip";
-export type { ChipProps } from "./Chip";
 export { KeyChip } from "./KeyChip";
 export type { KeyChipProps } from "./KeyChip";
 export { LivenessLine } from "./LivenessLine";

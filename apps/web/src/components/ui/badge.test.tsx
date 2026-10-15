@@ -91,4 +91,18 @@ describe("Badge", () => {
 
     expect(html).toContain(">Setting up infrastructure</span>");
   });
+
+  it.each([
+    ["success", "Ready"],
+    ["info", "Deploying"],
+    ["warning", "Needs attention"],
+    ["danger", "Deploy failed"],
+    ["neutral", "Stopped"],
+  ] as const)("renders the %s status and visible phrase", (tone, label) => {
+    const html = renderToStaticMarkup(<Badge tone={tone}>{label}</Badge>);
+
+    expect(html.startsWith("<span")).toBe(true);
+    expect(html).toContain(`data-tone="${tone}"`);
+    expect(html.endsWith(`>${label}</span>`)).toBe(true);
+  });
 });

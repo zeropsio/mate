@@ -16,7 +16,6 @@ import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { ZeropsOperationCard } from "./ZeropsOperationCard";
 import {
-  Chip,
   KeyChip,
   LivenessLine,
   MicroLabel,
@@ -125,7 +124,11 @@ it("renders the complete primitive probe from existing showcase facts", () => {
           {label}
         </Badge>,
       ),
-      renderToStaticMarkup(<Chip key={`chip-${tone}`} label={label} tone={tone} />),
+      renderToStaticMarkup(
+        <Badge key={`chip-${tone}`} tone={STATUS_BADGE_TONE[tone]}>
+          {label}
+        </Badge>,
+      ),
     ])
     .join("\n");
   const processMarkup = scenes
@@ -166,7 +169,6 @@ it("renders the complete primitive probe from existing showcase facts", () => {
 
   for (const primitive of [
     "micro-label",
-    "chip",
     "mint-panel",
     "process-steps",
     "key-chip",
@@ -179,6 +181,5 @@ it("renders the complete primitive probe from existing showcase facts", () => {
   );
   for (const { tone } of toneProbes) {
     expect(markup).toContain(`data-tone="${STATUS_BADGE_TONE[tone]}"`);
-    expect(markup).toContain(`data-zerops-chip-tone="${tone}"`);
   }
 });

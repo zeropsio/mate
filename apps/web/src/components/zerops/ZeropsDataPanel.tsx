@@ -65,7 +65,7 @@ import { compareSemverVersions } from "@t3tools/shared/semver";
 import { useZeropsDataConsole } from "../../zerops/useZeropsFeeds";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-import { Chip, MicroLabel, STATUS_BADGE_TONE } from "./primitives";
+import { MicroLabel, STATUS_BADGE_TONE } from "./primitives";
 import { ZeropsDataFilters } from "./ZeropsDataFilters";
 import { ZeropsDataQuery } from "./ZeropsDataQuery";
 import { ZeropsDataBlob } from "./ZeropsDataBlob";
@@ -737,11 +737,7 @@ export function ZeropsDataPanel({
                               <span className="truncate">{entry.hostname}</span>
                             </span>
                             {entry.support !== "supported" ? (
-                              <Chip
-                                data-zerops-data-service-view-only
-                                label="View only"
-                                tone="off"
-                              />
+                              <Badge data-zerops-data-service-view-only>View only</Badge>
                             ) : null}
                           </span>
                           <span className="text-muted-foreground">{entry.family}</span>
@@ -1352,7 +1348,7 @@ export function ZeropsDataPanel({
               />
             )}
             {selectedService !== null && selectedService.support !== "supported" ? (
-              <Chip data-zerops-data-view-only label="View only" tone="off" />
+              <Badge data-zerops-data-view-only>View only</Badge>
             ) : null}
           </div>
           <div className="flex items-center gap-1">

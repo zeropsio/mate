@@ -18,7 +18,7 @@ import { SourceStatusBadge } from "~/components/settings/ResourceTelemetryDiagno
 import { JumpHintBadge } from "~/components/Sidebar";
 import { CommandPaletteMetaDot } from "~/components/ThreadCommandSubtitle";
 import { MateDot } from "~/components/zerops/MateDot";
-import { Chip, KeyChip, MateFace } from "~/components/zerops/primitives";
+import { KeyChip, MateFace } from "~/components/zerops/primitives";
 import { AccessBadge } from "~/components/zerops/projects/ProjectAccessChips";
 import { PlaceDot } from "~/components/zerops/projects/ProjectCards";
 import { EnvDot } from "~/components/zerops/SidebarProductionChip";
@@ -75,13 +75,6 @@ function LabelSpecimens() {
           {["DEV", "STAGE", "PROD"].map((label) => (
             <Specimen key={label} label={specimenLabel({ label })}>
               <ZeropsRoleTag label={label} />
-            </Specimen>
-          ))}
-        </CensusComponent>
-        <CensusComponent name="Chip" source={`${PRIMITIVES}/Chip.tsx`}>
-          {TONES.map((tone) => (
-            <Specimen key={tone} label={specimenLabel({ tone })}>
-              <Chip label="Running" tone={tone} />
             </Specimen>
           ))}
         </CensusComponent>

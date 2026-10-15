@@ -20,7 +20,7 @@ import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { Chip, MicroLabel, STATUS_BADGE_TONE } from "../zerops/primitives";
+import { MicroLabel, STATUS_BADGE_TONE } from "../zerops/primitives";
 import {
   buildMcpRows,
   readMcpAddForm,
@@ -184,9 +184,7 @@ function McpServerRowView(props: {
               <span className="min-w-0 shrink-[2] truncate text-xs text-muted-foreground">
                 {row.runs}
               </span>
-              {row.managed ? (
-                <Chip className="shrink-0" label={MCP_WORDS.builtIn} tone="off" />
-              ) : null}
+              {row.managed ? <Badge className="shrink-0">{MCP_WORDS.builtIn}</Badge> : null}
             </span>
             {row.note === null ? null : (
               <span
