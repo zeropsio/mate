@@ -148,7 +148,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
       yield* fill("Its first Mate", "Nova");
     }),
     submitProject: click("Create Garden with Nova"),
-    /** Shop's card in the overview: its ··· holds Add Mate, Add stage and Add production. */
+    /** Shop's card in the overview: its ··· holds Add Mate, Add stage and Put it live. */
     openAdd: (role: "Mate" | "stage" | "production") =>
       Effect.gen(function* () {
         yield* Effect.promise(() => page.goto(`${s.web.origin}/zerops`));

@@ -1,6 +1,7 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { showProjectParts } from "~/zerops/projectPartsShown";
+import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
@@ -841,7 +842,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     projectRefs.set(id, made);
     return made;
   };
-  // Whether *Add stage* and *Add production* stand in a project's menu: HQ's offer of each.
+  // Whether *Add stage* and *Put it live* stand in a project's menu: HQ's offer of each.
   const environmentOffers = useEnvironmentOffers();
   const addMateOffer = useAddMateOffer();
   const treeRef = useRef<HTMLElement>(null);
@@ -2085,7 +2086,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         },
       },
       setUp: missing.map((row) => ({
-        label: `Add ${row.name.toLocaleLowerCase()}`,
+        label: environmentDoorLabel(row.tier, row.name),
         act:
           onSetUp === undefined
             ? onBrowseProjects

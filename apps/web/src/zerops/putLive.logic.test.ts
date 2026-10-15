@@ -178,18 +178,20 @@ describe("the Put it live sheet", () => {
   it("says what goes live in the change's title and at most three plain lines, and where", () => {
     const sheet = putLiveSheet({
       project: "Tea Shop",
-      change: {
-        title: "Shop front",
-        description: [
-          "A small, phone-friendly shop front.",
-          "",
-          "## What it does",
-          "- **Add** a recipe with a title and steps",
-          "- **Browse** every recipe, listed A to Z",
-          "- Search by `ingredient`",
-          "- Tick off ingredients while you cook",
-        ].join("\n"),
-      },
+      changes: [
+        {
+          title: "Shop front",
+          description: [
+            "A small, phone-friendly shop front.",
+            "",
+            "## What it does",
+            "- **Add** a recipe with a title and steps",
+            "- **Browse** every recipe, listed A to Z",
+            "- Search by `ingredient`",
+            "- Tick off ingredients while you cook",
+          ].join("\n"),
+        },
+      ],
       recipe: "present",
     });
     expect(sheet.title).toBe("Put Tea Shop live");
@@ -212,7 +214,21 @@ describe("the Put it live sheet", () => {
     ["absent", "The project has no production recipe yet: ask the Mate to add one."],
     ["unreadable", "The project's recipe can't be read right now."],
   ] as const)("holds its button while the production recipe is %s, saying why", (recipe, hold) => {
-    expect(putLiveSheet({ project: "Tea Shop", change: { title: "x" }, recipe }).hold).toBe(hold);
+    expect(putLiveSheet({ project: "Tea Shop", changes: [{ title: "x" }], recipe }).hold).toBe(
+      hold,
+    );
+  });
+
+  it("asked from the project, lists what is merged by title, and waits while nothing is", () => {
+    const many = putLiveSheet({
+      project: "Tea Shop",
+      changes: [{ title: "Search" }, { title: "Browse" }, { title: "Add" }, { title: "Start" }],
+      recipe: "present",
+    });
+    expect(many.what).toEqual({ title: "4 changes", lines: ["Search", "Browse", "Add"] });
+    expect(many.hold).toBeUndefined();
+    const none = putLiveSheet({ project: "Tea Shop", changes: [], recipe: "present" });
+    expect(none.hold).toBe("Nothing is merged to put live yet.");
   });
 
   it("takes plain sentences where a description has no list, and skips pictures and code", () => {

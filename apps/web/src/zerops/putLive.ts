@@ -7,6 +7,7 @@
  * Kept in memory for the tab: what a run made stays in HQ and on the platform, and the menu and the
  * project say it from there after a reload.
  */
+import { useCallback } from "react";
 import { create } from "zustand";
 
 import {
@@ -17,10 +18,13 @@ import {
   type PutLiveRun,
 } from "./putLive.logic";
 
-/** The sheet, asked for a project: with the change it carries live, read when it was asked. */
+/**
+ * The sheet, asked for a project: from a change, the change it carries live, read when it was
+ * asked; from the project itself, none — what is merged goes live.
+ */
 export interface PutLiveAsk {
   readonly groupId: string;
-  readonly change: PutLiveChange & { readonly description?: string | undefined };
+  readonly change?: (PutLiveChange & { readonly description?: string | undefined }) | undefined;
 }
 
 interface PutLiveState {
@@ -60,6 +64,12 @@ export const usePutLive = create<PutLiveState>((set, get) => ({
     if (runs.delete(groupId)) set({ runs });
   },
 }));
+
+/** Opens the sheet from a project's own door: what is merged goes live. */
+export function useOpenPutLive(): (groupId: string) => void {
+  const ask = usePutLive((state) => state.ask);
+  return useCallback((groupId) => ask({ groupId }), [ask]);
+}
 
 /** A project's run, while there is one. */
 export function usePutLiveRun(groupId: string | undefined): PutLiveRun | undefined {

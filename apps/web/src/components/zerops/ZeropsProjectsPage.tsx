@@ -75,6 +75,8 @@ import { heldCandidates, listsNoProject } from "@t3tools/client-runtime/zerops/p
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
+import { environmentDoorLabel } from "~/zerops/putLive.logic";
+import { useOpenPutLive } from "~/zerops/putLive";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
@@ -1708,6 +1710,8 @@ export function ZeropsProjectsContent({
   // A Mate is asked for over whatever is on screen (`ZeropsNewMateHost`), from here as from the
   // left menu, and the person lands on it; a stage or a production is this page's own form.
   const addMate = useAddMate();
+  // Production is put live in one step, over this page (`PutLiveHost`).
+  const openPutLive = useOpenPutLive();
   const requestEnvironment = useCallback(
     (groupId: string, role: ZeropsEnvironmentRole) => {
       if (role === "dev") {
@@ -2401,10 +2405,9 @@ export function ZeropsProjectsContent({
             ? [
                 {
                   id: "add-production",
-                  label: "Add production",
-                  disabled: creationRunning,
+                  label: environmentDoorLabel("production", "production"),
                   onSelect: () => {
-                    requestEnvironment(group.groupId, "prod");
+                    openPutLive(group.groupId);
                   },
                 },
               ]
@@ -2566,11 +2569,9 @@ export function ZeropsProjectsContent({
         setUpProduction={({ group }) =>
           !addableTiers(group).includes("production") || groupIsEmpty(group)
             ? undefined
-            : creationRunning
-              ? "busy"
-              : () => {
-                  requestEnvironment(group.groupId, "prod");
-                }
+            : () => {
+                openPutLive(group.groupId);
+              }
         }
         renderCardPeople={overview.renderCardPeople}
         renderReleaseVerb={({ group, flow }) => {

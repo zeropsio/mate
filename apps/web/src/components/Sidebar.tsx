@@ -181,6 +181,7 @@ import {
 } from "./sidebar/SidebarChrome";
 import { newMateView, useAddMate } from "../zerops/newMate";
 import { useAddMateOffer } from "../zerops/useHqOffers";
+import { useOpenPutLive } from "../zerops/putLive";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
 import { useRoleOffers, useTeamOffers } from "../zerops/usePlatformCapabilities";
@@ -1298,7 +1299,7 @@ export default function Sidebar() {
   // Whose each Mate is, for the badge on the corner of its face.
   const zeropsMateOwner = useZeropsMateOwners();
   // Each container's health, as the container store holds it — the tree's
-  // "some Mate in the group is up" part of *Add production*'s gate.
+  // "some Mate in the group is up" part of *Put it live*'s gate.
   // Until the listing may say "none", the tree says what it can instead. An
   // account still to choose its organization is asked on the projects screen,
   // and no listing is on its way to be waited on here.
@@ -1347,7 +1348,7 @@ export default function Sidebar() {
           releases: flow.releases,
           environmentInputs: flow.environmentInputs,
         }),
-        // What the project menu's *Add stage* and *Add production* are offered from.
+        // What the project menu's *Add stage* and *Put it live* are offered from.
         recipeRead: flow.recipeRead,
         recipeTiers: flow.recipeTiers,
         // The version a release would tag.
@@ -1754,8 +1755,9 @@ export default function Sidebar() {
   // The left menu's add button asks for a Mate on a named project: the New Mate
   // dialog opens over whatever is on screen (`ZeropsNewMateHost`).
   const addMate = useAddMate();
-  // "Add stage" / "Add production": the projects page's own form, opened there.
+  // "Add stage": the projects page's own form, opened there; "Put it live": its sheet, here.
   const askSetUp = useSetUpEnvironment((state) => state.ask);
+  const openPutLive = useOpenPutLive();
   // A Mate still coming up opens its own view, where it comes up — a New
   // project's first Mate, before the platform has made its project, by the
   // creation's own id.
@@ -1931,10 +1933,16 @@ export default function Sidebar() {
   );
   const onZeropsSetUp = useCallback(
     (...[groupId, tier]: TreeVerbArgs<"onSetUp">) => {
+      if (isMobile) setOpenMobile(false);
+      // Production is put live over what is on screen; a stage is the projects page's form.
+      if (tier === "production") {
+        openPutLive(groupId);
+        return;
+      }
       askSetUp(groupId, tier);
       navigateToZeropsProjects();
     },
-    [askSetUp, navigateToZeropsProjects],
+    [askSetUp, isMobile, navigateToZeropsProjects, openPutLive, setOpenMobile],
   );
   const onZeropsAskToFix = useCallback(
     (...[mateProjectId, problem]: TreeVerbArgs<"onAskToFix">) => {

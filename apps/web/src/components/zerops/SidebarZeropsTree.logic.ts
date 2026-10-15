@@ -112,7 +112,7 @@ export function projectHeadingMenu(input: {
         readonly onMove: (direction: "up" | "down") => void;
       }
     | undefined;
-  /** "Add stage", "Add production": what the project lacks, each opening its form. */
+  /** "Add stage", "Put it live": what the project lacks, each opening its form or its sheet. */
   readonly setUp: ReadonlyArray<{ readonly label: string; readonly act: () => void }>;
   readonly onBrowseProjects: () => void;
 }): ReadonlyArray<HeadingMenuEntry> {

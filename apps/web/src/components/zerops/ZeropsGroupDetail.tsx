@@ -131,6 +131,8 @@ import {
   useGroupPendingEnvironments,
   useEnvironmentOffers,
 } from "~/zerops/useAddEnvironment";
+import { useOpenPutLive } from "~/zerops/putLive";
+import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { useRepositoryHistory, type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
@@ -517,6 +519,7 @@ function KnownGroupAside({
   const firstDeployOf = useStageFirstDeploys(flow);
   const offered = useEnvironmentOffers()(groupId);
   const addEnvironment = useAddEnvironment();
+  const openPutLive = useOpenPutLive();
   const devstages = useDevstages(groupId);
   const pendingEnvironments = useGroupPendingEnvironments(groupId);
   const { listing } = useZeropsCandidates();
@@ -572,7 +575,8 @@ function KnownGroupAside({
       codeRepos={flow.codeRepos}
       slots={slots}
       onAdd={(tier) => {
-        addEnvironment(groupId, tier);
+        if (tier === "production") openPutLive(groupId);
+        else addEnvironment(groupId, tier);
       }}
       onFinish={(projectId) => {
         const entry = halfMadeHere.find((candidate) => candidate.projectId === projectId);
@@ -639,7 +643,7 @@ export function ZeropsGroupPane({
   readonly onFinish: (id: string) => void;
   /** An environment of this application is being finished now. */
   readonly finishing: boolean;
-  /** *Add stage* or *Add production*, pressed on a slot. */
+  /** *Add stage* or *Put it live*, pressed on a slot. */
   readonly onAdd: (tier: EnvironmentRow["tier"]) => void;
   readonly groupId: string;
   /** The project's name; undefined while the listing has not named it — never its id. */
@@ -738,7 +742,7 @@ export function ZeropsGroupPane({
                         size="sm"
                         variant="outline"
                       >
-                        {`Add ${slot.name.toLocaleLowerCase()}`}
+                        {environmentDoorLabel(slot.tier, slot.name)}
                       </Button>
                     ) : null}
                   </li>

@@ -118,11 +118,14 @@ describe("F: creation through the hosted client", () => {
           yield* Effect.promise(() =>
             s.page.goto(`${s.web.origin}/group/${s.drivers.appIds.get("Shop")}/flow`),
           );
+          // Production starts at Put it live; a Git branch production is set up from its link.
           yield* Effect.promise(async () => {
-            const add = await s.page.waitForSelector("::-p-aria(Add production)");
+            const add = await s.page.waitForSelector("::-p-aria(Put it live)");
             await add!.evaluate((element) => (element as HTMLElement).focus());
             await s.page.keyboard.press("Enter");
           });
+          yield* c.text("Put Shop live");
+          yield* c.click("Deploy to a Git branch instead…");
           yield* c.text("Where does it go?");
           if (step !== "destination") yield* c.chooseDestination("git");
           if (step === "token") {

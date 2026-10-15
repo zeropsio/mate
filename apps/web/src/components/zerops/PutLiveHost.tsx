@@ -13,10 +13,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { hqNavigationAtom } from "~/state/zerops";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
-import { useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { usePutLive, type PutLiveAsk } from "~/zerops/putLive";
+import {
+  useCompactProjectFlows,
+  useProjectFlows,
+  type ZeropsProjectFlow,
+} from "~/zerops/projectFlows";
+import { usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
 import { putLiveNext, putLiveSheet, type PutLiveRun } from "~/zerops/putLive.logic";
 import { useOpenReview } from "~/zerops/review";
+import { useAddEnvironment, useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
@@ -77,27 +82,76 @@ function useGroupEntry(groupId: string) {
 function PutLiveSheetContainer({ ask }: { readonly ask: PutLiveAsk }) {
   const entry = useGroupEntry(ask.groupId);
   const recipe = useZeropsGroupRecipe({ appId: ask.groupId, tier: "production", enabled: true });
+  const flow = useCompactProjectFlows(useMemo(() => [ask.groupId], [ask.groupId])).flows.get(
+    ask.groupId,
+  );
+  const offers = useEnvironmentOffers()(ask.groupId);
+  const addEnvironment = useAddEnvironment();
   const start = usePutLive((state) => state.start);
   const close = usePutLive((state) => state.close);
   const openReview = useOpenReview();
+  const running = usePutLiveRun(ask.groupId);
   const project = entry?.group.name ?? "The project";
-  const model = putLiveSheet({ project, change: ask.change, recipe: recipe.state });
-  const { description: _description, ...change } = ask.change;
+  // Asked from the project: what is merged goes live, newest first — once the flow is read.
+  const merged = useMemo(
+    () =>
+      flow === undefined
+        ? undefined
+        : flow.merged
+            .filter((pull) => pull.kind === "code")
+            .toSorted((left, right) => (right.mergedAt ?? "").localeCompare(left.mergedAt ?? "")),
+    [flow],
+  );
+  const changes = ask.change === undefined ? (merged ?? []) : [ask.change];
+  const read = putLiveSheet({ project, changes, recipe: recipe.state });
+  const model =
+    ask.change === undefined && merged === undefined
+      ? { ...read, what: { title: "Reading what is merged…", lines: [] }, hold: "Reading…" }
+      : read;
+  const seeCode = ask.change ?? (merged?.length === 1 ? merged[0] : undefined);
+  const change =
+    ask.change === undefined
+      ? undefined
+      : {
+          repository: ask.change.repository,
+          number: ask.change.number,
+          title: ask.change.title,
+          head: ask.change.head,
+          merged: ask.change.merged,
+        };
   return (
     <PutLiveSheet
-      model={model}
+      model={
+        running !== undefined && running.phase !== "failed"
+          ? { ...model, hold: "It's already on its way." }
+          : offers?.zerops?.production === false
+            ? { ...model, hold: "Production can be added here only as a Git branch." }
+            : model
+      }
+      onGitBranch={
+        offers?.git === true
+          ? () => {
+              close();
+              addEnvironment(ask.groupId, "production");
+            }
+          : undefined
+      }
       onPutLive={() => {
         start({ groupId: ask.groupId, project, change });
       }}
-      onSeeCode={() => {
-        close();
-        openReview({
-          kind: "change",
-          groupId: ask.groupId,
-          repository: ask.change.repository,
-          number: ask.change.number,
-        });
-      }}
+      onSeeCode={
+        seeCode === undefined
+          ? undefined
+          : () => {
+              close();
+              openReview({
+                kind: "change",
+                groupId: ask.groupId,
+                repository: seeCode.repository,
+                number: seeCode.number,
+              });
+            }
+      }
     />
   );
 }

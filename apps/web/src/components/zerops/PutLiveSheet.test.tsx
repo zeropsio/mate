@@ -33,10 +33,13 @@ function render(
         <PutLiveSheet
           model={putLiveSheet({
             project: "Tea Shop",
-            change: {
-              title: "Shop front: list, filter and order products",
-              description: "- Add a recipe\n- Browse every recipe\n- Search by ingredient\n- Cook",
-            },
+            changes: [
+              {
+                title: "Shop front: list, filter and order products",
+                description:
+                  "- Add a recipe\n- Browse every recipe\n- Search by ingredient\n- Cook",
+              },
+            ],
             recipe,
           })}
           onPutLive={handlers.onPutLive ?? (() => {})}

@@ -73,6 +73,14 @@ export function putLiveOffered(input: {
   return !input.productionHeld && input.addable?.production === true;
 }
 
+/**
+ * What a project's door to an environment it lacks says: production's puts the app live, in one
+ * step (`PutLiveHost`); a stage's adds it, from the project's form.
+ */
+export function environmentDoorLabel(tier: "stage" | "production", name: string): string {
+  return tier === "production" ? "Put it live" : `Add ${name.toLocaleLowerCase()}`;
+}
+
 // ---------------------------------------------------------------------------
 // The sheet
 // ---------------------------------------------------------------------------
@@ -132,15 +140,34 @@ const RECIPE_READING = "Reading how the project runs…";
 const RECIPE_MISSING = "The project has no production recipe yet: ask the Mate to add one.";
 const RECIPE_UNREADABLE = "The project's recipe can't be read right now.";
 
+const NOTHING_MERGED = "Nothing is merged to put live yet.";
+
+/**
+ * The sheet, from what goes live: the change it was asked from — or, asked from the project, what
+ * is merged, newest first: one change in its own words, several by their titles.
+ */
 export function putLiveSheet(input: {
   readonly project: string;
-  readonly change: { readonly title: string; readonly description?: string | undefined };
+  readonly changes: ReadonlyArray<{
+    readonly title: string;
+    readonly description?: string | undefined;
+  }>;
   /** The production recipe, as read (`useZeropsGroupRecipe`). */
   readonly recipe: "loading" | "present" | "absent" | "unreadable";
 }): PutLiveSheetModel {
+  const [first] = input.changes;
+  const what =
+    first === undefined
+      ? { title: NOTHING_MERGED, lines: [] }
+      : input.changes.length === 1
+        ? { title: first.title, lines: putLiveLines(first.description) }
+        : {
+            title: `${input.changes.length} changes`,
+            lines: input.changes.slice(0, MAX_LINES).map((change) => change.title),
+          };
   return {
     title: `Put ${input.project} live`,
-    what: { title: input.change.title, lines: putLiveLines(input.change.description) },
+    what,
     where: {
       name: "Production",
       line: "Its own public address, ready in a few minutes.",
@@ -148,13 +175,15 @@ export function putLiveSheet(input: {
     later: PUT_LIVE_LATER,
     button: "Put it live",
     hold:
-      input.recipe === "present"
-        ? undefined
-        : input.recipe === "loading"
-          ? RECIPE_READING
-          : input.recipe === "absent"
-            ? RECIPE_MISSING
-            : RECIPE_UNREADABLE,
+      first === undefined
+        ? NOTHING_MERGED
+        : input.recipe === "present"
+          ? undefined
+          : input.recipe === "loading"
+            ? RECIPE_READING
+            : input.recipe === "absent"
+              ? RECIPE_MISSING
+              : RECIPE_UNREADABLE,
   };
 }
 

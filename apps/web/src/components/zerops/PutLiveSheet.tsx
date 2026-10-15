@@ -20,11 +20,14 @@ export function PutLiveSheet({
   model,
   onPutLive,
   onSeeCode,
+  onGitBranch,
 }: {
   readonly model: PutLiveSheetModel;
   readonly onPutLive: () => void;
   /** Opens the change's review, where its code is read. */
   readonly onSeeCode: (() => void) | undefined;
+  /** Where HQ offers it: production as a branch of the person's Git repository, set up instead. */
+  readonly onGitBranch?: (() => void) | undefined;
 }) {
   return (
     <DialogPopup className="max-w-md" data-zerops-surface="put-live-sheet">
@@ -60,6 +63,13 @@ export function PutLiveSheet({
             <p className="text-muted-foreground text-sm">{model.where.line}</p>
           </section>
           <p className="text-muted-foreground text-sm">{model.later}</p>
+          {onGitBranch === undefined ? null : (
+            <div>
+              <Button onClick={onGitBranch} size="sm" variant="link">
+                Deploy to a Git branch instead…
+              </Button>
+            </div>
+          )}
         </div>
       </DialogPanel>
       <DialogFooter>
