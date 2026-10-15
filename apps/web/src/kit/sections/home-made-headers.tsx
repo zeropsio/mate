@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
+import { PageHeader } from "~/components/ui/page-header";
+import { SectionHeader } from "~/components/ui/section";
+import { PersonAvatar } from "~/components/zerops/primitives";
 import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
 import { SettingsBreadcrumb } from "~/components/settings/SettingsBreadcrumb";
-import { SettingsRow, SettingsSection } from "~/components/settings/settingsLayout";
 import { SidebarProvider } from "~/components/ui/sidebar";
-import { Switch } from "~/components/ui/switch";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
-import { SheetRow, SheetSection } from "~/components/zerops/addresses/AddressesSheetBits";
 import { SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
 import { CrewHeading } from "~/components/zerops/crew/CrewParts";
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
@@ -15,8 +15,7 @@ import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 
 import { CensusSpecimen, KitViewer } from "../census";
 import { defineKitSection } from "../kitSection";
-import { SpecimenBlock, SpecimenGrid } from "../Specimen";
-import { specimenLabel } from "../specimenLabel";
+import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
 
 const noop = () => {};
 
@@ -67,56 +66,40 @@ function PageHeaders() {
   );
 }
 
+function Chosen() {
+  return (
+    <SpecimenBlock title="Chosen · SectionHeader and PageHeader: the count beside the title, one action at the title line's end">
+      <SpecimenGrid>
+        <Specimen label="<SectionHeader title count action> (settings, the addresses sheet, the vault)">
+          <div className="w-[36rem]">
+            <SectionHeader
+              action={
+                <Button size="xs" variant="ghost">
+                  Restore defaults
+                </Button>
+              }
+              count="4 people"
+              title="Team"
+            />
+          </div>
+        </Specimen>
+        <Specimen label="<PageHeader lead title line> (a person's page, adding a team member)">
+          <div className="w-[44rem]">
+            <PageHeader
+              lead={<PersonAvatar name="Petra Malá" size={64} />}
+              line="petra@example.com · Invited · not joined yet"
+              title="Petra Malá"
+            />
+          </div>
+        </Specimen>
+      </SpecimenGrid>
+    </SpecimenBlock>
+  );
+}
+
 function SectionHeaders() {
   return (
     <SpecimenGrid>
-      <CensusSpecimen
-        entry={{
-          source: "apps/web/src/components/settings/settingsLayout.tsx",
-          uses: 38,
-          files: 12,
-        }}
-        label={`<SettingsSection ${specimenLabel({ title: "Appearance" })} headerAction>`}
-      >
-        <div className="w-[36rem]">
-          <SettingsSection
-            headerAction={
-              <Button size="xs" variant="ghost">
-                Restore defaults
-              </Button>
-            }
-            title="Appearance"
-          >
-            <SettingsRow
-              control={<Switch aria-label="Reduce motion" defaultChecked />}
-              description="Rows and panels arrive without moving."
-              title="Reduce motion"
-            />
-          </SettingsSection>
-        </div>
-      </CensusSpecimen>
-      <CensusSpecimen
-        entry={{
-          source: "apps/web/src/components/zerops/addresses/AddressesSheetBits.tsx",
-          uses: 3,
-          files: 3,
-        }}
-        label={`<SheetSection ${specimenLabel({ title: "Your domains", part: "domains" })} action>`}
-      >
-        <div className="w-[28rem]">
-          <SheetSection
-            action={
-              <Button size="xs" variant="ghost">
-                Add a domain
-              </Button>
-            }
-            part="domains"
-            title="Your domains"
-          >
-            <SheetRow name="shop.example.com" sub="Points at storefront" />
-          </SheetSection>
-        </div>
-      </CensusSpecimen>
       <CensusSpecimen
         entry={{ source: "apps/web/src/components/zerops/crew/CrewParts.tsx", uses: 1, files: 1 }}
         label="<CrewHeading>"
@@ -133,17 +116,18 @@ export default defineKitSection({
   id: "home-made-headers",
   title: "Headers",
   purpose:
-    "5 home-made page and section headers in 24 files, most used first; the kit has CardHeader, CardFrameHeader and SheetHeader for a surface's head, and no page header.",
+    "The kit's SectionHeader and PageHeader first; then the headers still home-made: the crew's group label and the bars at a page's and the menu's top.",
   group: "Home-made",
   kind: "Containers",
   source: "apps/web/src/components/WorkspacePageHeader.tsx",
   render: () => (
     <KitViewer>
       <div className="flex flex-col gap-8">
-        <SpecimenBlock title="Section headers">
+        <Chosen />
+        <SpecimenBlock title="Still home-made: section headers">
           <SectionHeaders />
         </SpecimenBlock>
-        <SpecimenBlock title="Page headers">
+        <SpecimenBlock title="Still home-made: page bars">
           <PageHeaders />
         </SpecimenBlock>
       </div>
