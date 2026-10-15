@@ -99,6 +99,8 @@ export function arrivalHeadline(mate: Named, kind: ArrivalKind): string {
 export interface ArrivalSentenceContext {
   /** Coming up: how long it has taken so far, wall ms; undefined while unknown. */
   readonly elapsedMs?: number | undefined;
+  /** Coming up past its cap, on the verdict that says so (`comingSentence`). */
+  readonly late?: boolean | undefined;
   /** A colleague's view: the name of who added it, where it is known. */
   readonly addedBy?: string | undefined;
   /** Its creation stopped, or a step outlasted its cap: why, in its own words. */
@@ -111,20 +113,16 @@ export interface ArrivalSentenceContext {
 }
 
 /**
- * Past this a Mate coming up is late. From the press until it answers measured +160 s (a wizard
- * birth, 2026-09-22) and +202 s (an Add, 2026-10-15).
+ * How long is left while it comes up, from how long it has taken — honest to the measured births
+ * (+160 s for a wizard birth, 2026-09-22; +202 s for an Add, 2026-10-15), never a count down past
+ * them — and late only on the verdict that says so (`late`): the container machine's, once a read
+ * since its cap finds it not up, or its first build's past its grace. The clock alone never does.
  */
-const MATE_ARRIVAL_LATE_MS = 240_000;
-
-/**
- * How long is left while it comes up, from how long it has taken: honest to the measured births,
- * never a count down past them, and late once it outlasts them.
- */
-export function comingSentence(elapsedMs: number | undefined): string {
+export function comingSentence(elapsedMs: number | undefined, late = false): string {
+  if (late) return TAKING_LONGER_LINE;
   // What comes after is the steps' last row, with what the person signs it in with.
   if (elapsedMs === undefined || elapsedMs < 120_000) return "Usually two to four minutes.";
-  if (elapsedMs < MATE_ARRIVAL_LATE_MS) return "Almost there.";
-  return TAKING_LONGER_LINE;
+  return "Almost there.";
 }
 
 /** The one sentence under the headline; empty where the headline says it all. */
@@ -136,7 +134,7 @@ export function arrivalSentence(
   const name = mate.name;
   switch (kind) {
     case "coming":
-      return context.why ?? comingSentence(context.elapsedMs);
+      return context.why ?? comingSentence(context.elapsedMs, context.late);
     case "coming-failed":
       return context.why ?? "";
     case "sign-in":

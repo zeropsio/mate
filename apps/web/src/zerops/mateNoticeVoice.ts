@@ -6,7 +6,7 @@ import {
   pressRuns,
   type ArrivalSubstep,
 } from "./mateArrival";
-import { type MateComing } from "@t3tools/client-runtime/data";
+import { TAKING_LONGER_LINE, type MateComing } from "@t3tools/client-runtime/data";
 import { NOT_SET_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
 import { usageLimitWords } from "./noticeWords";
 
@@ -95,7 +95,9 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
                   ? NOT_SET_UP_LINE
                   : coming.line))
             : (input.finish ??
-              (pressRuns(progress?.press) ? KEEP_TAB_OPEN_LINE : comingSentence(elapsed)))));
+              (pressRuns(progress?.press)
+                ? KEEP_TAB_OPEN_LINE
+                : comingSentence(elapsed, coming.line === TAKING_LONGER_LINE)))));
   const details = [
     ...new Set(
       [

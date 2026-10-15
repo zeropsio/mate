@@ -594,13 +594,19 @@ describe("the stage's words", () => {
   });
 
   it.each([
-    [undefined, "Usually two to four minutes."],
-    [20_000, "Usually two to four minutes."],
-    [75_000, "Usually two to four minutes."],
-    [140_000, "Almost there."],
-    [600_000, "Taking longer than usual."],
-  ])("coming up %s ms in: %s", (elapsedMs, words) => {
-    expect(comingSentence(elapsedMs)).toBe(words);
+    [undefined, "Usually two to four minutes.", false],
+    [20_000, "Usually two to four minutes.", false],
+    [75_000, "Usually two to four minutes.", false],
+    [140_000, "Almost there.", false],
+    // Late on the container's verdict, never the clock's.
+    [600_000, "Taking longer than usual.", true],
+  ] as const)("coming up %s ms in: %s", (elapsedMs, words, late) => {
+    expect(comingSentence(elapsedMs, late)).toBe(words);
+  });
+
+  it("never calls a Mate coming up late by the clock alone, only on the verdict that it is", () => {
+    expect(comingSentence(600_000)).toBe("Almost there.");
+    expect(comingSentence(20_000, true)).toBe("Taking longer than usual.");
   });
 
   it("sleeps until it answers", () => {

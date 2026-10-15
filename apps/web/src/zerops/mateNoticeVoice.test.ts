@@ -379,3 +379,13 @@ describe("the missing-deployment notice", () => {
     ).toBe("Nothing is deployed yet.");
   });
 });
+
+it("a creation page calls a Mate coming up late only where its arrival's verdict says so, never past four minutes alone", () => {
+  const startedAt = "2026-10-15T10:00:00.000Z";
+  const nowMs = Date.parse(startedAt) + 600_000;
+  const say = (line: string) =>
+    mateArrivalNotice({ coming: { kind: "coming", line }, progress: { startedAt }, nowMs })
+      .secondary;
+  expect(say("Coming up. A few minutes.")).toBe("Almost there.");
+  expect(say("Taking longer than usual.")).toBe("Taking longer than usual.");
+});
