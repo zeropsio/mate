@@ -271,6 +271,7 @@ describe("hqProjectPeople", () => {
       expected: {
         owned: undefined,
         owner: null,
+        mine: false,
         waitsOnViewer: false,
         signedInNow: undefined,
         everSignedIn: undefined,
