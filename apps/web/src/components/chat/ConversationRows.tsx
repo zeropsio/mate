@@ -465,7 +465,7 @@ export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) 
             aria-label={notice.dismissLabel ?? "Dismiss"}
             className="ms-2 shrink-0"
             onClick={notice.onDismiss}
-            size="icon-xs"
+            size="icon-sm"
             variant="ghost-muted"
           >
             <XIcon className="size-3.5" />
@@ -569,7 +569,7 @@ export function ErrorLine({
         aria-label="Dismiss"
         className="mt-1"
         onClick={onDismiss}
-        size="icon-xs"
+        size="icon-sm"
         variant="ghost-muted"
       >
         <XIcon />

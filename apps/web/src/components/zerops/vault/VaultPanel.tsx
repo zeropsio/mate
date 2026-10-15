@@ -257,7 +257,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
             <Button
               aria-label="Clear search"
               onClick={() => setQuery("")}
-              size="icon-xs"
+              size="icon-sm"
               variant="ghost-muted"
             >
               <XIcon />
@@ -284,7 +284,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
             <Button
               aria-label="More"
               disabled={view.status === "unread"}
-              size="icon-xs"
+              size="icon-sm"
               variant="ghost-muted"
             />
           }

@@ -321,7 +321,7 @@ function ChipMenu({
       <MenuTrigger
         aria-label={`Change ${name}'s access`}
         disabled={busy}
-        render={<Button size="icon-xs" variant="ghost" />}
+        render={<Button size="icon-sm" variant="ghost" />}
       >
         <MoreVerticalIcon aria-hidden="true" />
       </MenuTrigger>

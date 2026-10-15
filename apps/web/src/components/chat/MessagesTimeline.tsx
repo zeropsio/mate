@@ -3403,7 +3403,7 @@ export function QueuedMessageTimelineRow({
                 render={
                   <Button
                     type="button"
-                    size="icon-xs"
+                    size="icon-sm"
                     variant="ghost-muted"
                     onPointerDown={(event) => event.preventDefault()}
                     // Held back while an answer is due, never pressed to do nothing: it says why.
@@ -3433,7 +3433,7 @@ export function QueuedMessageTimelineRow({
                 render={
                   <Button
                     type="button"
-                    size="icon-xs"
+                    size="icon-sm"
                     variant="ghost-muted"
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => ctx.onRemoveQueuedMessage(queuedMessage.id)}
@@ -3643,7 +3643,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     render={
                       <Button
                         type="button"
-                        size="icon-xs"
+                        size="icon-sm"
                         variant="ghost"
                         aria-label="Don't send"
                         onClick={withdrawHeld}

@@ -49,7 +49,7 @@ export function MacCommand({ command }: { readonly command: string }) {
             () => undefined,
           );
         }}
-        size="icon-xs"
+        size="icon-sm"
         variant="ghost-muted"
       >
         {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}

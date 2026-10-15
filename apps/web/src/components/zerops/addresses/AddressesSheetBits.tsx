@@ -153,7 +153,7 @@ export function CopyButton({ value }: { readonly value: string }) {
           () => setCopied(false),
         );
       }}
-      size="icon-xs"
+      size="icon-sm"
       variant="ghost-muted"
     >
       {copied ? <CheckIcon /> : <CopyIcon />}

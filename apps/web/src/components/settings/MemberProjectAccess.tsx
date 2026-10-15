@@ -115,7 +115,7 @@ export function MemberProjectAccess({
                 <Menu>
                   <MenuTrigger
                     aria-label={`Change access to ${chip.label}`}
-                    render={<Button size="icon-xs" variant="ghost" />}
+                    render={<Button size="icon-sm" variant="ghost" />}
                   >
                     <MoreVerticalIcon aria-hidden="true" />
                   </MenuTrigger>

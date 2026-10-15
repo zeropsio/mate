@@ -195,7 +195,7 @@ export default function ProjectScriptsControl({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   className="size-6"
                   aria-label={`Edit ${script.name}`}
                   onPointerDown={(event) => {
@@ -294,7 +294,7 @@ export default function ProjectScriptsControl({
             }
           >
             <MenuTrigger
-              render={<Button size="icon-xs" variant="outline" aria-label="Script actions" />}
+              render={<Button size="icon-sm" variant="outline" aria-label="Script actions" />}
             >
               <ChevronDownIcon className="size-4" />
             </MenuTrigger>

@@ -208,7 +208,7 @@ export function ZeropsDataFilters({
                 aria-label="Remove filter"
                 data-zerops-data-filter-remove={String(index)}
                 onClick={() => onChangeFilters(filters.filter((_, i) => i !== index))}
-                size="icon-xs"
+                size="icon-sm"
                 variant="ghost"
               >
                 ×

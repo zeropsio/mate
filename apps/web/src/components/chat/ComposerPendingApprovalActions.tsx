@@ -106,7 +106,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
             disabled={isResponding}
             render={
               <Button
-                size="icon-xs"
+                size="icon-sm"
                 variant="ghost-muted"
                 className="self-center"
                 aria-label="More approval options"

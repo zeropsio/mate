@@ -2998,7 +2998,7 @@ export default function Sidebar() {
                                 {project.displayName}
                               </span>
                               <Button
-                                size="icon-xs"
+                                size="icon-sm"
                                 variant="ghost-muted"
                                 aria-label={`Add source to ${project.displayName}`}
                                 title={`Add source to ${project.displayName}`}
@@ -3013,7 +3013,7 @@ export default function Sidebar() {
                                 <GitBranchIcon className="size-3.5" />
                               </Button>
                               <Button
-                                size="icon-xs"
+                                size="icon-sm"
                                 variant="ghost-muted"
                                 aria-label={`Project settings for ${project.displayName}`}
                                 title={`Project settings for ${project.displayName}`}
@@ -3275,7 +3275,7 @@ export default function Sidebar() {
                                 render={
                                   <Button
                                     type="button"
-                                    size="icon-xs"
+                                    size="icon-sm"
                                     variant="ghost"
                                     aria-label={label}
                                     className="mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
@@ -3305,7 +3305,7 @@ export default function Sidebar() {
                               render={
                                 <Button
                                   type="button"
-                                  size="icon-xs"
+                                  size="icon-sm"
                                   variant="ghost"
                                   aria-label={label}
                                   aria-current={routeThreadKey === threadKey ? "page" : undefined}

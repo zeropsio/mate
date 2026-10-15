@@ -70,7 +70,7 @@ export function DiffCommentAnnotation({
           <span className="-my-1 -mr-1 flex shrink-0 opacity-0 transition-opacity group-hover/comment:opacity-100 focus-within:opacity-100 max-sm:opacity-100">
             <Button
               variant="ghost-muted"
-              size="icon-xs"
+              size="icon-sm"
               aria-label="Delete comment"
               onClick={onDelete}
             >

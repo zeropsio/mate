@@ -97,7 +97,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
           <TooltipTrigger
             render={
               <Button
-                size="icon-xs"
+                size="icon-sm"
                 variant="ghost-muted"
                 className="-mr-1 shrink-0"
                 onClick={(event) => {

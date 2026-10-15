@@ -132,7 +132,7 @@ const DEPLOY = reduceZeropsOperations(
 
 function MoreButton() {
   return (
-    <Button aria-label="More" size="icon-xs" variant="ghost">
+    <Button aria-label="More" size="icon-sm" variant="ghost">
       <MoreHorizontalIcon />
     </Button>
   );

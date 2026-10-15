@@ -314,7 +314,7 @@ export function PublishedPage(props: {
         <span className="published-page-title">{page.title}</span>
         <Button
           type="button"
-          size="icon-xs"
+          size="icon-sm"
           variant="ghost"
           aria-label={`Open ${page.title} full size`}
           disabled={html === null}

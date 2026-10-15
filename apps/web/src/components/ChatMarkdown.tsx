@@ -645,7 +645,7 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
                     <Button
                       type="button"
                       variant="ghost-muted"
-                      size="icon-xs"
+                      size="icon-sm"
                       aria-label={copyLabel}
                     />
                   }
@@ -854,7 +854,7 @@ function MarkdownCodeBlock({
                   <Button
                     type="button"
                     variant={wrapped ? "secondary" : "ghost-muted"}
-                    size="icon-xs"
+                    size="icon-sm"
                     aria-pressed={wrapped}
                     onClick={() => setWrapped((value) => !value)}
                     aria-label={wrapLabel}
@@ -873,7 +873,7 @@ function MarkdownCodeBlock({
                   <Button
                     type="button"
                     variant="ghost-muted"
-                    size="icon-xs"
+                    size="icon-sm"
                     onClick={() => onRunShellCommand(command)}
                     aria-label="Run in terminal"
                   />
@@ -890,7 +890,7 @@ function MarkdownCodeBlock({
                 <Button
                   type="button"
                   variant="ghost-muted"
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={handleCopy}
                   aria-label={copyLabel}
                 />
@@ -948,7 +948,7 @@ function MarkdownMermaidCodeBlock({
                 <Button
                   type="button"
                   variant="ghost-muted"
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={() => setShowCode((value) => !value)}
                   aria-label={toggleLabel}
                 />

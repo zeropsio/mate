@@ -80,7 +80,7 @@ export function ZeropsDataRowDrawer({
           aria-label="Close row"
           data-zerops-data-row-close
           onClick={onClose}
-          size="icon-xs"
+          size="icon-sm"
           variant="ghost"
         >
           <ChevronLeftIcon />

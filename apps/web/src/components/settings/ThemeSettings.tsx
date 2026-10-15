@@ -318,7 +318,7 @@ export function ThemeLibraryCard({
                         render={
                           <Button
                             aria-label={`Duplicate ${theme.label}`}
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
                             onClick={(event) => {
                               event.stopPropagation();
@@ -338,7 +338,7 @@ export function ThemeLibraryCard({
                         render={
                           <Button
                             aria-label={`Edit ${theme.label}`}
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
                             onClick={(event) => {
                               event.stopPropagation();
@@ -358,7 +358,7 @@ export function ThemeLibraryCard({
                         render={
                           <Button
                             aria-label={`Export ${theme.label}`}
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
                             onClick={(event) => {
                               event.stopPropagation();
@@ -382,7 +382,7 @@ export function ThemeLibraryCard({
                                 ? `Remove themes from ${variantNavigation.collectionLabel}`
                                 : `Remove ${theme.label}`
                             }
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost-destructive"
                             onClick={(event) => {
                               event.stopPropagation();

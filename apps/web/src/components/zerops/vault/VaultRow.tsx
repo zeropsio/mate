@@ -109,7 +109,7 @@ function CopyReference({ text, label }: { readonly text: string; readonly label?
           event.stopPropagation();
           copyToClipboard(text, undefined);
         }}
-        size={label === undefined ? "icon-xs" : "sm"}
+        size={label === undefined ? "icon-sm" : "sm"}
         variant="ghost-muted"
       >
         {label === undefined ? null : <span className="font-mono font-normal">{label}</span>}
@@ -568,7 +568,7 @@ function VaultManagedRow({
             <Button
               aria-label={shown === null ? "Show" : "Hide"}
               onClick={() => (shown === null ? void show() : setShown(null))}
-              size="icon-xs"
+              size="icon-sm"
               variant="ghost-muted"
             >
               {shown === null ? <EyeIcon /> : <EyeOffIcon />}

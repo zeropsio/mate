@@ -124,7 +124,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
                 <Button
                   aria-label="Generate a value"
                   onClick={() => setValue(generateVaultValue())}
-                  size="icon-xs"
+                  size="icon-sm"
                   variant="ghost-muted"
                 />
               }

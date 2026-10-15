@@ -638,7 +638,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       ref={addSurfaceTriggerRef}
                       aria-label="Add a page"
                       className="shrink-0"
-                      size="icon-xs"
+                      size="icon-sm"
                       variant="ghost-muted"
                     />
                   }

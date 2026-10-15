@@ -1162,7 +1162,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                         <span className="text-xs text-muted-foreground">{shortcutLabel}</span>
                       ) : null}
                       <Button
-                        size="icon-xs"
+                        size="icon-sm"
                         variant="ghost"
                         className="shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
                         aria-label={`Edit ${script.name}`}

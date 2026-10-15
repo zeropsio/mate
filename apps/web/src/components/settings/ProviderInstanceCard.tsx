@@ -707,7 +707,7 @@ export function ProviderInstanceCard({
                   render={
                     <Button
                       type="button"
-                      size="icon-xs"
+                      size="icon-sm"
                       variant="ghost"
                       className={cn(
                         "size-5 rounded-sm p-0",
@@ -770,7 +770,7 @@ export function ProviderInstanceCard({
                             render={
                               <Button
                                 type="button"
-                                size="icon-xs"
+                                size="icon-sm"
                                 variant="ghost-muted"
                                 className="size-6 shrink-0 rounded-sm p-0"
                                 onClick={() =>

@@ -1362,7 +1362,7 @@ export function ZeropsDataPanel({
                 aria-label={maximized ? "Restore panel" : "Maximize panel"}
                 data-zerops-data-maximize
                 onClick={onToggleMaximized}
-                size="icon-xs"
+                size="icon-sm"
                 variant="ghost"
               >
                 {maximized ? <Minimize2Icon /> : <Maximize2Icon />}

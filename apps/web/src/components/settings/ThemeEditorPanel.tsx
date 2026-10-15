@@ -1208,7 +1208,7 @@ export function ThemeEditorPanel({
         </Tooltip>
         <Button
           aria-label={isMinimized ? "Expand the theme editor" : "Minimize the theme editor"}
-          size="icon-xs"
+          size="icon-sm"
           variant="ghost"
           onClick={() => setIsMinimized(!isMinimized)}
         >
@@ -1216,7 +1216,7 @@ export function ThemeEditorPanel({
         </Button>
         <Button
           aria-label="Close the theme editor"
-          size="icon-xs"
+          size="icon-sm"
           variant="ghost"
           onClick={() => onOpenChange(false)}
         >

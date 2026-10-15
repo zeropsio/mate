@@ -93,7 +93,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           <div className="relative isolate z-10 max-h-[92vh] max-w-[var(--media-width)]">
             <Button
               type="button"
-              size="icon-xs"
+              size="icon-sm"
               variant="ghost"
               className="absolute right-2 top-2 z-20"
               onClick={onClose}
