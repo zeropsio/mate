@@ -1134,22 +1134,25 @@ export function ComingBelow({
         );
   const steps =
     row === null ? null : (
-      <Progress
-        at={row.at}
-        endedAtMs={row.endedAtMs}
-        identity={attemptId ?? ""}
-        label={`${mate.name} coming up`}
-        nowMs={nowMs}
-        startedAtMs={row.startedAtMs}
-        steps={row.steps}
-        view={
-          row.state === "failed"
-            ? { state: "failed", cause: `${row.steps[row.at] ?? mate.name} didn't finish.` }
-            : row.state === "done"
-              ? { state: "done", result: row.steps[row.at] ?? "" }
-              : undefined
-        }
-      />
+      // The slot centres its words; the row's own read from its start edge.
+      <div className="w-full text-start">
+        <Progress
+          at={row.at}
+          endedAtMs={row.endedAtMs}
+          identity={attemptId ?? ""}
+          label={`${mate.name} coming up`}
+          nowMs={nowMs}
+          startedAtMs={row.startedAtMs}
+          steps={row.steps}
+          view={
+            row.state === "failed"
+              ? { state: "failed", cause: `${row.steps[row.at] ?? mate.name} didn't finish.` }
+              : row.state === "done"
+                ? { state: "done", result: row.steps[row.at] ?? "" }
+                : undefined
+          }
+        />
+      </div>
     );
   const verb =
     coming?.kind === "failed" && coming.verb !== "redeploy" && setupFailureDetails !== undefined ? (
