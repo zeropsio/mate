@@ -29,13 +29,13 @@ import {
   cannotTellWhatRuns,
   changesCountWords,
   sameCommit,
+  serviceNames,
   type FlowReleaseRow,
   type GroupEnvironmentRowInput,
   type GroupFlowProduction,
   type GroupFlowStop,
   type ZeropsPublicRoute,
   firstDeployLine,
-  serviceNames,
 } from "@t3tools/client-runtime/zerops";
 
 import { deployBuilding, type Deployment } from "@t3tools/client-runtime/zerops/flow";
@@ -113,7 +113,7 @@ export interface ReleaseFailure {
   readonly at: string | undefined;
   /** The words for it: the failed deploy's message, as HQ records it, or the broker's recorded refusal reason. */
   readonly error: string | undefined;
-  /** Each service whose deploy failed. */
+  /** The services whose deploys failed, by the order the release lists them. */
   readonly services: ReadonlyArray<string>;
 }
 
@@ -142,16 +142,20 @@ export function releaseFailureOf(input: {
       services: [],
     };
   }
-  // HQ's words and time of the first failed part it still records; each failed part is named.
-  const failed = release.failedEntries
-    .map((entry) => failedDeploy(input.environmentInputs, entry))
-    .find((job) => job !== undefined);
+  const entries = release.failedEntries;
+  // One failed deploy's words and time are the release's; several each keep their own, said where
+  // each service is.
+  const [entry] = entries;
+  const failed =
+    entry === undefined || entries.length > 1
+      ? undefined
+      : failedDeploy(input.environmentInputs, entry);
   return {
     tag: release.tag,
     kind: "deploy-failed",
     at: failed === undefined ? undefined : (failed.endedAt ?? failed.at),
     error: wordsOf(failed?.reason ?? undefined),
-    services: release.failedEntries.map((entry) => entry.service),
+    services: entries.map((failedEntry) => failedEntry.service),
   };
 }
 

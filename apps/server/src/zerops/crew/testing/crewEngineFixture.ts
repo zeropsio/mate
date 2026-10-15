@@ -41,7 +41,12 @@ import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepos
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { CrewPlatformProcesses } from "../crewDeployState.ts";
-import { makeServiceRepository, serviceRepository, TEST_IDENTITY } from "./crewGitFixture.ts";
+import {
+  makeServiceRepository,
+  remoteEnvWithSupervisor,
+  serviceRepository,
+  TEST_IDENTITY,
+} from "./crewGitFixture.ts";
 
 /** The person who presses: Alex, in his own session. */
 export const KAREL: TurnPrincipal = {
@@ -358,7 +363,7 @@ export const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray
           ).pipe(Effect.andThen(runner.run(input)), Effect.interruptible),
       });
     }),
-  ).pipe(Layer.provide(localSshProcessRunnerLayer(TEST_IDENTITY)));
+  ).pipe(Layer.provide(localSshProcessRunnerLayer(remoteEnvWithSupervisor())));
 
 /**
  * One world's fixture: a fresh service repository, the Mate's workspace and the fakes' records,

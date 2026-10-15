@@ -21,11 +21,12 @@
 
 import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
 import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
+import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import type { HqJob, ServiceJobs } from "./hq/environments.ts";
-import { isReleaseTag, partsWords, shortCommit } from "./release.ts";
-import { isWholeSha, parseVersionName } from "./versionName.ts";
+import { isReleaseTag, shortCommit } from "./release.ts";
+import { isWholeSha, parseVersionName, sameCommit } from "./versionName.ts";
 import type { GitDelivery } from "./gitDelivery.ts";
 
 /** What a row's dot says, for the four things a dot can honestly mean. */
@@ -53,10 +54,10 @@ export interface EnvironmentRow {
   readonly versionRepository: string | undefined;
   readonly line: string;
   /**
-   * How many parts it runs — services its tier builds from the named version's repository — where
-   * more than one; absent for one, whose row reads as it always did.
+   * An application of several parts: how many, and each part not running its version —
+   * `3 parts · web on a1a2a3a`. Absent for one part, whose row says its version alone.
    */
-  readonly parts?: number;
+  readonly parts?: string | undefined;
   readonly tone: GroupRowTone;
   /** HQ's newest job of each of its services HQ records one for (`ServiceJobs.latest`). */
   readonly deploys: ReadonlyArray<HqJob>;
@@ -204,6 +205,32 @@ export function deployTone(services: ReadonlyArray<EnvironmentServiceState>): Gr
 }
 
 /**
+ * What one part says beside an environment's version, where it is not running that version: a
+ * part HQ stopped because the tier does not declare it, a failed or still-moving deploy, nothing
+ * deployed yet, or another commit. `undefined` for a part that runs the environment's commit.
+ */
+function partException(
+  service: EnvironmentServiceState,
+  sha: string | undefined,
+  stopped: ReleaseRollout["leftOut"][number]["stopped"],
+): string | undefined {
+  const { hostname } = service;
+  if (stopped !== undefined)
+    return stopped.rollbackTo === null
+      ? `${hostname} stopped`
+      : `${hostname} stopped by rollback to ${stopped.rollbackTo}`;
+  const tone = service.deploy === undefined ? "neutral" : DEPLOY_TONES[service.deploy.latest.state];
+  if (tone === "bad") return `${hostname} failed`;
+  if (tone === "pending") return `${hostname} building`;
+  const version = deployedVersion(service.appVersionName);
+  if (version.label === undefined)
+    return sha === undefined ? undefined : `${hostname} not deployed`;
+  return sha === undefined || sameCommit(version.sha, sha) || sameCommit(sha, version.sha)
+    ? undefined
+    : `${hostname} on ${version.label}`;
+}
+
+/**
  * One environment's row: what it follows, what it runs, and nothing else.
  *
  * With nothing deployed the row still exists and still names its source —
@@ -220,35 +247,49 @@ function environmentRowDisplay(input: {
   readonly keyHeld?: boolean | undefined;
   readonly keyInvalid?: boolean | undefined;
   readonly birth?: EnvironmentBirth | null | undefined;
+  /** A production's newest release rollout: the parts it stopped (`ReleaseRollout.leftOut`). */
+  readonly release?: ReleaseRollout | null | undefined;
 }): Omit<EnvironmentRow, "projectId"> {
   const source = input.sources === "release" ? "release" : input.sources.join(" + ") || "—";
-  // The first service that is running something names the environment: in a
-  // monorepo they all carry the same release, and in a split one the row has
-  // width for one answer. First by hostname, as the platform's answer for the
-  // stop is (`stopDeploymentOf`): the two are compared, so they name one service.
+  const stopped = new Map(
+    (input.release?.leftOut ?? []).flatMap((left) =>
+      left.stopped === undefined ? [] : [[left.service, left.stopped] as const],
+    ),
+  );
+  // The first service that is running something names the environment, first by hostname, as
+  // the platform's answer for the stop is (`stopDeploymentOf`): the two are compared, so they
+  // name one service. A part HQ stopped runs nothing, so it names nothing.
   const byHostname = [...input.services].sort((left, right) =>
     left.hostname.localeCompare(right.hostname),
   );
   const named = byHostname
+    .filter((service) => !stopped.has(service.hostname))
     .map((service) => ({ service, version: deployedVersion(service.appVersionName) }))
     .find((entry) => entry.version.label !== undefined);
   const version = named?.version ?? NO_VERSION;
   const tone = deployTone(input.services);
-  // A monorepo's parts are built from one repository: the row counts them and names each that
-  // runs something else (MODEL §9/5); another repository's service is another codebase, not a part.
-  const repository = named?.service.repository;
+  const repository =
+    named?.service.repository ??
+    byHostname.find((service) => service.repository !== undefined)?.repository;
+  // The parts of a monorepo: its repository's services, one commit for all of them. One part, or
+  // a repository not read, is the row as it always was; several say how many, and each one not
+  // running that commit says what it does instead. Another repository's services are another
+  // application's code, which runs its own commits.
   const parts =
     repository === undefined
       ? []
       : byHostname.filter((service) => service.repository === repository);
-  const differ = parts.flatMap((service) => {
-    const label = deployedVersion(service.appVersionName).label;
-    if (label === version.label) return [];
-    return [
-      label === undefined ? `${service.hostname} runs nothing` : `${service.hostname} ${label}`,
-    ];
-  });
-  const namedLine = version.label === undefined ? source : `${source} · ${version.label}`;
+  const partsLine =
+    parts.length < 2
+      ? undefined
+      : [
+          `${parts.length} parts`,
+          ...parts.flatMap(
+            (part) => partException(part, version.sha, stopped.get(part.hostname)) ?? [],
+          ),
+        ].join(" · ");
+  const label =
+    [version.label, partsLine].filter((entry) => entry !== undefined).join(" · ") || undefined;
   return {
     kind: "environment",
     name: input.name,
@@ -262,12 +303,9 @@ function environmentRowDisplay(input: {
     // which is worse than the plain text it replaced. The tier declares it
     // whether or not a version is named yet: a stop whose store had not named
     // what it runs read "No repository is declared" (F13, 2026-10-03).
-    versionRepository:
-      named?.service.repository ??
-      byHostname.find((service) => service.repository !== undefined)?.repository,
-    line:
-      parts.length > 1 ? [namedLine, partsWords(parts.length), ...differ].join(" · ") : namedLine,
-    ...(parts.length > 1 ? { parts: parts.length } : {}),
+    versionRepository: repository,
+    line: label === undefined ? source : `${source} · ${label}`,
+    ...(partsLine === undefined ? {} : { parts: partsLine }),
     tone,
     deploys: input.services.flatMap(({ deploy }) => (deploy === undefined ? [] : [deploy.latest])),
     keyGap: input.keyHeld === false || input.keyInvalid === true,

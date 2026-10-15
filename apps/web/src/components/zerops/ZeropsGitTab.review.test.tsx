@@ -39,6 +39,9 @@ vi.mock("../../zerops/useZeropsChangeDetail", () => ({
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
 vi.mock("../../zerops/review", () => ({ useOpenReview: () => effects.review }));
 vi.mock("../../zerops/useHqAppDetail", () => ({ useHqAppDetailHold: () => {} }));
+vi.mock("../../zerops/useZeropsGroupRecipe", () => ({
+  useZeropsGroupRecipe: () => ({ tier: undefined }),
+}));
 vi.mock("../../zerops/ZeropsSessionProvider", () => ({ useZeropsSessionOptional: () => null }));
 vi.mock("../../zerops/useZeropsEnvironmentProject", () => ({
   useZeropsEnvironmentProject: () => ({ projectId: "p1", orgId: "org1" }),

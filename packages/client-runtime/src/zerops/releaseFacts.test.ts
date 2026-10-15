@@ -486,6 +486,90 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
   });
 });
 
+describe("a release that failed on several parts", () => {
+  it.each([
+    {
+      name: "one part's failure names it, as it always did",
+      services: ["app"],
+      detail: "The deploy of app failed",
+      why: "Production's release v0.1.1 failed in app's deploy",
+    },
+    {
+      name: "two parts' failures name both",
+      services: ["api", "web"],
+      detail: "The deploys of api and web failed",
+      why: "Production's release v0.1.1 failed in the deploys of api and web",
+    },
+  ])("$name", ({ services, detail, why }) => {
+    const tagged = row("v0.1.1", "deploy-failed", {
+      failedEntries: services.map((service) => ({ service, commit: HEAD })),
+    });
+    const outcome = releaseOutcomeOf({
+      tagged,
+      releasing: true,
+      pressing: false,
+      tag: "v0.1.1",
+      clockMs: NOW,
+    });
+    expect(outcome).toMatchObject({ kind: "failed", detail, services });
+    const model = releaseReview({
+      tag: "v0.1.1",
+      gate: { allowed: true },
+      permission: { allowed: true },
+      changes: 1,
+      onStage: undefined,
+      services,
+      replaces: { kind: "release", tag: "v0.1.0" },
+      outcome,
+      now: NOW,
+    });
+    expect(model.verdict.why).toBe(detail);
+    expect(JSON.stringify(model)).toContain(why);
+  });
+});
+
+describe("a release review has a row per part", () => {
+  it.each([
+    {
+      name: "a one-part release says where its part deploys from, as it always did",
+      candidate: [["app", "5e1d0a7"]],
+      production: [["app", "3fa9c21"]],
+      where: [{ service: "app", line: "redeploys from 5e1d0a7" }],
+    },
+    {
+      name: "a release of three parts says for each part whether it redeploys or stays",
+      candidate: [
+        ["api", "5e1d0a7"],
+        ["web", "5e1d0a7"],
+        ["worker", "5e1d0a7"],
+      ],
+      production: [
+        ["api", "3fa9c21"],
+        ["web", "5e1d0a7"],
+        ["worker", "3fa9c21"],
+      ],
+      where: [
+        { service: "api", line: "redeploys from 5e1d0a7" },
+        { service: "web", line: "stays on 5e1d0a7" },
+        { service: "worker", line: "redeploys from 5e1d0a7" },
+      ],
+    },
+  ] as const)("$name", ({ candidate, production, where }) => {
+    const facts = releaseFacts({
+      tag: "v0.2.0",
+      live: "v0.1.0",
+      releases: [],
+      contents: [],
+      comparison: compareForRelease({
+        candidate: new Map(candidate),
+        production: new Map(production),
+      }),
+      productionServices: production.map(([service]) => service),
+    });
+    expect(facts.where).toEqual(where);
+  });
+});
+
 describe("a followed release ends when a newer one sits above it", () => {
   const before: Moment = { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" };
   const after: Moment = { live: "v0.1.1", contents: [], production: HEAD };

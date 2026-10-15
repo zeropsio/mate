@@ -17,7 +17,10 @@ export function ZeropsBrowserSurface({
 }: {
   readonly threadRef: ScopedThreadRef | null;
 }) {
-  const { addresses } = useMateAddresses(threadRef?.environmentId ?? null);
+  const { addresses } = useMateAddresses(
+    threadRef?.environmentId ?? null,
+    threadRef?.threadId ?? null,
+  );
   if (threadRef === null) return null;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" data-zerops-browser-surface>

@@ -381,6 +381,8 @@ export interface FlowReleaseRow extends FlowRelease {
   readonly failedEntries: ReadonlyArray<ReleaseEntry>;
 }
 
+const NO_ENTRIES: ReadonlyArray<ReleaseEntry> = [];
+
 /** A release as far as telling what runs it needs. */
 type ReleaseListing = Pick<FlowRelease, "tag" | "entries" | "verdict">;
 
@@ -414,9 +416,6 @@ function runsAll(release: Pick<FlowRelease, "entries">, running: ReadonlyMap<str
   );
 }
 
-/** `3 parts`: an environment row's count of the parts it runs. */
-export const partsWords = (count: number): string => `${String(count)} parts`;
-
 /**
  * The stop's row named by `tag` ({@link releaseRunBy}): its version's name and label, and the
  * line that spells them.
@@ -434,19 +433,14 @@ export function nameStopByRelease<Row extends Omit<EnvironmentRow, "projectId">>
   return {
     ...row,
     version: { ...row.version, name: tag, label: tag, taggedBy: undefined },
-    // The release names every part it lists: none differs, and the count stays.
-    line: [
-      `${row.source} · ${tag}`,
-      ...(row.parts === undefined ? [] : [partsWords(row.parts)]),
-    ].join(" · "),
+    line: `${row.source} · ${tag}`,
   };
 }
 
 /**
  * Each commit the release lists, and production does not run, whose production deploy failed as
- * that release's (`ReleaseDeployFailure`: its rollout's job, or one it left a service out for) —
- * every failed part, never only the first (MODEL §9/5). Another release's failure of the same
- * commit is that release's.
+ * that release's (`ReleaseDeployFailure`: its rollout's job, or one it left a service out for);
+ * none where none did. Another release's failure of the same commit is that release's.
  */
 function deployFailed(
   release: FlowRelease,
@@ -495,10 +489,12 @@ export function releaseRow(
       standing: "live",
       word: "Live",
       rollBack: false,
-      failedEntries: [],
+      failedEntries: NO_ENTRIES,
     };
   const failedEntries =
-    release.verdict === "refused" ? [] : deployFailed(release, deploys.production, deploys.failed);
+    release.verdict === "refused"
+      ? NO_ENTRIES
+      : deployFailed(release, deploys.production, deploys.failed);
   if (failedEntries.length > 0)
     return {
       ...release,
@@ -510,7 +506,7 @@ export function releaseRow(
     };
   return {
     ...release,
-    failedEntries: [],
+    failedEntries: NO_ENTRIES,
     line,
     standing: undefined,
     word: releaseWord(release.verdict),

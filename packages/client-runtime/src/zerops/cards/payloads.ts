@@ -9,6 +9,10 @@
  * block when one does. That is the normal path for a payload this build does
  * not recognise, and it is what the brief means by a card degrading.
  */
+import { ZeropsDevServer } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+
 import {
   type ZeropsCardSource,
   readBoolean,
@@ -141,6 +145,11 @@ export type ZeropsCardPayload =
       readonly message?: string;
       readonly reason?: string;
       readonly logTail?: string;
+      /**
+       * Every named dev server of the service as zcp read its supervisor in this call, where it
+       * runs more than one (spec-mate §2.8a.3); absent for one, whose card stays as it was.
+       */
+      readonly servers?: ReadonlyArray<ZeropsDevServer>;
     }
   | {
       readonly kind: "browser";
@@ -510,7 +519,27 @@ function decodeDevServer(document: Record<string, unknown>): ZeropsCardPayload |
     ...optional("message", readString(document.message)),
     ...optional("reason", readString(document.reason)),
     ...optional("logTail", readString(document.logTail)),
+    ...servers(devServersOf(document.envelope, hostname)),
   };
+}
+
+const servers = (value: ReadonlyArray<ZeropsDevServer> | undefined) =>
+  value === undefined ? {} : { servers: value };
+
+const decodeDevServerEntry = Schema.decodeUnknownOption(ZeropsDevServer);
+
+/** The named dev servers the result's `envelope` read for `hostname`, where there are several. */
+function devServersOf(
+  envelope: unknown,
+  hostname: string,
+): ReadonlyArray<ZeropsDevServer> | undefined {
+  const service = readRecordArray(readRecord(envelope)?.services).find(
+    (entry) => readString(entry.hostname) === hostname,
+  );
+  const servers = readRecordArray(service?.devServers).flatMap((entry) =>
+    Option.toArray(decodeDevServerEntry(entry)),
+  );
+  return servers.length > 1 ? servers : undefined;
 }
 
 /** One `BrowserStepResult` — `internal/ops/browser.go`. */

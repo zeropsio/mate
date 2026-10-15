@@ -84,6 +84,7 @@ import {
   notInZerops,
   serviceRows,
   stopCardTitle,
+  rowsRunningAgain,
   stopFailedDeploys,
   stopKeyGap,
   stopMetaLine,
@@ -93,6 +94,7 @@ import {
   stopView,
   type Deployment,
   type RunAgain,
+  type StopFailedDeploy,
   type StopServiceRow,
   type StopTierStop,
   type StopVerdict,
@@ -1026,7 +1028,7 @@ function ZeropsProjectStopDetailPage({
         });
   const failedDeploys =
     flow === undefined || stop === undefined
-      ? NO_FAILURES
+      ? NO_FAILED_DEPLOYS
       : stopFailedDeploys({ tier: stop.tier, rows: services, releases: flow.releases });
   // *Run again* asks HQ, by its rule for who develops the application.
   const mayRunAgain = useEnvironmentDeployOffer()(projectId);
@@ -1065,6 +1067,8 @@ function ZeropsProjectStopDetailPage({
   const view = stopView({ deployment, row: stop, nowMs });
   const live = flow.releases.find((entry) => entry.standing === "live");
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
+  // One failed part is asked again from the verdict; several, each from its own row.
+  const redeploy = failedDeploys.length === 1 ? failedDeploys[0]?.redeploy : undefined;
   // How many changes production lacks, at least that many where HQ stopped counting.
   const notLive =
     flow.release.summary === undefined
@@ -1074,7 +1078,7 @@ function ZeropsProjectStopDetailPage({
     tier: stop.tier,
     view,
     releasing: flow.release.inFlight ?? (release.releasing ? release.tag : undefined),
-    failed: failedDeploys.map((failure) => ({ ...failure, mayRunAgain })),
+    failed: failedDeploys.map((entry) => ({ ...entry, mayRunAgain })),
     waiting: notLive.count,
     waitingAtLeast: notLive.atLeast,
     untold: production ? flow.release.untold : NO_UNTOLD,
@@ -1153,14 +1157,15 @@ function ZeropsProjectStopDetailPage({
         }
         deployAnswer={deployAnswer}
         runAgain={
-          mayRunAgain
-            ? {
-                running: (service) =>
-                  verbs.pending.has(flowVerbKey({ kind: "redeploy", groupId, projectId, service })),
+          redeploy === undefined || !mayRunAgain
+            ? undefined
+            : {
+                running: verbs.pending.has(
+                  flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
+                ),
                 refused: runAgainRefused,
-                onRunAgain: (redeploy) => said(verbs.redeploy(flow, projectId, redeploy)),
+                onRunAgain: () => said(verbs.redeploy(flow, projectId, redeploy)),
               }
-            : undefined
         }
         services={
           declared === undefined ||
@@ -1168,7 +1173,7 @@ function ZeropsProjectStopDetailPage({
           platform.state !== "known" ||
           platform.coverage !== "complete"
             ? undefined
-            : services
+            : rowsRunningAgain(services, failedDeploys)
         }
         stop={stop}
         tags={tags}
@@ -1206,13 +1211,12 @@ interface StopWaiting {
   readonly atLeast: boolean;
 }
 
-/** *Run again* on the verdict, or on each failed part under it: the failed deploy, asked again in HQ. */
+/** *Run again* on the verdict: the failed deploy, asked again in HQ. */
 interface StopRunAgain {
-  /** Whether it is under way for the service. */
-  readonly running: (service: string) => boolean;
+  readonly running: boolean;
   /** Why HQ refused the last one, until another is pressed. */
   readonly refused: string | null;
-  readonly onRunAgain: (redeploy: RunAgain) => void;
+  readonly onRunAgain: () => void;
 }
 
 /**
@@ -1237,6 +1241,7 @@ interface StopAddService {
 
 const NOTHING_MISSING: ReadonlyArray<string> = [];
 const NO_TIER_STOPS: ReadonlyArray<StopTierStop> = [];
+const NO_FAILED_DEPLOYS: ReadonlyArray<StopFailedDeploy> = [];
 
 /** A stop's role, as its tag reads beside its name. */
 const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
@@ -1516,47 +1521,17 @@ export function ZeropsStopPane({
           ) : verb?.kind === "run-again" && runAgain !== undefined ? (
             <Button
               data-zerops-primary-action="Run again"
-              disabled={runAgain.running(verb.redeploy.service)}
-              onClick={() => runAgain.onRunAgain(verb.redeploy)}
+              disabled={runAgain.running}
+              onClick={runAgain.onRunAgain}
               size="compact"
               variant="outline"
             >
-              {flowVerbLabel("redeploy", runAgain.running(verb.redeploy.service))}
+              {flowVerbLabel("redeploy", runAgain.running)}
             </Button>
           ) : (
             readAgain
           )}
         </VerdictPanel>
-        {verdict.failedParts === undefined ? null : (
-          <ul className="mt-1.5 flex flex-col px-3" data-zerops-surface="stop-failed-parts">
-            {verdict.failedParts.map((part) => (
-              <li
-                className="flex items-center gap-2 py-1 text-sm"
-                data-zerops-failed-part={part.service}
-                key={part.service}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="text-status-failed-text">{part.text}</span>
-                  {part.detail === undefined ? null : (
-                    <span className="text-muted-foreground"> · {part.detail}</span>
-                  )}
-                </span>
-                {part.runAgain === undefined || runAgain === undefined ? null : (
-                  <Button
-                    disabled={runAgain.running(part.service)}
-                    onClick={() =>
-                      part.runAgain !== undefined && runAgain.onRunAgain(part.runAgain)
-                    }
-                    size="compact"
-                    variant="outline"
-                  >
-                    {flowVerbLabel("redeploy", runAgain.running(part.service))}
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
         {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
           <p className="mt-1.5 px-3 text-sm text-[var(--zerops-status-failed-text)]">
             {runAgain.refused}
@@ -1892,7 +1867,7 @@ function StopServiceLine({
         </span>
       ) : row.job === undefined ? null : (
         <span
-          className="flex min-w-0 flex-col pb-2 text-xs leading-4 text-muted-foreground"
+          className="flex min-w-0 flex-col items-start pb-2 text-xs leading-4 text-muted-foreground"
           data-zerops-surface="stop-service-job"
           data-zerops-job-state={row.job.state}
         >
@@ -2002,7 +1977,6 @@ const EMPTY_STOPS: ReadonlyArray<EnvironmentRow> = [];
 const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null };
 /** A stop's parts before its flow has been read — the page says it is unread in their place. */
 const NO_SERVICE_ROWS: ReadonlyArray<StopServiceRow> = [];
-const NO_FAILURES: ReturnType<typeof stopFailedDeploys> = [];
 /** What a stage lists in a production's place: it has no releases and waits for none. */
 const NO_RELEASES: ReadonlyArray<FlowReleaseRow> = [];
 /** What a release carried while HQ is asked: nothing is known yet. */
@@ -2194,6 +2168,12 @@ function ZeropsStopLine({
         )}
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>
+      {/* An application of several parts: how many, and each that differs from the version. */}
+      {environment.parts === undefined ? null : (
+        <span className="block truncate px-2 pb-2 text-xs text-muted-foreground">
+          {environment.parts}
+        </span>
+      )}
       {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
     </li>
   );

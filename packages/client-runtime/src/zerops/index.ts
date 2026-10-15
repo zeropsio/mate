@@ -432,11 +432,11 @@ export {
 export {
   cannotTellWhatRuns,
   servicesDeploying,
-  serviceNames,
   changesCountWords,
   changesNotLive,
   PROJECT_ALL_CLEAR,
   projectAttention,
+  serviceNames,
   type ProjectAttentionItem,
   type ProjectAttentionKind,
 } from "./projectAttention.ts";

@@ -14,8 +14,8 @@
  * @module releaseFacts
  */
 
-import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
 import { serviceNames } from "./projectAttention.ts";
+import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
 import type { Moved } from "./releaseCompare.ts";
 import type { ReleaseOutcome, ReleaseReplaces, ReviewPress } from "./reviewVerdict.ts";
 import { stageMarks, type StageMark, type StageStandings } from "./stageMarks.ts";
@@ -195,7 +195,7 @@ export function releaseOutcomeOf(input: {
           : services.length === 0
             ? "Its production deploy failed"
             : services.length === 1
-              ? `The deploy of ${serviceNames(services)} failed`
+              ? `The deploy of ${services[0]} failed`
               : `The deploys of ${serviceNames(services)} failed`,
       services,
       at: tagged.taggedAt,

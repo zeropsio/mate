@@ -15,11 +15,13 @@ import {
 import {
   exists,
   read,
-  remoteEnvWithSetsid,
+  remoteEnvWithSupervisor,
+  supervisorCalls,
+  supervisorDown,
   TEST_HOST,
   waitUntil,
 } from "../../testing/crewGitFixture.ts";
-import { makeAppRun, type AppRunPayload } from "./appRun.ts";
+import { makeAppRun, noSupervisorWords, type AppRunPayload } from "./appRun.ts";
 import { CREW_EFFECT_KINDS } from "./shared.ts";
 
 /** Writes the port it was given and counts its starts, then waits - like a dev server. */
@@ -39,7 +41,7 @@ const row = (attemptNumber = 1) =>
     attempt: attemptNumber,
   });
 
-const SETSID = { remoteEnv: remoteEnvWithSetsid() };
+const SUPERVISED = { remoteEnv: remoteEnvWithSupervisor() };
 
 /** The app stopped after the test, whatever it asserted. */
 const stopAfter = <A, E, R>(body: Effect.Effect<A, E, R>) =>
@@ -71,7 +73,7 @@ describe("crew.app.run", () => {
             );
           }),
         ),
-      SETSID,
+      SUPERVISED,
     ),
   );
 
@@ -92,7 +94,7 @@ describe("crew.app.run", () => {
               assert.deepStrictEqual({ again, starts: starts(root) }, { again: first, starts: 1 });
             }),
           ),
-        SETSID,
+        SUPERVISED,
       ),
   );
 
@@ -105,11 +107,36 @@ describe("crew.app.run", () => {
           NodeFS.rmSync(`${root}/.crew/backend`, { recursive: true, force: true });
           const missing = okValue(yield* attempt(handler, row()));
           assert.deepStrictEqual(
-            { missing, log: exists(root, ".crew/backend.run.log"), starts: starts(root) },
-            { missing: { state: "lane-missing" }, log: false, starts: 0 },
+            { missing, asked: supervisorCalls(root).length, starts: starts(root) },
+            { missing: { state: "lane-missing" }, asked: 0, starts: 0 },
           );
         }),
-      SETSID,
+      SUPERVISED,
     ),
+  );
+
+  it.effect(
+    "a crew app on a dev service without the supervisor fails at once, saying its dev setup needs one",
+    () =>
+      withCrewEffects(
+        (root) =>
+          Effect.gen(function* () {
+            const handler = yield* makeAppRun;
+            yield* createLane("backend");
+            supervisorDown(root);
+            const result = yield* attempt(handler, row());
+            assert.deepStrictEqual(
+              { result, starts: starts(root) },
+              {
+                result: {
+                  _tag: "Done",
+                  outcome: { kind: "failed", reason: noSupervisorWords(TEST_HOST) },
+                },
+                starts: 0,
+              },
+            );
+          }),
+        SUPERVISED,
+      ),
   );
 });

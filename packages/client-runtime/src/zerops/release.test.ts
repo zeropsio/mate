@@ -363,6 +363,17 @@ describe("a release's row", () => {
     expect(live!.failedEntries).toEqual([]);
   });
 
+  it("names every service a release failed on, not the first alone", () => {
+    const [failed] = rows([release("v1.3.0")], runs(OLD, OLD), [
+      failure("v1.3.0", "web", WEB),
+      failure("v1.3.0", "api", API),
+    ]);
+    expect(failed!.failedEntries).toEqual([
+      { service: "api", commit: API },
+      { service: "web", commit: WEB },
+    ]);
+  });
+
   it("never names a release that lists nothing as Live", () => {
     const empty = release("v1.3.0", { entries: [], line: "" });
     expect(releaseRunBy([empty, release("v1.2.0")], runs(API, WEB))).toBe("v1.2.0");

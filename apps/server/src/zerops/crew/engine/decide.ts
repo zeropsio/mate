@@ -1640,16 +1640,9 @@ const pressed = (
       if (member.kind !== "writer" || member.runCommand === null) {
         throw wrongState(`@${member.handle} has no app to run`);
       }
+      if (press._tag === "appRun") return runApp(b, member, member.runCommand);
       b.effect(
-        press._tag === "appRun"
-          ? {
-              kind: "crew.app.run",
-              handle: member.handle,
-              host: member.host!,
-              command: member.runCommand,
-              ...laneEnvironmentOf(b.state, member),
-            }
-          : { kind: "crew.app.stop", handle: member.handle, host: member.host! },
+        { kind: "crew.app.stop", handle: member.handle, host: member.host! },
         member.handle,
         { handle: member.handle },
       );
@@ -3258,9 +3251,33 @@ const thaw = (
         { handle: member.handle },
       );
     }
+    // A redeploy drops the supervisor's crew apps (spec-mate §2.8a.2): the engine adds them again.
+    if (
+      member.app === "running" &&
+      member.runCommand !== null &&
+      member.lane?.state === "ready" &&
+      !lost.includes(member.handle)
+    ) {
+      runApp(b, member, member.runCommand);
+    }
     const open = openTaskOf(b.state, member.handle);
     if (open?.state === "merging" && !open.checkpointing) mergeIn(b, open);
   }
+};
+
+/** A writer's own app run on its crew port, by the dev service's supervisor. */
+const runApp = (b: Builder, member: MemberRecord, command: string): void => {
+  b.effect(
+    {
+      kind: "crew.app.run",
+      handle: member.handle,
+      host: member.host!,
+      command,
+      ...laneEnvironmentOf(b.state, member),
+    },
+    member.handle,
+    { handle: member.handle },
+  );
 };
 
 /* ------------------------------------------------------------ the rest of the engine */

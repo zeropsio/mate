@@ -46,6 +46,29 @@ const journeys: ReadonlyArray<Journey> = [
     expected: ["missing", "ready"],
   },
   {
+    sentence: "a crew app a redeploy stopped runs again once its copy is back, a lost copy's not",
+    journey: (w) => {
+      const run = { run: "npm run dev" };
+      w.apply(home(writer("backend", run), writer("frontend", run), writer("api", run)));
+      for (const handle of ["backend", "api"]) {
+        w.press({ _tag: "appRun", handle });
+        w.settle("crew.app.run", handle, { state: "running" });
+      }
+      w.tell({ _tag: "Deploy", host: "appdev", phase: "started" }, { kind: "engine" });
+      w.tell({ _tag: "Deploy", host: "appdev", phase: "ended" }, { kind: "engine" });
+      const during = w.pending("crew.app.run") !== undefined;
+      w.settle("crew.recover", "appdev", { lost: ["api"], losses: [] });
+      const again = w.pending("crew.app.run", "backend")?.payload;
+      return [
+        during,
+        again?.kind === "crew.app.run" ? again.command : undefined,
+        w.pending("crew.app.run", "frontend") !== undefined,
+        w.pending("crew.app.run", "api") !== undefined,
+      ];
+    },
+    expected: [false, "npm run dev", false, false],
+  },
+  {
     sentence: "Remove from crew keeps a copy with unlanded work until Discard",
     journey: (w) => {
       w.apply(home(writer("backend"), writer("frontend")));

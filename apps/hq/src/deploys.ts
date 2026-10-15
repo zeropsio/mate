@@ -301,6 +301,8 @@ interface LeftOut {
   /** The job of the commit under way, where one is. */
   readonly job: string | null;
   readonly reason: string;
+  /** HQ stopped it because the tier does not declare it (`ReleaseRollout.leftOut`). */
+  readonly stopped?: { readonly rollbackTo: string | null };
 }
 
 /** A job not ended, with its environment and what asked for it. */
@@ -376,6 +378,7 @@ const LeftOutJson = Schema.fromJsonString(
       sha: Schema.String,
       job: Schema.NullOr(Schema.String),
       reason: Schema.String,
+      stopped: Schema.optionalKey(Schema.Struct({ rollbackTo: Schema.NullOr(Schema.String) })),
     }),
   ),
 );
@@ -836,6 +839,7 @@ export const deploysLayer = (
                     : tier.rollbackOf === null
                       ? `stopped: ${undeclared}`
                       : `stopped by rollback to ${tier.rollbackOf}: ${undeclared}`,
+                ...(stop?._tag === "Failure" ? {} : { stopped: { rollbackTo: tier.rollbackOf } }),
               });
             } else if (
               listed.has(service.name) &&

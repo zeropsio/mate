@@ -3247,6 +3247,15 @@ describe("deploys", () => {
             FROM hq_rollout, jsonb_array_elements(left_out) AS entry
             WHERE tag = ${tag} ORDER BY 1`,
         );
+      /** Which services the release `tag`'s rollout stopped, and by a rollback to which tag. */
+      const stoppedOf = (tag: string) =>
+        Effect.flatMap(
+          SqlClient.SqlClient,
+          (sql) => sql<{ readonly service: string; readonly stopped: unknown }>`
+            SELECT entry->>'service' AS service, entry->'stopped' AS stopped
+            FROM hq_rollout, jsonb_array_elements(left_out) AS entry
+            WHERE tag = ${tag} AND entry ? 'stopped' ORDER BY 1`,
+        );
       const noteOf = (tag: string) =>
         Effect.flatMap(SqlClient.SqlClient, (sql) =>
           Effect.map(
@@ -3328,6 +3337,9 @@ describe("deploys", () => {
                   },
                 ],
               );
+              assert.deepStrictEqual(yield* stoppedOf(back.tag), [
+                { service: "worker", stopped: { rollbackTo: "v0.1.0" } },
+              ]);
               assert.include(world.calls, "stopService:key-prod");
 
               const three = yield* tierAt(rig, ["web", "worker"]);
@@ -3377,6 +3389,9 @@ describe("deploys", () => {
               ]);
               assert.deepStrictEqual(yield* leftOut("v0.2.0"), [
                 { service: "api", reason: "stopped: the tier of v0.2.0 does not declare it" },
+              ]);
+              assert.deepStrictEqual(yield* stoppedOf("v0.2.0"), [
+                { service: "api", stopped: { rollbackTo: null } },
               ]);
 
               yield* releases.rollback("dev", appId, "v0.1.0", { groupHead: two });

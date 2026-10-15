@@ -862,7 +862,7 @@ export type ReleaseOutcome =
   | {
       readonly kind: "failed";
       readonly detail?: string | undefined;
-      /** Each service whose deploy failed. */
+      /** The services whose deploys failed, by the order the release lists them. */
       readonly services?: ReadonlyArray<string> | undefined;
       readonly at?: string | undefined;
     };
@@ -1111,13 +1111,13 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
       };
     }
     case "failed": {
-      const failed = outcome.services ?? [];
+      const services = outcome.services ?? [];
       const what = `Production's release ${tag} failed${
-        failed.length === 0
+        services.length === 0
           ? ""
-          : failed.length === 1
-            ? ` in ${failed[0]}'s deploy`
-            : ` in the deploys of ${listed(failed)}`
+          : services.length === 1
+            ? ` in ${services[0]}'s deploy`
+            : ` in the deploys of ${listed(services)}`
       }`;
       return {
         verdict: {

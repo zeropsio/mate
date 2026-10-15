@@ -652,7 +652,7 @@ interface StopCase {
   readonly offered?: string;
   /** Why the release is not offered, as the flow's gate says. */
   readonly releaseReason?: string;
-  readonly failed?: ReadonlyArray<StopFailure>;
+  readonly failed?: StopFailure;
   /** Whether the deploy key HQ holds for the stop no longer works. */
   readonly keyInvalid?: boolean;
   /** Whether HQ holds a deploy key for the stop; held unless given. */
@@ -733,7 +733,7 @@ function renderStop(input: StopCase): string {
     tier: input.tier,
     view,
     releasing: undefined,
-    failed: input.failed ?? [],
+    failed: input.failed === undefined ? [] : [input.failed],
     waiting: waiting.total,
     waitingAtLeast: waiting.atLeast,
     untold: input.untold ?? [],
@@ -753,8 +753,8 @@ function renderStop(input: StopCase): string {
       vault={input.vault}
       readAgain={input.readAgain}
       runAgain={
-        input.failed?.some((failure) => failure.mayRunAgain) === true
-          ? { running: () => false, refused: null, onRunAgain: () => {} }
+        input.failed?.mayRunAgain === true
+          ? { running: false, refused: null, onRunAgain: () => {} }
           : undefined
       }
       carried={input.carried}
@@ -930,17 +930,15 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
           deploy: { latest: deployRecord(fullSha("b2"), "failed", { reason }), live: null },
         },
       ],
-      failed: [
-        {
-          label: "b200000",
-          service: "api",
-          sha: fullSha("b2"),
-          running: undefined,
-          redeploy: undefined,
-          message: reason,
-          mayRunAgain: false,
-        },
-      ],
+      failed: {
+        label: "b200000",
+        service: "api",
+        sha: fullSha("b2"),
+        running: undefined,
+        redeploy: undefined,
+        message: reason,
+        mayRunAgain: false,
+      },
     });
     expect(jobOf(markup)).toBe("failed");
     expect(count(markup, reason)).toBe(1);
@@ -970,15 +968,12 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
       nowMs: NOW,
       age: () => "1h ago",
     });
-    const failed = stopFailedDeploys({ tier: "stage", rows, releases: [] }).map((failure) => ({
-      ...failure,
-      mayRunAgain: true,
-    }));
+    const [failed] = stopFailedDeploys({ tier: "stage", rows, releases: [] });
     const document = new Window().document;
     document.body.innerHTML = renderStop({
       tier: "stage",
       services,
-      failed,
+      ...(failed === undefined ? {} : { failed: { ...failed, mayRunAgain: true } }),
       mayDeployAgain: true,
     });
     const job = document.querySelector(
@@ -991,53 +986,6 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
     );
     expect(retry).toBeDefined();
     expect(retry?.disabled).toBe(false);
-  });
-
-  it("lists every failed part under the verdict, each with its own Run again", () => {
-    const failing = (hostname: string, seed: string, reason: string) => ({
-      hostname,
-      repository: "app",
-      deploy: {
-        latest: deployRecord(fullSha(seed), "failed", { service: hostname, reason }),
-        live: null,
-      },
-    });
-    const services = [
-      failing("api", "b2", "API build failed"),
-      failing("worker", "c3", "Worker build failed"),
-    ];
-    const rows = serviceRows({
-      environment: "stage",
-      services,
-      platform: UNREAD,
-      mainHead: undefined,
-      routes: [],
-      offers: [],
-      nowMs: NOW,
-      age: () => "1h ago",
-    });
-    const failed = stopFailedDeploys({ tier: "stage", rows, releases: [] }).map((failure) => ({
-      ...failure,
-      mayRunAgain: true,
-    }));
-    const document = new Window().document;
-    document.body.innerHTML = renderStop({ tier: "stage", services, failed });
-    const parts = [...document.querySelectorAll("[data-zerops-failed-part]")];
-    expect(
-      parts.map((part) => [
-        part.getAttribute("data-zerops-failed-part"),
-        [...part.querySelectorAll("button")].map((button) => button.textContent?.trim()),
-      ]),
-    ).toEqual([
-      ["api", ["Run again"]],
-      ["worker", ["Run again"]],
-    ]);
-    expect(parts.map((part) => part.textContent)).toEqual([
-      expect.stringContaining("API build failed"),
-      expect.stringContaining("Worker build failed"),
-    ]);
-    // The verdict names both and offers no verb of its own.
-    expect(document.querySelector('[data-zerops-primary-action="Run again"]')).toBeNull();
   });
 
   it("an unresolved deploy stays on the service row without a deploy answer panel", () => {
@@ -1301,17 +1249,15 @@ describe("ZeropsStopPane", () => {
       input: {
         tier: "production",
         services: [service("api", "a1", "v0.1.14", "failed")],
-        failed: [
-          {
-            label: "v0.1.14",
-            service: "api",
-            sha: undefined,
-            running: undefined,
-            redeploy: undefined,
-            message: undefined,
-            mayRunAgain: false,
-          },
-        ],
+        failed: {
+          label: "v0.1.14",
+          service: "api",
+          sha: undefined,
+          running: undefined,
+          redeploy: undefined,
+          message: undefined,
+          mayRunAgain: false,
+        },
       },
       contains: ["The deploy of v0.1.14 failed on api."],
     },
@@ -1320,17 +1266,15 @@ describe("ZeropsStopPane", () => {
       input: {
         tier: "production",
         services: [service("api", "a1", "v0.1.13", "failed")],
-        failed: [
-          {
-            label: "v0.1.14",
-            service: "api",
-            sha: undefined,
-            running: undefined,
-            redeploy: undefined,
-            message: "Held at migration: api runs a100000; Run brings it to b200000.",
-            mayRunAgain: false,
-          },
-        ],
+        failed: {
+          label: "v0.1.14",
+          service: "api",
+          sha: undefined,
+          running: undefined,
+          redeploy: undefined,
+          message: "Held at migration: api runs a100000; Run brings it to b200000.",
+          mayRunAgain: false,
+        },
       },
       contains: [
         "The deploy of v0.1.14 failed on api.",
