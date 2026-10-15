@@ -227,19 +227,19 @@ describe("changeReview: the button says what will happen (R5)", () => {
     [
       "one commit, a production downstream",
       {},
-      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+      "Adds this change to main. Production isn't touched until you release.",
       { enabled: true, safe: true },
     ],
     [
       "several commits, only a stage downstream",
       { commits: 3, downstream: { production: false, stage: true } },
-      "Squash-merges 3 commits into main as one. The stage picks it up from main.",
+      "Adds this change to main. The stage picks it up from main.",
       { enabled: true, safe: true },
     ],
     [
       "nothing downstream yet",
       { downstream: { production: false, stage: false } },
-      "Squash-merges 1 commit into main.",
+      "Adds this change to main.",
       { enabled: true, safe: true },
     ],
     [
@@ -258,7 +258,7 @@ describe("changeReview: the button says what will happen (R5)", () => {
       // Amber: still pressable, never pressed for the person — no focus, no ⌘↵.
       "behind main but clean",
       { pull: pull({ behind: true }) },
-      "Squash-merges 1 commit into main, on top of changes it wasn't checked with. Production isn't touched until you release.",
+      "Adds this change to main, on top of changes it wasn't checked with. Production isn't touched until you release.",
       { enabled: true, safe: false },
     ],
   ])("%s", (_name, over, consequence, primary) => {
@@ -409,7 +409,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     ],
   ])("%s", (_case, over, sentence, next) => {
     const before = changeReview(change({ pull: recipe(), recipe: reach(over), ...releasable }));
-    expect(before.consequence).toBe(`Squash-merges 1 commit into main. ${sentence}`);
+    expect(before.consequence).toBe(`Adds this change to main. ${sentence}`);
     expect(before.primary).toEqual({ label: "Merge", enabled: true, safe: true });
 
     const after = changeReview(change({ pull: merged, recipe: reach(over), ...releasable }));
@@ -433,7 +433,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     });
     const review = changeReview(change({ pull: recipe(), recipe: reached, ...releasable }));
     expect(review.consequence).toBe(
-      "Squash-merges 1 commit into main. The stage gets any service added to its recipe, created empty; the services it has stay as they are.",
+      "Adds this change to main. The stage gets any service added to its recipe, created empty; the services it has stay as they are.",
     );
     expect(review.primary).toEqual({ label: "Merge", enabled: true, safe: true });
     expect(
@@ -446,9 +446,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
 
   it("says what any recipe change does where its files could not be read", () => {
     const review = changeReview(change({ pull: recipe(), readout: "failed", ...releasable }));
-    expect(review.consequence).toBe(
-      `Squash-merges 1 commit into main without its files shown. ${UNREAD}`,
-    );
+    expect(review.consequence).toBe(`Adds this change to main without its files shown. ${UNREAD}`);
   });
 
   it("says it is on main, and what any recipe change does, until the files of one merged are read", () => {
@@ -758,7 +756,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         state: "rolling-back",
         tone: "busy",
         title: "Rolling back to v0.1.55",
-        why: "Tagging main as v0.1.58",
+        why: "Preparing v0.1.58",
       },
       "You can close this. The project's line in the menu follows the release.",
     ],
@@ -767,13 +765,13 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "tagged, on its way",
       {
         press: { kind: "done" },
-        outcome: { kind: "releasing", progress: "Production redeploys from v0.1.58 · 0:40" },
+        outcome: { kind: "releasing", progress: "Putting v0.1.58 live · 0:40" },
       },
       {
         state: "rolling-back",
         tone: "busy",
         title: "Rolling back to v0.1.55",
-        why: "Production redeploys from v0.1.58 · 0:40",
+        why: "Putting v0.1.58 live · 0:40",
       },
       "You can close this. The project's line in the menu follows the release.",
     ],
@@ -1087,7 +1085,7 @@ describe("changeReview: Merge, offered by HQ's rule (T8a)", () => {
     const review = changeReview(change({ offered: undefined }));
     expect(review.primary).toMatchObject({ label: "Merge", enabled: false, safe: false });
     expect(review.consequence).toBe(
-      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+      "Adds this change to main. Production isn't touched until you release.",
     );
   });
 });
@@ -1214,13 +1212,13 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
       "its files for this head could not be read",
       "failed",
       { enabled: true, safe: false },
-      "Squash-merges 1 commit into main without its files shown. Production isn't touched until you release.",
+      "Adds this change to main without its files shown. Production isn't touched until you release.",
     ],
     [
       "its files for this head read",
       "read",
       { enabled: true, safe: true },
-      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+      "Adds this change to main. Production isn't touched until you release.",
     ],
   ])("%s", (_case, readout, primary, consequence) => {
     const review = changeReview(change({ readout }));

@@ -442,7 +442,7 @@ describe("ChangeReviewView: an open change", () => {
     });
     expect(textOf(html)).toContain("Nothing to merge main already has all of it");
     expect(footOf(html)).toContain("Nothing to deliver: main already has this.");
-    expect(footOf(html)).not.toContain("Squash-merges");
+    expect(footOf(html)).not.toContain("Adds this change");
     expect(footOf(html)).not.toContain('data-zerops-primary-action="Merge"');
     expect(footOf(html)).toContain(">Close without merging…</button>");
   });
@@ -496,7 +496,7 @@ describe("ChangeReviewView: an open change", () => {
         "Parts 3 web · webstage · from aaaaaaa, the change is at ccccccc · verified api · apistage · from ccccccc · verified worker · workerstage · deploy failed",
       );
       expect(textOf(footOf(html))).toContain(
-        "Not tried at this change: web (older commit), worker (failed). Squash-merges",
+        "Not tried at this change: web (older commit), worker (failed). Adds this change",
       );
       expect(html).toMatch(/data-safe="true" data-zerops-primary-action="Merge"/u);
     });

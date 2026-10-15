@@ -389,19 +389,11 @@ function closeReview(
   }
 }
 
-/** `Squash-merges 3 commits into main as one.` */
-function squashSentence(
-  pull: ChangeReviewInput["pull"],
-  commits: number | undefined,
-  behind: boolean,
-  unshown: boolean,
-): string {
-  const what =
-    commits === undefined ? "it" : commits === 1 ? "1 commit" : `${String(commits)} commits`;
-  const asOne = commits !== undefined && commits > 1 ? " as one" : "";
+/** `Adds this change to main.` — its commits are the Commits fold's to count, not the foot's. */
+function mergeSentence(pull: ChangeReviewInput["pull"], behind: boolean, unshown: boolean): string {
   const unseen = unshown ? " without its files shown" : "";
   const onTop = behind ? ", on top of changes it wasn't checked with" : "";
-  return `Squash-merges ${what} into ${pull.baseBranch}${asOne}${unseen}${onTop}.`;
+  return `Adds this change to ${pull.baseBranch}${unseen}${onTop}.`;
 }
 
 /** What any recipe change does, which is all that can be said of one before its files are read. */
@@ -768,12 +760,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   // facts HQ's rule is asked over.
   const enabled = verdictOf.enabled && input.readout !== "reading" && input.offered?.merge === true;
   const squash = sentences(
-    squashSentence(
-      pull,
-      input.commits,
-      verdict.state === "behind-clean",
-      input.readout === "failed",
-    ),
+    mergeSentence(pull, verdict.state === "behind-clean", input.readout === "failed"),
     afterMain(input),
   );
   const waits: Partial<Record<ReviewState, string>> = {
@@ -798,10 +785,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
         state: "merging",
         tone: "busy",
         title: `Merging into ${base}`,
-        why:
-          input.commits === undefined
-            ? `Squashing #${String(pull.number)}`
-            : `Squashing ${count(input.commits, "commit", "commits")} into one`,
+        why: `Adding this change to ${base}`,
         fix: undefined,
       },
       consequence: squash,
@@ -1091,7 +1075,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
           state: "releasing",
           tone: "busy",
           title: `Releasing ${tag}`,
-          why: outcome.progress ?? "Production redeploys from the tag",
+          why: outcome.progress ?? "Putting it live",
           fix: undefined,
         },
         consequence: RELEASE_FOLLOWS,
@@ -1333,7 +1317,7 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
     consequence: RELEASE_FOLLOWS,
     primary: undefined,
   });
-  if (press.kind === "running") return onItsWay(`Tagging main as ${nextTag}`);
+  if (press.kind === "running") return onItsWay(`Preparing ${nextTag}`);
   if (press.kind === "refused") {
     return {
       verdict: {
@@ -1349,7 +1333,7 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
   }
   switch (outcome.kind) {
     case "releasing":
-      return onItsWay(outcome.progress ?? `Production redeploys from ${nextTag}`);
+      return onItsWay(outcome.progress ?? `Putting ${nextTag} live`);
     case "released": {
       const age =
         outcome.at === undefined ? undefined : reviewAge(outcome.at, input.now)?.toLowerCase();
@@ -1392,7 +1376,7 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
     case "offered":
       break;
   }
-  if (press.kind === "done") return onItsWay(`Production redeploys from ${nextTag}`);
+  if (press.kind === "done") return onItsWay(`Putting ${nextTag} live`);
   if (permission?.allowed === false) {
     return {
       verdict: {

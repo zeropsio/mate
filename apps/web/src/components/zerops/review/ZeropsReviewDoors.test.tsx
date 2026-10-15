@@ -119,7 +119,7 @@ const VERDICT: ReviewVerdict = {
 function surface(over: Partial<ZeropsReviewSurfaceProps> = {}): string {
   return renderToStaticMarkup(
     <ZeropsReviewSurface
-      consequence="Squash-merges 1 commit into main. Production isn't touched until you release."
+      consequence="Adds this change to main. Production isn't touched until you release."
       kind="change"
       kindLabel="Review · change"
       onClose={() => {}}
@@ -160,7 +160,7 @@ describe("the review's one button (R5)", () => {
 
   it("says what the button does beside it, and the verdict first", () => {
     const html = surface();
-    expect(html.indexOf("Ready to merge")).toBeLessThan(html.indexOf("Squash-merges 1 commit"));
+    expect(html.indexOf("Ready to merge")).toBeLessThan(html.indexOf("Adds this change"));
     expect(html).toContain('data-tone="ok"');
     expect(html).toContain('data-review-state="ready"');
   });
@@ -209,7 +209,7 @@ describe("one review, two frames", () => {
   it("says what its one button does, beside it, in both", () => {
     for (const frame of ["dialog", "page"] as const) {
       const html = surface({ frame });
-      expect(html).toContain("Squash-merges 1 commit into main.");
+      expect(html).toContain("Adds this change to main.");
       expect(html).toContain('data-review-primary=""');
     }
   });
@@ -235,7 +235,7 @@ describe("the page presses its button on ⌘↵ while it is safe, never from a f
       await act(async () =>
         root.render(
           <ZeropsReviewSurface
-            consequence="Squash-merges 1 commit into main."
+            consequence="Adds this change to main."
             frame="page"
             kind="change"
             kindLabel="Review · change"
