@@ -334,7 +334,11 @@ export function cardReady(flow: Pick<GroupFlow, "production" | "stages" | "main"
     production.kind === "ready-to-release" ||
     (production.kind === "deploy-failed" && production.candidate !== undefined);
   if (!offered || production.candidate === undefined) return undefined;
-  const stage = flow.stages.find((stop) => stop.state === "deployed") ?? flow.stages[0];
+  // The stage main feeds is the one whose deploys `readyLine` judges (`mainStageOf`): name it.
+  const stage =
+    flow.stages.find((stop) => stop.source === "main") ??
+    flow.stages.find((stop) => stop.state === "deployed") ??
+    flow.stages[0];
   return {
     count: production.candidate.waiting,
     atLeast: flow.main.notLiveAtLeast,

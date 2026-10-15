@@ -426,6 +426,25 @@ describe("a release ready to go", () => {
     expect(ready === undefined ? undefined : readyLine(ready, onStage)).toBe(line);
   });
 
+  it("names the stage main feeds, the one whose deploys say whether it runs them, never another", () => {
+    const ready = cardReady({
+      production: {
+        kind: "ready-to-release",
+        stop: stop(),
+        line: "",
+        candidate: { tag: "v2.4.0", waiting: 3 },
+      },
+      stages: [
+        stop({ projectId: "qa", name: "qa", source: "release" }),
+        stop({ projectId: "stage", name: "stage", source: "main", state: "deploying" }),
+      ],
+      main: { head: undefined, hasCode: true, notLive: 3, notLiveAtLeast: false },
+    });
+    expect(ready === undefined ? undefined : readyLine(ready, false)).toBe(
+      "Not on stage yet. Production runs v2.3.1.",
+    );
+  });
+
   it.each([
     {
       case: "a release is on its way",
