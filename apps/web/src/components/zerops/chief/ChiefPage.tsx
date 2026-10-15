@@ -93,11 +93,11 @@ export function ChiefPage() {
   );
 }
 
-/** What a Chief is, in one headline and the sentence under it. */
+/** What a Chief is for, in the person's words: one headline and the sentence under it. */
 const CHIEF_IS = {
-  headline: "A Mate for your whole organization.",
+  headline: "One Mate for all your projects.",
   sentence:
-    "Chief lives in its own project, with one container, and runs on your own coding agent's sign-in. It sees what you can see, and changes nothing without your Approve.",
+    "Ask it what runs where, what it costs, or who has access. Anything it would change waits for your approval.",
 } as const;
 
 /**

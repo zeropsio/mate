@@ -4153,6 +4153,7 @@ function ConversationView(props: ChatViewProps) {
   const composerPlaceholders = resolveComposerPlaceholders({
     whoLivesHere: whoLivesHereKind,
     zeropsAvailable: zeropsChrome.panel === "available",
+    chief: chiefConversation,
   });
   const openFileSurface = useCallback(
     (relativePath: string) => {
