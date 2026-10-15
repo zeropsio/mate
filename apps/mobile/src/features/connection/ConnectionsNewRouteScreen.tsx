@@ -279,7 +279,7 @@ export function ConnectionsNewRouteScreen({
 
               <View collapsable={false} className="gap-1.5">
                 <Text className="text-2xs font-t3-bold tracking-[0.8px] uppercase text-foreground-muted">
-                  Pairing code
+                  Sign-in code
                 </Text>
                 <TextInput
                   autoCapitalize="none"
@@ -295,7 +295,7 @@ export function ConnectionsNewRouteScreen({
 
               <ConnectionSheetButton
                 icon="plus"
-                label={isSubmitting ? "Pairing..." : "Add environment"}
+                label={isSubmitting ? "Signing in…" : "Add environment"}
                 disabled={connectDisabled}
                 tone="primary"
                 onPress={() => {
