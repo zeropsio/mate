@@ -27,19 +27,19 @@ describe("HqGateScreen", () => {
     expect(html).toContain("Set up HQ");
     expect(html).toContain("a project named Headquarters in Zerops");
     expect(steps(html)).toEqual([]);
-    expect(html).not.toContain("Setting up Mate");
+    expect(html).not.toContain("Setting up HQ");
   });
   it("shows an owner HQ being set up, step by step, with the one it is on", () => {
     const html = screen({ birth: { kind: "running", step: "deploy" } });
-    expect(html).toContain("Setting up Mate for Acme");
+    expect(html).toContain("Setting up HQ for Acme");
     expect(steps(html)).toEqual([
-      "done:Creating HQ's project",
-      "done:Starting HQ's services",
-      "done:Giving HQ its access",
+      "done:Creating the Headquarters project",
+      "done:Starting its database and storage",
+      "done:Connecting it to your organization",
       "running:Deploying HQ",
       "waiting:Giving HQ its address",
-      "waiting:Marking it this organization's HQ",
-      "waiting:Waiting for HQ to answer",
+      "waiting:Making it your organization's HQ",
+      "waiting:Opening HQ",
     ]);
     expect(html).not.toContain("<button");
   });

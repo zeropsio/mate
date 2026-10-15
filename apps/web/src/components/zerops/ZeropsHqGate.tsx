@@ -130,10 +130,11 @@ function HqBirth({
   if (birth === undefined) {
     return (
       <>
-        <h1 className="text-xl font-medium text-foreground">Set up Mate for {organizationName}</h1>
+        <h1 className="text-xl font-medium text-foreground">Set up HQ for {organizationName}</h1>
         <p className="text-sm text-muted-foreground">
-          Mate keeps this organization's applications in its HQ, a project named Headquarters in
-          Zerops. Setting it up takes a few minutes. Any admin can continue it from another browser.
+          HQ keeps this organization's projects, their code and their Mates, in a project named
+          Headquarters in Zerops. Setting it up takes a few minutes; then you can start your first
+          Mate.
         </p>
         <div>
           <Button size="sm" variant="secondary" onClick={onStart}>
@@ -149,12 +150,11 @@ function HqBirth({
     <>
       <div className="space-y-1">
         <h1 className="text-xl font-medium text-foreground">
-          Setting up Mate for {organizationName}
+          Setting up HQ for {organizationName}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Mate keeps this organization's applications in its HQ, a project named Headquarters in
-          Zerops. Setting it up takes a few minutes. Any admin can continue it from another browser;
-          if a step fails, press Again after fixing the cause.
+          HQ goes into a project named Headquarters in Zerops. It takes a few minutes; any admin can
+          continue it from another browser.
         </p>
       </div>
       <ol className="flex flex-col gap-2">

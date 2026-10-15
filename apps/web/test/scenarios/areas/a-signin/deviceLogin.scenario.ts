@@ -43,7 +43,7 @@ describe("A: sign-in through the Zerops window", () => {
         const consent = yield* window.lastConsentPage;
         expect(consent.searchParams.get("intent")).toBe("register");
         expect(consent.searchParams.get("display")).toBe("popup");
-        yield* window.says("Set up Mate for Newcomer");
+        yield* window.says("Set up HQ for Newcomer");
         yield* account(s.page).showsPerson("newcomer");
         yield* s.then.noExternalNetwork;
       }),

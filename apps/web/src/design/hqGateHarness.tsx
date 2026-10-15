@@ -38,7 +38,7 @@ const GATE: Readonly<Record<string, Exclude<HqGate, { readonly kind: "open" }>>>
   uncertain: { kind: "birth" },
   ask: {
     kind: "ask",
-    line: "An admin sets up Mate for this organization. Ask Alex Morgan or Jan Novák.",
+    line: "An admin sets up HQ for this organization. Ask Alex Morgan or Jan Novák.",
   },
   reading: { kind: "reading", failed: false },
   unread: { kind: "reading", failed: true },

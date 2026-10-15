@@ -59,13 +59,13 @@ export const HQ_BIRTH_STEPS: ReadonlyArray<HqBirthStep> = [
 
 /** What each step is doing, as its line says while it runs and names it when it stops. */
 export const HQ_BIRTH_DOING: Readonly<Record<HqBirthStep, string>> = {
-  project: "Creating HQ's project",
-  services: "Starting HQ's services",
-  credential: "Giving HQ its access",
+  project: "Creating the Headquarters project",
+  services: "Starting its database and storage",
+  credential: "Connecting it to your organization",
   deploy: "Deploying HQ",
   domain: "Giving HQ its address",
-  anchor: "Marking it this organization's HQ",
-  ready: "Waiting for HQ to answer",
+  anchor: "Making it your organization's HQ",
+  ready: "Opening HQ",
 };
 
 /** What a birth has made so far. */
