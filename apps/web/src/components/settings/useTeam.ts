@@ -102,16 +102,11 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
     return byProject;
   }, [registry, roster]);
 
-  // The names typed for invitations here, read again as the member list changes.
-  const typedNames = useMemo(
-    () => (clientId === null ? {} : invitedNames(clientId)),
-    [clientId, members.members],
-  );
-
   const view = useMemo(
     () =>
       teamPeople({
-        invitedNames: typedNames,
+        // The names typed for invitations here, read again as the member list changes.
+        invitedNames: clientId === null ? {} : invitedNames(clientId),
         members: {
           known: members.fact.kind === "known",
           status: members.status,
@@ -134,7 +129,7 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
                 ...(viewer.roleCode === undefined ? {} : { roleCode: viewer.roleCode }),
               },
       }),
-    [grants, hqProjectPeople, members, places, typedNames, viewer, viewerUserId],
+    [clientId, grants, hqProjectPeople, members, places, viewer, viewerUserId],
   );
 
   const projects = useMemo(
