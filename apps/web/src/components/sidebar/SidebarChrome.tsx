@@ -117,7 +117,9 @@ export interface SidebarCreateProject {
 /**
  * The top row's +: a small menu with New Mate and New project, the menu's own
  * flows (`useAddMate`, `useAskNewProject`). New Mate asks in a project: where
- * there is one, at once; with several, it lists them.
+ * there is one, at once; with several, it lists them. It holds only what the
+ * viewer's role may make — no `onNewProject` where it may not create projects —
+ * its name says what it holds, and with nothing to make it is not drawn.
  */
 export function SidebarCreateButton({
   projects,
@@ -126,9 +128,17 @@ export function SidebarCreateButton({
 }: {
   readonly projects: ReadonlyArray<SidebarCreateProject>;
   readonly onNewMate: (projectId: string) => void;
-  readonly onNewProject: () => void;
+  /** New project, where the viewer's role creates projects. */
+  readonly onNewProject?: (() => void) | undefined;
 }) {
   const [only] = projects;
+  const label =
+    only === undefined
+      ? "New project"
+      : onNewProject === undefined
+        ? "New Mate"
+        : "New Mate or project";
+  if (only === undefined && onNewProject === undefined) return null;
   return (
     <Menu>
       <Tooltip>
@@ -137,7 +147,7 @@ export function SidebarCreateButton({
             <MenuTrigger
               render={
                 <button
-                  aria-label="New Mate or project"
+                  aria-label={label}
                   className="menu-round-button"
                   data-zerops-surface="sidebar-create"
                   type="button"
@@ -148,7 +158,7 @@ export function SidebarCreateButton({
         >
           <PlusIcon aria-hidden="true" className="size-4" />
         </TooltipTrigger>
-        <TooltipPopup side="bottom">New Mate or project</TooltipPopup>
+        <TooltipPopup side="bottom">{label}</TooltipPopup>
       </Tooltip>
       <MenuPopup align="end" className="w-50">
         {only === undefined ? null : projects.length === 1 ? (
@@ -178,9 +188,11 @@ export function SidebarCreateButton({
             </MenuSubPopup>
           </MenuSub>
         )}
-        <MenuItem data-zerops-create="project" onClick={onNewProject}>
-          New project
-        </MenuItem>
+        {onNewProject === undefined ? null : (
+          <MenuItem data-zerops-create="project" onClick={onNewProject}>
+            New project
+          </MenuItem>
+        )}
       </MenuPopup>
     </Menu>
   );

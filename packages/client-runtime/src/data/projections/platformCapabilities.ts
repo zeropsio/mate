@@ -1,4 +1,17 @@
-/** Zerops-native capabilities: one derivation for controls and operation admission. */
+/**
+ * Zerops-native capabilities: one derivation for controls and operation admission. Every surface
+ * that offers a verb by the viewer's role reads it here, so the menu, the overview and a dialog
+ * never disagree about what a role may do, and an offered control is one its write admits.
+ *
+ * - `membershipKnown` — the viewer's membership in the organization is read: until it is, a
+ *   capability that reads `false` is not a refusal, and a control already drawn stays drawn.
+ * - `createProject` — Zerops' own *can create projects* (`mayCreateProjects`): New project.
+ * - `setUpChief` — a Chief is a project of the person's own, so it takes `createProject`.
+ * - `reachesEveryProject` — the organization role reaches every project by itself (Read only or
+ *   above); below it, a person sees only the projects they are given.
+ * - `manageOrganization` — an owner or an admin: the team, and who has access to what.
+ * - `read`, `operate`, `administer` — the viewer's effective role on `projectId`.
+ */
 import { mayCreateProjects, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { zeropsClientsFromUser, type ZeropsOrganization } from "../../zerops/api.ts";
 import type { Projection } from "../store.ts";
@@ -27,16 +40,17 @@ export interface PlatformCapabilitiesKey {
   readonly projectId?: string | undefined;
   readonly viewer: ZeropsOrganization | undefined;
 }
-export const platformCapabilities: Projection<
-  PlatformCapabilitiesKey,
-  {
-    readonly createProject: boolean;
-    readonly manageOrganization: boolean;
-    readonly read: boolean;
-    readonly operate: boolean;
-    readonly administer: boolean;
-  }
-> = {
+export interface PlatformCapabilities {
+  readonly membershipKnown: boolean;
+  readonly createProject: boolean;
+  readonly setUpChief: boolean;
+  readonly reachesEveryProject: boolean;
+  readonly manageOrganization: boolean;
+  readonly read: boolean;
+  readonly operate: boolean;
+  readonly administer: boolean;
+}
+export const platformCapabilities: Projection<PlatformCapabilitiesKey, PlatformCapabilities> = {
   name: "platformCapabilities",
   keyOf: (key) => JSON.stringify(key),
   derive: (read, { orgId, projectId, viewer }) => {
@@ -45,10 +59,14 @@ export const platformCapabilities: Projection<
         ? undefined
         : platformAccess.derive(read, { orgId, projectId, viewer });
     const role = access?.kind === "allowed" ? access.role : undefined;
+    const member = viewer !== undefined && viewer.id === orgId ? viewer : undefined;
+    const createProject = member !== undefined && mayCreateProjects(member);
     return {
-      createProject: viewer !== undefined && viewer.id === orgId && mayCreateProjects(viewer),
-      manageOrganization:
-        viewer !== undefined && viewer.id === orgId && roleAtLeast(viewer.roleCode, "ADMIN"),
+      membershipKnown: member !== undefined,
+      createProject,
+      setUpChief: createProject,
+      reachesEveryProject: member !== undefined && roleAtLeast(member.roleCode, "READ_ONLY"),
+      manageOrganization: member !== undefined && roleAtLeast(member.roleCode, "ADMIN"),
       read: roleAtLeast(role, "READ_ONLY"),
       operate: roleAtLeast(role, "BASIC_USER"),
       administer: roleAtLeast(role, "ADMIN"),
@@ -56,3 +74,19 @@ export const platformCapabilities: Projection<
   },
   equals: sameValue,
 };
+
+/**
+ * What the organization's own surfaces offer by the viewer's role — the menu's +, the overview's
+ * header, an empty organization's first screen, the Chief's row: a verb the role is known to
+ * forbid is not offered at all, and while the membership is not read what is drawn stays drawn,
+ * so a reload takes nothing back from a role that may.
+ */
+export function roleOffers(
+  capabilities: Pick<PlatformCapabilities, "membershipKnown" | "createProject" | "setUpChief">,
+): { readonly newProject: boolean; readonly setUpChief: boolean } {
+  const unknown = !capabilities.membershipKnown;
+  return {
+    newProject: unknown || capabilities.createProject,
+    setUpChief: unknown || capabilities.setUpChief,
+  };
+}

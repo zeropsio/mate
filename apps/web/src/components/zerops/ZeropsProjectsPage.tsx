@@ -6,6 +6,8 @@ import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { isChief } from "~/zerops/chief";
 import { useChiefSetupEntry } from "~/zerops/chiefSetup";
+import { roleOffers } from "@t3tools/client-runtime/data";
+import { usePlatformCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useProjectsPageRows } from "~/zerops/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
@@ -507,11 +509,14 @@ function SignedOutNotice({ message }: { readonly message: string }) {
  */
 export function ZeropsProjectsHeader({
   setupChief = false,
+  newProject = true,
   onSetupChief,
   notice = null,
   onRetry,
 }: {
   readonly setupChief?: boolean;
+  /** New project, where the viewer's role creates projects (`roleOffers`). */
+  readonly newProject?: boolean;
   readonly onSetupChief?: (() => void) | undefined;
   readonly notice?: ProjectsListingNotice | null;
   readonly onRetry?: (() => void) | undefined;
@@ -532,10 +537,12 @@ export function ZeropsProjectsHeader({
             Set up Chief
           </Button>
         ) : null}
-        <Button onClick={askNewProject} size="sm" variant="outline">
-          <PlusIcon />
-          New project
-        </Button>
+        {newProject ? (
+          <Button onClick={askNewProject} size="sm" variant="outline">
+            <PlusIcon />
+            New project
+          </Button>
+        ) : null}
       </div>
     </div>
   );
@@ -943,6 +950,10 @@ export function ZeropsProjectsContent({
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
+  const noProjectYet = hasNoZeropsProject({ listing, creationPending: activeBirths });
+  // What the viewer's role makes and reaches here: an empty first screen says it (`firstRunWords`).
+  const capabilities = usePlatformCapabilities(null);
+  const roleOffered = roleOffers(capabilities);
 
   /** The row whose connect failed: its line carries the failure and the retry. */
   const connectFailedOn = (candidate: ZeropsCandidate): boolean =>
@@ -2490,9 +2501,9 @@ export function ZeropsProjectsContent({
         groups={project === undefined ? keptGroups : flowGroups}
         page={project}
         isMate={hasMate}
-        onCreateProject={
-          hasNoZeropsProject({ listing, creationPending: activeBirths }) ? askNewProject : undefined
-        }
+        onCreateProject={noProjectYet && roleOffered.newProject ? askNewProject : undefined}
+        noProjectYet={noProjectYet}
+        reachesEveryProject={!capabilities.membershipKnown || capabilities.reachesEveryProject}
         hqCard={<ZeropsHqCard />}
         openMate={mateOpenerOf}
         onRetryContainers={(items) => {
@@ -2684,6 +2695,7 @@ export function ZeropsProjectsContent({
 
 export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boolean }) {
   const setupChief = useChiefSetupEntry();
+  const roleOffered = useRoleOffers();
   const navigate = useNavigate();
   const { activeOrganization, organizationStatus, status } = useZeropsSession();
   // The same page is the signed-in door at `/`, so the search is read loosely
@@ -2738,6 +2750,7 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
       {scoped && !firstRun && paints ? (
         <ZeropsProjectsHeader
           setupChief={setupChief}
+          newProject={roleOffered.newProject}
           onSetupChief={() => {
             void navigate({ to: "/chief" });
           }}

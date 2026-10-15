@@ -20,6 +20,7 @@
  * that. What finding and writing do in the app is `SidebarJumpBox`'s; the
  * design harness drives the same three with its own.
  */
+import { useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { ArrowDownIcon, ArrowUpIcon, FolderIcon, PlusIcon, SearchIcon } from "lucide-react";
 import {
   useCallback,
@@ -110,9 +111,10 @@ export function useJumpBoxModel(
   // A Mate that leaves the menu while the box is open is no one to write to.
   const target =
     targetId === null ? undefined : index.mates.find((mate) => mate.projectId === targetId);
+  const newProject = useRoleOffers().newProject;
   const groups = useMemo(
-    () => (target === undefined ? jumpGroups(index, value, hits, readOnly) : []),
-    [hits, index, readOnly, target, value],
+    () => (target === undefined ? jumpGroups(index, value, hits, readOnly, newProject) : []),
+    [hits, index, newProject, readOnly, target, value],
   );
   const items = groups.flatMap((group) => group.items);
   const highlighted = items.find((item) => item.value === highlightedValue) ?? items[0];

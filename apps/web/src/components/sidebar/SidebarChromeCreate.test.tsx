@@ -48,7 +48,10 @@ afterEach(() => {
   for (const unmount of roots.splice(0)) unmount();
 });
 
-async function mount(projects: ReadonlyArray<{ readonly id: string; readonly name: string }>) {
+async function mount(
+  projects: ReadonlyArray<{ readonly id: string; readonly name: string }>,
+  { newProject = true }: { readonly newProject?: boolean } = {},
+) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
   document.body.append(container);
@@ -57,7 +60,11 @@ async function mount(projects: ReadonlyArray<{ readonly id: string; readonly nam
   const onNewProject = vi.fn();
   await act(async () => {
     root.render(
-      <SidebarCreateButton onNewMate={onNewMate} onNewProject={onNewProject} projects={projects} />,
+      <SidebarCreateButton
+        onNewMate={onNewMate}
+        onNewProject={newProject ? onNewProject : undefined}
+        projects={projects}
+      />,
     );
   });
   roots.push(() => {
@@ -108,5 +115,28 @@ describe("SidebarCreateButton — the top row's +", () => {
     const { container } = await mount([]);
     expect(container.querySelector('[data-zerops-create="mate"]')).toBeNull();
     expect(container.querySelector('[data-zerops-create="project"]')).not.toBeNull();
+  });
+
+  it.each([
+    { mates: true, project: true, label: "New Mate or project" },
+    { mates: true, project: false, label: "New Mate" },
+    { mates: false, project: true, label: "New project" },
+  ])(
+    "says in its name and tooltip only what its menu holds (Mate: $mates, project: $project)",
+    async ({ mates, project, label }) => {
+      const { container } = await mount(mates ? [{ id: "tea", name: "Tea Shop" }] : [], {
+        newProject: project,
+      });
+      const plus = container.querySelector('[data-zerops-surface="sidebar-create"]');
+      expect(plus?.getAttribute("aria-label")).toBe(label);
+      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(label);
+      expect(container.querySelector('[data-zerops-create="mate"]') !== null).toBe(mates);
+      expect(container.querySelector('[data-zerops-create="project"]') !== null).toBe(project);
+    },
+  );
+
+  it("is not drawn when the role may make nothing here", async () => {
+    const { container } = await mount([], { newProject: false });
+    expect(container.querySelector('[data-zerops-surface="sidebar-create"]')).toBeNull();
   });
 });

@@ -182,6 +182,7 @@ import { newMateView, useAddMate } from "../zerops/newMate";
 import { useAddMateOffer } from "../zerops/useHqOffers";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
+import { useRoleOffers } from "../zerops/usePlatformCapabilities";
 import { useCreations } from "../zerops/creations";
 import { newProjectView, placedNewProjects } from "../zerops/newProjectBirth";
 import {
@@ -1736,6 +1737,9 @@ export default function Sidebar() {
   // Every *New project* in the menu — its header's button, its pinned row, its empty state — asks
   // for the New project dialog over whatever is on screen (`ZeropsNewProjectHost`).
   const askNewProject = useAskNewProject();
+  // What the viewer's role makes here (`roleOffers`): a role that may not create projects is
+  // offered neither New project nor a Chief, which would be a project of their own.
+  const roleOffered = useRoleOffers();
   const openNewZeropsProject = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
@@ -2684,7 +2688,7 @@ export default function Sidebar() {
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
   // The menu's top: the person's Chief, as the open menu's row or the rail's tile.
   const zeropsChiefTop = (tile: boolean) =>
-    zeropsSignedIn && zeropsHoldsChief ? (
+    zeropsSignedIn && zeropsHoldsChief && (zeropsChief !== undefined || roleOffered.setUpChief) ? (
       <SidebarChiefTop
         chief={zeropsChief}
         coming={zeropsChief === undefined ? undefined : zeropsComing(zeropsChief)}
@@ -2721,7 +2725,7 @@ export default function Sidebar() {
     zeropsSignedIn && zeropsSession.organizationStatus !== "needs-selection" ? (
       <SidebarCreateButton
         onNewMate={onZeropsNewMate}
-        onNewProject={openNewZeropsProject}
+        onNewProject={roleOffered.newProject ? openNewZeropsProject : undefined}
         projects={zeropsMateProjects}
       />
     ) : null;
@@ -2981,26 +2985,28 @@ export default function Sidebar() {
                       </MenuRadioGroup>
                     </MenuPopup>
                   </Menu>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <SidebarMenuButton
-                          size="icon"
-                          className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                          onClick={openNewZeropsProject}
-                          type="button"
-                          aria-label="New project"
+                  {roleOffered.newProject ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <SidebarMenuButton
+                            size="icon"
+                            className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                            onClick={openNewZeropsProject}
+                            type="button"
+                            aria-label="New project"
+                          />
+                        }
+                      >
+                        <FolderPlusIcon />
+                        <span
+                          className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+                          aria-hidden="true"
                         />
-                      }
-                    >
-                      <FolderPlusIcon />
-                      <span
-                        className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                        aria-hidden="true"
-                      />
-                    </TooltipTrigger>
-                    <TooltipPopup side="right">New project</TooltipPopup>
-                  </Tooltip>
+                      </TooltipTrigger>
+                      <TooltipPopup side="right">New project</TooltipPopup>
+                    </Tooltip>
+                  ) : null}
                 </div>
               ) : null}
             </SidebarGroup>
@@ -3315,14 +3321,16 @@ export default function Sidebar() {
               {projectGroups.length === 0 ? (
                 <>
                   <span>No projects yet</span>
-                  <button
-                    type="button"
-                    onClick={openNewZeropsProject}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                  >
-                    <PlusIcon className="-mx-0.5 size-3" />
-                    New project
-                  </button>
+                  {roleOffered.newProject ? (
+                    <button
+                      type="button"
+                      onClick={openNewZeropsProject}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                    >
+                      <PlusIcon className="-mx-0.5 size-3" />
+                      New project
+                    </button>
+                  ) : null}
                 </>
               ) : scopedProjectGroup ? (
                 `No threads in ${scopedProjectGroup.displayName} yet`

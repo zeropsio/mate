@@ -323,6 +323,8 @@ export type { MoveProjectIntent } from "./operations/moveProject.ts";
 export {
   platformMembership,
   platformCapabilities,
+  roleOffers,
+  type PlatformCapabilities,
   type PlatformCapabilitiesKey,
 } from "./projections/platformCapabilities.ts";
 export { readsOfState } from "./store.ts";

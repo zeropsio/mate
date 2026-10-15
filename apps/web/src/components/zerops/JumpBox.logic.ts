@@ -306,14 +306,17 @@ const NEW_PROJECT_ITEM: JumpItem = { kind: "new-project", value: "new-project" }
 
 /**
  * What the box lists for what was typed, group by group. `readOnly` holds the
- * Mates the viewer may not write to (D6): writing never offers them.
+ * Mates the viewer may not write to (D6): writing never offers them. `newProject`:
+ * the viewer's role creates projects (`roleOffers`); without it, no new project.
  */
 export function jumpGroups(
   index: SidebarJumpIndex,
   value: string,
   hits: ReadonlyArray<JumpHit>,
   readOnly: ReadonlySet<string> = NOBODY,
+  newProject = true,
 ): ReadonlyArray<JumpGroup> {
+  const newProjectItems = newProject ? [NEW_PROJECT_ITEM] : [];
   const query = readJumpQuery(value);
   if (query.mode === "write") {
     const named = startsFirst(
@@ -337,7 +340,10 @@ export function jumpGroups(
   if (text.length === 0) {
     return [
       ...group("mates", "Mates", "", index.mates.slice(0, JUMP_LIMITS.firstMates).map(mateItem)),
-      ...group("projects", "Projects", "", [...index.projects.map(projectItem), NEW_PROJECT_ITEM]),
+      ...group("projects", "Projects", "", [
+        ...index.projects.map(projectItem),
+        ...newProjectItems,
+      ]),
     ];
   }
   // A Mate is found by its own name and by its project's: it is named in full there.
@@ -359,7 +365,7 @@ export function jumpGroups(
     ...group("mates", "Mates", text, mates.map(mateItem)),
     ...group("projects", "Projects", text, [
       ...projects.map(projectItem),
-      ...(contains(NEW_PROJECT_LABEL, text) ? [NEW_PROJECT_ITEM] : []),
+      ...(contains(NEW_PROJECT_LABEL, text) ? newProjectItems : []),
     ]),
     ...group(
       "changes",

@@ -22,6 +22,7 @@ import type { ReactNode } from "react";
 
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { MateFace, Pill } from "../primitives";
+import { firstRunWords } from "./firstRun.logic";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import { PageWaitLine } from "../WaitLine";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
@@ -134,8 +135,12 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly creating?: boolean;
   /** The organization's HQ, the page's quiet end (`ZeropsHqCard`). */
   readonly hqCard: ReactNode;
-  /** Starts the account's first project; absent leaves an empty account empty. */
+  /** Starts the account's first project, where the viewer's role creates projects. */
   readonly onCreateProject?: (() => void) | undefined;
+  /** The account has no project yet: its first screen says why, by the role (`firstRunWords`). */
+  readonly noProjectYet?: boolean | undefined;
+  /** The viewer's role reaches every project by itself; below Read only, only what it is given. */
+  readonly reachesEveryProject?: boolean | undefined;
   /** The group whose card scrolls into view and pulses (`?group=`). */
   readonly focusGroup?: string | undefined;
   /**
@@ -178,10 +183,13 @@ export interface ZeropsProjectsFlowProps<T> {
 function FirstRun({
   onCreateProject,
   creating,
+  reachesEveryProject,
 }: {
-  readonly onCreateProject: () => void;
+  readonly onCreateProject: (() => void) | undefined;
   readonly creating: boolean;
+  readonly reachesEveryProject: boolean;
 }) {
+  const words = firstRunWords({ create: onCreateProject !== undefined, reachesEveryProject });
   return (
     <section
       className="flex min-h-[60vh] max-w-xl flex-col items-start justify-center gap-6"
@@ -189,13 +197,12 @@ function FirstRun({
     >
       <MateFace className="size-20" size="lg" state="idle" tint="slate" />
       <div className="flex min-w-0 flex-col items-start gap-2">
-        <h2 className="text-xl font-semibold tracking-tight text-foreground">Start a project</h2>
-        <p className="text-sm leading-6 text-muted-foreground">
-          A Mate is a coding agent with a dev environment of its own and one conversation you come
-          back to. Name a project and it is up in a few minutes, your team's HQ before it.
-        </p>
+        <h2 className="text-xl font-semibold tracking-tight text-foreground">{words.heading}</h2>
+        <p className="text-sm leading-6 text-muted-foreground">{words.body}</p>
       </div>
-      <Pill disabled={creating} label="New project" onClick={onCreateProject} />
+      {words.newProject && onCreateProject !== undefined ? (
+        <Pill disabled={creating} label="New project" onClick={onCreateProject} />
+      ) : null}
     </section>
   );
 }
@@ -235,7 +242,10 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
   // The organization's HQ is not a project, so an account holding nothing
   // but its HQ has still not started.
   const started = groups.length > 0 || ungrouped.length > 0;
-  const firstRun = onCreateProject !== undefined && !started && props.placementNotice === undefined;
+  const firstRun =
+    (onCreateProject !== undefined || props.noProjectYet === true) &&
+    !started &&
+    props.placementNotice === undefined;
   // Containers no project holds are the organization's inner workings, and HQ is Settings': the
   // overview names a container only while it needs the person — not answering, stopped.
   const containers = ungrouped.filter((row) => CONTAINER_NEEDS_PERSON.has(row.action));
@@ -262,7 +272,13 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
           {props.hqCard}
         </>
       )}
-      {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
+      {firstRun ? (
+        <FirstRun
+          creating={creating}
+          onCreateProject={onCreateProject}
+          reachesEveryProject={props.reachesEveryProject ?? true}
+        />
+      ) : null}
       <ProjectCards
         focusGroup={focusGroup}
         groups={groups.filter((entry) => entry.flow.mates.length > 0)}

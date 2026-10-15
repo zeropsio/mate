@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { shownHqMateDirectoryAtom, isListedMateEnvironment } from "@t3tools/client-runtime/data";
 import type { ScopedProjectRef } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
@@ -72,6 +73,7 @@ export function DraftHeroHeadline({
   const chiefAsks = mate?.chief === true ? chiefQuestion(mate.name, organization) : undefined;
   const nowMs = useNowMs();
   const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
+  const roleOffered = useRoleOffers();
 
   const environmentLabelById = useMemo(
     () =>
@@ -183,11 +185,15 @@ export function DraftHeroHeadline({
             );
           })}
         </MenuRadioGroup>
-        <MenuSeparator />
-        <MenuItem onClick={openAddProject}>
-          <FolderPlusIcon />
-          New project
-        </MenuItem>
+        {roleOffered.newProject ? (
+          <>
+            <MenuSeparator />
+            <MenuItem onClick={openAddProject}>
+              <FolderPlusIcon />
+              New project
+            </MenuItem>
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
   ) : (
