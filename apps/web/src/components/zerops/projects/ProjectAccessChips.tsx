@@ -59,6 +59,7 @@ import {
   type ProjectPeopleView,
   type ProjectPerson,
 } from "./projectPeople.logic";
+import { Badge, type BadgeTone } from "~/components/ui/badge";
 
 /**
  * A creation form's *Project access*: the host draws the draft (`ProjectAccessDraft`), which says
@@ -169,17 +170,23 @@ export function ProjectAccessChips({
 }
 
 /** The level a chip holds, as a small badge: an icon and a word. */
+const BADGE_TONE: Readonly<Record<BadgeLevel, BadgeTone>> = {
+  owner: "success",
+  full: "success",
+  basic: "info",
+  read: "neutral",
+  mixed: "neutral",
+  hidden: "neutral",
+};
+
+/** A person's access on a project, as a Badge: its mark and its word; Saving… while it changes. */
 export function AccessBadge({ level, busy = false }: { level: BadgeLevel; busy?: boolean }) {
   const Icon = BADGE_ICON[level];
   return (
-    <span
-      className="ov-chip-badge"
-      data-level={busy ? undefined : level === "owner" ? "full" : level}
-      data-part="badge"
-    >
-      {busy ? null : <Icon aria-hidden="true" className="size-3" />}
+    <Badge data-part="badge" tone={busy ? "neutral" : BADGE_TONE[level]}>
+      {busy ? null : <Icon aria-hidden="true" />}
       {busy ? "Saving…" : level === "owner" ? "Owner" : BADGE_WORDS[level]}
-    </span>
+    </Badge>
   );
 }
 

@@ -20,30 +20,14 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { MicroLabel } from "./primitives";
+import { Badge } from "../ui/badge";
 
 /**
- * A tag as a pill: the environment's role, as the tag reads — DEV, STAGE,
- * PROD — trailing its name, here and in the left menu's fold.
+ * A neutral Badge: the environment's role, as the tag reads — dev, stage,
+ * prod — trailing its name, here and in the left menu's fold.
  */
-export function ZeropsRoleTag({
-  label,
-  className,
-}: {
-  readonly label: string;
-  readonly className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex h-[18px] shrink-0 items-center rounded-full border border-border/70 px-1.5",
-        className,
-      )}
-      data-zerops-surface="role-tag"
-    >
-      <MicroLabel className="leading-none">{label}</MicroLabel>
-    </span>
-  );
+export function ZeropsRoleTag({ label }: { readonly label: string }) {
+  return <Badge data-zerops-surface="role-tag">{label}</Badge>;
 }
 
 /** A stage or a production of a group: the stop page's address. */

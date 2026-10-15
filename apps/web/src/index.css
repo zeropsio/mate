@@ -7395,37 +7395,6 @@ a.ov-card-site:hover {
 }
 
 /* The level: full access green, a developer's blue, read only and mixed grey. */
-.ov-chip-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 16px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--zerops-status-off-surface);
-  color: var(--muted-foreground);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  line-height: 16px;
-  text-transform: uppercase;
-}
-
-.ov-chip-badge[data-level="full"] {
-  background: var(--zerops-status-ok-surface);
-  color: var(--zerops-status-ok-text);
-}
-
-.ov-chip-badge[data-level="basic"] {
-  background: var(--zerops-status-busy-surface);
-  color: var(--zerops-status-busy-text);
-}
-
-.ov-chip-badge[data-level="mixed"] {
-  box-shadow: inset 0 0 0 1px var(--ov-rule);
-  background: transparent;
-}
-
 .ov-chip-slot {
   display: grid;
 }
@@ -7532,13 +7501,6 @@ a.ov-card-site:hover {
   display: grid;
   padding: 10px 12px 12px;
   border-top: 1px solid var(--ov-rule);
-}
-
-/* A project kept from someone whose role reaches every project: no fill, a dashed edge. */
-.ov-chip-badge[data-level="hidden"] {
-  box-shadow: inset 0 0 0 1px var(--ov-rule);
-  background: transparent;
-  color: var(--muted-foreground);
 }
 
 /* A chip's face leads to the person's own Team page. */

@@ -14,16 +14,12 @@ import {
   connectionPhasePingClassName,
 } from "~/components/ConnectionStatusDot";
 import { KeybindingPill } from "~/components/settings/KeybindingsSettings";
-import { SourceStatusBadge } from "~/components/settings/ResourceTelemetryDiagnostics";
-import { JumpHintBadge } from "~/components/Sidebar";
 import { CommandPaletteMetaDot } from "~/components/ThreadCommandSubtitle";
 import { MateDot } from "~/components/zerops/MateDot";
 import { KeyChip, MateFace } from "~/components/zerops/primitives";
-import { AccessBadge } from "~/components/zerops/projects/ProjectAccessChips";
 import { PlaceDot } from "~/components/zerops/projects/ProjectCards";
 import { EnvDot } from "~/components/zerops/SidebarProductionChip";
 import { UrlChip } from "~/components/zerops/ZeropsOperationCard";
-import { ZeropsRoleTag } from "~/components/zerops/ZeropsEnvironmentRow";
 
 import { CensusComponent, CensusCount, CensusLook, CensusLooks } from "../census";
 import { defineKitSection } from "../kitSection";
@@ -34,7 +30,6 @@ const TONES: readonly ServiceStatusToneId[] = ["ok", "busy", "attention", "faile
 const HELPER_STATUSES = ["running", "waiting", "idle", "completed", "failed", "cancelled"] as const;
 const PRIMITIVES = "apps/web/src/components/zerops/primitives";
 const AGENTS_PANEL = "apps/web/src/components/AgentsPanel.tsx";
-const ACCESS = "apps/web/src/components/zerops/projects/ProjectAccessChips.tsx";
 
 function LabelSpecimens() {
   return (
@@ -59,52 +54,6 @@ function LabelSpecimens() {
               />
             </Specimen>
           ))}
-        </CensusComponent>
-      </CensusLook>
-
-      <CensusLook
-        files={11}
-        name="Small tags"
-        note="a word in a rounded box, each with its own radius, size and case"
-        uses={14}
-      >
-        <CensusComponent
-          name="ZeropsRoleTag"
-          source="apps/web/src/components/zerops/ZeropsEnvironmentRow.tsx"
-        >
-          {["DEV", "STAGE", "PROD"].map((label) => (
-            <Specimen key={label} label={specimenLabel({ label })}>
-              <ZeropsRoleTag label={label} />
-            </Specimen>
-          ))}
-        </CensusComponent>
-        <CensusComponent name="AccessBadge" source={ACCESS}>
-          {(["owner", "full", "basic", "read", "mixed", "hidden"] as const).map((level) => (
-            <Specimen key={level} label={specimenLabel({ level })}>
-              <AccessBadge level={level} />
-            </Specimen>
-          ))}
-          <Specimen label={specimenLabel({ level: "full", busy: true })}>
-            <AccessBadge busy level="full" />
-          </Specimen>
-        </CensusComponent>
-        <CensusComponent
-          name="SourceStatusBadge"
-          source="apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx"
-        >
-          {(["healthy", "starting", "unavailable"] as const).map((status) => (
-            <Specimen key={status} label={specimenLabel({ status })}>
-              <SourceStatusBadge label={status} status={status} />
-            </Specimen>
-          ))}
-        </CensusComponent>
-        <CensusComponent name="JumpHintBadge" source="apps/web/src/components/Sidebar.tsx">
-          <Specimen label={`${specimenLabel({ label: "⌘3" })} at a row's edge`}>
-            {/* It floats at a row's right edge; the dashed box stands in for the row. */}
-            <span className="relative flex h-8 w-24 rounded-md border border-dashed">
-              <JumpHintBadge label="⌘3" />
-            </span>
-          </Specimen>
         </CensusComponent>
       </CensusLook>
 

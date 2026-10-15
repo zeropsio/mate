@@ -59,6 +59,7 @@ import {
   visibleResourceTelemetryProcesses,
 } from "./ResourceTelemetryDiagnostics.logic";
 import { SettingsSection, useRelativeTimeTick } from "./settingsLayout";
+import { Badge } from "~/components/ui/badge";
 
 const HISTORY_WINDOWS = [
   { label: "5m", windowMs: 5 * 60_000, bucketMs: 15_000 },
@@ -174,12 +175,13 @@ function booleanStateLabel(
   return "Unknown";
 }
 
-function sourceStatusTone(status: ResourceTelemetrySourceStatus): "default" | "warning" | "danger" {
-  if (status === "healthy") return "default";
+function sourceStatusTone(status: ResourceTelemetrySourceStatus): "success" | "warning" | "danger" {
+  if (status === "healthy") return "success";
   if (status === "starting" || status === "degraded") return "warning";
   return "danger";
 }
 
+/** A telemetry source's state as a dot Badge: its name, then its state in words. */
 export function SourceStatusBadge({
   label,
   status,
@@ -196,26 +198,9 @@ export function SourceStatusBadge({
 }) {
   const tone = presentation?.tone ?? sourceStatusTone(status);
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-3xs font-semibold uppercase tracking-widest",
-        tone === "neutral" && "border-border/70 bg-muted/45 text-muted-foreground",
-        tone === "default" && "border-success/25 bg-success/10 text-success-foreground",
-        tone === "warning" && "border-warning/30 bg-warning/10 text-warning-foreground",
-        tone === "danger" && "border-destructive/30 bg-destructive/10 text-destructive",
-      )}
-    >
-      <span
-        className={cn(
-          "size-1.5 rounded-full",
-          tone === "neutral" && "bg-muted-foreground/55",
-          tone === "default" && "bg-success",
-          tone === "warning" && "bg-warning",
-          tone === "danger" && "bg-destructive",
-        )}
-      />
+    <Badge dot tone={tone}>
       {label} {presentation?.label ?? status}
-    </span>
+    </Badge>
   );
 }
 
