@@ -37,6 +37,7 @@ import {
   useAccountDataOptional,
   useAccountOrgId,
   useDetailDemand,
+  useDetailReadAsOpened,
   useProjection,
 } from "~/zerops/accountData";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
@@ -327,6 +328,12 @@ export function ProjectAccessDraft({
     return places.length > 0 ? places : app;
   }, [app]);
   const { base } = useAccessReads(read);
+  // Who the new project reaches is decided here: the members are read again as it opens, so
+  // whoever joined since this session first read them is listed.
+  useDetailReadAsOpened(
+    "organizationMembers",
+    useZeropsSessionOptional()?.activeOrganization?.id ?? null,
+  );
   const [chosen, setChosen] = useState<ReadonlyArray<ProjectGrant> | null>(null);
   const input = useMemo(
     () => ({

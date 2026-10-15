@@ -123,13 +123,18 @@ export function homeTarget(input: {
     : { kind: "among", environmentIds: live.map((environment) => environment.environmentId) };
 }
 
-/** The home opens the most recently active Mate HQ names, preferring an online one. */
+/**
+ * The home opens the most recently active Mate HQ names, preferring an online one — of the reader's
+ * own: a colleague's Mate (`colleagues`, HQ naming another person as its own) is theirs to come
+ * back to, never a place the reader left off, so a member's first visit opens the overview.
+ */
 export function hqHomeMate(
   mates: HqMates | null,
   deleting: ReadonlySet<string> = new Set(),
+  colleagues: ReadonlySet<string> = new Set(),
 ): string | undefined {
   const rows = [...(mates ?? new Map())]
-    .filter(([projectId]) => !deleting.has(projectId))
+    .filter(([projectId]) => !deleting.has(projectId) && !colleagues.has(projectId))
     .map(([projectId, mate]) => ({
       projectId,
       online: mate.presence.online,

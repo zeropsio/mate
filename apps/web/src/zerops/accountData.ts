@@ -134,6 +134,23 @@ export function useProjectsServiceValues(projectIds: ReadonlyArray<string>) {
 }
 
 /**
+ * A screen where the person decides from a sampled detail — who a new project's access lists — reads
+ * it again as it opens: a sampled detail is read once a session and held while any screen draws
+ * it, so the one held all along can predate whoever joined since (another tab's invitation). Once
+ * per opening; what was known stands while it is read.
+ */
+export function useDetailReadAsOpened(
+  family: DetailDemand["family"],
+  ownerId: string | null,
+): void {
+  const revalidate = useAccountDataOptional()?.revalidate;
+  useEffect(() => {
+    if (revalidate === undefined || ownerId === null) return;
+    revalidate({ family, ownerId });
+  }, [family, ownerId, revalidate]);
+}
+
+/**
  * Holds a detail for an owner while the caller is drawn with one: one of a family's detail
  * listings, or with no `listing` a detail family's own scope.
  */

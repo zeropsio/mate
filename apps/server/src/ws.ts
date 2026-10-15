@@ -30,6 +30,7 @@ import {
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
   OrchestrationGetFullThreadDiffError,
+  OrchestrationGetRunChangesError,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,
   OrchestrationGetTurnDiffError,
@@ -876,6 +877,16 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
               (cause) =>
                 new OrchestrationGetFullThreadDiffError({
                   message: "Failed to load full thread diff",
+                  cause,
+                }),
+            ),
+          ),
+        [ORCHESTRATION_WS_METHODS.getRunChanges]: (input) =>
+          checkpointDiffQuery.getRunChanges(input).pipe(
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationGetRunChangesError({
+                  message: "Failed to load the conversation's run changes",
                   cause,
                 }),
             ),

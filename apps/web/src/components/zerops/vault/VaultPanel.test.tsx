@@ -561,6 +561,20 @@ describe("VaultPanelBody — states", () => {
     expect(read.container.textContent).toContain("No values yet.");
   });
 
+  it("never says it holds no values over the values Zerops made", async () => {
+    const madeOnly: VaultView = {
+      status: "ready",
+      complete: true,
+      notLive: [],
+      scopes: VAULT_FIXTURE.scopes
+        .filter((scope) => scope.kind === "shared" || scope.kind === "managed")
+        .map((scope) => (scope.kind === "shared" ? { ...scope, values: [] } : scope)),
+    };
+    const { container } = await mount({ view: madeOnly });
+    expect(container.textContent).toContain("made by Zerops");
+    expect(container.textContent).not.toContain("No values yet.");
+  });
+
   it("says it couldn't read the vault above what it kept", async () => {
     const { container } = await mount({ view: { ...VAULT_FIXTURE, status: "failed" } });
     expect(q(container, "[data-vault-failed]")?.textContent).toBe("Couldn't read the vault");

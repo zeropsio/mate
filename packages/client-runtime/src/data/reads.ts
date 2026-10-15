@@ -28,6 +28,8 @@ import { projectProcesses, type ProjectProcesses } from "./projections/processes
 import type { ProjectValue } from "./families/project.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
+import { creditForecast } from "./projections/creditForecast.ts";
+import { creditScope } from "./families/organizationCredit.ts";
 import { vault } from "./projections/vault.ts";
 import type { VaultView } from "./projections/vaultModel.ts";
 import {
@@ -114,6 +116,37 @@ export const projectServicesAtom = Atom.family((projectId: string) =>
     return get(account.data.project(projectServices, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-services:${projectId}`)),
 );
+
+/**
+ * The organization's credit read as far as it went: its generation, which a create dialog holds
+ * at its opening (`creditForecast`'s `openedAt`); `0` without the mounted account's organization.
+ */
+export const creditReadGenerationAtom = Atom.family((orgId: string) =>
+  Atom.make((get): number => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId !== orgId) return 0;
+    return get(account.data.stream(creditScope(orgId))).generation;
+  }).pipe(Atom.withLabel(`data:credit-read-generation:${orgId}`)),
+);
+
+const creditForecastFamily = Atom.family((key: string) =>
+  Atom.make((get): boolean => {
+    const at = key.indexOf(":");
+    const openedAt = Number(key.slice(0, at));
+    const orgId = key.slice(at + 1);
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId !== orgId) return false;
+    return get(account.data.project(creditForecast, { orgId, openedAt }));
+  }).pipe(Atom.withLabel(`data:credit-forecast:${key}`)),
+);
+
+/**
+ * Whether a new project in the organization the mounted account observes waits for credit, as
+ * read since a dialog opened at `openedAt` (`creditForecast`); `false` without one, or for another
+ * organization.
+ */
+export const creditForecastAtom = (orgId: string, openedAt: number) =>
+  creditForecastFamily(`${String(openedAt)}:${orgId}`);
 
 export const NOT_READ_USAGE: ProjectUsage = {
   read: false,

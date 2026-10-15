@@ -633,6 +633,18 @@ export function birthCopyServices(input: {
   return copy.length === 0 ? undefined : copy;
 }
 
+/**
+ * Whether a birth's elapsed times still count up: from a known start until it is up, failed, or
+ * its setup stopped (`stopped`). A step with no start of its own — a Mate not answering yet —
+ * still runs on its workspace's clock, so the clock never freezes between steps.
+ */
+export function birthClockRuns(progress: BirthProgress, stopped: boolean): boolean {
+  if (stopped || progress.failed !== null || progress.complete) return false;
+  return (
+    progress.startedAt !== undefined || progress.steps.some((step) => step.startedAt !== undefined)
+  );
+}
+
 export function deriveBirthProgress(facts: BirthFacts, nowMs: number): BirthProgress {
   const project = deriveProjectStep(facts);
   const container = deriveContainerStep(facts, project.state === "done", nowMs);

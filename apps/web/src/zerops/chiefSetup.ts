@@ -6,6 +6,7 @@
  *
  * Its state is this tab's memory: it survives leaving the page, not a reload.
  */
+import { useRoleOffers } from "./usePlatformCapabilities";
 import { NOT_READ_VAULT, serviceVariableIds } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { generateZeropsGroupId } from "@t3tools/client-runtime/zerops";
@@ -105,11 +106,15 @@ export function useChiefSetup(): ChiefSetupState {
     : { ...state, setup: CHIEF_SETUP_IDLE };
 }
 
-/** Both navigation entries share the same current HQ verdict and setup state. */
+/**
+ * Both navigation entries share the same current HQ verdict and setup state, and the viewer's role:
+ * a Chief is a project of their own, so a role that may not create projects is offered none.
+ */
 export function useChiefSetupEntry(): boolean {
   const own = useHqOwnChief();
   const { setup } = useChiefSetup();
-  return chiefSetupEntry(own, setup.phase);
+  const offered = useRoleOffers().setUpChief;
+  return offered && chiefSetupEntry(own, setup.phase);
 }
 
 /** Where setting up a Chief stands, as the menu's top row says it (`chiefSetupLine`). */

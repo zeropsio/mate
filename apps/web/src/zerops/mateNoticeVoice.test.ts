@@ -71,7 +71,7 @@ describe("the web Mate's link notice", () => {
   });
   it("an unread conversation has a visible opening state immediately", () => {
     expect(say(null)).toMatchObject({
-      text: "Rosa is opening the conversation. Picking up where you left off.",
+      text: "Rosa is opening the conversation. Picking up where it left off.",
       face: "sleep",
       opening: true,
     });
@@ -378,4 +378,14 @@ describe("the missing-deployment notice", () => {
       }).secondary,
     ).toBe("Nothing is deployed yet.");
   });
+});
+
+it("a creation page calls a Mate coming up late only where its arrival's verdict says so, never past four minutes alone", () => {
+  const startedAt = "2026-10-15T10:00:00.000Z";
+  const nowMs = Date.parse(startedAt) + 600_000;
+  const say = (line: string) =>
+    mateArrivalNotice({ coming: { kind: "coming", line }, progress: { startedAt }, nowMs })
+      .secondary;
+  expect(say("Coming up. A few minutes.")).toBe("Almost there.");
+  expect(say("Taking longer than usual.")).toBe("Taking longer than usual.");
 });

@@ -5,6 +5,7 @@ import { mateActionsForEnvironmentAtom } from "@t3tools/client-runtime/data";
  * while its person waits on it, and the quiet line its ask is drawn as. The Mate's own server
  * sends the ask (`ZeropsSetup`); nothing here sends or clears anything.
  */
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useMemo, useState } from "react";
@@ -13,11 +14,13 @@ import { zeropsCommands } from "../state/zeropsCommands";
 import { useMateOfEnvironment } from "./accountEnvironments";
 import { useMateSetup, refreshMateSetup } from "./useMateSetup";
 
-import { useThreadShells } from "../state/entities";
+import { useEnvironmentConversationsRead, useThreadShells } from "../state/entities";
 import { zeropsMateAt } from "./mateIdentities";
 import {
   mateStandUpAskLine,
+  mateStandUpAwaitedIn,
   mateStandUpConversation,
+  mateStandUpHandOver,
   mateStandUpHoldsComposer,
   type MateStandUpConversation,
 } from "./mateStandUp";
@@ -69,14 +72,22 @@ export function useMateStandUp(input: {
   const orgId = session?.activeOrganization?.id;
   const threads = useThreadShells();
   // The stand-up goes into the Mate's main conversation, the one opening the Mate lands on.
-  const main = useMemo(
+  const primary = useMemo(
     () =>
-      threadRef !== null &&
-      resolvePrimaryConversation(
-        threads.filter((thread) => thread.environmentId === threadRef.environmentId),
-      ).primary?.id === threadRef.threadId,
-    [threadRef, threads],
+      environmentId === null
+        ? undefined
+        : resolvePrimaryConversation(
+            threads.filter((thread) => thread.environmentId === environmentId),
+          ).primary,
+    [environmentId, threads],
   );
+  const conversationsRead = useEnvironmentConversationsRead(environmentId);
+  const main = threadRef !== null && primary?.id === threadRef.threadId;
+  const awaitedHere = mateStandUpAwaitedIn({
+    conversation: threadRef === null ? "draft" : main ? "main" : "other",
+    mateHasConversation: primary !== undefined,
+    conversationsRead,
+  });
   const conversation: MateStandUpConversation = mateStandUpConversation({
     main: threadRef === null ? null : main,
     messageCount,
@@ -84,14 +95,8 @@ export function useMateStandUp(input: {
   });
   const origin = useMateOfEnvironment(environmentId)?.origin ?? undefined;
   const own = marker !== undefined && marker.by === viewer;
-  const { setup } = useMateSetup(
-    own && (main || threadRef === null) && messageCount === 0 ? origin : undefined,
-  );
-  const failed =
-    own &&
-    (main || threadRef === null) &&
-    setup?.standup === "failed" &&
-    conversation !== "started";
+  const { setup } = useMateSetup(own && awaitedHere && messageCount === 0 ? origin : undefined);
+  const failed = own && awaitedHere && setup?.standup === "failed" && conversation !== "started";
   const sendFailed = failed && setup?.standupFailure === "send_failed";
   const [submitting, setRetrying] = useState(false);
   const actions = useAtomValue(mateActionsForEnvironmentAtom(environmentId ?? ""));
@@ -117,7 +122,7 @@ export function useMateStandUp(input: {
   };
   return {
     holdsComposer: mateStandUpHoldsComposer({
-      marker: threadRef !== null && !main ? undefined : marker,
+      marker: awaitedHere ? marker : undefined,
       viewer,
       conversation,
       failed,
@@ -127,4 +132,46 @@ export function useMateStandUp(input: {
     retrying,
     retry,
   };
+}
+
+/**
+ * Where a draft that waited on its person's stand-up hands over to (`mateStandUpHandOver`): the
+ * Mate's main conversation once the ask made it, else null. Whether the draft opened before the
+ * Mate had a conversation is read once, at the first render its Mate's conversations are read:
+ * until then nothing is decided, and nothing hands over.
+ */
+export function useMateStandUpHandOver(
+  draft: {
+    /** Which draft: a route that moves to another draft reads it afresh. */
+    readonly key: string;
+    readonly environmentId: EnvironmentId;
+    readonly typed: boolean;
+  } | null,
+): ScopedThreadRef | null {
+  const directory = useZeropsMateDirectory();
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const threads = useThreadShells();
+  const environmentId = draft?.environmentId ?? null;
+  const conversationsRead = useEnvironmentConversationsRead(environmentId);
+  const { primary } = resolvePrimaryConversation(
+    threads.filter((thread) => thread.environmentId === environmentId),
+  );
+  const openedAs = (): boolean | null => (conversationsRead ? primary === undefined : null);
+  const [opened, setOpened] = useState(() => ({ key: draft?.key, beforeConversation: openedAs() }));
+  if (opened.key !== draft?.key) {
+    setOpened({ key: draft?.key, beforeConversation: openedAs() });
+  } else if (opened.beforeConversation === null && conversationsRead) {
+    setOpened({ key: draft?.key, beforeConversation: primary === undefined });
+  }
+  if (draft === null) return null;
+  const whoLivesHere = zeropsMateAt(directory, draft.environmentId);
+  if (whoLivesHere.kind !== "mate") return null;
+  const threadId = mateStandUpHandOver({
+    marker: whoLivesHere.mate.standUp,
+    viewer,
+    openedBeforeConversation: opened.beforeConversation === true,
+    typed: draft.typed,
+    main: primary,
+  });
+  return threadId === undefined ? null : scopeThreadRef(draft.environmentId, threadId);
 }

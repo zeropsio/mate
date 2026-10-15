@@ -6,7 +6,7 @@ import {
   pressRuns,
   type ArrivalSubstep,
 } from "./mateArrival";
-import { type MateComing } from "@t3tools/client-runtime/data";
+import { TAKING_LONGER_LINE, type MateComing } from "@t3tools/client-runtime/data";
 import { NOT_SET_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
 import { usageLimitWords } from "./noticeWords";
 
@@ -89,13 +89,15 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
           ? undefined
           : coming.kind === "failed"
             ? (input.failureReason ??
-              (coming.verb === "go-to-projects"
+              (coming.verb === "go-to-projects" || coming.verb === "add-credit"
                 ? coming.line
                 : note?.kind === "stopped"
                   ? NOT_SET_UP_LINE
                   : coming.line))
             : (input.finish ??
-              (pressRuns(progress?.press) ? KEEP_TAB_OPEN_LINE : comingSentence(elapsed)))));
+              (pressRuns(progress?.press)
+                ? KEEP_TAB_OPEN_LINE
+                : comingSentence(elapsed, coming.line === TAKING_LONGER_LINE)))));
   const details = [
     ...new Set(
       [
@@ -234,7 +236,7 @@ export function mateNoticeVoice(
   if (decision.phase === "none") return { surface: "none" };
   if (decision.phase === "opening")
     return {
-      ...say(`${name} is opening the conversation.`, "Picking up where you left off."),
+      ...say(`${name} is opening the conversation.`, "Picking up where it left off."),
       opening: true,
     };
   if (reachability === null) return { surface: "none" };

@@ -407,6 +407,44 @@ describe("makeMateAdapter", () => {
     expect(probes.length).toBeLessThanOrEqual(8);
   });
 
+  it("never calls a Mate late that came up while its tab was hidden: the first read on return finds it up", async () => {
+    let reading: ProbeReading = { kind: "initializing", initAt: null };
+    const { adapter, store, clock, probes } = rig({
+      reading: () => reading,
+      answer: () =>
+        reading.kind === "ready"
+          ? {
+              ok: true,
+              environmentId: EnvironmentId.make("env-p1"),
+              descriptor: descriptor("p1"),
+              credential: "credential-p1",
+            }
+          : {
+              ok: false,
+              failure: { class: "retryable", cause: { kind: "descriptor-unreachable" } },
+              descriptor: null,
+            },
+    });
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("route", ["p1:zcp"]);
+    await flush();
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("booting");
+    adapter.setVisible(false);
+    await clock.advance(5 * 60_000);
+    // It answered meanwhile; the hidden tab read nothing to say so, and says nothing late.
+    reading = ready("p1");
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.overdue).toBe(false);
+    const before = probes.length;
+    adapter.setVisible(true);
+    adapter.wake(true);
+    await flush();
+    expect(probes.length).toBeGreaterThan(before);
+    const link = mateLink.derive(read(store), "p1:zcp");
+    expect(link?.container.state.level).toBe("ready");
+    expect(link?.container.overdue).toBe(false);
+    adapter.dispose();
+  });
+
   it("reads a Mate again when Zerops pushes a change of its container's status", async () => {
     const { adapter, probes } = rig();
     adapter.setTargets([target("p1")]);

@@ -370,6 +370,42 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       case: "a Mate this tab made whose project is gone",
       input: { press: undefined, candidate: undefined, created: true, linkHolds: false },
     },
+    // A run, 2026-10-15: the tab that made a Mate held its creation for its whole life, and once
+    // its link waited again — a reconnect, its container starting — said it was coming up for 14
+    // minutes while every other tab showed it idle.
+    {
+      case: "a Mate this tab made that has answered since, its link waiting again",
+      input: {
+        press: undefined,
+        candidate: { group: "ready" },
+        created: true,
+        linkHolds: true,
+        link: {
+          key: "p:zcp",
+          environmentId: undefined,
+          reachability: { kind: "connecting", waitingOn: "presence" },
+          failuresSinceConnect: 0,
+          errorsSinceConnect: 0,
+          answered: true,
+        },
+      },
+    },
+    {
+      case: "a Mate this tab made that has answered since, its container starting again",
+      input: {
+        press: undefined,
+        candidate: { group: "provisioning", service: { status: "STARTING" } },
+        created: true,
+        link: {
+          key: "p:zcp",
+          environmentId: undefined,
+          reachability: null,
+          failuresSinceConnect: 0,
+          errorsSinceConnect: 0,
+          answered: true,
+        },
+      },
+    },
     {
       case: "a Mate this tab made, connected",
       input: { press: undefined, candidate: { group: "connected" }, created: true },

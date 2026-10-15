@@ -466,14 +466,21 @@ export function mateRowView(
   // A new Mate's first run is the stand-up its person's sign-in sent: while it works, and where
   // it stops, the row says so in the person's words — never the command sent on their behalf.
   // Waiting on them, or done, it is any Mate's row.
-  if (ask === MATE_STAND_UP_MESSAGE) {
+  if (activity.standUp === true || ask === MATE_STAND_UP_MESSAGE) {
     if (state === "working") {
       return {
         ...view(SETTING_UP_DEVELOPMENT, { kind: "clock", since: activity.runSince ?? activity.at }),
         ask: undefined,
+        reply: SETTING_UP_DEVELOPMENT,
       };
     }
-    if (state === "failed") return { ...view(SETTING_UP_STOPPED_REPLY), ask: undefined };
+    if (state === "failed") {
+      return {
+        ...view(SETTING_UP_STOPPED_REPLY, { kind: "age" }),
+        ask: undefined,
+        reply: SETTING_UP_STOPPED_REPLY,
+      };
+    }
   }
   switch (state) {
     case "working":

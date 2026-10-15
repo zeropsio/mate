@@ -20,7 +20,11 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 import { CheckpointStore } from "./CheckpointStore.ts";
-import { WorkspaceCaptureJournal, type CaptureRun } from "./WorkspaceCaptureJournal.ts";
+import {
+  type CaptureJournalError,
+  WorkspaceCaptureJournal,
+  type CaptureRun,
+} from "./WorkspaceCaptureJournal.ts";
 import { parseTurnDiffFilesFromNumstat } from "./Diffs.ts";
 import { prefixUnifiedPatch } from "../zerops/ZeropsCheckpointTargets.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../zerops/ZeropsRepositorySource.ts";
@@ -118,6 +122,10 @@ export class WorkspaceHistory extends Context.Service<
       options: { ignoreWhitespace: boolean; rootId?: string },
     ) => Effect.Effect<WorkspaceDiff>;
     readonly cleanup: (threadId: ThreadId) => Effect.Effect<void>;
+    /** The conversation's finished captures, in the order they began: what each run changed. */
+    readonly runs: (
+      threadId: ThreadId,
+    ) => Effect.Effect<ReadonlyArray<CaptureRun>, CaptureJournalError>;
   }
 >()("t3/checkpointing/WorkspaceHistory") {}
 
@@ -847,7 +855,13 @@ export const make = Effect.gen(function* () {
       );
     }).pipe(Effect.orElseSucceed((): ReadonlyArray<CaptureGap> => []));
 
+  const runs: WorkspaceHistory["Service"]["runs"] = (threadId) =>
+    journal
+      .list(threadId)
+      .pipe(Effect.map((all) => all.filter((run) => run.phase === "finalized")));
+
   return WorkspaceHistory.of({
+    runs,
     gapsOf,
     prepare,
     bindTurn,

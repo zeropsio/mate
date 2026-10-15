@@ -52,6 +52,7 @@ export const makeFakeWorkspaceHistory = () => {
       release: (_thread, _turn, run) => Effect.sync(() => void calls.push(`release ${run}`)),
       read: () => Effect.die("not faked"),
       cleanup: () => Effect.void,
+      runs: () => Effect.succeed([]),
     }),
   );
   return { calls, controls, layer };

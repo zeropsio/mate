@@ -17,6 +17,7 @@ import { birthCopyServices } from "@t3tools/client-runtime/zerops/birthProgress"
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef } from "react";
 
+import { hqCreditUrl } from "~/zerops/hqCredit";
 import { mateOpeningPhrase } from "~/zerops/mateComing";
 import { dismissCreation, startAddOver, tryCreationAgain, useCreation } from "~/zerops/creations";
 import {
@@ -136,6 +137,7 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
               onTryAgain={() => {
                 if (birth !== undefined) tryCreationAgain(birth);
               }}
+              {...(birth === undefined ? {} : { addCredit: hqCreditUrl(birth.organizationId) })}
               {...(ends === null
                 ? {}
                 : {

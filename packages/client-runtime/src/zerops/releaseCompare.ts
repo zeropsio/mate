@@ -14,6 +14,7 @@
 
 import {
   COMPARE_COUNT_MAX,
+  HQ_FIRST_COMMIT,
   type CompareCommit,
   type CompareQuery,
   type CompareResponse,
@@ -280,9 +281,17 @@ function answerTo(
   return same ? answer : undefined;
 }
 
+/** HQ's empty first commit of a repository it made (`HQ_FIRST_COMMIT`): no change of anybody's. */
+const hqFirst = (commit: CompareCommit): boolean =>
+  commit.change === null &&
+  commit.authorName === HQ_FIRST_COMMIT.authorName &&
+  commit.subject === HQ_FIRST_COMMIT.subject;
+
 /**
  * The commits each read moves, from HQ's answers held under {@link compareReadKey}. Two commits
  * compare the same for ever, so an answer held stands beside a later failure to read it again.
+ * HQ's empty first commit, which a first release's comparison from the root lists, moves nothing:
+ * a release of one reviewed change is one change (the onboarding run counted it "2 changes").
  */
 export function movedCommits(input: {
   readonly reads: ReadonlyArray<CompareRead>;
@@ -301,11 +310,12 @@ export function movedCommits(input: {
       reading = true;
       continue;
     }
+    const commits = answer.commits.filter((commit) => !hqFirst(commit));
     moved.push({
       repository: read.repository,
       services: read.services,
-      commits: answer.commits,
-      total: answer.total,
+      commits,
+      total: answer.total - (answer.commits.length - commits.length),
       truncated: answer.truncated,
     });
   }

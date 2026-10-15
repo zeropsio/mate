@@ -92,6 +92,19 @@ describe("ZeropsHandoverActions", () => {
     expect(markup).not.toContain("Continue with your Zerops account");
   });
 
+  it("names a native sign-in's code as the one to expect if Zerops shows one", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsHandoverActions
+        onContinue={noop}
+        onCreateAccount={noop}
+        nativeSignIn={{ busy: true, userCode: "ABCD-EFGH", error: null, onCancel: noop }}
+      />,
+    );
+
+    expect(markup).not.toMatch(/>\s*Zerops shows/u);
+    expect(markup).toMatch(/If Zerops shows a code, it&#x27;s .*ABCD-EFGH/u);
+  });
+
   it("surfaces a native sign-in error once no longer busy", () => {
     const markup = renderToStaticMarkup(
       <ZeropsHandoverActions

@@ -61,7 +61,7 @@ it("keeps opening quiet through the attempt, then offers recovery only on a fail
       expect(
         host.querySelector('[data-swap-layer]:not([data-swap-layer="leaving"]) h1')?.textContent,
       ).toBe("Rosa is opening the conversation.");
-      expect(host.textContent).toContain("Picking up where you left off.");
+      expect(host.textContent).toContain("Picking up where it left off.");
       expect(host.querySelector("button")).toBeNull();
       expect(host.textContent).not.toContain("Project services");
     }

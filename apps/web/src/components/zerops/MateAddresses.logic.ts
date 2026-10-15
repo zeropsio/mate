@@ -27,6 +27,7 @@ export function mateAddressOpenTarget(
 
 const ROLE_WORDS: Record<MateAddressRole, string> = {
   dev: "Dev",
+  preview: "Preview",
   stage: "Stage",
   production: "Production",
 };

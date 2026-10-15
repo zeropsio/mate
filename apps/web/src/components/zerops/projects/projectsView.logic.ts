@@ -289,7 +289,7 @@ export function changesUnknownOf(input: {
 }
 
 /** What a row says where its changes are not known. */
-const CHANGES_UNKNOWN_LINE: { readonly [U in ChangesUnknown]: string } = {
+export const CHANGES_UNKNOWN_LINE: { readonly [U in ChangesUnknown]: string } = {
   failed: "HQ didn’t answer",
   // The refusal's own access (`changes_not_seen`), short enough for a step.
   unseen: "Needs Basic user access",

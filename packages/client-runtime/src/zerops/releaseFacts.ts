@@ -182,9 +182,15 @@ export function releaseOutcomeOf(input: {
   readonly pressing: boolean;
   readonly tag: string;
   readonly clockMs: number;
+  /**
+   * HQ's deploys of it, as the press's answer follows them, still run: the platform may name the
+   * new version a moment before HQ's job ends, and the sheet says released with its Where row.
+   */
+  readonly deploying?: boolean | undefined;
 }): ReleaseOutcome {
   const { tagged } = input;
-  if (tagged?.standing === "live") return { kind: "released", at: tagged.taggedAt };
+  if (tagged?.standing === "live" && input.deploying !== true)
+    return { kind: "released", at: tagged.taggedAt };
   if (tagged?.standing === "deploy-failed" || tagged?.verdict === "refused") {
     const services = tagged.failedEntries.map((entry) => entry.service);
     return {
@@ -201,7 +207,7 @@ export function releaseOutcomeOf(input: {
       at: tagged.taggedAt,
     };
   }
-  if (!input.releasing) return { kind: "offered" };
+  if (!input.releasing && tagged?.standing !== "live") return { kind: "offered" };
   if (input.superseded !== undefined) return { kind: "superseded", ...input.superseded };
   if (input.stalled === true) return { kind: "stalled", at: tagged?.taggedAt };
   if (input.pressing && tagged === undefined) {
@@ -226,6 +232,8 @@ export function releaseStep(input: {
   readonly press: ReviewPress;
   readonly clockMs: number;
   readonly read: (tag: string) => ReleaseFacts;
+  /** HQ's deploys of it still run, as the press's answer follows them (`releaseOutcomeOf`). */
+  readonly deploying?: boolean | undefined;
 }): {
   readonly outcome: ReleaseOutcome;
   readonly held: ReleaseFacts | undefined;
@@ -242,6 +250,7 @@ export function releaseStep(input: {
     pressing: press.kind === "running",
     tag: follows.tag,
     clockMs: input.clockMs,
+    deploying: input.deploying,
   });
   const current = input.read(follows.tag);
   const held = holdReleaseFacts({ held: input.held, current, press, outcome });

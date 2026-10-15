@@ -109,6 +109,8 @@ import {
   OrchestrationDispatchCommandError,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetFullThreadDiffInput,
+  OrchestrationGetRunChangesError,
+  OrchestrationGetRunChangesInput,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,
   OrchestrationSearchThreadsInput,
@@ -961,6 +963,12 @@ const WsOrchestrationGetFullThreadDiffRpc = Rpc.make(ORCHESTRATION_WS_METHODS.ge
   error: Schema.Union([OrchestrationGetFullThreadDiffError, EnvironmentAuthorizationError]),
 });
 
+const WsOrchestrationGetRunChangesRpc = Rpc.make(ORCHESTRATION_WS_METHODS.getRunChanges, {
+  payload: OrchestrationGetRunChangesInput,
+  success: OrchestrationRpcSchemas.getRunChanges.output,
+  error: Schema.Union([OrchestrationGetRunChangesError, EnvironmentAuthorizationError]),
+});
+
 const WsOrchestrationSearchThreadsRpc = Rpc.make(ORCHESTRATION_WS_METHODS.searchThreads, {
   payload: OrchestrationSearchThreadsInput,
   success: OrchestrationRpcSchemas.searchThreads.output,
@@ -1587,6 +1595,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,
   WsOrchestrationGetFullThreadDiffRpc,
+  WsOrchestrationGetRunChangesRpc,
   WsOrchestrationSearchThreadsRpc,
   WsEngineGetArchivedShellSnapshotRpc,
   WsOrchestrationGetArchivedShellSnapshotRpc,

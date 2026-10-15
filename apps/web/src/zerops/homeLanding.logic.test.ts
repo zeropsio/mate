@@ -159,6 +159,12 @@ describe("the home from HQ, before any Mate socket opens", () => {
       ),
     ).toBe("new-offline");
   });
+  it("lands on the reader's own Mate, never on a colleague's, however recent", () => {
+    expect(hqHomeMate(mates, new Set(), new Set(["old-online"]))).toBe("new-offline");
+  });
+  it("with only colleagues' Mates, earns no destination: the overview opens", () => {
+    expect(hqHomeMate(mates, new Set(), new Set(["old-online", "new-offline"]))).toBeUndefined();
+  });
   it("earns no destination before HQ knows any Mate", () => {
     expect(hqHomeMate(null)).toBeUndefined();
     expect(hqHomeMate(new Map())).toBeUndefined();

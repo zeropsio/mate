@@ -802,3 +802,23 @@ describe("rollbackReview: a roll back that landed names what it replaced", () =>
     expect(model.meta).toBe(meta);
   });
 });
+
+// The onboarding run: the sheet read "Released v0.1.0 · Production runs it" while its own Where
+// row still said app was building, and the card "Releasing v0.1.0", for two seconds.
+describe("a release is released once its deploys have ended", () => {
+  it.each([
+    { name: "a deploy of it still runs", deploying: true, kind: "releasing" },
+    { name: "its deploys have ended", deploying: false, kind: "released" },
+  ])("$name", ({ deploying, kind }) => {
+    expect(
+      releaseOutcomeOf({
+        tagged: row("v0.1.0", "live"),
+        releasing: true,
+        deploying,
+        pressing: false,
+        tag: "v0.1.0",
+        clockMs: NOW,
+      }).kind,
+    ).toBe(kind);
+  });
+});

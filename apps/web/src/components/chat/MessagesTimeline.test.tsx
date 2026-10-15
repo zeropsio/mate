@@ -293,7 +293,7 @@ describe("MessagesTimeline", () => {
     expect(loading).not.toContain("data-mate-face-state");
     expect(loading).toContain("Opening the conversation.");
     expect(loading).not.toContain("The Mate");
-    expect(loading).toContain("Picking up where you left off.");
+    expect(loading).toContain("Picking up where it left off.");
     expect(loading).not.toContain(">Try now<");
     const hero = renderToStaticMarkup(
       <MessagesTimeline {...buildProps()} hideEmptyPlaceholder timelineEntries={[]} />,

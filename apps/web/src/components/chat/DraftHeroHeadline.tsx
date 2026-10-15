@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { shownHqMateDirectoryAtom, isListedMateEnvironment } from "@t3tools/client-runtime/data";
 import type { ScopedProjectRef } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
@@ -35,6 +36,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateMark } from "../MateMark";
 import { MateFace } from "../zerops/primitives";
 import { mateFaceFor } from "~/zerops/agentActivity";
+import { draftHeroNoProject, draftHeroProjectName } from "./DraftHeroHeadline.logic";
 
 interface DraftHeroHeadlineProps {
   readonly activeProjectRef: ScopedProjectRef | null;
@@ -72,6 +74,8 @@ export function DraftHeroHeadline({
   const chiefAsks = mate?.chief === true ? chiefQuestion(mate.name, organization) : undefined;
   const nowMs = useNowMs();
   const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
+  const roleOffered = useRoleOffers();
+  const noProject = draftHeroNoProject(roleOffered.newProject);
 
   const environmentLabelById = useMemo(
     () =>
@@ -127,7 +131,8 @@ export function DraftHeroHeadline({
   // Zerops project's own name over the workspace folder); the logical
   // group's name is the fallback, not the other way round.
   const activeProjectDisplayName = activeProjectTitle ?? activeProjectGroup?.displayName ?? null;
-  const hasResolvedProject = activeProjectTitle !== null;
+  const projectName = draftHeroProjectName({ mateProject: mate?.project, activeProjectTitle });
+  const hasResolvedProject = projectName !== null;
   const selectorLabel = mate?.project ?? activeProjectDisplayName;
   const canChooseProject = projectPickerEntries.length > 0;
   const shouldShowProjectMenu = canChooseProject;
@@ -183,20 +188,26 @@ export function DraftHeroHeadline({
             );
           })}
         </MenuRadioGroup>
-        <MenuSeparator />
-        <MenuItem onClick={openAddProject}>
-          <FolderPlusIcon />
-          New project
-        </MenuItem>
+        {roleOffered.newProject ? (
+          <>
+            <MenuSeparator />
+            <MenuItem onClick={openAddProject}>
+              <FolderPlusIcon />
+              New project
+            </MenuItem>
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
+  ) : !noProject.offersNewProject ? (
+    <span>{projectName ?? "No project yet"}</span>
   ) : (
     <button
       type="button"
       onClick={openAddProject}
       className="pointer-events-auto inline cursor-pointer border-muted-foreground/35 border-b border-dotted text-muted-foreground/60 transition-colors hover:border-muted-foreground/60 hover:text-muted-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {activeProjectTitle ?? "Add a project"}
+      {projectName ?? "Add a project"}
     </button>
   );
 
@@ -206,7 +217,7 @@ export function DraftHeroHeadline({
   // announced phrase.
   const projectSelectorText = shouldShowProjectMenu
     ? (selectorLabel ?? "Choose a project")
-    : (activeProjectTitle ?? "Add a project");
+    : (projectName ?? (noProject.offersNewProject ? "Add a project" : "No project yet"));
   const headingLabel = hasResolvedProject
     ? chiefAsks !== undefined
       ? chiefAsks
@@ -219,7 +230,7 @@ export function DraftHeroHeadline({
             : `What should ${mate.name} do on ${projectSelectorText}?`
     : canChooseProject
       ? `${projectSelectorText} to start`
-      : "Add a project to start";
+      : noProject.words;
 
   return (
     <div className="flex flex-col items-center gap-5">
@@ -258,7 +269,7 @@ export function DraftHeroHeadline({
         ) : canChooseProject ? (
           <>{projectSelector} to start</>
         ) : (
-          <>Add a project to start</>
+          <>{noProject.words}</>
         )}
       </h1>
     </div>

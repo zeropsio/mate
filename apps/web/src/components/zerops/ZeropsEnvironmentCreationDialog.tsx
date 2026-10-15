@@ -17,7 +17,7 @@ import type {
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { GitEnvironmentForm, type GitEnvironmentFormProps } from "./GitEnvironmentForm";
 
 import { Button } from "../ui/button";
@@ -100,6 +100,8 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
   /** Who will reach the new project, as people chips; absent, the form says nothing of access. */
   readonly access?: ProjectAccessSlot | undefined;
+  /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
+  readonly forecast?: ReactNode;
   readonly git?:
     | Omit<GitEnvironmentFormProps, "groupName" | "tier" | "defaultName" | "onCancel" | "onBack">
     | undefined;
@@ -163,6 +165,7 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
         });
       }}
       access={props.access}
+      forecast={props.forecast}
       proposeAnotherName={props.proposeAnotherName}
       takenBotNames={takenBotNames}
       tier={tier}
@@ -264,6 +267,7 @@ function EnvironmentForm({
   onCreate,
   onBack,
   access,
+  forecast,
 }: ZeropsEnvironmentCreationFormProps & { readonly onBack?: (() => void) | undefined }) {
   const id = useId();
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
@@ -400,6 +404,7 @@ function EnvironmentForm({
             {access(setUserRoles)}
           </div>
         )}
+        {forecast}
       </DialogPanel>
 
       <DialogFooter>

@@ -244,6 +244,35 @@ describe("production's line at a card's foot", () => {
     ).toEqual(lines);
   });
 
+  // The onboarding run: a new production read "Running" for a minute while nothing ran there yet.
+  it.each([
+    {
+      case: "nothing released there yet, with a release offered",
+      production: {
+        kind: "ready-to-release",
+        stop: stop({ state: "empty", version: undefined, addresses: [] }),
+        line: "",
+        candidate: { tag: "v0.1.0", waiting: 1 },
+      },
+      lines: [{ dot: "none", words: "Not released yet", name: "prod" }],
+    },
+    {
+      case: "a first deploy still building there, with a release offered",
+      production: {
+        kind: "ready-to-release",
+        stop: stop({ state: "deploying", version: undefined, addresses: [] }),
+        line: "",
+        candidate: { tag: "v0.1.0", waiting: 1 },
+      },
+      lines: [{ dot: "releasing", words: "Deploying…", name: "prod" }],
+    },
+  ] as const)(
+    "says Running only where something runs, where no chip was read: $case",
+    ({ production, lines }) => {
+      expect(words({ flow: { production, stages: [] }, nowMs: NOW })).toEqual(lines);
+    },
+  );
+
   it("says what the flow says where no chip was read: a failed deploy, and what still runs", () => {
     const failed: GroupFlowProduction = {
       kind: "deploy-failed",
@@ -287,6 +316,35 @@ describe("a card's places", () => {
       ["prod", "running", "Running · v2.3.1", ["https://shop.acme.com/"]],
     ]);
   });
+
+  // The onboarding run: "Running · main" stood two seconds with nowhere to go before the stage's
+  // address came. HQ brings a stage up until its address is on (`EnvironmentBirth`).
+  it.each([
+    {
+      case: "while HQ still brings it up",
+      birth: { ended: false },
+      words: "Turning its address on…",
+    },
+    { case: "once HQ has brought it up", birth: { ended: true }, words: "Running · main" },
+    { case: "where HQ did not bring it up", birth: undefined, words: "Running · main" },
+  ])("says a stage runs only with its address, $case", ({ birth, words: said }) => {
+    const lines = placeLines({
+      flow: {
+        production: { kind: "absent" },
+        stages: [
+          stop({
+            projectId: "stage",
+            name: "stage",
+            addresses: [],
+            ...(birth === undefined ? {} : { birth }),
+          }),
+        ],
+      },
+      stageChips: new Map([["stage", chip({ label: "stage", version: "main" })]]),
+      nowMs: NOW,
+    });
+    expect(lines[0]?.words.join(" · ")).toBe(said);
+  });
 });
 
 describe("since when production runs what it runs", () => {
@@ -319,9 +377,9 @@ describe("a release ready to go", () => {
       stages: [stage],
       main: { head: undefined, hasCode: true, notLive: 2, notLiveAtLeast: false },
     });
-    expect(ready === undefined ? undefined : [readyTitle(ready), readyLine(ready)]).toEqual([
+    expect(ready === undefined ? undefined : [readyTitle(ready), readyLine(ready, true)]).toEqual([
       "2 changes ready to release",
-      "On stage, tested. Production's last release failed; it still runs v1.8.2.",
+      "On stage. Production's last release failed; it still runs v1.8.2.",
     ]);
   });
   it("says how many changes, where they were tested and what production runs", () => {
@@ -335,10 +393,56 @@ describe("a release ready to go", () => {
       stages: [stage],
       main: { head: undefined, hasCode: true, notLive: 3, notLiveAtLeast: false },
     });
-    expect(ready === undefined ? undefined : [readyTitle(ready), readyLine(ready)]).toEqual([
+    expect(ready === undefined ? undefined : [readyTitle(ready), readyLine(ready, true)]).toEqual([
       "3 changes ready to release",
-      "On stage, tested. Production runs v2.3.1.",
+      "On stage. Production runs v2.3.1.",
     ]);
+  });
+
+  // The onboarding run: "On stage, tested" while nobody had tried the stage, and before it ran them.
+  it.each([
+    { case: "the stage runs them all", onStage: true, line: "On stage. Production runs v2.3.1." },
+    {
+      case: "the stage does not run them all yet",
+      onStage: false,
+      line: "Not on stage yet. Production runs v2.3.1.",
+    },
+    {
+      case: "what the stage runs is unread",
+      onStage: undefined,
+      line: "Merged. Production runs v2.3.1.",
+    },
+  ])("says only what the stage runs, never that anyone tested it: $case", ({ onStage, line }) => {
+    const ready = cardReady({
+      production: {
+        kind: "ready-to-release",
+        stop: stop(),
+        line: "",
+        candidate: { tag: "v2.4.0", waiting: 3 },
+      },
+      stages: [stage],
+      main: { head: undefined, hasCode: true, notLive: 3, notLiveAtLeast: false },
+    });
+    expect(ready === undefined ? undefined : readyLine(ready, onStage)).toBe(line);
+  });
+
+  it("names the stage main feeds, the one whose deploys say whether it runs them, never another", () => {
+    const ready = cardReady({
+      production: {
+        kind: "ready-to-release",
+        stop: stop(),
+        line: "",
+        candidate: { tag: "v2.4.0", waiting: 3 },
+      },
+      stages: [
+        stop({ projectId: "qa", name: "qa", source: "release" }),
+        stop({ projectId: "stage", name: "stage", source: "main", state: "deploying" }),
+      ],
+      main: { head: undefined, hasCode: true, notLive: 3, notLiveAtLeast: false },
+    });
+    expect(ready === undefined ? undefined : readyLine(ready, false)).toBe(
+      "Not on stage yet. Production runs v2.3.1.",
+    );
   });
 
   it.each([
@@ -660,6 +764,14 @@ describe("production's panel", () => {
     expect(broughtBy(merged, [])).toEqual([]);
   });
 
+  it("leaves the group's own setup out of what a release brought: only the app's changes", () => {
+    const merged = [
+      pull({ number: 1, mergedAt: "2026-10-03T10:00:00Z" }),
+      pull({ number: 1, mergedAt: "2026-10-04T10:00:00Z", kind: "recipe", repository: "recipe" }),
+    ];
+    expect(broughtBy(merged, releases).map((entry) => entry.kind)).toEqual(["code"]);
+  });
+
   it("offers going back to the newest release before it that may be rolled back to", () => {
     expect(rollBackTarget(releases)).toBe("v2.2.0");
     expect(rollBackTarget([release("v1.0.0", "2026-09-01T00:00:00Z", "live")])).toBeUndefined();
@@ -677,8 +789,22 @@ describe("a card's latest changes", () => {
     release("v1.0.4", "2026-10-08T10:00:00Z", "live"),
     release("v1.0.3", "2026-10-01T10:00:00Z"),
   ];
+  /** Change `number`'s squash on main, whole. */
+  const squash = (number: number) => String(number).padStart(40, "0");
   const merged = (number: number, mergedAt: string) =>
-    pull({ number, title: `Change ${String(number)}`, merged: true, mergedAt });
+    pull({
+      number,
+      title: `Change ${String(number)}`,
+      merged: true,
+      mergedAt,
+      mergeCommitSha: squash(number),
+    });
+  /** A stage running `runs`, deploying `deploying`; main's head the newest squash. */
+  const stageOn = (runs: number | undefined, deploying?: number) => ({
+    runs: runs === undefined ? [] : [squash(runs)],
+    deploying: deploying === undefined ? [] : [squash(deploying)],
+    mainHeads: new Map<string, string>(),
+  });
 
   // The owner (2026-10-11): "quick history of latest PRs" — open ones with what stops them, and
   // merged ones with where they went.
@@ -687,28 +813,28 @@ describe("a card's latest changes", () => {
       case: "an open change: what stops it, or that it is ready",
       open: [pull({ number: 7, title: "Open one", updatedAt: "2026-10-10T09:00:00Z" })],
       merged: [],
-      stage: true,
+      stage: stageOn(undefined),
       rows: [["Open one", true, "Ready to merge"]],
     },
     {
       case: "merged since the release production runs: on stage",
       open: [],
       merged: [merged(6, "2026-10-09T09:00:00Z")],
-      stage: true,
+      stage: stageOn(6),
       rows: [["Change 6", false, "On stage"]],
     },
     {
       case: "merged since the release production runs, and no stage: not released yet",
       open: [],
       merged: [merged(6, "2026-10-09T09:00:00Z")],
-      stage: false,
+      stage: undefined,
       rows: [["Change 6", false, "Not released yet"]],
     },
     {
       case: "merged where nothing is released anywhere: merged",
       open: [],
       merged: [merged(6, "2026-10-09T09:00:00Z")],
-      stage: false,
+      stage: undefined,
       production: false,
       rows: [["Change 6", false, "Merged"]],
     },
@@ -716,7 +842,7 @@ describe("a card's latest changes", () => {
       case: "merged before a release: in the release that took it",
       open: [],
       merged: [merged(5, "2026-10-07T09:00:00Z"), merged(4, "2026-09-30T09:00:00Z")],
-      stage: true,
+      stage: stageOn(5),
       rows: [
         ["Change 5", false, "In v1.0.4"],
         ["Change 4", false, "In v1.0.3"],
@@ -734,7 +860,7 @@ describe("a card's latest changes", () => {
         merged(5, "2026-10-07T09:00:00Z"),
         merged(4, "2026-09-30T09:00:00Z"),
       ],
-      stage: true,
+      stage: stageOn(6),
       rows: [
         ["Newer open", true, "Ready to merge"],
         ["Older open", true, "Ready to merge"],
@@ -742,6 +868,77 @@ describe("a card's latest changes", () => {
         ["Change 5", false, "In v1.0.4"],
         ["Change 4", false, "In v1.0.3"],
       ],
+    },
+    // The onboarding run: both changes read "On stage" for two minutes while the stage was not
+    // deployed yet.
+    {
+      case: "merged while the stage runs nothing yet: not on stage",
+      open: [],
+      merged: [merged(6, "2026-10-09T09:00:00Z")],
+      stage: stageOn(undefined),
+      rows: [["Change 6", false, "Not released yet"]],
+    },
+    {
+      case: "merged while the stage still runs an older change: not on stage",
+      open: [],
+      merged: [merged(7, "2026-10-09T10:00:00Z"), merged(6, "2026-10-09T09:00:00Z")],
+      stage: stageOn(6),
+      rows: [
+        ["Change 7", false, "Not released yet"],
+        ["Change 6", false, "On stage"],
+      ],
+    },
+    {
+      case: "merged while the stage deploys it: deploying to stage",
+      open: [],
+      merged: [merged(6, "2026-10-09T09:00:00Z")],
+      stage: stageOn(undefined, 6),
+      rows: [["Change 6", false, "Deploying to stage…"]],
+    },
+    {
+      case: "merged while the stage runs main's head: on stage",
+      open: [],
+      merged: [merged(6, "2026-10-09T09:00:00Z")],
+      stage: {
+        ...stageOn(undefined),
+        runs: ["f".repeat(40)],
+        mainHeads: new Map([["app", "f".repeat(40)]]),
+      },
+      rows: [["Change 6", false, "On stage"]],
+    },
+    // The onboarding run: the Mate's setup files read "On stage" beside the reviewed change, as if
+    // they were code that went there.
+    {
+      case: "the Mate's setup files: what they are, never a place they went",
+      open: [],
+      merged: [
+        pull({
+          repository: "group",
+          kind: "recipe",
+          number: 1,
+          title: "Mate: the group's import files",
+          merged: true,
+          mergedAt: "2026-10-09T09:00:00Z",
+        }),
+      ],
+      stage: stageOn(6),
+      rows: [["Mate: the group's import files", false, "Setup files, not app code"]],
+    },
+    {
+      case: "any other change to the setup repository: setup files too, as the release notes leave it out",
+      open: [],
+      merged: [
+        pull({
+          repository: "group",
+          kind: "recipe",
+          number: 2,
+          title: "Raise the stage's memory",
+          merged: true,
+          mergedAt: "2026-10-09T09:00:00Z",
+        }),
+      ],
+      stage: stageOn(6),
+      rows: [["Raise the stage's memory", false, "Setup files, not app code"]],
     },
   ])("says $case", ({ open, merged: landed, stage, production = true, rows }) => {
     expect(

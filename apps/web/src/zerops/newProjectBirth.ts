@@ -377,13 +377,27 @@ export function newProjectProgress(
   };
 }
 
+/** Why a project was refused for want of credit, and the way on (the owner: HQ takes the top-up). */
+export const CREDIT_REFUSED_LINE =
+  "This organization needs credit before Zerops makes another project. Add it in HQ, then try again.";
+
+/**
+ * Zerops refused the project for want of credit: a new organization's first project is free, and
+ * any after it waits for its first top-up ("Verify your account by topping up credit to create
+ * more than 1 projects."). Read off its words: Zerops' code for it is not known yet.
+ */
+const refusedForCredit = (failed: NewProjectFailure) =>
+  !failed.uncertain && /\bcredit\b/iu.test(failed.reason);
+
 /**
  * What its view says under the headline (`MateComing`): coming up while it runs; where it stopped,
- * why, with *Try again* — or, where the platform may have taken it anyway, the way to the projects,
- * where it would be listed.
+ * why, with *Try again* — for want of credit, with HQ to add it first — or, where the platform may
+ * have taken it anyway, the way to the projects, where it would be listed.
  */
 export function newProjectComing(birth: NewProjectBirth): MateComing {
   if (birth.failed === null) return { kind: "coming", line: COMING_UP_LINE };
+  if (birth.step === "create" && refusedForCredit(birth.failed))
+    return { kind: "failed", line: CREDIT_REFUSED_LINE, verb: "add-credit" };
   const why = asSentence(birth.failed.reason);
   return {
     kind: "failed",

@@ -1374,3 +1374,20 @@ export function projectScriptKeybindingWrites(input: {
     upsert: latest !== undefined && latest.key !== rule.key ? { ...rule, replace: latest } : rule,
   };
 }
+
+/**
+ * Whether the session that runs the conversation's helpers still lives, so its helpers are not
+ * orphaned (`foldSubagentActivities`): while a turn holds it, and after the turn while its
+ * background work still runs — an engine conversation's session reads as stopped between runs,
+ * yet its helpers work on, and the Helpers page called them stopped while the Mate said they ran.
+ */
+export function helpersSessionLive(input: {
+  readonly phase: SessionPhase;
+  readonly backgroundLiveness: "working" | "monitoring" | null | undefined;
+}): boolean {
+  return (
+    input.phase !== "disconnected" ||
+    input.backgroundLiveness === "working" ||
+    input.backgroundLiveness === "monitoring"
+  );
+}

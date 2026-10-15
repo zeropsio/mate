@@ -6,6 +6,8 @@ import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { isChief } from "~/zerops/chief";
 import { useChiefSetupEntry } from "~/zerops/chiefSetup";
+import { roleOffers } from "@t3tools/client-runtime/data";
+import { usePlatformCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useProjectsPageRows } from "~/zerops/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
@@ -55,7 +57,13 @@ import {
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { NOTHING_DEPLOYED, stopTone } from "@t3tools/client-runtime/zerops/flow";
+import {
+  deployBuilding,
+  deployRuns,
+  NOTHING_DEPLOYED,
+  stopTone,
+  type Deployment,
+} from "@t3tools/client-runtime/zerops/flow";
 import {
   knownPresentation,
   type KnownAffordance,
@@ -163,6 +171,7 @@ import {
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { ProjectAccessDraft, roleProjectKind } from "./projects/ProjectPeople";
@@ -231,6 +240,19 @@ interface EnvironmentCreationView {
   readonly tier: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["tier"]>;
   readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
   readonly outcome?: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["outcome"]>;
+}
+
+/**
+ * Whether the project a finished creation made runs or builds something now, as the platform says
+ * it: its done card then leaves what runs there to the place's own line.
+ */
+function creationDeployed(
+  creation: EnvironmentCreationView,
+  deployments: ReadonlyMap<string, Shown<Deployment>>,
+): boolean {
+  if (creation.outcome?.kind !== "done" || creation.outcome.projectId === undefined) return false;
+  const shown = deployments.get(creation.outcome.projectId);
+  return deployRuns(shown) || deployBuilding(shown) !== undefined;
 }
 
 export function autoConnectServedZeropsEnvironment(input: {
@@ -506,11 +528,14 @@ function SignedOutNotice({ message }: { readonly message: string }) {
  */
 export function ZeropsProjectsHeader({
   setupChief = false,
+  newProject = true,
   onSetupChief,
   notice = null,
   onRetry,
 }: {
   readonly setupChief?: boolean;
+  /** New project, where the viewer's role creates projects (`roleOffers`). */
+  readonly newProject?: boolean;
   readonly onSetupChief?: (() => void) | undefined;
   readonly notice?: ProjectsListingNotice | null;
   readonly onRetry?: (() => void) | undefined;
@@ -531,10 +556,12 @@ export function ZeropsProjectsHeader({
             Set up Chief
           </Button>
         ) : null}
-        <Button onClick={askNewProject} size="sm" variant="outline">
-          <PlusIcon />
-          New project
-        </Button>
+        {newProject ? (
+          <Button onClick={askNewProject} size="sm" variant="outline">
+            <PlusIcon />
+            New project
+          </Button>
+        ) : null}
       </div>
     </div>
   );
@@ -942,6 +969,10 @@ export function ZeropsProjectsContent({
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
+  const noProjectYet = hasNoZeropsProject({ listing, creationPending: activeBirths });
+  // What the viewer's role makes and reaches here: an empty first screen says it (`firstRunWords`).
+  const capabilities = usePlatformCapabilities(null);
+  const roleOffered = roleOffers(capabilities);
 
   /** The row whose connect failed: its line carries the failure and the retry. */
   const connectFailedOn = (candidate: ZeropsCandidate): boolean =>
@@ -1763,7 +1794,14 @@ export function ZeropsProjectsContent({
       setCreation((current) =>
         current === null
           ? current
-          : { ...current, outcome: { kind: "done", deployments: outcome.deployments } },
+          : {
+              ...current,
+              outcome: {
+                kind: "done",
+                deployments: outcome.deployments,
+                projectId: outcome.projectId,
+              },
+            },
       );
       if (role === "prod")
         rememberReleaseIntent({
@@ -2489,9 +2527,9 @@ export function ZeropsProjectsContent({
         groups={project === undefined ? keptGroups : flowGroups}
         page={project}
         isMate={hasMate}
-        onCreateProject={
-          hasNoZeropsProject({ listing, creationPending: activeBirths }) ? askNewProject : undefined
-        }
+        onCreateProject={noProjectYet && roleOffered.newProject ? askNewProject : undefined}
+        noProjectYet={noProjectYet}
+        reachesEveryProject={!capabilities.membershipKnown || capabilities.reachesEveryProject}
         hqCard={<ZeropsHqCard />}
         openMate={mateOpenerOf}
         onRetryContainers={(items) => {
@@ -2515,11 +2553,13 @@ export function ZeropsProjectsContent({
         renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
         setUpProduction={({ group }) =>
-          addableTiers(group).includes("production") && !groupIsEmpty(group) && !creationRunning
-            ? () => {
-                requestEnvironment(group.groupId, "prod");
-              }
-            : undefined
+          !addableTiers(group).includes("production") || groupIsEmpty(group)
+            ? undefined
+            : creationRunning
+              ? "busy"
+              : () => {
+                  requestEnvironment(group.groupId, "prod");
+                }
         }
         renderCardPeople={overview.renderCardPeople}
         renderReleaseVerb={({ group, flow }) => {
@@ -2598,6 +2638,9 @@ export function ZeropsProjectsContent({
               onChange={onChange}
             />
           )}
+          {...(activeOrganization == null
+            ? {}
+            : { forecast: <ZeropsCreditForecast organizationId={activeOrganization.id} /> })}
           fallbackFocus={() =>
             document
               .getElementById(`project-${creationRequest.groupId}`)
@@ -2668,6 +2711,7 @@ export function ZeropsProjectsContent({
           }}
           progress={creation.progress}
           tier={creation.tier}
+          deployed={creationDeployed(creation, deployments)}
           {...(creation.outcome === undefined ? {} : { outcome: creation.outcome })}
         />
       )}
@@ -2680,6 +2724,7 @@ export function ZeropsProjectsContent({
 
 export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boolean }) {
   const setupChief = useChiefSetupEntry();
+  const roleOffered = useRoleOffers();
   const navigate = useNavigate();
   const { activeOrganization, organizationStatus, status } = useZeropsSession();
   // The same page is the signed-in door at `/`, so the search is read loosely
@@ -2734,6 +2779,7 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
       {scoped && !firstRun && paints ? (
         <ZeropsProjectsHeader
           setupChief={setupChief}
+          newProject={roleOffered.newProject}
           onSetupChief={() => {
             void navigate({ to: "/chief" });
           }}

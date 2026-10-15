@@ -138,7 +138,7 @@ it("keeps the same waiting stage and face when the link route hands over to an a
 it("an opening with nothing of the Mate's to say takes the limit a later read of it brings", async () => {
   const view = await opening();
   try {
-    expect(view.host.textContent).toContain("Picking up where you left off.");
+    expect(view.host.textContent).toContain("Picking up where it left off.");
     const limited = {
       limitHistory: { provider: "Claude", resetsAt: null },
     } as unknown as ZeropsAgentActivity;

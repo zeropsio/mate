@@ -14,3 +14,8 @@ export function tabsOutOfView<Id extends string>(
     .filter((tab) => tab.left < viewport.left - 1 || tab.right > viewport.right + 1)
     .map((tab) => tab.id);
 }
+
+/** The overflow menu's name: how many tabs the strip cuts off. */
+export function hiddenTabsLabel(count: number): string {
+  return count === 1 ? "1 more tab" : `${count} more tabs`;
+}

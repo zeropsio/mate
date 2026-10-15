@@ -13,6 +13,7 @@ import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/dat
 import {
   changeState,
   placeAddresses,
+  PRODUCTION_DEPLOYING,
   type FlowPullRequest,
   type FlowReleaseRow,
   type GroupFlow,
@@ -168,6 +169,12 @@ function flowLine(
     }
     case "live":
     case "ready-to-release":
+      // A release offered does not make production run anything: a new one runs nothing until its
+      // first release (the onboarding run read "Running" for a minute there).
+      if (production.stop.state === "empty")
+        return { dot: "none", words: ["Not released yet"], trouble: false };
+      if (production.stop.state === "deploying")
+        return { dot: "releasing", words: [PRODUCTION_DEPLOYING], trouble: false };
       return {
         dot: "running",
         words: ["Running", production.stop.version?.label, since].filter(
@@ -198,24 +205,32 @@ function stageLine(
       words: [stop.git.line],
       trouble: stop.git.blocked,
     };
-  if (chip !== undefined) return { ...base, ...chipLine(chip, { since: undefined, down }) };
+  const said =
+    chip !== undefined ? chipLine(chip, { since: undefined, down }) : flowStageLine(stop);
+  // HQ brings a stage up until its first deploy's address is on (`EnvironmentBirth`): running
+  // with nowhere to open is still coming up, as the menu's heading says (`stopComing`).
+  if (said.dot === "running" && stop.addresses.length === 0 && stop.birth?.ended === false)
+    return { ...base, dot: "unknown", words: ["Turning its address on…"], trouble: false };
+  return { ...base, ...said };
+}
+
+/** A stage's line from the flow alone, where no chip was read. */
+function flowStageLine(stop: GroupFlowStop): Pick<PlaceLine, "dot" | "words" | "trouble"> {
   switch (stop.state) {
     case "failed":
-      return { ...base, dot: "failed", words: ["Deploy failed"], trouble: true };
+      return { dot: "failed", words: ["Deploy failed"], trouble: true };
     case "deploying":
-      return { ...base, dot: "releasing", words: ["Deploying…"], trouble: false };
+      return { dot: "releasing", words: ["Deploying…"], trouble: false };
     case "empty":
-      return { ...base, dot: "none", words: ["Not deployed yet"], trouble: false };
+      return { dot: "none", words: ["Not deployed yet"], trouble: false };
     case "checking":
       return {
-        ...base,
         dot: "unknown",
         words: [stop.readLine ?? "Checking what runs…"],
         trouble: false,
       };
     case "deployed":
       return {
-        ...base,
         dot: "running",
         words: ["Running", stop.version?.label].filter((word) => word !== undefined),
         trouble: false,
@@ -318,7 +333,11 @@ export function cardReady(flow: Pick<GroupFlow, "production" | "stages" | "main"
     production.kind === "ready-to-release" ||
     (production.kind === "deploy-failed" && production.candidate !== undefined);
   if (!offered || production.candidate === undefined) return undefined;
-  const stage = flow.stages.find((stop) => stop.state === "deployed") ?? flow.stages[0];
+  // The stage main feeds is the one whose deploys `readyLine` judges (`mainStageOf`): name it.
+  const stage =
+    flow.stages.find((stop) => stop.source === "main") ??
+    flow.stages.find((stop) => stop.state === "deployed") ??
+    flow.stages[0];
   return {
     count: production.candidate.waiting,
     atLeast: flow.main.notLiveAtLeast,
@@ -334,9 +353,21 @@ export function readyTitle(ready: CardReady): string {
   return `${count} change${ready.count === 1 ? "" : "s"} ready to release`;
 }
 
-/** "On stage, tested. Production runs v2.3.1." */
-export function readyLine(ready: CardReady): string {
-  const where = ready.stage === undefined ? "Merged." : `On ${ready.stage}, tested.`;
+/**
+ * "On stage. Production runs v2.3.1." — where the changes are as the stage's deploys say, never
+ * that anyone tried them there: nothing a release offers says a test ran on the stage.
+ */
+export function readyLine(
+  ready: CardReady,
+  /** The stage runs every change the release carries; `undefined` while that is unread. */
+  onStage: boolean | undefined,
+): string {
+  const where =
+    ready.stage === undefined || onStage === undefined
+      ? "Merged."
+      : onStage
+        ? `On ${ready.stage}.`
+        : `Not on ${ready.stage} yet.`;
   const runs = ready.failed
     ? ready.from === undefined
       ? "Production's last release failed."
@@ -624,7 +655,10 @@ export const CARD_CHANGES = 5;
 export interface CardChange {
   readonly pull: FlowPullRequest;
   readonly open: boolean;
-  /** "Ready to merge", what stops it; "In v1.0.4", "On stage", "Not released yet", "Merged". */
+  /**
+   * "Ready to merge", what stops it; "In v1.0.4", "On stage", "Deploying to stage…", "Not released
+   * yet", "Merged"; "Setup files, not app code" for a Mate's recipe proposal.
+   */
   readonly words: string;
   /** Its words' tone: the change state's for an open one; quiet for a merged one. */
   readonly tone: NonNullable<ReturnType<typeof changeState>>["tone"];
@@ -636,19 +670,55 @@ const newestFirst = (left: string | undefined, right: string | undefined) =>
   (right ?? "").localeCompare(left ?? "");
 
 /**
+ * What the stage that follows `main` runs, as HQ's deploys say it (`stageStandings`): the commits
+ * its services run and the ones being deployed there, whole; and each repository's `main` head.
+ */
+export interface CardStage {
+  readonly runs: ReadonlyArray<string>;
+  readonly deploying: ReadonlyArray<string>;
+  readonly mainHeads: ReadonlyMap<string, string>;
+}
+
+const sameSha = (left: string, right: string | undefined) =>
+  right !== undefined && left.toLowerCase() === right.toLowerCase();
+
+/**
+ * Whether a stage commit `sha` holds the merged change `pull`: its repository's `main` head, or the
+ * squash of a change of it merged at or after it — squashes land on `main` one after the other.
+ */
+function holds(
+  sha: string,
+  pull: FlowPullRequest,
+  merged: ReadonlyArray<FlowPullRequest>,
+  mainHeads: ReadonlyMap<string, string>,
+): boolean {
+  if (sameSha(sha, mainHeads.get(pull.repository))) return true;
+  return merged.some(
+    (other) =>
+      other.repository === pull.repository &&
+      sameSha(sha, other.mergeCommitSha) &&
+      other.mergedAt !== undefined &&
+      pull.mergedAt !== undefined &&
+      other.mergedAt >= pull.mergedAt,
+  );
+}
+
+/**
  * A card's latest changes (the owner, 2026-10-11: "quick history of latest PRs"): the open ones
  * first, each with what stops it, then the merged ones, each with where it went — in the oldest
- * release made after it landed, else on stage, else not released yet where the project has a
- * production, else merged — newest first, `limit` at most. Merged ones are known only while the
- * project's detail is read.
+ * release made after it landed, else on stage where the stage runs it, deploying to it where it is
+ * being deployed there, else not released yet where the project has a production, else merged —
+ * newest first, `limit` at most. A Mate's recipe proposal is its setup files, which go to no place
+ * (the onboarding run read them "On stage" beside the reviewed change). Merged ones are known only
+ * while the project's detail is read.
  */
 export function cardChanges(input: {
   readonly open: ReadonlyArray<FlowPullRequest>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
   /** Newest first, as the flow lists them. */
   readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "taggedAt">>;
-  /** The project has a stage, where a merged change goes first. */
-  readonly stage: boolean;
+  /** What the stage a merged change goes to first runs; `undefined` where the project has none. */
+  readonly stage: CardStage | undefined;
   /** The project has a production, where a merged change is released. */
   readonly production: boolean;
   readonly limit: number;
@@ -668,21 +738,30 @@ export function cardChanges(input: {
   const merged = input.merged
     .filter((pull) => pull.mergedAt !== undefined)
     .toSorted((left, right) => newestFirst(left.mergedAt, right.mergedAt))
-    .map((pull): CardChange => {
+    .map((pull, _index, landed): CardChange => {
       const took = input.releases.findLast(
         (release) => pull.mergedAt !== undefined && release.taggedAt >= pull.mergedAt,
       );
+      const stage = input.stage;
+      const on = (shas: ReadonlyArray<string> | undefined) =>
+        stage !== undefined &&
+        (shas ?? []).some((sha) => holds(sha, pull, landed, stage.mainHeads));
       return {
         pull,
         open: false,
+        // Every change to the setup repository, as `broughtBy` leaves them out of a release.
         words:
-          took !== undefined
-            ? `In ${took.tag}`
-            : input.stage
-              ? "On stage"
-              : input.production
-                ? "Not released yet"
-                : "Merged",
+          pull.kind === "recipe"
+            ? "Setup files, not app code"
+            : took !== undefined
+              ? `In ${took.tag}`
+              : on(stage?.runs)
+                ? "On stage"
+                : on(stage?.deploying)
+                  ? "Deploying to stage…"
+                  : input.production
+                    ? "Not released yet"
+                    : "Merged",
         tone: "off",
         at: pull.mergedAt,
       };
@@ -735,7 +814,10 @@ export function cardChangeRows(
 /** A release as production's panel reads it: newest first, as the flow lists them. */
 type PanelRelease = Pick<FlowReleaseRow, "tag" | "taggedAt" | "standing" | "rollBack">;
 
-/** The changes the release production runs brought: merged after the one before it was made. */
+/**
+ * The changes the release production runs brought: the app's own, merged after the one before it
+ * was made. The group's setup (its import files) is no change a release ships.
+ */
 export function broughtBy(
   merged: ReadonlyArray<FlowPullRequest>,
   releases: ReadonlyArray<PanelRelease>,
@@ -746,6 +828,7 @@ export function broughtBy(
   const before = releases[at + 1];
   return merged.filter(
     (pull) =>
+      pull.kind === "code" &&
       pull.mergedAt !== undefined &&
       pull.mergedAt <= live.taggedAt &&
       (before === undefined || pull.mergedAt > before.taggedAt),

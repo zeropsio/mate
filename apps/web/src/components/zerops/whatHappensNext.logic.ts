@@ -5,7 +5,8 @@
  * person's words: never the machinery's — no container, no zcp, no recipe deployed.
  *
  * The times:
- * - a Mate is up in about 1½–2 minutes, ready to be signed in;
+ * - a Mate is up in about 2–4 minutes, ready to be signed in (measured +160 s 2026-09-22, +202 s
+ *   2026-10-15);
  * - a Mate added to a project with code then sets up development, deploying that code, by itself:
  *   6–10 minutes for a small app, about 12 for a storefront with four runtimes (SPN's Bruno,
  *   2026-10-02: 16 with one failed deploy its agent fixed), so it says up to 15.
@@ -32,7 +33,7 @@ export interface WhatHappensNext {
   readonly note: string;
 }
 
-const MATE_UP = "about 1½–2 min";
+const MATE_UP = "about 2–4 min";
 const DEVELOPMENT_UP = "up to 15 min";
 
 /** The Mate as the steps name it: its name as it will be called, or the Mate until it has one. */

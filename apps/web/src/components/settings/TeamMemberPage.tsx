@@ -180,6 +180,9 @@ export function TeamMemberView({
           <p className="tm-empty">Reading their projects…</p>
         ) : (
           <MemberProjectAccess
+            memberRole={memberRole}
+            createsProjects={person.membership.canCreateProjects}
+            viewerGives={accessEditable}
             candidates={candidates}
             chips={chips}
             editable={accessEditable}

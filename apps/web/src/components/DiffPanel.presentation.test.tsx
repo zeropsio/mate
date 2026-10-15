@@ -14,6 +14,12 @@ const input = vi.hoisted(() => ({
   retained: false,
   otherKnown: false,
   refreshes: { preview: vi.fn(), local: vi.fn(), remote: vi.fn() },
+  repo: true,
+  turns: {
+    turnDiffSummaries: [] as ReadonlyArray<unknown>,
+    inferredCheckpointTurnCountByTurnId: {},
+    runChangesRead: "read" as "read" | "reading" | "failed" | "needs-update",
+  },
 }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("@tanstack/react-router", () => ({
@@ -24,7 +30,7 @@ vi.mock("../hooks/useSettings", () => ({
   useClientSettings: () => ({ wordWrap: false, diffIgnoreWhitespace: false }),
 }));
 vi.mock("../hooks/useTurnDiffSummaries", () => ({
-  useTurnDiffSummaries: () => ({ turnDiffSummaries: [], inferredCheckpointTurnCountByTurnId: {} }),
+  useTurnDiffSummaries: () => input.turns,
 }));
 vi.mock("../editorPreferences", () => ({ useOpenInPreferredEditor: () => () => {} }));
 vi.mock("../state/entities", () => ({
@@ -81,7 +87,7 @@ vi.mock("../state/query", async (importOriginal) => ({
             ],
           }
         : key === "status"
-          ? { isRepo: true }
+          ? { isRepo: input.repo }
           : key === input.source
             ? input.retained
               ? { refs: [{ name: "main", current: false, isDefault: true, worktreePath: null }] }
@@ -106,6 +112,13 @@ vi.mock("../state/query", async (importOriginal) => ({
     refresh:
       key === "preview" || key === "local" || key === "remote" ? input.refreshes[key] : () => {},
   }),
+}));
+vi.mock("./zerops/ZeropsMateUpdateControl", () => ({
+  ZeropsMateUpdateControl: ({
+    children,
+  }: {
+    children: (view: { line: ReactNode; menuActions: [] }) => ReactNode;
+  }) => children({ line: <button type="button">Update</button>, menuActions: [] }),
 }));
 vi.mock("./ui/combobox", () => {
   const Part = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
@@ -233,3 +246,109 @@ it.each(["toolbar", "failed read"])(
     }
   },
 );
+
+it("offers no turn to pick while no turn has changes to show", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(() =>
+      root.render(
+        <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
+      ),
+    );
+    const scope = container.querySelector<HTMLButtonElement>('button[aria-label^="Diff scope"]');
+    expect(scope).not.toBeNull();
+    await act(async () => {
+      scope!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      scope!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      scope!.click();
+    });
+    const items = Array.from(
+      document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]'),
+    );
+    expect(items.map((item) => item.textContent)).toContain("Latest turn");
+    expect(items.map((item) => item.textContent)).not.toContain("Turn");
+  } finally {
+    await act(() => root.unmount());
+    container.remove();
+  }
+});
+
+it.each([
+  { read: "reading" as const, says: "Loading changes..." },
+  { read: "failed" as const, says: "Couldn't read this conversation's changes." },
+  {
+    read: "needs-update" as const,
+    says: "This Mate shows its changes here after its next update.",
+  },
+])(
+  "the Diff page never says nothing changed while a Mate's runs are $read",
+  async ({ read, says }) => {
+    // A Mate's workspace of checkouts shows turns only.
+    input.repo = false;
+    input.turns = {
+      turnDiffSummaries: [],
+      inferredCheckpointTurnCountByTurnId: {},
+      runChangesRead: read,
+    };
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    try {
+      await act(() =>
+        root.render(
+          <DiffPanel
+            composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never}
+          />,
+        ),
+      );
+      expect(container.textContent).toContain(says);
+      expect(container.textContent).not.toContain("No changes yet");
+    } finally {
+      await act(() => root.unmount());
+      container.remove();
+      input.repo = true;
+      input.turns = {
+        turnDiffSummaries: [],
+        inferredCheckpointTurnCountByTurnId: {},
+        runChangesRead: "read",
+      };
+    }
+  },
+);
+
+it("a Mate whose server predates run changes says it shows them after its update, never that it couldn't read them", async () => {
+  input.repo = false;
+  input.turns = {
+    turnDiffSummaries: [],
+    inferredCheckpointTurnCountByTurnId: {},
+    runChangesRead: "needs-update",
+  };
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(() =>
+      root.render(
+        <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
+      ),
+    );
+    expect(container.textContent).toContain(
+      "This Mate shows its changes here after its next update.",
+    );
+    expect(Array.from(container.querySelectorAll("button"), (b) => b.textContent)).toContain(
+      "Update",
+    );
+    expect(container.textContent).not.toContain("Couldn't read");
+  } finally {
+    await act(() => root.unmount());
+    container.remove();
+    input.repo = true;
+    input.turns = {
+      turnDiffSummaries: [],
+      inferredCheckpointTurnCountByTurnId: {},
+      runChangesRead: "read",
+    };
+  }
+});

@@ -106,6 +106,7 @@ async function identify(next: HqProjectPeople) {
 const person = (projectId: string | null, mine: boolean): HqProjectPeople => ({
   owned: true,
   owner: null,
+  mine: undefined,
   waitsOnViewer: false,
   signedInNow: {},
   everSignedIn: {},

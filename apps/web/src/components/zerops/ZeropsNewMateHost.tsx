@@ -49,6 +49,7 @@ import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
+import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
 import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
 import {
   creationRecipe,
@@ -178,6 +179,9 @@ function NewMateDialog({
       access={(onChange) => (
         <ProjectAccessDraft groupId={group.groupId} kind="mate" onChange={onChange} />
       )}
+      {...(activeOrganization === null
+        ? {}
+        : { forecast: <ZeropsCreditForecast organizationId={activeOrganization.id} /> })}
       closed={
         addOffer.kind !== "allowed"
           ? {

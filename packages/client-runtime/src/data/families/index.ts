@@ -7,6 +7,7 @@ import { mateRepositoryFamily } from "./mateRepository.ts";
 import { mateThreadSearchFamily } from "./mateThreadSearch.ts";
 import { mateTurnDiffFamily } from "./mateTurnDiff.ts";
 import { mateThreadDiffFamily } from "./mateThreadDiff.ts";
+import { mateRunChangesFamily } from "./mateRunChanges.ts";
 import { mateWorkflowScriptFamily } from "./mateWorkflowScript.ts";
 import { mateTraceDiagnosticsFamily } from "./mateTraceDiagnostics.ts";
 import { mateProcessDiagnosticsFamily } from "./mateProcessDiagnostics.ts";
@@ -61,6 +62,7 @@ import { hqPictureFamily } from "./hqPicture.ts";
 import { hqMateFamily } from "./hqMate.ts";
 import { mateHealthFamily } from "./mateHealth.ts";
 import { mateAttentionFamily } from "./mateAttention.ts";
+import { organizationCreditFamily } from "./organizationCredit.ts";
 import { organizationLocationsFamily } from "./organizationLocations.ts";
 import { organizationUserFamily } from "./organizationUser.ts";
 import { organizationMembersFamily } from "./organizationMembers.ts";
@@ -113,6 +115,7 @@ export const FAMILIES = defineFamilies([
   mateThreadSearchFamily,
   mateTurnDiffFamily,
   mateThreadDiffFamily,
+  mateRunChangesFamily,
   mateWorkflowScriptFamily,
   mateTraceDiagnosticsFamily,
   mateProcessDiagnosticsFamily,
@@ -161,6 +164,7 @@ export const FAMILIES = defineFamilies([
   memberProjectRolesFamily,
   organizationUserFamily,
   organizationLocationsFamily,
+  organizationCreditFamily,
   locationLatencyFamily,
   serviceAgentsFamily,
   publicRoutingFamily,

@@ -26,7 +26,12 @@ export interface ZeropsEnvironmentCreationProps {
   /** Set once the run has stopped, however it stopped. */
   readonly outcome?:
     | { readonly kind: "handed-off" }
-    | { readonly kind: "done"; readonly deployments: ReadonlyArray<ServiceDeployment> }
+    | {
+        readonly kind: "done";
+        readonly deployments: ReadonlyArray<ServiceDeployment>;
+        /** The project it made, whose line on the card goes on saying what runs there. */
+        readonly projectId?: string | undefined;
+      }
     | { readonly kind: "failed"; readonly error: string; readonly projectExists: boolean };
   readonly onDismiss: () => void;
   /**
@@ -36,6 +41,11 @@ export interface ZeropsEnvironmentCreationProps {
   readonly tier?: "mate" | "stage" | "production";
   /** The clock, so a running step's duration ticks; the caller owns the timer. */
   readonly nowMs: number;
+  /**
+   * Something runs or builds there now, as the platform says it: what the services were set up
+   * without is past, and the place's own line says the rest.
+   */
+  readonly deployed?: boolean | undefined;
 }
 
 /**
@@ -48,7 +58,10 @@ function upNote(
   tier: ZeropsEnvironmentCreationProps["tier"],
   deployments: ReadonlyArray<ServiceDeployment>,
   nowMs: number,
+  deployed: boolean,
 ): string {
+  // The done card stays until dismissed: its first answer must not outlive the place's own line.
+  if (deployed) return "The environment is set up.";
   const unknown = deployments.find(({ deployment }) => deployment.state !== "known");
   if (unknown !== undefined) {
     const presentation = knownPresentation(unknown.deployment, DEPLOYMENT_SURFACE, {
@@ -135,6 +148,7 @@ export function ZeropsEnvironmentCreation({
   onDismiss,
   tier,
   nowMs,
+  deployed = false,
 }: ZeropsEnvironmentCreationProps) {
   return (
     <section
@@ -153,7 +167,7 @@ export function ZeropsEnvironmentCreation({
                 : "Nothing was created."
               : outcome.kind === "handed-off"
                 ? "The agent's container is on its way — the wait continues below."
-                : upNote(tier, outcome.deployments, nowMs)}
+                : upNote(tier, outcome.deployments, nowMs, deployed)}
         </p>
       </div>
       <ProcessSteps
@@ -163,7 +177,8 @@ export function ZeropsEnvironmentCreation({
       {outcome === undefined ? null : (
         <div className="flex justify-end">
           <Button onClick={onDismiss} size="sm" variant="outline">
-            {outcome.kind === "failed" ? "Dismiss" : "Back to projects"}
+            {/* It stands on the projects page: closing it goes nowhere else. */}
+            Dismiss
           </Button>
         </div>
       )}

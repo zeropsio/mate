@@ -18,6 +18,7 @@ import * as CheckpointDiffQuery from "./CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
 import { CheckpointThreadNotFoundError } from "./Errors.ts";
 import { WorkspaceHistory } from "./WorkspaceHistory.ts";
+import type { CaptureRun } from "./WorkspaceCaptureJournal.ts";
 
 function makeThreadCheckpointContext(input: {
   readonly projectId: ProjectId;
@@ -699,6 +700,7 @@ function makeHistoryQueryHarness(
     finish: () => Effect.die("review must not capture a new endpoint"),
     release: () => Effect.die("unused"),
     cleanup: () => Effect.die("unused"),
+    runs: () => Effect.succeed([]),
     read: (history, options) =>
       Effect.sync(() => {
         reads.push({ history, options });
@@ -896,5 +898,180 @@ describe("CheckpointDiffQuery recorded workspace history", () => {
         ]);
         expect(harness.reads[0]?.history.roots[0]?.root).toEqual(harness.root);
       }),
+  );
+});
+
+/** A Mate engine conversation whose runs' captures the journal holds, and no projection record. */
+function makeEngineRunsHarness() {
+  const threadId = ThreadId.make("mate-conversation");
+  const root = {
+    rootId: "zerops:project:appdev:/var/www",
+    label: "appdev",
+    remotePath: "/var/www",
+    pathPrefix: "appdev/",
+  };
+  const capture = (
+    ordinal: number,
+    files: ReadonlyArray<{ path: string; additions: number; deletions: number }>,
+  ): CaptureRun => ({
+    threadId,
+    runId: `${threadId}/r/${ordinal}`,
+    turnId: TurnId.make(`provider-turn-${ordinal}`),
+    phase: "finalized",
+    history: {
+      runId: `${threadId}/r/${ordinal}`,
+      coverage: "complete",
+      semantics: "observed-workspace",
+      representation: "git-normalized",
+      policyVersion: "git-v1",
+      roots: [
+        {
+          root,
+          before: {
+            status: "captured",
+            oid: String(ordinal).repeat(40),
+            ref: CheckpointRef.make(`refs/t3/checkpoints/${ordinal}/before`),
+            startedAt: `2026-10-15T10:0${ordinal}:00.000Z`,
+            completedAt: `2026-10-15T10:0${ordinal}:01.000Z`,
+          },
+          after: {
+            status: "captured",
+            oid: String(ordinal + 1).repeat(40),
+            ref: CheckpointRef.make(`refs/t3/checkpoints/${ordinal}/after`),
+            startedAt: `2026-10-15T10:0${ordinal}:30.000Z`,
+            completedAt: `2026-10-15T10:0${ordinal}:31.000Z`,
+          },
+          files: files.map((file) => ({ ...file, kind: "modified" })),
+        },
+      ],
+    },
+  });
+  const runs: ReadonlyArray<CaptureRun> = [
+    capture(1, [{ path: "appdev/src/recipes.ts", additions: 12, deletions: 3 }]),
+    // A run that only answered: its capture saw nothing change.
+    capture(2, []),
+    capture(3, [
+      { path: "appdev/src/auth.ts", additions: 40, deletions: 0 },
+      { path: "appdev/src/routes.ts", additions: 5, deletions: 1 },
+    ]),
+    // An older thread's turn in the same journal: no run of this conversation's.
+    { ...capture(4, [{ path: "appdev/old.ts", additions: 1, deletions: 0 }]), runId: "turn-4" },
+  ];
+  const reads: Array<CheckpointHistory> = [];
+  const historyService = WorkspaceHistory.of({
+    prepare: () => Effect.die("unused"),
+    gapsOf: () => Effect.die("unused"),
+    markDispatched: () => Effect.die("unused"),
+    sentTo: () => Effect.die("unused"),
+    bindTurn: () => Effect.die("unused"),
+    finish: () => Effect.die("unused"),
+    release: () => Effect.die("unused"),
+    cleanup: () => Effect.die("unused"),
+    runs: () => Effect.succeed(runs),
+    read: (history) =>
+      Effect.sync(() => {
+        reads.push(history);
+        return { diff: `patch of ${history.runId}`, coverage: "complete" as const, roots: [] };
+      }),
+  });
+  const unused = () => Effect.die("an engine conversation has no projection record");
+  const projection = ProjectionSnapshotQuery.ProjectionSnapshotQuery.of({
+    getUserInputActivity: unused,
+    getTurnStartMessage: unused,
+    getCommandReadModel: unused,
+    getSnapshot: unused(),
+    getShellSnapshot: unused,
+    getArchivedShellSnapshot: unused,
+    getSnapshotSequence: unused(),
+    getCounts: unused,
+    getEventReplayStats: unused,
+    getActiveProjectByWorkspaceRoot: unused,
+    getProjectWorkspaceRootById: unused,
+    getProjectShellById: unused,
+    getFirstActiveThreadIdByProjectId: unused,
+    getThreadCheckpointContext: unused,
+    getFullThreadDiffContext: unused,
+    getThreadRuntimeContext: unused,
+    getThreadShellById: unused,
+    getThreadDetailById: unused,
+    getThreadDetailSnapshot: unused,
+    searchThreads: unused,
+  } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]);
+  const store = CheckpointStore.CheckpointStore.of({
+    isGitRepository: () => Effect.die("unused"),
+    captureCheckpoint: () => Effect.die("unused"),
+    captureSnapshot: () => Effect.die("unused"),
+    resolveSnapshot: () => Effect.die("unused"),
+    hasCheckpointRef: () => Effect.die("unused"),
+    restoreCheckpoint: () => Effect.die("unused"),
+    diffCheckpoints: () => Effect.die("must read the run's own capture"),
+    deleteCheckpointRefs: () => Effect.die("unused"),
+  });
+  const layer = CheckpointDiffQuery.layer.pipe(
+    Layer.provide(Layer.succeed(CheckpointStore.CheckpointStore, store)),
+    Layer.provide(Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, projection)),
+    Layer.provide(Layer.succeed(WorkspaceHistory, historyService)),
+  );
+  return { threadId, runs, reads, layer };
+}
+
+describe("a Mate engine conversation's runs on the Diff page", () => {
+  it.effect("the Diff page shows the files a Mate's run changed", () =>
+    Effect.gen(function* () {
+      const harness = makeEngineRunsHarness();
+      const changes = yield* Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+        return yield* query.getRunChanges({ threadId: harness.threadId });
+      }).pipe(Effect.provide(harness.layer));
+
+      expect(
+        changes.turns.map((turn) => ({
+          turn: turn.checkpointTurnCount,
+          files: turn.files.map((file) => file.path),
+          at: turn.completedAt,
+        })),
+      ).toEqual([
+        { turn: 1, files: ["appdev/src/recipes.ts"], at: "2026-10-15T10:01:31.000Z" },
+        {
+          turn: 3,
+          files: ["appdev/src/auth.ts", "appdev/src/routes.ts"],
+          at: "2026-10-15T10:03:31.000Z",
+        },
+      ]);
+    }),
+  );
+
+  it.effect("a run that changed nothing is not offered as a turn", () =>
+    Effect.gen(function* () {
+      const harness = makeEngineRunsHarness();
+      const changes = yield* Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+        return yield* query.getRunChanges({ threadId: harness.threadId });
+      }).pipe(Effect.provide(harness.layer));
+
+      expect(changes.turns.map((turn) => turn.checkpointTurnCount)).not.toContain(2);
+    }),
+  );
+
+  it.effect("a Mate's run's diff is read from that run's own capture", () =>
+    Effect.gen(function* () {
+      const harness = makeEngineRunsHarness();
+      const result = yield* Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+        return yield* query.getTurnDiff({
+          threadId: harness.threadId,
+          fromTurnCount: 2,
+          toTurnCount: 3,
+          runId: `${harness.threadId}/r/3`,
+        });
+      }).pipe(Effect.provide(harness.layer));
+
+      expect(harness.reads.map((history) => history.runId)).toEqual([`${harness.threadId}/r/3`]);
+      expect(result).toMatchObject({
+        fromTurnCount: 2,
+        toTurnCount: 3,
+        diff: "patch of mate-conversation/r/3",
+      });
+    }),
   );
 });

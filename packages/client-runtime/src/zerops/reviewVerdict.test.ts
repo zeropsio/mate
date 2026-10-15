@@ -1281,7 +1281,7 @@ describe("changeReview: where should it run (the one question)", () => {
 
   it("asks it once, with an equal button for each tier the person may add", () => {
     expect(changeReview(first()).question).toEqual({
-      text: "Your code is on main. Where should it run?",
+      text: "Your code is on main. No stage or production runs it yet; Nova's preview is only for trying it out.",
       options: [
         { tier: "stage", label: "Add stage" },
         { tier: "production", label: "Add production" },
@@ -1289,6 +1289,26 @@ describe("changeReview: where should it run (the one question)", () => {
       dismiss: "Not now",
     });
   });
+
+  // The onboarding run: "Where should it run?" beside the Mate's "Your recipe box is online" and a
+  // service named appstage — as if nothing ran it, or the preview were the stage.
+  it.each([
+    [
+      "no stage yet",
+      { production: false, stage: false },
+      "Your code is on main. No stage or production runs it yet; Nova's preview is only for trying it out.",
+    ],
+    [
+      "a stage that picks it up",
+      { production: false, stage: true },
+      "Your code is on main and the stage picks it up. No production runs it yet; Nova's preview is only for trying it out.",
+    ],
+  ] as const)(
+    "says what runs the code with %s, never as if nothing did, and names the Mate's preview for what it is",
+    (_case, downstream, text) => {
+      expect(changeReview(first({ downstream })).question?.text).toBe(text);
+    },
+  );
 
   it.each<[string, Partial<ChangeReviewInput>]>([
     [

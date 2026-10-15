@@ -9,6 +9,7 @@ import {
   membershipChanged,
   nameProblem,
   pickerLevels,
+  projectAccessIntro,
   projectChips,
   roleCards,
   teamInviteStep,
@@ -241,4 +242,48 @@ describe("an invitation's address, checked", () => {
   ])("$sentence", ({ answer, step }) => {
     expect(teamInviteStep("petra.kralova@example.com", answer, "Acme")).toEqual(step);
   });
+});
+
+describe("what Project access says a role reaches by itself", () => {
+  it.each([
+    { role: "owner", says: "every project" },
+    { role: "admin", says: "every project" },
+    { role: "developer", says: "the projects they create and the projects you add here" },
+    { role: "guest", says: "only the projects you add here" },
+  ] as const)("a $role is told it reaches $says", ({ role, says }) => {
+    const { roleCode, canCreateProjects } = presetMembership(role);
+    expect(
+      projectAccessIntro({ roleCode, createsProjects: canCreateProjects, viewerGives: true }),
+    ).toContain(says);
+  });
+
+  it("never promises every project to a role that reaches none by itself", () => {
+    for (const createsProjects of [false, true]) {
+      const intro = projectAccessIntro({
+        roleCode: "NO_ACCESS",
+        createsProjects,
+        viewerGives: true,
+      });
+      expect(intro).not.toContain("all projects");
+      expect(intro).not.toContain("every project");
+    }
+  });
+
+  it.each([
+    { role: "guest", says: "only the projects they are given" },
+    { role: "developer", says: "the projects they create and the projects they are given" },
+    { role: "admin", says: "a project listed here at a different level" },
+  ] as const)(
+    "tells a viewer who may not change their access what a $role reaches, never what they would add or set",
+    ({ role, says }) => {
+      const { roleCode, canCreateProjects } = presetMembership(role);
+      const intro = projectAccessIntro({
+        roleCode,
+        createsProjects: canCreateProjects,
+        viewerGives: false,
+      });
+      expect(intro).toContain(says);
+      expect(intro).not.toMatch(/you add|Set a different/u);
+    },
+  );
 });
