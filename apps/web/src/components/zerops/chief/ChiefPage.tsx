@@ -133,8 +133,8 @@ export function ChiefStage({
                   data-zerops-surface="chief-set-up"
                   disabled={view.blocked !== undefined}
                   onClick={onSetUp}
-                  size="xl"
-                  variant="pill"
+                  size="lg"
+                  variant="primary"
                 >
                   Set up Chief
                 </Button>
@@ -157,8 +157,8 @@ export function ChiefStage({
               <Button
                 data-zerops-surface="chief-finish"
                 onClick={onFinish}
-                size="xl"
-                variant="pill"
+                size="lg"
+                variant="primary"
               >
                 Finish setting up
               </Button>

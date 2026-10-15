@@ -1159,8 +1159,8 @@ export function ComingBelow({
       <>
         {onTryAgain === undefined ? null : (
           <Button
-            variant="pill"
-            size="compact"
+            variant="primary"
+            size="md"
             disabled={setupFailureDetails.retrying || removing}
             onClick={onTryAgain}
           >
@@ -1180,20 +1180,20 @@ export function ComingBelow({
       </>
     ) : coming?.kind === "failed" ? (
       coming.verb === "redeploy" && onRedeploy !== undefined ? (
-        <Button variant="pill" size="compact" onClick={onRedeploy}>
+        <Button variant="primary" size="md" onClick={onRedeploy}>
           Redeploy
         </Button>
       ) : coming.verb === "remove" && onRemove !== undefined ? (
-        <Button variant="pill" size="compact" disabled={removing} onClick={onRemove}>
+        <Button variant="primary" size="md" disabled={removing} onClick={onRemove}>
           Remove
         </Button>
       ) : coming.verb === "finish-setup" && onFinishSetup !== undefined ? (
-        <Button variant="pill" size="compact" disabled={finishing} onClick={onFinishSetup}>
+        <Button variant="primary" size="md" disabled={finishing} onClick={onFinishSetup}>
           {FINISH_MATE_SETUP_VERB}
         </Button>
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
         <>
-          <Button variant="pill" size="compact" onClick={onTryAgain}>
+          <Button variant="primary" size="md" onClick={onTryAgain}>
             {MATE_STAND_UP_RETRY_LABEL}
           </Button>
           {ends?.onStartOver === undefined ? null : (
@@ -1210,8 +1210,8 @@ export function ComingBelow({
       ) : coming.verb === "add-credit" && addCredit !== undefined ? (
         <>
           <Button
-            variant="pill"
-            size="compact"
+            variant="primary"
+            size="md"
             render={<a href={addCredit} rel="noreferrer" target="_blank" />}
           >
             Add credit in HQ
@@ -1236,7 +1236,7 @@ export function ComingBelow({
         </>
       ) : coming.verb === "go-to-projects" && projects !== undefined ? (
         <>
-          <Button variant="pill" size="compact" render={projects}>
+          <Button variant="primary" size="md" render={projects}>
             Go to projects
           </Button>
           {ends === undefined ? null : (
@@ -1261,7 +1261,7 @@ export function ComingBelow({
   const pressRead = copy.note === null ? null : { text: copy.note };
   const finishVerb =
     coming?.kind === "coming" && onFinishSetup !== undefined ? (
-      <Button variant="pill" size="compact" disabled={finishing} onClick={onFinishSetup}>
+      <Button variant="primary" size="md" disabled={finishing} onClick={onFinishSetup}>
         {FINISH_MATE_SETUP_VERB}
       </Button>
     ) : null;
@@ -1271,7 +1271,7 @@ export function ComingBelow({
     pressRead ?? (setupFailure === undefined ? null : { text: SETUP_FAILURE_WORDS[setupFailure] });
   const setupVerb =
     pressRead === null && setupFailure !== undefined && onSetupAgain !== undefined ? (
-      <Button variant="pill" size="compact" onClick={onSetupAgain}>
+      <Button variant="primary" size="md" onClick={onSetupAgain}>
         Try again
       </Button>
     ) : null;
@@ -1317,8 +1317,8 @@ export function ComingBelow({
                 render={
                   <a href={setupFailureDetails.projectUrl} target="_blank" rel="noreferrer" />
                 }
-                size="compact"
-                variant="pill"
+                size="md"
+                variant="primary"
               >
                 Open the process in Zerops
               </Button>

@@ -408,8 +408,8 @@ export function MateEmptyStateView({
             <div className="flex flex-col items-center gap-3" role="status">
               <p>The message to {mate.name} didn't go through.</p>
               <Button
-                variant="pill"
-                size="compact"
+                variant="primary"
+                size="md"
                 disabled={standUpFailure.retrying}
                 onClick={standUpFailure.retry}
               >

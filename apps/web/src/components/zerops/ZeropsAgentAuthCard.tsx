@@ -361,7 +361,7 @@ function ZeropsAgentAuthRow({
           agentAuthAction(agent) === "register-again") &&
         onRecheck !== undefined &&
         ownership !== "someone-else" ? (
-          <Button size="compact" variant="pill" onClick={() => onRecheck(agent.agentId)}>
+          <Button size="md" variant="primary" onClick={() => onRecheck(agent.agentId)}>
             {agentAuthAction(agent) === "check-again" ? "Check again" : "Register again"}
           </Button>
         ) : (
@@ -520,8 +520,8 @@ function ZeropsLoginRow({
               onClick={() => {
                 onSignIn(login);
               }}
-              size="compact"
-              variant="pill"
+              size="md"
+              variant="primary"
             >
               Continue authorization
             </Button>
@@ -544,8 +544,8 @@ function ZeropsLoginRow({
           onRecheck !== undefined ? (
             <Button
               disabled={pending}
-              size="compact"
-              variant="pill"
+              size="md"
+              variant="primary"
               onClick={() => onRecheck(login.agent, login.id)}
             >
               Check again
@@ -563,8 +563,8 @@ function ZeropsLoginRow({
               onClick={() => {
                 onSignIn(login);
               }}
-              size="compact"
-              variant={someoneElses ? "link" : "pill"}
+              size="md"
+              variant={someoneElses ? "link" : "primary"}
             >
               {someoneElses ? AGENT_OWNERSHIP_RECOVERY_LABEL : "Sign in"}
             </Button>
@@ -686,7 +686,7 @@ function AddLoginControl({
             }}
             size="compact"
             type="button"
-            variant={kind === "subscription" ? "pill" : "outline"}
+            variant={kind === "subscription" ? "primary" : "outline"}
           >
             Another account
           </Button>
@@ -696,7 +696,7 @@ function AddLoginControl({
             }}
             size="compact"
             type="button"
-            variant={kind === "apiKey" ? "pill" : "outline"}
+            variant={kind === "apiKey" ? "primary" : "outline"}
           >
             API key
           </Button>
@@ -740,7 +740,7 @@ function AddLoginControl({
         >
           Cancel
         </Button>
-        <Button disabled={!ready} size="compact" type="submit" variant="pill">
+        <Button disabled={!ready} size="md" type="submit" variant="primary">
           {needsKey ? "Add key" : "Add and sign in"}
         </Button>
       </div>
@@ -853,8 +853,8 @@ function ZeropsAgentAuthActionSlot({
             onClick={() => {
               onSignIn(agent.agentId);
             }}
-            size="compact"
-            variant="pill"
+            size="md"
+            variant="primary"
           >
             Continue authorization
           </Button>
@@ -870,8 +870,8 @@ function ZeropsAgentAuthActionSlot({
           onClick={() => {
             onSignIn(agent.agentId);
           }}
-          size="compact"
-          variant="pill"
+          size="md"
+          variant="primary"
         >
           Review authorization
         </Button>
@@ -933,8 +933,8 @@ function ZeropsAgentAuthActionButton({
         onClick={() => {
           onSignIn(agent.agentId);
         }}
-        size="compact"
-        variant={ownership === "someone-else" ? "link" : "pill"}
+        size="md"
+        variant={ownership === "someone-else" ? "link" : "primary"}
       >
         {ownership === "someone-else"
           ? AGENT_OWNERSHIP_RECOVERY_LABEL

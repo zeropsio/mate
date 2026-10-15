@@ -41,7 +41,7 @@ export function environmentConnectionBannerItem(input: {
       ? {}
       : {
           actions: (
-            <Button size="compact" variant="pill" onClick={input.onRetry}>
+            <Button size="md" variant="primary" onClick={input.onRetry}>
               {copy.action}
             </Button>
           ),
@@ -125,30 +125,30 @@ export function mateVoiceBannerItem(input: {
             <>
               {containerAction === null || input.onContainerAction === undefined ? null : (
                 <Button
-                  variant="pill"
+                  variant="primary"
                   disabled={input.busy}
-                  size="compact"
+                  size="md"
                   onClick={() => input.onContainerAction?.(containerAction)}
                 >
                   {mateRecoveryActionLabel(containerAction, input.busy)}
                 </Button>
               )}
               {askAgain === null ? null : (
-                <Button size="compact" variant="pill" onClick={input.onRetry}>
+                <Button size="md" variant="primary" onClick={input.onRetry}>
                   {askAgain}
                 </Button>
               )}
               {openInZerops ? (
                 <Button
                   render={<a href={input.projectUrl} target="_blank" rel="noreferrer" />}
-                  size="compact"
-                  variant="pill"
+                  size="md"
+                  variant="primary"
                 >
                   Open in Zerops
                 </Button>
               ) : null}
               {toProjects ? (
-                <Button render={input.projects} size="compact" variant="pill">
+                <Button render={input.projects} size="md" variant="primary">
                   Go to projects
                 </Button>
               ) : null}

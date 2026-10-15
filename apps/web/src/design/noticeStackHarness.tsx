@@ -34,7 +34,7 @@ const REFUSED: ComposerBannerStackItem = {
   title: "Couldn't connect to Fen",
   description: "Fen refused the connection.",
   actions: (
-    <Button size="xs" variant="pill">
+    <Button size="md" variant="primary">
       Try again
     </Button>
   ),
