@@ -8617,7 +8617,7 @@ function ConversationView(props: ChatViewProps) {
                         "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",
                         externalComposerDrawerAttached && "chat-composer-glass-shell-attached",
                         showComposerContextStrip &&
-                          zeropsFooter === "composer" &&
+                          zeropsFooter !== "read-only" &&
                           "chat-composer-glass-shell-with-context",
                       )}
                     >
@@ -8781,7 +8781,9 @@ function ConversationView(props: ChatViewProps) {
                           data-terminal-open={terminalUiState.terminalOpen ? "true" : undefined}
                           className="relative z-0"
                         >
-                          {showComposerContextStrip && zeropsFooter === "composer" && (
+                          {/* Drawn in the held room too, unseen with it, so the composer's
+                              arrival keeps the page where it stands. */}
+                          {showComposerContextStrip && zeropsFooter !== "read-only" && (
                             <div className="pointer-events-auto">
                               <BranchToolbar
                                 ref={branchToolbarRef}
