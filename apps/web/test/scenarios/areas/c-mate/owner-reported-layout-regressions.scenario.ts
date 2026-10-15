@@ -1101,10 +1101,12 @@ describe("owner-reported layout regressions", () => {
               yield* s.given.signedIn;
               yield* Effect.promise(async () => {
                 await s.page.goto(`${s.web.origin}/zerops`);
+                // Both cards drawn: the overview paints its page whole, once it is read.
                 await s.page.waitForFunction(
                   () =>
-                    document.querySelectorAll('[data-zerops-surface="project-cards"] article')
-                      .length === 2,
+                    [
+                      ...document.querySelectorAll('[data-zerops-surface="project-cards"] article'),
+                    ].filter((card) => card.getBoundingClientRect().height > 0).length === 2,
                 );
                 const cards = await s.page.evaluate(() =>
                   [

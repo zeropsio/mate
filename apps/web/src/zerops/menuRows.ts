@@ -13,6 +13,7 @@ import {
   isListedMateProject,
   listedProjectAtom,
   projectGoneAtom,
+  shownHqMatesAnsweredAtom,
   shownHqVerdictAtom,
   shownProjectsAtom,
 } from "@t3tools/client-runtime/data";
@@ -57,6 +58,7 @@ export function menuRowsAtom<Row extends CandidateRow>(
         projects: listing,
         hq: navigation,
         verdict: get(shownHqVerdictAtom),
+        matesAnswered: get(shownHqMatesAnsweredAtom),
         waitedOut: standing.waitedOut,
       })
     )

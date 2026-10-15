@@ -37,6 +37,11 @@ export interface SeededHq {
   readonly mates?: Readonly<Record<string, MateLiveView>>;
   /** The attention HQ relays live of each of those Mates, by project. */
   readonly attention?: Readonly<Record<string, MateAttention>>;
+  /**
+   * Placed Mates whose attention HQ has not answered yet. Every other placed Mate's is answered —
+   * relayed where `mates` names it, else answered with nothing — as HQ's catchup answers each.
+   */
+  readonly attentionUnanswered?: ReadonlyArray<string>;
   readonly people?: Readonly<
     Record<string, { readonly name: string; readonly clientUserId?: string }>
   >;
@@ -74,10 +79,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     hqPressesScope(orgId),
     hqLifecycleScope(orgId),
   ];
-  const mates = Object.keys(seed.mates ?? {}).flatMap((projectId) => [
-    hqMateScope(orgId, projectId),
-    ...(seed.attention?.[projectId] === undefined ? [] : [hqMateAttentionScope(orgId, projectId)]),
-  ]);
   const live = (key: ScopeKey | ReturnType<typeof linkKeys.hq>) =>
     store.state().streams.get(key)?.phase === "live";
   // What is live already stays so: seeding again moves HQ's word, not its streams.
@@ -86,17 +87,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     event(linkKeys.hq(orgId), { kind: "handshake" });
     event(linkKeys.hq(orgId), { kind: "baseline-committed" });
   }
-  const opening = [...navigation, ...mates].filter((scope) => !live(scope));
-  for (const scope of opening) {
-    event(scope, { kind: "demand", demanded: true });
-    event(scope, { kind: "attempt" });
-    event(scope, { kind: "handshake" });
-  }
-  const generations = (scopes: ReadonlyArray<ScopeKey>) =>
-    scopes.map((scope) => ({
-      scope,
-      generation: store.state().streams.get(scope)?.generation ?? 0,
-    }));
   // HQ relays only the Mates it places: those a seed names alone are placed in no application.
   const structure: HqStructure | CanonicalHqStructure | undefined =
     seed.structure ??
@@ -110,6 +100,37 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
             mate: { face: "" },
           })),
         });
+  // Each placed Mate HQ relays nothing of yet: its attention answered empty, as HQ's catchup does.
+  const quiet = [
+    ...(structure?.apps ?? []).flatMap((app) =>
+      app.projects.flatMap((project) => (project.mate == null ? [] : [project.projectId])),
+    ),
+    ...(structure?.ungrouped ?? []).map((project) => project.projectId),
+  ].filter(
+    (projectId) =>
+      seed.mates?.[projectId] === undefined &&
+      seed.attentionUnanswered?.includes(projectId) !== true,
+  );
+  const mates = [
+    ...Object.keys(seed.mates ?? {}).flatMap((projectId) => [
+      hqMateScope(orgId, projectId),
+      ...(seed.attention?.[projectId] === undefined
+        ? []
+        : [hqMateAttentionScope(orgId, projectId)]),
+    ]),
+    ...quiet.map((projectId) => hqMateScope(orgId, projectId)),
+  ];
+  const opening = [...navigation, ...mates].filter((scope) => !live(scope));
+  for (const scope of opening) {
+    event(scope, { kind: "demand", demanded: true });
+    event(scope, { kind: "attempt" });
+    event(scope, { kind: "handshake" });
+  }
+  const generations = (scopes: ReadonlyArray<ScopeKey>) =>
+    scopes.map((scope) => ({
+      scope,
+      generation: store.state().streams.get(scope)?.generation ?? 0,
+    }));
   const mateOf = (mate: NonNullable<HqStructure["ungrouped"][number]["mate"]>) => ({
     face: mate.face,
     madeBy: mate.madeBy ?? null,
@@ -275,6 +296,11 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     });
     store.dispatch({ kind: "hq-ready", scopes });
   }
+  if (quiet.length > 0)
+    store.dispatch({
+      kind: "hq-ready",
+      scopes: generations(quiet.map((projectId) => hqMateScope(orgId, projectId))),
+    });
   for (const scope of opening) event(scope, { kind: "baseline-committed" });
   if (seed.live === false) {
     event(linkKeys.hq(orgId), {

@@ -362,6 +362,48 @@ describe("streamTrouble — whether a stream's trouble is worth saying", () => {
       trouble: "retrying",
     },
     {
+      name: "A child's grace starts at its own first attempt, not while it waits for its parent",
+      stream: (() => {
+        const child = initialStream({ parent: "zerops:org", mode: "sampled" });
+        const waiting = run(child, [{ kind: "demand", demanded: true }], 0);
+        const late = run(waiting, [{ kind: "grace-over", since: 0 }], 5_000);
+        return run(late, [{ kind: "attempt" }, failed], 6_000);
+      })(),
+      trouble: null,
+    },
+    {
+      name: "A session repair inside the grace is a blink",
+      stream: run(
+        root,
+        [
+          { kind: "demand", demanded: true },
+          { kind: "fault", jitter: 0, fault: { outcome: "recoverable-session", message: "401" } },
+        ],
+        0,
+      ),
+      trouble: null,
+    },
+    {
+      name: "A session repair still under way past the grace is retrying",
+      stream: run(
+        run(
+          root,
+          [
+            { kind: "demand", demanded: true },
+            {
+              kind: "fault",
+              jitter: 0,
+              fault: { outcome: "recoverable-session", message: "401" },
+            },
+          ],
+          0,
+        ),
+        [{ kind: "grace-over", since: 0 }],
+        STREAM_POLICY.reconnectGraceMs,
+      ),
+      trouble: "retrying",
+    },
+    {
       name: "A refusal is trouble at once",
       stream: run(
         root,

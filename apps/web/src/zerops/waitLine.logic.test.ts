@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  routePendingLine,
   BOOT_WAIT_LINE_MS,
   bootWaitLine,
   openingConversationLine,
@@ -60,4 +61,18 @@ describe("a wait's one line", () => {
     expect(openingConversationLine("Milo")).toBe("Opening Milo's conversation…");
     expect(openingConversationLine(undefined)).toBe("Opening the conversation…");
   });
+});
+
+describe("routePendingLine — what a route says while its code loads", () => {
+  it.each([
+    { pathname: "/zerops", line: READING_PROJECTS_LINE },
+    { pathname: "/", line: READING_PROJECTS_LINE },
+    { pathname: "/settings/general", line: "Loading…" },
+    { pathname: "/env-1/thread-1", line: "Loading…" },
+  ])(
+    "The overview's route loading says the overview's one wait: $pathname",
+    ({ pathname, line }) => {
+      expect(routePendingLine(pathname)).toBe(line);
+    },
+  );
 });

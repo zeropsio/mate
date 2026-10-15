@@ -116,7 +116,7 @@ export interface StreamState {
    */
   readonly held?: true;
   /**
-   * When a stream not live before began trying, while that was less than
+   * When a stream not live before made its first attempt (a child: on its parent), while that was less than
    * {@link STREAM_POLICY.reconnectGraceMs} ago and it is not live yet: a failed first attempt is
    * retried within a second, a blink like a reconnect's, and not trouble until the grace runs out
    * ({@link streamTrouble}). Nothing was read, so nothing reads as live.
@@ -309,14 +309,14 @@ export const graceSince = (stream: StreamState): number | undefined =>
 export function streamTrouble(stream: StreamState): "stopped" | "retrying" | null {
   if (stream.phase === "refused" || (stream.phase === "paused" && stream.fault !== null))
     return "stopped";
-  return stream.failures > 0 && !liveOrHeld(stream) && stream.patientSince === undefined
-    ? "retrying"
-    : null;
+  // A session repair counts no failure, and has no deadline of its own: it is bounded the same.
+  const failing = stream.failures > 0 || stream.phase === "reauthenticating";
+  return failing && !liveOrHeld(stream) && stream.patientSince === undefined ? "retrying" : null;
 }
 
 /**
  * One rule for every stream: leaving live for a reconnect holds what it read as current for the
- * grace, and dates the loss; a first try from rest is given the same grace before a failure is
+ * grace, and dates the loss; a first attempt is given the same grace before a failure is
  * trouble; live again forgets all of it; a refusal, a pause or a close ends either grace.
  */
 function hold(before: StreamState, after: StreamState, now: number): StreamState {
@@ -332,10 +332,14 @@ function hold(before: StreamState, after: StreamState, now: number): StreamState
     return rest;
   }
   if (before.phase === "live") return { ...after, lostAt: now, held: true };
-  // From rest — idle, paused, refused — a stream never lost from live starts its first try.
-  return !RECONNECTING.has(before.phase) && after.lostAt === undefined
-    ? { ...after, patientSince: now }
-    : after;
+  // A stream never lost from live starts its grace with its first attempt — from rest, or a child's
+  // first registration on its parent — never while it only waits for its parent.
+  const firstTry =
+    after.phase === "connecting" &&
+    after.lostAt === undefined &&
+    after.patientSince === undefined &&
+    (!RECONNECTING.has(before.phase) || after.failures === 0);
+  return firstTry ? { ...after, patientSince: now } : after;
 }
 
 export function transition(state: StreamState, event: StreamEvent, now: number): StreamTransition {
