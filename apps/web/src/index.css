@@ -8560,44 +8560,6 @@ label.tm-advanced-row:not([data-disabled]) {
 }
 
 /* A filter that leaves nothing: a calm face, what it would show, and the way back. */
-.ov-filter-empty {
-  display: flex;
-  max-width: 380px;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 40px 4px;
-}
-
-.ov-filter-empty-title {
-  margin-top: 8px;
-  color: var(--foreground);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 22px;
-}
-
-.ov-filter-empty-line {
-  color: var(--muted-foreground);
-  font-size: 14px;
-  line-height: 20px;
-  text-wrap: pretty;
-}
-
-.ov-filter-empty-back {
-  margin-top: 6px;
-  color: var(--primary);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .ov-filter-empty-back:hover {
-    text-decoration: underline 1px;
-    text-underline-offset: 3px;
-  }
-}
-
 /* A place not set up yet: its way to be, where the person may set it up. */
 .ov-setup {
   display: inline-flex;

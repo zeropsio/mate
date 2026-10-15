@@ -41,6 +41,8 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
+import { EmptyState } from "../ui/empty";
+import { Loading } from "../ui/loading";
 import { ResourceTelemetryDiagnostics } from "./ResourceTelemetryDiagnostics";
 import { SettingsPageContainer, SettingsSection, useRelativeTimeTick } from "./settingsLayout";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -155,8 +157,17 @@ function StatsGrid({ children }: { children: ReactNode }) {
   );
 }
 
-export function EmptyRows({ label }: { label: string }) {
-  return <div className="px-4 py-4 text-xs text-muted-foreground sm:px-5">{label}</div>;
+/** A diagnostics table's rows while they are read, or the one line saying there are none. */
+function RowsOrNone({ reading, label, none }: { reading: boolean; label: string; none: string }) {
+  return (
+    <div className="px-4 py-2 sm:px-5">
+      {reading ? (
+        <Loading count={3} label={label} shape="lines" />
+      ) : (
+        <EmptyState size="row">{none}</EmptyState>
+      )}
+    </div>
+  );
 }
 
 function ExpandableText({
@@ -1169,7 +1180,7 @@ export function DiagnosticsSettingsPanel() {
             ))}
           </DiagnosticsTable>
         ) : (
-          <EmptyRows label={isInitialLoading ? "Loading failures..." : "No failed spans found."} />
+          <RowsOrNone label="Failures" none="No failed spans found." reading={isInitialLoading} />
         )}
       </SettingsSection>
 
@@ -1197,8 +1208,10 @@ export function DiagnosticsSettingsPanel() {
             ))}
           </DiagnosticsTable>
         ) : (
-          <EmptyRows
-            label={isInitialLoading ? "Loading failure groups..." : "No repeated failures found."}
+          <RowsOrNone
+            label="Failure groups"
+            none="No repeated failures found."
+            reading={isInitialLoading}
           />
         )}
       </SettingsSection>
@@ -1228,7 +1241,7 @@ export function DiagnosticsSettingsPanel() {
             ))}
           </DiagnosticsTable>
         ) : (
-          <EmptyRows label={isInitialLoading ? "Loading slow spans..." : "No spans found."} />
+          <RowsOrNone label="Slow spans" none="No spans found." reading={isInitialLoading} />
         )}
       </SettingsSection>
 
@@ -1291,8 +1304,10 @@ export function DiagnosticsSettingsPanel() {
             </table>
           </ScrollArea>
         ) : (
-          <EmptyRows
-            label={isInitialLoading ? "Loading recent logs..." : "No warnings or errors found."}
+          <RowsOrNone
+            label="Recent logs"
+            none="No warnings or errors found."
+            reading={isInitialLoading}
           />
         )}
       </SettingsSection>
@@ -1325,7 +1340,7 @@ export function DiagnosticsSettingsPanel() {
             ))}
           </DiagnosticsTable>
         ) : (
-          <EmptyRows label={isInitialLoading ? "Loading span names..." : "No spans found."} />
+          <RowsOrNone label="Span names" none="No spans found." reading={isInitialLoading} />
         )}
       </SettingsSection>
     </SettingsPageContainer>

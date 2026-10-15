@@ -162,6 +162,7 @@ import {
 import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { unreadFlowWords } from "~/zerops/hqRead.logic";
+import { EmptyState } from "../ui/empty";
 import { Loading } from "../ui/loading";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
@@ -797,11 +798,16 @@ export function ZeropsGroupPane({
       )}
       <SideSection title="History">
         {repo === undefined ? (
-          <Empty
-            action="Set up an environment"
-            onAction={onSetUp}
-            text="No repository is declared for this project’s services yet."
-          />
+          <EmptyState
+            action={
+              <Button onClick={onSetUp} size="sm" variant="outline">
+                Set up an environment
+              </Button>
+            }
+            size="row"
+          >
+            No repository is declared for this project’s services yet.
+          </EmptyState>
         ) : (
           <ZeropsHistoryView
             history={history}
@@ -2043,25 +2049,6 @@ export function detailTrail(
 }
 
 /** A section with nothing in it yet, and the way to put something there. */
-export function Empty({
-  text,
-  action,
-  onAction,
-}: {
-  readonly text: string;
-  readonly action: string;
-  readonly onAction: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <Note>{text}</Note>
-      <Button onClick={onAction} size="sm" variant="outline">
-        {action}
-      </Button>
-    </div>
-  );
-}
-
 /** A stop's version column shares its page's runtime answer, including a failure or wait. */
 function stopLineVersion(deployment: Shown<Deployment> | undefined, row: EnvironmentRow): string {
   return stopView({ deployment: deployment ?? UNREAD_DEPLOYMENT, row, nowMs: 0 }).line;

@@ -113,9 +113,6 @@ export function RowMeta({ children }: { readonly children: ReactNode }) {
 }
 
 /** A section with nothing in it yet, said once inside its container. */
-export function SheetEmpty({ children }: { readonly children: ReactNode }) {
-  return <p className="py-3 text-muted-foreground text-sm">{children}</p>;
-}
 
 /** A state's mark and its word, together. */
 export function Face({ word, tone }: { readonly word: string; readonly tone: FaceTone }) {

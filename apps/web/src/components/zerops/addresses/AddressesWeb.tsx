@@ -17,6 +17,7 @@ import { useId, useState } from "react";
 
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
+import { EmptyState } from "../../ui/empty";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
@@ -42,7 +43,6 @@ import {
   guardTitle,
   OthersList,
   RowMeta,
-  SheetEmpty,
   SheetRow,
   SheetSection,
   Trouble,
@@ -170,11 +170,11 @@ export function AddressesWeb({
         />
       ))}
       {place.domains.length === 0 && place.zerops.length === 0 ? (
-        <SheetEmpty>
+        <EmptyState size="row">
           {place.webTargets.length === 0
             ? `Nothing in ${ctx.placeName} serves web pages yet.`
             : `${ctx.placeName} has no web address yet.`}
-        </SheetEmpty>
+        </EmptyState>
       ) : null}
     </SheetSection>
   );

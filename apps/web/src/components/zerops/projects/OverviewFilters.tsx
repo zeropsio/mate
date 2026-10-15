@@ -6,6 +6,8 @@
 import { Link } from "@tanstack/react-router";
 
 import { Tab } from "../../ui/tab-strip";
+import { Button } from "../../ui/button";
+import { EmptyState } from "../../ui/empty";
 import { MateFace } from "../primitives";
 import type { OverviewShow } from "./projectsView.logic";
 
@@ -92,26 +94,23 @@ export function OverviewFilterEmpty({
   readonly show: OverviewShow;
   readonly onShow?: ((show: OverviewShow | undefined) => void) | undefined;
 }) {
+  const back =
+    onShow === undefined ? (
+      <Button render={<Link search={{}} to="/zerops" />} size="sm" variant="link">
+        Show all projects
+      </Button>
+    ) : (
+      <Button onClick={() => onShow(undefined)} size="sm" variant="link">
+        Show all projects
+      </Button>
+    );
   return (
-    <div className="ov-filter-empty" data-zerops-surface="overview-filter-empty" role="status">
-      <MateFace size={32} state="idle" tint="slate" />
-      <p className="ov-filter-empty-title">
-        {show === "waiting" ? "Nothing waits on you" : "No Mate of yours yet"}
-      </p>
-      <p className="ov-filter-empty-line">
+    <div data-zerops-surface="overview-filter-empty" role="status">
+      <EmptyState action={back} mark={<MateFace size={32} state="idle" tint="slate" />}>
         {show === "waiting"
-          ? "A question from one of your Mates, a change to review or a release to make shows up here."
-          : "The projects where you have a Mate show up here."}
-      </p>
-      {onShow === undefined ? (
-        <Link className="ov-filter-empty-back" search={{}} to="/zerops">
-          Show all projects
-        </Link>
-      ) : (
-        <button className="ov-filter-empty-back" onClick={() => onShow(undefined)} type="button">
-          Show all projects
-        </button>
-      )}
+          ? "Nothing waits on you. A question from one of your Mates, a change to review or a release to make shows up here."
+          : "No Mate of yours yet. The projects where you have a Mate show up here."}
+      </EmptyState>
     </div>
   );
 }

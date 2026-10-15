@@ -14,7 +14,10 @@ import { EllipsisIcon, PlusIcon, ShieldIcon, XIcon } from "lucide-react";
 import { useId, useState } from "react";
 
 import { Button } from "../../ui/button";
+import { EmptyState } from "../../ui/empty";
+import { Failure } from "../../ui/failure";
 import { Input } from "../../ui/input";
+import { Loading } from "../../ui/loading";
 import { Label } from "../../ui/label";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Radio, RadioGroup } from "../../ui/radio-group";
@@ -34,7 +37,6 @@ import {
   guardTitle,
   OthersList,
   RowMeta,
-  SheetEmpty,
   SheetRow,
   SheetSection,
   Trouble,
@@ -127,9 +129,9 @@ export function AddressesDirect({
       title="Direct access"
     >
       {place.portsState === "failed" ? (
-        <SheetEmpty>You can't see {ctx.placeName}'s open ports.</SheetEmpty>
+        <Failure cause={`You can't see ${ctx.placeName}'s open ports.`} />
       ) : place.portsState === "reading" ? (
-        <SheetEmpty>Reading…</SheetEmpty>
+        <Loading count={1} label={`${ctx.placeName}'s open ports`} shape="rows" />
       ) : (
         <>
           {place.ports.map((port) =>
@@ -157,11 +159,11 @@ export function AddressesDirect({
             ),
           )}
           {place.ports.length > 0 || opening ? null : (
-            <SheetEmpty>
+            <EmptyState size="row">
               {place.portTargets.length === 0
                 ? `None of ${ctx.placeName}'s services can open a port directly.`
                 : "No open ports. Open one to let a database client connect."}
-            </SheetEmpty>
+            </EmptyState>
           )}
         </>
       )}

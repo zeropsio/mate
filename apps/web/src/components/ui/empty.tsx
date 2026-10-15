@@ -155,9 +155,7 @@ function EmptyState({
   }
   return (
     <Empty size={size === "page" ? "default" : "compact"}>
-      {mark === undefined || mark === null ? null : (
-        <EmptyMedia variant={size === "page" ? "default" : "icon"}>{mark}</EmptyMedia>
-      )}
+      {mark === undefined || mark === null ? null : <EmptyMedia>{mark}</EmptyMedia>}
       <EmptyDescription>{children}</EmptyDescription>
       {action === undefined || action === null ? null : <EmptyContent>{action}</EmptyContent>}
     </Empty>
