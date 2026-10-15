@@ -8,36 +8,19 @@ import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix } from "../Specim
 import { specimenLabel, variantsOf } from "../specimenLabel";
 
 const VARIANTS = variantsOf<ButtonVariant>({
-  default: true,
-  destructive: true,
-  "destructive-outline": true,
-  ghost: true,
-  "ghost-muted": true,
-  "ghost-primary": true,
-  "ghost-destructive": true,
-  glass: true,
-  link: true,
-  outline: true,
-  "warning-outline": true,
+  primary: true,
   secondary: true,
-  pill: true,
+  ghost: true,
+  destructive: true,
+  link: true,
 });
 
 const SIZES = variantsOf<ButtonSize>({
-  xs: true,
   sm: true,
-  default: true,
+  md: true,
   lg: true,
-  xl: true,
-  compact: true,
-  micro: true,
-  "sm-multiline": true,
-  icon: true,
-  "icon-xs": true,
   "icon-sm": true,
-  "icon-lg": true,
-  "icon-xl": true,
-  "icon-micro": true,
+  "icon-md": true,
 });
 
 const TEXT_SIZES = SIZES.filter((size) => !size.startsWith("icon"));
@@ -48,6 +31,35 @@ const INLINE_TONES = ["default", "muted", "destructive", "picker"] as const;
 function ButtonSpecimens() {
   return (
     <div className="flex flex-col gap-8">
+      <SpecimenBlock title="One next step, the rest beside it">
+        <SpecimenGrid>
+          <Specimen label="a dialog's footer: secondary, then primary">
+            <div className="flex items-center gap-2">
+              <Button variant="secondary">Cancel</Button>
+              <Button>Create project</Button>
+            </div>
+          </Specimen>
+          <Specimen label="a dense row: ghost tool, sm secondary">
+            <div className="flex items-center gap-1">
+              <Button aria-label="Add" size="icon-sm" variant="ghost">
+                <PlusIcon />
+              </Button>
+              <Button size="sm" variant="secondary">
+                Open
+              </Button>
+            </div>
+          </Specimen>
+          <Specimen label="a page's one hero action: lg">
+            <Button size="lg">Set up HQ</Button>
+          </Specimen>
+          <Specimen label="what deletes: destructive, beside its way out">
+            <div className="flex items-center gap-2">
+              <Button variant="secondary">Keep it</Button>
+              <Button variant="destructive">Delete Fen</Button>
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
       <SpecimenBlock title="Variants × text sizes">
         <SpecimenMatrix
           rowProp="variant"
@@ -121,13 +133,6 @@ function ButtonSpecimens() {
               <Button variant="secondary">Deploy the storefront to every preview</Button>
             </div>
           </Specimen>
-          <Specimen label='size="sm-multiline" in a 160px box'>
-            <div className="flex w-40">
-              <Button size="md" variant="secondary">
-                Deploy the storefront to every preview
-              </Button>
-            </div>
-          </Specimen>
           <Specimen label='render={<a href="#button" />}'>
             <Button render={<a href="#button" />} variant="link">
               A link that looks like a button
@@ -153,8 +158,9 @@ function ButtonSpecimens() {
 export default defineKitSection({
   id: "button",
   title: "Button",
-  purpose: "A press that acts; its variant says how loud, its size how dense.",
-  group: "Kit",
+  purpose:
+    "The one action: primary for the single next step, secondary beside it, ghost for quiet tools, destructive only for what deletes, link inside text. A rectangle on the control radius; md by default, sm in dense rows, lg for a page's one hero action.",
+  group: "Chosen",
   kind: "Actions",
   source: "apps/web/src/components/ui/button.tsx",
   render: () => <ButtonSpecimens />,

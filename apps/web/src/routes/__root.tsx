@@ -659,7 +659,7 @@ function EventRouter() {
         type: "warning",
         title: "Invalid keybindings configuration",
         description: decision.message,
-        actionVariant: "outline",
+        actionVariant: "secondary",
         actionProps: {
           children: "Open keybindings.json",
           onClick: () => {

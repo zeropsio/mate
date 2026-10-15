@@ -254,8 +254,8 @@ function ActionSpecimens() {
         source="apps/web/src/components/chat/MessageCopyButton.tsx"
         uses={2}
       >
-        {(["outline", "ghost"] as const).flatMap((variant) =>
-          (["xs", "icon-xs"] as const).map((size) => (
+        {(["secondary", "ghost"] as const).flatMap((variant) =>
+          (["sm", "icon-sm"] as const).map((size) => (
             <Specimen key={`${variant}-${size}`} label={specimenLabel({ variant, size })}>
               <MessageCopyButton size={size} text="Deployed." variant={variant} />
             </Specimen>

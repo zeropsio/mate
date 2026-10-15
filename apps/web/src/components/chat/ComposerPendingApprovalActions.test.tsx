@@ -113,7 +113,7 @@ describe("ComposerPendingApprovalActions", () => {
     const rowActions = buttonState.actions.filter(({ decision }) => decision !== undefined);
     expect(rowActions.map(({ decision, tone, variant }) => ({ decision, tone, variant }))).toEqual([
       { decision: "acceptForSession", tone: "secondary", variant: "secondary" },
-      { decision: "decline", tone: "quiet", variant: "ghost-muted" },
+      { decision: "decline", tone: "quiet", variant: "ghost" },
       { decision: "accept", tone: "primary", variant: "ask" },
     ]);
     // The overflow trigger is the one button without a decision.

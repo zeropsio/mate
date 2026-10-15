@@ -49,7 +49,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
             : option.decision === "acceptForSession" || option.decision === "acceptAlways"
               ? "secondary"
               : "quiet";
-        const variant = actionTone === "secondary" ? "secondary" : "ghost-muted";
+        const variant = actionTone === "secondary" ? "secondary" : "ghost";
 
         const label = (
           <>

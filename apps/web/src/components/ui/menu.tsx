@@ -92,7 +92,7 @@ function MenuItem({
         variant === "ghost" &&
           buttonVariants({
             variant: "ghost",
-            size: "compact",
+            size: "sm",
             className: "h-auto min-h-7 w-full sm:text-xs",
           }),
         density === "touch" && "min-h-10 sm:min-h-10",

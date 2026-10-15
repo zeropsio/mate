@@ -1,11 +1,15 @@
 import type { ReactNode } from "react";
 
-/** Who made what a section shows: the shared kit, or a feature's own version of the same thing. */
-export const KIT_GROUPS = ["Kit", "Home-made"] as const;
+/**
+ * Who made what a section shows: the system's chosen piece (what features use), the rest of the
+ * shared kit, or a feature's own version of the same thing.
+ */
+export const KIT_GROUPS = ["Chosen", "Kit", "Home-made"] as const;
 export type KitGroup = (typeof KIT_GROUPS)[number];
 
 /** What a component is for; the index lists sections by it inside each group. */
 export const KIT_KINDS = [
+  "Foundations",
   "Actions",
   "Labels",
   "Identity",

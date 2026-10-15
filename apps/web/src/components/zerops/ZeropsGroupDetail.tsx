@@ -783,7 +783,7 @@ export function ZeropsGroupPane({
                         {slot.note.text}
                       </span>
                       {slot.note.review ? (
-                        <ReleaseAction release={release} variant="outline" />
+                        <ReleaseAction release={release} variant="secondary" />
                       ) : null}
                     </li>
                   )}
@@ -1527,7 +1527,7 @@ export function ZeropsStopPane({
       <div>
         <VerdictPanel detail={verdict.detail} text={verdict.text} tone={verdict.tone}>
           {verb?.kind === "release" ? (
-            <ReleaseAction release={release} size="compact" variant="outline" />
+            <ReleaseAction release={release} size="sm" variant="secondary" />
           ) : verb?.kind === "run-again" && runAgain !== undefined ? (
             <Button
               data-zerops-primary-action="Run again"

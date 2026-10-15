@@ -96,16 +96,16 @@ export interface ReleaseOffer {
 export function ReleaseAction({
   release,
   label = REVIEW_RELEASE_LABEL,
-  size = "sm",
+  size = "md",
   variant,
 }: {
   readonly release: ReleaseOffer;
   /** The door's words where the caller has them; *Review release* otherwise. */
   readonly label?: string;
-  /** `compact` where it stands among the projects page's verbs. */
-  readonly size?: "sm" | "compact";
-  /** `outline` in a stop's verdict, where a verb stands beside the sentence it acts on. */
-  readonly variant?: "outline";
+  /** `sm` where it stands among the projects page's verbs. */
+  readonly size?: "md" | "sm";
+  /** `secondary` in a stop's verdict, where a verb stands beside the sentence it acts on. */
+  readonly variant?: "secondary";
 }) {
   if (!release.offered && !release.releasing) return null;
   return (

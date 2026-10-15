@@ -28,18 +28,6 @@ const buttonVariants = cva(
         lg: "h-10 gap-2 px-[calc(--spacing(4)-1px)] text-body",
         "icon-sm": "size-6 [&_svg:not([class*='size-'])]:size-3.5",
         "icon-md": "size-8",
-        // Migrating: deleted once every call site names a size above.
-        default: "h-8 gap-1.5 px-[calc(--spacing(3)-1px)] text-body",
-        compact: "h-6 gap-1 px-[calc(--spacing(2)-1px)] text-caption",
-        icon: "size-8",
-        "icon-lg": "size-8",
-        "icon-micro": "size-6",
-        "icon-xl": "size-8",
-        "icon-xs": "size-6",
-        micro: "h-6 gap-1 px-[calc(--spacing(2)-1px)] text-caption",
-        "sm-multiline": "h-8 gap-1.5 px-[calc(--spacing(3)-1px)] text-body",
-        xl: "h-10 gap-2 px-[calc(--spacing(4)-1px)] text-body",
-        xs: "h-6 gap-1 px-[calc(--spacing(2)-1px)] text-caption",
       },
       variant: {
         primary:
@@ -51,18 +39,6 @@ const buttonVariants = cva(
         destructive:
           "border-destructive bg-destructive text-primary-foreground shadow-xs shadow-destructive/24 not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-destructive/90",
         link: "border-transparent text-primary underline-offset-4 [:hover,[data-pressed]]:underline",
-        // Migrating: deleted once every call site names a variant above.
-        default:
-          "border-primary bg-primary text-primary-foreground [:hover,[data-pressed]]:bg-primary/90",
-        "destructive-outline": "border-destructive bg-destructive text-primary-foreground",
-        "ghost-destructive": "border-transparent text-foreground [:hover,[data-pressed]]:bg-accent",
-        "ghost-muted": "border-transparent text-foreground [:hover,[data-pressed]]:bg-accent",
-        "ghost-primary": "border-transparent text-foreground [:hover,[data-pressed]]:bg-accent",
-        glass: "border-transparent text-foreground [:hover,[data-pressed]]:bg-accent",
-        outline: "border-input bg-popover text-foreground [:hover,[data-pressed]]:bg-accent/50",
-        pill: "border-primary bg-primary text-primary-foreground [:hover,[data-pressed]]:bg-primary/90",
-        "warning-outline":
-          "border-input bg-popover text-foreground [:hover,[data-pressed]]:bg-accent/50",
       },
     },
   },
