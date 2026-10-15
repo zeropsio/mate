@@ -91,3 +91,41 @@ describe("a card's changes", () => {
     expect(opened).toHaveBeenCalledWith(OPEN);
   });
 });
+
+describe("a card with no change to list", () => {
+  it.each([
+    {
+      case: "HQ told it none",
+      known: true,
+      failure: undefined,
+      says: "No changes yet",
+    },
+    {
+      case: "HQ refuses its changes to this person",
+      known: true,
+      failure:
+        "You need at least Basic user access to one of this project's Zerops projects to see its changes.",
+      says: "You need at least Basic user access",
+    },
+    { case: "HQ has not told them yet", known: false, failure: undefined, says: null },
+  ])("says only what is true when $case", async ({ known, failure, says }) => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <CardChanges
+          changes={[]}
+          changesFailure={failure}
+          changesKnown={known}
+          mateName={() => undefined}
+          onOpen={() => {}}
+        />,
+      );
+    });
+    unmounts.push(() => root.unmount());
+    const text = container.textContent ?? "";
+    if (says === null) expect(text).toBe("Changes");
+    else expect(text).toContain(says);
+    if (failure !== undefined) expect(text).not.toContain("No changes yet");
+  });
+});

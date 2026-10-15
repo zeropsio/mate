@@ -230,12 +230,18 @@ function ChangeAge({ at }: { readonly at: string | undefined }) {
  */
 export function CardChanges({
   changes,
+  changesKnown = true,
+  changesFailure,
   releases = [],
   face,
   mateName,
   onOpen,
 }: {
   readonly changes: ReadonlyArray<CardChange>;
+  /** HQ has told the project's changes: until then none listed is no answer (`changesKnown`). */
+  readonly changesKnown?: boolean;
+  /** Why they are not told — HQ refuses them to this person, or does not answer — in its words. */
+  readonly changesFailure?: string | undefined;
   /** Newest first, as the flow lists them. */
   readonly releases?: ReadonlyArray<{
     readonly tag: string;
@@ -252,7 +258,11 @@ export function CardChanges({
     <section aria-label="Changes" className="ov-sec" data-zerops-surface="card-changes">
       <h3 className="ov-sec-name">Changes</h3>
       {rows.length === 0 ? (
-        <p className="ov-sec-empty">No changes yet — a Mate opens one as it works.</p>
+        changesFailure !== undefined ? (
+          <p className="ov-sec-empty">{changesFailure}</p>
+        ) : changesKnown ? (
+          <p className="ov-sec-empty">No changes yet — a Mate opens one as it works.</p>
+        ) : null
       ) : (
         <ul className="ov-changes">
           {rows.map((row) => {

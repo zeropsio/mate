@@ -347,6 +347,8 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     return (
       <CardChanges
         changes={changes}
+        changesFailure={read?.changesFailure}
+        changesKnown={read?.changesKnown === true}
         face={(projectId) => {
           const item = entry.mates.get(projectId);
           return item === undefined ? undefined : input.mateFace(item);
