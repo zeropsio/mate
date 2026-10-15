@@ -25,11 +25,11 @@ const NOW = Date.now();
 
 const RUN: PutLiveRun = {
   groupId: "g-1",
-  project: "Shop Front",
+  project: "Cookbook",
   change: {
     repository: "app",
     number: 1,
-    title: "Shop front: list, filter and order products by ingredient",
+    title: "Cookbook: add, browse and search dishes by ingredient",
     head: "abc",
     merged: false,
   },
@@ -119,7 +119,7 @@ function Harness() {
       <Dialog onOpenChange={noop} open={SHEET}>
         <PutLiveSheet
           model={putLiveSheet({
-            project: "Shop Front",
+            project: "Cookbook",
             changes: [
               {
                 title: RUN.change!.title,

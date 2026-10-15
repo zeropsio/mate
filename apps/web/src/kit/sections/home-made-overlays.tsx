@@ -287,7 +287,7 @@ function SteppingDialogOpener() {
       open={open}
     >
       <Button onClick={() => setOpen(true)} variant="secondary">
-        Sign in a coding agent
+        Sign Fen in with Claude or ChatGPT
       </Button>
       <DialogPopup>
         <DialogHeader>

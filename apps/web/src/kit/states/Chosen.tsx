@@ -121,7 +121,7 @@ function LiveProgress({ ending }: { readonly ending: "done" | "failed" }) {
   const view: ProgressView | undefined = !over
     ? undefined
     : ending === "done"
-      ? { state: "done", result: "Recipe Box is set up", action: <Button size="sm">Open</Button> }
+      ? { state: "done", result: "Cookbook is set up", action: <Button size="sm">Open</Button> }
       : {
           state: "failed",
           cause: "Giving it an address didn't finish. Zerops answered that the domain is taken.",
@@ -134,7 +134,7 @@ function LiveProgress({ ending }: { readonly ending: "done" | "failed" }) {
       endedAtMs={over ? startedAtMs + STEPS.length * 3000 : null}
       estimateMs={15_000}
       identity={String(startedAtMs)}
-      label="Setting up Recipe Box"
+      label="Setting up Cookbook"
       nowMs={nowMs}
       startedAtMs={startedAtMs}
       steps={STEPS}
@@ -162,7 +162,7 @@ function FixedProgress({
       at={at}
       endedAtMs={view === undefined ? null : mountedAt}
       estimateMs={estimateMs}
-      label="Setting up Recipe Box"
+      label="Setting up Cookbook"
       nowMs={view === undefined ? nowMs : mountedAt}
       startedAtMs={startedAtMs}
       steps={STEPS}
@@ -278,7 +278,7 @@ export function ChosenFailure() {
                 <Button variant="ghost">Remove</Button>
               </>
             }
-            cause="Recipe Box needs credit first."
+            cause="Cookbook needs credit first."
             details="projectLimitReached: the organization has used its one free project."
             mark={<BoxIcon className="size-12 text-muted-foreground" />}
             size="page"
