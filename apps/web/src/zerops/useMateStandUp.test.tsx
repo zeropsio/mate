@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
-import { useMateStandUp } from "./useMateStandUp";
+import { useMateStandUp, useMateStandUpHandOver } from "./useMateStandUp";
 
 const ENVIRONMENT = EnvironmentId.make("environment-fen");
 const MAIN = scopeThreadRef(ENVIRONMENT, ThreadId.make("thread-main"));
@@ -110,6 +110,47 @@ async function holdsComposer(
   return { holds: held.at(-1), failed: readings.at(-1)?.sendFailed };
 }
 
+/**
+ * Where a draft hands over to, as the draft route reads it: opened while the Mate held `opened`,
+ * then read again once it holds `later`.
+ */
+async function handsOverTo(input: {
+  readonly opened: ReadonlyArray<Record<string, unknown>>;
+  readonly later: ReadonlyArray<Record<string, unknown>>;
+  readonly typed?: boolean;
+}) {
+  const document = new TestNode("#document", null, 9);
+  vi.stubGlobal("document", document);
+  vi.stubGlobal("window", {
+    document,
+    HTMLIFrameElement: TestNode,
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
+    addEventListener() {},
+    removeEventListener() {},
+  });
+  vi.stubGlobal("HTMLIFrameElement", TestNode);
+  const { createRoot } = await import("react-dom/client");
+  const targets: Array<ScopedThreadRef | null> = [];
+  function View() {
+    targets.push(
+      useMateStandUpHandOver({
+        key: "draft-1",
+        environmentId: ENVIRONMENT,
+        typed: input.typed ?? false,
+      }),
+    );
+    return null;
+  }
+  const root = createRoot(document.createElement("div") as unknown as Element);
+  world.threads = input.opened;
+  await act(async () => root.render(createElement(View)));
+  world.threads = input.later;
+  await act(async () => root.render(createElement(View)));
+  await act(async () => root.unmount());
+  return targets.at(-1);
+}
+
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   world.failed = false;
@@ -179,4 +220,40 @@ it("keeps manual recovery visible when dispatch failed before creating its main 
   world.failed = true;
   world.threads = [];
   expect((await holdsComposer(null, 0)).failed).toBe(true);
+});
+
+describe("a new Mate's opening draft and its stand-up", () => {
+  it("holds the draft's composer for its person while the Mate has no conversation for the ask", async () => {
+    world.threads = [];
+    expect((await holdsComposer(null, 0)).holds).toBe(true);
+  });
+
+  it("gives a draft's composer back once the Mate has a conversation", async () => {
+    expect((await holdsComposer(null, 0)).holds).toBe(false);
+  });
+
+  it("hands the opening draft over to the conversation its stand-up made", async () => {
+    const main = [shell(MAIN, "2026-09-29T10:00:00.000Z")];
+    expect(await handsOverTo({ opened: [], later: main })).toEqual(MAIN);
+  });
+
+  it("keeps a new chat opened beside a conversation that already stood a draft", async () => {
+    const main = [shell(MAIN, "2026-09-29T10:00:00.000Z")];
+    expect(await handsOverTo({ opened: main, later: main })).toBeNull();
+  });
+
+  it("keeps a draft its person has typed in, whatever the stand-up made", async () => {
+    const main = [shell(MAIN, "2026-09-29T10:00:00.000Z")];
+    expect(await handsOverTo({ opened: [], later: main, typed: true })).toBeNull();
+  });
+
+  it("hands no colleague's draft over, whose ask it is not", async () => {
+    world.viewer = "u-otto";
+    const main = [shell(MAIN, "2026-09-29T10:00:00.000Z")];
+    expect(await handsOverTo({ opened: [], later: main })).toBeNull();
+  });
+
+  it("hands nothing over while the Mate has no conversation yet", async () => {
+    expect(await handsOverTo({ opened: [], later: [] })).toBeNull();
+  });
 });

@@ -15,6 +15,7 @@ import { SidebarInset } from "../components/ui/sidebar";
 import { waitForDraftHeroTransition } from "../components/chat/draftHeroTransition";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useThread, useThreadRefs } from "../state/entities";
+import { useMateStandUpHandOver } from "../zerops/useMateStandUp";
 
 function DraftChatThreadRouteView() {
   const navigate = useNavigate();
@@ -33,11 +34,20 @@ function DraftChatThreadRouteView() {
   const serverThread = useThread(serverThreadRef);
   const serverThreadStarted = threadHasStarted(serverThread);
   const backgroundSubmissionPending = useBackgroundDraftSubmissionPending(serverThreadRef);
-  const canonicalThreadRef = resolveDraftPromotionNavigationTarget({
-    serverThreadRef,
-    serverThreadStarted,
-    backgroundSubmissionPending,
-  });
+  // A new Mate's opening draft waits on its person's stand-up, which its server sends into a
+  // conversation of its own: the draft hands over to it once it is there.
+  const typed = useComposerDraftStore(
+    (store) => (store.getComposerDraft(draftId)?.prompt ?? "").trim().length > 0,
+  );
+  const standUpThreadRef = useMateStandUpHandOver(
+    draftSession ? { key: draftId, environmentId: draftSession.environmentId, typed } : null,
+  );
+  const canonicalThreadRef =
+    resolveDraftPromotionNavigationTarget({
+      serverThreadRef,
+      serverThreadStarted,
+      backgroundSubmissionPending,
+    }) ?? standUpThreadRef;
 
   useEffect(() => {
     if (!inferredThreadRef || draftSession?.promotedTo) {

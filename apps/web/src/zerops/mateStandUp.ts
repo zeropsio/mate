@@ -61,6 +61,40 @@ function askedOf(marker: MateStandUpMarker, viewer: string | undefined): boolean
 }
 
 /**
+ * Whether a conversation is where its Mate's stand-up waits: the Mate's main conversation, or a
+ * draft while the Mate has no conversation yet for the ask to go into. Once one exists the ask goes
+ * there, and a draft is a new chat like any other.
+ */
+export function mateStandUpAwaitedIn(input: {
+  /** The conversation on screen: the Mate's main one, another, or a draft. */
+  readonly conversation: "main" | "other" | "draft";
+  /** The Mate holds a conversation, as its environment's conversations read so far. */
+  readonly mateHasConversation: boolean;
+}): boolean {
+  if (input.conversation === "draft") return !input.mateHasConversation;
+  return input.conversation === "main";
+}
+
+/**
+ * Where a draft that waited on its person's stand-up goes once the ask lands: the Mate's main
+ * conversation. Only a draft opened before the Mate had a conversation waited on it, and only
+ * with nothing typed in it; a new chat opened beside a conversation that already stood stays.
+ */
+export function mateStandUpHandOver<Id extends string>(input: {
+  readonly marker: MateStandUpMarker;
+  readonly viewer: string | undefined;
+  /** The draft opened while its Mate had no conversation (or none read yet). */
+  readonly openedBeforeConversation: boolean;
+  /** Something is typed in the draft: it is the person's, and stays. */
+  readonly typed: boolean;
+  /** The Mate's main conversation, once it has one. */
+  readonly main: { readonly id: Id } | undefined;
+}): Id | undefined {
+  if (input.main === undefined || !input.openedBeforeConversation || input.typed) return undefined;
+  return askedOf(input.marker, input.viewer) ? input.main.id : undefined;
+}
+
+/**
  * Whether the stand-up holds the composer back: while the person who asked it waits on it, the
  * conversation's one message is the stand-up's headline, and nothing may be typed over it (the
  * owner, 2026-09-29: "textarea should be hidden"). A conversation known to be under way gives the
