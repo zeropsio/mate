@@ -922,55 +922,7 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
     "kind": "Literal",
-    "fingerprint": "<> bg-[var(--zerops-status-failed-surface)] in \"flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> bg-[var(--zerops-status-failed-surface)] in \"rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> border-[var(--zerops-status-failed)]/40 in \"flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> border-[var(--zerops-status-failed)]/40 in \"rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"min-w-0 truncate text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"
