@@ -65,6 +65,23 @@ export const ROLE_CODE_DESCRIPTIONS: Readonly<Record<OrgRoleCode, string>> = {
   NO_ACCESS: "No access by default. Can only reach projects they are individually assigned to.",
 };
 
+/**
+ * What *Project access* says the chosen role reaches by itself, so an invitation never promises
+ * what the role does not give: a Developer and a Guest (`NO_ACCESS`) reach only the projects added
+ * here; every other role reaches every project, a level set here differing on one.
+ */
+export function projectAccessIntro(roleCode: OrgRoleCode): string {
+  if (roleCode === "NO_ACCESS")
+    return "This role reaches no project by itself: they get only the projects you add here.";
+  const who =
+    roleCode === "BASIC_USER"
+      ? "A basic user works on"
+      : roleCode === "READ_ONLY"
+        ? "A read-only member sees"
+        : "Owners and admins reach";
+  return `${who} every project by their role. Set a different level on a project here.`;
+}
+
 export const FLAG_WORDS: Readonly<Record<MembershipFlag, string>> = {
   canCreateProjects: "Can create projects",
   canViewFinances: "Can view finances",

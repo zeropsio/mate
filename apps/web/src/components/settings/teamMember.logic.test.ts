@@ -9,6 +9,7 @@ import {
   membershipChanged,
   nameProblem,
   pickerLevels,
+  projectAccessIntro,
   projectChips,
   roleCards,
   teamInviteStep,
@@ -240,5 +241,21 @@ describe("an invitation's address, checked", () => {
     },
   ])("$sentence", ({ answer, step }) => {
     expect(teamInviteStep("petra.kralova@example.com", answer, "Acme")).toEqual(step);
+  });
+});
+
+describe("what Project access says a role reaches by itself", () => {
+  it.each([
+    { role: "owner", says: "every project" },
+    { role: "admin", says: "every project" },
+    { role: "developer", says: "only the projects you add here" },
+    { role: "guest", says: "only the projects you add here" },
+  ] as const)("a $role is told it reaches $says", ({ role, says }) => {
+    expect(projectAccessIntro(presetMembership(role).roleCode)).toContain(says);
+  });
+
+  it("never promises every project to a role that reaches none by itself", () => {
+    expect(projectAccessIntro("NO_ACCESS")).not.toContain("all projects");
+    expect(projectAccessIntro("NO_ACCESS")).not.toContain("every project");
   });
 });
