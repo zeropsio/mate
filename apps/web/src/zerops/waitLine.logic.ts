@@ -23,11 +23,12 @@ export function openingConversationLine(mateName: string | undefined): string {
 
 /**
  * Whether a route stands in shaped like the overview while the app or its code loads: the
- * overview's own routes, so a reload paints the overview's shape once and then its cards in the
- * same places. Any other route holds its room and paints nothing it would take back.
+ * overview's own route, so a reload paints the overview's shape once and then its cards in the
+ * same places. Any other route holds its room and paints nothing it would take back — the home
+ * (`/`) too, which lands on a Mate as often as on the overview and paints neither until it knows.
  */
 export function overviewStandsIn(pathname: string): boolean {
-  return pathname === "/" || pathname === "/zerops";
+  return pathname === "/zerops";
 }
 
 /**

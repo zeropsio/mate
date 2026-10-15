@@ -56,7 +56,6 @@ describe("a wait's one line", () => {
 describe("overviewStandsIn — what a route draws while the app or its code loads", () => {
   it.each([
     { pathname: "/zerops", standsIn: true },
-    { pathname: "/", standsIn: true },
     // Any other route holds its room and paints nothing: its code arrives in a beat.
     { pathname: "/settings/general", standsIn: false },
     { pathname: "/env-1/thread-1", standsIn: false },
@@ -66,4 +65,10 @@ describe("overviewStandsIn — what a route draws while the app or its code load
       expect(overviewStandsIn(pathname)).toBe(standsIn);
     },
   );
+
+  // The home lands on HQ's Mate as often as on the overview: until it knows which, it paints
+  // nothing it would take back, and the overview's shape is the overview's own route's.
+  it("opening Mate paints only what it lands on", () => {
+    expect(overviewStandsIn("/")).toBe(false);
+  });
 });

@@ -292,7 +292,8 @@ function IndexDraftLanding() {
       );
     case "projects":
       return <ZeropsHostedLanding />;
-    // While it works out where to land, and on its way there: the overview's shape, the home's.
+    // While it works out where to land, and on its way there: its room, painted with nothing it
+    // would take back — the overview's shape only once the overview is where it lands.
     case "wait":
       return <PageStandIn />;
   }

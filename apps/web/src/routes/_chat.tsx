@@ -138,7 +138,7 @@ function ChatRoutePending() {
       ? null
       : resolveThreadRouteRef({ environmentId: routed, threadId });
   // A conversation's route draws the Mate's own view, its header's place held until the directory
-  // names who lives there; the home and an environment known to hold nobody stand in with the page's shape.
+  // names who lives there; the home and an environment known to hold nobody hold their room (`PageStandIn`).
   const whoLivesHere = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
   if (threadRef !== null && whoLivesHere.kind !== "nobody") {
     return <MateOpeningView threadRef={threadRef} />;
