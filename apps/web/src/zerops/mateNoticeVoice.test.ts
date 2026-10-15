@@ -71,7 +71,7 @@ describe("the web Mate's link notice", () => {
   });
   it("an unread conversation has a visible opening state immediately", () => {
     expect(say(null)).toMatchObject({
-      text: "Rosa is opening the conversation. Picking up where you left off.",
+      text: "Rosa is opening the conversation. Picking up where it left off.",
       face: "sleep",
       opening: true,
     });

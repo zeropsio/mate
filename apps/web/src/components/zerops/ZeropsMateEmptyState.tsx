@@ -397,7 +397,7 @@ export function MateEmptyStateView({
     coming !== null && coming.over !== true && coming.sentence !== undefined
       ? coming.sentence
       : opening
-        ? "Picking up where you left off."
+        ? "Picking up where it left off."
         : arrivalSentence(mate, kind, { addedBy: addedBy ?? undefined, agentReady });
   const slot =
     standUpFailure === undefined

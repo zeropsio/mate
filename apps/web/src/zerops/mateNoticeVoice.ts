@@ -234,7 +234,7 @@ export function mateNoticeVoice(
   if (decision.phase === "none") return { surface: "none" };
   if (decision.phase === "opening")
     return {
-      ...say(`${name} is opening the conversation.`, "Picking up where you left off."),
+      ...say(`${name} is opening the conversation.`, "Picking up where it left off."),
       opening: true,
     };
   if (reachability === null) return { surface: "none" };

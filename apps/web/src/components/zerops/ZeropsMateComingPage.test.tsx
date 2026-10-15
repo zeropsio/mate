@@ -294,7 +294,7 @@ vi.mock("../chat/ConversationOpeningStage", () => ({
           "section",
           { "data-kind": "reaching", "data-mate-face-state": "sleep" },
           `${name || "The Mate"} is opening the conversation.`,
-          "Picking up where you left off.",
+          "Picking up where it left off.",
           notice,
         ),
     ),
