@@ -6,10 +6,8 @@
 import { RegistryContext } from "@effect/atom-react";
 import { hqBirthProgress, hqBirthRequestId } from "@t3tools/client-runtime/data";
 import { HQ_BIRTH_DOING, HQ_BIRTH_STEPS } from "@t3tools/client-runtime/zerops/hq";
-import { CheckIcon, CircleAlertIcon } from "lucide-react";
 import { useCallback, useContext } from "react";
 
-import { cn } from "~/lib/utils";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { hqBirthSite, useAccountHq } from "~/zerops/accountHq";
@@ -18,8 +16,13 @@ import type { HqGate } from "~/zerops/hqGate";
 import { useAccountData } from "~/zerops/ZeropsAccountData";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
+import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
+
 import { Button } from "../ui/button";
-import { Spinner } from "../ui/spinner";
+import { Failure } from "../ui/failure";
+import { Progress } from "../ui/progress";
+import { StatusPage } from "../ui/status-page";
+import { PageWaitLine } from "./WaitLine";
 
 type ClosedGate = Exclude<HqGate, { readonly kind: "open" }>;
 
@@ -62,6 +65,9 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
   );
 }
 
+/** HQ's setup as measured end to end (about 4½ minutes without a stop): what the row promises. */
+export const HQ_BIRTH_ESTIMATE_MS = 5 * 60_000;
+
 export function HqGateScreen({
   organizationName,
   gate,
@@ -77,43 +83,32 @@ export function HqGateScreen({
   readonly onTryAgain: () => void;
   readonly onReadAgain: () => void;
 }) {
-  return (
-    <main
-      className="flex h-full min-h-0 flex-1 flex-col items-center justify-center p-8"
-      data-zerops-surface="hq-gate"
-    >
-      <div className="flex w-full max-w-md flex-col gap-4">
-        {gate.kind === "birth" ? (
-          <HqBirth
-            organizationName={organizationName}
-            birth={birth}
-            onStart={onStart}
-            onTryAgain={onTryAgain}
-          />
-        ) : gate.kind === "reading" ? (
-          gate.failed ? (
-            <div className="flex flex-col items-start gap-3">
-              <p className="text-sm text-foreground" role="alert">
-                Couldn't read {organizationName}'s members from Zerops.
-              </p>
-              <Button size="sm" variant="secondary" onClick={onReadAgain}>
-                Try again
-              </Button>
-            </div>
-          ) : (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-              <Spinner size="sm" />
-              Reading {organizationName}…
-            </p>
-          )
-        ) : (
-          <p className="text-sm text-foreground" role="status">
-            {gate.line}
-          </p>
-        )}
-      </div>
-    </main>
-  );
+  if (gate.kind === "birth") {
+    return (
+      <HqBirth
+        organizationName={organizationName}
+        birth={birth}
+        onStart={onStart}
+        onTryAgain={onTryAgain}
+      />
+    );
+  }
+  if (gate.kind === "reading") {
+    return gate.failed ? (
+      <Failure
+        action={<Button onClick={onReadAgain}>Try again</Button>}
+        cause={`Couldn't read ${organizationName}'s members from Zerops.`}
+        data-zerops-surface="hq-gate"
+        size="page"
+      />
+    ) : (
+      // The boot's own wait, said once: the line the frame already shows stays until the app paints.
+      <main className="flex h-full min-h-0 flex-1" data-zerops-surface="hq-gate">
+        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="load" text={READING_PROJECTS_LINE} />
+      </main>
+    );
+  }
+  return <StatusPage data-zerops-surface="hq-gate" title={gate.line} />;
 }
 
 function HqBirth({
@@ -129,80 +124,48 @@ function HqBirth({
 }) {
   if (birth === undefined) {
     return (
-      <>
-        <h1 className="text-xl font-medium text-foreground">Set up HQ for {organizationName}</h1>
-        <p className="text-sm text-muted-foreground">
+      <StatusPage
+        actions={<Button onClick={onStart}>Set up HQ</Button>}
+        data-zerops-surface="hq-gate"
+        title={`Set up HQ for ${organizationName}`}
+      >
+        <p className="m-0">
           HQ keeps this organization's projects, their code and their Mates, in a project named
-          Headquarters in Zerops. Setting it up takes a few minutes; then you can start your first
-          Mate.
+          Headquarters in Zerops. It takes about 5 minutes; then you can start your first Mate.
         </p>
-        <div>
-          <Button size="sm" variant="secondary" onClick={onStart}>
-            Set up HQ
-          </Button>
-        </div>
-      </>
+      </StatusPage>
     );
   }
   const at = HQ_BIRTH_STEPS.indexOf(birth.step === "done" ? "ready" : birth.step);
-  const finished = birth?.kind === "running" && birth.step === "done";
   return (
-    <>
-      <div className="space-y-1">
-        <h1 className="text-xl font-medium text-foreground">
-          Setting up HQ for {organizationName}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          HQ goes into a project named Headquarters in Zerops. It takes a few minutes; any admin can
-          continue it from another browser.
-        </p>
-      </div>
-      <ol className="flex flex-col gap-2">
-        {HQ_BIRTH_STEPS.map((step, index) => {
-          const state =
-            finished || index < at
-              ? "done"
-              : index > at
-                ? "waiting"
-                : birth?.kind === "failed"
-                  ? "failed"
-                  : "running";
-          return (
-            <li
-              className={cn(
-                "flex items-center gap-2 text-sm",
-                state === "waiting" ? "text-muted-foreground" : "text-foreground",
-                state === "failed" && "text-status-failed-text",
-              )}
-              data-hq-birth-step={state}
-              key={step}
-            >
-              <span className="flex size-4 shrink-0 items-center justify-center">
-                {state === "done" ? (
-                  <CheckIcon className="size-4" />
-                ) : state === "running" ? (
-                  <Spinner size="sm" />
-                ) : state === "failed" ? (
-                  <CircleAlertIcon className="size-4" />
-                ) : null}
-              </span>
-              <span>{HQ_BIRTH_DOING[step]}</span>
-            </li>
-          );
-        })}
-      </ol>
-      {birth?.kind === "failed" ? (
-        <div className="flex flex-col items-start gap-3">
-          <p className="text-sm text-status-failed-text" role="alert">
-            {birth.reason}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="secondary" onClick={onTryAgain}>
-              Again
-            </Button>
-          </div>
-        </div>
-      ) : null}
-    </>
+    <StatusPage data-zerops-surface="hq-gate" title={`Setting up HQ for ${organizationName}`}>
+      <p className="m-0">
+        HQ goes into a project named Headquarters in Zerops. It takes about 5 minutes. Keep this tab
+        open while it runs; if it closes, any admin can continue it from where it stopped.
+      </p>
+      <Progress
+        at={at}
+        className="mt-3 w-full text-left"
+        estimateMs={HQ_BIRTH_ESTIMATE_MS}
+        label={`Setting up HQ for ${organizationName}`}
+        steps={HQ_BIRTH_STEPS.map((step) => HQ_BIRTH_DOING[step])}
+        view={
+          birth.kind === "failed"
+            ? {
+                state: "failed",
+                cause: `${HQ_BIRTH_DOING[birth.step]} stopped. ${birth.reason}`,
+                action: (
+                  <Button onClick={onTryAgain} size="sm">
+                    Try again
+                  </Button>
+                ),
+              }
+            : birth.step === "done"
+              ? { state: "done", result: `HQ is ready for ${organizationName}` }
+              : undefined
+        }
+      />
+      {birth.kind === "failed" ? <p className="m-0">Finished steps are kept.</p> : null}
+    </StatusPage>
   );
 }
