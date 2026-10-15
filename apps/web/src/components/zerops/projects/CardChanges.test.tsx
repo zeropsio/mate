@@ -130,6 +130,25 @@ describe("a card with no change to list", () => {
   });
 });
 
+it("holds the line of a card's changes while HQ has not told them, so the card does not grow when they land", async () => {
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <CardChanges
+        changes={[]}
+        changesKnown={false}
+        mateName={() => undefined}
+        onOpen={() => {}}
+      />,
+    );
+  });
+  unmounts.push(() => root.unmount());
+  const section = container.querySelector('[aria-label="Changes"]');
+  expect(section?.querySelector('[aria-hidden="true"]')).not.toBeNull();
+  expect(container.textContent).toBe("Changes");
+});
+
 // The onboarding run: a guest's card read "No changes yet — a Mate opens one as it works" beside a
 // production running v0.1.0, while HQ withheld the project's changes from her.
 describe("a card's changes it may not read", () => {

@@ -8770,6 +8770,11 @@ label.tm-advanced-row:not([data-disabled]) {
   line-height: 18px;
 }
 
+/* Its place held, empty, until it is said. */
+.ov-sec-empty:empty {
+  min-height: 18px;
+}
+
 .ov-sec-empty[data-tone="failed"] {
   color: var(--zerops-status-failed-text);
 }

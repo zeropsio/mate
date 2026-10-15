@@ -281,7 +281,10 @@ export function CardChanges({
           <p className="ov-sec-empty">{changesFailure}</p>
         ) : changesKnown ? (
           <p className="ov-sec-empty">No changes yet — a Mate opens one as it works.</p>
-        ) : null
+        ) : (
+          // Until HQ answers, its line's place is held: the card does not grow when it lands.
+          <p aria-hidden="true" className="ov-sec-empty" data-zerops-changes-held="" />
+        )
       ) : (
         <ul className="ov-changes">
           {rows.map((row) => {
