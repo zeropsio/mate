@@ -356,12 +356,6 @@ function ZeropsAgentAuthRow({
             {agent.verification?.reason ?? agent.registration?.reason}
           </p>
         )}
-        {agent.registration?.process === undefined ? null : (
-          <p className="text-xs leading-4 text-muted-foreground">
-            Registration process {agent.registration.process.id}
-            {agent.registration.process.status ? ` · ${agent.registration.process.status}` : ""}
-          </p>
-        )}
         {(agentAuthAction(agent) === "check-again" ||
           agentAuthAction(agent) === "register-again") &&
         onRecheck !== undefined &&
