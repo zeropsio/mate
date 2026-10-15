@@ -170,7 +170,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
       ? recallCheckoutIsRepo(activeThread.environmentId, activeCwd)
       : undefined) ??
     true;
-  const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
+  const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId, runChangesRead } =
     useTurnDiffSummaries(activeThread);
   const orderedTurnDiffSummaries = useMemo(
     () =>
@@ -938,6 +938,12 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
           selectedFilePath={selectedFilePath}
           revealRequestId={selectedFileRevealRequestId}
         />
+      ) : shownSelection.kind === "no-turns" && runChangesRead === "reading" ? (
+        <DiffPanelLoadingState label="Loading changes..." />
+      ) : shownSelection.kind === "no-turns" && runChangesRead === "failed" ? (
+        <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
+          Couldn't read this conversation's changes.
+        </div>
       ) : shownSelection.kind === "no-turns" ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-1 px-6 text-center text-xs text-muted-foreground">
           <p className="text-foreground">No changes yet</p>
