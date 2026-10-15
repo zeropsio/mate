@@ -65,7 +65,7 @@ import { compareSemverVersions } from "@t3tools/shared/semver";
 import { useZeropsDataConsole } from "../../zerops/useZeropsFeeds";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-import { Chip, MicroLabel, StatusDot } from "./primitives";
+import { Chip, MicroLabel, STATUS_BADGE_TONE } from "./primitives";
 import { ZeropsDataFilters } from "./ZeropsDataFilters";
 import { ZeropsDataQuery } from "./ZeropsDataQuery";
 import { ZeropsDataBlob } from "./ZeropsDataBlob";
@@ -74,6 +74,7 @@ import { ZeropsDataRowDrawer } from "./ZeropsDataRowDrawer";
 import { ZeropsDataTable, type ZeropsDataTableSort } from "./ZeropsDataTable";
 import { ZeropsDataTree } from "./ZeropsDataTree";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+import { Badge } from "~/components/ui/badge";
 
 export interface ZeropsDataPanelProps {
   readonly threadRef: ScopedThreadRef | null;
@@ -654,7 +655,9 @@ export function ZeropsDataPanel({
 
   const sessionLine =
     status === "idle" || status === "starting" ? (
-      <StatusDot label="Starting" tone="busy" />
+      <Badge dot tone="info">
+        Starting
+      </Badge>
     ) : status === "unavailable" ? (
       <div className="space-y-2">
         <p className="text-muted-foreground text-xs" data-zerops-data-unavailable>
@@ -719,11 +722,17 @@ export function ZeropsDataPanel({
                           <span className="flex w-full items-center justify-between gap-1">
                             <span className="flex min-w-0 items-center gap-1.5">
                               {row.topologyService !== undefined ? (
-                                <StatusDot
+                                <Badge
+                                  dot
                                   data-zerops-data-service-status
-                                  label={zeropsStatusWord(row.topologyService.status)}
-                                  tone={STATUS_DOT_TONE[serviceStatusTone(row.topologyService)]}
-                                />
+                                  tone={
+                                    STATUS_BADGE_TONE[
+                                      STATUS_DOT_TONE[serviceStatusTone(row.topologyService)]
+                                    ]
+                                  }
+                                >
+                                  {zeropsStatusWord(row.topologyService.status)}
+                                </Badge>
                               ) : null}
                               <span className="truncate">{entry.hostname}</span>
                             </span>

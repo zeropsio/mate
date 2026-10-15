@@ -18,7 +18,7 @@ import { SourceStatusBadge } from "~/components/settings/ResourceTelemetryDiagno
 import { JumpHintBadge } from "~/components/Sidebar";
 import { CommandPaletteMetaDot } from "~/components/ThreadCommandSubtitle";
 import { MateDot } from "~/components/zerops/MateDot";
-import { Chip, KeyChip, MateFace, StatusDot } from "~/components/zerops/primitives";
+import { Chip, KeyChip, MateFace } from "~/components/zerops/primitives";
 import { AccessBadge } from "~/components/zerops/projects/ProjectAccessChips";
 import { PlaceDot } from "~/components/zerops/projects/ProjectCards";
 import { EnvDot } from "~/components/zerops/SidebarProductionChip";
@@ -46,17 +46,7 @@ function LabelSpecimens() {
         looks={16}
       />
 
-      <CensusLook files={18} name="8 px status dots" note="a dot, mostly with a word" uses={30}>
-        <CensusComponent name="StatusDot" source={`${PRIMITIVES}/StatusDot.tsx`}>
-          {TONES.map((tone) => (
-            <Specimen key={tone} label={specimenLabel({ tone, label: "Running" })}>
-              <StatusDot label="Running" tone={tone} />
-            </Specimen>
-          ))}
-          <Specimen label={specimenLabel({ tone: "ok", dotOnly: true })}>
-            <StatusDot dotOnly label="Running" tone="ok" />
-          </Specimen>
-        </CensusComponent>
+      <CensusLook files={1} name="8 px status dots" note="a dot with a ping, no word" uses={1}>
         <CensusComponent
           name="ConnectionStatusDot"
           source="apps/web/src/components/ConnectionStatusDot.tsx"

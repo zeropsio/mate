@@ -32,7 +32,8 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
 import { useZeropsBrowserStream, useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { LiveFrameViewer, type LiveFramePointer } from "./LiveFrameViewer";
-import { MicroLabel, StatusDot } from "./primitives";
+import { MicroLabel } from "./primitives";
+import { Badge } from "~/components/ui/badge";
 
 export interface ZeropsBrowserPanelProps {
   readonly threadRef: ScopedThreadRef | null;
@@ -200,9 +201,13 @@ export function ZeropsBrowserPanel({
         <div className="flex flex-col gap-1" data-zerops-browser-last>
           <div className="flex min-w-0 items-center gap-2 px-1 text-muted-foreground text-xs">
             {read.status === "no-browser" ? (
-              <StatusDot label="Not live" tone="off" />
+              <Badge dot tone="neutral">
+                Not live
+              </Badge>
             ) : (
-              <StatusDot label="Connecting" pulse tone="busy" />
+              <Badge dot pulse tone="info">
+                Connecting
+              </Badge>
             )}
             <span className="min-w-0 truncate" data-zerops-browser-last-seen>
               {lastSeenWords(last.atMs, read.url)}
@@ -223,7 +228,11 @@ export function ZeropsBrowserPanel({
           {`When ${mateName ?? "the agent"} opens a browser to show you something, it appears here.`}
         </p>
       ) : frame === undefined ? (
-        <StatusDot className="px-1" label="Connecting" pulse tone="busy" />
+        <span className="px-1">
+          <Badge dot pulse tone="info">
+            Connecting
+          </Badge>
+        </span>
       ) : (
         <LiveFrameViewer
           alt="Live view of the agent's browser"

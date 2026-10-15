@@ -131,7 +131,7 @@ import { ZeropsDataQuery } from "./ZeropsDataQuery";
 import { ZeropsDataRowDrawer } from "./ZeropsDataRowDrawer";
 import { ZeropsDataTable } from "./ZeropsDataTable";
 import { ZeropsDataTree } from "./ZeropsDataTree";
-import { StatusDot } from "./primitives";
+import { Badge } from "../ui/badge";
 
 const THREAD_REF: ScopedThreadRef = {
   environmentId: EnvironmentId.make("environment-1"),
@@ -369,8 +369,8 @@ describe("ZeropsDataPanel", () => {
       const tree = render();
       const unsupported = findByAttribute(tree, "data-zerops-surface");
       expect(unsupported).toBeNull();
-      const starting = findComponent<{ label: string }>(tree, StatusDot);
-      expect(starting?.props.label).toBe("Starting");
+      const starting = findComponent<{ children: string }>(tree, Badge);
+      expect(starting?.props.children).toBe("Starting");
     });
   });
 
@@ -378,8 +378,8 @@ describe("ZeropsDataPanel", () => {
     feedState.session = undefined;
     commandSpy.mockImplementation(() => new Promise(() => {}));
     const tree = render();
-    const starting = findComponent<{ label: string }>(tree, StatusDot);
-    expect(starting?.props.label).toBe("Starting");
+    const starting = findComponent<{ children: string }>(tree, Badge);
+    expect(starting?.props.children).toBe("Starting");
   });
 
   it("issues the listing as a refresh while idle — that first call is what starts the console, and refresh sees services created since it started", async () => {
@@ -474,8 +474,8 @@ describe("ZeropsDataPanel", () => {
   it("shows a starting line while starting", () => {
     feedState.session = { status: "starting", allowWrites: false };
     const tree = render();
-    const starting = findComponent<{ label: string }>(tree, StatusDot);
-    expect(starting?.props.label).toBe("Starting");
+    const starting = findComponent<{ children: string }>(tree, Badge);
+    expect(starting?.props.children).toBe("Starting");
   });
 
   it("shows the fixed unavailable line plus the reason carried by the event", () => {
@@ -578,9 +578,9 @@ describe("ZeropsDataPanel", () => {
         return false;
       });
       expect(serviceRows).toEqual(["db2", "db1"]);
-      const statusDots = allComponents(tree, StatusDot);
+      const statusDots = allComponents(tree, Badge);
       expect(statusDots).toHaveLength(2);
-      expect((statusDots[0]!.props as { label: string }).label).toBe("Active");
+      expect((statusDots[0]!.props as { children: string }).children).toBe("Active");
     });
 
     it("puts a console service with no topology match last, without a status dot", async () => {
@@ -596,7 +596,7 @@ describe("ZeropsDataPanel", () => {
         return false;
       });
       expect(serviceRows).toEqual(["db1", "orphan"]);
-      expect(allComponents(tree, StatusDot)).toHaveLength(1);
+      expect(allComponents(tree, Badge)).toHaveLength(1);
     });
 
     it("renders console order and no status dots while the topology view has not loaded", async () => {
@@ -608,7 +608,7 @@ describe("ZeropsDataPanel", () => {
         return false;
       });
       expect(serviceRows).toEqual(["kv1", "db1"]);
-      expect(allComponents(tree, StatusDot)).toHaveLength(0);
+      expect(allComponents(tree, Badge)).toHaveLength(0);
     });
   });
 

@@ -51,4 +51,44 @@ describe("Badge", () => {
     expect(done).not.toContain("data-pulse");
     expect(held).not.toContain("data-pulse");
   });
+
+  it.each([
+    ["success", "Ready"],
+    ["info", "Creating"],
+    ["warning", "Action required"],
+    ["danger", "Deploy failed"],
+    ["neutral", "Stopped"],
+  ] as const)("renders the %s state with a visible phrase", (tone, label) => {
+    const html = renderToStaticMarkup(
+      <Badge dot tone={tone}>
+        {label}
+      </Badge>,
+    );
+
+    expect(html).toContain(`data-tone="${tone}"`);
+    expect(html).not.toContain("aria-label");
+    expect(html).not.toContain("aria-live");
+    expect(html).not.toContain('role="status"');
+    expect(html).toContain('aria-hidden="true"');
+    expect(html.endsWith(`>${label}</span></span>`)).toBe(true);
+  });
+
+  it("can be the dot alone, the word kept as its name and never as a native title", () => {
+    const html = renderToStaticMarkup(<Badge aria-label="Deployed" dot tone="success" />);
+    expect(html).toContain('aria-label="Deployed"');
+    expect(html).not.toContain("title=");
+    expect(html).toContain('role="img"');
+    expect(html).not.toContain(">Deployed</span>");
+    expect(html).toContain('data-tone="success"');
+  });
+
+  it("can set the phrase as a sentence instead of a label", () => {
+    const html = renderToStaticMarkup(
+      <Badge dot tone="info">
+        Setting up infrastructure
+      </Badge>,
+    );
+
+    expect(html).toContain(">Setting up infrastructure</span>");
+  });
 });

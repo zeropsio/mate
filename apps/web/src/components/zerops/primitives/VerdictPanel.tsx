@@ -3,7 +3,8 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 import { Skeleton } from "../../ui/skeleton";
-import { StatusDot } from "./StatusDot";
+import { STATUS_BADGE_TONE } from "./statusBadgeTone";
+import { Badge } from "~/components/ui/badge";
 
 /**
  * A panel's edge, in the colour of the answer inside it.
@@ -64,7 +65,11 @@ function VerdictPanel({ children, className, detail, text, tone, ...props }: Ver
       data-zerops-primitive="verdict-panel"
     >
       <span className="flex min-w-0 flex-col gap-y-0.5 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
-        <StatusDot className="min-w-0 text-foreground" label={text} sentence tone={tone} />
+        <span className="min-w-0 text-foreground">
+          <Badge dot tone={STATUS_BADGE_TONE[tone]}>
+            {text}
+          </Badge>
+        </span>
         {detail === undefined ? null : (
           // The dot (8px) and its gap (6px) set the sentence's text 14px in.
           <span className="min-w-0 ps-3.5 text-muted-foreground tabular-nums sm:ps-0">

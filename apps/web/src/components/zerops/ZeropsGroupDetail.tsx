@@ -148,7 +148,7 @@ import { ProjectAccess, ProjectPeople } from "./projects/ProjectPeople";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
-import { MicroLabel, StatusDot, VerdictPanel } from "./primitives";
+import { MicroLabel, STATUS_BADGE_TONE, VerdictPanel } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
 import { deployAnswerSaid, type DeployAnswerJob } from "@t3tools/client-runtime/zerops/hq";
@@ -166,6 +166,7 @@ import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { unreadFlowWords } from "~/zerops/hqRead.logic";
 import { EmptyState } from "../ui/empty";
 import { Loading } from "../ui/loading";
+import { Badge } from "~/components/ui/badge";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -404,7 +405,9 @@ export function ZeropsRuntimeStops({
             <>
               <span className="text-sm font-medium">{stop.name}</span>
               <ZeropsRoleTag label={stop.tier === "production" ? "prod" : "stage"} />
-              <StatusDot label={view.line} sentence tone={STOP_DOT_TONE[view.tone] ?? "off"} />
+              <Badge dot tone={STATUS_BADGE_TONE[STOP_DOT_TONE[view.tone] ?? "off"]}>
+                {view.line}
+              </Badge>
             </>
           );
           return (
@@ -1823,7 +1826,9 @@ function StopServiceLine({
             (row.runs === undefined || row.job !== undefined)) ? null : dot === undefined ? (
             <span className="min-w-0 break-words text-muted-foreground">{row.status}</span>
           ) : (
-            <StatusDot label={row.status} sentence tone={dot} />
+            <Badge dot tone={STATUS_BADGE_TONE[dot]}>
+              {row.status}
+            </Badge>
           )}
         </span>
         <span className="col-span-2 col-start-1 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-4 sm:row-start-1">
@@ -2157,12 +2162,11 @@ function ZeropsStopLine({
         {/* The dot carries the state; the word supports it. Unsized, it
             inherited 16px and came out larger than the name it annotates. */}
         {word === undefined || dotTone === undefined ? null : (
-          <StatusDot
-            className="shrink-0 text-xs text-muted-foreground"
-            label={word}
-            sentence
-            tone={dotTone}
-          />
+          <span className="shrink-0 text-xs text-muted-foreground">
+            <Badge dot tone={STATUS_BADGE_TONE[dotTone]}>
+              {word}
+            </Badge>
+          </span>
         )}
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>

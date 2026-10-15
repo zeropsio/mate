@@ -20,7 +20,7 @@ import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { Chip, MicroLabel, StatusDot } from "../zerops/primitives";
+import { Chip, MicroLabel, STATUS_BADGE_TONE } from "../zerops/primitives";
 import {
   buildMcpRows,
   readMcpAddForm,
@@ -30,6 +30,7 @@ import {
   type McpTabState,
 } from "./McpServers.logic";
 import { useMcpServers, type McpAction, type McpActionResult } from "./useMcpServers";
+import { Badge } from "~/components/ui/badge";
 
 export const MCP_WORDS = {
   title: "MCP servers",
@@ -165,7 +166,7 @@ function McpServerRowView(props: {
           <span className="flex h-5 shrink-0 items-center">
             <Tooltip>
               <TooltipTrigger render={<span className="inline-flex" />}>
-                <StatusDot dotOnly label={row.stateLabel} tone={row.tone} />
+                <Badge aria-label={row.stateLabel} dot tone={STATUS_BADGE_TONE[row.tone]} />
               </TooltipTrigger>
               <TooltipPopup>{row.stateLabel}</TooltipPopup>
             </Tooltip>

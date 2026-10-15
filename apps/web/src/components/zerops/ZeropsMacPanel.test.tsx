@@ -244,7 +244,9 @@ describe("ZeropsMacPanel", () => {
   it("shows no window and takes no input while it reaches the Mac", () => {
     feedState.view = { status: "connecting", macName: "Test Mac", inUse: false };
     const tree = render();
-    expect(visitElements(tree, (element) => element.props.label === "Connecting")).not.toBeNull();
+    expect(
+      visitElements(tree, (element) => element.props.children === "Connecting"),
+    ).not.toBeNull();
     expect(canvas(tree)).toBeNull();
   });
 

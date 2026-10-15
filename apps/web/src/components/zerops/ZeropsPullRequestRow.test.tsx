@@ -25,7 +25,7 @@ describe("ZeropsPullRequestRow", () => {
     expect(html).toContain(">recipe<");
     // The state is the line's and the caller's; the row invents no word.
     expect(html).not.toContain("Open");
-    expect(html).not.toContain("status-dot");
+    expect(html).not.toContain("data-dot");
   });
 
   it("carries the caller's one verb, and nothing when there is none", () => {

@@ -53,7 +53,8 @@ import {
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
-import { StatusDot } from "./primitives";
+import { STATUS_BADGE_TONE } from "./primitives";
+import { Badge } from "~/components/ui/badge";
 
 const AGENT_NAMES: Record<ZeropsAgentId, string> = {
   "claude-code": "Claude Code",
@@ -329,7 +330,9 @@ function ZeropsAgentAuthRow({
             {AGENT_NAMES[agent.agentId]}
           </span>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-            <StatusDot label={status.label} tone={status.tone} />
+            <Badge dot tone={STATUS_BADGE_TONE[status.tone]}>
+              {status.label}
+            </Badge>
             {label === status.label ? null : (
               <span className="min-w-0 text-xs leading-4 text-muted-foreground">{label}</span>
             )}
@@ -496,7 +499,9 @@ function ZeropsLoginRow({
         <div className="min-w-0">
           <span className="block leading-5 font-medium text-foreground">{login.title}</span>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-            <StatusDot label={presentation.label} tone={presentation.tone} />
+            <Badge dot tone={STATUS_BADGE_TONE[presentation.tone]}>
+              {presentation.label}
+            </Badge>
             {signer === presentation.label ? null : (
               <span className="min-w-0 text-xs leading-4 text-muted-foreground">{signer}</span>
             )}

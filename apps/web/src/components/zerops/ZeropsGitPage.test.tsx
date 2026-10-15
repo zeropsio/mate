@@ -96,7 +96,7 @@ describe("ZeropsGitOverview", () => {
 
   it("gives each change its state and its own page", () => {
     const html = render({ kind: "read", apps: APPS, failure: null }, () => {});
-    expect(html).toContain('data-zerops-status-tone="attention"');
+    expect(html).toContain('data-tone="warning"');
     expect(html).toContain('data-zerops-surface="pull-request-title"');
   });
 

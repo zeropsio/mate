@@ -23,9 +23,10 @@ import type { ReviewTarget } from "~/zerops/review";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 
 import { crewmateFace } from "../crew/CrewLeadPlan.logic";
-import { MateFace, StatusDot } from "../primitives";
+import { MateFace, STATUS_BADGE_TONE } from "../primitives";
 import { crewLandCommand, reviewKindLine } from "./ZeropsReview.logic";
 import { ReviewSection, ReviewSize, ZeropsReviewSurface } from "./ZeropsReviewSurface";
+import { Badge } from "~/components/ui/badge";
 
 const KIND = "crew-task" as const;
 
@@ -243,11 +244,9 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
       </ReviewSection>
       {task.check === null ? null : (
         <ReviewSection title="Check">
-          <StatusDot
-            label={CHECK_WORD[task.check.state]}
-            sentence
-            tone={CHECK_TONE[task.check.state]}
-          />
+          <Badge dot tone={STATUS_BADGE_TONE[CHECK_TONE[task.check.state]]}>
+            {CHECK_WORD[task.check.state]}
+          </Badge>
         </ReviewSection>
       )}
     </ZeropsReviewSurface>

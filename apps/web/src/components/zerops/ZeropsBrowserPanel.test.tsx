@@ -212,7 +212,7 @@ describe("ZeropsBrowserPanel", () => {
     const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
     expect(findByAttribute(tree, "data-zerops-browser-none")).toBeNull();
     const last = findByAttribute(tree, "data-zerops-browser-last");
-    expect(visitElements(last, (element) => element.props.label === "Not live")).not.toBeNull();
+    expect(visitElements(last, (element) => element.props.children === "Not live")).not.toBeNull();
     expect(findByAttribute(last, "data-zerops-browser-last-seen")?.props.children).toBe(
       "Last seen 3m ago · https://app.dev/program",
     );

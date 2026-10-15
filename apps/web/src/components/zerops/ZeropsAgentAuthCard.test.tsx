@@ -77,9 +77,9 @@ describe("ZeropsAgentAuthCard", () => {
     expect(html).toContain('data-zerops-agent-logo="claude-code"');
     expect(html).toContain('data-zerops-agent-logo="codex"');
     // Codex is in, so Claude's row is an offer: no attention tone anywhere.
-    expect(html).toContain('data-zerops-status-tone="off"');
-    expect(html).not.toContain('data-zerops-status-tone="attention"');
-    expect(html).toContain('data-zerops-status-tone="ok"');
+    expect(html).toContain('data-tone="neutral"');
+    expect(html).not.toContain('data-tone="warning"');
+    expect(html).toContain('data-tone="success"');
   });
 
   // The card is the agents' own home now (D6 round 5): it stays up once
@@ -196,7 +196,7 @@ describe("ZeropsAgentAuthCard", () => {
       />,
     );
     expect(alone).toContain("Action required");
-    expect(alone).toContain('data-zerops-status-tone="attention"');
+    expect(alone).toContain('data-tone="warning"');
 
     const withClaude = renderToStaticMarkup(
       <ZeropsAgentAuthCard

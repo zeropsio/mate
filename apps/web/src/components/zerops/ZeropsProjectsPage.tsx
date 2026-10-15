@@ -150,7 +150,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
-import { MateFace, StatusDot } from "./primitives";
+import { MateFace, STATUS_BADGE_TONE } from "./primitives";
 import { useOverviewSlots } from "./projects/overviewSlots";
 import { OverviewCardMate } from "./projects/OverviewCardMate";
 import { ArrivalWelcome } from "./projects/ArrivalWelcome";
@@ -235,6 +235,7 @@ import {
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { useMenuRows, usePaintStanding } from "~/zerops/useMenuRows";
+import { Badge } from "~/components/ui/badge";
 
 /** One creation in flight, or just finished, on this screen. */
 interface EnvironmentCreationView {
@@ -2158,16 +2159,19 @@ export function ZeropsProjectsContent({
         name={projectNameInApp(candidate.project)}
         status={
           projectTrouble ? (
-            <StatusDot
-              label={presentation.status.label}
-              sentence
-              tone={presentation.status.tone}
+            <Badge
+              dot
               {...(presentation.status.pulse === undefined
                 ? {}
                 : { pulse: presentation.status.pulse })}
-            />
+              tone={STATUS_BADGE_TONE[presentation.status.tone]}
+            >
+              {presentation.status.label}
+            </Badge>
           ) : deployTone !== undefined && deployLabel !== undefined ? (
-            <StatusDot label={deployLabel} sentence tone={deployTone} />
+            <Badge dot tone={STATUS_BADGE_TONE[deployTone]}>
+              {deployLabel}
+            </Badge>
           ) : undefined
         }
         // A project the platform failed to create holds nothing; its

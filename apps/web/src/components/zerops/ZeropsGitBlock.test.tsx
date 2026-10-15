@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { ZeropsGitBlock } from "./ZeropsGitBlock";
+import { STATUS_BADGE_TONE } from "./primitives/statusBadgeTone";
 
 /** The change's own address at its HQ (`changeUrl`). */
 const CHANGE_URL = "https://hq.example.test/changes/acme/api/12";
@@ -56,7 +57,7 @@ describe("ZeropsGitBlock", () => {
     { tone: "off", text: "Nothing new here." },
   ] as const)("wears the $tone answer's colour", ({ tone, text }) => {
     const html = render({ block: blockOf({ verdict: { tone, text, ask: undefined } }) });
-    expect(html).toContain(`data-zerops-status-tone="${tone}"`);
+    expect(html).toContain(`data-tone="${STATUS_BADGE_TONE[tone]}"`);
     expect(html).toContain(text);
   });
 
@@ -67,7 +68,7 @@ describe("ZeropsGitBlock", () => {
         verdict: { tone: "failed", text: "HQ did not answer for this repository.", ask: undefined },
       }),
     });
-    expect(html).toContain('data-zerops-status-tone="failed"');
+    expect(html).toContain('data-tone="danger"');
     expect(html).toContain("HQ did not answer for this repository.");
   });
 

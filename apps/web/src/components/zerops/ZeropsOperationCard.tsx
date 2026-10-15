@@ -78,10 +78,11 @@ import { OperationSubjectLine } from "./operation/OperationSubjectLine";
 import { operationSubject, type OperationSubject } from "./operation/subject";
 import { versionLabel } from "./operation/version";
 import { Card } from "../ui/card";
-import { MicroLabel, ProcessSteps, StatusDot, type ProcessStep } from "./primitives";
+import { MicroLabel, ProcessSteps, STATUS_BADGE_TONE, type ProcessStep } from "./primitives";
 import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { ZeropsReadResultBody } from "./ZeropsToolResultCards";
+import { Badge } from "~/components/ui/badge";
 
 export interface ObservedRegion {
   /** Replaces `operation.steps` for the body while an observation is attached; a deploy's is empty. */
@@ -200,13 +201,11 @@ function CardHeader({
           role="status"
         >
           <KindGlyph kind={operation.kind} />
-          <StatusDot
-            className={cn("shrink-0 text-muted-foreground", status !== undefined && "text-xs")}
-            label={status?.word ?? operation.statusWord}
-            pulse={dotTone === "busy"}
-            sentence={status !== undefined}
-            tone={dotTone}
-          />
+          <span className={cn("shrink-0 text-muted-foreground", status !== undefined && "text-xs")}>
+            <Badge dot pulse={dotTone === "busy"} tone={STATUS_BADGE_TONE[dotTone]}>
+              {status?.word ?? operation.statusWord}
+            </Badge>
+          </span>
           <OperationSubjectLine running={running} subject={subject} />
         </div>
         <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-xs">
@@ -228,7 +227,9 @@ function CardHeader({
         className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-xs"
         role="status"
       >
-        <StatusDot label={operation.statusWord} pulse={tone === "busy"} sentence tone={tone} />
+        <Badge dot pulse={tone === "busy"} tone={STATUS_BADGE_TONE[tone]}>
+          {operation.statusWord}
+        </Badge>
         <HeaderMeta durationText={durationText} led running={running} />
       </span>
     </header>

@@ -1684,7 +1684,7 @@ describe("the project's flow under it", () => {
       expect(html).not.toContain('data-zerops-primary-action="Merge"');
       expect(html).not.toContain('data-zerops-primary-action="Ask"');
       expect(html).not.toContain("sidebar-pull-request-blocked");
-      expect(html).not.toContain('data-zerops-primitive="status-dot"');
+      expect(html).not.toContain('data-dot=""');
     }
   });
 
@@ -1813,7 +1813,7 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain('sidebar-environment"');
     expect(html).not.toContain("sidebar-stop");
     expect(html).not.toContain("sidebar-pull-request");
-    expect(html).not.toContain("status-dot");
+    expect(html).not.toContain("data-dot");
     expect(html).not.toContain("Release");
   });
 

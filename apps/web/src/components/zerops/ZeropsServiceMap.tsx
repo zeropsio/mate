@@ -49,8 +49,9 @@ import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "@t3tools/client-runtime/data";
 import { ZeropsDataLinkContext } from "./dataLink";
-import { LivenessLine, MateFace, MicroLabel, MintPanel, StatusDot } from "./primitives";
+import { LivenessLine, MateFace, MicroLabel, MintPanel, STATUS_BADGE_TONE } from "./primitives";
 import { sparklineGeometry } from "./sparkline";
+import { Badge } from "~/components/ui/badge";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
   error: "failed",
@@ -95,14 +96,16 @@ function ServiceStatus({
   label: string;
 }) {
   return (
-    <StatusDot
+    <Badge
       className="shrink-0"
+      dot
       data-zerops-service-tone={tone}
       data-zerops-service-transient={service.transient ? "true" : undefined}
-      label={label}
       pulse={service.transient}
-      tone={STATUS_TONE[tone]}
-    />
+      tone={STATUS_BADGE_TONE[STATUS_TONE[tone]]}
+    >
+      {label}
+    </Badge>
   );
 }
 
@@ -904,11 +907,11 @@ export function ZeropsServiceMap({
         <LivenessLine state="absent" />
       )}
       {view.runningTool === undefined ? null : (
-        <StatusDot
+        <Badge
+          dot
           data-zerops-running-tool={view.runningTool}
-          label={`${view.runningTool} running`}
-          tone="busy"
-        />
+          tone="info"
+        >{`${view.runningTool} running`}</Badge>
       )}
       {view.isEmpty ? (
         <p className="text-muted-foreground text-sm" data-zerops-map-empty>

@@ -19,7 +19,7 @@ import { Section } from "~/components/ui/section";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
 import { Switch } from "~/components/ui/switch";
 import { Face, SheetRow, SheetSection } from "~/components/zerops/addresses/AddressesSheetBits";
-import { MateFace, PersonAvatar, StatusDot } from "~/components/zerops/primitives";
+import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 import { ProjectCards } from "~/components/zerops/projects/ProjectCards";
 import { SidebarZeropsTree } from "~/components/zerops/SidebarZeropsTree";
 import { ZeropsEnvironmentRow } from "~/components/zerops/ZeropsEnvironmentRow";
@@ -39,6 +39,7 @@ import {
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
+import { Badge } from "~/components/ui/badge";
 
 const noop = () => {};
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
@@ -183,7 +184,11 @@ function Chosen() {
                 title="Petra Malá"
               />
               <Row
-                badges={<StatusDot label="Invited" sentence tone="attention" />}
+                badges={
+                  <Badge dot tone="warning">
+                    Invited
+                  </Badge>
+                }
                 lead={<PersonAvatar name="Jan Svoboda" size={32} />}
                 line="Developer · invited"
                 title="Jan Svoboda, whose name is long enough to meet its badge"
@@ -374,13 +379,21 @@ function CardsAndRows() {
             }
             menu={<MoreButton />}
             name="production"
-            status={<StatusDot label="Running v1.4.0" sentence tone="ok" />}
+            status={
+              <Badge dot tone="success">
+                Running v1.4.0
+              </Badge>
+            }
             summary="2 changes since v1.4.0"
             tag="production"
           />
           <ZeropsEnvironmentRow
             name="stage"
-            status={<StatusDot label="Deploying" sentence tone="busy" />}
+            status={
+              <Badge dot tone="info">
+                Deploying
+              </Badge>
+            }
             summary="Building main"
             tag="stage"
           />

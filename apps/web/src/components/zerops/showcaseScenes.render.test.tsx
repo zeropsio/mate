@@ -22,8 +22,9 @@ import {
   MicroLabel,
   MintPanel,
   ProcessSteps,
-  StatusDot,
+  STATUS_BADGE_TONE,
 } from "./primitives";
+import { Badge } from "../ui/badge";
 
 /** A lifecycle snapshot as the feed's live answer. */
 const liveLifecycle = (value: ZeropsLifecycle): Known<ZeropsLifecycle> => ({
@@ -119,7 +120,11 @@ it("renders the complete primitive probe from existing showcase facts", () => {
   const toneProbes = [...probesByTone.values()];
   const toneMarkup = toneProbes
     .flatMap(({ label, tone }) => [
-      renderToStaticMarkup(<StatusDot key={`dot-${tone}`} label={label} tone={tone} />),
+      renderToStaticMarkup(
+        <Badge dot key={`dot-${tone}`} tone={STATUS_BADGE_TONE[tone]}>
+          {label}
+        </Badge>,
+      ),
       renderToStaticMarkup(<Chip key={`chip-${tone}`} label={label} tone={tone} />),
     ])
     .join("\n");
@@ -160,7 +165,6 @@ it("renders the complete primitive probe from existing showcase facts", () => {
   const markup = `${toneMarkup}\n${primitivesMarkup}\n${processMarkup}\n${livenessMarkup}`;
 
   for (const primitive of [
-    "status-dot",
     "micro-label",
     "chip",
     "mint-panel",
@@ -174,7 +178,7 @@ it("renders the complete primitive probe from existing showcase facts", () => {
     Object.keys(SERVICE_STATUS_TONES).sort(),
   );
   for (const { tone } of toneProbes) {
-    expect(markup).toContain(`data-zerops-status-tone="${tone}"`);
+    expect(markup).toContain(`data-tone="${STATUS_BADGE_TONE[tone]}"`);
     expect(markup).toContain(`data-zerops-chip-tone="${tone}"`);
   }
 });
