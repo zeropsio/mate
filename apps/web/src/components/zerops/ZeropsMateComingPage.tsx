@@ -536,6 +536,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             services,
           }),
         },
+    coming?.kind === "failed",
   );
   // What its copy's first step waits on: the managed services its press planned, else its
   // project's own.
