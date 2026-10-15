@@ -398,12 +398,7 @@ function EnvironmentForm({
           ) : null}
         </div>
 
-        {access === undefined ? null : (
-          <div className="space-y-2">
-            <span className="text-sm">Project access</span>
-            {access(setUserRoles)}
-          </div>
-        )}
+        {access === undefined ? null : access(setUserRoles)}
         {forecast}
       </DialogPanel>
 

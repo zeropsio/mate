@@ -283,12 +283,7 @@ export function ZeropsNewMateForm({
                   },
                 ]}
               />
-              {access === undefined ? null : (
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-sm">Who can work with this Mate</span>
-                  {access(setUserRoles)}
-                </div>
-              )}
+              {access === undefined ? null : access(setUserRoles)}
               {forecast}
             </div>
           </DialogPanel>

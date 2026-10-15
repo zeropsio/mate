@@ -151,7 +151,7 @@ describe("ZeropsEnvironmentCreationForm", () => {
       access: (onChange) => <Chosen onChange={onChange} />,
       onCreate: (choice) => made.push(choice),
     });
-    expect(html).toContain("Project access");
+    // The access names its own section (`ProjectAccessDraft`): the dialog draws it whole.
     expect(html).toContain('aria-label="Chosen access"');
     act(() =>
       host

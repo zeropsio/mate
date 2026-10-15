@@ -46,7 +46,7 @@ import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 
-import { draftChoose, draftPrefill, draftView } from "./accessDraft.logic";
+import { draftChoose, draftPrefill, draftSpeaks, draftView } from "./accessDraft.logic";
 import {
   ADD_TROUBLE,
   ProjectAccessChips,
@@ -306,20 +306,22 @@ export function ProjectAccess({
 
 /**
  * A new project's access, before it exists: its creator pinned, then everyone it will reach, the
- * app's people prefilled. Says each change to `onChange` as the list the creation sends.
+ * app's people prefilled, under the form's name for it — drawn only where someone besides the
+ * creator is in it or can be added (`draftSpeaks`). Says each change to `onChange` as the list the
+ * creation sends.
  */
 export function ProjectAccessDraft({
   groupId,
   kind,
   onChange,
-  heading = false,
+  label,
 }: {
   /** The app it is made in; `null` for a brand new app. */
   readonly groupId: string | null;
   readonly kind: RoleProjectKind;
   readonly onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void;
-  /** Drawn with its own heading; by default the creation form names the section. */
-  readonly heading?: boolean;
+  /** What the creation form names the section: "Project access", "Who can work with this Mate". */
+  readonly label: string;
 }) {
   const app = useGroupProjects(groupId);
   // The prefill reads the places, or the Mates where the app has none.
@@ -383,7 +385,14 @@ export function ProjectAccessDraft({
       ),
     [base.members.list, list],
   );
-  return <ProjectAccessChips heading={heading} onAdd={add} onChoose={choose} view={view} />;
+  // Someone alone in the organization is asked nothing: the creator's own chip says nothing new.
+  if (!draftSpeaks(view)) return null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm">{label}</span>
+      <ProjectAccessChips heading={false} label={label} onAdd={add} onChoose={choose} view={view} />
+    </div>
+  );
 }
 
 /** What a creation role makes, as the access draft names the project. */

@@ -2656,6 +2656,7 @@ export function ZeropsProjectsContent({
             <ProjectAccessDraft
               groupId={creationRequest.groupId}
               kind={roleProjectKind(creationRequest.role)}
+              label="Project access"
               onChange={onChange}
             />
           )}

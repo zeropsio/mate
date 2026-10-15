@@ -181,3 +181,15 @@ export function draftChoose(
     roleCode === null || roleGives(orgRole, roleCode) ? null : roleCode,
   );
 }
+
+/**
+ * Whether a creation dialog asks who reaches the new project: only where someone besides its
+ * creator is on it or can be added — a person alone in the organization is asked nothing, and
+ * nothing is drawn while the people are read.
+ */
+export function draftSpeaks(view: ProjectPeopleView): boolean {
+  return (
+    view.kind === "people" &&
+    (view.people.length > 1 || (view.invite && view.candidates.length > 0))
+  );
+}

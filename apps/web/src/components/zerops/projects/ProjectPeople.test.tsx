@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { draftView } from "./accessDraft.logic";
+import { draftSpeaks, draftView } from "./accessDraft.logic";
 import { AddAccessPicker, ProjectAccessChips, type AccessPick } from "./ProjectAccessChips";
 import {
   projectPeople,
@@ -237,6 +237,29 @@ describe("changing who can work on a project", () => {
 });
 
 describe("a new project's access in a creation dialog", () => {
+  it.each([
+    {
+      sentence: "A creator alone in the organization is asked nothing about access",
+      list: [PETR],
+      speaks: false,
+    },
+    {
+      sentence: "With teammates, who reaches the new project is chosen in the dialog",
+      list: [ANNA, PETR, JAN],
+      speaks: true,
+    },
+  ])("$sentence", ({ list, speaks }) => {
+    const view = draftView({
+      members: KNOWN(list),
+      kind: "mate",
+      app: { projects: [], grants: {}, owners: {} },
+      pictures: {},
+      creator: { membershipId: "cu-petr", userId: "u-petr" },
+      list: [],
+    });
+    expect(draftSpeaks(view)).toBe(speaks);
+  });
+
   it("The creator's chip comes first as you, full access, with no menu; Add access follows the people", () => {
     const view = draftView({
       members: KNOWN([ANNA, PETR, JAN]),
