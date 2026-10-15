@@ -219,7 +219,9 @@ function KitSections({ sections }: { readonly sections: readonly KitSection[] })
         <Separator />
         <div className="flex flex-col gap-1">
           <h2 className="m-0 font-semibold text-lg">Not shown</h2>
-          <p className="m-0 text-muted-foreground text-sm">Exports the page leaves out, and why.</p>
+          <p className="m-0 text-muted-foreground text-sm">
+            Components the page leaves out, and why.
+          </p>
         </div>
         <Table>
           <TableHeader>

@@ -8,6 +8,7 @@ export type KitGroup = (typeof KIT_GROUPS)[number];
 export const KIT_KINDS = [
   "Actions",
   "Labels",
+  "Identity",
   "Containers",
   "Feedback",
   "Overlays",
