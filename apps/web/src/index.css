@@ -216,6 +216,25 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   /* Motion. drawer is the decelerating curve for surfaces that slide or pop in
      (composer context, pills). */
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  /* The system's scale (packages/shared/src/brand.ts): five type steps, three
+     nested radii, two easings. */
+  /* generated:scale-tokens start */
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.25rem;
+  --text-emphasis: 1rem;
+  --text-emphasis--line-height: 1.5rem;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.75rem;
+  --text-display: 1.75rem;
+  --text-display--line-height: 2.25rem;
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+  --radius-sheet: 1rem;
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.65, 0, 0.35, 1);
+  /* generated:scale-tokens end */
   --color-zinc-25: oklch(99.2% 0 0);
   --animate-skeleton: skeleton 2s infinite linear;
   /* Duty-cycled indicator animations: long holds with stepped ramps, so the
@@ -2960,7 +2979,13 @@ code {
     0.999,
     1
   );
+  /* generated:motion-tokens start */
+  --duration-quick: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 260ms;
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.65, 0, 0.35, 1);
+  /* generated:motion-tokens end */
 }
 
 [data-zerops-primitive="mate-face"]

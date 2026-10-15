@@ -610,23 +610,39 @@ export const ICON_MAP = {
   failed: "CircleAlert",
 } as const satisfies Record<string, string>;
 
+/** Spacing sits on a 4 px grid: every gap, padding and line height is a multiple of it. */
+export const SPACING_UNIT = 4;
+
+/**
+ * Three nested radii that run parallel: a control, the card it sits in, the sheet the card sits
+ * in. Each outer edge is the inner one plus the 4 px between them. Pixels.
+ */
 export const RADII = {
-  card: 10,
   control: 8,
-  dialog: 16,
-  chip: 10,
-  infoChip: 8,
-  keyChip: 3,
-  composer: 22,
-  pill: 80,
+  card: 12,
+  sheet: 16,
 } as const;
 
+/**
+ * The one type scale: five steps, measured from what the app set most (12 and 14 px carried
+ * nine in ten sizes). A size between two steps takes the nearer one. Pixels.
+ */
 export const TYPE_SCALE = {
-  body: { fontSize: 14, fontWeight: 400 },
-  rowHostname: { fontSize: 14, fontWeight: 500, portOpacity: 0.6 },
-  cardTitle: { fontSize: 14, fontWeight: 500 },
-  projectName: { fontSize: 20, fontWeight: 500 },
-  description: { fontSize: 13, fontWeight: 400, lineHeight: 1.6, opacity: 0.7 },
-  microLabel: { fontSize: 10, fontWeight: 600, letterSpacingEm: 0.06, opacity: 0.45 },
-  draftHero: { fontSize: 32, fontWeight: 400 },
+  caption: { fontSize: 12, lineHeight: 16 },
+  body: { fontSize: 14, lineHeight: 20 },
+  emphasis: { fontSize: 16, lineHeight: 24 },
+  title: { fontSize: 20, lineHeight: 28 },
+  display: { fontSize: 28, lineHeight: 36 },
+} as const;
+
+/**
+ * Only what the person did animates. Three durations in milliseconds; one strong ease-out for
+ * what arrives or answers a press, one ease-in-out for a paired enter and leave.
+ */
+export const MOTION = {
+  duration: { quick: 150, base: 200, slow: 260 },
+  easing: {
+    out: "cubic-bezier(0.23, 1, 0.32, 1)",
+    inOut: "cubic-bezier(0.65, 0, 0.35, 1)",
+  },
 } as const;

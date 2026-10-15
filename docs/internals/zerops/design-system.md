@@ -114,6 +114,12 @@ A status mark carries its word or an accessible name. Use scalable vector icons 
 font. Clients share meaning and copy while using their native containers.
 Nested rounded edges run parallel: the outer radius is the inner radius plus the space between them.
 
+- One scale, from `packages/shared/src/brand.ts` and projected into the web theme: five type steps
+  (`text-caption`, `text-body`, `text-emphasis`, `text-title`, `text-display`), spacing on a 4 px
+  grid, three nested radii (`rounded-control` inside `rounded-card` inside `rounded-sheet`), three
+  durations (`--duration-quick`, `--duration-base`, `--duration-slow`) with `ease-out-strong` for
+  what arrives and `ease-in-out-strong` for a paired enter and leave.
+
 ## 4. Rules — machine-checked
 
 - **R1** — `client-runtime/src/zerops/**` is UI-free and platform-free
@@ -177,7 +183,9 @@ no-restyle`
     token: `text-2xs`/`text-3xs`, `ease-drawer`, the gutters); CI reconciles `--rule
 no-arbitrary-values`
   - _Test(s):_ `oxlint-plugin-t3code/rules/no-arbitrary-values.test.ts`
-  - _Status:_ landed (intake row 5, 2026-09-25)
+  - _Status:_ landed (intake row 5, 2026-09-25); hand-written CSS sizes, corners and transition
+    lengths between the scale's steps are held to a budget that only shrinks
+    (`scripts/check-css-tokens.ts`)
 
 ## 5. Exceptions
 
