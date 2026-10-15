@@ -121,4 +121,47 @@ function EmptyContent({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-export { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent, EmptyMedia };
+/**
+ * A place that holds nothing yet: its mark, one line saying what will be here, and at most one
+ * action — none when the viewer has nothing to do. `row` stands where a list's rows would be;
+ * `section` fills a panel or a card; `page` fills a whole route. Shown only once the source has
+ * answered that there is nothing: before that the place is loading, after a refusal it failed.
+ */
+function EmptyState({
+  mark,
+  children,
+  action,
+  size = "section",
+}: {
+  /** The place's own icon or the subject's face. */
+  readonly mark?: React.ReactNode;
+  /** The one line: what will be here, true for this viewer. */
+  readonly children: React.ReactNode;
+  readonly action?: React.ReactNode;
+  readonly size?: "row" | "section" | "page";
+}) {
+  if (size === "row") {
+    return (
+      <div
+        className="flex min-h-12 min-w-0 items-center gap-3 px-2 text-muted-foreground text-sm [&_svg]:size-4 [&_svg]:shrink-0"
+        data-size="row"
+        data-slot="empty"
+      >
+        {mark}
+        <span className="min-w-0 flex-1">{children}</span>
+        {action}
+      </div>
+    );
+  }
+  return (
+    <Empty size={size === "page" ? "default" : "compact"}>
+      {mark === undefined || mark === null ? null : (
+        <EmptyMedia variant={size === "page" ? "default" : "icon"}>{mark}</EmptyMedia>
+      )}
+      <EmptyDescription>{children}</EmptyDescription>
+      {action === undefined || action === null ? null : <EmptyContent>{action}</EmptyContent>}
+    </Empty>
+  );
+}
+
+export { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent, EmptyMedia, EmptyState };
