@@ -6,19 +6,11 @@ export interface StateStorage<R = unknown> {
   removeItem: (name: string) => R;
 }
 
-export interface DeferredStorage<TValue> {
-  getItem: (name: string) => string | null | Promise<string | null>;
+export interface DeferredStorage<TValue, TStored = string> {
+  getItem: (name: string) => TStored | null | Promise<TStored | null>;
   setItem: (name: string, value: TValue) => void;
   removeItem: (name: string) => void;
   flush: () => void;
-}
-
-const onFull = new Set<() => void>();
-
-/** Registers what an owner of a growing key frees when the origin's storage is full. */
-export function onBrowserStorageFull(evict: () => void): () => void {
-  onFull.add(evict);
-  return () => onFull.delete(evict);
 }
 
 const isQuotaExceeded = (error: unknown) =>
@@ -27,28 +19,14 @@ const isQuotaExceeded = (error: unknown) =>
 
 /**
  * The only write into browser storage. What it keeps is a convenience, so a full origin never
- * fails the app: the owners of growing keys free what they can, the write runs once more, and
- * otherwise it is skipped. Returns whether the value landed. Other errors (storage blocked by
- * policy) stay with the caller.
+ * fails the app: the write is skipped. Returns whether the value landed. Other errors (storage
+ * blocked by policy) stay with the caller.
  */
 export function writeBrowserStorage(
   storage: Pick<Storage, "setItem">,
   key: string,
   value: string,
 ): boolean {
-  try {
-    storage.setItem(key, value);
-    return true;
-  } catch (error) {
-    if (!isQuotaExceeded(error)) throw error;
-  }
-  for (const evict of onFull) {
-    try {
-      evict();
-    } catch (cause) {
-      console.error("Freeing browser storage failed", cause);
-    }
-  }
   try {
     storage.setItem(key, value);
     return true;
@@ -89,21 +67,24 @@ export function resolveStorage(storage: Partial<StateStorage> | null | undefined
 }
 
 /** Keep the latest value and serialize it when the debounce fires or `flush` runs. */
-export function createDeferredStorage<TValue>(
-  baseStorage: Partial<StateStorage> | null | undefined,
-  serialize: (value: TValue) => string,
+export function createDeferredStorage<TValue, TStored = string>(
+  baseStorage: {
+    getItem: (name: string) => TStored | null | Promise<TStored | null>;
+    setItem: (name: string, value: TStored) => unknown;
+    removeItem: (name: string) => unknown;
+  },
+  serialize: (value: TValue) => TStored,
   debounceMs: number = 300,
-): DeferredStorage<TValue> {
-  const resolvedStorage = resolveStorage(baseStorage);
+): DeferredStorage<TValue, TStored> {
   const debouncedSetItem = new Debouncer(
     (name: string, value: TValue) => {
-      resolvedStorage.setItem(name, serialize(value));
+      baseStorage.setItem(name, serialize(value));
     },
     { wait: debounceMs },
   );
 
   return {
-    getItem: (name) => resolvedStorage.getItem(name),
+    getItem: (name) => baseStorage.getItem(name),
     setItem: (name, value) => {
       debouncedSetItem.maybeExecute(name, value);
     },
@@ -111,7 +92,7 @@ export function createDeferredStorage<TValue>(
       debouncedSetItem.cancel();
       // cancel() leaves the captured value in Pacer's lastArgs.
       debouncedSetItem.reset();
-      resolvedStorage.removeItem(name);
+      baseStorage.removeItem(name);
     },
     flush: () => {
       debouncedSetItem.flush();

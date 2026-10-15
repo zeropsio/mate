@@ -1,7 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { quotaStorage } from "../lib/__fixtures__/quotaStorage";
-import { accountLocalStorage, closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { createDraftStorage } from "./draftStorage";
+import { describe, expect, it } from "vite-plus/test";
+import { createEntryStorage, foldDraftBranches } from "./draftStorage";
 const memory = () => {
   const data = new Map<string, string>();
   return {
@@ -17,131 +15,77 @@ const memory = () => {
     keys: () => [...data.keys()],
   };
 };
-const branchesOf = (storage: ReturnType<typeof memory>, key: string) =>
-  [...storage.data.keys()].filter((stored) => stored.startsWith(`${key}:tab:`));
-describe("draft branches", () => {
+const drafts = (byThread: Record<string, string>) => ({
+  state: { drafts: byThread, sticky: "codex" },
+  version: 1,
+});
+
+describe("draft entries", () => {
   it("preserves concurrent edits, resumes each tab after reload, and never revives a cleared draft", () => {
     const storage = memory();
-    const tabA = memory();
-    const tabB = memory();
-    const a = createDraftStorage(
-      storage,
-      () => tabA,
-      () => "a",
-    );
-    a.setItem("draft", "unsent A");
-    const b = createDraftStorage(
-      storage,
-      () => tabB,
-      () => "b",
-    );
-    expect(b.getItem("draft")).toBe("unsent A");
-    b.setItem("draft", "unsent B");
-    expect(a.getItem("draft")).toBe("unsent A");
-    a.setItem("draft", "new A");
-    expect(b.getItem("draft")).toBe("unsent B");
-    const reloadedB = createDraftStorage(
-      storage,
-      () => tabB,
-      () => "b2",
-    );
-    expect(reloadedB.getItem("draft")).toBe("unsent B");
-    const twiceReloadedB = createDraftStorage(
-      storage,
-      () => tabB,
-      () => "b3",
-    );
-    expect(twiceReloadedB.getItem("draft")).toBe("unsent B");
-    reloadedB.removeItem("draft");
-    expect(reloadedB.getItem("draft")).toBe("");
-    expect(a.getItem("draft")).toBe("new A");
+    const a = createEntryStorage(storage);
+    expect(a.getItem("draft")).toBeNull();
+    a.setItem("draft", drafts({ x: "unsent A" }));
+    const b = createEntryStorage(storage);
+    expect(b.getItem("draft")).toEqual(drafts({ x: "unsent A" }));
+    b.setItem("draft", drafts({ x: "unsent A", y: "unsent B" }));
+    // Tab A never read thread y: its next write leaves y alone.
+    a.setItem("draft", drafts({ x: "new A" }));
+
+    const reloadedB = createEntryStorage(storage);
+    expect(reloadedB.getItem("draft")).toEqual(drafts({ x: "new A", y: "unsent B" }));
+    const reloadedA = createEntryStorage(storage);
+    reloadedA.getItem("draft");
+    reloadedB.setItem("draft", drafts({ x: "new A" }));
+    // Tab A still holds y as it read it; an edit of x does not bring y back.
+    reloadedA.setItem("draft", drafts({ x: "newer A", y: "unsent B" }));
+
+    expect(createEntryStorage(storage).getItem("draft")).toEqual(drafts({ x: "newer A" }));
   });
 
-  it("a tab reloaded all day keeps one draft branch", () => {
+  it("writes only the entries a change touched", () => {
     const storage = memory();
-    const tabA = memory();
-    const tabB = memory();
-    createDraftStorage(
-      storage,
-      () => tabA,
-      () => "a",
-    ).setItem("draft", "unsent A");
-    for (let load = 0; load < 100; load += 1) {
-      const b = createDraftStorage(
-        storage,
-        () => tabB,
-        () => `b${load}`,
-      );
-      expect(b.getItem("draft")).toBe(load === 0 ? "unsent A" : "unsent B");
-      b.setItem("draft", "unsent B");
-    }
+    const tab = createEntryStorage(storage);
+    tab.setItem("draft", drafts({ x: "one", y: "two" }));
+    const written: string[] = [];
+    const setItem = storage.setItem;
+    storage.setItem = (key, value) => {
+      written.push(key);
+      return setItem(key, value);
+    };
 
-    expect(branchesOf(storage, "draft")).toHaveLength(2);
-  });
+    tab.setItem("draft", drafts({ x: "one", y: "two!" }));
 
-  it("tabs closed long ago leave at most eight draft branches behind", () => {
-    const storage = memory();
-    for (let tab = 0; tab < 30; tab += 1) {
-      const opened = createDraftStorage(
-        storage,
-        memory,
-        () => `tab${tab}`,
-        () => tab,
-      );
-      opened.getItem("draft");
-      opened.setItem("draft", `unsent ${tab}`);
-    }
-
-    expect(branchesOf(storage, "draft")).toHaveLength(8);
-    const next = createDraftStorage(storage, memory, () => "next");
-    expect(next.getItem("draft")).toBe("unsent 29");
+    expect(written).toEqual(["draft:drafts:y"]);
   });
 
   it("a storage already full of draft branches recovers on the next load", () => {
     const storage = memory();
-    const draft = "x".repeat(10_310);
-    // What the owner's browser held: one branch per page load, from before branches carried time.
-    for (let load = 0; load < 588; load += 1) storage.setItem(`draft:tab:${load}-legacy`, draft);
-    storage.setItem("draft:tab:587-legacy", "last typed");
-    storage.setItem("draft:latest", "587-legacy");
-
-    const opened = createDraftStorage(storage, memory, () => "next");
-
-    expect(opened.getItem("draft")).toBe("last typed");
-    expect(branchesOf(storage, "draft").length).toBeLessThanOrEqual(8);
-  });
-});
-
-describe("a full localStorage", () => {
-  afterEach(() => {
-    closeAccountLifetime();
-    vi.unstubAllGlobals();
-  });
-
-  it("an origin filled with draft branches makes room for the next write", () => {
-    const branch = (id: string) => `mate:account:owner:t3code:composer-drafts:v1:tab:${id}`;
-    // The owner's browser: 588 branches of about 8.7k characters, the rest of 5 MiB in other keys.
-    const draft = "x".repeat(8_600);
-    const browser = quotaStorage(5_242_880);
-    browser.values.set("mate:account:owner:t3code:composer-drafts:v1:latest", "587");
-    for (let load = 0; load < 588; load += 1) browser.values.set(branch(String(load)), draft);
-    let filled = 0;
-    while (filled < 5_242_880) {
-      try {
-        browser.setItem(`filler-${filled}`, "x".repeat(1_000));
-        filled += 1_000;
-      } catch {
-        break;
-      }
+    const branch = (state: Record<string, string>) => JSON.stringify(drafts(state));
+    // What the owner's browser held: one whole copy per page load.
+    for (let load = 0; load < 588; load += 1) {
+      storage.setItem(`draft:v1:tab:${load}-legacy`, branch({ x: "x".repeat(10_000) }));
     }
-    vi.stubGlobal("window", { localStorage: browser });
-    openAccountLifetime("owner");
+    storage.setItem("draft:v1:tab:587-legacy", branch({ x: "last typed" }));
+    storage.setItem("draft:v1:latest", "587-legacy");
+    const opened = createEntryStorage(storage);
 
-    accountLocalStorage.setItem("t3code:right-panel-state:v2", "y".repeat(7_118));
+    foldDraftBranches(storage, "draft:v1", (value) =>
+      opened.adopt("draft:v2", JSON.parse(value) as ReturnType<typeof drafts>),
+    );
 
-    expect(browser.getItem("mate:account:owner:t3code:right-panel-state:v2")).toHaveLength(7_118);
-    expect([...browser.values.keys()].filter((key) => key.includes(":tab:"))).toEqual([
-      branch("587"),
-    ]);
+    expect(opened.getItem("draft:v2")).toEqual(drafts({ x: "last typed" }));
+    expect(storage.keys().filter((key) => key.startsWith("draft:v1"))).toEqual([]);
+  });
+
+  it("keeps the latest copy while it cannot land", () => {
+    const storage = memory();
+    storage.setItem("draft:v1:tab:old", "{}");
+    storage.setItem("draft:v1:tab:new", "{}");
+    storage.setItem("draft:v1:latest", "new");
+
+    foldDraftBranches(storage, "draft:v1", () => false);
+
+    expect(storage.keys().toSorted()).toEqual(["draft:v1:latest", "draft:v1:tab:new"]);
   });
 });

@@ -1,5 +1,9 @@
-import { accountDraftStorage } from "./zerops/draftStorage";
-import { onAccountLifetimeClose, onAccountLifetimeOpen } from "./zerops/accountLifetime";
+import { accountEntryStorage, foldDraftBranches, type PersistedValue } from "./zerops/draftStorage";
+import {
+  accountLocalStorage,
+  onAccountLifetimeClose,
+  onAccountLifetimeOpen,
+} from "./zerops/accountLifetime";
 import {
   type CommandId,
   DEFAULT_MODEL,
@@ -66,7 +70,9 @@ const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
 
-export const COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
+export const COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v2";
+/** The whole store as one value, one copy per page load (see `foldDraftBranches`). */
+const LEGACY_COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
 const COMPOSER_DRAFT_STORAGE_VERSION = 8;
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
@@ -81,34 +87,42 @@ type ComposerPersistState =
   | { capturedState: ComposerDraftStoreState }
   | PersistedComposerDraftStoreState;
 
-const composerDebouncedStorage = createDeferredStorage<StorageValue<ComposerPersistState>>(
+const composerDebouncedStorage = createDeferredStorage<
+  StorageValue<ComposerPersistState>,
+  PersistedValue
+>(
   {
-    ...accountDraftStorage,
-    setItem: (key, value) => {
-      if (!changingAccount) accountDraftStorage.setItem(key, value);
+    getItem: (name) => {
+      foldDraftBranches(accountLocalStorage, LEGACY_COMPOSER_DRAFT_STORAGE_KEY, (value) =>
+        accountEntryStorage.adopt(name, JSON.parse(value) as PersistedValue),
+      );
+      return accountEntryStorage.getItem(name);
     },
+    setItem: (name, value) => {
+      if (!changingAccount) accountEntryStorage.setItem(name, value);
+    },
+    removeItem: (name) => accountEntryStorage.removeItem(name),
   },
-  (value) =>
-    JSON.stringify({
-      state:
-        "capturedState" in value.state
-          ? partializeComposerDraftStoreState(value.state.capturedState)
-          : value.state,
-      version: value.version,
-    }),
+  (value) => ({
+    state:
+      "capturedState" in value.state
+        ? partializeComposerDraftStoreState(value.state.capturedState)
+        : value.state,
+    version: value.version ?? COMPOSER_DRAFT_STORAGE_VERSION,
+  }),
   COMPOSER_PERSIST_DEBOUNCE_MS,
 );
 
 const composerPersistStorage: PersistStorage<ComposerPersistState> = {
   getItem: (name) => {
-    // The account draft storage is synchronous.
-    const raw = composerDebouncedStorage.getItem(name);
-    if (typeof raw !== "string") {
+    // The account's entry storage is synchronous.
+    const stored = composerDebouncedStorage.getItem(name);
+    if (stored === null || stored instanceof Promise) {
       return null;
     }
     // Parsed persisted JSON. `migrate` and `merge` normalize it from unknown,
     // so the cast mirrors the one zustand's createJSONStorage performs.
-    return JSON.parse(raw) as StorageValue<ComposerPersistState>;
+    return stored as StorageValue<ComposerPersistState>;
   },
   setItem: (name, value) => {
     if (!changingAccount) composerDebouncedStorage.setItem(name, value);
@@ -338,11 +352,6 @@ const PersistedComposerDraftStoreState = Schema.Struct({
   stickyActiveProvider: Schema.optionalKey(Schema.NullOr(ProviderInstanceId)),
 });
 type PersistedComposerDraftStoreState = typeof PersistedComposerDraftStoreState.Type;
-
-const PersistedComposerDraftStoreStorage = Schema.Struct({
-  version: Schema.Number,
-  state: PersistedComposerDraftStoreState,
-});
 
 /**
  * Composer content keyed by either a draft session (`DraftId`) or a real server
@@ -2188,23 +2197,22 @@ function normalizeCurrentPersistedComposerDraftStoreState(
   };
 }
 
-const decodePersistedDraftStorage = Schema.decodeSync(
-  Schema.fromJsonString(PersistedComposerDraftStoreStorage),
-);
+const decodePersistedThreadDraft = Schema.decodeUnknownSync(PersistedComposerThreadDraftState);
 
 function readPersistedAttachmentIdsFromStorage(threadKey: string): string[] {
   if (threadKey.length === 0) {
     return [];
   }
   try {
-    const raw = accountDraftStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY);
-    const persisted = raw === null ? null : decodePersistedDraftStorage(raw);
-    if (!persisted || persisted.version !== COMPOSER_DRAFT_STORAGE_VERSION) {
+    const stored = accountEntryStorage.readEntry(
+      COMPOSER_DRAFT_STORAGE_KEY,
+      "draftsByThreadKey",
+      threadKey,
+    );
+    if (stored === null) {
       return [];
     }
-    return (persisted.state.draftsByThreadKey[threadKey]?.attachments ?? []).map(
-      (attachment) => attachment.id,
-    );
+    return decodePersistedThreadDraft(stored).attachments.map((attachment) => attachment.id);
   } catch {
     return [];
   }
