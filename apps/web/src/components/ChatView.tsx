@@ -8153,7 +8153,10 @@ function ConversationView(props: ChatViewProps) {
               );
             case "browser":
               return "url" in activeRightPanelSurface ? null : (
-                <ZeropsBrowserSurface threadRef={zeropsChrome.threadRef} />
+                <ZeropsBrowserSurface
+                  mateName={admissionMate.kind === "mate" ? admissionMate.mate.name : undefined}
+                  threadRef={zeropsChrome.threadRef}
+                />
               );
             case "mac":
               return <ZeropsMacSurface threadRef={zeropsChrome.threadRef} />;

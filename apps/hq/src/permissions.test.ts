@@ -986,16 +986,16 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "allow",
     ],
     [
-      "org none, a Read only grant on a project of it: sees the application, not its changes",
+      "org none, a Read only grant on a project of it: sees the application and its changes",
       {},
       { verb: "read_change", target: { projectIds: ["P_SEEN"] } },
-      "changes_not_seen",
+      "allow",
     ],
     [
       "org none, a Read only grant on P",
       { override: "READ_ONLY" },
       { verb: "read_change", target: { projectIds: ["P"] } },
-      "changes_not_seen",
+      "allow",
     ],
     [
       "org none, a Basic user grant on P",
@@ -1024,16 +1024,16 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
   ],
   comment_change: [
     [
-      "org Read only comments on whatever change they read",
+      "org Read only reads a change and does not comment on it",
       { orgRole: "READ_ONLY" },
-      { verb: "comment_change", target: { projectIds: [] } },
-      "allow",
+      { verb: "comment_change", target: { projectIds: ["P"] } },
+      "not_app_developer",
     ],
     [
       "org none, a Read only grant on a project of it",
       {},
       { verb: "comment_change", target: { projectIds: ["P_SEEN"] } },
-      "changes_not_seen",
+      "not_app_developer",
     ],
     [
       "org none, a Basic user grant on P",
@@ -1235,12 +1235,12 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "no_production",
     ],
     ["no production yet", { override: "BASIC_USER" }, releaseOf(["P"], null), "no_production"],
-    // That it has none is told to whoever reads its changes, as its environments are.
+    // That it has none is told to whoever reads its environments: whoever sees it.
     [
-      "no production yet, to someone who only sees it",
+      "no production yet, told to a reader of its project",
       { override: "READ_ONLY" },
       releaseOf(["P"], null),
-      "not_releaser",
+      "no_production",
     ],
     ["an application they do not see", {}, releaseOf(["P_HIDDEN"], "P_HIDDEN"), "app_not_seen"],
     // Seeing comes first: no production tells nothing to whoever does not see the application.
@@ -1908,4 +1908,54 @@ it("a project creator sees their own empty application before its first project 
     allow: false,
     reason: "app_not_seen",
   });
+});
+
+it("read on a project sees its changes and cannot comment on them", () => {
+  const facts = factsOf({ ...BASE, override: "READ_ONLY" });
+  const target = { projectIds: ["P"] };
+  expect([
+    outcome(can(PERSON, "read_change", target, facts)),
+    outcome(can(PERSON, "comment_change", target, facts)),
+  ]).toEqual(["allow", "not_app_developer"]);
+});
+
+// The owner, 2026-10-15: a Guest given Read on a project read "No changes yet" beside a release
+// of two. Read on a project is seeing what happens in it — its changes, its releases, its
+// environments — never merging or releasing them.
+describe("Read access on a project", () => {
+  const app = ["P", "P_HIDDEN"];
+  it.each([
+    { org: "NO_ACCESS", grant: null, sees: false, merges: false, releases: false },
+    { org: "NO_ACCESS", grant: "READ_ONLY", sees: true, merges: false, releases: false },
+    { org: "NO_ACCESS", grant: "BASIC_USER", sees: true, merges: true, releases: true },
+    { org: "READ_ONLY", grant: null, sees: true, merges: false, releases: false },
+    { org: "READ_ONLY", grant: "READ_ONLY", sees: true, merges: false, releases: false },
+    { org: "BASIC_USER", grant: null, sees: true, merges: true, releases: true },
+    { org: "BASIC_USER", grant: "READ_ONLY", sees: true, merges: false, releases: false },
+    { org: "ADMIN", grant: "READ_ONLY", sees: true, merges: false, releases: false },
+    { org: "OWNER", grant: null, sees: true, merges: true, releases: true },
+  ] as const)(
+    "a project's Read access sees its changes and releases, never comments on, merges or releases them: org $org, grant $grant",
+    ({ org, grant, sees, merges, releases }) => {
+      const facts = factsOf({ ...BASE, orgRole: org, override: grant });
+      const target = { projectIds: app };
+      expect({
+        changes: can(PERSON, "read_change", target, facts).allow,
+        comments: can(PERSON, "comment_change", target, facts).allow,
+        merges: can(PERSON, "merge_change", target, facts).allow,
+        releases: can(
+          PERSON,
+          "release",
+          { projectIds: app, productionProjectId: "P", productionTarget: "zerops" },
+          facts,
+        ).allow,
+        gitReleases: can(
+          PERSON,
+          "release",
+          { projectIds: app, productionProjectId: null, productionTarget: "git" },
+          facts,
+        ).allow,
+      }).toEqual({ changes: sees, comments: merges, merges, releases, gitReleases: releases });
+    },
+  );
 });

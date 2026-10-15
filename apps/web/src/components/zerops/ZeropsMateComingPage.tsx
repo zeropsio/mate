@@ -101,6 +101,7 @@ import { takeMateConversation } from "~/zerops/mateOpening";
 import {
   arrivalSteps,
   inFirstSeenOrder,
+  onSetupClock,
   pressNote,
   SETUP_FAILURE_WORDS,
   type ArrivalSubstep,
@@ -136,6 +137,7 @@ import {
   finishSetupView,
   forgetPress,
   pressFailure,
+  pressSince,
   useMatePress,
 } from "~/zerops/matePress";
 import { useDeleteProject } from "~/zerops/deleteProject";
@@ -551,13 +553,17 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
   // Made here, the steps this tab runs stay under the project's row until the hand-over.
+  // Its running step and its sentence count on its row's clock: from the first press.
   const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
       : {
-          ...(made === undefined || made.adds !== undefined
-            ? progress.progress
-            : newProjectProgress(made, progress.progress, progress.nowMs)),
+          ...onSetupClock(
+            made === undefined || made.adds !== undefined
+              ? progress.progress
+              : newProjectProgress(made, progress.progress, progress.nowMs),
+            press === undefined ? undefined : pressSince(press),
+          ),
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
           ...(setupFailure === undefined ? {} : { setupFailure }),
@@ -1134,9 +1140,6 @@ export function ComingBelow({
   // Each step's services in the order first seen here: a read that orders them otherwise — the
   // birth's recipe order handing over to the listing's own — never makes them trade places.
   const [seen, setSeen] = useState<ReadonlyMap<string, ReadonlyArray<string>>>(() => new Map());
-  // A refusal for want of credit can only be refused again until credit is added: *Try again*
-  // comes once the person has gone to HQ to add it.
-  const [creditOpened, setCreditOpened] = useState(false);
   const remembered = new Map(seen);
   // A creation that stopped says why in the sentence over its steps: the steps only mark where.
   const arrived =
@@ -1217,25 +1220,20 @@ export function ComingBelow({
         </>
       ) : coming.verb === "add-credit" && addCredit !== undefined ? (
         <>
-          {creditOpened && onTryAgain !== undefined ? (
-            <Button variant="pill" size="compact" onClick={onTryAgain}>
-              {MATE_STAND_UP_RETRY_LABEL}
-            </Button>
-          ) : null}
           <Button
-            variant={creditOpened ? "outline" : "pill"}
+            variant="pill"
             size="compact"
-            render={
-              <a
-                href={addCredit}
-                rel="noreferrer"
-                target="_blank"
-                onClick={() => setCreditOpened(true)}
-              />
-            }
+            render={<a href={addCredit} rel="noreferrer" target="_blank" />}
           >
             Add credit in HQ
           </Button>
+          {/* Credit may come from another tab, another device or before a reload: *Try again*
+              stands beside the way to HQ for as long as the refusal does. */}
+          {onTryAgain === undefined ? null : (
+            <Button variant="outline" size="compact" onClick={onTryAgain}>
+              {MATE_STAND_UP_RETRY_LABEL}
+            </Button>
+          )}
           {ends?.onStartOver === undefined ? null : (
             <Button size="compact" onClick={ends.onStartOver} variant="outline">
               Start over

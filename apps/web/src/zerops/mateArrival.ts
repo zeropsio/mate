@@ -30,6 +30,7 @@ import {
   formatBirthElapsed,
   type BirthLineStep,
 } from "../components/zerops/ZeropsBirthProgress.logic";
+import { formatWorkingTime } from "../components/zerops/SidebarZeropsTree.logic";
 import {
   signInPhrase,
   signInPhraseWords,
@@ -314,6 +315,21 @@ const WORKSPACE_STEP_IDS: ReadonlySet<string> = new Set([
  */
 const WORKSPACE_ABOUT = "about 2–3 min";
 
+/** How long its setup takes from the press, as its Add promised it (`whatHappensNext`). */
+const SETUP_ABOUT = "about 2–4 min";
+
+/**
+ * Its progress on its setup's one clock (board D1, 2026-09-30; the owner, 2026-10-15): from the
+ * first press (`pressSince`) where this tab pressed it, as its menu row counts — else the
+ * platform's own start stands.
+ */
+export function onSetupClock<T extends { readonly startedAt?: string | undefined }>(
+  progress: T,
+  since: number | undefined,
+): T {
+  return since === undefined ? progress : { ...progress, startedAt: new Date(since).toISOString() };
+}
+
 const timeOf = (
   startedAt: string | undefined,
   endedAt: string | undefined,
@@ -336,9 +352,9 @@ const timeOf = (
  * the first connect: one step to the person) with the runtimes it imports under it, then — as
  * the Mate's own setup says them, once it answers — its Git access, the person's own sign-in,
  * next, and its stand-up. A New project's first Mate is the project, so its copy folds into
- * its workspace. A step's time is what its own facts measure; a step with none says none, and a
- * running one counts from the earliest start its facts hold, so a start read later never moves
- * its clock back.
+ * its workspace. A step over takes the time its own facts measure; a step with none says none. A
+ * running one shows its setup's one clock (`onSetupClock`); without it, it counts from the
+ * earliest start its facts hold, so a start read later never moves its clock back.
  */
 export function arrivalSteps(
   progress: {
@@ -360,10 +376,22 @@ export function arrivalSteps(
      * no sign-in of the viewer's is (`MateEmptyState.agentReady`): nothing is theirs to sign in.
      */
     readonly agentReady?: boolean | undefined;
+    /** When its setup began (`onSetupClock`): the running step reads this one clock. */
+    readonly startedAt?: string | undefined;
   },
   mate: Named,
   nowMs: number,
 ): ReadonlyArray<ArrivalStep> {
+  // The step running now shows how long its setup has taken, the time its menu row shows: one
+  // time for one Mate. A step over says how long it took.
+  const since = progress.startedAt === undefined ? Number.NaN : Date.parse(progress.startedAt);
+  const setupClock = Number.isNaN(since) ? undefined : formatWorkingTime(nowMs - since);
+  const stepTime = (
+    startedAt: string | undefined,
+    endedAt: string | undefined,
+    active: boolean,
+  ): string | undefined =>
+    active && setupClock !== undefined ? setupClock : timeOf(startedAt, endedAt, nowMs, active);
   const own = progress.steps.filter((step) => !MATE_STEP_IDS.has(step.id));
   const project = progress.steps.find((step) => step.id === "project");
   const workspace = progress.steps.filter((step) => WORKSPACE_STEP_IDS.has(step.id));
@@ -376,7 +404,7 @@ export function arrivalSteps(
       "time",
       step.state === "waiting"
         ? undefined
-        : timeOf(step.startedAt, step.endedAt, nowMs, step.state === "active"),
+        : stepTime(step.startedAt, step.endedAt, step.state === "active"),
     ),
     ...optional("why", step.state === "failed" ? step.detail : undefined),
   }));
@@ -392,7 +420,7 @@ export function arrivalSteps(
         "time",
         project.state === "waiting"
           ? undefined
-          : timeOf(project.startedAt, project.endedAt, nowMs, project.state === "active"),
+          : stepTime(project.startedAt, project.endedAt, project.state === "active"),
       ),
       ...optional("why", project.state === "failed" ? project.detail : undefined),
       ...optional("services", drawnServices(progress.managed)),
@@ -421,13 +449,16 @@ export function arrivalSteps(
               .sort()
               .at(-1)
           : undefined;
-    const time = timeOf(startedAt, endedAt, nowMs, state === "active");
+    const time = stepTime(startedAt, endedAt, state === "active");
     steps.push({
       id: "workspace",
       label: `${mate.name}'s workspace`,
       state,
       ...optional("time", time),
-      ...optional("note", state === "active" ? WORKSPACE_ABOUT : undefined),
+      ...optional(
+        "note",
+        state !== "active" ? undefined : setupClock === undefined ? WORKSPACE_ABOUT : SETUP_ABOUT,
+      ),
       ...optional("why", failed?.detail),
       ...optional(
         "services",

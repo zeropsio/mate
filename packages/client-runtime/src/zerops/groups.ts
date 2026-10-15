@@ -325,7 +325,7 @@ export interface ZeropsPlacedBirth {
   readonly intent?: string | undefined;
   /** The project the platform made for it; a creation still being made, the client's own id for it. */
   readonly projectId: string;
-  /** When the platform accepted the creation, wall ms — or the client began it. */
+  /** When its setup began, wall ms: the person's first press, its row's clock (board D1). */
   readonly startedAt: number;
   readonly placement: BirthPlacement;
   /** The client's creation stopped before the platform took it: it says so where it is drawn. */
@@ -343,7 +343,7 @@ export interface ZeropsGroupPendingMember {
   readonly kind: RoleProjectKind;
   /** A Mate's name, as it will be listed; anything else's, what the person called it. */
   readonly name: string;
-  /** When the platform accepted the creation, wall ms. */
+  /** When its setup began, wall ms: the person's first press, its row's clock (board D1). */
   readonly startedAt: number;
   /** The face its person picked for a Mate, worn asleep until the listing holds it. */
   readonly face?: ZeropsMateFace | undefined;

@@ -812,9 +812,7 @@ describe("HQ API", () => {
               withProjectAddresses(app.environments),
             );
           });
-        // Refused, and said so: never an empty list that reads as "no environments".
-        assert.deepStrictEqual(yield* snapshotAs("READ_ONLY"), [{ refused: "changes_not_seen" }]);
-        assert.deepStrictEqual(yield* snapshotAs("BASIC_USER"), [
+        const stage = (redeploy: unknown) => [
           [
             {
               id: "P_MATE",
@@ -824,7 +822,7 @@ describe("HQ API", () => {
               name: "stage",
               sources: ["main"],
               order: 1,
-              can: { keep_deploy_token: refusedFor("not_project_admin"), redeploy: ALLOW },
+              can: { keep_deploy_token: refusedFor("not_project_admin"), redeploy },
               keyHeld: false,
               keyInvalid: false,
               jobs: [],
@@ -832,7 +830,15 @@ describe("HQ API", () => {
               birth: { ended: false },
             },
           ],
-        ]);
+        ];
+        // Not seeing the application, nothing of it; Read on its project reads its environments
+        // (the owner, 2026-10-15), never deploys them again.
+        assert.deepStrictEqual(yield* snapshotAs("NO_ACCESS"), []);
+        assert.deepStrictEqual(
+          yield* snapshotAs("READ_ONLY"),
+          stage(refusedFor("not_app_developer")),
+        );
+        assert.deepStrictEqual(yield* snapshotAs("BASIC_USER"), stage(ALLOW));
       }),
     );
 
