@@ -323,6 +323,7 @@ export type { MoveProjectIntent } from "./operations/moveProject.ts";
 export {
   platformMembership,
   platformCapabilities,
+  platformViewer,
   projectRoleOffers,
   roleOffers,
   type PlatformCapabilities,

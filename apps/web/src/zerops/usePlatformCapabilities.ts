@@ -1,9 +1,15 @@
 import { Atom } from "effect/reactivity";
-import { platformCapabilities, projectRoleOffers, roleOffers } from "@t3tools/client-runtime/data";
+import {
+  platformCapabilities,
+  platformViewer,
+  projectRoleOffers,
+  roleOffers,
+} from "@t3tools/client-runtime/data";
 import { useMemo } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useAccountDataOptional, useProjection } from "./accountData";
 import { useEnvironmentProjectRef } from "./useZeropsFeeds";
+import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 const UNKNOWN = Atom.make({
   membershipKnown: false,
   createProject: false,
@@ -15,21 +21,29 @@ const UNKNOWN = Atom.make({
   operate: false,
   administer: false,
 });
+/**
+ * The viewer's membership in `orgId`: as read, else as the signed-in session last knew it
+ * (`platformViewer`), so a reload paints the person's own role and takes nothing back.
+ */
+function useViewerOf(orgId: string | null | undefined) {
+  const account = useAccountDataOptional();
+  const lastKnown = useZeropsSessionOptional()?.activeOrganization;
+  return orgId == null ? undefined : platformViewer({ orgId, read: account?.viewer, lastKnown });
+}
+
 /** All native project controls read the same verdict as operation admission. */
 export function usePlatformCapabilities(environmentId: EnvironmentId | null) {
   const account = useAccountDataOptional();
   const project = useEnvironmentProjectRef(environmentId);
+  const orgId = project === null ? account?.orgId : project.organization.organizationId;
+  const viewer = useViewerOf(orgId);
   return useProjection(
     platformCapabilities,
     project === null
-      ? account?.orgId == null
+      ? orgId == null
         ? null
-        : { orgId: account.orgId, viewer: account.viewer }
-      : {
-          orgId: project.organization.organizationId,
-          projectId: project.projectId,
-          viewer: account?.viewer,
-        },
+        : { orgId, viewer }
+      : { orgId: project.organization.organizationId, projectId: project.projectId, viewer },
     UNKNOWN,
   );
 }
@@ -49,11 +63,12 @@ export function useRoleOffers() {
  */
 export function useProjectRoleOffers(projectId: string | undefined) {
   const account = useAccountDataOptional();
+  const viewer = useViewerOf(account?.orgId);
   const capabilities = useProjection(
     platformCapabilities,
     account?.orgId == null || projectId === undefined
       ? null
-      : { orgId: account.orgId, projectId, viewer: account.viewer },
+      : { orgId: account.orgId, projectId, viewer },
     UNKNOWN,
   );
   return useMemo(() => projectRoleOffers(capabilities), [capabilities]);

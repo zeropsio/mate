@@ -7,6 +7,7 @@ import { organizationUserFamily } from "../families/organizationUser.ts";
 import {
   platformCapabilities,
   platformMembership,
+  platformViewer,
   projectRoleOffers,
   roleOffers,
 } from "./platformCapabilities.ts";
@@ -138,6 +139,43 @@ describe("Zerops native capability table", () => {
       viewer: platformMembership.derive(reads, "org").viewer,
     });
     expect(roleOffers(capabilities)).toEqual({ newProject: true, setUpChief: true });
+  });
+
+  it("a Guest whose role the session last knew is offered no New project, Chief or address door while the membership is read again", () => {
+    const reads = readsOfState(stateOf([...liveProjects("org", [{ id: "p" }])]));
+    const guest = { id: "org", name: "Org", membershipId: "member", roleCode: "NO_ACCESS" };
+    const viewer = platformViewer({
+      orgId: "org",
+      read: platformMembership.derive(reads, "org").viewer,
+      lastKnown: guest,
+    });
+    expect(roleOffers(platformCapabilities.derive(reads, { orgId: "org", viewer }))).toEqual({
+      newProject: false,
+      setUpChief: false,
+    });
+    expect(
+      projectRoleOffers(
+        platformCapabilities.derive(reads, { orgId: "org", projectId: "p", viewer }),
+      ),
+    ).toEqual({ manageAddresses: false });
+  });
+  it("the membership as read outranks the role the session last knew, and another organization's says nothing", () => {
+    const reads = readsOfState(
+      stateOf([...liveProjects("org", [{ id: "p" }]), ...membershipInputs("READ_ONLY")]),
+    );
+    const owner = { id: "org", name: "Org", membershipId: "member", roleCode: "OWNER" };
+    const read = platformMembership.derive(reads, "org").viewer;
+    expect(platformViewer({ orgId: "org", read, lastKnown: owner })?.roleCode).toBe("READ_ONLY");
+    expect(
+      platformViewer({ orgId: "org", read: undefined, lastKnown: { ...owner, id: "other" } }),
+    ).toBeUndefined();
+    expect(
+      platformViewer({
+        orgId: "org",
+        read: undefined,
+        lastKnown: { id: "org", name: "Org", membershipId: "member" },
+      }),
+    ).toBeUndefined();
   });
 
   it.each([

@@ -36,6 +36,21 @@ export const platformMembership: Projection<string, PlatformMembership> = {
   },
   equals: sameValue,
 };
+/**
+ * Whose membership the capabilities read: the organization's membership as read, else the one the
+ * signed-in session last knew for this organization (its identity), so a reload paints from the
+ * role the person last had and takes nothing back once the read lands. A remembered membership
+ * without a role is no evidence; the read always outranks it.
+ */
+export function platformViewer(input: {
+  readonly orgId: string;
+  readonly read: ZeropsOrganization | undefined;
+  readonly lastKnown: ZeropsOrganization | null | undefined;
+}): ZeropsOrganization | undefined {
+  if (input.read !== undefined) return input.read;
+  const lastKnown = input.lastKnown;
+  return lastKnown?.id === input.orgId && lastKnown.roleCode !== undefined ? lastKnown : undefined;
+}
 export interface PlatformCapabilitiesKey {
   readonly orgId: string;
   readonly projectId?: string | undefined;
