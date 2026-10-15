@@ -6,15 +6,15 @@ describe("draftHeroProjectName", () => {
   it.each([
     {
       name: "A Mate's new conversation names its Zerops project, never its workspace's title",
-      mateProject: "Recipe Box",
+      mateProject: "Shop Front",
       activeProjectTitle: "Fen",
-      expected: "Recipe Box",
+      expected: "Shop Front",
     },
     {
       name: "A Mate's new conversation names its project before its workspace is read",
-      mateProject: "Recipe Box",
+      mateProject: "Shop Front",
       activeProjectTitle: null,
-      expected: "Recipe Box",
+      expected: "Shop Front",
     },
     {
       name: "A conversation nobody lives in names the project the header names",
