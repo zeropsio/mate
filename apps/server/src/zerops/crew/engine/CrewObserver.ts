@@ -84,6 +84,17 @@ const deployTarget = (shows: unknown, input: string | undefined): string | undef
   return match?.[1];
 };
 
+/** The dev service a `zerops_dev_server` call names, as its row shows its input. */
+const devServerHost = (shows: unknown, input: string | undefined): string | undefined => {
+  if (isRecord(shows)) {
+    const direct = shows.hostname;
+    if (typeof direct === "string") return direct;
+    const nested = isRecord(shows.input) ? shows.input.hostname : undefined;
+    if (typeof nested === "string") return nested;
+  }
+  return input?.match(/hostname["':=\s]+([A-Za-z0-9-]+)/)?.[1];
+};
+
 /** A `zerops_deploy` call's start or end in a conversation's record. */
 export const deployOf = (
   event: KnownEngineEvent,
@@ -102,9 +113,8 @@ export const deployOf = (
 
 /**
  * The dev service a finished `zerops_dev_server` call moved onto the dev-server supervisor: zcp
- * redeploys it once for the move and says so in the `message` of its JSON result ("zcp moved <host>
- * onto the dev-server supervisor: …", zcp `devServerMigration.sentence`). That redeploy is a deploy
- * of the host, known only when the call returns.
+ * redeploys it once for the move and says so with `migratedToSupervisor: true` in its JSON result.
+ * That redeploy is a deploy of the host the call named, known only when the call returns.
  */
 export const supervisorMigrationOf = (
   event: KnownEngineEvent,
@@ -114,14 +124,14 @@ export const supervisorMigrationOf = (
   if (body.kind !== "call" || toolNameOf(body.tool.name) !== "zerops_dev_server") return undefined;
   const text = body.result?.resultText;
   if (text === undefined) return undefined;
-  let message: unknown;
+  let result: unknown;
   try {
-    message = (JSON.parse(text) as { readonly message?: unknown } | null)?.message;
+    result = JSON.parse(text);
   } catch {
     return undefined;
   }
-  if (typeof message !== "string") return undefined;
-  const host = message.match(/^zcp moved (\S+) onto the dev-server supervisor:/)?.[1];
+  if (!isRecord(result) || result.migratedToSupervisor !== true) return undefined;
+  const host = devServerHost(body.shows, body.input);
   return host === undefined ? undefined : { itemId: event.itemId, host };
 };
 
