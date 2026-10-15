@@ -132,7 +132,10 @@ export interface MateComingInput {
   readonly pressElsewhere?: PressElsewhere | undefined;
   /** Why this tab's press stopped after the platform had taken the project. */
   readonly setUpFailed?: string | undefined;
-  /** This tab made it, and it has not connected since (`newMate.ts`'s creation). */
+  /**
+   * This tab made it (`newMate.ts`'s creation). It holds the creation for its whole life: only a
+   * link that has not answered since (`MateLink.answered`) makes it a Mate still on its way.
+   */
   readonly created?: boolean | undefined;
   /**
    * Its link's wait is one an arrival holds through (`arrivalHoldsThrough`); `undefined` where
@@ -326,11 +329,14 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
     const overdue = !youngAt(candidate?.service?.created, input.nowMs, FIRST_BUILD_GRACE_MS);
     return { kind: "coming", line: overdue ? TAKING_LONGER_LINE : COMING_UP_LINE };
   }
-  // Made here and not connected yet: its press is over and its container on its way — while
+  // Made here and not answered since: its press is over and its container on its way — while
   // nothing is listed for it yet, or its link waits on nothing but time. A link that wants
-  // somebody, or a project gone, says so in its own words.
+  // somebody, or a project gone, says so in its own words. A Mate that answered once is never
+  // coming up again, whatever its link waits for now.
+  const answered = input.link?.answered === true;
   if (
     input.created === true &&
+    !answered &&
     (candidate === undefined
       ? input.linkHolds !== false && input.listingLacksIt !== true
       : candidate.group === "provisioning" || input.linkHolds === true)
@@ -352,6 +358,7 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
   }
   if (
     press === undefined &&
+    !answered &&
     candidate?.group === "provisioning" &&
     !RESTARTING_SERVICE_STATUSES.has(candidate.service?.status ?? "")
   ) {
