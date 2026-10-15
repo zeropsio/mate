@@ -155,8 +155,8 @@ describe("a card's changes it may not read", () => {
   it.each([
     {
       case: "withheld",
-      unknown: "Needs more than Read access",
-      says: "Needs more than Read access",
+      unknown: "Changes show with Full access",
+      says: "Changes show with Full access",
     },
     { case: "known to be none", unknown: undefined, says: "No changes yet" },
   ])(

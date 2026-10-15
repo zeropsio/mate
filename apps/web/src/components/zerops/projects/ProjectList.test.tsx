@@ -196,7 +196,7 @@ describe("a project's row", () => {
 
   it.each([
     ["HQ did not answer for its changes", "failed", "HQ didn’t answer"],
-    ["HQ's rule withholds its changes from this person", "unseen", "Needs more than Read access"],
+    ["HQ's rule withholds its changes from this person", "unseen", "Changes show with Full access"],
   ] as const)(
     "says plainly why its changes are not known, offering nothing: %s",
     (_name, why, line) => {

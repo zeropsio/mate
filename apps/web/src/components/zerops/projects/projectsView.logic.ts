@@ -291,8 +291,8 @@ export function changesUnknownOf(input: {
 /** What a row says where its changes are not known. */
 export const CHANGES_UNKNOWN_LINE: { readonly [U in ChangesUnknown]: string } = {
   failed: "HQ didn’t answer",
-  // The refusal's own access (`changes_not_seen`), short enough for a step.
-  unseen: "Needs more than Read access",
+  // The refusal (`changes_not_seen`) in Mate's access words: Full gives a project's changes.
+  unseen: "Changes show with Full access",
 };
 
 /** The newest code change that landed — what a quiet row names. */
