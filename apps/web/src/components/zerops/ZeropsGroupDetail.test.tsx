@@ -1065,10 +1065,10 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
       mayDeployAgain: true,
     });
     expect(offered).toContain('data-zerops-surface="stop-not-in-zerops"');
-    expect(offered).toContain("db · declared in the recipe, not in Zerops");
+    expect(offered).toContain("db · in its setup files, not in Zerops");
     expect(offered).toContain("Add db");
     const told = renderStop({ tier: "stage", services: TWO_LIVE, notInZerops: ["db"] });
-    expect(told).toContain("db · declared in the recipe, not in Zerops");
+    expect(told).toContain("db · in its setup files, not in Zerops");
     expect(told).not.toContain("Add db");
   });
 

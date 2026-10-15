@@ -195,7 +195,7 @@ describe("Git overview slice 1", () => {
     await press("All repositories");
     expect(repositoryNames()).toEqual(["todo/appdev", "todo/group"]);
     expect(host.textContent).toContain("No open changes.");
-    expect(host.textContent).toContain("Recipe");
+    expect(host.textContent).toContain("Setup");
     await press("Open changes");
     expect(repositoryNames()).toEqual(["todo/appdev"]);
   });

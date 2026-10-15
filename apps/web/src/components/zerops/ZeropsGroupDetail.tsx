@@ -1591,7 +1591,7 @@ export function ZeropsStopPane({
                   <span className="min-w-0 truncate text-sm text-muted-foreground">
                     {hostname} ·{" "}
                     {answered.get(hostname) === undefined ? (
-                      "declared in the recipe, not in Zerops"
+                      "in its setup files, not in Zerops"
                     ) : (
                       <span data-zerops-job-state={answered.get(hostname)?.state}>
                         {answered.get(hostname)?.line}

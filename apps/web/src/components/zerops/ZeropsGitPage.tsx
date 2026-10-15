@@ -215,7 +215,7 @@ export function ZeropsGitOverview({
                         </a>
                       )}
                       {repository.name === "group" ? (
-                        <span className="text-xs text-muted-foreground">Recipe</span>
+                        <span className="text-xs text-muted-foreground">Setup</span>
                       ) : null}
                     </div>
                     {repository.coverage === "unread" ? (

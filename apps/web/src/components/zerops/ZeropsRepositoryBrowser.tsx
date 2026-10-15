@@ -131,12 +131,12 @@ export function ZeropsRepositoryBrowser({
         </button>
         <span className="text-muted-foreground"> / {project} / </span>
         <span className="break-all font-medium text-foreground">{repo}</span>
-        {repo === "group" ? <span className="text-xs text-muted-foreground">Recipe</span> : null}
+        {repo === "group" ? <span className="text-xs text-muted-foreground">Setup</span> : null}
       </nav>
       <div>
         <h1 className="text-xl font-medium text-foreground">{repo}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {project}’s {repo === "group" ? "recipe repository" : "repository"}
+          {project}’s {repo === "group" ? "setup repository" : "repository"}
         </p>
       </div>
     </>

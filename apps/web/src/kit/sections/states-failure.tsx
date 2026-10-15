@@ -249,13 +249,13 @@ function FailureCensus() {
         ]}
       >
         <Specimen
-          label='<ZeropsReadFailure action="Read recipe again" />'
+          label='<ZeropsReadFailure action="Compare again" />'
           source="apps/web/src/components/zerops/ZeropsReadFailure.tsx"
         >
           <ZeropsReadFailure
-            action="Read recipe again"
+            action="Compare again"
             again={() => {}}
-            reason="The recipe could not be read: HQ answered 502."
+            reason="The comparison could not be read: HQ answered 502."
           />
         </Specimen>
       </CensusLook>

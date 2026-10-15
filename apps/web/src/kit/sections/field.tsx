@@ -57,7 +57,7 @@ function FieldSpecimens() {
                 <FieldItem>
                   <Label>
                     <Checkbox />
-                    Start from a recipe
+                    Start from a template
                   </Label>
                 </FieldItem>
               </Field>
