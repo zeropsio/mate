@@ -57,7 +57,7 @@ import {
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { NOTHING_DEPLOYED, stopTone } from "@t3tools/client-runtime/zerops/flow";
+import { NOTHING_DEPLOYED, stopTone, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import {
   knownPresentation,
   type KnownAffordance,
@@ -234,6 +234,19 @@ interface EnvironmentCreationView {
   readonly tier: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["tier"]>;
   readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
   readonly outcome?: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["outcome"]>;
+}
+
+/**
+ * Whether the project a finished creation made runs or builds something now, as the platform says
+ * it: its done card then leaves what runs there to the place's own line.
+ */
+function creationDeployed(
+  creation: EnvironmentCreationView,
+  deployments: ReadonlyMap<string, Shown<Deployment>>,
+): boolean {
+  if (creation.outcome?.kind !== "done" || creation.outcome.projectId === undefined) return false;
+  const shown = deployments.get(creation.outcome.projectId);
+  return shown?.state === "known" && shown.value.kind !== "none";
 }
 
 export function autoConnectServedZeropsEnvironment(input: {
@@ -1775,7 +1788,14 @@ export function ZeropsProjectsContent({
       setCreation((current) =>
         current === null
           ? current
-          : { ...current, outcome: { kind: "done", deployments: outcome.deployments } },
+          : {
+              ...current,
+              outcome: {
+                kind: "done",
+                deployments: outcome.deployments,
+                projectId: outcome.projectId,
+              },
+            },
       );
       if (role === "prod")
         rememberReleaseIntent({
@@ -2685,6 +2705,7 @@ export function ZeropsProjectsContent({
           }}
           progress={creation.progress}
           tier={creation.tier}
+          deployed={creationDeployed(creation, deployments)}
           {...(creation.outcome === undefined ? {} : { outcome: creation.outcome })}
         />
       )}

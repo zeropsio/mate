@@ -168,6 +168,20 @@ describe("ZeropsEnvironmentCreation", () => {
     expect(html).toContain(`>${title}</h2>`);
   });
 
+  // The onboarding run: "app has nothing deployed yet" stood under a stage whose line read
+  // "Running · main" for a minute, beside a "Back to projects" on the projects page.
+  it("says nothing of a first deploy once something runs there, and is dismissed where it stands", () => {
+    const html = render({
+      tier: "stage",
+      outcome: { kind: "done", deployments: [nothingDeployed("app")] },
+      deployed: true,
+    });
+    expect(html).toContain("The environment is set up.");
+    expect(html).not.toContain("nothing deployed yet");
+    expect(html).not.toContain("Back to projects");
+    expect(html).toContain("Dismiss");
+  });
+
   it("says a production waits for a release", () => {
     const html = render({
       tier: "production",
