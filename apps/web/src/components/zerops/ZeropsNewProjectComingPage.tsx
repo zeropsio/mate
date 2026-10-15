@@ -36,7 +36,6 @@ import {
   type ArrivalProgress,
   MateComingFrame,
   MateComingHeader,
-  personOf,
 } from "./ZeropsMateComingPage";
 import { MateOpeningLine } from "./MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "./ZeropsMateEmptyState";
@@ -54,7 +53,6 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
   const navigate = useNavigate();
   const { user } = useZeropsSession();
   // The person's own step wears their picture.
-  const you = useMemo(() => personOf(user), [user]);
   const birth = useCreation(birthId);
 
   // The platform took its Mate's project: that Mate's view takes the route, in place of this one.
@@ -154,7 +152,6 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
                   })}
               progress={progress}
               projects={projects}
-              you={you}
             />
           ),
         };

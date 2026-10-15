@@ -21,7 +21,7 @@ import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
 import { CensusLook, StateCensus, StateFrame, useKitNowMs } from "../states/Census";
 import { ChosenFailure } from "../states/Chosen";
-import { failedBirthProgress, showcaseOperation, WREN, YOU } from "../states/fixtures";
+import { failedBirthProgress, showcaseOperation, WREN } from "../states/fixtures";
 
 /** A Mate whose container never came: the stage, its stopped steps, *Try again* and *Remove*. */
 function NotCreatedStage() {
@@ -59,7 +59,6 @@ function NotCreatedStage() {
                 created: new Date(nowMs - 136_000).toISOString(),
               },
             }}
-            you={YOU}
           />
         ),
       }}

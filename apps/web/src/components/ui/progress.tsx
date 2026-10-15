@@ -78,7 +78,7 @@ function Progress({
   /** The measured usual duration of the whole operation. */
   readonly estimateMs?: number | null;
   /** The caller's clock, when it has one; else the row keeps its own, once a second. */
-  readonly nowMs?: number;
+  readonly nowMs?: number | undefined;
   /** The operation's identity: a new one starts its bar afresh. */
   readonly identity?: string;
   readonly className?: string;

@@ -1,11 +1,10 @@
 /**
- * The Mate's own steps while it comes up (`arrivalSteps`), as the arrival's slot draws them: one
- * row a step — its mark, its words, how long it took — the services its copy of the project brings
- * on a quieter line under the first, and the person's own step last, with their picture: "You
- * sign Wren in with your Claude or ChatGPT subscription", each brand wearing its logo.
+ * Pieces of a Mate's arrival other surfaces draw: its services' line, its runtimes still coming
+ * up, a spinner and the sign-in phrase with each brand wearing its logo. The arrival itself is one
+ * progress row (`ComingBelow`).
  */
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useState } from "react";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
 
@@ -13,120 +12,10 @@ import {
   nextRuntimesLine,
   runtimesComing,
   type ArrivalService,
-  type ArrivalStep,
-  type ArrivalSubstep,
   type RuntimesLine,
 } from "~/zerops/mateArrival";
 
-import { PersonAvatar } from "./primitives";
 import type { SignInPhrasePart } from "./ZeropsAgentSignIn.logic";
-
-/** The person, as their own step wears them. */
-export interface ArrivalYou {
-  readonly name: string;
-  readonly avatarUrl: string | null;
-}
-
-export function ZeropsArrivalSteps({
-  steps,
-  you,
-}: {
-  readonly steps: ReadonlyArray<ArrivalStep>;
-  readonly you: ArrivalYou | null;
-}) {
-  return (
-    <ol
-      aria-label="How far it has got"
-      className="arrival-steps"
-      data-zerops-surface="arrival-steps"
-    >
-      {steps.map((step) => (
-        <li
-          className="arrival-step"
-          data-arrival-step={step.id}
-          data-state={step.state}
-          key={step.id}
-        >
-          <span className="arrival-step-mark">
-            <ArrivalStepGlyph state={step.state} you={you} />
-          </span>
-          <span
-            className="arrival-step-label"
-            data-spans-time={step.time === undefined && step.note === undefined ? "" : undefined}
-          >
-            {step.phrase === undefined ? step.label : <SignInPhrase parts={step.phrase} />}
-            {step.why === undefined ? null : (
-              <span className="arrival-step-why"> · {step.why}</span>
-            )}
-          </span>
-          {step.time === undefined && step.note === undefined ? null : (
-            <span className="arrival-step-time">
-              {step.time}
-              {step.time !== undefined && step.note !== undefined ? (
-                <span className="arrival-step-note"> of {step.note}</span>
-              ) : (
-                step.note
-              )}
-            </span>
-          )}
-          {step.substeps === undefined ? null : <ArrivalSubsteps steps={step.substeps} />}
-          {step.services === undefined ? null : (
-            <div className="arrival-step-sub">
-              <ArrivalServices services={step.services} />
-            </div>
-          )}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-const SUBSTEP_STATE_WORDS: Readonly<Record<ArrivalSubstep["state"], string>> = {
-  done: "done",
-  active: "in progress",
-  waiting: "waiting",
-  failed: "stopped",
-  unfinished: "not finished",
-};
-
-/**
- * The steps this tab runs, under the row they make: one small mark and the words each, quieter
- * than the steps — where one stopped, why, in its place, on its one line.
- */
-function ArrivalSubsteps({ steps }: { readonly steps: ReadonlyArray<ArrivalSubstep> }) {
-  return (
-    <ol aria-label="In this tab" className="arrival-step-sub arrival-substeps">
-      {steps.map((step) => (
-        <li
-          aria-label={
-            step.state === "unfinished"
-              ? `${step.label}${step.why === undefined ? "." : `: ${step.why}`}`
-              : `${step.label}: ${SUBSTEP_STATE_WORDS[step.state]}${step.why === undefined ? "" : `. ${step.why}`}`
-          }
-          className="arrival-substep"
-          data-arrival-substep={step.id}
-          data-state={step.state}
-          key={step.id}
-        >
-          <span className="arrival-substep-mark">
-            {/* Not finished, it waits on nobody here: the waiting mark, never a stop's. */}
-            <ArrivalStepGlyph state={step.state === "unfinished" ? "waiting" : step.state} />
-          </span>
-          {/* One line, whatever it says: a long reason is cut here, and read whole under the
-              steps (`pressNote`) — and whole to a reader, from its label. */}
-          <span className="arrival-substep-label">
-            {step.label}
-            {step.why === undefined ? null : step.state === "unfinished" ? (
-              `: ${step.why}`
-            ) : (
-              <span className="arrival-step-why"> · {step.why}</span>
-            )}
-          </span>
-        </li>
-      ))}
-    </ol>
-  );
-}
 
 const SERVICE_STATE_WORDS: Readonly<Record<ArrivalService["state"], string>> = {
   ok: "running",
@@ -194,49 +83,6 @@ export function ArrivalRuntimesLine({
       <span>coming up</span>
     </div>
   );
-}
-
-/**
- * A step's mark: done a soft check, under way an arc turning a notch at a time (R6), waiting an
- * empty ring, stopped a cross, and the person's own step their picture.
- */
-export function ArrivalStepGlyph({
-  state,
-  you = null,
-}: {
-  readonly state: ArrivalStep["state"];
-  readonly you?: ArrivalYou | null;
-}): ReactNode {
-  switch (state) {
-    case "done":
-      return (
-        <svg aria-hidden="true" className="arrival-glyph" viewBox="0 0 16 16">
-          <circle className="arrival-glyph-ok-bg" cx="8" cy="8" r="8" />
-          <path className="arrival-glyph-ok-ink" d="M4.9 8.3 7 10.3 11.1 6" />
-        </svg>
-      );
-    case "active":
-      return <ArrivalSpinner className="arrival-glyph" />;
-    case "waiting":
-      return (
-        <svg aria-hidden="true" className="arrival-glyph" viewBox="0 0 16 16">
-          <circle className="arrival-glyph-wait" cx="8" cy="8" r="6.25" />
-        </svg>
-      );
-    case "failed":
-      return (
-        <svg aria-hidden="true" className="arrival-glyph" viewBox="0 0 16 16">
-          <circle className="arrival-glyph-fail-bg" cx="8" cy="8" r="8" />
-          <path className="arrival-glyph-fail-ink" d="M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6" />
-        </svg>
-      );
-    case "you":
-      return (
-        <span className="arrival-glyph-you">
-          <PersonAvatar name={you?.name ?? ""} picture={you?.avatarUrl ?? null} size={16} />
-        </span>
-      );
-  }
 }
 
 /** Something under way: a ring and its arc, turning a notch at a time. */

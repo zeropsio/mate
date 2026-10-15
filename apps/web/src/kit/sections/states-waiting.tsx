@@ -20,7 +20,6 @@ import {
   ROW_WORKING,
   showcaseOperation,
   WREN,
-  YOU,
   type BirthAge,
 } from "../states/fixtures";
 
@@ -43,7 +42,6 @@ function ArrivalStage({ age }: { readonly age: BirthAge }) {
             nowMs={nowMs}
             onRemove={() => {}}
             progress={progress}
-            you={YOU}
           />
         ),
       }}
@@ -111,12 +109,11 @@ function WaitingCensus() {
       count="6 looks: 11 own waiting components in 10 files; 3 of the looks are inline and listed under Not shown."
     >
       <CensusLook
-        name="Mate arrival stage: face, headline, steps below"
+        name="A Mate's stage: face, headline, the progress row below"
         uses="12 sites in 6 files"
         places={[
           "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx:324 MateEmptyStateView",
           "apps/web/src/components/zerops/ZeropsMateComingPage.tsx:1076 ComingBelow",
-          "apps/web/src/components/zerops/ZeropsArrivalSteps.tsx:30 ZeropsArrivalSteps",
           "apps/web/src/components/zerops/ZeropsMateComingPage.tsx:185 ZeropsMateComingPage",
           "apps/web/src/components/zerops/ZeropsNewProjectComingPage.tsx:52 ZeropsNewProjectComingPage",
           "apps/web/src/components/zerops/ArrivalSwap.tsx:34 ArrivalSwap (its hand-over)",

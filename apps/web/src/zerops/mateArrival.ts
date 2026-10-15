@@ -531,6 +531,56 @@ export function arrivalSteps(
   return steps;
 }
 
+/** A Mate's arrival as the kit's one progress row (`Progress`): words in place of the step list. */
+export interface ArrivalRow {
+  /** Each step's words, in order. */
+  readonly steps: ReadonlyArray<string>;
+  /** The step it is on: the first not done; the last once every one is. */
+  readonly at: number;
+  readonly state: "running" | "done" | "failed";
+  /**
+   * From its setup's one clock (`onSetupClock`: the first press, as its menu row counts), else the
+   * earliest start its facts hold; `null` while it waits on the person, or unknown.
+   */
+  readonly startedAtMs: number | null;
+  /** Where its clock stopped: the stop's end, or the last step's once done. */
+  readonly endedAtMs: number | null;
+}
+
+const parsedTimes = (times: ReadonlyArray<string | undefined>) =>
+  times.flatMap((time) => {
+    const ms = time === undefined ? Number.NaN : Date.parse(time);
+    return Number.isNaN(ms) ? [] : [ms];
+  });
+
+/**
+ * The arrival's steps (`arrivalSteps`) as one row: the step it is on in words, never a growing
+ * list. A step that failed — or a creation that stopped, which stops a step under way with it —
+ * stops the row there; the person's own step, next, holds the row on their words with no clock,
+ * for nothing runs until they act. Its clock is the setup's one clock where there is one (`since`).
+ */
+export function arrivalRow(
+  steps: ReadonlyArray<ArrivalStep>,
+  facts: ReadonlyArray<ArrivalStepInput>,
+  stopped: boolean,
+  since?: string,
+): ArrivalRow {
+  const failedAt = steps.findIndex((step) => step.state === "failed");
+  const openAt = steps.findIndex((step) => step.state !== "done");
+  const at = failedAt !== -1 ? failedAt : openAt !== -1 ? openAt : Math.max(0, steps.length - 1);
+  const state = failedAt !== -1 || stopped ? "failed" : openAt === -1 ? "done" : "running";
+  const waitsOnYou = state === "running" && steps[at]?.state === "you";
+  const starts = parsedTimes(since === undefined ? facts.map((fact) => fact.startedAt) : [since]);
+  const ends = parsedTimes(facts.map((fact) => fact.endedAt));
+  return {
+    steps: steps.map((step) => step.label),
+    at,
+    state,
+    startedAtMs: waitsOnYou || starts.length === 0 ? null : Math.min(...starts),
+    endedAtMs: state === "running" || ends.length === 0 ? null : Math.max(...ends),
+  };
+}
+
 /** Why a Mate's setup can't be read: the setup step's reason, read whole under the steps. */
 export const SETUP_FAILURE_WORDS: Readonly<Record<MateSetupFailure, string>> = {
   refused: "Its container turned the read of its setup away.",

@@ -31,8 +31,6 @@ export const WREN: ZeropsMateIdentity = {
   connected: false,
 };
 
-export const YOU = { name: "Ada", avatarUrl: null };
-
 /** How far into its birth a Mate is: just pressed, its container being built, or long overdue. */
 export type BirthAge = "start" | "midway" | "over-time";
 

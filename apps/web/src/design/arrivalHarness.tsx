@@ -746,7 +746,6 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
           progress={progress}
           nowMs={nowMs}
           mate={WREN}
-          you={null}
           onTryAgain={() => undefined}
         />
       ),
@@ -865,7 +864,6 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
             }
           : {})}
         progress={progress}
-        you={YOU}
       />
     ),
   };
