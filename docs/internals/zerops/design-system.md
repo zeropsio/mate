@@ -119,6 +119,12 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   grid, three nested radii (`rounded-control` inside `rounded-card` inside `rounded-sheet`), three
   durations (`--duration-quick`, `--duration-base`, `--duration-slow`) with `ease-out-strong` for
   what arrives and `ease-in-out-strong` for a paired enter and leave.
+- An action is a `Button`: `primary` for the one next step, `secondary` beside it, `ghost` for
+  quiet tools, `destructive` only for what deletes or stops, `link` inside text. Buttons are
+  rectangles; a word that acts inside a sentence is `InlineButton`.
+- A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
+  `danger`), so it never reads as a press; a status dot is its `dot` form, with its words or an
+  accessible name.
 
 ## 4. Rules — machine-checked
 
