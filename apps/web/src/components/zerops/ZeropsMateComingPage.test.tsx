@@ -1273,7 +1273,7 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
     total: 0,
     complete: false,
     press: [
-      { id: "closed-off", label: "Closed off", state: "done" },
+      { id: "closed-off", label: "Private network ready", state: "done" },
       {
         id: "registered",
         label: "Not registered",
@@ -1398,7 +1398,7 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
     complete: false,
     press: [
       { id: "created", label: "Created", state: "failed", why: REASON },
-      { id: "container", label: "Container", state: "waiting" },
+      { id: "container", label: "Its computer", state: "waiting" },
     ],
   } as const;
   const render = (coming: Parameters<typeof ComingBelow>[0]["coming"]) => {
@@ -1897,7 +1897,7 @@ describe("failed setup recovery fixture", () => {
             steps: [
               {
                 id: "container",
-                label: "Container",
+                label: "Its computer",
                 state: "failed",
                 startedAt: process.started,
                 endedAt: process.finished,

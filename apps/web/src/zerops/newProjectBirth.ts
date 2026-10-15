@@ -688,8 +688,8 @@ export function creationSubsteps(
       own("registered-project", "Registered", "registry"),
       own("created", "Created", "create"),
       registered,
-      fromPress("container", "Container"),
-      fromPress("closed-off", "Closed off"),
+      fromPress("container", "Its computer"),
+      fromPress("closed-off", "Private network ready"),
     ];
   }
   // Before the platform took its project the creation says where it stands; after, its press.
@@ -710,7 +710,7 @@ export function creationSubsteps(
   return [
     created,
     ...(birth.adds.registers ? [registered] : []),
-    fromPress("container", "Container"),
-    fromPress("closed-off", "Closed off"),
+    fromPress("container", "Its computer"),
+    fromPress("closed-off", "Private network ready"),
   ];
 }

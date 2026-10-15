@@ -509,8 +509,8 @@ const PRESS_STEPS: ReadonlyArray<{
 }> = [
   { label: "Project", kinds: ["create-project", "import-project", "import-managed"] },
   { label: "Registered", kinds: ["register"] },
-  { label: "Container", kinds: ["import-container"] },
-  { label: "Closed off", kinds: ["close-off"] },
+  { label: "Its computer", kinds: ["import-container"] },
+  { label: "Private network ready", kinds: ["close-off"] },
 ];
 
 /**

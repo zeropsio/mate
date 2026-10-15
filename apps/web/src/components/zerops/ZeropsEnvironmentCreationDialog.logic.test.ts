@@ -891,17 +891,32 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
     {
       case: "creating the project",
       states: ["running", "queued", "queued", "queued", "queued"],
-      want: ["Project:active", "Registered:waiting", "Container:waiting", "Closed off:waiting"],
+      want: [
+        "Project:active",
+        "Registered:waiting",
+        "Its computer:waiting",
+        "Private network ready:waiting",
+      ],
     },
     {
       case: "registering it, before its container",
       states: ["done", "running", "queued", "queued", "queued"],
-      want: ["Project:done", "Registered:active", "Container:waiting", "Closed off:waiting"],
+      want: [
+        "Project:done",
+        "Registered:active",
+        "Its computer:waiting",
+        "Private network ready:waiting",
+      ],
     },
     {
       case: "a container that would not come",
       states: ["done", "done", "failed", "queued", "queued"],
-      want: ["Project:done", "Registered:done", "Container:failed", "Closed off:waiting"],
+      want: [
+        "Project:done",
+        "Registered:done",
+        "Its computer:failed",
+        "Private network ready:waiting",
+      ],
     },
   ] as const)("draws $case", ({ states, want }) => {
     expect(drawn(at(states))).toEqual(want);
@@ -917,7 +932,11 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
     const progress = at(["done", "done", "done", "done", "running"]).filter(
       (entry) => entry.step.kind !== "register",
     );
-    expect(drawn(progress)).toEqual(["Project:done", "Container:done", "Closed off:done"]);
+    expect(drawn(progress)).toEqual([
+      "Project:done",
+      "Its computer:done",
+      "Private network ready:done",
+    ]);
   });
 
   it.each([

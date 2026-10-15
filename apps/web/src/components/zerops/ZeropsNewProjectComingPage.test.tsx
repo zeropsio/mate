@@ -309,8 +309,8 @@ describe("the steps this tab runs, on the Mate's own view", () => {
       "registry › Registered:active",
       "registry › Created:waiting",
       "registry › Vera registered:waiting",
-      "registry › Container:waiting",
-      "registry › Closed off:waiting",
+      "registry › Its computer:waiting",
+      "registry › Private network ready:waiting",
     ]);
     expect(steps()[0]).toBe("registry:active");
     expect(said()).toContain(KEEP_TAB_OPEN_LINE);
@@ -325,8 +325,8 @@ describe("the steps this tab runs, on the Mate's own view", () => {
     expect(substeps()).toEqual([
       "copy › Created:active",
       "copy › Ida registered:waiting",
-      "copy › Container:waiting",
-      "copy › Closed off:waiting",
+      "copy › Its computer:waiting",
+      "copy › Private network ready:waiting",
     ]);
     expect(said()).toContain(KEEP_TAB_OPEN_LINE);
   });

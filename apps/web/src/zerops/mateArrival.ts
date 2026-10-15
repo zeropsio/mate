@@ -140,8 +140,8 @@ export function arrivalSentence(
       return context.why ?? "";
     case "sign-in":
       return mate.project === undefined
-        ? `Once it's signed in, ${name} stands up development.`
-        : `Once it's signed in, ${name} stands up development on ${mate.project}.`;
+        ? `Once it's signed in, ${name} gets the app running.`
+        : `Once it's signed in, ${name} gets ${mate.project} running.`;
     case "sign-in-plain":
       return mate.project === undefined
         ? `Once it's signed in, ${name} writes and runs code on its own copy of the project.`
@@ -520,7 +520,7 @@ export function arrivalSteps(
   if (setup?.standup !== undefined && setup.standup !== "none") {
     steps.push({
       id: "standup",
-      label: `${mate.name} stands up development`,
+      label: `${mate.name} gets the app running`,
       state: STANDUP_STATES[setup.standup],
       ...optional(
         "why",

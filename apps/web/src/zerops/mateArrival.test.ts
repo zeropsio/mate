@@ -72,7 +72,7 @@ describe("terminal setup process facts", () => {
 
   it("does not invent a duration for a failure with no source end", () => {
     const steps = [
-      { id: "container", label: "Container", state: "failed", startedAt: AGO(44) },
+      { id: "container", label: "Its computer", state: "failed", startedAt: AGO(44) },
     ] as const;
     expect(
       arrivalSteps({ steps }, WREN, NOW).find((step) => step.id === "workspace")?.time,
@@ -248,7 +248,7 @@ describe("arrivalSteps — a stand-up that failed", () => {
       }),
     ).toEqual({
       id: "standup",
-      label: "Wren stands up development",
+      label: "Wren gets the app running",
       state: "failed",
       ...(why === undefined ? {} : { why }),
     });
@@ -541,7 +541,7 @@ describe("the stage's words", () => {
     {
       kind: "sign-in",
       headline: "Sign Wren in to start.",
-      sentence: "Once it's signed in, Wren stands up development on Beviro.",
+      sentence: "Once it's signed in, Wren gets Beviro running.",
       face: "idle",
     },
     {
@@ -730,12 +730,16 @@ describe("pressNote — what the steps this tab runs leave to read whole under t
   });
   it.each([
     { case: "nothing run here", press: undefined, want: null },
-    { case: "running", press: [step("done", "Created"), step("active", "Container")], want: null },
+    {
+      case: "running",
+      press: [step("done", "Created"), step("active", "Its computer")],
+      want: null,
+    },
     {
       case: "a stop: its whole reason",
       press: [
         step("failed", "Created", "The organization has no room for another project right now."),
-        step("waiting", "Container"),
+        step("waiting", "Its computer"),
       ],
       want: {
         kind: "stopped",
@@ -745,7 +749,7 @@ describe("pressNote — what the steps this tab runs leave to read whole under t
     {
       case: "a registration not finished: what is not, and why",
       press: [
-        step("done", "Closed off"),
+        step("done", "Private network ready"),
         step("unfinished", "Not registered", "Its grant timed out."),
       ],
       want: { kind: "unfinished", text: "Not registered: Its grant timed out." },
@@ -754,7 +758,7 @@ describe("pressNote — what the steps this tab runs leave to read whole under t
       case: "a stop over a registration not finished: the stop",
       press: [
         step("unfinished", "Not registered", "Refused."),
-        step("failed", "Container", "Gone."),
+        step("failed", "Its computer", "Gone."),
       ],
       want: { kind: "stopped", text: "Gone." },
     },
