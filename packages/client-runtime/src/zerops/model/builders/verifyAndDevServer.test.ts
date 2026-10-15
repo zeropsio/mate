@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsCall } from "../types.ts";
+import live from "./__fixtures__/dev-server.live-three-servers.json" with { type: "json" };
 import { buildDevServerFields } from "./devServer.ts";
 import { buildVerifyFields } from "./verify.ts";
 
@@ -162,5 +163,36 @@ describe("buildDevServerFields — a log read finds nothing about running", () =
     expect(fields.closing).toBe("Read the medusadev log.");
     expect(fields.steps.map((step) => step.state)).not.toContain("failed");
     expect(fields.explanation).toBeUndefined();
+  });
+});
+
+describe("buildDevServerFields — a service of several named dev servers", () => {
+  it("shows each server zcp's live result names, with its port and state", () => {
+    const fields = buildDevServerFields(
+      call("zerops_dev_server", { hostname: "e1pnpm", action: "status", name: "web" }, live),
+    );
+    expect(fields.steps.map((step) => [step.label, step.stateLabel])).toEqual([
+      ["web :3000", "Running"],
+      ["api :8080", "Running"],
+      ["worker", "Running"],
+    ]);
+    expect(fields.links).toEqual([
+      { label: "web :3000", url: "https://e1pnpm-26a7-3000.prg1.zerops.app" },
+      { label: "api :8080", url: "https://e1pnpm-26a7-8080.prg1.zerops.app" },
+    ]);
+  });
+
+  it("reads an invalid-parameter answer as a failed call, never as a server that is not running", () => {
+    const refusal = {
+      code: "INVALID_PARAMETER",
+      error: "e1pnpm declares several dev servers; name the one you mean",
+    };
+    const fields = buildDevServerFields({
+      ...call("zerops_dev_server", { hostname: "e1pnpm", action: "status" }, refusal),
+      status: "failed",
+    });
+    expect(fields.statusWord).not.toMatch(/not running/i);
+    expect(fields.closing).not.toMatch(/did not come up|not running/i);
+    expect(fields.closing).toContain("name the one you mean");
   });
 });

@@ -1723,6 +1723,11 @@ describe("standingIncidents — what the dock under the now line says of a servi
       shows: [["appdev", "stopped answering (502)", "attention"]],
     },
     {
+      name: "a refused call that read no server is a failed call, not a server found not running",
+      ops: [dev("s1", 1, "Status", false, { phase: "failed", steps: [], statusWord: "Failed" })],
+      shows: [],
+    },
+    {
       name: "a routine start: nothing",
       ops: [dev("s1", 1, "Start", true)],
       shows: [],
