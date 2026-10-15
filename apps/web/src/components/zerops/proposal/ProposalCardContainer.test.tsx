@@ -145,7 +145,7 @@ describe("a Mate can ask its Chief only when one exists", () => {
       expect(document.querySelector("[data-proposal-recipient]")).toBeNull();
       expect(decisions().map((button) => button.textContent)).toEqual(["Decline"]);
       const setup = [...document.querySelectorAll("button")].find(
-        (button) => button.textContent === "Set up your Chief",
+        (button) => button.textContent === "Set up Chief",
       );
       expect(setup).toBeDefined();
       await act(async () => setup!.click());

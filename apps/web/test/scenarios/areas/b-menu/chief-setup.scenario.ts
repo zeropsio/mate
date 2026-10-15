@@ -18,10 +18,10 @@ describe("Chief setup navigation", () => {
             await resizeMenu(s.page, 435);
             await s.page.goto(`${s.web.origin}/zerops`);
             await s.page.waitForFunction(
-              () => document.querySelector(".menu-chief-name")?.textContent === "Set up your Chief",
+              () => document.querySelector(".menu-chief-name")?.textContent === "Your Chief",
             );
             expect(await s.page.$eval(".menu-chief-line", (node) => node.textContent)).toBe(
-              "Across this organization",
+              "A Mate for the whole organization",
             );
             await s.page.locator("button ::-p-text(Set up Chief)").click();
             await s.page.waitForFunction(() => location.pathname === "/chief");
@@ -32,11 +32,11 @@ describe("Chief setup navigation", () => {
             expect(new URL(s.page.url()).pathname).toBe("/chief");
             await s.page.click('button[aria-label="Collapse sidebar"]');
             await s.page
-              .locator('[data-zerops-surface="sidebar-chief-row"][aria-label="Set up your Chief"]')
+              .locator('[data-zerops-surface="sidebar-chief-row"][aria-label="Your Chief"]')
               .wait();
             await s.page.goto(`${s.web.origin}/zerops`);
             await s.page
-              .locator('[data-zerops-surface="sidebar-chief-row"][aria-label="Set up your Chief"]')
+              .locator('[data-zerops-surface="sidebar-chief-row"][aria-label="Your Chief"]')
               .click();
             await s.page.waitForFunction(() => location.pathname === "/chief");
             expect(new URL(s.page.url()).pathname).toBe("/chief");

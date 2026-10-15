@@ -272,7 +272,7 @@ function ProposalFoot(props: ProposalCardProps) {
             )
           ) : (
             <Button onClick={props.onSetUpChief} size="xs">
-              Set up your Chief
+              Set up Chief
             </Button>
           )}
           <Button onClick={props.onDecline} size="xs" variant="ghost-muted">

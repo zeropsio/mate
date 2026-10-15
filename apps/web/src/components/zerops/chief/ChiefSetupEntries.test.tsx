@@ -50,8 +50,10 @@ async function mount(offer: boolean) {
 it("a no-Chief viewer sees the setup entry in menu and overview and it opens the Chief page", async () => {
   const { container, open } = await mount(true);
   const menu = container.querySelector(".menu-chief-name");
-  expect(menu?.textContent).toBe("Set up your Chief");
-  expect(container.querySelector(".menu-chief-line")?.textContent).toBe("Across this organization");
+  expect(menu?.textContent).toBe("Your Chief");
+  expect(container.querySelector(".menu-chief-line")?.textContent).toBe(
+    "A Mate for the whole organization",
+  );
   const overview = [...container.querySelectorAll("button")].find(
     (b) => b.textContent === "Set up Chief",
   );
@@ -75,6 +77,6 @@ it("HQ's no-Chief answer arriving after first paint reveals both setup entries",
   const view = await mount(false);
   expect(view.container.textContent).not.toContain("Set up");
   await view.render(true);
-  expect(view.container.textContent).toContain("Set up your Chief");
+  expect(view.container.textContent).toContain("Your Chief");
   expect(view.container.textContent).toContain("Set up Chief");
 });

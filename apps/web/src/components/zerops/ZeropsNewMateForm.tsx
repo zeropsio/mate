@@ -199,8 +199,7 @@ export function ZeropsNewMateForm({
       <DialogHeader>
         <DialogTitle>{`Add a project Mate to ${groupName}`}</DialogTitle>
         <p className="text-sm text-muted-foreground">
-          Works on this project. For your personal Mate across the organization, use Set up your
-          Chief.
+          Works on this project. For your own Mate across the whole organization, use Set up Chief.
         </p>
       </DialogHeader>
       {/* Why the project takes no Mate now, where it takes none: its room opens as the form

@@ -114,7 +114,7 @@ const STEPS: ReadonlyArray<{
     label: "Its project and container",
     doing: "Making its project and container",
   },
-  { id: "hq", label: "Your Chief, at HQ", doing: "Recording it as your Chief" },
+  { id: "hq", label: "Named your Chief", doing: "Recording it as your Chief" },
   {
     id: "variables",
     label: "Its view of your organization",

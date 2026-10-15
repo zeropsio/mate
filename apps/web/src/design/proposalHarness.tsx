@@ -3,7 +3,7 @@
  * wide, the left menu at 435, `?menu=` for another): a restart, a secret value, a service's plain
  * value, a message with an attachment to another Mate, and each outcome — running, done, failed,
  * declined, and an approval a reload interrupted. Below them, a project's Mate asking the person's
- * Chief: with a Chief, without one (*Set up your Chief*), sent, and refused by HQ. Then the Chief
+ * Chief: with a Chief, without one (*Set up Chief*), sent, and refused by HQ. Then the Chief
  * putting production on the person's domain: undecided, with another change waiting, and approved
  * at each step its domain goes through. Every face is
  * the mark there; the receiving Mate keeps its own. Approve answers after 900 ms; `?fail=1`

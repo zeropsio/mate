@@ -58,10 +58,10 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
     return (
       <Row
         current={currentPage}
-        title={offer ? "Set up your Chief" : undefined}
+        title={offer ? "Your Chief" : undefined}
         line={
           offer ? (
-            "Across this organization"
+            "A Mate for the whole organization"
           ) : line?.kind === "setup" ? (
             <ChiefSetupRowLine state={line.state} />
           ) : undefined
