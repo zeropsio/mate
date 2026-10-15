@@ -51,7 +51,7 @@ function treePath(entry: ProjectEntry): string {
   return entry.kind === "directory" ? `${entry.path}/` : entry.path;
 }
 
-function RefreshFilesButton(props: { isPending: boolean; onRefresh: () => void }) {
+export function RefreshFilesButton(props: { isPending: boolean; onRefresh: () => void }) {
   return (
     <Tooltip>
       <TooltipTrigger

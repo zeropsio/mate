@@ -411,7 +411,7 @@ function GitFetchIntervalSettings() {
   );
 }
 
-function SourceControlSectionSkeleton({
+export function SourceControlSectionSkeleton({
   title,
   headerAction,
 }: {
@@ -449,7 +449,7 @@ function SourceControlSectionSkeleton({
   );
 }
 
-function EmptySourceControlDiscovery({
+export function EmptySourceControlDiscovery({
   error,
   isPending,
   onScan,

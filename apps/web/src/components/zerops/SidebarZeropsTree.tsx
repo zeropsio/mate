@@ -4561,7 +4561,7 @@ function MateReply({
  * 2026-09-28: 76 → 58 → 76 px, the first dip in the second before the run
  * started).
  */
-function MateReplyPending() {
+export function MateReplyPending() {
   return (
     <span className="flex h-5.5 items-center gap-1" data-zerops-surface="sidebar-mate-pending">
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />

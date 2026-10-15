@@ -2036,7 +2036,7 @@ export function detailTrail(
 }
 
 /** A section with nothing in it yet, and the way to put something there. */
-function Empty({
+export function Empty({
   text,
   action,
   onAction,

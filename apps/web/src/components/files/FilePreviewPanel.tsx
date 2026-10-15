@@ -738,7 +738,7 @@ function initialExplorerOpen(): boolean {
  * (`WrittenFilePanel`).
  */
 /** Why the file could not be shown, with the path it tried and the folder it looked in. */
-function FileReadFailure(props: {
+export function FileReadFailure(props: {
   readonly failure: FilePreviewReadFailure | null;
   readonly fallback: string;
 }) {

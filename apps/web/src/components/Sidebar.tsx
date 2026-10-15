@@ -254,7 +254,7 @@ function threadTimeLabel(thread: SidebarThreadSummary): string {
 // modifier is held. An overlay pill instead of an inline slot: the hint
 // must neither displace the status/time label (holding ⌘ used to blank
 // out "Working") nor shift the layout when it appears.
-function JumpHintBadge(props: { label: string }) {
+export function JumpHintBadge(props: { label: string }) {
   return (
     <span
       aria-hidden

@@ -50,7 +50,7 @@ function getEmptyStateMessage(query: string, error: string | null, isPending: bo
   return isSearching ? "No matching files." : "No files found.";
 }
 
-function EmptyProjectFilePicker() {
+export function EmptyProjectFilePicker() {
   return (
     <CommandPaletteContent
       aria-label="File picker"

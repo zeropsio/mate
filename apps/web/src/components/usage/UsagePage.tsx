@@ -1187,7 +1187,7 @@ function ShortcutHint({
   );
 }
 
-function UsageSummarySkeleton() {
+export function UsageSummarySkeleton() {
   return (
     <div className="flex min-h-44 flex-col gap-5" aria-hidden>
       <div className="flex flex-col gap-1">

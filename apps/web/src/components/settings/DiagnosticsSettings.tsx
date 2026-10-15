@@ -155,7 +155,7 @@ function StatsGrid({ children }: { children: ReactNode }) {
   );
 }
 
-function EmptyRows({ label }: { label: string }) {
+export function EmptyRows({ label }: { label: string }) {
   return <div className="px-4 py-4 text-xs text-muted-foreground sm:px-5">{label}</div>;
 }
 

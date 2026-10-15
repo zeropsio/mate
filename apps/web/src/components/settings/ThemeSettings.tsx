@@ -93,7 +93,7 @@ function ThemeVariantTooltip({ label, children }: { label: string; children: Rea
   );
 }
 
-function ThemeLibraryCard({
+export function ThemeLibraryCard({
   theme,
   isActive,
   onUse,
