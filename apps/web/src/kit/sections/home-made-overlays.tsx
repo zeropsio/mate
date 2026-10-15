@@ -286,7 +286,7 @@ function SteppingDialogOpener() {
       }}
       open={open}
     >
-      <Button onClick={() => setOpen(true)} variant="outline">
+      <Button onClick={() => setOpen(true)} variant="secondary">
         Sign in a coding agent
       </Button>
       <DialogPopup>

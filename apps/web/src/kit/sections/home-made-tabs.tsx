@@ -140,7 +140,7 @@ function ManyTabs() {
     <div className="flex h-10 w-[30rem] items-center border border-border bg-background px-2">
       <TabStrip
         action={
-          <Button aria-label="Add a page" size="icon-xs" variant="ghost">
+          <Button aria-label="Add a page" size="icon-sm" variant="ghost">
             <PlusIcon />
           </Button>
         }

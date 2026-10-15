@@ -111,7 +111,7 @@ function TabStrip({ items, activeId, onSelect, action, children, dragRegion }: T
                 <Button
                   aria-label={hiddenTabsLabel(hidden.length)}
                   data-slot="tab-strip-more"
-                  size="xs"
+                  size="sm"
                   variant="ghost"
                 />
               }

@@ -73,7 +73,7 @@ export function ChosenEmpty() {
         <div className="w-[440px] rounded-xl border">
           <EmptyState
             action={
-              <Button size="sm" variant="outline">
+              <Button size="sm" variant="secondary">
                 Set up an environment
               </Button>
             }
@@ -255,7 +255,7 @@ export function ChosenFailure() {
         <div className="w-[480px]">
           <Failure
             action={
-              <Button size="sm" variant="outline">
+              <Button size="sm" variant="secondary">
                 Read again
               </Button>
             }

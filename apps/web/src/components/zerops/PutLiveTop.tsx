@@ -93,7 +93,7 @@ export function PutLiveRow(props: PutLiveRowProps) {
           </>
         }
         detail={putLiveReleased(run, props.nowMs)}
-        face={<MateFace shape={face.shape} size="md" state="done" tint={face.tint} />}
+        face={<MateFace shape={face.shape} size={24} state="done" tint={face.tint} />}
         kind="live"
         label={progress.title}
         title={
@@ -134,7 +134,7 @@ export function PutLiveRow(props: PutLiveRowProps) {
           </>
         }
         detail={progress.step}
-        face={<MateFace shape={face.shape} size="md" state="needs" tint={face.tint} />}
+        face={<MateFace shape={face.shape} size={24} state="needs" tint={face.tint} />}
         kind="live-failed"
         label={progress.title}
         title={progress.title}
@@ -144,7 +144,7 @@ export function PutLiveRow(props: PutLiveRowProps) {
   return (
     <ComposerAsk
       detail={<PutLiveProgress step={progress.step} />}
-      face={<MateFace shape={face.shape} size="md" state="working" tint={face.tint} />}
+      face={<MateFace shape={face.shape} size={24} state="working" tint={face.tint} />}
       kind="live-progress"
       label={progress.title}
       title={progress.title}
