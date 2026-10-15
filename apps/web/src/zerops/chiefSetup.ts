@@ -44,9 +44,11 @@ interface ChiefSetupState {
   /** The organization the setup runs in. */
   readonly orgId: string | null;
   readonly setup: ChiefSetup;
+  /** When this tab pressed *Set up Chief*: its progress row's clock; `null` when resumed. */
+  readonly startedAtMs: number | null;
 }
 
-const INITIAL: ChiefSetupState = { orgId: null, setup: CHIEF_SETUP_IDLE };
+const INITIAL: ChiefSetupState = { orgId: null, setup: CHIEF_SETUP_IDLE, startedAtMs: null };
 
 const useChiefSetupStore = create<ChiefSetupState>(() => INITIAL);
 
@@ -73,6 +75,7 @@ export function resumeChiefSetup(orgId: string, projectId: string): void {
   useChiefSetupStore.setState((state) => ({
     orgId,
     setup: chiefSetupAfter(state.setup, { type: "resume", projectId }),
+    startedAtMs: null,
   }));
 }
 
@@ -173,7 +176,7 @@ export function useChiefSetupRunner(): {
       agents: [],
       chief: true,
     };
-    useChiefSetupStore.setState({ orgId: activeOrganization.id });
+    useChiefSetupStore.setState({ orgId: activeOrganization.id, startedAtMs: Date.now() });
     dispatch({ type: "start", birthId: ask.birthId });
     beginCreation({ ask, hq: officialHq(accountHq), now: Date.now(), run: runNewProject });
   }, [accountHq, activeOrganization, runNewProject, user]);

@@ -70,7 +70,7 @@ function Progress({
   readonly steps: readonly string[];
   /** The step it is on, from 0. */
   readonly at: number;
-  readonly view?: ProgressView;
+  readonly view?: ProgressView | undefined;
   /** When it began, from the source's evidence; `null` when unknown — the row then has no clock. */
   readonly startedAtMs?: number | null;
   /** When it ended, done or stopped: the clock stays there. */
