@@ -144,7 +144,7 @@ const DIMENSION_HEADING: Record<UsageDimension, string> = {
 const NO_EXPANDED: ReadonlySet<string> = new Set();
 
 /** A row name that narrows the page to that row when clicked. */
-function DrillButton({
+export function DrillButton({
   label,
   onDrill,
   children,

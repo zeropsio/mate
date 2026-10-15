@@ -134,4 +134,56 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
     reason:
       "The router's error for a route, a draft's start, a live diff's context and a browser operation's take: each needs the thing that failed.",
   },
+  // Home-made looks the census sections cannot render without an account, a thread or a project.
+  {
+    name: "ChiefOverviewButton",
+    source: "apps/web/src/components/zerops/chief/ChiefOverviewButton.tsx",
+    reason:
+      "Home-made action: it opens the Chief's overview through the router and the right panel's store.",
+  },
+  {
+    name: "ReviewButton, OpenButton (menu-wait-button)",
+    source: "apps/web/src/components/zerops/SidebarWaiting.tsx",
+    reason:
+      "Home-made action: they open a review through useOpenReview, an operation on the data layer.",
+  },
+  {
+    name: "FixAction, RestartAction (run-result-action)",
+    source: "apps/web/src/components/chat",
+    reason:
+      "Home-made action: they ask a Mate to fix or restart through the Zerops session and account operations.",
+  },
+  {
+    name: "Row-wide buttons (about 20 raw <button>)",
+    source:
+      "apps/web/src/components/sidebar/SidebarProjectTree.tsx, zerops/ZeropsDataTree.tsx, chat/RunChat.tsx, chat/DetailRow.tsx",
+    reason:
+      "Home-made action: each is a row of a list that reads projects, a database or a run; no row renders apart from its list.",
+  },
+  {
+    name: "Square icon-only buttons (12 raw <button>)",
+    source:
+      "apps/web/src/components/AppSidebarLayout.tsx, settings/DiagnosticsSettings.tsx, sidebar/SidebarProviderUpdatePill.tsx",
+    reason:
+      "Home-made action: they sit in the app's shell, the diagnostics page and the provider update pill, which read the server and the router.",
+  },
+  {
+    name: "Floating round buttons",
+    source: "apps/web/src/components/ChatView.tsx, settings/ThemeColorPicker.tsx",
+    reason:
+      "Home-made action: the conversation's scroll-to-end button needs a thread; the theme's swatches need the theme being edited.",
+  },
+  {
+    name: "Bordered chip and tab buttons",
+    source:
+      "apps/web/src/components/zerops/ZeropsMateCard.tsx, zerops/SidebarZeropsTree.tsx, GitActionsControl.tsx, zerops/SidebarProjectReview.tsx",
+    reason:
+      "Home-made action: they live in a Mate's card, the menu's tree and git actions, which read Mates, projects and git status.",
+  },
+  {
+    name: "Cards and thumbnails as buttons",
+    source:
+      "apps/web/src/components/chat/RunChat.tsx, chat/BrowserStrip.tsx, chat/MessagePictures.tsx, zerops/ZeropsOrganizationScope.tsx, zerops/ZeropsAgentSignIn.tsx",
+    reason: "Home-made action: each is fed by a thread, a run's pictures or the signed-in account.",
+  },
 ];
