@@ -9,9 +9,11 @@ import {
   resolveThreadRouteRef,
   resolveThreadRouteRenderState,
   resolveThreadRouteStage,
+  THREAD_READ_PATIENCE_MS,
 } from "../threadRoutes";
 import { resolveThreadSyncPhase } from "../threadSync";
 import { EnvironmentId } from "@t3tools/contracts";
+import * as Option from "effect/Option";
 
 import { SidebarInset } from "~/components/ui/sidebar";
 import { MateOpeningView } from "~/components/zerops/MateLinkStage";
@@ -20,6 +22,7 @@ import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
+import { useEnvironmentThread } from "../state/threads";
 
 function ChatThreadRoutePending() {
   const threadRef = Route.useParams({ select: (params) => resolveThreadRouteRef(params) });
@@ -64,11 +67,22 @@ function ChatThreadRouteView() {
   const serverThreadStarted = threadHasStarted(serverThreadDetail);
   const routeMate = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
   const [conversationShown, setConversationShown] = useState(false);
+  // Its messages' read failed, or the list has named the thread for a while without them.
+  const readFailed = Option.isSome(
+    useEnvironmentThread(threadRef?.environmentId ?? null, threadRef?.threadId ?? null).error,
+  );
+  const patienceSpent = usePatienceSpent(
+    threadRef !== null && serverThreadShell !== null && serverThreadDetail === null
+      ? `${threadRef.environmentId}/${threadRef.threadId}`
+      : null,
+    THREAD_READ_PATIENCE_MS,
+  );
   const stage = resolveThreadRouteStage({
     renderState,
     serverThreadShellExists: serverThreadShell !== null,
     conversationShown,
     nobodyLivesHere: routeMate.kind === "nobody",
+    readGivenUp: readFailed || patienceSpent,
   });
   // Once shown, the pane keeps its conversation through a switch to one still being read.
   if (stage === "conversation" && !conversationShown) setConversationShown(true);
@@ -127,6 +141,17 @@ function ChatThreadRouteView() {
 }
 
 const NO_ENVIRONMENT = EnvironmentId.make("none");
+
+/** Whether `ms` has passed since `key` began to be waited on; a new key (or none) starts over. */
+function usePatienceSpent(key: string | null, ms: number): boolean {
+  const [spent, setSpent] = useState<string | null>(null);
+  useEffect(() => {
+    if (key === null) return;
+    const timer = window.setTimeout(() => setSpent(key), ms);
+    return () => window.clearTimeout(timer);
+  }, [key, ms]);
+  return key !== null && spent === key;
+}
 
 export const Route = createFileRoute("/_chat/$environmentId/$threadId")({
   component: ChatThreadRouteView,

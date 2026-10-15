@@ -43,6 +43,15 @@ export function resolveThreadRouteRenderState(input: {
   return input.shell === "live" && !input.serverThreadShellExists ? "missing" : "loading";
 }
 
+/**
+ * How long a listed conversation's opening waits for its messages before the conversation opens
+ * from its list entry (its header, its own "Loading messages…", a composer ready). Three times the
+ * beat after which the opening says its line (`OPENING_WAIT_LINE_MS`): a reload's list entry and
+ * messages come over the Mate's one socket, so messages not here by then are not coming soon — a
+ * Mate stopped, a connection blocked — and the person gets a composer rather than a stage.
+ */
+export const THREAD_READ_PATIENCE_MS = 3_000;
+
 /** What a thread's route draws: the Mate's opening, the conversation, its absence, or nothing. */
 export type ThreadRouteStage = "opening" | "conversation" | "missing" | "quiet";
 
@@ -51,7 +60,8 @@ export type ThreadRouteStage = "opening" | "conversation" | "missing" | "quiet";
  * Mate's opening until the conversation's messages are read, so the conversation's first frame is
  * whole — header, messages and composer at once — rather than a header over an empty pane. A pane
  * already showing a conversation keeps it while the next one's messages are read (it repaints that
- * thread's last timeline meanwhile). Where nobody lives, there is no Mate's view to hold.
+ * thread's last timeline meanwhile). Where nobody lives, there is no Mate's view to hold; where
+ * the messages cannot be read, the opening hands over after a short wait.
  */
 export function resolveThreadRouteStage(input: {
   readonly renderState: ThreadRouteRenderState;
@@ -60,10 +70,18 @@ export function resolveThreadRouteStage(input: {
   readonly conversationShown: boolean;
   /** The directory has decided no Mate lives in the route's environment. */
   readonly nobodyLivesHere: boolean;
+  /**
+   * Waiting on its messages is over: their read failed, or `THREAD_READ_PATIENCE_MS` passed since
+   * the list named the thread.
+   */
+  readonly readGivenUp: boolean;
 }): ThreadRouteStage {
   if (input.renderState === "ready") return "conversation";
   if (input.renderState === "missing") return "missing";
-  if (input.serverThreadShellExists && (input.conversationShown || input.nobodyLivesHere)) {
+  if (
+    input.serverThreadShellExists &&
+    (input.conversationShown || input.nobodyLivesHere || input.readGivenUp)
+  ) {
     return "conversation";
   }
   return input.nobodyLivesHere ? "quiet" : "opening";

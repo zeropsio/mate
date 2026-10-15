@@ -151,6 +151,7 @@ describe("resolveThreadRouteStage", () => {
     serverThreadShellExists: true,
     conversationShown: false,
     nobodyLivesHere: false,
+    readGivenUp: false,
   };
 
   it("A reload holds the Mate's opening until its conversation's messages are read, never a pane without them", () => {
@@ -167,6 +168,14 @@ describe("resolveThreadRouteStage", () => {
         conversationShown: true,
         serverThreadShellExists: false,
       }),
+    ).toBe("opening");
+  });
+
+  it("A conversation whose messages cannot be read still opens, its composer ready, after a short wait", () => {
+    expect(resolveThreadRouteStage({ ...base, readGivenUp: true })).toBe("conversation");
+    // Its list entry is what the conversation draws from: without one, the opening stands.
+    expect(
+      resolveThreadRouteStage({ ...base, readGivenUp: true, serverThreadShellExists: false }),
     ).toBe("opening");
   });
 

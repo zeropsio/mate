@@ -210,6 +210,7 @@ import {
 } from "../rightPanelStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
+import { conversationPanelWidth } from "./chat/conversationPanelStandIn.logic";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { useMateAddresses } from "../zerops/useMateAddresses";
 import { useCrew } from "../zerops/crew/useCrew";
@@ -8030,6 +8031,12 @@ function ConversationView(props: ChatViewProps) {
       {panelToggleControls}
     </div>
   );
+  // A Chief's overview opens wide enough for two of its cards side by side, as its opening's
+  // panel stood (`conversationPanelWidth`).
+  const rightPanelDefaultWidth = conversationPanelWidth({
+    chief: chiefConversation,
+    surfaces: rightPanelState.surfaces,
+  });
   const rightPanelAvailability = resolveRightPanelAvailability({
     projectOpen: activeProject !== null,
     gitRepo: isGitRepo,
@@ -8610,7 +8617,7 @@ function ConversationView(props: ChatViewProps) {
                         "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",
                         externalComposerDrawerAttached && "chat-composer-glass-shell-attached",
                         showComposerContextStrip &&
-                          zeropsFooter === "composer" &&
+                          zeropsFooter !== "read-only" &&
                           "chat-composer-glass-shell-with-context",
                       )}
                     >
@@ -8774,7 +8781,9 @@ function ConversationView(props: ChatViewProps) {
                           data-terminal-open={terminalUiState.terminalOpen ? "true" : undefined}
                           className="relative z-0"
                         >
-                          {showComposerContextStrip && zeropsFooter === "composer" && (
+                          {/* Drawn in the held room too, unseen with it, so the composer's
+                              arrival keeps the page where it stands. */}
+                          {showComposerContextStrip && zeropsFooter !== "read-only" && (
                             <div className="pointer-events-auto">
                               <BranchToolbar
                                 ref={branchToolbarRef}
@@ -8892,9 +8901,9 @@ function ConversationView(props: ChatViewProps) {
         <RightPanelTabs
           mode="inline"
           widthStorageKey={`t3code:preview-panel-width:${activeThreadKey}`}
-          // A Chief's overview opens wide enough for two of its cards side by side (380 + 16 + 380,
-          // 24 on each side).
-          {...(chiefConversation ? { defaultWidth: 840 } : {})}
+          {...(rightPanelDefaultWidth === undefined
+            ? {}
+            : { defaultWidth: rightPanelDefaultWidth })}
           maximized={rightPanelMaximized}
           surfaces={rightPanelState.surfaces}
           activeSurfaceId={activeRightPanelSurface?.id ?? null}
