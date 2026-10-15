@@ -93,7 +93,12 @@ async function holdsComposer(
   const held: Array<boolean> = [];
   const readings: Array<ReturnType<typeof useMateStandUp>> = [];
   function View() {
-    const state = useMateStandUp({ environmentId: ENVIRONMENT, threadRef, messageCount });
+    const state = useMateStandUp({
+      environmentId: ENVIRONMENT,
+      threadRef,
+      messageCount,
+      live: true,
+    });
     readings.push(state);
     held.push(state.holdsComposer);
     return null;

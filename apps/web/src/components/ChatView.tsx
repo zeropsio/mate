@@ -3197,8 +3197,11 @@ function ConversationView(props: ChatViewProps) {
   ]);
   const mateStandUp = useMateStandUp({
     environmentId: activeThreadEnvironmentId,
-    threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
+    threadRef: isServerThread ? activeThreadRef : null,
     messageCount: activeThread?.messages.length ?? 0,
+    // Held while it is read again (a reload): a conversation with messages gives the composer back
+    // at once, and its room with it, rather than when the read settles and the end moves.
+    live: threadSyncPhase === null,
   });
   // Whose Mate it is, as HQ records it: a colleague's is read along, never written to.
   const admissionMate = zeropsMateAt(zeropsMates, environmentId);
