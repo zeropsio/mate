@@ -1499,7 +1499,7 @@ export function OpenCommandPaletteDialog(props: {
               <TooltipTrigger
                 render={
                   <Button
-                    variant="warning-outline"
+                    variant="secondary"
                     size="sm"
                     onClick={() => {
                       openSourceControlSettings();
