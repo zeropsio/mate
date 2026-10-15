@@ -1,6 +1,6 @@
 import type { KitOmission } from "./kitSection";
 
-/** Exports of `components/ui` the kit page does not show, each with its reason. */
+/** What the kit page does not show — kit exports and home-made looks — each with its reason. */
 export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "PortalGate, gatedPortal",
@@ -35,6 +35,42 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
     source: "apps/web/src/components/ui",
     reason:
       "Open on load, a Popover or Menu takes focus and scrolls the page to itself, a Dialog or Sheet covers it, and a Tooltip is placed outside the page's scroller; each overlay has an opener instead.",
+  },
+  {
+    name: "ChatHeader",
+    source: "apps/web/src/components/chat/ChatHeader.tsx",
+    reason:
+      "Home-made: a conversation's page header. It reads its thread and the thread's menu from the live client; its line, ConversationStripView, is shown under Home-made tabs.",
+  },
+  {
+    name: "ThemeEditorPanel, ThemeEditorHost's loading box",
+    source: "apps/web/src/components/settings/ThemeEditorPanel.tsx",
+    reason:
+      "Home-made role=\"dialog\" surfaces. The panel previews its draft on the whole page and saves themes to the person's settings, so opening it here would retheme /kit; the loading box only stands in while the panel's code loads.",
+  },
+  {
+    name: "PictureViewer",
+    source: "apps/web/src/components/zerops/review/ReviewDescription.tsx",
+    reason:
+      "Home-made: a raw Dialog primitive inside a change's review. Not exported; it opens from a picture in the review's description, behind ZeropsReviewDialog (shown).",
+  },
+  {
+    name: "ProjectSites, ProjectReviewTags, the production chip's popover",
+    source: "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    reason:
+      "Home-made: raw Popover primitives on a menu project row (SidebarProjectSites, SidebarProjectReview, SidebarProductionChip). They open from a project's flow — its stages, sites and changes — which the census's menu fixture does not hold.",
+  },
+  {
+    name: "HelperCard, AgentsPanel's HelperRow",
+    source: "apps/web/src/components/chat/HelperCard.tsx",
+    reason:
+      "Home-made cards and rows of a conversation's helpers. They read the Mate and its helpers from the data layer.",
+  },
+  {
+    name: "ServiceCard, ServiceRow, ZeropsHqCard",
+    source: "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
+    reason:
+      "Home-made cards of a project's services and its HQ. ServiceCard and ServiceRow are not exported (ZeropsServiceMap draws them); ZeropsHqCard reads the session and the account's HQ.",
   },
   {
     name: "Focus-visible states",
