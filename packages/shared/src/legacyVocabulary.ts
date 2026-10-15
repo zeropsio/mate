@@ -53,5 +53,6 @@ export const LEGACY_VOCABULARY_PATTERNS = [
     say: "Works on every project, or more than Read access",
   },
   { name: "accesses", pattern: /\baccesses\b/iu, say: "access, or what it opens: Choose projects" },
+  { name: "Add your domain", pattern: /\bAdd your domain\b/u, say: "Put it on your domain" },
   { name: "surface", pattern: /\b(?:a|this|that) surface\b/iu, say: "page" },
 ] as const;

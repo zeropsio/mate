@@ -91,7 +91,7 @@ export function PlacePanel({
   readonly actions: ReactNode;
   /**
    * Drawn at a project page's width: both doors into the sheet. On a card one door is enough —
-   * *Add your domain* while production has none of its own (the sheet it opens manages the rest),
+   * *Put it on your domain* while production has none of its own (the sheet it opens manages the rest),
    * *Manage addresses* otherwise — and the actions keep to one row.
    */
   readonly roomy?: boolean;
@@ -200,7 +200,7 @@ export function PlacePanel({
             }}
             type="button"
           >
-            Add your domain
+            Put it on your domain
           </button>
         )}
         {manage === undefined || (said.offerDomain && !roomy) ? null : (

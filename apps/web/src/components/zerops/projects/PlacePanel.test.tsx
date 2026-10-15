@@ -144,13 +144,13 @@ describe("a place's addresses on its panel", () => {
     },
   );
 
-  it("offers a card one door into the sheet: Add your domain while production has none of its own", async () => {
+  it("offers a card one door into the sheet: Put it on your domain while production has none of its own", async () => {
     const card = await mount("production", inAccount({ prod: place([]) }));
-    expect(button(card, "Add your domain")).not.toBeNull();
+    expect(button(card, "Put it on your domain")).not.toBeNull();
     expect(button(card, "Manage addresses")).toBeNull();
 
     const page = await mount("production", inAccount({ prod: place([]) }), true);
-    expect(button(page, "Add your domain")).not.toBeNull();
+    expect(button(page, "Put it on your domain")).not.toBeNull();
     expect(button(page, "Manage addresses")).not.toBeNull();
   });
 
@@ -159,9 +159,9 @@ describe("a place's addresses on its panel", () => {
     expect(button(container, "Manage addresses")).toBeNull();
   });
 
-  it("Add your domain on a production with no domain of its own opens the sheet to add one", async () => {
+  it("Put it on your domain on a production with no domain of its own opens the sheet to add one", async () => {
     const container = await mount("production", inAccount({ prod: place([]) }));
-    await press(button(container, "Add your domain"));
+    await press(button(container, "Put it on your domain"));
     expect(useAddressesSheet.getState().target).toEqual({
       orgId: "org",
       projectId: "prod",
@@ -173,9 +173,9 @@ describe("a place's addresses on its panel", () => {
   it.each([
     ["has a domain of its own", place([domain("shop.acme.com", "live")])],
     ["is still being read", reading("reading")],
-  ])("offers no Add your domain while production %s", async (_case, read) => {
+  ])("offers no Put it on your domain while production %s", async (_case, read) => {
     const container = await mount("production", inAccount({ prod: read }));
-    expect(button(container, "Add your domain")).toBeNull();
+    expect(button(container, "Put it on your domain")).toBeNull();
     expect(button(container, "Manage addresses")).not.toBeNull();
   });
 

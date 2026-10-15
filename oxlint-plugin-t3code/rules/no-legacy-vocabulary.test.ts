@@ -233,6 +233,7 @@ describe("t3code/no-legacy-vocabulary", () => {
       name: "accesses",
       say: "access, or what it opens: Choose projects",
     },
+    { copy: "Add your domain", name: "Add your domain", say: "Put it on your domain" },
     { copy: "Open a surface", name: "surface", say: "page" },
   ];
 

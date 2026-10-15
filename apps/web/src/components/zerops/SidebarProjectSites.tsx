@@ -816,7 +816,7 @@ function AddYourDomain({
       type="button"
     >
       <PlusIcon aria-hidden="true" />
-      Add your domain
+      Put it on your domain
     </button>
   );
 }

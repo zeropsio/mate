@@ -275,7 +275,7 @@ const readPlace = (
 
 /**
  * The places' addresses the panels read, in the account `org`: one with its own domain live and
- * its www twin waiting for DNS, one with none yet (Add your domain), one of two services with a
+ * its www twin waiting for DNS, one with none yet (Put it on your domain), one of two services with a
  * domain getting its certificate. The rest are still being read: as their listing says them.
  */
 const inAccount = withPlaceAddresses({

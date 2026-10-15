@@ -49,6 +49,8 @@ One word for each thing:
 - **Owner**, **Admin**, **Developer**, **Guest** — the roles, as the invite names them; the menu's foot says
   "{organization} · {role}" for every role. A Zerops role no preset names reads by what it reaches (**Works on every
   project**, **Sees every project**); a Zerops role code appears only where a Zerops role itself is chosen.
+- **Put it on your domain** — the first own domain, everywhere it is offered; **Manage addresses** once
+  there is one.
 - **page** — what the side panel opens; never surface.
 - **Zerops Control Plane** — never zcp.
 
@@ -101,6 +103,7 @@ Source words and the product words that replace them:
 - Basic user, Read only (an organization's role) → **Works on every project**, **Sees every project**; at least
   Basic user access (a project's) → **more than Read access**; Member → the role's own name
 - surface → **page**
+- Add your domain → **Put it on your domain**
 - Set custom accesses → **Choose projects**; Advanced (a role's Zerops settings) → **Fine-tune permissions**
 - container (a Mate's) → **its computer**; closed off → **private network ready**
 

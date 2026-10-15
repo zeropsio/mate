@@ -1,7 +1,7 @@
 /**
  * The sheet's *Web addresses*: the place's own domains, each with how far it is from answering and
  * — while it waits for the person's DNS — exactly the records it needs; each service's zerops.app
- * address and its switch; and *Add your domain*, the add flow inline (board "Mate Domain Doors",
+ * address and its switch; and *Put it on your domain*, the add flow inline (board "Mate Domain Doors",
  * option 2). Closing an address or removing a domain asks first, and a write that would put
  * somebody else's waiting change live names it before it does.
  */
@@ -109,7 +109,7 @@ export function AddressesWeb({
             variant="ghost-primary"
           >
             <PlusIcon />
-            Add your domain
+            Put it on your domain
           </Button>
         )
       }
@@ -631,7 +631,7 @@ function ZeropsRow({
   );
 }
 
-/** *Add your domain*: the domain, where it leads, its www twin; then the add, or the ask first. */
+/** *Put it on your domain*: the domain, where it leads, its www twin; then the add, or the ask first. */
 function AddDomainForm({
   ctx,
   existing,
