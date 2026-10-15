@@ -13,6 +13,8 @@ describe("resolveZeropsAccountGate", () => {
     ["loading", "/zerops/authorized", "pre-account"],
     ["signed-out", "/zerops/authorized/", "pre-account"],
     ["signed-in", "/ZEROPS/AUTHORIZED", "pre-account"],
+    ["signed-out", "/kit", "pre-account"],
+    ["signed-in", "/kit/", "pre-account"],
   ] as const)("maps %s at %s to %s", (status, pathname, expected) => {
     expect(resolveZeropsAccountGate({ pathname, status })).toBe(expected);
   });
@@ -34,6 +36,15 @@ describe("resolveZeropsAccountGate", () => {
   it("keeps the identity callback ahead of the gate that its credential creates", () => {
     expect(resolveZeropsAccountGate({ pathname: "/zerops/authorized", status: "signed-out" })).toBe(
       "pre-account",
+    );
+  });
+
+  it("opens the component kit without an account, since it shows fixtures and reads nothing", () => {
+    expect(resolveZeropsAccountGate({ pathname: "/kit", status: "signed-out" })).toBe(
+      "pre-account",
+    );
+    expect(resolveZeropsAccountGate({ pathname: "/kit/button", status: "signed-out" })).toBe(
+      "auth-only",
     );
   });
 

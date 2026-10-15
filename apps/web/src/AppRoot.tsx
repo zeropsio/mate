@@ -4,11 +4,11 @@ import { ZeropsAccountEnvironmentProvider } from "./zerops/ZeropsAccountEnvironm
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
 import { ZeropsMenuPreview } from "./zerops/useMenuRows";
 import { ZeropsHqNavigation } from "./zerops/hqNavigation";
-import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
 import { ZeropsHostedLanding } from "./components/zerops/landing/ZeropsHostedLanding";
 import { zeropsSignInMode } from "./zerops/deviceLogin";
 import { driveZeropsHqSignIn } from "./zerops/hqSignIn";
 import { appBasePath } from "./basePath";
+import { resolveZeropsAccountGate } from "./routes/-accountGate";
 import { RouterProvider } from "@tanstack/react-router";
 
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
@@ -64,13 +64,16 @@ function AccountProductBoundary({ router }: { readonly router: AppRouter }) {
     useCallback((changed: () => void) => router.history.subscribe(changed), [router]),
     () => router.history.location.pathname,
   );
-  const callback = pathname === `${appBasePath()}${ZEROPS_HANDOVER_CALLBACK_PATH}`;
-  if (status !== "signed-in" && !callback) {
+  // The hand-over's callback and the component kit route with no account data beneath them.
+  const preAccount =
+    resolveZeropsAccountGate({ pathname: pathname.slice(appBasePath().length), status }) ===
+    "pre-account";
+  if (status !== "signed-in" && !preAccount) {
     return <ZeropsHostedLanding />;
   }
   return (
     <AppAtomRegistryProvider key={user?.id ?? "handover"}>
-      {callback ? (
+      {preAccount ? (
         <RouterProvider router={router} />
       ) : (
         <ZeropsAccountData>
