@@ -684,7 +684,7 @@ export function ZeropsDataPanel({
                 <Button
                   data-zerops-data-refresh
                   onClick={() => requestServices()}
-                  size="micro"
+                  size="sm"
                   variant="ghost"
                 >
                   Refresh
@@ -873,12 +873,7 @@ export function ZeropsDataPanel({
         </p>
       ) : null}
       {treeRootEmpty ? (
-        <Button
-          data-zerops-data-tree-reload
-          onClick={handleReloadTree}
-          size="micro"
-          variant="ghost"
-        >
+        <Button data-zerops-data-tree-reload onClick={handleReloadTree} size="sm" variant="ghost">
           Reload
         </Button>
       ) : null}
@@ -890,7 +885,7 @@ export function ZeropsDataPanel({
             <div key={target} className="text-xs" role="alert">
               <span>{state.error}</span>
               <Button
-                size="micro"
+                size="sm"
                 variant="ghost"
                 onClick={() => loadTreePage(entry?.path ?? { service, segments: [] })}
               >
@@ -1102,16 +1097,11 @@ export function ZeropsDataPanel({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-zerops-data-content>
       {selectedNode !== null ? (
         <div className="flex flex-wrap items-center gap-2 py-2 text-xs">
-          <Button
-            size="micro"
-            variant="ghost"
-            data-zerops-data-back
-            onClick={() => setShowList(true)}
-          >
+          <Button size="sm" variant="ghost" data-zerops-data-back onClick={() => setShowList(true)}>
             Back to {noun}
           </Button>
           <span>{selectedNode.name}</span>
-          <Button size="micro" variant="ghost" onClick={refreshDetail}>
+          <Button size="sm" variant="ghost" onClick={refreshDetail}>
             Refresh detail
           </Button>
           {selectedMetadata?.entryType ? (
@@ -1148,7 +1138,7 @@ export function ZeropsDataPanel({
         <div className="flex items-center gap-2 py-1 text-xs" data-zerops-data-query-result>
           <span>{`Query result · ${queryState.model.rows.length.toLocaleString()} rows loaded`}</span>
           <Button
-            size="micro"
+            size="sm"
             variant="ghost"
             data-zerops-data-query-back
             onClick={() => {
@@ -1168,7 +1158,7 @@ export function ZeropsDataPanel({
       {selectedState?.error ? (
         <div role="alert">
           <span>{selectedState.error}</span>
-          <Button size="micro" variant="ghost" onClick={refreshDetail}>
+          <Button size="sm" variant="ghost" onClick={refreshDetail}>
             Retry
           </Button>
         </div>
@@ -1213,7 +1203,7 @@ export function ZeropsDataPanel({
             {activeModel.bestEffort ? " · Paging without a primary key is best effort" : ""}
           </span>
           <Button
-            size="micro"
+            size="sm"
             variant="ghost"
             disabled={shownPage === 0}
             onClick={() => {
@@ -1224,7 +1214,7 @@ export function ZeropsDataPanel({
             Back
           </Button>
           <Button
-            size="micro"
+            size="sm"
             variant="ghost"
             data-zerops-data-next-page
             disabled={
@@ -1287,7 +1277,7 @@ export function ZeropsDataPanel({
             </span>
             {database.summary ? (
               <Button
-                size="micro"
+                size="sm"
                 variant="ghost"
                 data-zerops-data-copy-connection
                 onClick={() => copyToClipboard(database.summary!.maskedConnection)}
@@ -1298,7 +1288,7 @@ export function ZeropsDataPanel({
               </Button>
             ) : summaryUnoffered ? null : (
               <Button
-                size="micro"
+                size="sm"
                 variant="ghost"
                 onClick={() =>
                   void database.read({ request: { kind: "summary", service }, target: "summary" })
@@ -1317,7 +1307,7 @@ export function ZeropsDataPanel({
           )}
           {affordances?.canQuery && !database.withheld && !serviceStopped ? (
             <Button
-              size="micro"
+              size="sm"
               variant="ghost"
               data-zerops-data-query-toggle
               onClick={() => {
@@ -1329,7 +1319,7 @@ export function ZeropsDataPanel({
             </Button>
           ) : null}
           <Button
-            size="micro"
+            size="sm"
             variant="ghost"
             data-zerops-data-refresh
             onClick={() => {
@@ -1361,7 +1351,7 @@ export function ZeropsDataPanel({
               <Button
                 data-zerops-data-tree-toggle-rail
                 onClick={() => setTreeCollapsed((current) => !current)}
-                size="micro"
+                size="sm"
                 variant="ghost"
               >
                 {treeCollapsed ? "Show tree" : "Hide tree"}

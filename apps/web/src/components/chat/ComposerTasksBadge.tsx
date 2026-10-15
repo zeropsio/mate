@@ -85,7 +85,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
     return (
       <span className="inline-flex shrink-0 items-center gap-0.5" data-composer-tasks-badge="true">
         <Button
-          size="micro"
+          size="sm"
           variant="ghost-muted"
           aria-expanded={expanded}
           aria-label={label}

@@ -266,7 +266,7 @@ export function ZeropsAgentAuthRows({
           data-zerops-agent-offer
         >
           <span>{AGENT_NAMES[agent.agentId]} isn’t signed in.</span>
-          <Button size="micro" variant="link" onClick={() => onSignIn(agent.agentId)}>
+          <Button size="sm" variant="link" onClick={() => onSignIn(agent.agentId)}>
             {AGENT_SIGN_IN_LABELS[agent.agentId]}
           </Button>
         </p>

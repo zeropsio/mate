@@ -40,7 +40,7 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
   if (inline) {
     return (
       <Button
-        size="micro"
+        size="sm"
         variant="ghost-muted"
         data-prompt-stash-badge="true"
         aria-label={`Stashed prompts: ${props.count}. Open stash.`}
