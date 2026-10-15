@@ -15,6 +15,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { MemberProjectAccess } from "./MemberProjectAccess";
+import { PageHeader } from "../ui/page-header";
 import { SettingsPageContainer } from "./settingsLayout";
 import { TeamRoleEditor } from "./TeamRoleEditor";
 import {
@@ -139,13 +140,15 @@ export function TeamInviteView({
     >
       {step === null ? (
         <div className="tm-invite-card">
-          <div className="tm-block-text">
-            <h1 className="tm-block-title">Add a new team member</h1>
-            <span className="tm-block-desc">
-              Zerops e-mails them a link to join {organizationName}
-              {organizationName.endsWith(".") ? "" : "."}
-            </span>
-          </div>
+          <PageHeader
+            line={
+              <>
+                Zerops e-mails them a link to join {organizationName}
+                {organizationName.endsWith(".") ? "" : "."}
+              </>
+            }
+            title="Add a new team member"
+          />
           <div className="tm-field">
             <Label htmlFor={`${id}-email`}>E-mail</Label>
             <Input
@@ -175,16 +178,14 @@ export function TeamInviteView({
         </div>
       ) : (
         <>
-          <header className="tm-block-text">
-            <h1 className="tm-head-name">
-              Adding <span className="font-semibold">{step.email}</span>
-            </h1>
-            <span className="tm-block-desc">
-              {isNew
+          <PageHeader
+            line={
+              isNew
                 ? "No Zerops account uses this address yet: Zerops makes one with the invitation."
-                : "They have a Zerops account: they join once they accept."}
-            </span>
-          </header>
+                : "They have a Zerops account: they join once they accept."
+            }
+            title={`Adding ${step.email}`}
+          />
           {isNew ? (
             <div className="tm-names">
               <div className="tm-field">

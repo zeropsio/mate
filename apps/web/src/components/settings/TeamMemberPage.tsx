@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
+import { PageHeader } from "../ui/page-header";
 import { PersonAvatar } from "../zerops/primitives";
 import { selfLowerWords } from "../zerops/projects/projectPeople.logic";
 import { MemberProjectAccess } from "./MemberProjectAccess";
@@ -143,14 +144,16 @@ export function TeamMemberView({
 
   return (
     <div className="tm-page" data-zerops-surface="team-member">
-      <header className="tm-head">
-        <PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />
-        <h1 className="tm-head-name">{person.name}</h1>
-        {person.email === null || person.email === person.name ? null : (
-          <span className="tm-head-line">{person.email}</span>
-        )}
-        {person.pending ? <span className="tm-head-line">Invited · not joined yet</span> : null}
-      </header>
+      <PageHeader
+        lead={<PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />}
+        line={
+          [
+            ...(person.email === null || person.email === person.name ? [] : [person.email]),
+            ...(person.pending ? ["Invited · not joined yet"] : []),
+          ].join(" · ") || undefined
+        }
+        title={person.name}
+      />
 
       <section aria-label="Role" className="tm-section">
         <TeamRoleEditor

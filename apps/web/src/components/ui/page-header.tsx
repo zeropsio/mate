@@ -12,7 +12,7 @@ interface PageHeaderProps extends Omit<useRender.ComponentProps<"header">, "titl
   /** A mark before the title: the Mate's face, the person, the page's icon. */
   readonly lead?: ReactNode;
   /** How many things the page lists, right after its title. */
-  readonly count?: number | undefined;
+  readonly count?: ReactNode;
   /** One line under the title: what the page is for, or the fact the page is about. */
   readonly line?: ReactNode;
   /** The page's own actions, at the end of the title's line. */
@@ -49,7 +49,7 @@ function PageHeader({
             <h1 className="m-0 min-w-0 truncate font-semibold text-foreground text-xl leading-7">
               {title}
             </h1>
-            {count === undefined ? null : (
+            {count === undefined || count === null ? null : (
               <span className="shrink-0 text-muted-foreground text-sm tabular-nums">{count}</span>
             )}
           </span>

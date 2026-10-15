@@ -7611,19 +7611,6 @@ a.ov-chip-who:focus-visible {
   gap: 20px;
 }
 
-.tm-team-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tm-team-count {
-  margin-inline-end: 6px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
 .tm-team-search {
   width: 240px;
 }
@@ -7731,31 +7718,6 @@ a.ov-chip-who:focus-visible {
   width: 100%;
   max-width: 560px;
   margin: 0 auto;
-}
-
-.tm-head {
-  display: grid;
-  justify-items: center;
-  gap: 2px;
-  text-align: center;
-}
-
-.tm-head > [data-zerops-primitive="avatar"] {
-  margin-bottom: 14px;
-}
-
-.tm-head-name {
-  color: var(--foreground);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 28px;
-}
-
-.tm-head-line {
-  color: var(--muted-foreground);
-  font-size: 14px;
-  line-height: 20px;
 }
 
 .tm-section {

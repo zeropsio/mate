@@ -12,7 +12,7 @@ interface SectionHeaderProps extends Omit<
 > {
   readonly title: ReactNode;
   /** How many rows the section holds, said right after its title, never at the far edge. */
-  readonly count?: number | undefined;
+  readonly count?: ReactNode;
   /** The one thing the section lets the person do, at the end of the title's line. */
   readonly action?: ReactNode;
   /** Its heading's level: 2 on a page, 3 inside a sheet or a dialog whose title is the 2. */
@@ -41,7 +41,7 @@ function SectionHeader({
         <Heading className="m-0 flex min-w-0 items-center gap-2 truncate font-semibold text-[15px] text-foreground leading-5">
           {title}
         </Heading>
-        {count === undefined ? null : (
+        {count === undefined || count === null ? null : (
           <span className="shrink-0 text-muted-foreground text-xs tabular-nums">{count}</span>
         )}
         {action === undefined || action === null ? null : (
@@ -59,7 +59,7 @@ function SectionHeader({
 
 interface SectionProps extends Omit<useRender.ComponentProps<"section">, "title"> {
   readonly title: ReactNode;
-  readonly count?: number | undefined;
+  readonly count?: ReactNode;
   readonly action?: ReactNode;
   readonly level?: 2 | 3 | undefined;
 }

@@ -26,6 +26,9 @@ export function TeamSettings() {
   );
 }
 
+/** More people than this, and the team page offers a search. */
+const SEARCH_FROM = 5;
+
 /** The team as drawn from what is known of it. */
 export function TeamList({
   view,
@@ -42,25 +45,28 @@ export function TeamList({
   );
   return (
     <SettingsSection
+      count={view.kind === "people" ? view.count : undefined}
       headerAction={
         view.kind === "people" ? (
-          <div className="tm-team-bar">
-            <span className="tm-team-count">{view.count}</span>
-            <div className="tm-team-search">
-              <InputGroup>
-                <InputGroupAddon>
-                  <SearchIcon aria-hidden="true" />
-                </InputGroupAddon>
-                <InputGroupInput
-                  aria-label="Search the team"
-                  onChange={(event) => setQuery(event.currentTarget.value)}
-                  placeholder="Search by name or e-mail"
-                  size="sm"
-                  type="search"
-                  value={query}
-                />
-              </InputGroup>
-            </div>
+          <>
+            {/* A search only where there are enough people to look for one. */}
+            {view.people.length > SEARCH_FROM ? (
+              <div className="tm-team-search">
+                <InputGroup>
+                  <InputGroupAddon>
+                    <SearchIcon aria-hidden="true" />
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    aria-label="Search the team"
+                    onChange={(event) => setQuery(event.currentTarget.value)}
+                    placeholder="Search by name or e-mail"
+                    size="sm"
+                    type="search"
+                    value={query}
+                  />
+                </InputGroup>
+              </div>
+            ) : null}
             {view.invite.length > 0 ? (
               <Button
                 data-zerops-surface="invite-team"
@@ -71,7 +77,7 @@ export function TeamList({
                 Invite
               </Button>
             ) : null}
-          </div>
+          </>
         ) : null
       }
       id="team"

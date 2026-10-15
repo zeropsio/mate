@@ -9,6 +9,7 @@
  * (`VaultPanelContainer.tsx`) feeds it from the account's `vault` projection and operations; the
  * harness (`/design-vault.html`) draws it over the fixture.
  */
+import { Section } from "../../ui/section";
 import type {
   VaultImpact,
   VaultRevealed,
@@ -460,21 +461,22 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           />
         ) : null}
         {sections.map((section) => (
-          <section className="grid gap-2" data-vault-part={section.scope.id} key={section.scope.id}>
-            <header className="flex min-h-5 items-baseline gap-2 px-1">
-              <h3 className="font-semibold text-line text-foreground">{section.title}</h3>
-              {section.words === null ? null : (
-                <span className="truncate text-xs text-muted-foreground">{section.words}</span>
-              )}
-              <span className="grow" />
-              {section.scope.hostname === null
-                ? null
-                : props.renderDeployConfig?.(section.scope.hostname)}
-            </header>
+          <Section
+            action={
+              section.scope.hostname === null
+                ? undefined
+                : props.renderDeployConfig?.(section.scope.hostname)
+            }
+            count={section.words ?? undefined}
+            data-vault-part={section.scope.id}
+            key={section.scope.id}
+            level={3}
+            title={section.title}
+          >
             <div className="vault-box">
               <div className="vault-rows">{section.entries.map(rowOf)}</div>
             </div>
-          </section>
+          </Section>
         ))}
         {made.length > 0 ? (
           <div className="vault-box" data-vault-made>

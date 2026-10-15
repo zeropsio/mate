@@ -116,6 +116,7 @@ export function useRelativeTimeTick(intervalMs = 1_000) {
 export function SettingsSection({
   title,
   icon,
+  count,
   headerAction,
   children,
   className,
@@ -123,6 +124,8 @@ export function SettingsSection({
 }: ComponentPropsWithoutRef<"section"> & {
   title: string;
   icon?: ReactNode;
+  /** How many it holds, beside its title. */
+  count?: ReactNode;
   headerAction?: ReactNode;
   children: ReactNode;
 }) {
@@ -138,6 +141,7 @@ export function SettingsSection({
       <div className="px-3">
         <SectionHeader
           action={headerAction}
+          count={count}
           title={
             <>
               {icon}
