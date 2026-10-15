@@ -6,6 +6,7 @@
  * Served by the dev server at `/design-overview.html` (`?theme=dark`). It stands beside a blank
  * left menu at the owner's 435 px; open it at 1786 × 1000. A place's line opens its panel; a
  * lifted Mate's buttons say what they would do in `window.__overviewHarness.acted`.
+ * `?arrival=developer|guest|admin` draws the first visit's welcome for someone just invited.
  *
  * Fixtures only. Nothing here ships — `design-overview.html` is not `index.html`, and no route
  * imports this module.
@@ -25,6 +26,7 @@ import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { ArrivalWelcome } from "~/components/zerops/projects/ArrivalWelcome";
 import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
@@ -593,6 +595,16 @@ const HARNESS_CHANGES: ReadonlyArray<CardChange> = [true, false].map((open, inde
   at: undefined,
 }));
 
+/** Who has just arrived, by `?arrival=`: their membership as Zerops stores it. */
+const ARRIVAL =
+  (
+    {
+      developer: { roleCode: "NO_ACCESS", canCreateProjects: true },
+      guest: { roleCode: "NO_ACCESS", canCreateProjects: false },
+      admin: { roleCode: "ADMIN", canCreateProjects: true },
+    } as Record<string, { roleCode: string; canCreateProjects: boolean }>
+  )[params.get("arrival") ?? ""] ?? null;
+
 function HarnessPage() {
   return (
     <div className="flex h-dvh bg-background text-foreground">
@@ -605,6 +617,21 @@ function HarnessPage() {
               New project
             </button>
           </div>
+          {ARRIVAL === null ? null : (
+            <ArrivalWelcome
+              apps={PROJECTS.slice(0, 1).map(({ entry }) => ({
+                groupId: entry.group.groupId,
+                name: entry.group.name,
+                mine: false,
+                addMate: ARRIVAL.canCreateProjects !== false,
+              }))}
+              onStart={() => {}}
+              orgId="harness"
+              organizationName="Acme"
+              settled
+              viewer={ARRIVAL}
+            />
+          )}
           <ZeropsProjectsFlow<Mate>
             cardPlaces={(entry) => {
               const found = byId.get(entry.group.groupId);
