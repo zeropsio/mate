@@ -1014,7 +1014,7 @@ describe("birthCopyServices", () => {
 });
 
 describe("the birth's clock", () => {
-  const at = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
+  const at = (minutes: number) => `2026-09-22T10:0${5 - minutes}:00Z`;
   const progressOf = (steps: ReadonlyArray<BirthStep>): BirthProgress => {
     const failed = steps.find((step) => step.state === "failed") ?? null;
     return {
