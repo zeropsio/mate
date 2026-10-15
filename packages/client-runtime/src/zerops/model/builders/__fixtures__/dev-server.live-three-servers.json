@@ -1,0 +1,64 @@
+{
+  "action": "status",
+  "hostname": "e1pnpm",
+  "running": true,
+  "port": 3000,
+  "healthPath": "/",
+  "healthStatus": 200,
+  "logFile": "/home/zerops/.zcp/devsup/logs/web.log",
+  "pid": 690,
+  "url": "http://e1pnpm:3000/",
+  "message": "Dev server web on e1pnpm is running on :3000 (HTTP 200 on /).",
+  "name": "web",
+  "envelope": {
+    "phase": "idle",
+    "environment": "container",
+    "idleScenario": "bootstrapped",
+    "selfService": {
+      "hostname": "zcp"
+    },
+    "services": [
+      {
+        "hostname": "e1pnpm",
+        "typeVersion": "alpine/nodejs@22",
+        "runtimeClass": "dynamic",
+        "status": "ACTIVE",
+        "bootstrapped": true,
+        "deployed": true,
+        "mode": "dev",
+        "closeDeployMode": "unset",
+        "gitPushState": "configured",
+        "buildIntegration": "none",
+        "trackedRef": "main",
+        "setupName": "dev",
+        "devServers": [
+          {
+            "name": "web",
+            "port": 3000,
+            "url": "https://e1pnpm-26a7-3000.prg1.zerops.app",
+            "status": "running",
+            "readAt": "2026-10-15T00:37:46.430032926Z",
+            "verify": {
+              "ok": true,
+              "httpStatus": 200,
+              "at": "2026-10-15T00:37:46.430032926Z"
+            }
+          },
+          {
+            "name": "api",
+            "port": 8080,
+            "url": "https://e1pnpm-26a7-8080.prg1.zerops.app",
+            "status": "running",
+            "readAt": "2026-10-15T00:37:46.430032926Z"
+          },
+          {
+            "name": "worker",
+            "status": "running",
+            "readAt": "2026-10-15T00:37:46.430032926Z"
+          }
+        ]
+      }
+    ],
+    "generated": "2026-10-15T00:37:46.485469739Z"
+  }
+}
