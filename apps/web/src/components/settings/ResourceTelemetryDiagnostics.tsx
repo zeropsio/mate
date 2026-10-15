@@ -492,7 +492,7 @@ function ProcessTreeName({
     >
       {hasChildren ? (
         <Button
-          size="icon-micro"
+          size="icon-sm"
           variant="ghost-muted"
           onClick={() => onToggle(process)}
           aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
@@ -954,7 +954,7 @@ export function ResourceTelemetryDiagnostics() {
               <TooltipTrigger
                 render={
                   <Button
-                    size="icon-micro"
+                    size="icon-sm"
                     variant="ghost"
                     disabled={telemetry.isPending}
                     onClick={telemetry.refresh}
@@ -1205,7 +1205,7 @@ export function ResourceTelemetryDiagnostics() {
           <div className="flex items-center gap-2">
             <HistoryWindowSelector selectedWindowMs={windowMs} onSelect={setWindowMs} />
             <Button
-              size="icon-micro"
+              size="icon-sm"
               variant="ghost"
               disabled={history.isPending}
               onClick={history.refresh}

@@ -1003,7 +1003,7 @@ export function EnvironmentProviderSettings({
                     <TooltipTrigger
                       render={
                         <Button
-                          size="icon-micro"
+                          size="icon-sm"
                           variant="ghost-muted"
                           disabled={isRefreshingProviders}
                           onClick={() => void refreshProviders()}

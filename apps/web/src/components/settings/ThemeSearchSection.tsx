@@ -401,7 +401,7 @@ export function ThemeSearchSection({
                         <Button
                           aria-label={`View source for ${extension.name}`}
                           render={<a href={extension.sourceUrl} rel="noreferrer" target="_blank" />}
-                          size="icon-micro"
+                          size="icon-sm"
                           variant="ghost-muted"
                         >
                           <SourceLinkIcon url={extension.sourceUrl} />

@@ -106,7 +106,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
           </span>
         </Button>
         <Button
-          size="icon-micro"
+          size="icon-sm"
           variant="ghost-muted"
           aria-label="Dismiss tasks for this turn"
           className="shrink-0"
@@ -155,7 +155,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
         <TaskSegments className="w-20" steps={steps} />
       </button>
       <Button
-        size="icon-micro"
+        size="icon-sm"
         variant="ghost-muted"
         aria-label="Dismiss tasks for this turn"
         className="shrink-0"
@@ -196,7 +196,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
           </span>
         </button>
         <Button
-          size="icon-micro"
+          size="icon-sm"
           variant="ghost-muted"
           aria-label="Dismiss tasks for this turn"
           className="shrink-0"

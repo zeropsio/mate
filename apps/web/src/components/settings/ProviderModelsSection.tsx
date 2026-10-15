@@ -264,7 +264,7 @@ export function ProviderModelsSection({
                       <TooltipTrigger
                         render={
                           <Button
-                            size="icon-micro"
+                            size="icon-sm"
                             variant="ghost"
                             className="text-muted-foreground/60 hover:text-muted-foreground"
                             aria-label={`Details for ${model.name}`}
@@ -301,7 +301,7 @@ export function ProviderModelsSection({
                     <TooltipTrigger
                       render={
                         <Button
-                          size="icon-micro"
+                          size="icon-sm"
                           variant="ghost-muted"
                           onClick={() => handleToggleFavorite(model.slug)}
                           aria-label={`${isFavorite ? "Remove" : "Add"} ${model.name} ${
@@ -322,7 +322,7 @@ export function ProviderModelsSection({
                     <TooltipTrigger
                       render={
                         <Button
-                          size="icon-micro"
+                          size="icon-sm"
                           variant="ghost-muted"
                           disabled={!canMoveUp}
                           onClick={() => handleMove(model.slug, -1)}
@@ -338,7 +338,7 @@ export function ProviderModelsSection({
                     <TooltipTrigger
                       render={
                         <Button
-                          size="icon-micro"
+                          size="icon-sm"
                           variant="ghost-muted"
                           disabled={!canMoveDown}
                           onClick={() => handleMove(model.slug, 1)}
@@ -355,7 +355,7 @@ export function ProviderModelsSection({
                       <TooltipTrigger
                         render={
                           <Button
-                            size="icon-micro"
+                            size="icon-sm"
                             variant="ghost-muted"
                             onClick={() => handleToggleHidden(model.slug)}
                             aria-label={`${isHidden ? "Show" : "Hide"} ${model.name}`}
@@ -378,7 +378,7 @@ export function ProviderModelsSection({
                       <TooltipTrigger
                         render={
                           <Button
-                            size="icon-micro"
+                            size="icon-sm"
                             variant="ghost-muted"
                             aria-label={`Edit ${model.name}`}
                             aria-expanded={editingSlug === model.slug}
@@ -400,7 +400,7 @@ export function ProviderModelsSection({
                       <TooltipTrigger
                         render={
                           <Button
-                            size="icon-micro"
+                            size="icon-sm"
                             variant="ghost-muted"
                             aria-label={`Remove ${model.slug}`}
                             onClick={() => handleRemove(model.slug)}

@@ -523,7 +523,7 @@ export function SourceControlSettingsPanel() {
       <TooltipTrigger
         render={
           <Button
-            size="icon-micro"
+            size="icon-sm"
             variant="ghost-muted"
             onClick={handleScan}
             disabled={discovery.isPending}

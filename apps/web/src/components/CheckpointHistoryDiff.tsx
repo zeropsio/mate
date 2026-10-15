@@ -205,7 +205,7 @@ function CheckpointRootDiff(
               composerDraftTarget={props.composerDraftTarget}
               renderHeaderPrefix={(_file, key, collapsed) => (
                 <Button
-                  size="icon-micro"
+                  size="icon-sm"
                   variant="ghost"
                   aria-label={collapsed ? "Expand file" : "Collapse file"}
                   onClick={() =>

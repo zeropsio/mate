@@ -220,7 +220,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
               {isSearching ? (
                 <Button
                   type="button"
-                  size="icon-micro"
+                  size="icon-sm"
                   variant="ghost-muted"
                   className="shrink-0"
                   aria-label="Clear settings search"

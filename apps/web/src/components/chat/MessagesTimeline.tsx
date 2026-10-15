@@ -2575,7 +2575,7 @@ function TimelineMinimapNavigationButton({
           aria-label={label}
           disabled={disabled}
           onClick={onClick}
-          size="icon-micro"
+          size="icon-sm"
           type="button"
           variant="ghost-muted"
         >

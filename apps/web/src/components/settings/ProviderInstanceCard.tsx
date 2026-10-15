@@ -619,7 +619,7 @@ export function ProviderInstanceCard({
             <TooltipTrigger
               render={
                 <Button
-                  size="icon-micro"
+                  size="icon-sm"
                   variant="ghost-destructive"
                   onClick={onDelete}
                   aria-label={`Delete provider instance ${instanceId}`}

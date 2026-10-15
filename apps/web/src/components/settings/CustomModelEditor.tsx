@@ -180,7 +180,7 @@ export function CustomModelEditor({
         Default
       </label>
       <Button
-        size="icon-micro"
+        size="icon-sm"
         variant="ghost-muted"
         aria-label="Remove choice"
         onClick={() =>
@@ -259,7 +259,7 @@ export function CustomModelEditor({
           </SelectPopup>
         </Select>
         <Button
-          size="icon-micro"
+          size="icon-sm"
           variant="ghost-muted"
           aria-label={`Remove option ${index + 1}`}
           onClick={() => removeDescriptor(descriptor.key)}

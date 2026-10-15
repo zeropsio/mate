@@ -2881,7 +2881,7 @@ export default function Sidebar() {
                   {isSearchingThreads ? (
                     <Button
                       type="button"
-                      size="icon-micro"
+                      size="icon-sm"
                       variant="ghost"
                       className="shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
                       aria-label="Clear thread search"

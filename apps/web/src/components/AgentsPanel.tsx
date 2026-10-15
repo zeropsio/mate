@@ -319,7 +319,7 @@ function WorkflowScriptView({
           {scriptPath.split("/").at(-1)}
         </span>
         <Button
-          size="icon-micro"
+          size="icon-sm"
           variant="ghost-muted"
           onClick={onClose}
           aria-label="Close script"
@@ -469,7 +469,7 @@ function ExpandedWorkflowSection({
           {settled}/{members.length} settled
         </span>
         <Button
-          size="icon-micro"
+          size="icon-sm"
           variant="ghost-muted"
           onClick={onCollapse}
           aria-label="Collapse workflow"

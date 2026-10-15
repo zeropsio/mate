@@ -1064,7 +1064,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                         <TooltipTrigger
                           render={
                             <Button
-                              size="icon-micro"
+                              size="icon-sm"
                               variant="ghost"
                               className="-ms-0.5"
                               aria-label={collapsed ? `Expand ${filePath}` : `Collapse ${filePath}`}
