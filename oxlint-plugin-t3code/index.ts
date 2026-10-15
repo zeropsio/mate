@@ -20,6 +20,7 @@ import noRemoteDataInBrowserStorage from "./rules/no-remote-data-in-browser-stor
 import noRemoteIoOutsideDataLayer from "./rules/no-remote-io-outside-data-layer.ts";
 import noRetiredMechanism from "./rules/no-retired-mechanism.ts";
 import noRestyle from "./rules/no-restyle.ts";
+import noUnguardedStorageWrite from "./rules/no-unguarded-storage-write.ts";
 import noUnknownClasses from "./rules/no-unknown-classes.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
 import requireStaticClasses from "./rules/require-static-classes.ts";
@@ -53,6 +54,7 @@ export default definePlugin({
     "no-restyle": noRestyle,
     "no-retired-mechanism": noRetiredMechanism,
     "no-unknown-classes": noUnknownClasses,
+    "no-unguarded-storage-write": noUnguardedStorageWrite,
     "no-theme-escape-hatches": noThemeEscapeHatches,
     "require-static-classes": requireStaticClasses,
     "no-unscoped-has": noUnscopedHas,
