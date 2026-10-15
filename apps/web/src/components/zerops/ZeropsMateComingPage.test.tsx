@@ -1514,21 +1514,17 @@ describe("ComingBelow — a project refused for want of credit", () => {
       )
       .map((node) => node.children.join(""));
 
-  it("offers adding credit in HQ, in a new tab, and no Try again before it", () => {
-    const rendered = render(() => undefined);
-    expect(verbs(rendered)).toEqual(["Add credit in HQ"]);
-    const link = rendered.root.findByType("a");
-    expect(link.props.href).toBe(HQ_CREDIT);
-    expect(link.props.target).toBe("_blank");
-  });
-
-  it("offers Try again once HQ was opened, which tries the project again", () => {
+  // Credit may come from another tab, another device or before a reload: Try again stands
+  // beside the way to HQ for as long as the refusal does (the owner, 2026-10-15).
+  it("offers adding credit in HQ, in a new tab, with Try again beside it while the refusal stands", () => {
     let tried = 0;
     const rendered = render(() => {
       tried += 1;
     });
-    act(() => rendered.root.findByType("a").props.onClick());
-    expect(verbs(rendered)).toEqual(["Try again", "Add credit in HQ"]);
+    expect(verbs(rendered)).toEqual(["Add credit in HQ", "Try again"]);
+    const link = rendered.root.findByType("a");
+    expect(link.props.href).toBe(HQ_CREDIT);
+    expect(link.props.target).toBe("_blank");
     const again = rendered.root
       .findAllByType("button")
       .find((node) => node.children.join("") === "Try again");
