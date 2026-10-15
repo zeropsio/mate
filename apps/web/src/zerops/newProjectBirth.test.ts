@@ -18,6 +18,7 @@ import {
   creationRunId,
   creationRuntimes,
   creationSubsteps,
+  CREDIT_REFUSED_LINE,
   recipeManaged,
   recipeRuntimes,
   newProjectComing,
@@ -72,6 +73,11 @@ function birth(over: Partial<Drawn> = {}): Drawn {
 }
 
 const NO_ROOM = { reason: "No room in this account.", uncertain: false } as const;
+/** Zerops' refusal of an organization's second project before its first top-up, word for word. */
+const NO_CREDIT = {
+  reason: "Verify your account by topping up credit to create more than 1 projects.",
+  uncertain: false,
+} as const;
 
 /** Each step as `id:state`, the way the line draws them. */
 const states = (steps: ReadonlyArray<{ readonly id: string; readonly state: string }>) =>
@@ -210,6 +216,20 @@ describe("what its view says under the headline", () => {
         failed: { reason: "the project may already exist", uncertain: true },
       }),
       coming: { kind: "failed", line: "The project may already exist.", verb: "go-to-projects" },
+    },
+    {
+      case: "a project Zerops refused for want of credit names it, with HQ to add it",
+      birth: birth({ step: "create", failed: NO_CREDIT }),
+      coming: { kind: "failed", line: CREDIT_REFUSED_LINE, verb: "add-credit" },
+    },
+    {
+      case: "an added Mate's project Zerops refused for want of credit names it, with HQ to add it",
+      birth: birth({
+        step: "create",
+        adds: { appId: "app-acme", registers: false },
+        failed: NO_CREDIT,
+      }),
+      coming: { kind: "failed", line: CREDIT_REFUSED_LINE, verb: "add-credit" },
     },
   ])("$case", ({ birth: made, coming }) => {
     expect(newProjectComing(made)).toEqual(coming);

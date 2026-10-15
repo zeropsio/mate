@@ -26,7 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
 import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { beginPress, forgetPress } from "~/zerops/matePress";
-import type { NewProjectBirth } from "~/zerops/newProjectBirth";
+import { CREDIT_REFUSED_LINE, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
@@ -1468,6 +1468,75 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
   });
 });
 
+// An onboarding run: a new organization's second project was refused for want of credit, and the only way on
+// was Try again, which could only be refused again.
+describe("ComingBelow — a project refused for want of credit", () => {
+  const HQ_CREDIT = "https://hq.zerops.io/organizations/org-acme";
+  const progress = {
+    steps: [],
+    active: null,
+    failed: null,
+    doneCount: 0,
+    total: 0,
+    complete: false,
+    press: [
+      {
+        id: "created",
+        label: "Created",
+        state: "failed",
+        why: "Verify your account by topping up credit to create more than 1 projects.",
+      },
+    ],
+  } as const;
+  const render = (onTryAgain: () => void) => {
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: { kind: "failed", line: CREDIT_REFUSED_LINE, verb: "add-credit" },
+          progress,
+          nowMs: 0,
+          mate: { name: "Ida", project: "Acme" },
+          you: null,
+          onTryAgain,
+          addCredit: HQ_CREDIT,
+        }),
+      );
+    });
+    return rendered!;
+  };
+  const verbs = (rendered: ReactTestRenderer) =>
+    rendered.root
+      .findAll(
+        (node) =>
+          (node.type === "a" || node.type === "button") &&
+          node.props["data-slot"] !== "collapsible-trigger",
+      )
+      .map((node) => node.children.join(""));
+
+  it("offers adding credit in HQ, in a new tab, and no Try again before it", () => {
+    const rendered = render(() => undefined);
+    expect(verbs(rendered)).toEqual(["Add credit in HQ"]);
+    const link = rendered.root.findByType("a");
+    expect(link.props.href).toBe(HQ_CREDIT);
+    expect(link.props.target).toBe("_blank");
+  });
+
+  it("offers Try again once HQ was opened, which tries the project again", () => {
+    let tried = 0;
+    const rendered = render(() => {
+      tried += 1;
+    });
+    act(() => rendered.root.findByType("a").props.onClick());
+    expect(verbs(rendered)).toEqual(["Try again", "Add credit in HQ"]);
+    const again = rendered.root
+      .findAllByType("button")
+      .find((node) => node.children.join("") === "Try again");
+    act(() => again!.props.onClick());
+    expect(tried).toBe(1);
+  });
+});
+
 // The stop's words come from what made the stop: a step this tab ran says why in its place, and
 // the sentence only that it did; anything else, the sentence says why.
 describe("comingSentenceOf — the sentence over a stop", () => {
@@ -1521,6 +1590,12 @@ describe("comingSentenceOf — the sentence over a stop", () => {
       coming: { kind: "failed", line: "Its container stopped.", verb: "remove" },
       press: [sub("closed-off", "done"), sub("registered", "unfinished", "Refused.")],
       want: "Its container stopped.",
+    },
+    {
+      case: "a step this tab ran stopped for want of credit: the sentence names it",
+      coming: { kind: "failed", line: CREDIT_REFUSED_LINE, verb: "add-credit" },
+      press: [sub("created", "failed", "Verify your account by topping up credit.")],
+      want: CREDIT_REFUSED_LINE,
     },
   ] as const)("$case", ({ coming, press, want }) => {
     expect(comingSentenceOf({ coming, progress: progressOf(press), nowMs: 0 })).toBe(want);

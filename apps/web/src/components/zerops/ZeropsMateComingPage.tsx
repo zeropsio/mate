@@ -1091,8 +1091,11 @@ export function ComingBelow({
   setupFailureDetails,
   operationTrouble,
   attemptId,
+  addCredit,
 }: {
   readonly attemptId?: string | undefined;
+  /** Where its organization's credit is added (`hqCreditUrl`), for a project refused for want of it. */
+  readonly addCredit?: string | undefined;
   readonly operationTrouble?: MateOperationRefusal | null;
   readonly setupFailureDetails?: {
     readonly details: string;
@@ -1130,6 +1133,9 @@ export function ComingBelow({
   // Each step's services in the order first seen here: a read that orders them otherwise — the
   // birth's recipe order handing over to the listing's own — never makes them trade places.
   const [seen, setSeen] = useState<ReadonlyMap<string, ReadonlyArray<string>>>(() => new Map());
+  // A refusal for want of credit can only be refused again until credit is added: *Try again*
+  // comes once the person has gone to HQ to add it.
+  const [creditOpened, setCreditOpened] = useState(false);
   const remembered = new Map(seen);
   // A creation that stopped says why in the sentence over its steps: the steps only mark where.
   const arrived =
@@ -1196,6 +1202,38 @@ export function ComingBelow({
         <>
           <Button variant="pill" size="compact" onClick={onTryAgain}>
             {MATE_STAND_UP_RETRY_LABEL}
+          </Button>
+          {ends?.onStartOver === undefined ? null : (
+            <Button size="compact" onClick={ends.onStartOver} variant="outline">
+              Start over
+            </Button>
+          )}
+          {ends === undefined ? null : (
+            <Button size="compact" onClick={ends.onDismiss} variant="ghost">
+              Dismiss
+            </Button>
+          )}
+        </>
+      ) : coming.verb === "add-credit" && addCredit !== undefined ? (
+        <>
+          {creditOpened && onTryAgain !== undefined ? (
+            <Button variant="pill" size="compact" onClick={onTryAgain}>
+              {MATE_STAND_UP_RETRY_LABEL}
+            </Button>
+          ) : null}
+          <Button
+            variant={creditOpened ? "outline" : "pill"}
+            size="compact"
+            render={
+              <a
+                href={addCredit}
+                rel="noreferrer"
+                target="_blank"
+                onClick={() => setCreditOpened(true)}
+              />
+            }
+          >
+            Add credit in HQ
           </Button>
           {ends?.onStartOver === undefined ? null : (
             <Button size="compact" onClick={ends.onStartOver} variant="outline">

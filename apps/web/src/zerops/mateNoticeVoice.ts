@@ -89,7 +89,7 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
           ? undefined
           : coming.kind === "failed"
             ? (input.failureReason ??
-              (coming.verb === "go-to-projects"
+              (coming.verb === "go-to-projects" || coming.verb === "add-credit"
                 ? coming.line
                 : note?.kind === "stopped"
                   ? NOT_SET_UP_LINE

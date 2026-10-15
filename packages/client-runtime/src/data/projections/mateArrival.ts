@@ -68,7 +68,9 @@ export type MateComingVerb =
   /** Its container has no deployment; create one through the same recipe as setup. */
   | "redeploy"
   /** The platform may have taken it anyway: the projects page lists it if it did. */
-  | "go-to-projects";
+  | "go-to-projects"
+  /** Zerops refused its project for want of credit: credit added in HQ, then *Try again*. */
+  | "add-credit";
 
 export type MateComing =
   | {
