@@ -28,6 +28,7 @@ import { type HqJob, jobFailed, jobInFlight } from "../hq/environments.ts";
 import { deployFollowText } from "../hq/deployAnswer.ts";
 import { deployLogTarget, type DeployLogTarget } from "../hq/deployLog.ts";
 import type { Shown } from "../knowledge/known.ts";
+import type { TierStop } from "@t3tools/shared/hqRelease";
 import { cannotTellWhatRuns, changesNotLive, serviceNames } from "../projectAttention.ts";
 import { serviceDashboardUrl } from "../serviceMap.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
@@ -513,6 +514,42 @@ export function notInZerops(input: {
   return recipeServices.filter(
     (hostname) => !platform.value.some((service) => service.hostname === hostname),
   );
+}
+
+/**
+ * A service HQ stopped because the stop's tier no longer declares it (`TierStop`), as its row says
+ * it: why it stands, and — only where the tier itself dropped it — the service a person's *Delete*
+ * removes. A rollback's stop offers none: the next release naming the part starts it again.
+ */
+export interface StopTierStop {
+  readonly hostname: string;
+  readonly line: string;
+  readonly deletable: { readonly serviceId: string } | undefined;
+}
+
+/**
+ * Each service HQ stopped that the project still has, by hostname; none while its services are
+ * not read, for a service already gone has nothing to delete.
+ */
+export function stopTierStops(input: {
+  readonly tierStops: ReadonlyArray<TierStop> | undefined;
+  readonly platform: Shown<ReadonlyArray<StopService>>;
+}): ReadonlyArray<StopTierStop> {
+  const { tierStops, platform } = input;
+  if (tierStops === undefined || platform.state !== "known") return [];
+  return tierStops.flatMap(({ service, rollbackTo }) => {
+    const listed = platform.value.find((entry) => entry.hostname === service);
+    if (listed === undefined) return [];
+    return [
+      rollbackTo === null
+        ? {
+            hostname: service,
+            line: "its tier no longer declares it",
+            deletable: { serviceId: listed.service.serviceId },
+          }
+        : { hostname: service, line: `stopped by rollback to ${rollbackTo}`, deletable: undefined },
+    ];
+  });
 }
 
 /** A version a service runs, and how long it has run, already said. */

@@ -44,6 +44,20 @@ export function stopServiceExecutor(platform: {
     );
 }
 
+/** The only caller of a service's deletion: a person's confirmed Delete (`delete-service`). */
+export function deleteServiceExecutor(platform: {
+  readonly deleteService: (
+    serviceId: string,
+  ) => Promise<{ readonly processId: string | undefined }>;
+}) {
+  return (requestId: string, intent: IntentOf<"delete-service">) =>
+    Effect.map(
+      verb(() => platform.deleteService(intent.serviceId)),
+      ({ processId }) =>
+        processReceipt(requestId, { family: "service", id: intent.serviceId }, processId),
+    );
+}
+
 /** The operation's receipt for the process a write answered with; with none, the answer ends it. */
 export const processReceipt = (
   requestId: string,

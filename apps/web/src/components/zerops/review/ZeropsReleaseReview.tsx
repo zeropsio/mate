@@ -19,6 +19,8 @@ import { GitDeliveryStatus, gitWhereLine } from "../GitDeliveryStatus";
  */
 import {
   cannotTellWhatRuns,
+  deployedVersion,
+  type GroupFlowAddress,
   servicesDeploying,
   changesCountWords,
   holdReleaseFacts,
@@ -70,9 +72,9 @@ import { useZeropsReviewMates, type ZeropsReviewMate } from "~/zerops/useZeropsR
 
 import { ZeropsChangeReview } from "./ZeropsChangeReview";
 import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
-import { mainStageOf, useGroupName, useProductionHost } from "./reviewReads";
+import { mainStageOf, useGroupName, useProductionAddresses } from "./reviewReads";
 import {
-  productionNowLine,
+  productionNow,
   releaseChangeRows,
   releaseFoot,
   releaseLine,
@@ -292,7 +294,7 @@ function ReleaseData({
   // Production's Zerops project, where it is one: a Git destination has no addresses here.
   const productionProject =
     production?.target.kind === "zerops" ? production.target.projectId : undefined;
-  const productionHost = useProductionHost(productionProject);
+  const productionAddresses = useProductionAddresses(productionProject);
   const {
     outcome,
     held: keep,
@@ -415,7 +417,12 @@ function ReleaseData({
       gate={flow.release.gate}
       production={{
         at: flow.releases.find((entry) => entry.standing === "live")?.taggedAt,
-        host: productionHost,
+        addresses: productionAddresses,
+        parts:
+          production?.services.map((service) => ({
+            hostname: service.hostname,
+            version: deployedVersion(service.appVersionName).label,
+          })) ?? [],
       }}
       stage={
         mainStage === undefined
@@ -507,9 +514,16 @@ export interface ReleaseReviewViewProps {
   readonly hasStage: boolean;
   /** The stage that follows `main`: its name, and when what it runs went live. */
   readonly stage?: { readonly name: string; readonly at: string | undefined } | undefined;
-  /** Production: when the release it runs was tagged, and the address it answers at. */
+  /** Production: when the release it runs was tagged, its parts, and the addresses it answers at. */
   readonly production?:
-    | { readonly at: string | undefined; readonly host: string | undefined }
+    | {
+        readonly at: string | undefined;
+        readonly addresses: ReadonlyArray<GroupFlowAddress>;
+        readonly parts: ReadonlyArray<{
+          readonly hostname: string;
+          readonly version: string | undefined;
+        }>;
+      }
     | undefined;
   readonly services: ReadonlyArray<string>;
   /** What production ran as this one was offered. */
@@ -574,6 +588,12 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
         ? "what production runs"
         : undefined;
   const ready = model.verdict.state === "release-ready";
+  const now = productionNow({
+    live,
+    since: sinceWords(props.production?.at, props.now),
+    parts: props.production?.parts ?? [],
+    addresses: props.production?.addresses ?? [],
+  });
   const line = releaseLine({
     changes: rows.length,
     stage: props.hasStage ? props.stage?.name : undefined,
@@ -700,13 +720,12 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       )}
       {props.git !== undefined || props.replaces.kind === "first" ? null : (
         <ReviewSection title="Production now">
-          <p className="rv-words">
-            {productionNowLine({
-              live,
-              since: sinceWords(props.production?.at, props.now),
-              host: props.production?.host,
-            })}
-          </p>
+          <p className="rv-words">{now.line}</p>
+          {now.rows.map((row) => (
+            <p className="rv-note" data-zerops-production-part="" key={row}>
+              {row}
+            </p>
+          ))}
         </ReviewSection>
       )}
       {props.git !== undefined || answer === undefined ? null : (

@@ -364,6 +364,49 @@ describe("environmentRow", () => {
   });
 });
 
+describe('An environment row reads "<sha> · N parts" and names each part that differs', () => {
+  const base = { projectId: "p-stage", name: "Acme - stage", tier: "stage" as const };
+  const OLD = "9f1e0d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e";
+  it.each([
+    {
+      name: "one part reads as today",
+      services: [{ hostname: "app", repository: "app", appVersionName: `main ${SHA.slice(0, 7)}` }],
+      line: "main · 3f9c1b2",
+    },
+    {
+      name: "three parts at one commit",
+      services: ["web", "api", "worker"].map((hostname) => ({
+        hostname,
+        repository: "app",
+        appVersionName: `main ${SHA.slice(0, 7)}`,
+      })),
+      line: "main · 3f9c1b2 · 3 parts",
+    },
+    {
+      name: "three parts, one still on an older commit and one not deployed",
+      services: [
+        { hostname: "web", repository: "app", appVersionName: `main ${SHA.slice(0, 7)}` },
+        { hostname: "api", repository: "app", appVersionName: `main ${SHA.slice(0, 7)}` },
+        { hostname: "worker", repository: "app", appVersionName: `main ${OLD.slice(0, 7)}` },
+        { hostname: "cron", repository: "app" },
+      ],
+      line: "main · 3f9c1b2 · 4 parts · cron not deployed · worker on 9f1e0d7",
+    },
+    {
+      // Two codebases are two repositories, each one part: no count, as today.
+      name: "a split application of two repositories",
+      services: [
+        { hostname: "medusa", repository: "medusa", appVersionName: `main ${SHA.slice(0, 7)}` },
+        { hostname: "store", repository: "store", appVersionName: `main ${OLD.slice(0, 7)}` },
+      ],
+      line: "main · 3f9c1b2",
+    },
+  ])("$name", ({ services, line }) => {
+    const row = environmentRow({ ...base, sources: ["main"], services });
+    expect(row.line).toBe(line);
+  });
+});
+
 const readGitEnvironment = Schema.decodeUnknownSync(HqGitNavigationEnvironment);
 
 it("a Git row reads the shared hand-over verdict without a service version or green live tone", () => {

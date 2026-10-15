@@ -27,6 +27,7 @@ import {
   changeChecks,
   changeReceipt,
   mergeFoot,
+  productionNow,
   productionNowLine,
   releaseFoot,
   releaseLine,
@@ -716,6 +717,38 @@ describe("the release sheet's lines", () => {
     ],
   ] as const)("says %s of production", (_case, input, words) => {
     expect(productionNowLine(input)).toBe(words);
+  });
+
+  describe("Release review has one row per part", () => {
+    const web = { service: "web", url: "https://web-1.prg1.zerops.app" };
+    const api = { service: "api", url: "https://api-1.prg1.zerops.app/" };
+    it.each([
+      {
+        name: "A one-part release review shows its address when it is the only one",
+        parts: [{ hostname: "app", version: "v2.3.1" }],
+        addresses: [{ service: "app", url: "https://shop.acme.com" }],
+        expected: { line: "Runs v2.3.1 since Tue at shop.acme.com.", rows: [] },
+      },
+      {
+        name: "three parts: each its version and its own address, none named for the whole",
+        parts: [
+          { hostname: "api", version: "v2.3.0" },
+          { hostname: "web", version: "v2.3.1" },
+          { hostname: "worker", version: undefined },
+        ],
+        addresses: [web, api],
+        expected: {
+          line: "Runs v2.3.1 since Tue.",
+          rows: [
+            "api · v2.3.0 · api-1.prg1.zerops.app",
+            "web · v2.3.1 · web-1.prg1.zerops.app",
+            "worker · runs nothing",
+          ],
+        },
+      },
+    ])("$name", ({ parts, addresses, expected }) => {
+      expect(productionNow({ live: "v2.3.1", since: "Tue", parts, addresses })).toEqual(expected);
+    });
   });
 
   const now = new Date(2026, 9, 10, 16, 0).getTime();

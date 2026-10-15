@@ -450,9 +450,54 @@ describe("the project's addresses", () => {
   });
 
   it("opens production's first address on a ⌘-click", () => {
-    expect(productionUrl(PROD)).toBe("https://shop.example.com");
+    const one: ChipMenuModel = {
+      stops: [stop({ name: "production", routes: [route("app", "shop.example.com")] })],
+    };
+    expect(productionUrl(one)).toBe("https://shop.example.com");
     expect(productionUrl({ stops: [stop({ name: "production" })] })).toBeUndefined();
     expect(productionUrl(undefined)).toBeUndefined();
+  });
+
+  it("The production globe with several addresses offers Open", () => {
+    // Two parts, each its own address, and a second port of one: a ⌘-click opens none of them
+    // by itself, and the addresses it opens list each.
+    const several: ChipMenuModel = {
+      stops: [
+        stop({
+          name: "production",
+          routes: [
+            route("app", "shop.example.com"),
+            route("app", "shop-8080.example.com", 8080),
+            route("api", "api.shop.example.com"),
+          ],
+        }),
+      ],
+    };
+    expect(productionUrl(several)).toBeUndefined();
+    const sections = projectSitesSections({
+      production: several,
+      productionUnread: false,
+      stages: undefined,
+      unreadStages: [],
+      placeRoutes: (place) => place.routes,
+      mates: [],
+    });
+    expect(sections[0]?.links?.map((link) => [link.service, link.url])).toEqual([
+      ["app", "https://shop.example.com"],
+      ["app", "https://shop-8080.example.com"],
+      ["api", "https://api.shop.example.com"],
+    ]);
+    // Two ports of one service are one address: ⌘-click still opens it.
+    expect(
+      productionUrl({
+        stops: [
+          stop({
+            name: "production",
+            routes: [route("app", "shop.example.com"), route("app", "shop-8080.example.com", 8080)],
+          }),
+        ],
+      }),
+    ).toBe("https://shop.example.com");
   });
 });
 

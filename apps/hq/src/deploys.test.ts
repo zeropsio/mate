@@ -43,6 +43,7 @@ import { type KeySecret, deployKeysLayer, keySecretOf } from "./deployKeys.ts";
 import type { HqDeliveryAnswer as HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import { Deploys, type DeploysOptions, deploysLayer } from "./deploys.ts";
+import { readEnvironmentSource } from "./environmentNavigation.ts";
 import { gitPushLayer, type PushEvidence } from "./gitPush.ts";
 import { Remotes, RemoteRefused, type RemoteRecord } from "./repoRemotes.ts";
 import * as NodeChildProcess from "node:child_process";
@@ -3422,6 +3423,137 @@ describe("deploys", () => {
           ),
       );
 
+      /** v0.1.0 releases `web` alone; v0.2.0 adds `worker` to the tier. */
+      const addedPart = (rig: Rig) =>
+        Effect.gen(function* () {
+          const releases = yield* Releases;
+          yield* withProduction(rig.appId, rig.world);
+          const web = yield* rig.commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* releases.release("dev", rig.appId, {
+            tag: "v0.1.0",
+            groupHead: yield* tierAt(rig, ["web"]),
+            entries: [{ service: "web", sha: web }],
+          });
+          yield* rig.until((rows) => rows.some((row) => row.project === "P_PROD"));
+          rig.world.services.push(
+            fakeService("worker", { id: "S-worker-prod", projectId: "P_PROD" }),
+          );
+          const worker = yield* rig.commit("worker", { "zerops.yaml": zeropsYaml("worker") });
+          const two = yield* tierAt(rig, ["web", "worker"]);
+          yield* releases.release("dev", rig.appId, {
+            tag: "v0.2.0",
+            groupHead: two,
+            entries: [
+              { service: "web", sha: web },
+              { service: "worker", sha: worker },
+            ],
+          });
+          yield* rig.until((rows) =>
+            rows.some((row) => row.service === "worker" && row.state === "live"),
+          );
+          return two;
+        });
+
+      it.effect("Rollback reads the tier from the target release's tag", () =>
+        withDeploys((rig) =>
+          Effect.gen(function* () {
+            const two = yield* addedPart(rig);
+            // The recipe's main still declares worker; only v0.1.0's tag lacks it.
+            assert.include(JSON.stringify(rig.tiers.get(`${rig.appId}/production`)), "worker");
+            yield* (yield* Releases).rollback("dev", rig.appId, "v0.1.0", { groupHead: two });
+            yield* rig.planned;
+            assert.deepStrictEqual(production(rig.world), [
+              ["web", "ACTIVE"],
+              ["worker", "STOPPED"],
+            ]);
+          }),
+        ),
+      );
+
+      it.effect(
+        'Rollback stops a part the tagged tier lacks and says "stopped by rollback to <tag>"',
+        () =>
+          withDeploys((rig) =>
+            Effect.gen(function* () {
+              const two = yield* addedPart(rig);
+              const back = yield* (yield* Releases).rollback("dev", rig.appId, "v0.1.0", {
+                groupHead: two,
+              });
+              yield* rig.planned;
+              assert.deepStrictEqual(
+                rig.world.calls.filter((call) => call.startsWith("stopService:")),
+                ["stopService:key-prod", "stopService:key-prod"],
+              );
+              assert.deepStrictEqual(
+                (yield* leftOut(back.tag)).filter((left) => left.service === "worker"),
+                [
+                  {
+                    service: "worker",
+                    reason: "stopped by rollback to v0.1.0: the tier of v0.2.1 does not declare it",
+                  },
+                ],
+              );
+            }),
+          ),
+      );
+
+      it.effect(
+        "Rollback starts a stopped part the tagged tier declares, at the release commit",
+        () =>
+          withDeploys((rig) =>
+            Effect.gen(function* () {
+              const { appId, world, commit, deploys, until, planned } = rig;
+              const releases = yield* Releases;
+              const { web, api } = yield* twoParts(rig);
+              // api moves past v0.1.0's commit, then v0.2.0's tier drops it.
+              const later = yield* commit("api", { "index.js": "later\n" });
+              yield* releases.release("dev", appId, {
+                tag: "v0.1.1",
+                groupHead: yield* tierAt(rig, ["web", "api"]),
+                entries: [
+                  { service: "web", sha: web },
+                  { service: "api", sha: later },
+                ],
+              });
+              yield* until((rows) => rows.some((row) => row.sha === later && row.state === "live"));
+              const two = yield* tierAt(rig, ["web"]);
+              yield* releases.release("dev", appId, {
+                tag: "v0.2.0",
+                groupHead: two,
+                entries: [{ service: "web", sha: web }],
+              });
+              yield* planned;
+              assert.deepStrictEqual(production(world), [
+                ["web", "ACTIVE"],
+                ["api", "STOPPED"],
+              ]);
+
+              yield* releases.rollback("dev", appId, "v0.1.0", { groupHead: two });
+              yield* planned;
+              yield* until((rows) => {
+                const apis = rows.filter(
+                  (row) => row.project === "P_PROD" && row.service === "api",
+                );
+                return apis.length === 3 && apis.at(-1)?.state === "live";
+              });
+              assert.deepStrictEqual(production(world), [
+                ["web", "ACTIVE"],
+                ["api", "ACTIVE"],
+              ]);
+              assert.deepStrictEqual(
+                (yield* deploys)
+                  .filter((row) => row.project === "P_PROD" && row.service === "api")
+                  .map(({ sha, state }) => [sha, state]),
+                [
+                  [api, "live"],
+                  [later, "live"],
+                  [api, "live"],
+                ],
+              );
+            }),
+          ),
+      );
+
       it.effect(
         "Rollback over a deleted part deploys the rest and reports the missing service",
         () =>
@@ -3677,6 +3809,125 @@ describe("deploys", () => {
             { discard: true },
           ),
       );
+
+      /** What each of the application's environments streams of the services HQ stopped, by name. */
+      const tierStops = (appId: string) =>
+        Effect.gen(function* () {
+          const source = yield* readEnvironmentSource(yield* SqlClient.SqlClient);
+          const views = JSON.parse(source.fingerprints.get(appId) ?? "[]") as ReadonlyArray<{
+            readonly name: string;
+            readonly tierStops?: unknown;
+          }>;
+          return Object.fromEntries(views.map((view) => [view.name, view.tierStops ?? []]));
+        });
+      /** Every Zerops call that would delete a service: none, whatever HQ stopped. */
+      const deletes = (world: FakeWorld) => world.calls.filter((call) => /delete/iu.test(call));
+
+      describe("A service the tier no longer declares is stopped, never deleted, and offers Delete", () => {
+        it.effect("a stage's recipe change stops the service its tier drops", () =>
+          withDeploys(({ appId, world, tiers, commit, planned }) =>
+            Effect.gen(function* () {
+              world.services.push(fakeService("worker", { id: "S-worker", http: false }));
+              tiers.set(
+                `${appId}/stage`,
+                tierOf(...runtime(appId, "web"), ...runtime(appId, "worker")),
+              );
+              yield* commit("group", { "README.md": "# Shop\n" });
+              yield* planned;
+              tiers.set(`${appId}/stage`, tierOf(...runtime(appId, "web")));
+              yield* commit("group", { "README.md": "# Shop, without worker\n" });
+              yield* planned;
+              assert.deepStrictEqual(
+                world.services.map((service) => [service.name, service.status]),
+                [
+                  ["web", "ACTIVE"],
+                  ["worker", "STOPPED"],
+                ],
+              );
+              assert.deepStrictEqual(deletes(world), []);
+              assert.deepStrictEqual((yield* tierStops(appId))["shop-stage"], [
+                { service: "worker", rollbackTo: null },
+              ]);
+
+              // The tier declares it again: HQ starts what it stopped, and offers nothing.
+              tiers.set(
+                `${appId}/stage`,
+                tierOf(...runtime(appId, "web"), ...runtime(appId, "worker")),
+              );
+              yield* commit("group", { "README.md": "# Shop, with worker again\n" });
+              yield* planned;
+              assert.deepStrictEqual(
+                world.calls.filter((call) => /^(stop|start)Service:/u.test(call)),
+                // The fake logs each write and its read of the service.
+                [
+                  "stopService:key-stage",
+                  "stopService:key-stage",
+                  "startService:key-stage",
+                  "startService:key-stage",
+                ],
+              );
+              assert.deepStrictEqual((yield* tierStops(appId))["shop-stage"], []);
+            }),
+          ),
+        );
+
+        it.effect("a release whose tier drops a part stops it, and a rollback says which", () =>
+          withDeploys((rig) =>
+            Effect.gen(function* () {
+              const releases = yield* Releases;
+              const two = yield* addedPart(rig);
+              yield* releases.rollback("dev", rig.appId, "v0.1.0", { groupHead: two });
+              yield* rig.planned;
+              assert.deepStrictEqual((yield* tierStops(rig.appId))["shop-production"], [
+                { service: "worker", rollbackTo: "v0.1.0" },
+              ]);
+              // A later release whose tier lacks it too: the tier, not the rollback, keeps it.
+              const web = (yield* rig.deploys).find((row) => row.service === "web")?.sha ?? "";
+              yield* releases.release("dev", rig.appId, {
+                tag: "v0.3.0",
+                groupHead: yield* tierAt(rig, ["web"]),
+                entries: [{ service: "web", sha: web }],
+              });
+              yield* rig.planned;
+              assert.deepStrictEqual(production(rig.world), [
+                ["web", "ACTIVE"],
+                ["worker", "STOPPED"],
+              ]);
+              assert.deepStrictEqual((yield* tierStops(rig.appId))["shop-production"], [
+                { service: "worker", rollbackTo: null },
+              ]);
+              assert.deepStrictEqual(deletes(rig.world), []);
+            }),
+          ),
+        );
+
+        it.effect("a one-part app stops nothing and offers nothing", () =>
+          withDeploys((rig) =>
+            Effect.gen(function* () {
+              const releases = yield* Releases;
+              yield* withProduction(rig.appId, rig.world);
+              const web = yield* rig.commit("web", { "zerops.yaml": ZEROPS_YAML });
+              const one = yield* tierAt(rig, ["web"]);
+              yield* releases.release("dev", rig.appId, {
+                tag: "v0.1.0",
+                groupHead: one,
+                entries: [{ service: "web", sha: web }],
+              });
+              yield* rig.planned;
+              yield* releases.rollback("dev", rig.appId, "v0.1.0", { groupHead: one });
+              yield* rig.planned;
+              assert.deepStrictEqual(yield* tierStops(rig.appId), {
+                "shop-stage": [],
+                "shop-production": [],
+              });
+              assert.deepStrictEqual(
+                rig.world.calls.filter((call) => /^(stop|start|delete)/iu.test(call)),
+                [],
+              );
+            }),
+          ),
+        );
+      });
 
       it("HQ deletes no service: no release, rollback or tier change holds a path that deletes one", () => {
         const deletes = [

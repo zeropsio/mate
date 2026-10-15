@@ -1887,6 +1887,21 @@ describe("ZeropsApiClient.stopService", () => {
   });
 });
 
+describe("ZeropsApiClient.deleteService", () => {
+  it("deletes the one service and answers the deletion's process", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { id: "process-delete", status: "PENDING" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    expect(await client.deleteService("svc-1")).toEqual({ processId: "process-delete" });
+    expect(
+      stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`),
+    ).toEqual(["DELETE /service-stack/svc-1"]);
+  });
+});
+
 describe("ZeropsApiClient app versions — a deploy through the API", () => {
   it("creates a version, uploads its archive as bytes and builds it with its zerops.yml", async () => {
     const uploads: Array<{ readonly contentType: string | null; readonly bytes: number }> = [];

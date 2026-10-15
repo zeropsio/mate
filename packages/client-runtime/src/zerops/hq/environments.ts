@@ -17,7 +17,7 @@ import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 import { hqEnvironmentCodec } from "@t3tools/shared/hqEnvironment";
 import { HqOffers } from "@t3tools/shared/hqOffers";
 import { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
-import { ReleaseRollout } from "@t3tools/shared/hqRelease";
+import { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -108,6 +108,11 @@ export const HqEnvironment = Schema.Struct({
    * client: not known, never coming up.
    */
   birth: Schema.optionalKey(Schema.NullOr(EnvironmentBirth)),
+  /**
+   * The services HQ stopped because its tier no longer declares them (`TierStop`). Absent from a
+   * Core older than this client: none known.
+   */
+  tierStops: Schema.optionalKey(Schema.Array(TierStop)),
   /** What the reader may do with it (`@t3tools/shared/hqOffers`); absent where HQ sent none. */
   can: Schema.optional(HqOffers),
 });

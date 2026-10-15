@@ -667,6 +667,76 @@ export const deploysLayer = (
           (rows) => rows[0],
         );
 
+      const detail = (error: ZeropsError) =>
+        error._tag === "ZeropsUnavailable"
+          ? zeropsDidNotAnswer(error.message)
+          : `Zerops refused: ${error.code}`;
+
+      /**
+       * A stage brought to its recipe's tier change (MODEL §9/8), with its environment's token, in
+       * the write that plans the merge: each service the tier `dropped` is stopped, never deleted,
+       * and HQ keeps that it stopped it; one HQ stopped that the tier `declared` again is started.
+       * What HQ could not do, as notes.
+       */
+      const stageTierChange = (
+        environment: Environment,
+        declared: ReadonlySet<string>,
+        dropped: ReadonlyArray<string>,
+      ) =>
+        Effect.gen(function* () {
+          const notes: Array<string> = [];
+          const projectId = environment.project_id;
+          if (projectId === null) return notes;
+          const stoppedByHq = new Map(
+            (yield* sql<{ readonly service_id: string; readonly service: string }>`
+              SELECT service_id, service FROM hq_tier_stop
+              WHERE environment_id = ${environment.id}`).map(
+              (row) => [row.service_id, row.service] as const,
+            ),
+          );
+          const back = [...stoppedByHq.values()].filter((service) => declared.has(service));
+          if (dropped.length === 0 && back.length === 0) return notes;
+          const key = yield* keyOf(projectId, environment.name);
+          if (!("token" in key)) {
+            if (dropped.length > 0)
+              notes.push(`HQ could not stop ${dropped.join(", ")}: ${key.reason}`);
+            return notes;
+          }
+          const read = yield* zerops.services(projectId)(key.token).pipe(Effect.result);
+          if (read._tag === "Failure") {
+            if (dropped.length > 0) {
+              notes.push(`HQ could not stop ${dropped.join(", ")}: ${detail(read.failure)}`);
+            }
+            return notes;
+          }
+          for (const service of read.success) {
+            if (service.isSystem) continue;
+            if (dropped.includes(service.name) && service.status === "ACTIVE") {
+              const stop = yield* deploy.stopService(service.id)(key.token).pipe(Effect.result);
+              if (stop._tag === "Failure") {
+                notes.push(`HQ could not stop ${service.name}: ${detail(stop.failure)}`);
+                continue;
+              }
+              yield* sql`
+                INSERT INTO hq_tier_stop (environment_id, service_id, service, rollback_to)
+                VALUES (${environment.id}, ${service.id}, ${service.name}, NULL)
+                ON CONFLICT DO NOTHING`;
+            } else if (declared.has(service.name) && stoppedByHq.has(service.id)) {
+              if (service.status === "STOPPED") {
+                const start = yield* deploy.startService(service.id)(key.token).pipe(Effect.result);
+                if (start._tag === "Failure") {
+                  notes.push(`HQ could not start ${service.name}: ${detail(start.failure)}`);
+                  continue;
+                }
+              }
+              yield* sql`
+                DELETE FROM hq_tier_stop
+                WHERE environment_id = ${environment.id} AND service_id = ${service.id}`;
+            }
+          }
+          return notes;
+        });
+
       /**
        * A production brought to what its release's tier names (MODEL §9/8, §9/10), with its
        * environment's token, in the write that plans its release, so one plan acts: a part of the
@@ -708,10 +778,6 @@ export const deploysLayer = (
           if (dropped.length === 0 && stoppedByHq.size === 0) return { notes, left, gone };
           const listed = new Set(targets.map((target) => target.service));
           const undeclared = `the tier of ${tier.tag} does not declare it`;
-          const detail = (error: ZeropsError) =>
-            error._tag === "ZeropsUnavailable"
-              ? zeropsDidNotAnswer(error.message)
-              : `Zerops refused: ${error.code}`;
           const key = yield* keyOf(projectId, environment.name);
           if (!("token" in key)) {
             if (dropped.length > 0) {
@@ -748,10 +814,13 @@ export const deploysLayer = (
                 service.status === "ACTIVE"
                   ? yield* deploy.stopService(service.id)(key.token).pipe(Effect.result)
                   : undefined;
-              if (stop?._tag === "Success") {
+              // Why it stands is the newest release's word: a rollback's stop, a later tier's drop.
+              if (stop?._tag === "Success" || held.includes(service.id)) {
                 yield* sql`
-                  INSERT INTO hq_tier_stop (environment_id, service_id)
-                  VALUES (${environment.id}, ${service.id}) ON CONFLICT DO NOTHING`;
+                  INSERT INTO hq_tier_stop (environment_id, service_id, service, rollback_to)
+                  VALUES (${environment.id}, ${service.id}, ${service.name}, ${tier.rollbackOf})
+                  ON CONFLICT (environment_id, service_id) DO UPDATE
+                  SET service = EXCLUDED.service, rollback_to = EXCLUDED.rollback_to`;
               }
               const [ran] = yield* sql<{ readonly sha: string }>`
                 SELECT sha FROM hq_deploy_job
@@ -1126,6 +1195,7 @@ export const deploysLayer = (
             readonly digest: string;
             readonly services: ReadonlyArray<TierService>;
             readonly added: ReadonlyArray<string>;
+            readonly dropped: ReadonlyArray<string>;
             readonly environments: ReadonlyArray<Environment>;
           }> = [];
           switch (rollout.cause) {
@@ -1138,6 +1208,7 @@ export const deploysLayer = (
                   const was = yield* seenOf(rollout.app_id, tier);
                   if (was !== undefined && was.digest === declared.digest) continue;
                   // A tier first seen is the baseline (D16): it adds nothing.
+                  const dropped: Array<string> = [];
                   const added =
                     was === undefined
                       ? []
@@ -1158,6 +1229,7 @@ export const deploysLayer = (
                     );
                     for (const hostname of Object.keys(was.blocks)) {
                       if (!declaredNow.has(hostname)) {
+                        dropped.push(hostname);
                         notes.push(
                           `the ${tier} tier no longer declares ${hostname}: HQ never deletes a service`,
                         );
@@ -1169,6 +1241,7 @@ export const deploysLayer = (
                     digest: declared.digest,
                     services: declared.services,
                     added,
+                    dropped,
                     environments: environments.filter(
                       (environment) => environment.target === "zerops" && environment.tier === tier,
                     ),
@@ -1280,6 +1353,12 @@ export const deploysLayer = (
               let count = 0;
               for (const tier of tiers) {
                 yield* seen(rollout.app_id, tier.tier, tier.digest, tier.services);
+                if (tier.tier === "stage") {
+                  const declared = new Set(tier.services.map((service) => service.hostname));
+                  for (const environment of tier.environments) {
+                    notes.push(...(yield* stageTierChange(environment, declared, tier.dropped)));
+                  }
+                }
                 if (tier.added.length === 0) continue;
                 for (const environment of tier.environments) {
                   if (environment.target !== "zerops") continue;

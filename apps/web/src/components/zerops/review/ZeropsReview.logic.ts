@@ -9,6 +9,7 @@
  * Pure: no DOM, no clock.
  */
 import {
+  type GroupFlowAddress,
   linksChange,
   type Moved,
   type ReviewPrimary,
@@ -17,6 +18,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
 import { quoteWords } from "@t3tools/shared/messagePreview";
+import { siteOf, soleSite } from "../projects/projectCard.logic";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
 
@@ -664,6 +666,39 @@ export function productionNowLine(input: {
   const since = input.since === undefined ? "" : ` since ${input.since}`;
   const at = input.host === undefined ? "" : ` at ${input.host}`;
   return `Runs ${input.live}${since}${at}.`;
+}
+
+/**
+ * "Production now" for a release review: the line, and one row per part — what it runs and the
+ * address it answers at — where production runs more than one (MODEL §9/5). One part keeps the
+ * line, with its address when it is the only one.
+ */
+export function productionNow(input: {
+  readonly live: string | undefined;
+  readonly since: string | undefined;
+  /** Production's parts by hostname, each with the version it runs as a person names it. */
+  readonly parts: ReadonlyArray<{
+    readonly hostname: string;
+    readonly version: string | undefined;
+  }>;
+  /** Each service's address (`placeAddresses`). */
+  readonly addresses: ReadonlyArray<GroupFlowAddress>;
+}): { readonly line: string; readonly rows: ReadonlyArray<string> } {
+  if (input.parts.length <= 1)
+    return { line: productionNowLine({ ...input, host: soleSite(input.addresses) }), rows: [] };
+  return {
+    line: productionNowLine({ ...input, host: undefined }),
+    rows: [...input.parts]
+      .sort((left, right) => left.hostname.localeCompare(right.hostname))
+      .map((part) => {
+        const host = siteOf(input.addresses.find((entry) => entry.service === part.hostname)?.url);
+        return [
+          part.hostname,
+          part.version ?? "runs nothing",
+          ...(host === undefined ? [] : [host]),
+        ].join(" · ");
+      }),
+  };
 }
 
 const WEEK_MS = 6 * 24 * 60 * 60 * 1000;
