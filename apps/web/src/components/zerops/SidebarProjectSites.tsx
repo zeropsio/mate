@@ -1,4 +1,5 @@
 import { ProductionRemoval } from "./GitStopDetail";
+import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 /**
@@ -775,6 +776,7 @@ function ManageRow({
   readonly projectId: string;
   readonly name: string;
 }) {
+  if (!useProjectRoleOffers(projectId).manageAddresses) return null;
   return (
     <button
       aria-label={`Manage the addresses of ${name}`}
@@ -800,7 +802,8 @@ function AddYourDomain({
   readonly manage: ManageDoor;
   readonly projectId: string;
 }) {
-  if (!useLacksOwnDomain(projectId)) return null;
+  const lacks = useLacksOwnDomain(projectId);
+  if (!useProjectRoleOffers(projectId).manageAddresses || !lacks) return null;
   return (
     <button
       className="zerops-sites-link zerops-sites-door"

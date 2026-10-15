@@ -1,5 +1,5 @@
 import { Atom } from "effect/reactivity";
-import { platformCapabilities, roleOffers } from "@t3tools/client-runtime/data";
+import { platformCapabilities, projectRoleOffers, roleOffers } from "@t3tools/client-runtime/data";
 import { useMemo } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useAccountDataOptional, useProjection } from "./accountData";
@@ -10,6 +10,7 @@ const UNKNOWN = Atom.make({
   setUpChief: false,
   reachesEveryProject: false,
   manageOrganization: false,
+  projectAccessKnown: false,
   read: false,
   operate: false,
   administer: false,
@@ -40,4 +41,20 @@ export function usePlatformCapabilities(environmentId: EnvironmentId | null) {
 export function useRoleOffers() {
   const capabilities = usePlatformCapabilities(null);
   return useMemo(() => roleOffers(capabilities), [capabilities]);
+}
+
+/**
+ * What a Zerops project's own surfaces offer by the viewer's role there (`projectRoleOffers`): its
+ * addresses to manage only where the role operates it.
+ */
+export function useProjectRoleOffers(projectId: string | undefined) {
+  const account = useAccountDataOptional();
+  const capabilities = useProjection(
+    platformCapabilities,
+    account?.orgId == null || projectId === undefined
+      ? null
+      : { orgId: account.orgId, projectId, viewer: account.viewer },
+    UNKNOWN,
+  );
+  return useMemo(() => projectRoleOffers(capabilities), [capabilities]);
 }

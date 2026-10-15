@@ -10,7 +10,8 @@
  * - `reachesEveryProject` — the organization role reaches every project by itself (Read only or
  *   above); below it, a person sees only the projects they are given.
  * - `manageOrganization` — an owner or an admin: the team, and who has access to what.
- * - `read`, `operate`, `administer` — the viewer's effective role on `projectId`.
+ * - `read`, `operate`, `administer` — the viewer's effective role on `projectId`, and
+ *   `projectAccessKnown` whether that project's access is read: until it is, `false` is no refusal.
  */
 import { mayCreateProjects, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { zeropsClientsFromUser, type ZeropsOrganization } from "../../zerops/api.ts";
@@ -46,6 +47,7 @@ export interface PlatformCapabilities {
   readonly setUpChief: boolean;
   readonly reachesEveryProject: boolean;
   readonly manageOrganization: boolean;
+  readonly projectAccessKnown: boolean;
   readonly read: boolean;
   readonly operate: boolean;
   readonly administer: boolean;
@@ -67,6 +69,7 @@ export const platformCapabilities: Projection<PlatformCapabilitiesKey, PlatformC
       setUpChief: createProject,
       reachesEveryProject: member !== undefined && roleAtLeast(member.roleCode, "READ_ONLY"),
       manageOrganization: member !== undefined && roleAtLeast(member.roleCode, "ADMIN"),
+      projectAccessKnown: access !== undefined && access.kind !== "unknown",
       read: roleAtLeast(role, "READ_ONLY"),
       operate: roleAtLeast(role, "BASIC_USER"),
       administer: roleAtLeast(role, "ADMIN"),
@@ -89,4 +92,16 @@ export function roleOffers(
     newProject: unknown || capabilities.createProject,
     setUpChief: unknown || capabilities.setUpChief,
   };
+}
+
+/**
+ * What a project's own surfaces offer by the viewer's role there: its addresses to manage — a
+ * domain of its own, its public access — only where the role operates it (Basic user or Full);
+ * Read access shows the addresses and offers no door that a write would refuse. While the project's
+ * access is not read, its doors stay drawn.
+ */
+export function projectRoleOffers(
+  capabilities: Pick<PlatformCapabilities, "projectAccessKnown" | "operate">,
+): { readonly manageAddresses: boolean } {
+  return { manageAddresses: !capabilities.projectAccessKnown || capabilities.operate };
 }

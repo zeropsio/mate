@@ -20,6 +20,7 @@ import { ArrowUpRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useAddressesSheet } from "~/zerops/addressesSheet";
+import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useAccountOrgId, useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 
 import { PlaceDot, PlaceWords } from "./ProjectCards";
@@ -105,9 +106,11 @@ export function PlacePanel({
     place: usePlaceAddresses(orgId, projectId),
   });
   const { head, doors } = said;
-  // The sheet on this place, as the globe's popover opens it; none outside an account.
+  // The sheet on this place, as the globe's popover opens it; none outside an account, and none
+  // where the viewer's role there changes no address (`projectRoleOffers`).
+  const { manageAddresses } = useProjectRoleOffers(projectId);
   const manage =
-    orgId === null || projectId === undefined
+    orgId === null || projectId === undefined || !manageAddresses
       ? undefined
       : (intent?: "add-domain") => {
           useAddressesSheet

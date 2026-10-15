@@ -4,7 +4,12 @@ import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import { liveProjects } from "../__fixtures__/account.ts";
 import { organizationUserFamily } from "../families/organizationUser.ts";
-import { platformCapabilities, platformMembership, roleOffers } from "./platformCapabilities.ts";
+import {
+  platformCapabilities,
+  platformMembership,
+  projectRoleOffers,
+  roleOffers,
+} from "./platformCapabilities.ts";
 
 import { membershipInputs } from "../__fixtures__/membership.ts";
 const stateOf = (inputs: AccountInput[]) =>
@@ -36,6 +41,7 @@ describe("Zerops native capability table", () => {
           setUpChief: create || flag,
           reachesEveryProject: role !== "NO_ACCESS",
           manageOrganization: administer,
+          projectAccessKnown: true,
           read,
           operate,
           administer,
@@ -132,5 +138,47 @@ describe("Zerops native capability table", () => {
       viewer: platformMembership.derive(reads, "org").viewer,
     });
     expect(roleOffers(capabilities)).toEqual({ newProject: true, setUpChief: true });
+  });
+
+  it.each([
+    ["OWNER", undefined, true],
+    ["ADMIN", undefined, true],
+    ["BASIC_USER", undefined, true],
+    ["READ_ONLY", undefined, false],
+    // A Guest given Read on a project reads its addresses and changes none; given Full, manages them.
+    ["NO_ACCESS", "READ_ONLY", false],
+    ["NO_ACCESS", "ADMIN", true],
+  ] as const)(
+    "a %s member with %s on a project is offered its addresses to manage: %s",
+    (role, grant, offered) => {
+      const reads = readsOfState(
+        stateOf([
+          ...liveProjects("org", [
+            {
+              id: "p",
+              ...(grant === undefined
+                ? {}
+                : { userRoles: [{ clientUserId: "member", roleCode: grant }] }),
+            },
+          ]),
+          ...membershipInputs(role),
+        ]),
+      );
+      const capabilities = platformCapabilities.derive(reads, {
+        orgId: "org",
+        projectId: "p",
+        viewer: platformMembership.derive(reads, "org").viewer,
+      });
+      expect(projectRoleOffers(capabilities)).toEqual({ manageAddresses: offered });
+    },
+  );
+  it("a project whose access is not read yet keeps its address doors drawn", () => {
+    const reads = readsOfState(stateOf([...membershipInputs("NO_ACCESS")]));
+    const capabilities = platformCapabilities.derive(reads, {
+      orgId: "org",
+      projectId: "p",
+      viewer: platformMembership.derive(reads, "org").viewer,
+    });
+    expect(projectRoleOffers(capabilities)).toEqual({ manageAddresses: true });
   });
 });
