@@ -1,7 +1,8 @@
 /**
  * Settings → Team, as legacy Zerops draws it: everyone in the organization — never an integration
  * token — as a card, by name, invitations last: their face, name, role and e-mail, a developer's or
- * guest's projects under it, an invitation not joined yet saying so. A card opens that person's own
+ * guest's projects under it, an invitation not joined yet saying it waits for them to join — by
+ * the name its inviter typed where Zerops knows only the address. A card opens that person's own
  * page. The heading carries the count, a search by name or e-mail and, for an organization owner or
  * admin, *Invite*.
  */
@@ -13,7 +14,13 @@ import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { PersonAvatar } from "../zerops/primitives";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
-import { reachWords, shownTeam, type TeamPerson, type TeamView } from "./teamSettings.logic";
+import {
+  INVITED_LINE,
+  reachWords,
+  shownTeam,
+  type TeamPerson,
+  type TeamView,
+} from "./teamSettings.logic";
 import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
 
@@ -126,17 +133,17 @@ function PersonCard({ person }: { readonly person: TeamPerson }) {
         <span className="tm-badge" data-part="role">
           {person.badge}
         </span>
-        {person.pending ? (
-          <span className="tm-badge" data-part="pending" data-tone="muted">
-            Invited
-          </span>
-        ) : null}
         {person.you ? (
           <span className="tm-badge" data-part="you" data-tone="muted">
             You
           </span>
         ) : null}
       </span>
+      {person.pending ? (
+        <span className="tm-card-mail" data-part="pending">
+          {INVITED_LINE}
+        </span>
+      ) : null}
       {person.email === null || person.email === person.name ? null : (
         <span className="tm-card-mail" data-part="email">
           {person.email}

@@ -161,8 +161,49 @@ describe("a person's role and what they reach, in words", () => {
     );
     expect(people(view)[0]).toMatchObject({
       pending: true,
-      line: "Invited · not joined yet · Guest · on Snap",
+      line: "Invited · waiting for them to join · Guest · on Snap",
     });
+  });
+});
+
+describe("an invitation not joined yet, by the name its inviter typed", () => {
+  const waiting = (user: NonNullable<ZeropsOrganizationMember["user"]>) =>
+    member("iva", "", "NO_ACCESS", { status: "WAITING_AUTHORIZATION", user });
+  it.each([
+    {
+      sentence: "Zerops lists only the address: the name typed is shown, the address under it",
+      user: { id: "iva", email: "Iva@example.com" },
+      name: "Iva Novak",
+      email: "Iva@example.com",
+    },
+    {
+      sentence: "Nothing was typed for it here: the address is its name",
+      user: { id: "iva", email: "other@example.com" },
+      name: "other@example.com",
+      email: "other@example.com",
+    },
+    {
+      sentence: "Zerops names the person: their own name wins",
+      user: { id: "iva", email: "iva@example.com", fullName: "Iva N." },
+      name: "Iva N.",
+      email: "iva@example.com",
+    },
+  ])("$sentence", ({ user, name, email }) => {
+    const [person] = people(
+      teamPeople(input([waiting(user)], { invitedNames: { "iva@example.com": "Iva Novak" } })),
+    );
+    expect(person).toMatchObject({ name, email, pending: true });
+  });
+
+  it("A typed name never renames someone who joined", () => {
+    const [person] = people(
+      teamPeople(
+        input([member("iva", "", "NO_ACCESS", { user: { id: "iva", email: "iva@example.com" } })], {
+          invitedNames: { "iva@example.com": "Iva Novak" },
+        }),
+      ),
+    );
+    expect(person?.name).toBe("iva@example.com");
   });
 });
 

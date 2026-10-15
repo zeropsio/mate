@@ -56,6 +56,11 @@ export interface TeamInput {
   /** HQ's picture of a person, by Zerops user id. */
   readonly pictures: Readonly<Record<string, string | null | undefined>>;
   readonly viewerUserId: string | null;
+  /**
+   * The names typed for invitations here, by address in lower case (`invitationMemory`): an
+   * invitation Zerops lists by its address alone is named by them until the person joins.
+   */
+  readonly invitedNames?: Readonly<Record<string, string>> | undefined;
   /** Who is looking, as their membership names them; absent while it is not known. */
   readonly viewer?: { readonly roleCode?: string; readonly membershipId: string } | undefined;
 }
@@ -133,6 +138,9 @@ export const ROLE_CODE_WORDS = {
   NO_ACCESS: "No access",
 } as const;
 
+/** An invitation not joined yet, as its row says it. */
+export const INVITED_LINE = "Invited · waiting for them to join";
+
 const ROLE_WORDS = {
   OWNER: "Owner",
   ADMIN: "Admin",
@@ -199,8 +207,14 @@ export function teamPeople(input: TeamInput): TeamView {
     // Every integration token is a membership too; tokens are HQ's, never people here.
     if (isTokenMember(member)) return [];
     const userId = member.user?.id ?? member.userId;
-    const name = mateMemberName(member) ?? "Someone";
     const pending = (member.status ?? ZEROPS_ACTIVE_MEMBER_STATUS) !== ZEROPS_ACTIVE_MEMBER_STATUS;
+    const own = mateMemberName(member);
+    const address = member.user?.email?.trim();
+    const typed =
+      pending && address !== undefined && own === address
+        ? input.invitedNames?.[address.toLocaleLowerCase()]
+        : undefined;
+    const name = typed ?? own ?? "Someone";
     const preset = teamRoleOf(member);
     const role =
       preset === "developer" || preset === "guest"
@@ -235,7 +249,7 @@ export function teamPeople(input: TeamInput): TeamView {
       role,
       reach,
       line: [
-        ...(pending ? ["Invited · not joined yet"] : []),
+        ...(pending ? [INVITED_LINE] : []),
         role,
         ...(reach === null ? [] : [reachWords(reach)]),
       ].join(" · "),

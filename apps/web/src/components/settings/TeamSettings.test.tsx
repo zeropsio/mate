@@ -75,6 +75,7 @@ function drawn(viewer?: TeamInput["viewer"], viewerUserId?: string) {
       role: part(card, "role"),
       email: part(card, "email"),
       pending: card.hasAttribute("data-pending"),
+      waiting: part(card, "pending"),
       href: card.getAttribute("href"),
     })),
     invite: body.querySelector('[data-zerops-surface="invite-team"]') !== null,
@@ -104,6 +105,15 @@ describe("the organization's team", () => {
 
   it("An invitation not joined yet is dimmed", () => {
     expect(drawn().cards.map(({ pending }) => pending)).toEqual([false, false, false, true]);
+  });
+
+  it("An invitation not joined yet says it waits for them to join", () => {
+    expect(drawn().cards.map(({ waiting }) => waiting)).toEqual([
+      null,
+      null,
+      null,
+      "Invited · waiting for them to join",
+    ]);
   });
 
   it.each([
