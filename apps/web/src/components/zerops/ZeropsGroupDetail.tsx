@@ -1,4 +1,5 @@
 import { useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
+import { Card } from "../ui/card";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { GitStopDetailPage } from "./GitStopDetail";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
@@ -145,7 +146,7 @@ import { ProjectAccess, ProjectPeople } from "./projects/ProjectPeople";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
-import { FlatCard, MicroLabel, StatusDot, VerdictPanel } from "./primitives";
+import { MicroLabel, StatusDot, VerdictPanel } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
 import { deployAnswerSaid, type DeployAnswerJob } from "@t3tools/client-runtime/zerops/hq";
@@ -1539,163 +1540,170 @@ export function ZeropsStopPane({
         )}
       </div>
 
-      <FlatCard className="flex flex-col divide-y divide-border px-4">
-        {waiting.commits.length === 0 ? null : (
-          <CardGroup title={stopCardTitle("waiting", waiting.total, waiting.atLeast)}>
-            <ul className="flex flex-col">
-              {waiting.commits.map((commit) => (
-                <li
-                  className={cn(CARD_ROW_CLASS, "grid-cols-[4.5rem_minmax(0,1fr)]")}
-                  key={commit.sha}
-                >
-                  <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                    {shortCommit(commit.sha)}
-                  </span>
-                  <span className="min-w-0 truncate text-sm text-foreground">{commit.subject}</span>
-                </li>
-              ))}
-            </ul>
-            {untold.length === 0 ? null : (
-              <p className="py-2 text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
-            )}
-          </CardGroup>
-        )}
-
-        <CardGroup title={stopCardTitle("services", readServices?.length)}>
-          {readServices === undefined ? (
-            <p className="py-2 text-sm text-muted-foreground">Services aren&rsquo;t known yet.</p>
-          ) : services.length === 0 ? (
-            <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
-          ) : (
-            <ul className="flex flex-col">
-              {stop.target.kind !== "zerops"
-                ? null
-                : services.map((row) => (
-                    <StopServiceLine
-                      projectId={projectId!}
-                      deployAgain={deployAgain}
-                      answer={answered.get(row.hostname)}
-                      enablingServiceId={enablingServiceId ?? null}
-                      key={row.hostname}
-                      onEnableRoute={onEnableRoute}
-                      row={row}
-                      said={verdict.detail}
-                    />
-                  ))}
-            </ul>
-          )}
-          {notInZerops.length === 0 ? null : (
-            <ul className="flex flex-col" data-zerops-surface="stop-not-in-zerops">
-              {notInZerops.map((hostname) => (
-                <li className={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")} key={hostname}>
-                  <span className="min-w-0 truncate text-sm text-muted-foreground">
-                    {hostname} ·{" "}
-                    {answered.get(hostname) === undefined ? (
-                      "in its setup files, not in Zerops"
-                    ) : (
-                      <span data-zerops-job-state={answered.get(hostname)?.state}>
-                        {answered.get(hostname)?.line}
-                      </span>
-                    )}
-                  </span>
-                  {addService === undefined ? (
-                    <span />
-                  ) : (
-                    <Button
-                      disabled={addService.running(hostname)}
-                      onClick={() => addService.onAdd(hostname)}
-                      size="compact"
-                      variant="outline"
-                    >
-                      {addService.running(hostname)
-                        ? flowVerbLabel("add-service", true)
-                        : `${flowVerbLabel("add-service", false)} ${hostname}`}
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {stop.target.kind !== "zerops" || tierStops.length === 0 ? null : (
-            <StopTierStops
-              projectId={stop.target.projectId}
-              rowClassName={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")}
-              rows={tierStops}
-            />
-          )}
-          {otherDeploys === undefined ? null : (
-            <ZeropsDeployAnswer
-              answer={otherDeploys}
-              showEnvironment={otherDeploys.jobs.some(
-                ({ environment }) => environment !== stop.name,
+      <Card variant="flat">
+        <div className="flex flex-col divide-y divide-border px-4">
+          {waiting.commits.length === 0 ? null : (
+            <CardGroup title={stopCardTitle("waiting", waiting.total, waiting.atLeast)}>
+              <ul className="flex flex-col">
+                {waiting.commits.map((commit) => (
+                  <li
+                    className={cn(CARD_ROW_CLASS, "grid-cols-[4.5rem_minmax(0,1fr)]")}
+                    key={commit.sha}
+                  >
+                    <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                      {shortCommit(commit.sha)}
+                    </span>
+                    <span className="min-w-0 truncate text-sm text-foreground">
+                      {commit.subject}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {untold.length === 0 ? null : (
+                <p className="py-2 text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
               )}
-            />
+            </CardGroup>
           )}
-          {routeTrouble === null || routeTrouble === undefined ? null : (
-            <p className="py-2 text-sm text-[var(--zerops-status-failed-text)]">{routeTrouble}</p>
-          )}
-        </CardGroup>
 
-        {!production || releases.length === 0 ? null : (
-          <CardGroup title={stopCardTitle("releases", releases.length)}>
-            <ul className="flex flex-col">
-              <ZeropsReleaseRows
-                {...(carried === undefined
-                  ? {}
-                  : { carried: { carried, names, onOpenChange: onOpenCarriedChange } })}
-                groupId={groupId}
-                onRollBack={onRollBack}
-                pending={pending}
-                releases={listed}
-              />
-            </ul>
-            {earlier === 0 || allReleases ? null : (
-              <Button
-                className="my-1 text-muted-foreground"
-                onClick={() => {
-                  setAllReleases(true);
-                }}
-                size="sm"
-                variant="ghost"
-              >
-                {earlierReleasesLabel(earlier)}
-              </Button>
-            )}
-          </CardGroup>
-        )}
-
-        {production ? null : (
-          <CardGroup
-            aside={DEPLOYS_ASIDE}
-            title={stopCardTitle(
-              "deploys",
-              repo !== undefined && history.kind === "read" ? history.total : undefined,
-            )}
-          >
+          <CardGroup title={stopCardTitle("services", readServices?.length)}>
             {readServices === undefined ? (
-              <p className="py-2 text-sm text-muted-foreground">Repository not known yet.</p>
-            ) : repo === undefined ? (
-              <p className="py-2 text-sm text-muted-foreground">
-                No repository is declared for this environment&rsquo;s services, so its history
-                cannot be read.
-              </p>
-            ) : history.kind === "read" && history.commits.length === 0 ? (
+              <p className="py-2 text-sm text-muted-foreground">Services aren&rsquo;t known yet.</p>
+            ) : services.length === 0 ? (
               <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
             ) : (
-              <ZeropsHistoryView
-                here={stop.name}
-                history={history}
-                names={names}
-                onOpenChange={onOpenChange}
-                request={{ repo, deployed }}
-                tags={tags}
+              <ul className="flex flex-col">
+                {stop.target.kind !== "zerops"
+                  ? null
+                  : services.map((row) => (
+                      <StopServiceLine
+                        projectId={projectId!}
+                        deployAgain={deployAgain}
+                        answer={answered.get(row.hostname)}
+                        enablingServiceId={enablingServiceId ?? null}
+                        key={row.hostname}
+                        onEnableRoute={onEnableRoute}
+                        row={row}
+                        said={verdict.detail}
+                      />
+                    ))}
+              </ul>
+            )}
+            {notInZerops.length === 0 ? null : (
+              <ul className="flex flex-col" data-zerops-surface="stop-not-in-zerops">
+                {notInZerops.map((hostname) => (
+                  <li
+                    className={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")}
+                    key={hostname}
+                  >
+                    <span className="min-w-0 truncate text-sm text-muted-foreground">
+                      {hostname} ·{" "}
+                      {answered.get(hostname) === undefined ? (
+                        "in its setup files, not in Zerops"
+                      ) : (
+                        <span data-zerops-job-state={answered.get(hostname)?.state}>
+                          {answered.get(hostname)?.line}
+                        </span>
+                      )}
+                    </span>
+                    {addService === undefined ? (
+                      <span />
+                    ) : (
+                      <Button
+                        disabled={addService.running(hostname)}
+                        onClick={() => addService.onAdd(hostname)}
+                        size="compact"
+                        variant="outline"
+                      >
+                        {addService.running(hostname)
+                          ? flowVerbLabel("add-service", true)
+                          : `${flowVerbLabel("add-service", false)} ${hostname}`}
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {stop.target.kind !== "zerops" || tierStops.length === 0 ? null : (
+              <StopTierStops
+                projectId={stop.target.projectId}
+                rowClassName={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")}
+                rows={tierStops}
               />
             )}
+            {otherDeploys === undefined ? null : (
+              <ZeropsDeployAnswer
+                answer={otherDeploys}
+                showEnvironment={otherDeploys.jobs.some(
+                  ({ environment }) => environment !== stop.name,
+                )}
+              />
+            )}
+            {routeTrouble === null || routeTrouble === undefined ? null : (
+              <p className="py-2 text-sm text-[var(--zerops-status-failed-text)]">{routeTrouble}</p>
+            )}
           </CardGroup>
-        )}
 
-        {access === undefined ? null : <CardGroup title="Project access">{access}</CardGroup>}
-      </FlatCard>
+          {!production || releases.length === 0 ? null : (
+            <CardGroup title={stopCardTitle("releases", releases.length)}>
+              <ul className="flex flex-col">
+                <ZeropsReleaseRows
+                  {...(carried === undefined
+                    ? {}
+                    : { carried: { carried, names, onOpenChange: onOpenCarriedChange } })}
+                  groupId={groupId}
+                  onRollBack={onRollBack}
+                  pending={pending}
+                  releases={listed}
+                />
+              </ul>
+              {earlier === 0 || allReleases ? null : (
+                <Button
+                  className="my-1 text-muted-foreground"
+                  onClick={() => {
+                    setAllReleases(true);
+                  }}
+                  size="sm"
+                  variant="ghost"
+                >
+                  {earlierReleasesLabel(earlier)}
+                </Button>
+              )}
+            </CardGroup>
+          )}
+
+          {production ? null : (
+            <CardGroup
+              aside={DEPLOYS_ASIDE}
+              title={stopCardTitle(
+                "deploys",
+                repo !== undefined && history.kind === "read" ? history.total : undefined,
+              )}
+            >
+              {readServices === undefined ? (
+                <p className="py-2 text-sm text-muted-foreground">Repository not known yet.</p>
+              ) : repo === undefined ? (
+                <p className="py-2 text-sm text-muted-foreground">
+                  No repository is declared for this environment&rsquo;s services, so its history
+                  cannot be read.
+                </p>
+              ) : history.kind === "read" && history.commits.length === 0 ? (
+                <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
+              ) : (
+                <ZeropsHistoryView
+                  here={stop.name}
+                  history={history}
+                  names={names}
+                  onOpenChange={onOpenChange}
+                  request={{ repo, deployed }}
+                  tags={tags}
+                />
+              )}
+            </CardGroup>
+          )}
+
+          {access === undefined ? null : <CardGroup title="Project access">{access}</CardGroup>}
+        </div>
+      </Card>
       {/* A verb that refused says so under the card it was pressed in. */}
       {trouble === null ? null : (
         <p className="mt-2 text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>

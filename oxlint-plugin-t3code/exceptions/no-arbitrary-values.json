@@ -552,14 +552,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/settings/settingsLayout.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> tracking-[-0.025em] in \"flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/sidebar/SidebarProjectTree.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[10px] in \"block truncate text-[10px] text-sidebar-muted-foreground\"",
@@ -914,14 +906,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
     "kind": "Literal",
-    "fingerprint": "<> border-[var(--zerops-status-failed)]/35 in \"border-[var(--zerops-status-failed)]/35\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"min-w-0 text-[13px] text-muted-foreground\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
@@ -1083,22 +1067,6 @@
     "path": "apps/web/src/components/zerops/primitives/Chip.tsx",
     "kind": "Literal",
     "fingerprint": "<> tracking-[var(--zerops-micro-label-tracking)] in \"inline-flex items-center rounded-[var(--zerops-chip-radius)] px-2 py-1 text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] uppercase\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/primitives/FlatCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> border-[var(--zerops-flat-card-border)] in \"rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/primitives/FlatCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"

@@ -4,13 +4,13 @@
  * HQ at the quiet end.
  */
 
+import { Card } from "../../ui/card";
 import { ChevronRightIcon } from "lucide-react";
 import { Fragment, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { useNowMs } from "~/zerops/useNowMs";
 import { Button } from "../../ui/button";
-import { FlatCard } from "../primitives";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { heldLine } from "./emptyApps.logic";
 import { GroupName } from "./flowSteps";
@@ -96,7 +96,7 @@ export function OtherContainers<T>({
   const mates = rows.filter((row) => props.isMate(row.item));
   const others = rows.filter((row) => !props.isMate(row.item));
   return (
-    <FlatCard>
+    <Card variant="flat">
       <section className="flex flex-col" data-zerops-surface="other-containers">
         <div className="flex min-h-12 min-w-0 items-center gap-x-3 px-3">
           <button
@@ -160,6 +160,6 @@ export function OtherContainers<T>({
           </div>
         ) : null}
       </section>
-    </FlatCard>
+    </Card>
   );
 }

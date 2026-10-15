@@ -3223,6 +3223,11 @@ code {
   }
 }
 
+/* A tool call that failed, on its own card: the card's hairline in the failed ink. */
+[data-slot="card"][data-zerops-card-tone="failed"] {
+  border-color: color-mix(in oklab, var(--zerops-status-failed) 35%, transparent);
+}
+
 /* ==== Pass 16 · the menu's rows ==== */
 
 @layer components {
@@ -7419,11 +7424,6 @@ a.ov-card-site:hover {
   white-space: nowrap;
 }
 
-.ov-chip-name[data-creator] em {
-  font-style: italic;
-  font-weight: 600;
-}
-
 /* The level: full access green, a developer's blue, read only and mixed grey. */
 .ov-chip-badge {
   display: inline-flex;
@@ -7541,37 +7541,8 @@ a.ov-card-site:hover {
   padding: 0 6px 6px;
 }
 
-.ov-pick-row {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto auto;
-  column-gap: 10px;
-  align-items: center;
-  padding: 6px;
-  border-radius: 10px;
-}
-
-.ov-pick-row[data-ticked] {
+.ov-pick-list > [data-ticked] {
   background: var(--ov-hover);
-}
-
-.ov-pick-text {
-  display: grid;
-  min-width: 0;
-}
-
-.ov-pick-name {
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ov-pick-role {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 16px;
 }
 
 .ov-pick-level {

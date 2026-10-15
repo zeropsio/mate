@@ -15,6 +15,7 @@ import { cn } from "../../lib/utils";
 import { WorkspacePageContainer, type WorkspacePageWidth } from "../WorkspacePageContainer";
 import { Button } from "../ui/button";
 import { Row } from "../ui/row";
+import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 interface SettingsSearchTargetContextValue {
@@ -132,14 +133,18 @@ export function SettingsSection({
       {...sectionProps}
       ref={targetRef}
       tabIndex={sectionProps.id ? -1 : sectionProps.tabIndex}
-      className={cn("space-y-3", className)}
+      className={cn("flex flex-col gap-2", className)}
     >
-      <div className="flex min-h-8 items-center justify-between gap-4 px-3 sm:px-4">
-        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-foreground">
-          {icon}
-          {title}
-        </h2>
-        <div className="flex min-h-7 min-w-7 items-center justify-end">{headerAction}</div>
+      <div className="px-3">
+        <SectionHeader
+          action={headerAction}
+          title={
+            <>
+              {icon}
+              {title}
+            </>
+          }
+        />
       </div>
       <div className="relative space-y-1 overflow-visible text-foreground">{children}</div>
     </section>

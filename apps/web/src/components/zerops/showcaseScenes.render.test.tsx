@@ -17,7 +17,6 @@ import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { ZeropsOperationCard } from "./ZeropsOperationCard";
 import {
   Chip,
-  FlatCard,
   KeyChip,
   LivenessLine,
   MicroLabel,
@@ -156,7 +155,6 @@ it("renders the complete primitive probe from existing showcase facts", () => {
     .flatMap((scene) => [
       renderToStaticMarkup(<MicroLabel>{scene.title}</MicroLabel>),
       renderToStaticMarkup(<Pill label={scene.title} />),
-      renderToStaticMarkup(<FlatCard>{scene.title}</FlatCard>),
       renderToStaticMarkup(<MintPanel>{scene.title}</MintPanel>),
       renderToStaticMarkup(<KeyChip>{scene.id}</KeyChip>),
     ])
@@ -168,7 +166,6 @@ it("renders the complete primitive probe from existing showcase facts", () => {
     "micro-label",
     "chip",
     "pill",
-    "flat-card",
     "mint-panel",
     "process-steps",
     "key-chip",

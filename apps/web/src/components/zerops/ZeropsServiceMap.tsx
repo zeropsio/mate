@@ -21,6 +21,7 @@ import { ServiceBrowserLink, ServiceBrowserLinkIndicator } from "../ServiceBrows
  * — and the coding agents' card, the agents the Mate works through, grows out
  * of its bottom edge rather than standing on its own further down the panel.
  */
+import { Card } from "../ui/card";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon, ChevronDownIcon, DatabaseIcon } from "lucide-react";
 import { useContext, type ReactElement, type ReactNode } from "react";
@@ -48,7 +49,7 @@ import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "@t3tools/client-runtime/data";
 import { ZeropsDataLinkContext } from "./dataLink";
-import { FlatCard, LivenessLine, MateFace, MicroLabel, MintPanel, StatusDot } from "./primitives";
+import { LivenessLine, MateFace, MicroLabel, MintPanel, StatusDot } from "./primitives";
 import { sparklineGeometry } from "./sparkline";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
@@ -803,11 +804,7 @@ function ControlPlaneRow({
 function ServiceRow({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
   return (
     <li data-zerops-service-row="service">
-      <ServiceCard
-        render={<FlatCard className="px-3.5 py-2.5" />}
-        row={row}
-        usageRead={usageRead}
-      />
+      <ServiceCard render={<Card size="sm" variant="flat" />} row={row} usageRead={usageRead} />
     </li>
   );
 }

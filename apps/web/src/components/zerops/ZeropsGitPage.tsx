@@ -1,4 +1,5 @@
 /** The organization Git overview consumes the shared projection; local state holds presentation IDs only. */
+import { Card } from "../ui/card";
 import {
   gitRepositoryLine,
   gitOverviewPresentation,
@@ -14,7 +15,6 @@ import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 
 import { appBasePath } from "~/basePath";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
-import { FlatCard } from "./primitives";
 import { ZeropsGitChangeRow } from "./ZeropsGitChangeRow";
 import { useMateNames, useProjectFlows } from "~/zerops/projectFlows";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
@@ -165,7 +165,7 @@ export function ZeropsGitOverview({
       ) : null}
       {presentation.rows.length > 0 ? (
         <section aria-label="Repositories" data-zerops-surface="git-overview">
-          <FlatCard>
+          <Card variant="flat">
             <div className="divide-y divide-border">
               {presentation.rows.map((repository) => {
                 const changeRows = repository.changes.map((change) => (
@@ -239,7 +239,7 @@ export function ZeropsGitOverview({
                 );
               })}
             </div>
-          </FlatCard>
+          </Card>
           <p className="mt-3 text-xs text-muted-foreground">
             {view === "all" ? (
               <>

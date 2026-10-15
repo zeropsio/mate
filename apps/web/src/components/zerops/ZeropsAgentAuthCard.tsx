@@ -21,6 +21,7 @@ import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/a
  * then *Add another login* where the server keeps logins. Without `logins` the
  * card is exactly the two agent rows it always was.
  */
+import { Card } from "../ui/card";
 import type {
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
@@ -52,7 +53,7 @@ import {
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
-import { FlatCard, StatusDot } from "./primitives";
+import { StatusDot } from "./primitives";
 
 const AGENT_NAMES: Record<ZeropsAgentId, string> = {
   "claude-code": "Claude Code",
@@ -107,7 +108,7 @@ export function ZeropsAgentAuthCard({
   const own = snapshot.agents.find((agent) => agent.agentId === conversationAgentId);
   const ownSignedIn = !signInDemanded && own !== undefined && agentAuthAction(own) === "none";
   return (
-    <FlatCard className="@container overflow-hidden" data-zerops-agent-auth-card>
+    <Card className="@container overflow-hidden" data-zerops-agent-auth-card variant="flat">
       <header className="border-b border-border/60 px-4 py-2.5">
         <h3 className="text-sm font-semibold text-foreground">
           {signInDemanded ? "Authorize coding agents" : "Coding agents"}
@@ -131,7 +132,7 @@ export function ZeropsAgentAuthCard({
         viewerSubject={viewerSubject}
         {...loginProps}
       />
-    </FlatCard>
+    </Card>
   );
 }
 

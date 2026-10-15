@@ -251,7 +251,7 @@ describe("a new project's access in a creation dialog", () => {
       "Project access",
     );
     expect(chipsOf(section).map(({ text }) => text)).toEqual([
-      ["👉 You", "Full"],
+      ["You", "Full"],
       ["Anna B.", "Full"],
       [],
     ]);

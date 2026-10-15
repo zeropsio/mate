@@ -77,7 +77,8 @@ import {
 import { OperationSubjectLine } from "./operation/OperationSubjectLine";
 import { operationSubject, type OperationSubject } from "./operation/subject";
 import { versionLabel } from "./operation/version";
-import { FlatCard, MicroLabel, ProcessSteps, StatusDot, type ProcessStep } from "./primitives";
+import { Card } from "../ui/card";
+import { MicroLabel, ProcessSteps, StatusDot, type ProcessStep } from "./primitives";
 import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { ZeropsReadResultBody } from "./ZeropsToolResultCards";
@@ -760,14 +761,11 @@ export function ZeropsOperationCard(props: {
     links.length > 0 ||
     props.onRestartRetry !== undefined;
 
-  const Frame = headless ? HeadlessFrame : FlatCard;
+  // On its own a card of the kit (a failed one wears its border in the failed ink, `index.css`);
+  // inside another card's frame only its layout.
+  const Frame = headless ? HeadlessFrame : FlatFrame;
   return (
     <Frame
-      className={cn(
-        "@container flex flex-col gap-2 overflow-hidden",
-        !headless && "px-3.5 py-3",
-        !headless && tone === "failed" && "border-[var(--zerops-status-failed)]/35",
-      )}
       data-zerops-card
       data-zerops-card-kind={operation.kind}
       data-zerops-card-tone={tone}
@@ -865,10 +863,22 @@ export function ZeropsOperationCard(props: {
 }
 
 /** A headless card's frame: no surface of its own, the line above it is its head. */
-function HeadlessFrame({ className, children, ...props }: ComponentProps<"div">) {
+function HeadlessFrame({ children, ...props }: ComponentProps<"div">) {
   return (
-    <div className={className} data-zerops-card-headless {...props}>
+    <div
+      className="@container flex flex-col gap-2 overflow-hidden"
+      data-zerops-card-headless
+      {...props}
+    >
       {children}
     </div>
+  );
+}
+
+function FlatFrame({ children, ...props }: ComponentProps<"div">) {
+  return (
+    <Card className="@container overflow-hidden" size="sm" variant="flat" {...props}>
+      {children}
+    </Card>
   );
 }

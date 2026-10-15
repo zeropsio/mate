@@ -6,26 +6,41 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "~/lib/utils";
 
+/**
+ * One card. `flat` is the app's: a hairline and the card ground, no shadow; `inset` is a card
+ * inside another, set apart by a deeper tint instead of a second border — depth shows as tint.
+ * `size` is its padding when its content is not rows that carry their own: `sm` for a card in a
+ * list or a conversation, `md` for a card that stands alone on a page.
+ */
 const cardVariants = cva("", {
   defaultVariants: {
     variant: "default",
+    size: "none",
   },
   variants: {
     variant: {
       default:
         "relative flex flex-col rounded-2xl border bg-card not-dark:bg-clip-padding text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
       flat: "relative flex flex-col rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground",
+      inset:
+        "relative flex flex-col rounded-[calc(var(--zerops-card-radius)-4px)] bg-muted/60 text-card-foreground",
+    },
+    size: {
+      none: "",
+      sm: "gap-2 px-3.5 py-3",
+      md: "gap-3 p-4",
     },
   },
 });
 
 interface CardProps extends useRender.ComponentProps<"div"> {
   variant?: VariantProps<typeof cardVariants>["variant"];
+  size?: VariantProps<typeof cardVariants>["size"];
 }
 
-function Card({ className, render, variant, ...props }: CardProps) {
+function Card({ className, render, variant, size, ...props }: CardProps) {
   const defaultProps = {
-    className: cn(cardVariants({ className, variant })),
+    className: cn(cardVariants({ className, variant, size })),
     "data-slot": "card",
   };
 

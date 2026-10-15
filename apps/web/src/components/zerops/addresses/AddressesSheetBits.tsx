@@ -11,7 +11,9 @@ import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 
 import { Alert, AlertDescription, AlertTitle } from "../../ui/alert";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Row } from "../../ui/row";
+import { Section } from "../../ui/section";
 import { Spinner } from "../../ui/spinner";
 import type { AddressWrite, FaceTone } from "./addresses.logic";
 
@@ -60,19 +62,15 @@ export function SheetSection({
 }) {
   const rows = Children.toArray(children);
   return (
-    <section className="grid gap-2" data-addresses-part={part}>
-      <header className="flex min-h-7 items-center justify-between gap-3">
-        <h3 className="font-semibold text-foreground text-sm">{title}</h3>
-        {action}
-      </header>
+    <Section action={action} data-addresses-part={part} level={3} title={title}>
       {notice}
       {rows.length === 0 ? null : (
-        <div className="divide-y divide-border/60 rounded-xl border border-border/70 bg-card">
-          {rows}
-        </div>
+        <Card variant="flat">
+          <div className="divide-y divide-border/60">{rows}</div>
+        </Card>
       )}
       {after}
-    </section>
+    </Section>
   );
 }
 

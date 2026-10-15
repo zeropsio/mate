@@ -33,6 +33,7 @@ import {
 } from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
+import { Row } from "../../ui/row";
 import { Input } from "../../ui/input";
 import {
   Menu,
@@ -226,14 +227,7 @@ function AccessChip({
               data-creator={person.creator || undefined}
               data-part="name"
             >
-              {person.creator ? (
-                <>
-                  <span aria-hidden="true">👉 </span>
-                  <em>You</em>
-                </>
-              ) : (
-                person.short
-              )}
+              {person.creator ? "You" : person.short}
             </span>
             <AccessBadge busy={busy} level={person.level} />
           </span>
@@ -458,19 +452,8 @@ export function AddAccessPicker({
       ) : (
         <ul aria-label="People in the organization" className="ov-pick-list">
           {shown.map((candidate) => (
-            <li
-              className="ov-pick-row"
-              data-ticked={ticked[candidate.clientUserId] !== undefined || undefined}
-              key={candidate.clientUserId}
-            >
-              <PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={32} />
-              <span className="ov-pick-text">
-                <span className="ov-pick-name">{candidate.name}</span>
-                <span className="ov-pick-role">
-                  {candidate.pending ? `${candidate.role} · invited` : candidate.role}
-                </span>
-              </span>
-              {(["read", "full"] as const).map((level) => (
+            <Row
+              control={(["read", "full"] as const).map((level) => (
                 <span className="ov-pick-level" key={level}>
                   <Checkbox
                     aria-label={`${level === "read" ? "Read" : "Full"} access for ${candidate.name}`}
@@ -480,7 +463,13 @@ export function AddAccessPicker({
                   <span aria-hidden="true">{level === "read" ? "Read" : "Full"}</span>
                 </span>
               ))}
-            </li>
+              data-ticked={ticked[candidate.clientUserId] !== undefined || undefined}
+              key={candidate.clientUserId}
+              lead={<PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={32} />}
+              line={candidate.pending ? `${candidate.role} · invited` : candidate.role}
+              render={<li />}
+              title={candidate.name}
+            />
           ))}
         </ul>
       )}

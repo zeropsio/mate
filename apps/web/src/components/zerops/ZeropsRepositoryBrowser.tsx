@@ -1,7 +1,7 @@
 import { FileIcon, FolderIcon } from "lucide-react";
+import { Card } from "../ui/card";
 import { useState } from "react";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
-import { FlatCard } from "./primitives";
 import { ZeropsGitChangeRow } from "./ZeropsGitChangeRow";
 import { GitTokenGuide } from "./GitTokenGuide";
 import { ZeropsGitCredentials } from "./ZeropsGitCredentials";
@@ -176,7 +176,7 @@ export function ZeropsRepositoryBrowser({
           <p className="text-sm text-muted-foreground">Showing the last read changes.</p>
         ) : null}
         {repository !== undefined && repository.changes.length > 0 ? (
-          <FlatCard>
+          <Card variant="flat">
             <div className="divide-y divide-border px-4 py-1">
               {repository.changes.map((change) => (
                 <ZeropsGitChangeRow
@@ -190,12 +190,12 @@ export function ZeropsRepositoryBrowser({
                 />
               ))}
             </div>
-          </FlatCard>
+          </Card>
         ) : repository?.coverage === "complete" ? (
           <p className="text-sm text-muted-foreground">No open changes.</p>
         ) : null}
       </section>
-      <FlatCard>
+      <Card variant="flat">
         <details className="px-4 py-3" onToggle={(event) => setCloneOpen(event.currentTarget.open)}>
           <summary className="cursor-pointer text-sm font-medium text-foreground">
             Clone with HTTPS
@@ -204,7 +204,7 @@ export function ZeropsRepositoryBrowser({
             {cloneOpen ? <ZeropsGitCredentials appId={appId} repo={repo} /> : null}
           </div>
         </details>
-      </FlatCard>
+      </Card>
       {repo === "group" ? null : <GitTokenGuide key={`${appId}:${repo}`} project={project} />}
       <section aria-label="Source" className="flex min-w-0 flex-col gap-3">
         <div>
@@ -213,7 +213,7 @@ export function ZeropsRepositoryBrowser({
             Browsing source does not switch a Mate’s checkout.
           </p>
         </div>
-        <FlatCard>
+        <Card variant="flat">
           <div className="flex min-w-0 flex-col gap-3 p-4">
             {source.state !== "known" ? (
               <>
@@ -300,7 +300,7 @@ export function ZeropsRepositoryBrowser({
               </>
             )}
           </div>
-        </FlatCard>
+        </Card>
       </section>
     </section>
   );

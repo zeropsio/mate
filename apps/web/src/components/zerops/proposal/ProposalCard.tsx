@@ -27,7 +27,8 @@ import { MateMark } from "../../MateMark";
 import { DnsRecords } from "../addresses/DnsRecords";
 import { Button } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
-import { FlatCard, MateFace } from "../primitives";
+import { Card } from "../../ui/card";
+import { MateFace } from "../primitives";
 import {
   chiefMessageTarget,
   proposalOutcomeWords,
@@ -100,43 +101,46 @@ export function ProposalCard(props: ProposalCardProps) {
       : undefined;
   const where = proposalWhere(proposal);
   return (
-    <FlatCard
-      className="flex min-w-0 items-start gap-2.5 px-3.5 py-3"
+    <Card
       data-proposal={proposal.id}
       data-proposal-kind={proposal.kind}
       data-proposal-stage={stage}
+      size="sm"
+      variant="flat"
     >
-      <Icon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-      <div className="grid min-w-0 flex-1 gap-2.5">
-        <div className="grid min-w-0 gap-0.5">
-          <p className="text-sm font-medium text-foreground" data-proposal-summary>
-            {stage === "open" && proposal.kind === "chief.message" && chiefTarget?.kind === "none"
-              ? "This Mate has no Chief to ask."
-              : stage === "open" &&
-                  proposal.kind === "chief.message" &&
-                  chiefTarget?.kind === "unknown"
-                ? "Finding this Mate's Chief…"
-                : proposalTitle(proposal)}
-          </p>
-          {where === null ? null : (
-            <p className="text-xs text-muted-foreground" data-proposal-where>
-              {where}
+      <div className="flex min-w-0 items-start gap-2.5">
+        <Icon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        <div className="grid min-w-0 flex-1 gap-2.5">
+          <div className="grid min-w-0 gap-0.5">
+            <p className="text-sm font-medium text-foreground" data-proposal-summary>
+              {stage === "open" && proposal.kind === "chief.message" && chiefTarget?.kind === "none"
+                ? "This Mate has no Chief to ask."
+                : stage === "open" &&
+                    proposal.kind === "chief.message" &&
+                    chiefTarget?.kind === "unknown"
+                  ? "Finding this Mate's Chief…"
+                  : proposalTitle(proposal)}
             </p>
-          )}
-          {proposal.reason === undefined || proposal.reason.trim() === "" ? null : (
-            <p className="text-xs leading-4.5 text-muted-foreground" data-proposal-reason>
-              {props.mateName}: <q className="italic">{proposal.reason}</q>
-            </p>
-          )}
+            {where === null ? null : (
+              <p className="text-xs text-muted-foreground" data-proposal-where>
+                {where}
+              </p>
+            )}
+            {proposal.reason === undefined || proposal.reason.trim() === "" ? null : (
+              <p className="text-xs leading-4.5 text-muted-foreground" data-proposal-reason>
+                {props.mateName}: <q className="italic">{proposal.reason}</q>
+              </p>
+            )}
+          </div>
+          <ProposalBody
+            proposal={proposal}
+            recipient={props.recipient}
+            chiefTarget={stage === "open" ? chiefTarget : undefined}
+          />
+          <ProposalFoot {...props} chiefTarget={chiefTarget} />
         </div>
-        <ProposalBody
-          proposal={proposal}
-          recipient={props.recipient}
-          chiefTarget={stage === "open" ? chiefTarget : undefined}
-        />
-        <ProposalFoot {...props} chiefTarget={chiefTarget} />
       </div>
-    </FlatCard>
+    </Card>
   );
 }
 

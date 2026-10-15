@@ -6,17 +6,20 @@ import { MoreHorizontalIcon } from "lucide-react";
 import { DetailRow } from "~/components/chat/DetailRow";
 import { ProviderInstanceCard } from "~/components/settings/ProviderInstanceCard";
 import { DRIVER_OPTION_BY_VALUE } from "~/components/settings/providerDriverMeta";
-import { SettingsRow } from "~/components/settings/settingsLayout";
+import { SettingsRow, SettingsSection } from "~/components/settings/settingsLayout";
 import { teamPeople } from "~/components/settings/teamSettings.logic";
 import { STANDARD_THEME_CARDS } from "~/components/settings/ThemePreviewCircles";
 import { ThemeLibraryCard } from "~/components/settings/ThemeSettings";
 import { TeamList } from "~/components/settings/TeamSettings";
 import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
+import { PageHeader } from "~/components/ui/page-header";
+import { Row } from "~/components/ui/row";
+import { Section } from "~/components/ui/section";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
 import { Switch } from "~/components/ui/switch";
-import { Face, SheetRow } from "~/components/zerops/addresses/AddressesSheetBits";
-import { FlatCard } from "~/components/zerops/primitives/FlatCard";
-import { StatusDot } from "~/components/zerops/primitives";
+import { Face, SheetRow, SheetSection } from "~/components/zerops/addresses/AddressesSheetBits";
+import { MateFace, PersonAvatar, StatusDot } from "~/components/zerops/primitives";
 import { ProjectCards } from "~/components/zerops/projects/ProjectCards";
 import { SidebarZeropsTree } from "~/components/zerops/SidebarZeropsTree";
 import { ZeropsEnvironmentRow } from "~/components/zerops/ZeropsEnvironmentRow";
@@ -34,7 +37,7 @@ import {
   kitMateActions,
 } from "../fixtures/menuTree";
 import { defineKitSection } from "../kitSection";
-import { SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const noop = () => {};
@@ -135,75 +138,216 @@ function MoreButton() {
   );
 }
 
+/** The menu at the owner's 435 px, its rows the kit's Row at `lg`. */
+function Menu() {
+  return (
+    <SidebarProvider className="block min-h-0">
+      <aside
+        className="w-[435px] border border-border bg-sidebar text-sidebar-foreground"
+        data-sidebar="sidebar"
+      >
+        <SidebarContent>
+          <div className="ps-2.25 pe-2 pt-3 pb-1">
+            <SidebarZeropsTree
+              activeProjectId={KIT_MENU_ACTIVE}
+              candidates={KIT_MENU_MATES}
+              complete
+              getActivity={(entry) => KIT_MENU_ACTIVITY.get(entry.project.id)}
+              getCrew={() => KIT_NO_CREW}
+              getMateActions={kitMateActions}
+              onBrowseProjects={noop}
+              onSelect={noop}
+              timestampFormat="24-hour"
+            />
+          </div>
+        </SidebarContent>
+      </aside>
+    </SidebarProvider>
+  );
+}
+
+function Chosen() {
+  return (
+    <div className="flex flex-col gap-8">
+      <SpecimenBlock title="Chosen · Row: a mark, a title whose badges give way first, one-line meta, one muted line">
+        <SpecimenGrid>
+          <Specimen label='size="lg" (the menu at 435 px)'>
+            <Menu />
+          </Specimen>
+          <Specimen label='size="md" lead={<PersonAvatar size={32} />} control (a person)'>
+            <div className="w-[28rem]">
+              <Row
+                control={<MoreButton />}
+                lead={<PersonAvatar name="Petra Malá" size={32} />}
+                line="Owner · full access"
+                title="Petra Malá"
+              />
+              <Row
+                badges={<StatusDot label="Invited" sentence tone="attention" />}
+                lead={<PersonAvatar name="Jan Svoboda" size={32} />}
+                line="Developer · invited"
+                title="Jan Svoboda, whose name is long enough to meet its badge"
+              />
+            </div>
+          </Specimen>
+          <Specimen label='size="md" pressable lead={<MateFace size={32} />} meta line'>
+            <div className="w-[28rem]">
+              <Row
+                lead={<MateFace size={32} state="working" tint="olive" />}
+                line="Reading the release notes since 1.0."
+                meta="1m"
+                pressable
+                render={<button type="button" />}
+                title="Fen"
+              />
+            </div>
+          </Specimen>
+          <Specimen label='<SettingsRow> = Row size="sm" lineWraps control'>
+            <div className="w-[36rem]">
+              <SettingsRow
+                control={<Switch aria-label="Reduce motion" defaultChecked />}
+                description="Rows and panels arrive without moving."
+                title="Reduce motion"
+              />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock title="Chosen · Card: flat, depth shown by tint; Section: a heading that hugs its rows, its one action at its edge">
+        <SpecimenGrid>
+          <Specimen label='<Card variant="flat"> of rows'>
+            <div className="w-[32rem]">
+              <Card variant="flat">
+                <div className="divide-y divide-border px-4 py-1">
+                  <ZeropsGitChangeRow
+                    change={change(4, "Add the changelog page", "#4 · Fen")}
+                    onOpen={noop}
+                    project="Acme Docs"
+                    repo="app"
+                  />
+                  <ZeropsGitChangeRow
+                    change={change(5, "Index the docs for search", "#5 · Quinn")}
+                    onOpen={noop}
+                    project="Acme Docs"
+                    repo="app"
+                  />
+                </div>
+              </Card>
+            </div>
+          </Specimen>
+          <Specimen label='<Card variant="flat" size="sm"> (a tool call in the conversation)'>
+            <div className="w-[36rem]">
+              {DEPLOY === undefined ? null : <ZeropsOperationCard operation={DEPLOY} />}
+            </div>
+          </Specimen>
+          <Specimen label='<Card variant="flat" size="md"> holding <Card variant="inset" size="sm">'>
+            <div className="w-[28rem]">
+              <Card size="md" variant="flat">
+                <p className="m-0 text-sm">A card on the page.</p>
+                <Card size="sm" variant="inset">
+                  <p className="m-0 text-muted-foreground text-sm">
+                    A card inside it: a deeper tint, no second border.
+                  </p>
+                </Card>
+              </Card>
+            </div>
+          </Specimen>
+          <Specimen label='<SheetSection> = Section + Card variant="flat" of Rows'>
+            <div className="w-[28rem]">
+              <SheetSection
+                action={
+                  <Button size="xs" variant="ghost">
+                    Add a domain
+                  </Button>
+                }
+                part="domains"
+                title="Your domains"
+              >
+                <SheetRow
+                  end={<Face tone="ok" word="Live" />}
+                  more={<MoreButton />}
+                  name="shop.example.com"
+                  sub="Points at storefront"
+                />
+                <SheetRow
+                  end={<Face tone="busy" word="Checking" />}
+                  more={<MoreButton />}
+                  name="www.example.com"
+                  sub="Waiting for its DNS record"
+                />
+              </SheetSection>
+            </div>
+          </Specimen>
+          <Specimen label="<Section count action>">
+            <div className="w-[28rem]">
+              <Section
+                action={
+                  <Button size="xs" variant="ghost">
+                    Add access
+                  </Button>
+                }
+                count={3}
+                title="People"
+              >
+                <Card variant="flat">
+                  <Row
+                    lead={<PersonAvatar name="Petra Malá" size={32} />}
+                    line="Owner"
+                    title="Petra Malá"
+                  />
+                </Card>
+              </Section>
+            </div>
+          </Specimen>
+          <Specimen label="<SettingsSection> = SectionHeader + rows">
+            <div className="w-[36rem]">
+              <SettingsSection
+                headerAction={
+                  <Button size="xs" variant="ghost">
+                    Restore defaults
+                  </Button>
+                }
+                title="Appearance"
+              >
+                <SettingsRow
+                  control={<Switch aria-label="Reduce motion" defaultChecked />}
+                  description="Rows and panels arrive without moving."
+                  title="Reduce motion"
+                />
+              </SettingsSection>
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock title="Chosen · PageHeader: one piece on every page">
+        <SpecimenGrid>
+          <Specimen label="<PageHeader title count actions>">
+            <div className="w-[44rem]">
+              <PageHeader
+                actions={<Button size="sm">Invite people</Button>}
+                count={3}
+                title="Team"
+              />
+            </div>
+          </Specimen>
+          <Specimen label="<PageHeader lead title line>">
+            <div className="w-[44rem]">
+              <PageHeader
+                lead={<PersonAvatar name="Petra Malá" size={64} />}
+                line="petra@example.com"
+                title="Petra Malá"
+              />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </div>
+  );
+}
+
 function CardsAndRows() {
   return (
     <SpecimenGrid>
-      <CensusSpecimen
-        entry={{
-          source: "apps/web/src/components/settings/settingsLayout.tsx",
-          uses: 55,
-          files: 8,
-        }}
-        label={`<SettingsRow ${specimenLabel({ title: "Reduce motion" })} description control>`}
-      >
-        <div className="w-[36rem]">
-          <SettingsRow
-            control={<Switch aria-label="Reduce motion" defaultChecked />}
-            description="Rows and panels arrive without moving."
-            title="Reduce motion"
-          />
-        </div>
-      </CensusSpecimen>
-      <CensusSpecimen
-        entry={{
-          source: "apps/web/src/components/zerops/primitives/FlatCard.tsx",
-          uses: 17,
-          files: 12,
-        }}
-        label="<FlatCard> holding <ZeropsGitChangeRow> ×2 (ZeropsGitChangeRow: 2 uses in 2 files)"
-      >
-        <div className="w-[32rem]">
-          <FlatCard>
-            <div className="divide-y divide-border px-4 py-1">
-              <ZeropsGitChangeRow
-                change={change(4, "Add the changelog page", "#4 · Fen")}
-                onOpen={noop}
-                project="Acme Docs"
-                repo="app"
-              />
-              <ZeropsGitChangeRow
-                change={change(5, "Index the docs for search", "#5 · Quinn")}
-                onOpen={noop}
-                project="Acme Docs"
-                repo="app"
-              />
-            </div>
-          </FlatCard>
-        </div>
-      </CensusSpecimen>
-      <CensusSpecimen
-        entry={{
-          source: "apps/web/src/components/zerops/addresses/AddressesSheetBits.tsx",
-          uses: 7,
-          files: 3,
-        }}
-        label="<SheetRow name sub end more> (in its <SheetSection> box)"
-      >
-        <div className="w-[28rem] rounded-xl border border-border/70 bg-card px-3.5">
-          <SheetRow
-            end={<Face tone="ok" word="Live" />}
-            more={<MoreButton />}
-            name="shop.example.com"
-            sub="Points at storefront"
-          />
-          <SheetRow
-            end={<Face tone="busy" word="Checking" />}
-            more={<MoreButton />}
-            name="www.example.com"
-            sub="Waiting for its DNS record"
-          />
-        </div>
-      </CensusSpecimen>
       <CensusSpecimen
         entry={{ source: "apps/web/src/components/chat/DetailRow.tsx", uses: 5, files: 3 }}
         label="<DetailRow tone title time> (the working card's detail)"
@@ -243,18 +387,6 @@ function CardsAndRows() {
         </ul>
       </CensusSpecimen>
       <CensusSpecimen
-        entry={{
-          source: "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
-          uses: 3,
-          files: 2,
-        }}
-        label="<ZeropsOperationCard operation> (a deploy in the conversation)"
-      >
-        <div className="w-[36rem]">
-          {DEPLOY === undefined ? null : <ZeropsOperationCard operation={DEPLOY} />}
-        </div>
-      </CensusSpecimen>
-      <CensusSpecimen
         entry={{ source: "apps/web/src/components/settings/ThemeSettings.tsx", uses: 3, files: 1 }}
         label="<ThemeLibraryCard theme isActive activeModes>"
       >
@@ -267,37 +399,6 @@ function CardsAndRows() {
             theme={STANDARD_THEME_CARDS[0]!}
           />
         </div>
-      </CensusSpecimen>
-      <CensusSpecimen
-        entry={{
-          source: "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-          uses: 2,
-          files: 2,
-        }}
-        label="<SidebarZeropsTree> (the menu's project row and Mate rows)"
-      >
-        <SidebarProvider className="block min-h-0">
-          <aside
-            className="w-[435px] border border-border bg-sidebar text-sidebar-foreground"
-            data-sidebar="sidebar"
-          >
-            <SidebarContent>
-              <div className="ps-2.25 pe-2 pt-3 pb-1">
-                <SidebarZeropsTree
-                  activeProjectId={KIT_MENU_ACTIVE}
-                  candidates={KIT_MENU_MATES}
-                  complete
-                  getActivity={(entry) => KIT_MENU_ACTIVITY.get(entry.project.id)}
-                  getCrew={() => KIT_NO_CREW}
-                  getMateActions={kitMateActions}
-                  onBrowseProjects={noop}
-                  onSelect={noop}
-                  timestampFormat="24-hour"
-                />
-              </div>
-            </SidebarContent>
-          </aside>
-        </SidebarProvider>
       </CensusSpecimen>
       <CensusSpecimen
         entry={{ source: "apps/web/src/components/zerops/ZeropsMateCard.tsx", uses: 2, files: 1 }}
@@ -382,13 +483,18 @@ export default defineKitSection({
   id: "home-made-cards-rows",
   title: "Home-made cards and rows",
   purpose:
-    "13 home-made card and row looks in 35 files, most used first; the kit's Card, and its Sidebar's menu rows, stand for them.",
+    "The kit's Row, Card, Section and PageHeader first; then the card and row looks still home-made, most used first.",
   group: "Home-made",
   kind: "Containers",
   source: "apps/web/src/components",
   render: () => (
     <KitViewer>
-      <CardsAndRows />
+      <div className="flex flex-col gap-10">
+        <Chosen />
+        <SpecimenBlock title="Still home-made">
+          <CardsAndRows />
+        </SpecimenBlock>
+      </div>
     </KitViewer>
   ),
 });
