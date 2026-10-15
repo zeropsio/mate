@@ -926,7 +926,7 @@ describe("the one question after the first merge", () => {
 
   it("asks where the code should run, with an equal button for each tier and a Not now", () => {
     const text = textOf(render(FIRST, [changed("a.ts")], asking));
-    expect(text).toContain("Your code is on main. Where should it run?");
+    expect(text).toContain("Your code is on main. No stage or production runs it yet");
     expect(text).toContain("Add stage");
     expect(text).toContain("Add production");
     expect(text).toContain("Not now");
@@ -942,7 +942,7 @@ describe("the one question after the first merge", () => {
       { ...asking, addable: { stage: false, production: false } },
     ],
   ])("is not asked when %s", (_name, pull, over) => {
-    expect(textOf(render(pull, [changed("a.ts")], over))).not.toContain("Where should it run?");
+    expect(textOf(render(pull, [changed("a.ts")], over))).not.toContain("runs it yet");
   });
 });
 

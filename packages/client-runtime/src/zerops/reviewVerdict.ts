@@ -677,8 +677,14 @@ function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined 
     ] as const
   ).flatMap(([tier, offered, label]) => (offered ? [{ tier, label }] : []));
   if (options.length === 0) return undefined;
+  // What runs it, as it is: the Mate's preview runs its own copy for trying it out, never the
+  // stage (the onboarding run asked "Where should it run?" beside "Your recipe box is online").
+  const base = input.pull.baseBranch;
+  const preview = `${input.mateName}'s preview is only for trying it out.`;
   return {
-    text: `Your code is on ${input.pull.baseBranch}. Where should it run?`,
+    text: input.downstream.stage
+      ? `Your code is on ${base} and the stage picks it up. No production runs it yet; ${preview}`
+      : `Your code is on ${base}. No stage or production runs it yet; ${preview}`,
     options,
     dismiss: "Not now",
   };
