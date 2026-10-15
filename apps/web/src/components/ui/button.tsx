@@ -80,7 +80,8 @@ const inlineButtonVariants = cva(
     defaultVariants: { tone: "default" },
     variants: {
       tone: {
-        default: "text-foreground",
+        /** An action word in a line of text: blue acts. */
+        default: "text-primary",
         muted: "text-muted-foreground hover:text-foreground",
         destructive: "text-destructive/80 hover:text-destructive",
         /** Opens a menu from inside a sentence; the dotted underline marks it as a choice. */
@@ -91,7 +92,10 @@ const inlineButtonVariants = cva(
   },
 );
 
-/** An inline text action that keeps the size of the surrounding text and underlines on hover. */
+/**
+ * A word that acts inside a sentence: it keeps the size of the text around it, is blue, and
+ * underlines on hover. A press that stands on its own is a Button.
+ */
 export function InlineButton({
   className,
   tone,

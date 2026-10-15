@@ -320,7 +320,7 @@ export function CrewSetup(props: CrewSetupProps) {
         )}
         {!drafted ? (
           <span className="flex items-center gap-1.5">
-            <CrewPress disabled label={CREW_SETUP_WORDS.start} size="view" />
+            <CrewPress disabled label={CREW_SETUP_WORDS.start} size="md" />
             {members === null ? null : (
               <span className="ms-1.5 text-line leading-4.5 text-muted-foreground">
                 {CREW_SETUP_WORDS.pickFirst}
@@ -349,13 +349,13 @@ export function CrewSetup(props: CrewSetupProps) {
                 }
                 label={CREW_SETUP_WORDS.start}
                 onPress={() => void start()}
-                size="view"
+                size="md"
               />
               <CrewPress
                 label={CREW_VIEW_WORDS.cancel}
                 onPress={props.onClose}
-                size="view"
-                tone="muted"
+                size="md"
+                variant="ghost"
               />
             </span>
           </>

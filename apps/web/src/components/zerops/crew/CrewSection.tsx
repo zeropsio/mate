@@ -78,12 +78,7 @@ export function CrewSectionEmpty({
       </p>
       {lock === null ? (
         <div className="mt-5">
-          <CrewPress
-            label={CREW_SET_UP_WORD}
-            line={CREW_SET_UP_LINE}
-            onPress={onSetUp}
-            size="view"
-          />
+          <CrewPress label={CREW_SET_UP_WORD} line={CREW_SET_UP_LINE} onPress={onSetUp} size="md" />
         </div>
       ) : (
         // Not the viewer's to set up: why, as the state's own line, and the one way out as its press.
@@ -96,10 +91,10 @@ export function CrewSectionEmpty({
             {crewLockWords(lock.ownership)}
           </p>
           <CrewPress
-            tone="quiet"
+            variant="secondary"
             label={CREW_LOCK_ACTION}
             onPress={() => onSignIn(lock)}
-            size="view"
+            size="md"
           />
         </div>
       )}

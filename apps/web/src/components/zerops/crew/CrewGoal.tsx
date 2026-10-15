@@ -152,9 +152,9 @@ function GoalForm({
             disabled={blocked}
             label={CREW_VIEW_WORDS.save}
             onPress={() => void submit()}
-            size="view"
+            size="md"
           />
-          <CrewPress label={CREW_VIEW_WORDS.cancel} onPress={onClose} size="view" tone="muted" />
+          <CrewPress label={CREW_VIEW_WORDS.cancel} onPress={onClose} size="md" variant="ghost" />
         </span>
       </CrewViewFoot>
     </>

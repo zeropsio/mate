@@ -36,7 +36,7 @@ export function CrewWaiting(props: {
             disabled={props.onRemove === null}
             label={CREW_WAITING_REMOVE}
             onPress={() => props.onRemove?.(member.handle)}
-            tone="muted"
+            variant="ghost"
           />
         </div>
       ))}

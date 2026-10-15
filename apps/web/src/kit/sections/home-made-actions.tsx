@@ -107,25 +107,6 @@ function ActionSpecimens() {
       </CensusLook>
 
       <CensusLook
-        files={9}
-        name="CrewPress"
-        note="crew-press: the crew's filled and word buttons"
-        source={CREW_PARTS}
-        uses={20}
-      >
-        {(["primary", "quiet", "muted", "failed"] as const).flatMap((tone) =>
-          (["row", "view"] as const).map((size) => (
-            <Specimen key={`${tone}-${size}`} label={specimenLabel({ tone, size })}>
-              <CrewPress label="Start the run" onPress={noop} size={size} tone={tone} />
-            </Specimen>
-          )),
-        )}
-        <Specimen label={specimenLabel({ disabled: true })}>
-          <CrewPress disabled label="Start the run" />
-        </Specimen>
-      </CensusLook>
-
-      <CensusLook
         files={5}
         name="Overview buttons"
         note="ov-btn, in index.css"

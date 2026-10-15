@@ -319,8 +319,8 @@ export function CrewStartBody(props: {
         <CrewPress
           label={CREW_RUN_WORDS.cancel}
           onPress={props.onCancel}
-          size="view"
-          tone="muted"
+          size="md"
+          variant="ghost"
         />
         <CrewPress
           disabled={!props.canAct || command === null}
@@ -328,7 +328,7 @@ export function CrewStartBody(props: {
           onPress={() => {
             if (command !== null) props.onStart(command);
           }}
-          size="view"
+          size="md"
         />
       </Foot>
     </>
@@ -420,8 +420,8 @@ export function CrewResumeBody(props: {
         <CrewPress
           label={CREW_RUN_WORDS.cancel}
           onPress={props.onCancel}
-          size="view"
-          tone="muted"
+          size="md"
+          variant="ghost"
         />
         <CrewPress
           disabled={!props.canAct || command === null}
@@ -429,7 +429,7 @@ export function CrewResumeBody(props: {
           onPress={() => {
             if (command !== null) props.onResume(command);
           }}
-          size="view"
+          size="md"
         />
       </Foot>
     </>

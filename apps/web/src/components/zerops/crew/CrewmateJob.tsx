@@ -472,9 +472,9 @@ function JobForm({
             disabled={!ready}
             label={!isApplied && crewApplied ? CREW_JOB_WORDS.add : CREW_VIEW_WORDS.save}
             onPress={() => void submit()}
-            size="view"
+            size="md"
           />
-          <CrewPress label={CREW_VIEW_WORDS.cancel} onPress={onClose} size="view" tone="muted" />
+          <CrewPress label={CREW_VIEW_WORDS.cancel} onPress={onClose} size="md" variant="ghost" />
           <span className="grow" />
           {isApplied && target.handle !== null ? (
             <CrewPress
@@ -483,8 +483,8 @@ function JobForm({
               onPress={() => {
                 if (target.handle !== null) onRemove(target.handle);
               }}
-              size="view"
-              tone="failed"
+              size="md"
+              variant="destructive"
             />
           ) : null}
         </span>

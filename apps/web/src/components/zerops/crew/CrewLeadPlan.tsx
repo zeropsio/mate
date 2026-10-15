@@ -183,7 +183,7 @@ export function CrewLeadPlanBlock({
               label={CREW_PLAN_VERBS.drop}
               line={CREW_PLAN_LINES.drop}
               onPress={presses.drop}
-              tone={presses.start === null ? "primary" : "quiet"}
+              variant={presses.start === null ? "primary" : "secondary"}
             />
           )}
         </div>
