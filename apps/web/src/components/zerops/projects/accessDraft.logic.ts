@@ -104,8 +104,14 @@ export function draftView(input: DraftInput): ProjectPeopleView {
     owners: {},
     pictures: input.pictures,
     viewerUserId: null,
-    // Whoever makes the project chooses who reaches it: Zerops takes the list with the creation.
-    viewer: { roleCode: "OWNER", membershipId: input.creator?.membershipId ?? "" },
+    // Whoever makes the project chooses who reaches it: Zerops takes the list with the creation,
+    // its creator being its owner. An organization owner's or admin's access there is changed only
+    // by an organization owner, as on a project that exists: a creator below them, a Developer
+    // too, brings people in as an admin does and leaves the owners' and admins' chips as they are.
+    viewer: {
+      roleCode: roleAtLeast(creatorMember?.roleCode, "OWNER") ? "OWNER" : "ADMIN",
+      membershipId: input.creator?.membershipId ?? "",
+    },
   });
   if (view.kind !== "people") return view;
   const chosen = (key: string) => input.list.some((entry) => entry.clientUserId === key);
