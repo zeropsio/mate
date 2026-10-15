@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { draftHeroProjectName } from "./DraftHeroHeadline.logic";
+import { draftHeroNoProject, draftHeroProjectName } from "./DraftHeroHeadline.logic";
 
 describe("draftHeroProjectName", () => {
   it.each([
@@ -31,4 +31,21 @@ describe("draftHeroProjectName", () => {
   ])("$name", ({ mateProject, activeProjectTitle, expected }) => {
     expect(draftHeroProjectName({ mateProject, activeProjectTitle })).toBe(expected);
   });
+});
+
+describe("draftHeroNoProject", () => {
+  it.each([
+    {
+      role: "a role that may create projects",
+      may: true,
+      words: "Add a project to start",
+      door: true,
+    },
+    { role: "a role that may not", may: false, words: "No project to start in yet", door: false },
+  ])(
+    "With no project to pick, $role is offered New project only where it may make one",
+    ({ may, words, door }) => {
+      expect(draftHeroNoProject(may)).toEqual({ words, offersNewProject: door });
+    },
+  );
 });

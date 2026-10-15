@@ -36,7 +36,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateMark } from "../MateMark";
 import { MateFace } from "../zerops/primitives";
 import { mateFaceFor } from "~/zerops/agentActivity";
-import { draftHeroProjectName } from "./DraftHeroHeadline.logic";
+import { draftHeroNoProject, draftHeroProjectName } from "./DraftHeroHeadline.logic";
 
 interface DraftHeroHeadlineProps {
   readonly activeProjectRef: ScopedProjectRef | null;
@@ -75,6 +75,7 @@ export function DraftHeroHeadline({
   const nowMs = useNowMs();
   const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
   const roleOffered = useRoleOffers();
+  const noProject = draftHeroNoProject(roleOffered.newProject);
 
   const environmentLabelById = useMemo(
     () =>
@@ -198,6 +199,8 @@ export function DraftHeroHeadline({
         ) : null}
       </MenuPopup>
     </Menu>
+  ) : !noProject.offersNewProject ? (
+    <span>{projectName ?? "No project yet"}</span>
   ) : (
     <button
       type="button"
@@ -214,7 +217,7 @@ export function DraftHeroHeadline({
   // announced phrase.
   const projectSelectorText = shouldShowProjectMenu
     ? (selectorLabel ?? "Choose a project")
-    : (projectName ?? "Add a project");
+    : (projectName ?? (noProject.offersNewProject ? "Add a project" : "No project yet"));
   const headingLabel = hasResolvedProject
     ? chiefAsks !== undefined
       ? chiefAsks
@@ -227,7 +230,7 @@ export function DraftHeroHeadline({
             : `What should ${mate.name} do on ${projectSelectorText}?`
     : canChooseProject
       ? `${projectSelectorText} to start`
-      : "Add a project to start";
+      : noProject.words;
 
   return (
     <div className="flex flex-col items-center gap-5">
@@ -266,7 +269,7 @@ export function DraftHeroHeadline({
         ) : canChooseProject ? (
           <>{projectSelector} to start</>
         ) : (
-          <>Add a project to start</>
+          <>{noProject.words}</>
         )}
       </h1>
     </div>
