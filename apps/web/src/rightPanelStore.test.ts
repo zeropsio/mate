@@ -2,6 +2,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { quotaStorage } from "./lib/__fixtures__/quotaStorage";
 import { DROPPED_RIGHT_PANEL_KINDS } from "./rightPanelKinds";
 import {
   migratePersistedRightPanelState,
@@ -865,6 +866,26 @@ describe("right panel persistence", () => {
     expect(useRightPanelStore.getState().byThreadKey).toStrictEqual(byThreadKey);
     const stored: unknown = JSON.parse(values.get(key) ?? "null");
     expect(stored).toStrictEqual({ state: { byThreadKey }, version: expect.any(Number) });
+  });
+});
+
+describe("a full localStorage", () => {
+  afterEach(() => {
+    closeAccountLifetime();
+    vi.unstubAllGlobals();
+  });
+
+  it("a full localStorage never crashes the app", () => {
+    vi.stubGlobal("window", { localStorage: quotaStorage(0) });
+    openAccountLifetime("panel-test");
+
+    expect(() => useRightPanelStore.getState().open(refA, "diff")).not.toThrow();
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "diff",
+      surfaces: [{ id: "diff", kind: "diff" }],
+    });
   });
 });
 

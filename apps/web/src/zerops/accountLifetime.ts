@@ -1,3 +1,5 @@
+import { writeBrowserStorage } from "../lib/storage";
+
 /** One verified account owns one renderer lifetime. Network results from a closed
  * lifetime must never publish into a later account's stores. */
 let accountId: string | null = null;
@@ -76,12 +78,24 @@ export const accountLocalStorage = {
     const scoped = accountStorageKey(key);
     return scoped === null ? null : window.localStorage.getItem(scoped);
   },
-  setItem(key: string, value: string): void {
+  /** Whether the value landed: a full origin skips it. */
+  setItem(key: string, value: string): boolean {
     const scoped = accountStorageKey(key);
-    if (scoped !== null) window.localStorage.setItem(scoped, value);
+    return scoped !== null && writeBrowserStorage(window.localStorage, scoped, value);
   },
   removeItem(key: string): void {
     const scoped = accountStorageKey(key);
     if (scoped !== null) window.localStorage.removeItem(scoped);
+  },
+  /** The open account's keys, unscoped. */
+  keys(): string[] {
+    const prefix = accountStorageKey("");
+    if (prefix === null) return [];
+    const keys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(prefix)) keys.push(key.slice(prefix.length));
+    }
+    return keys;
   },
 };

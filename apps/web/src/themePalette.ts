@@ -1,3 +1,4 @@
+import { writeBrowserStorage } from "./lib/storage";
 import * as Schema from "effect/Schema";
 import "culori/css";
 import { converter, parse } from "culori/fn";
@@ -1091,7 +1092,11 @@ function saveCustomThemes(
 ): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(storedThemes));
+    writeBrowserStorage(
+      window.localStorage,
+      CUSTOM_THEMES_STORAGE_KEY,
+      JSON.stringify(storedThemes),
+    );
     customThemeLibrarySnapshot = { status: "ready", storedThemes, themes };
   } catch (cause) {
     throw new ThemeLibraryStorageError({

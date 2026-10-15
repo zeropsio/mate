@@ -1,4 +1,5 @@
 /** Cleanup debt survives a renderer crash, scoped to the account that minted it. */
+import { writeBrowserStorage } from "../lib/storage";
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import {
   makeThrowawayDebt,
@@ -18,7 +19,7 @@ export function accountThrowawayDebt(client: Pick<ZeropsApiClient, "session">): 
   const keyOf = (key: string) => `mate:account:${encodeURIComponent(userId)}:${key}`;
   const debt = makeThrowawayDebt({
     getItem: (key) => window.localStorage.getItem(keyOf(key)),
-    setItem: (key, value) => window.localStorage.setItem(keyOf(key), value),
+    setItem: (key, value) => writeBrowserStorage(window.localStorage, keyOf(key), value),
     removeItem: (key) => window.localStorage.removeItem(keyOf(key)),
   });
   accounts.set(userId, debt);

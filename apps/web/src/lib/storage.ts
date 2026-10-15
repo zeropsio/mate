@@ -13,6 +13,52 @@ export interface DeferredStorage<TValue> {
   flush: () => void;
 }
 
+const onFull = new Set<() => void>();
+
+/** Registers what an owner of a growing key frees when the origin's storage is full. */
+export function onBrowserStorageFull(evict: () => void): () => void {
+  onFull.add(evict);
+  return () => onFull.delete(evict);
+}
+
+const isQuotaExceeded = (error: unknown) =>
+  error instanceof Error &&
+  (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED");
+
+/**
+ * The only write into browser storage. What it keeps is a convenience, so a full origin never
+ * fails the app: the owners of growing keys free what they can, the write runs once more, and
+ * otherwise it is skipped. Returns whether the value landed. Other errors (storage blocked by
+ * policy) stay with the caller.
+ */
+export function writeBrowserStorage(
+  storage: Pick<Storage, "setItem">,
+  key: string,
+  value: string,
+): boolean {
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch (error) {
+    if (!isQuotaExceeded(error)) throw error;
+  }
+  for (const evict of onFull) {
+    try {
+      evict();
+    } catch (cause) {
+      console.error("Freeing browser storage failed", cause);
+    }
+  }
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch (error) {
+    if (!isQuotaExceeded(error)) throw error;
+    console.warn(`Browser storage is full; ${key} was not saved.`);
+    return false;
+  }
+}
+
 export function createMemoryStorage(): StateStorage {
   const store = new Map<string, string>();
   return {

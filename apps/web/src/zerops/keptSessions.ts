@@ -7,6 +7,7 @@
  * (`endKeptSessionsOf`) — each once no other tab of this origin holds that account open, since a
  * neighbouring tab still on the account uses them.
  */
+import { writeBrowserStorage } from "../lib/storage";
 import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
 import { endIssuedSession } from "@t3tools/client-runtime/data";
 import {
@@ -152,7 +153,7 @@ function keptUnder<T, E>(key: string, kind: KeptSessionKind<T, E>) {
   return makeKeptSessions(
     {
       getItem: () => window.localStorage.getItem(key),
-      setItem: (_name, value) => window.localStorage.setItem(key, value),
+      setItem: (_name, value) => writeBrowserStorage(window.localStorage, key, value),
       removeItem: () => window.localStorage.removeItem(key),
     },
     nowEpochMs,

@@ -1,3 +1,4 @@
+import { writeBrowserStorage } from "../lib/storage";
 import { accountLocalStorage } from "./accountLifetime";
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
 
@@ -19,10 +20,8 @@ export const browserZeropsStorage: ZeropsStorageAdapter = {
   async set(key, value) {
     try {
       if (isSelection(key)) window.sessionStorage.setItem(key, value);
-      (isSession(key) || isSelection(key) ? window.localStorage : accountLocalStorage).setItem(
-        key,
-        value,
-      );
+      if (isSession(key) || isSelection(key)) writeBrowserStorage(window.localStorage, key, value);
+      else accountLocalStorage.setItem(key, value);
     } catch {
       /* A storage policy can make this session memory-only. */
     }
