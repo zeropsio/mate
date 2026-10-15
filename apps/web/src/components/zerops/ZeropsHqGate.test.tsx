@@ -62,6 +62,13 @@ describe("HqGateScreen", () => {
     expect(html).not.toContain("Start over");
   });
 
+  it("runs the setup's clock from when its record says it began", () => {
+    const html = screen({
+      birth: { kind: "running", step: "deploy", startedAt: Date.now() - 130_000 },
+    });
+    expect(html).toMatch(/2:1\d · usually about 5 min/u);
+  });
+
   it("tells anybody else whom to ask, and offers nothing", () => {
     const line = "An admin sets up Mate for this organization. Ask Ada.";
     const html = screen({ gate: { kind: "ask", line } });

@@ -148,6 +148,7 @@ function HqBirth({
         className="mt-3 w-full text-left"
         estimateMs={HQ_BIRTH_ESTIMATE_MS}
         label={`Setting up HQ for ${organizationName}`}
+        startedAtMs={birth.startedAt ?? null}
         steps={HQ_BIRTH_STEPS.map((step) => HQ_BIRTH_DOING[step])}
         view={
           birth.kind === "failed"

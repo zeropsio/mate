@@ -93,6 +93,8 @@ export interface HqBirthRecord {
   /** The sync that puts HQ's domain in place, followed until it ends. */
   readonly syncProcessId?: string | null;
   readonly attempt?: number;
+  /** When this setup began (epoch ms), for its progress row's clock; absent on older journals. */
+  readonly startedAt?: number;
   readonly stopped?: {
     readonly step: HqBirthStep;
     readonly reason: string;
@@ -168,12 +170,14 @@ export function hqImportYaml(input: {
   readonly birthId: string;
   /** The Zerops REST API Core reads with (`HQ_ZEROPS_API`). */
   readonly zeropsApi: string;
+  /** When the setup began, kept in the import's first record. */
+  readonly startedAt?: number;
 }): string {
   return [
     "project:",
     `  name: ${HQ_PROJECT_NAME}`,
     "  envVariables:",
-    `    ${HQ_BIRTH_RECORD_KEY}: ${JSON.stringify(birthSnapshot({ ...HQ_BIRTH_START, step: "services", importId: input.birthId }))}`,
+    `    ${HQ_BIRTH_RECORD_KEY}: ${JSON.stringify(birthSnapshot({ ...HQ_BIRTH_START, step: "services", importId: input.birthId, ...(input.startedAt === undefined ? {} : { startedAt: input.startedAt }) }))}`,
     "services:",
     "  - hostname: db",
     "    type: postgresql:single@18",
@@ -278,7 +282,8 @@ export async function runHqBirth(input: {
         throw new ImportUnanswered(IMPORT_UNANSWERED);
       } else {
         const tag = deps.newBirthId();
-        await advance({ importId: tag });
+        const startedAt = record.startedAt ?? deps.now();
+        await advance({ importId: tag, startedAt });
         // The project does not yet exist: its first record is embedded in this import itself.
         try {
           const { projectId } = await run(
@@ -286,7 +291,7 @@ export async function runHqBirth(input: {
               kind: "import-project",
               orgId,
               name: HQ_PROJECT_NAME,
-              yaml: hqImportYaml({ birthId: tag, zeropsApi: input.zeropsApi }),
+              yaml: hqImportYaml({ birthId: tag, zeropsApi: input.zeropsApi, startedAt }),
             },
             { orgId, unobserved: IMPORT_UNANSWERED },
           );

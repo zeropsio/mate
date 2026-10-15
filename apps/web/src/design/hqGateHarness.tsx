@@ -46,7 +46,7 @@ const GATE: Readonly<Record<string, Exclude<HqGate, { readonly kind: "open" }>>>
 };
 
 const BIRTH: Readonly<Record<string, HqBirthView>> = {
-  birth: { kind: "running", step: STEP },
+  birth: { kind: "running", step: STEP, startedAt: Date.now() - 130_000 },
   failed: {
     kind: "failed",
     step: "deploy",
