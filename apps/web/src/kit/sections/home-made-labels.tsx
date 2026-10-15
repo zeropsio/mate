@@ -13,10 +13,9 @@ import {
   connectionPhaseDotClassName,
   connectionPhasePingClassName,
 } from "~/components/ConnectionStatusDot";
-import { KeybindingPill } from "~/components/settings/KeybindingsSettings";
 import { CommandPaletteMetaDot } from "~/components/ThreadCommandSubtitle";
 import { MateDot } from "~/components/zerops/MateDot";
-import { KeyChip, MateFace } from "~/components/zerops/primitives";
+import { MateFace } from "~/components/zerops/primitives";
 import { PlaceDot } from "~/components/zerops/projects/ProjectCards";
 import { EnvDot } from "~/components/zerops/SidebarProductionChip";
 import { UrlChip } from "~/components/zerops/ZeropsOperationCard";
@@ -212,22 +211,6 @@ function LabelSpecimens() {
         <CensusComponent name="SkillChip" source="apps/web/src/components/chat/SkillInlineText.tsx">
           <Specimen label='skill "Deploy"'>
             <SkillChip rawText="$deploy" skill={{ name: "deploy", displayName: "Deploy" }} />
-          </Specimen>
-        </CensusComponent>
-      </CensusLook>
-
-      <CensusLook files={2} name="Key caps" note="a shortcut, beside the kit's Kbd" uses={2}>
-        <CensusComponent name="KeyChip" source={`${PRIMITIVES}/KeyChip.tsx`}>
-          <Specimen label="⌘K">
-            <KeyChip>⌘K</KeyChip>
-          </Specimen>
-        </CensusComponent>
-        <CensusComponent
-          name="KeybindingPill"
-          source="apps/web/src/components/settings/KeybindingsSettings.tsx"
-        >
-          <Specimen label={specimenLabel({ value: "mod+shift+k" })}>
-            <KeybindingPill value="mod+shift+k" />
           </Specimen>
         </CensusComponent>
       </CensusLook>

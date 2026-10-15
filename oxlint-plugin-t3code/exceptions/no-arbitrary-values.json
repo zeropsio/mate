@@ -968,14 +968,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/primitives/KeyChip.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Kbd> rounded-[var(--zerops-key-chip-radius)] in \"inline-flex min-h-5 items-center rounded-[var(--zerops-key-chip-radius)] border border-border bg-muted px-1.5 font-mono text-xs text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/primitives/MateFace.tsx",
     "kind": "Literal",
     "fingerprint": "<> fill-[var(--zerops-mate-face-ink)] in \"fill-[var(--zerops-mate-face-ink)]\"",

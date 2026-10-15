@@ -211,7 +211,8 @@ import {
   type ProjectReviewItem,
 } from "./SidebarProjectReview";
 import { SidebarSelectedBand, slideSelectedBandTo } from "./SidebarSelectedBand";
-import { KeyChip, MateFace } from "./primitives";
+import { Kbd } from "../ui/kbd";
+import { MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
 import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
 import {
@@ -4016,9 +4017,9 @@ function MateRowView<T extends RosterCandidate>({
               />
             </span>
             {numbers && number !== undefined ? (
-              <KeyChip className="absolute end-0 top-0.5" data-zerops-surface="sidebar-mate-number">
+              <Kbd className="absolute end-0 top-0.5" data-zerops-surface="sidebar-mate-number">
                 {String(number)}
-              </KeyChip>
+              </Kbd>
             ) : null}
           </span>
         }

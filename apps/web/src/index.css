@@ -1476,7 +1476,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-micro-label-opacity: 0.45;
   --zerops-chip-radius: 10px;
   --zerops-card-radius: 10px;
-  --zerops-key-chip-radius: 3px;
   --zerops-flat-card-border: transparent;
   --zerops-mint-panel: #e8f7ec;
   /* A Mate's colour: one of eight per agent, none of them the brand teal
@@ -1569,7 +1568,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-micro-label-opacity: 0.45;
     --zerops-chip-radius: 10px;
     --zerops-card-radius: 10px;
-    --zerops-key-chip-radius: 3px;
     --zerops-flat-card-border: rgba(255, 255, 255, 0.06);
     --zerops-mint-panel: #19261d;
     --zerops-mate-tint-coral: #b85f4b;

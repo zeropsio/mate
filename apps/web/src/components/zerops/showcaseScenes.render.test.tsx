@@ -15,14 +15,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { ZeropsOperationCard } from "./ZeropsOperationCard";
-import {
-  KeyChip,
-  LivenessLine,
-  MicroLabel,
-  MintPanel,
-  ProcessSteps,
-  STATUS_BADGE_TONE,
-} from "./primitives";
+import { LivenessLine, MicroLabel, MintPanel, ProcessSteps, STATUS_BADGE_TONE } from "./primitives";
 import { Badge } from "../ui/badge";
 
 /** A lifecycle snapshot as the feed's live answer. */
@@ -162,18 +155,11 @@ it("renders the complete primitive probe from existing showcase facts", () => {
     .flatMap((scene) => [
       renderToStaticMarkup(<MicroLabel>{scene.title}</MicroLabel>),
       renderToStaticMarkup(<MintPanel>{scene.title}</MintPanel>),
-      renderToStaticMarkup(<KeyChip>{scene.id}</KeyChip>),
     ])
     .join("\n");
   const markup = `${toneMarkup}\n${primitivesMarkup}\n${processMarkup}\n${livenessMarkup}`;
 
-  for (const primitive of [
-    "micro-label",
-    "mint-panel",
-    "process-steps",
-    "key-chip",
-    "liveness-line",
-  ]) {
+  for (const primitive of ["micro-label", "mint-panel", "process-steps", "liveness-line"]) {
     expect(markup).toContain(`data-zerops-primitive="${primitive}"`);
   }
   expect(toneProbes.map(({ tone }) => tone).sort()).toEqual(
