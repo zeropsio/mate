@@ -3,24 +3,29 @@ import { useEffect, useState, type ReactNode } from "react";
 import { SpecimenBlock, SpecimenGrid } from "../Specimen";
 
 /**
- * A home-made state section: one line counting what the app draws instead of the kit, then one
- * block per distinct look, each listing every place that look is defined.
+ * A state section: the chosen pattern first, then one line counting what the app still draws
+ * instead of it, and one block per distinct look, each listing every place that look is defined.
  */
 export function StateCensus({
   count,
   atom,
+  chosen,
   children,
 }: {
   /** "34 own definitions in 29 files, 8 looks". */
   readonly count: string;
   /** The kit atom these should have used. */
   readonly atom: string;
+  /** The chosen pattern in every state (`Chosen.tsx`), shown first. */
+  readonly chosen?: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-8">
+      {chosen}
       <p className="m-0 text-sm">
-        {count} <span className="text-muted-foreground">Kit atom: {atom}.</span>
+        <span className="font-medium">Home-made, still in the app:</span> {count}{" "}
+        <span className="text-muted-foreground">Kit atom: {atom}.</span>
       </p>
       {children}
     </div>

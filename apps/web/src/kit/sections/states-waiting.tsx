@@ -3,10 +3,8 @@ import { useState } from "react";
 
 import { RunLine } from "~/components/chat/RunChat";
 import { TimelineRowActivityCtx, TimelineRowCtx } from "~/components/chat/timelineContext";
-import { ChiefStage } from "~/components/zerops/chief/ChiefPage";
 import { ChiefSetupRowLine } from "~/components/zerops/chief/SidebarChiefRow";
 import { ZeropsBirthChecklist, ZeropsBirthLine } from "~/components/zerops/ZeropsBirthProgress";
-import { ZeropsEnvironmentCreation } from "~/components/zerops/ZeropsEnvironmentCreation";
 import { ComingBelow } from "~/components/zerops/ZeropsMateComingPage";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import { ZeropsOperationCard } from "~/components/zerops/ZeropsOperationCard";
@@ -15,9 +13,9 @@ import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
 import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
 import { CensusLook, StateCensus, StateFrame, useKitNowMs } from "../states/Census";
+import { ChosenProgress } from "../states/Chosen";
 import {
   birthProgress,
-  creationProgress,
   ROW_SHARED,
   ROW_WORKING,
   showcaseOperation,
@@ -68,21 +66,6 @@ function BirthChecklist() {
   return <ZeropsBirthChecklist nowMs={nowMs} progress={birthProgress("midway", nowMs)} />;
 }
 
-function Creation({ runningSeconds }: { readonly runningSeconds: number }) {
-  const nowMs = useKitNowMs();
-  // The import's start, fixed at the specimen's mount: its step's clock runs from there.
-  const [mountedAt] = useState(nowMs);
-  return (
-    <ZeropsEnvironmentCreation
-      name="Beviro CRM - production"
-      nowMs={nowMs}
-      onDismiss={() => {}}
-      progress={creationProgress(mountedAt, runningSeconds)}
-      tier="production"
-    />
-  );
-}
-
 function WorkingLine({ secondsAgo }: { readonly secondsAgo: number }) {
   const [startedAt] = useState(() => new Date(Date.now() - secondsAgo * 1000).toISOString());
   return (
@@ -123,12 +106,13 @@ function RunningOperation() {
 function WaitingCensus() {
   return (
     <StateCensus
-      atom="none: the kit has no progress or step list; Spinner is the nearest"
-      count="8 looks: 14 own waiting components in 12 files; 3 of the looks are inline and listed under Not shown."
+      atom="Progress, one row, on a StatusPage for a whole page"
+      chosen={<ChosenProgress />}
+      count="6 looks: 11 own waiting components in 10 files; 3 of the looks are inline and listed under Not shown."
     >
       <CensusLook
         name="Mate arrival stage: face, headline, steps below"
-        uses="13 sites in 7 files"
+        uses="12 sites in 6 files"
         places={[
           "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx:324 MateEmptyStateView",
           "apps/web/src/components/zerops/ZeropsMateComingPage.tsx:1076 ComingBelow",
@@ -136,7 +120,6 @@ function WaitingCensus() {
           "apps/web/src/components/zerops/ZeropsMateComingPage.tsx:185 ZeropsMateComingPage",
           "apps/web/src/components/zerops/ZeropsNewProjectComingPage.tsx:52 ZeropsNewProjectComingPage",
           "apps/web/src/components/zerops/ArrivalSwap.tsx:34 ArrivalSwap (its hand-over)",
-          "apps/web/src/components/zerops/chief/ChiefPage.tsx:107 ChiefStage",
         ]}
       >
         {AGES.map((age) => (
@@ -150,52 +133,19 @@ function WaitingCensus() {
             </StateFrame>
           </Specimen>
         ))}
-        <Specimen
-          label='<ChiefStage view={{ kind: "steps", setup: { phase: "running", step: "hq" } }} />'
-          source="apps/web/src/components/zerops/chief/ChiefPage.tsx"
-        >
-          <StateFrame size="page">
-            <ChiefStage
-              onAgain={() => {}}
-              onFinish={() => {}}
-              onSetUp={() => {}}
-              view={{
-                kind: "steps",
-                setup: { phase: "running", step: "hq", birthId: "b1", projectId: "p-chief" },
-              }}
-            />
-          </StateFrame>
-        </Specimen>
       </CensusLook>
 
       <CensusLook
         name="Ringed step list with durations (ProcessSteps)"
-        uses="11 sites in 6 files"
+        uses="8 sites in 5 files"
         places={[
           "apps/web/src/components/zerops/primitives/ProcessSteps.tsx:82 ProcessSteps",
-          "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx:131 ZeropsEnvironmentCreation",
           "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx:118 PressSteps",
           "apps/web/src/components/zerops/ZeropsOperationCard.tsx:664 ZeropsOperationCard",
           "apps/web/src/components/zerops/ZeropsToolResultCards.tsx:181",
           "apps/web/src/components/zerops/ZeropsBirthProgress.tsx:122 ZeropsBirthChecklist",
         ]}
       >
-        <Specimen
-          label="<ZeropsEnvironmentCreation /> · import just begun"
-          source="apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx"
-        >
-          <div className="w-[480px]">
-            <Creation runningSeconds={4} />
-          </div>
-        </Specimen>
-        <Specimen
-          label="<ZeropsEnvironmentCreation /> · import 9 min in"
-          source="apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx"
-        >
-          <div className="w-[480px]">
-            <Creation runningSeconds={9 * 60} />
-          </div>
-        </Specimen>
         <Specimen
           label="<ZeropsBirthChecklist /> · midway"
           source="apps/web/src/components/zerops/ZeropsBirthProgress.tsx"
@@ -282,7 +232,7 @@ export default defineKitSection({
   id: "home-made-waiting",
   title: "Waiting on a long operation",
   purpose:
-    "Every way the app shows a wait that runs for minutes: steps, clocks, bars and arrival pages.",
+    "The chosen progress row in every state, then every way the app still shows a wait that runs for minutes.",
   group: "Home-made",
   kind: "Feedback",
   source: "apps/web/src/kit/sections/states-waiting.tsx",
