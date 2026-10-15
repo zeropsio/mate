@@ -9,7 +9,6 @@
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { CrewTaskState } from "@t3tools/contracts";
 
@@ -171,6 +170,7 @@ export const seedV1Crew = (filename: string) =>
   Effect.gen(function* () {
     yield* runMigrations();
     const store = yield* makeCrewStore;
+    const sql = yield* SqlClient.SqlClient;
     yield* store.putDefinition({
       crew: "main",
       homeHost: "appdev",
@@ -251,20 +251,15 @@ export const seedV1Crew = (filename: string) =>
       endedAt: null,
     });
     const claim = (host: string, member: string, state: "held" | "requested") =>
-      store.updateClaim(host, () =>
-        Option.some({
-          host,
-          crew: "main",
-          member,
-          lane: member,
-          state,
-          requestedAt: at(10),
-          grantedBy: state === "held" ? "user-1" : null,
-          grantedAt: state === "held" ? at(11) : null,
-          expiresAt: null,
-          releasedAt: null,
-        }),
-      );
+      sql`
+        INSERT INTO crew_claim (
+          host, crew, member, lane, state, requested_at, granted_by, granted_at,
+          expires_at, released_at
+        ) VALUES (
+          ${host}, 'main', ${member}, ${member}, ${state}, ${at(10)},
+          ${state === "held" ? "user-1" : null}, ${state === "held" ? at(11) : null}, NULL, NULL
+        )
+      `;
     yield* claim("appdev", "ana", "held");
     yield* claim("stagedev", "cy", "requested");
     yield* store.putMemory({

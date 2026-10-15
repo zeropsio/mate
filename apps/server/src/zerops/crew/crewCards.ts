@@ -133,42 +133,6 @@ export const nudgeCard = (task: CardTask): string =>
       "or the lead can unblock you, report blocked with your question. Otherwise carry on.",
   ]);
 
-/** A dev server's restart shape: the port and full command the gate lets through (CONCEPT §3.3). */
-export interface DevServerShape {
-  readonly port: number;
-  readonly command: string;
-}
-
-/** A card without a task: its title line is its only heading. */
-const noticeCard = (title: string, text: string): string =>
-  [CREW_CARD_OPENER, title, text].join("\n");
-
-/** The claim turn after the person granted *Show on dev*. */
-export const claimStartCard = (input: {
-  readonly host: string;
-  readonly devServer: DevServerShape;
-  readonly workDir: string;
-}): string =>
-  noticeCard(
-    `Show your work on ${input.host}`,
-    `The person lets ${input.host}'s dev server run from your copy. Restart it with zerops_dev_server: ` +
-      `action=restart hostname=${input.host} port=${input.devServer.port} ` +
-      `processMatch="${input.devServer.command}" command="${input.devServer.command}" ` +
-      `workDir=${input.workDir}. Nothing else.`,
-  );
-
-/** The release turn: *Back to my tree*, a report, or a timeout. */
-export const claimReleaseCard = (input: {
-  readonly host: string;
-  readonly devServer: DevServerShape;
-}): string =>
-  noticeCard(
-    `Give ${input.host} back`,
-    `${input.host}'s dev server goes back to the person's tree. Restart it with zerops_dev_server: ` +
-      `action=restart hostname=${input.host} port=${input.devServer.port} ` +
-      `processMatch="${input.devServer.command}", no workDir. Nothing else.`,
-  );
-
 /**
  * The seam line a new stint opens with (PRD §4.5 *Seam lines*): the client
  * shows a stint's reason verbatim above its first card, in the person's

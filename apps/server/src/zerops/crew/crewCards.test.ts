@@ -2,9 +2,7 @@ import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
-  claimReleaseCard,
   carriedCard,
-  claimStartCard,
   continueCard,
   fixCard,
   resolveCard,
@@ -91,28 +89,6 @@ describe("crew cards", () => {
         "1 failing",
         "```",
         "Fix it in your copy, then report with crew_report.",
-      ].join("\n"),
-    ],
-    [
-      "show the copy on dev once the person granted it",
-      claimStartCard({
-        host: "appdev",
-        devServer: { port: 3000, command: "npm run dev" },
-        workDir: "/var/www/.crew/backend",
-      }),
-      [
-        CREW_CARD_OPENER,
-        "Show your work on appdev",
-        'The person lets appdev\'s dev server run from your copy. Restart it with zerops_dev_server: action=restart hostname=appdev port=3000 processMatch="npm run dev" command="npm run dev" workDir=/var/www/.crew/backend. Nothing else.',
-      ].join("\n"),
-    ],
-    [
-      "give dev back to the tree",
-      claimReleaseCard({ host: "appdev", devServer: { port: 3000, command: "npm run dev" } }),
-      [
-        CREW_CARD_OPENER,
-        "Give appdev back",
-        "appdev's dev server goes back to the person's tree. Restart it with zerops_dev_server: action=restart hostname=appdev port=3000 processMatch=\"npm run dev\", no workDir. Nothing else.",
       ].join("\n"),
     ],
   ])("%s", (_, text, expected) => {

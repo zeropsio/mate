@@ -24,7 +24,7 @@
  *   cannot rewrite a call (Codex) runs it too. A claim or release turn also
  *   runs its one supervisor command exactly as its card names it; no other
  *   command drives the supervisor (`zcp-devsup`).
- *   `zerops_dev_server` only in the after-land turn, in exactly its shape.
+ *   The `zerops_dev_server` tool is closed to a crewmate in every turn.
  * - **Readers and the lead:** no `Write`, `Edit` or `Bash`.
  * - **Refused roots:** the workspace's `.zcp` and `.mate`, `~/.claude`,
  *   `~/.codex`, `~/.t3`, `/proc`, and every `.git` internal.
@@ -51,7 +51,7 @@ export interface GateToolCall {
 }
 
 /** Which shaped turn this is; `work` is every ordinary turn. */
-export type GateTurn = "work" | "after-land" | "claim-start" | "claim-release";
+export type GateTurn = "work" | "claim-start" | "claim-release";
 
 export interface CrewGateMember {
   readonly handle: string;
@@ -445,34 +445,16 @@ const decideCommand = (ctx: LiveGateContext, args: Record<string, unknown>): Gat
 };
 
 /**
- * `zerops_dev_server` exists for the after-land turn only (CONCEPT §3.3): its
- * restart runs from the tree (no `workDir`), names the port and the full
- * command, and takes no `logFile` of its own. A claim or release turn moves
- * the dev server with its one supervisor command instead (`claimTurnCommand`).
+ * `zerops_dev_server` is the person's (CONCEPT §3.3): a claim or release turn moves the dev
+ * server with its one supervisor command instead (`claimTurnCommand`).
  */
-const decideDevServer = (ctx: LiveGateContext, args: Record<string, unknown>): GateDecision => {
+const decideDevServer = (ctx: LiveGateContext): GateDecision => {
   const { lane } = ctx.member;
   if (ctx.turn === "work" || lane === undefined) {
     return deny("The dev server is the person's; ask to show your work on dev instead.");
   }
-  const expected = ctx.devServer;
-  if (expected === undefined) return deny("The dev server's command is not known yet.");
-  const claimCommand = claimTurnCommand(ctx, lane);
-  if (claimCommand !== undefined) return deny(`Run exactly: ${claimCommand}`);
-  const shape =
-    args.action === "restart" &&
-    args.hostname === lane.host &&
-    args.port === expected.port &&
-    args.processMatch === expected.command &&
-    (args.command === undefined || args.command === expected.command) &&
-    args.logFile === undefined &&
-    args.workDir === undefined;
-  return shape
-    ? allow
-    : deny(
-        `Restart exactly: action=restart hostname=${lane.host} port=${expected.port} ` +
-          `processMatch="${expected.command}" and no workDir.`,
-      );
+  if (ctx.devServer === undefined) return deny("The dev server's command is not known yet.");
+  return deny(`Run exactly: ${claimTurnCommand(ctx, lane)}`);
 };
 
 const decideZerops = (ctx: LiveGateContext, tool: string, input: unknown): GateDecision => {
@@ -481,7 +463,7 @@ const decideZerops = (ctx: LiveGateContext, tool: string, input: unknown): GateD
   const underClaim = ctx.holdsClaim && ctx.member.lane !== undefined;
   switch (tool) {
     case "zerops_dev_server":
-      return decideDevServer(ctx, args);
+      return decideDevServer(ctx);
     case "zerops_verify":
       return underClaim && args.serviceHostname === ctx.member.lane?.host
         ? allow
