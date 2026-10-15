@@ -17,7 +17,6 @@ import { birthCopyServices } from "@t3tools/client-runtime/zerops/birthProgress"
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef } from "react";
 
-import { arrivalHeaderFace } from "~/zerops/mateArrival";
 import { mateOpeningPhrase } from "~/zerops/mateComing";
 import { dismissCreation, startAddOver, tryCreationAgain, useCreation } from "~/zerops/creations";
 import {
@@ -159,20 +158,7 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
         };
 
   return (
-    <MateComingFrame
-      header={
-        <MateComingHeader
-          face={arrivalHeaderFace({
-            kind: view.kind,
-            over: false,
-            connected: false,
-            // Its birth runs in this tab: nobody has signed it in yet.
-            arriving: true,
-          })}
-          mate={{ ...mate, projectUrl: undefined }}
-        />
-      }
-    >
+    <MateComingFrame header={<MateComingHeader mate={{ ...mate, projectUrl: undefined }} />}>
       <MateEmptyStateView
         coming={view}
         // Landed on from the press: the dialog is gone, and the headline takes the focus.

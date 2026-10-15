@@ -36,7 +36,7 @@ import {
 } from "~/components/zerops/ZeropsAgentSignIn.logic";
 
 import { mateFaceFor } from "./agentActivity";
-import { mateComingHeadlineClauses, type MateViewKind } from "./mateComing";
+import { mateComingHeadlineClauses } from "./mateComing";
 import { mateQuestion, type ZeropsMateIdentity } from "./mateIdentities";
 
 type Named = Pick<ZeropsMateIdentity, "name" | "project">;
@@ -185,32 +185,6 @@ export function arrivalFace(
     case "question":
       return mateFaceFor(connected, undefined, { arriving });
   }
-}
-
-/**
- * The face the header wears over a Mate's arrival, through the same rule (`mateFaceFor`): waking
- * while it comes up and arrives, asleep where it did not come or its link is not made, at rest
- * once it has arrived.
- */
-export function arrivalHeaderFace(input: {
-  /** What the stage says of it (`MateEmptyComing.kind`). */
-  readonly kind: MateViewKind;
-  /** It is up: the stage hands over. */
-  readonly over: boolean;
-  readonly connected: boolean;
-  /** It is still arriving (`mateArriving`). */
-  readonly arriving: boolean;
-}): MateMarkState {
-  const still = !input.over;
-  return mateFaceFor(input.connected, undefined, {
-    life:
-      still && input.kind === "coming"
-        ? "coming"
-        : still && input.kind === "failed"
-          ? "failed"
-          : "up",
-    arriving: input.arriving,
-  });
 }
 
 // ── The steps while it comes up ──────────────────────────────────────────────────────────────

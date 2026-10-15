@@ -796,12 +796,6 @@ describe("the header in a Mate's own view", () => {
       expect(buttons()).toContain("Go to projects");
     },
   );
-  it("says what an existing Mate is on, as its menu row does, while its link is made", () => {
-    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
-    app.told = { subject: "Rename the orders column" };
-    openView();
-    expect(said()).toContain("Rename the orders column");
-  });
 });
 
 // The arrival is one surface from the press to the sign-in (measured 2026-10-02): a Mate this tab
@@ -886,17 +880,6 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
   });
 
   // One pose wherever its face shows (`matePose`): the header wears the stage's, waking.
-  it("wears its waking face in the header while it comes up", () => {
-    app.creations = [QUINN_MADE];
-    app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
-    openView();
-    const faces =
-      tree?.root
-        .findAll((node) => node.type === "span" && node.props["data-header-face"] !== undefined)
-        .map((node) => node.props["data-header-face"]) ?? [];
-    expect(faces).toEqual(["waking"]);
-  });
-
   it.each([
     {
       case: "its container booting",

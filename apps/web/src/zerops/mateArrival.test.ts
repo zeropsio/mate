@@ -5,7 +5,6 @@ import { signInPhrase } from "~/components/zerops/ZeropsAgentSignIn.logic";
 
 import {
   arrivalFace,
-  arrivalHeaderFace,
   arrivalHeadline,
   arrivalSentence,
   arrivalSteps,
@@ -627,55 +626,6 @@ describe("the stage's words", () => {
     { case: "signed in, asked nothing yet", kind: "question", arriving: false, face: "idle" },
   ] as const)("$case: $face", ({ kind, arriving, face }) => {
     expect(arrivalFace(kind, true, arriving)).toBe(face);
-  });
-});
-
-// The header over a Mate's arrival wears the stage's pose (`mateFaceFor`): waking while it comes up
-// and arrives, asleep where it did not come, at rest once it has arrived.
-describe("arrivalHeaderFace", () => {
-  it.each([
-    {
-      case: "coming up",
-      kind: "coming",
-      over: false,
-      arriving: true,
-      connected: false,
-      face: "waking",
-    },
-    {
-      case: "up, waiting for its sign-in",
-      kind: "coming",
-      over: true,
-      arriving: true,
-      connected: true,
-      face: "waking",
-    },
-    {
-      case: "up, signed in once (signed out since or not)",
-      kind: "coming",
-      over: true,
-      arriving: false,
-      connected: true,
-      face: "idle",
-    },
-    {
-      case: "did not come",
-      kind: "failed",
-      over: false,
-      arriving: true,
-      connected: false,
-      face: "sleep",
-    },
-    {
-      case: "its link not made",
-      kind: "reaching",
-      over: false,
-      arriving: false,
-      connected: false,
-      face: "sleep",
-    },
-  ] as const)("$case: $face", ({ case: _case, face, ...input }) => {
-    expect(arrivalHeaderFace(input)).toBe(face);
   });
 });
 
