@@ -434,7 +434,7 @@ function agentSwitchNote(role: ZeropsEnvironmentRole): string {
   return "A Zerops Mate container with a coding agent you can talk to.";
 }
 
-function FieldError({ children }: { readonly children: string }) {
+export function FieldError({ children }: { readonly children: string }) {
   return (
     <p className="text-xs text-[var(--zerops-status-failed-text)]" role="alert">
       {children}
