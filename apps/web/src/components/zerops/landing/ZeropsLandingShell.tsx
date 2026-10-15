@@ -178,7 +178,7 @@ export function ZeropsHandoverActions({
   readonly nativeSignIn?:
     | {
         readonly busy: boolean;
-        /** A device login's code, the one the Zerops page shows beside the request. */
+        /** A device login's code, the one Zerops's approval page shows, when it shows one. */
         readonly userCode?: string | null;
         readonly error: string | null;
         readonly onCancel: () => void;
@@ -196,7 +196,7 @@ export function ZeropsHandoverActions({
         <p className="min-h-5 text-sm text-muted-foreground" aria-live="polite">
           {nativeSignIn.userCode ? (
             <>
-              Zerops shows{" "}
+              If Zerops shows a code, it's{" "}
               <span className="font-mono text-foreground">{nativeSignIn.userCode}</span>
             </>
           ) : null}
