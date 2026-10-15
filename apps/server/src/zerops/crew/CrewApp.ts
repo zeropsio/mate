@@ -9,8 +9,13 @@
  * Every `ctl` verb is idempotent: `run` of an entry already running as asked starts nothing.
  *
  * A container restart keeps the supervisor's entries; a redeploy drops them, and the engine adds
- * them again once the redeploy ends. A dev service whose dev setup runs no supervisor runs no
- * crew app: its dev setup needs the supervisor first.
+ * them again once the redeploy ends.
+ *
+ * A dev service whose supervisor does not answer (its zcp has none yet, or its dev setup runs none)
+ * runs the app as before the supervisor, decided at each call: under `setsid`, so it leads its own
+ * session and process group, its output in `.crew/<handle>.run.log` and its pid in
+ * `.crew/<handle>.run.pid`, both beside the lane and outside every tree. Stop signals the whole
+ * group - the dev server and whatever it spawned - TERM first, KILL after five seconds.
  *
  * `CREW_PORT` is the crewmate's crew port, exported with its `env:` ahead of its *Run command*.
  *
@@ -30,7 +35,9 @@ import { laneEnvironment } from "./CrewChecks.ts";
 import {
   CrewGitError,
   CrewShell,
+  field,
   laneDirectory,
+  runFields,
   script,
   type CrewShellError,
   type ShellResult,
@@ -50,8 +57,7 @@ export interface AppRun extends AppLane {
 export type AppStatus =
   | { readonly state: Extract<CrewAppState, "running">; readonly pid: number }
   | { readonly state: Extract<CrewAppState, "stopped"> }
-  | { readonly state: "lane-missing" }
-  | { readonly state: "no-supervisor" };
+  | { readonly state: "lane-missing" };
 
 /** The supervisor's name for a crewmate's app; a handle fits its name rule behind the prefix. */
 export const appEntryName = (handle: string): string => `crew-${handle}`;
@@ -62,7 +68,13 @@ const CTL_UNKNOWN_NAME = 3;
 
 const LANE_MISSING = "crew-app-lane-missing";
 
+export const appLogPath = (handle: string): string => `${laneDirectory(handle)}.run.log`;
+export const appPidPath = (handle: string): string => `${laneDirectory(handle)}.run.pid`;
+
 const APP_SCRIPT_TIMEOUT = Duration.seconds(30);
+
+/** Seconds between TERM and KILL, in tenths polled by the stop script. */
+const STOP_GRACE_TENTHS = 50;
 
 /** One server of the supervisor's answer; only what the app's status needs. */
 const SupervisedServer = Schema.Struct({ status: Schema.String, pid: Schema.Number });
@@ -78,6 +90,20 @@ export interface CrewAppService {
 }
 
 export class CrewApp extends Context.Service<CrewApp, CrewAppService>()("t3/zerops/crew/CrewApp") {}
+
+/** Prints the running pid and exits when the pidfile names a live process. */
+const IF_RUNNING = (pidFile: string) =>
+  `if [ -f ${pidFile} ] && pid=$(cat ${pidFile}) && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then\n` +
+  `  printf 'state\\trunning\\npid\\t%s\\n' "$pid"; exit 0\n` +
+  `fi\n`;
+
+const toStatus = (out: ReadonlyArray<readonly [string, string]>): AppStatus => {
+  const state = field(out, "state");
+  if (state === "lane-missing") return { state: "lane-missing" };
+  return state === "running"
+    ? { state: "running", pid: Number(field(out, "pid")) }
+    : { state: "stopped" };
+};
 
 /**
  * `zcp-devsup ctl` with these arguments, answering in JSON; a service without the binary has no
@@ -108,6 +134,44 @@ export const make = Effect.gen(function* () {
       detail: result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`,
     });
 
+  const runScript = (host: string, operation: string, body: string) =>
+    runFields(shell, host, operation, body, APP_SCRIPT_TIMEOUT).pipe(Effect.map(toStatus));
+
+  const setsidRun = (input: AppRun) => {
+    const directory = shellQuote(laneDirectory(input.handle));
+    const pidFile = shellQuote(appPidPath(input.handle));
+    return runScript(
+      input.host,
+      "appRun",
+      `[ -d ${directory} ] || { printf 'state\\tlane-missing\\n'; exit 0; }\n` +
+        IF_RUNNING(pidFile) +
+        `(\n` +
+        `  cd ${directory} || exit 1\n` +
+        laneEnvironment(input.port, input.env) +
+        `  exec setsid sh -c ${shellQuote(input.command)}\n` +
+        `) > ${shellQuote(appLogPath(input.handle))} 2>&1 < /dev/null &\n` +
+        `pid=$!\n` +
+        `printf '%s\\n' "$pid" > ${pidFile}\n` +
+        `printf 'state\\trunning\\npid\\t%s\\n' "$pid"\n`,
+    );
+  };
+
+  const setsidStop = (lane: AppLane) => {
+    const pidFile = shellQuote(appPidPath(lane.handle));
+    return runScript(
+      lane.host,
+      "appStop",
+      `if [ -f ${pidFile} ] && pid=$(cat ${pidFile}) && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then\n` +
+        `  kill -s TERM -- -"$pid" 2>/dev/null || kill -s TERM "$pid" 2>/dev/null\n` +
+        `  n=0\n` +
+        `  while kill -0 "$pid" 2>/dev/null && [ "$n" -lt ${STOP_GRACE_TENTHS} ]; do sleep 0.1; n=$((n + 1)); done\n` +
+        `  kill -0 "$pid" 2>/dev/null && kill -s KILL -- -"$pid" 2>/dev/null\n` +
+        `fi\n` +
+        `rm -f ${pidFile}\n` +
+        `printf 'state\\tstopped\\n'\n`,
+    );
+  };
+
   const run: CrewAppService["run"] = (input) => {
     const directory = laneDirectory(input.handle);
     const body =
@@ -125,8 +189,8 @@ export const make = Effect.gen(function* () {
       ]);
     return Effect.flatMap(
       shell.run(input.host, script(body), { timeout: APP_SCRIPT_TIMEOUT }),
-      (result): Effect.Effect<AppStatus, CrewGitError> => {
-        if (result.code === CTL_NO_SUPERVISOR) return Effect.succeed({ state: "no-supervisor" });
+      (result): Effect.Effect<AppStatus, CrewShellError | CrewGitError> => {
+        if (result.code === CTL_NO_SUPERVISOR) return setsidRun(input);
         if (result.code === 0 && result.stdout.trim() === LANE_MISSING) {
           return Effect.succeed({ state: "lane-missing" });
         }
@@ -138,16 +202,18 @@ export const make = Effect.gen(function* () {
     );
   };
 
-  // Without a supervisor, or once it forgot the entry, nothing of the app's runs.
+  // Once the supervisor forgot the entry, nothing of the app's runs.
   const stop: CrewAppService["stop"] = (lane) =>
     Effect.flatMap(
       shell.run(lane.host, script(ctl(["rm", appEntryName(lane.handle)])), {
         timeout: APP_SCRIPT_TIMEOUT,
       }),
-      (result): Effect.Effect<AppStatus, CrewGitError> =>
-        result.code === 0 || result.code === CTL_NO_SUPERVISOR || result.code === CTL_UNKNOWN_NAME
+      (result): Effect.Effect<AppStatus, CrewShellError | CrewGitError> => {
+        if (result.code === CTL_NO_SUPERVISOR) return setsidStop(lane);
+        return result.code === 0 || result.code === CTL_UNKNOWN_NAME
           ? Effect.succeed({ state: "stopped" })
-          : Effect.fail(failed(lane.host, "appStop", result)),
+          : Effect.fail(failed(lane.host, "appStop", result));
+      },
     );
 
   return CrewApp.of({ run, stop });

@@ -8,12 +8,12 @@ import {
   crewGitLayer,
   exists,
   read,
+  remoteEnvWithSetsid,
   remoteEnvWithSupervisor,
   supervisedApps,
   supervisorCalls,
   supervisorDown,
   TEST_HOST,
-  TEST_IDENTITY,
   waitUntil,
   withCrewService,
 } from "./testing/crewGitFixture.ts";
@@ -124,44 +124,72 @@ describe("CrewApp", () => {
     ),
   );
 
-  it.effect("a dev service without the supervisor runs no crew app, and has none to stop", () =>
-    Effect.gen(function* () {
-      const absent = yield* withCrewService(
-        (root) =>
-          Effect.gen(function* () {
-            const workspace = yield* CrewWorkspace.CrewWorkspace;
-            const app = yield* CrewApp.CrewApp;
-            yield* workspace.create({ crew: "game", ...LANE });
-            return [
-              yield* app.run({ ...LANE, command: DEV_SERVER, port: 3001 }),
-              yield* app.stop(LANE),
-              exists(root, ".crew/backend/port.txt"),
-            ];
-          }),
-        (root) => crewGitLayer(root, { remoteEnv: TEST_IDENTITY }),
-      );
-      const down = yield* withCrewService(
-        (root) =>
-          Effect.gen(function* () {
-            const workspace = yield* CrewWorkspace.CrewWorkspace;
-            const app = yield* CrewApp.CrewApp;
-            yield* workspace.create({ crew: "game", ...LANE });
-            supervisorDown(root);
-            return [
-              yield* app.run({ ...LANE, command: DEV_SERVER, port: 3001 }),
-              yield* app.stop(LANE),
-              exists(root, ".crew/backend/port.txt"),
-            ];
-          }),
-        supervised,
-      );
-      assert.deepStrictEqual(
-        { absent, down },
-        {
-          absent: [{ state: "no-supervisor" }, { state: "stopped" }, false],
-          down: [{ state: "no-supervisor" }, { state: "stopped" }, false],
-        },
-      );
-    }),
+  it.effect(
+    "a crew app runs under the supervisor when it answers, and under setsid as before when it does not",
+    () =>
+      Effect.forEach(
+        [
+          { dev: "supervisor", layer: supervised, down: false, entry: true, pidfile: false },
+          {
+            dev: "no supervisor",
+            layer: (root: string) => crewGitLayer(root, { remoteEnv: remoteEnvWithSetsid() }),
+            down: false,
+            entry: false,
+            pidfile: true,
+          },
+          { dev: "supervisor down", layer: supervised, down: true, entry: false, pidfile: true },
+        ],
+        (row) =>
+          withCrewService(
+            (root) =>
+              Effect.gen(function* () {
+                const workspace = yield* CrewWorkspace.CrewWorkspace;
+                const app = yield* CrewApp.CrewApp;
+                yield* workspace.create({ crew: "game", ...LANE });
+                if (row.down) supervisorDown(root);
+                const lane = `${root}/.crew/backend`;
+                const started = yield* app.run({ ...LANE, command: DEV_SERVER, port: 3001 });
+                waitUntil(() => exists(lane, "child.pid"));
+                const pid = started.state === "running" ? started.pid : 0;
+                const child = exists(lane, "child.pid") ? Number(read(lane, "child.pid")) : 0;
+                const live = (each: number) => each > 0 && alive(each);
+                const running = {
+                  again: yield* app.run({ ...LANE, command: DEV_SERVER, port: 3001 }),
+                  entry: "crew-backend" in supervisedApps(root),
+                  pidfile: exists(root, ".crew/backend.run.pid"),
+                  port: exists(lane, "port.txt") ? read(lane, "port.txt") : undefined,
+                };
+                const stopped = yield* app.stop(LANE);
+                waitUntil(() => !live(pid) && !live(child));
+                return {
+                  dev: row.dev,
+                  ...running,
+                  stopped,
+                  gone: [live(pid), live(child), exists(root, ".crew/backend.run.pid")],
+                  expected: {
+                    dev: row.dev,
+                    again: { state: "running", pid },
+                    entry: row.entry,
+                    pidfile: row.pidfile,
+                    port: "3001",
+                    stopped: { state: "stopped" },
+                    gone: [false, false, false],
+                  } satisfies typeof running & {
+                    dev: string;
+                    stopped: CrewApp.AppStatus;
+                    gone: ReadonlyArray<boolean>;
+                  },
+                };
+              }),
+            row.layer,
+          ),
+      ).pipe(
+        Effect.map((rows) =>
+          assert.deepStrictEqual(
+            rows.map(({ expected: _, ...actual }) => actual),
+            rows.map(({ expected }) => expected),
+          ),
+        ),
+      ),
   );
 });
