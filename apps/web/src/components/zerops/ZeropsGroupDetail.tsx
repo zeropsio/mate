@@ -795,7 +795,7 @@ export function ZeropsGroupPane({
           <GitRemoteLines repos={codeRepos ?? repos} />
         </SideSection>
       )}
-      <SideSection title={repo === undefined ? "History" : `History · ${repo}`}>
+      <SideSection title="History">
         {repo === undefined ? (
           <Empty
             action="Set up an environment"
