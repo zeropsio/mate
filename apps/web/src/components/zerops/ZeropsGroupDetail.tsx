@@ -2332,7 +2332,7 @@ function ProjectReadFailures({
 }) {
   return (
     <>
-      {recipe === undefined ? null : <ZeropsReadFailure action="Read recipe again" {...recipe} />}
+      {recipe === undefined ? null : <ZeropsReadFailure action="Read setup again" {...recipe} />}
       {comparison === undefined ? null : (
         <ZeropsReadFailure action="Compare again" {...comparison} />
       )}

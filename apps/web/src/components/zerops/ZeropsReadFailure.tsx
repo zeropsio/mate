@@ -8,7 +8,7 @@ export function ZeropsReadFailure({
 }: {
   readonly reason: string;
   readonly again?: (() => void) | undefined;
-  readonly action: "Compare again" | "Read recipe again";
+  readonly action: "Compare again" | "Read setup again";
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 
 describe("a failed read's manual action", () => {
-  it.each(["Compare again", "Read recipe again"] as const)(
+  it.each(["Compare again", "Read setup again"] as const)(
     "says why and offers %s once per press",
     (action) => {
       (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

@@ -38,7 +38,7 @@ import {
 describe("reviewKindLine", () => {
   it.each([
     ["change", "code", "Review · change"],
-    ["change", "recipe", "Review · recipe change"],
+    ["change", "recipe", "Review · setup change"],
     ["release", undefined, "Release"],
     ["rollback", undefined, "Roll back"],
     ["crew-task", undefined, "Crew task"],
