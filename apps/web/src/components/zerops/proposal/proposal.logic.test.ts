@@ -26,6 +26,7 @@ import {
   type ProposalDecisions,
   type ProposalStage,
   domainProposalRecords,
+  accessProposalPlan,
 } from "./proposal.logic";
 
 const AT = "2026-10-12T10:00:00.000Z";
@@ -700,6 +701,131 @@ describe("heldMessageWords", () => {
   it("an approved message its Mate took no turn on says why, and where it waits", () => {
     expect(heldMessageWords("Eddy", "Eddy needs a Claude sign-in to continue.")).toBe(
       "Eddy needs a Claude sign-in to continue. Your message waits in Eddy's composer.",
+    );
+  });
+});
+
+describe("accessProposalPlan", () => {
+  const proposal = (
+    people: ReadonlyArray<{ person: string; level: "full" | "read" | "none" | "remove" }>,
+  ): Extract<ZeropsProposal, { kind: "access.set" }> => ({
+    id: "a1",
+    kind: "access.set",
+    summary: "Access to Contoso",
+    projectId: "pProd",
+    projectName: "Contoso",
+    params: {
+      projects: [
+        { id: "pProd", name: "Contoso - production" },
+        { id: "pDana", name: "Contoso - Dana's Mate" },
+      ],
+      people,
+    },
+  });
+  const members = [
+    {
+      id: "cu-dana",
+      userId: "u-dana",
+      roleCode: "NO_ACCESS",
+      user: { id: "u-dana", fullName: "Dana Developer", firstName: "Dana", email: "dana@x.io" },
+    },
+    {
+      id: "cu-greta",
+      userId: "u-greta",
+      roleCode: "NO_ACCESS",
+      user: { id: "u-greta", fullName: "Greta Guest", firstName: "Greta", email: "greta@x.io" },
+    },
+    {
+      id: "cu-gina2",
+      userId: "u-gina2",
+      roleCode: "NO_ACCESS",
+      user: { id: "u-gina2", fullName: "Greta Other", firstName: "Greta", email: "g2@x.io" },
+    },
+  ];
+  const owners = { pProd: undefined, pDana: "u-dana" };
+
+  it.each<
+    [string, Parameters<typeof accessProposalPlan>[0], ReturnType<typeof accessProposalPlan>]
+  >([
+    [
+      "writes each person found by name or address on every project but the Mates they own",
+      {
+        proposal: proposal([
+          { person: "Dana Developer", level: "full" },
+          { person: "GRETA@x.io", level: "read" },
+        ]),
+        members: { known: true, list: members },
+        owners,
+      },
+      {
+        kind: "ready",
+        changes: [
+          { clientUserId: "cu-dana", projectId: "pProd", roleCode: "ADMIN" },
+          { clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" },
+          { clientUserId: "cu-greta", projectId: "pDana", roleCode: "READ_ONLY" },
+        ],
+      },
+    ],
+    [
+      "finds a person by first name alone when only one member has it, and drops their own grant",
+      {
+        proposal: proposal([{ person: "dana", level: "remove" }]),
+        members: { known: true, list: members },
+        owners: {},
+      },
+      {
+        kind: "ready",
+        changes: [
+          { clientUserId: "cu-dana", projectId: "pProd", roleCode: null },
+          { clientUserId: "cu-dana", projectId: "pDana", roleCode: null },
+        ],
+      },
+    ],
+    [
+      "waits while the organization's members are read",
+      {
+        proposal: proposal([{ person: "Dana", level: "full" }]),
+        members: { known: false, list: [] },
+        owners,
+      },
+      { kind: "held", words: "Reading your organization's members…" },
+    ],
+    [
+      "holds Approve for a name no member has, pointing to the invitation",
+      {
+        proposal: proposal([{ person: "Zoe", level: "full" }]),
+        members: { known: true, list: members },
+        owners,
+      },
+      {
+        kind: "held",
+        words:
+          "No one in your organization is Zoe. Invite them from the application's People, then ask again.",
+      },
+    ],
+    [
+      "holds Approve for a name several members share, asking for their address",
+      {
+        proposal: proposal([{ person: "Greta", level: "read" }]),
+        members: { known: true, list: members },
+        owners,
+      },
+      { kind: "held", words: "Several people here are Greta. Ask again with their email address." },
+    ],
+  ])("access %s", (_title, input, expected) => {
+    expect(accessProposalPlan(input)).toEqual(expected);
+  });
+
+  it.each<[string, Exclude<ProposalStage, "open" | "failed">, string]>([
+    ["running", "running", "Changing access to Contoso…"],
+    ["done", "done", "Access to Contoso changed."],
+  ])("an approved access change says it %s", (_title, stage, words) => {
+    expect(proposalOutcomeWords(proposal([{ person: "Dana", level: "full" }]), stage)).toBe(words);
+  });
+
+  it("an application's access says it reaches all of the application, never its projects one by one", () => {
+    expect(proposalWhere(proposal([{ person: "Dana", level: "full" }]))).toBe(
+      "All of Contoso: its environments and Mates",
     );
   });
 });

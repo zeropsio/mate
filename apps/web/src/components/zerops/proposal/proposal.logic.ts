@@ -21,7 +21,10 @@ import type {
   ZeropsProposal,
 } from "@t3tools/client-runtime/zerops/model";
 
+import type { ProjectAccessChange } from "@t3tools/client-runtime/zerops/projectAccess";
+
 import { recordsOf } from "../addresses/addresses.logic";
+import { accessChanges } from "../projects/projectPeople.logic";
 
 /** What the person decided of one proposal, and how what they approved ended. */
 export type ProposalDecision =
@@ -245,6 +248,10 @@ export function proposalOutcomeWords(
       const names = domainNames(proposal.params.domains);
       return running ? `Adding ${names}…` : `Added ${names}.`;
     }
+    case "access.set": {
+      const place = proposal.projectName ?? "the project";
+      return running ? `Changing access to ${place}…` : `Access to ${place} changed.`;
+    }
   }
 }
 
@@ -376,6 +383,11 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
         : within(`${proposal.serviceName ?? "The service"}'s own`);
     case "domain.add":
       return `→ ${proposal.serviceName ?? "its service"} · port ${proposal.params.port}`;
+    case "access.set":
+      // An application's places are one place to the person: never its projects one by one.
+      return proposal.params.projects.length > 1
+        ? `All of ${project ?? "the application"}: its environments and Mates`
+        : (proposal.params.projects[0]?.name ?? project ?? null);
     case "mate.message":
     case "chief.message":
       return null;
@@ -397,4 +409,83 @@ export function proposalRecipient<
     here.find((identity) => identity.name.trim().toLowerCase() === wanted) ??
     (here.length === 1 ? here[0] : undefined)
   );
+}
+
+type AccessProposal = Extract<ZeropsProposal, { kind: "access.set" }>;
+
+/** An organization member as the access card finds people among them. */
+export interface AccessMember {
+  /** The membership (`clientUser`) id each grant is written on. */
+  readonly id: string;
+  readonly userId?: string | undefined;
+  readonly user?:
+    | {
+        readonly id?: string | undefined;
+        readonly fullName?: string | undefined;
+        readonly firstName?: string | undefined;
+        readonly email?: string | undefined;
+      }
+    | undefined;
+}
+
+/** What approving an access proposal writes, or why Approve waits. */
+export type AccessProposalPlan =
+  | { readonly kind: "ready"; readonly changes: ReadonlyArray<ProjectAccessChange> }
+  | { readonly kind: "held"; readonly words: string };
+
+const folded = (text: string | undefined) => text?.trim().replace(/\s+/gu, " ").toLowerCase();
+
+/**
+ * The members a name means: an address is one member's; a name is the members of that full name,
+ * else of that first name.
+ */
+function membersNamed(
+  list: ReadonlyArray<AccessMember>,
+  person: string,
+): ReadonlyArray<AccessMember> {
+  const wanted = folded(person);
+  if (person.includes("@")) return list.filter((one) => folded(one.user?.email) === wanted);
+  const full = list.filter((one) => folded(one.user?.fullName) === wanted);
+  return full.length > 0 ? full : list.filter((one) => folded(one.user?.firstName) === wanted);
+}
+
+/**
+ * An access proposal against the organization's members: each person the Chief named found by
+ * their address or name, and their level written on every project the proposal names but the
+ * Mates they own (as an application's People write it). Approve waits while the members are read,
+ * and for a name that finds nobody or several.
+ */
+export function accessProposalPlan(input: {
+  readonly proposal: AccessProposal;
+  readonly members: { readonly known: boolean; readonly list: ReadonlyArray<AccessMember> };
+  /** Whose each project's Mate is, as HQ names its owner: projectId → their user id. */
+  readonly owners: Readonly<Record<string, string | undefined>>;
+}): AccessProposalPlan {
+  if (!input.members.known) return { kind: "held", words: "Reading your organization's members…" };
+  const projectIds = input.proposal.params.projects.map(({ id }) => id);
+  const changes: Array<ProjectAccessChange> = [];
+  for (const { person, level } of input.proposal.params.people) {
+    const found = membersNamed(input.members.list, person);
+    if (found.length === 0)
+      return {
+        kind: "held",
+        words: `No one in your organization is ${person}. Invite them from the application's People, then ask again.`,
+      };
+    if (found.length > 1)
+      return {
+        kind: "held",
+        words: `Several people here are ${person}. Ask again with their email address.`,
+      };
+    const member = found[0]!;
+    const userId = member.user?.id ?? member.userId;
+    changes.push(
+      ...accessChanges({
+        clientUserId: member.id,
+        projectIds,
+        owned: projectIds.filter((id) => userId !== undefined && input.owners[id] === userId),
+        choice: level,
+      }),
+    );
+  }
+  return { kind: "ready", changes };
 }

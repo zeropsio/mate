@@ -3,7 +3,9 @@
  * account's own operation at Zerops with their token, as is an approved domain — added onto the
  * service's port and put in place, then followed in the project's addresses; a value is the vault
  * panel's write; a message goes into the other Mate's conversation — an ask of the Chief into the person's own
- * Chief's — the way every hand-over to a Mate goes (`useAskMate`). What the person decided is kept
+ * Chief's — the way every hand-over to a Mate goes (`useAskMate`); an approved access change is the
+ * account's own `set-project-access`, each person found among the organization's members, as an
+ * application's People write it. What the person decided is kept
  * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
  * Approve twice; an approval is carried out only once HQ kept it.
  */
@@ -14,7 +16,11 @@ import {
   addresses,
   vaultAtom,
   hqProjectPerson,
+  initialStream,
+  organizationMembers,
+  shownHqProjectPeopleAtom,
   type HqProjectPeople,
+  type MembersRead,
   type PlaceAddresses,
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -48,12 +54,24 @@ import {
   proposalMessage,
   proposalRecipient,
   proposalStage,
+  accessProposalPlan,
   type ProposalDecision,
 } from "./proposal.logic";
 
 const UNKNOWN_PERSON = Atom.make<HqProjectPeople | undefined>(undefined);
 
 const UNREAD = Atom.make(NOT_READ_VAULT);
+
+const UNREAD_MEMBERS = Atom.make<MembersRead>({
+  fact: { kind: "unknown" },
+  coverage: "unknown",
+  stream: initialStream({ parent: null, mode: "sampled" }),
+  link: null,
+  members: [],
+  status: "loading",
+  settled: false,
+  refused: false,
+});
 
 const UNREAD_ADDRESSES = Atom.make<PlaceAddresses>({
   state: "reading",
@@ -156,6 +174,27 @@ function Proposal({
     PROJECT_ROUTINGS_LISTING,
     domainPlace !== null && place.readsProject ? domainPlace.projectId : null,
   );
+  // An access change's people are found among the organization's members while its card offers it.
+  const accessOrg =
+    home === undefined || proposal.kind !== "access.set" || stage !== "open"
+      ? null
+      : { orgId: home.orgId, clientId: home.orgId };
+  useDetailDemand("organizationMembers", undefined, accessOrg?.clientId ?? null);
+  const members = useProjection(organizationMembers, accessOrg, UNREAD_MEMBERS);
+  const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
+  const accessPlan = useMemo(
+    () =>
+      proposal.kind !== "access.set"
+        ? null
+        : accessProposalPlan({
+            proposal,
+            members: { known: members.fact.kind === "known", list: members.members },
+            owners: Object.fromEntries(
+              proposal.params.projects.map(({ id }) => [id, projectPeople[id]?.owner?.userId]),
+            ),
+          }),
+    [members, projectPeople, proposal],
+  );
   const askMate = useAskMate();
   const openMate = useOpenMate();
   const navigate = useNavigate();
@@ -177,7 +216,9 @@ function Proposal({
                 ? "Reading the project's addresses…"
                 : proposal.kind === "domain.add" && place.state === "failed"
                   ? `You can't see ${proposal.projectName ?? "this project"}'s addresses.`
-                  : undefined;
+                  : accessPlan?.kind === "held"
+                    ? accessPlan.words
+                    : undefined;
 
   const ended = useCallback(
     (outcome: VaultWriteOutcome) =>
@@ -276,6 +317,19 @@ function Proposal({
               domains: proposal.params.domains,
               serviceId: proposal.serviceId,
               port: proposal.params.port,
+            }),
+          );
+          return;
+        case "access.set":
+          if (accessPlan?.kind !== "ready") {
+            ended({ ok: false, code: null, message: "Nobody to give access to." });
+            return;
+          }
+          ended(
+            await run({
+              kind: "set-project-access",
+              orgId: home.orgId,
+              changes: accessPlan.changes,
             }),
           );
           return;

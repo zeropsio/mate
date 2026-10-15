@@ -19,6 +19,7 @@ import {
   RotateCwIcon,
   SendIcon,
   SquareIcon,
+  UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
@@ -87,6 +88,7 @@ const KIND_ICON: Record<ZeropsProposal["kind"], LucideIcon> = {
   "mate.message": SendIcon,
   "chief.message": SendIcon,
   "domain.add": GlobeIcon,
+  "access.set": UsersIcon,
 };
 
 /** A secret value is never drawn: the card says it is hidden. */

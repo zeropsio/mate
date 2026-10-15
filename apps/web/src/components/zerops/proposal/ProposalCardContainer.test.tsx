@@ -17,6 +17,7 @@ import type { ProposalDecision } from "./proposal.logic";
 const source = vi.hoisted(() => ({
   person: undefined as HqProjectPeople | undefined,
   addresses: undefined as PlaceAddresses | undefined,
+  members: undefined as unknown,
   decision: undefined as ProposalDecision | undefined,
   record: vi.fn(async (_next: ProposalDecision) => null),
   run: vi.fn(async (_intent: unknown) => ({ ok: true })),
@@ -35,7 +36,12 @@ vi.mock("~/zerops/ZeropsAccountData", async () => {
           source.listeners.add(listener);
           return () => source.listeners.delete(listener);
         },
-        () => (projection.name === "addresses" ? source.addresses : source.person),
+        () =>
+          projection.name === "addresses"
+            ? source.addresses
+            : projection.name === "organizationMembers"
+              ? source.members
+              : source.person,
       ),
     useDetailDemand: () => undefined,
   };
@@ -63,6 +69,7 @@ afterEach(async () => {
   document.body.innerHTML = "";
   source.person = undefined;
   source.addresses = undefined;
+  source.members = undefined;
   source.decision = undefined;
   useAddressesSheet.getState().close();
   source.run.mockClear();
@@ -319,5 +326,78 @@ describe("the Chief's proposal to put a project on a domain", () => {
     expect(document.querySelector("[data-dns-records]")?.textContent).toContain(
       "Keep both: the shared IPv4 needs the AAAA.",
     );
+  });
+});
+
+describe("an access proposal's real card", () => {
+  const accessOffer = {
+    proposal: {
+      id: "access",
+      kind: "access.set",
+      summary: "Access to Contoso: Dana full access, Greta read only",
+      reason: "They start on the shop today.",
+      projectId: "pProd",
+      projectName: "Contoso",
+      params: {
+        projects: [
+          { id: "pProd", name: "Contoso - production" },
+          { id: "pStage", name: "Contoso - stage" },
+        ],
+        people: [
+          { person: "Dana", level: "full" },
+          { person: "greta@x.io", level: "read" },
+        ],
+      },
+    } satisfies ZeropsProposal,
+  } as ZeropsOperation;
+  const members = (list: ReadonlyArray<{ id: string; name: string; email: string }>) => ({
+    fact: { kind: "known" },
+    members: list.map(({ id, name, email }) => ({
+      id,
+      roleCode: "NO_ACCESS",
+      user: { id: `u-${id}`, fullName: name, firstName: name.split(" ")[0], email },
+    })),
+  });
+  const press = async (label: string) => {
+    const button = [...document.querySelectorAll("button")].find(
+      (one) => one.textContent === label,
+    );
+    await act(async () => button!.click());
+  };
+  const first = operation;
+  afterEach(() => {
+    operation = first;
+  });
+
+  it("approving it gives each person their access as the person, on every project it names", async () => {
+    operation = accessOffer;
+    source.members = members([
+      { id: "cu-dana", name: "Dana Developer", email: "dana@x.io" },
+      { id: "cu-greta", name: "Greta Guest", email: "greta@x.io" },
+    ]);
+    await draw();
+    await press("Approve");
+    expect(source.run).toHaveBeenCalledWith({
+      kind: "set-project-access",
+      orgId: "org",
+      changes: [
+        { clientUserId: "cu-dana", projectId: "pProd", roleCode: "ADMIN" },
+        { clientUserId: "cu-dana", projectId: "pStage", roleCode: "ADMIN" },
+        { clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" },
+        { clientUserId: "cu-greta", projectId: "pStage", roleCode: "READ_ONLY" },
+      ],
+    });
+    expect(source.record.mock.calls.map(([next]) => next.state)).toEqual(["running", "done"]);
+  });
+
+  it("offers no Approve for a person nobody in the organization is, and says how to invite them", async () => {
+    operation = accessOffer;
+    source.members = members([{ id: "cu-dana", name: "Dana Developer", email: "dana@x.io" }]);
+    await draw();
+    expect(document.body.textContent).toContain(
+      "No one in your organization is greta@x.io. Invite them from the application's People, then ask again.",
+    );
+    await press("Approve");
+    expect(source.run).not.toHaveBeenCalled();
   });
 });
