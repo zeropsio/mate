@@ -8855,7 +8855,7 @@ function ConversationView(props: ChatViewProps) {
                 <AlertDialogFooter>
                   <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
                   <Button
-                    variant="default"
+                    variant="primary"
                     onClick={() => {
                       setBranchRestoreConfirmOpen(false);
                       void handleSwitchCheckoutToThread();

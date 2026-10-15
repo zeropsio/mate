@@ -81,7 +81,7 @@ export function ZeropsAgentPickerPanel({
             invokeZeropsAgentPickerPrimaryAction({ agentId, requestClosePicker, onOpenDialog })
           }
           size="md"
-          variant={view.primaryAction.kind === "use-my-account" ? "link" : "default"}
+          variant={view.primaryAction.kind === "use-my-account" ? "link" : "primary"}
         >
           {view.primaryAction.label}
         </Button>

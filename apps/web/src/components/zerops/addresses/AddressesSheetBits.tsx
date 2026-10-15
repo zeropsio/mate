@@ -226,7 +226,7 @@ export function Confirm({
               disabled={busy || disabled}
               onClick={onConfirm}
               size="md"
-              variant={destructive ? "destructive" : "default"}
+              variant={destructive ? "destructive" : "primary"}
             >
               {busy ? <Spinner aria-hidden="true" /> : null}
               {confirm}

@@ -742,7 +742,7 @@ export function ProviderInstanceCard({
                       <Button
                         type="button"
                         size="sm"
-                        variant="default"
+                        variant="primary"
                         className="w-full"
                         disabled={isUpdating}
                         onClick={onRunVersionAction}

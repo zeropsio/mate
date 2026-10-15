@@ -398,7 +398,7 @@ function AboutVersionSection() {
               render={
                 <Button
                   size="sm"
-                  variant={action === "install" ? "default" : "outline"}
+                  variant={action === "install" ? "primary" : "outline"}
                   disabled={buttonDisabled || isUpdateActionPending}
                   onClick={handleButtonClick}
                 >
