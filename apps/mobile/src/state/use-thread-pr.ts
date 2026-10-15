@@ -29,7 +29,7 @@ export function presentLinkedThreadPr(
     repository: linkedPullRequest.repository,
     url: linkedPullRequest.url,
     label: String(linkedPullRequest.number),
-    accessibilityLabel: `#${linkedPullRequest.number} pull request`,
+    accessibilityLabel: `Change #${linkedPullRequest.number}`,
     textClassName: "text-foreground-tertiary",
   };
 }

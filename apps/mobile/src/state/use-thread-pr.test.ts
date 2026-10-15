@@ -54,7 +54,7 @@ describe("presentLinkedThreadPr", () => {
       number: 3774,
       repository: "t3tools/t3code",
       label: "3774",
-      accessibilityLabel: "#3774 pull request",
+      accessibilityLabel: "Change #3774",
       url: "https://github.com/t3tools/t3code/pull/3774",
       textClassName: "text-foreground-tertiary",
     });
