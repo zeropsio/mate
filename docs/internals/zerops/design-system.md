@@ -21,52 +21,85 @@ Shared principles and words for every client surface. Domain meanings live in [t
 ## 2. Copy glossary
 
 Use short declarative sentences and second person; "developer-first" is the self-description. No hype. These are user-facing words;
-identifiers and comments keep their code names.
+identifiers, comments and test titles keep their code names. `t3code/no-legacy-vocabulary` (R4) fails a retired word in
+user-facing copy and quotes its replacement; `packages/shared/src/legacyVocabulary.ts` holds the enforced list.
 
-| Source word                                    | Product word                                 |
-| ---------------------------------------------- | -------------------------------------------- |
-| environment                                    | **project**                                  |
-| application                                    | **project**                                  |
-| a Zerops project beside an application         | **its name**                                 |
-| pull request, PR                               | **change**                                   |
-| rebase                                         | **merge main into it**                       |
-| provider                                       | **coding agent**                             |
-| pairing                                        | **Sign in with Zerops**                      |
-| Connections                                    | **Devices**                                  |
-| worktree, Local checkout, lane                 | **its own copy of {Mate}'s code**            |
-| T3 Connect, Tailscale, T3 Code                 | **omit**                                     |
-| Open in editor                                 | **Cloud IDE**                                |
-| zcp                                            | **Zerops Control Plane**                     |
-| project-level variables, Shared                | **every app**; an app's own: **{app}'s own** |
-| environment variables, Plain / Sensitive       | **vault values**; sensitive: **hidden**      |
-| control plane (product name)                   | **Zerops Mate**                              |
-| stage half of a dev/stage pair                 | **preview**                                  |
-| deploying a crewmate's work                    | **Deploy to {host}**                         |
-| group stage project                            | **stage**                                    |
-| a Mate's recipe proposal, import files         | **setup files**                              |
-| agent on a crew                                | **crewmate**                                 |
-| orchestrator                                   | **lead**                                     |
-| crew intent, brief                             | **goal**                                     |
-| crewmate intent, role                          | **job**                                      |
-| assignment                                     | **task**                                     |
-| conversation tab                               | **chat**                                     |
-| land a crewmate's work                         | **add to {Mate}'s code; in {Mate}'s code**   |
-| your tree                                      | **{Mate}'s code**                            |
-| deliver                                        | **ship**                                     |
-| crew run                                       | **working on its own**                       |
-| budget                                         | **what it may spend**                        |
-| Start fresh                                    | **Clear its conversation**                   |
-| Discard                                        | **Drop it; Drop the plan**                   |
-| Allow                                          | **Let it; Not now**                          |
-| Back to my tree                                | **Back to {Mate}'s**                         |
-| parked                                         | **Stopped**                                  |
-| writer, reader, lead                           | **Builds, Reviews, Plans**                   |
-| backup set, backup store                       | **backup, backup bucket**                    |
-| git repositories                               | **repositories**                             |
-| environment deploy token, token-encryption key | **deploy tokens, key for its deploy tokens** |
-| connected presence                             | **online**                                   |
-| degraded                                       | **Needs attention**                          |
-| healthy                                        | **Running**                                  |
+One word for each thing:
+
+- **HQ** — only the organization's headquarters app. Its Zerops project is "the Headquarters project"; setup steps say
+  what they make ("Creating the Headquarters project"), never "HQ's project". Zerops's own account site is "Zerops".
+- **project** — what the menu lists. Source words: environment (a server connection), application, an HQ application.
+  A Zerops project beside an application is called by its name. A Zerops-level part of a project is never a project:
+  it is Stage, Production or a Mate's workspace.
+- **Mate** — a colleague, always by name; the organization-wide one is the Chief. "A Mate is a coding agent with a
+  workspace of its own and one conversation you come back to." Never "the agent" for a Mate.
+- **coding agent** — Claude, Codex and the others, only where a Mate is signed in. Source: provider, agent. Say
+  "Sign {Mate} in with Claude or ChatGPT", or "Sign this Mate in"; never "Sign in an agent".
+- **helpers** — a Mate's own sub-agents; on a crew they are crewmates.
+- **workspace** — a Mate's own place to build (the engine's dev service, `appdev`); its private address is
+  **{Mate}'s preview** (the stage half of a dev/stage pair, `appstage`). Engine service names never stand as copy.
+- **Stage**, **Production** — the project's shared environments; "environment" is only their collective word.
+- **sign in**, **signed in**, **sign out** — never log in, logged in or log out.
+- **change** — never pull request or PR. Name a change by its title rather than its number. A merged change is
+  **merged**, never landed. Its merge says **Adds this change to main**; squash and commit counts stay in the
+  Commits fold.
+- **release** — "Putting {version} live", "{service} gets {version}". No commit hash stands on a surface.
+- **setup**, **setup files** — never recipe or import files.
+- **Read access**, **Full access** — sentence case, each explained once where it is chosen.
+- **Owner**, **Admin**, **Developer**, **Guest** — the roles, as the invite names them. Zerops's own role codes
+  (Basic user → Developer, no access → Guest) appear only where a Zerops role itself is chosen.
+- **page** — what the side panel opens; never surface.
+- **Zerops Control Plane** — never zcp.
+
+Source words and the product words that replace them:
+
+- pull request, PR → **change**
+- rebase → **merge main into it**
+- provider → **coding agent**
+- pairing → **Sign in with Zerops**
+- Connections → **Devices**
+- worktree, Local checkout, lane → **its own copy of {Mate}'s code**
+- T3 Connect, Tailscale, T3 Code → **omit**
+- Open in editor → **Cloud IDE**
+- zcp → **Zerops Control Plane**
+- project-level variables, Shared → **every app**; an app's own: **{app}'s own**
+- environment variables, Plain / Sensitive → **vault values**; sensitive: **hidden**
+- control plane (product name) → **Zerops Mate**
+- stage half of a dev/stage pair, appstage → **{Mate}'s preview**
+- dev service, appdev → **{Mate}'s workspace**
+- deploying a crewmate's work → **Deploy to {host}**
+- group stage project → **Stage**
+- a Mate's recipe proposal, recipe, import files → **setup files**
+- agent on a crew → **crewmate**
+- orchestrator → **lead**
+- crew intent, brief → **goal**
+- crewmate intent, role → **job**
+- assignment → **task**
+- conversation tab, thread → **chat**
+- land a crewmate's work → **add to {Mate}'s code; in {Mate}'s code**
+- landed (a change) → **merged**
+- squash-merge → **Adds this change to main**
+- your tree → **{Mate}'s code**
+- deliver → **ship**
+- crew run → **working on its own**
+- budget → **what it may spend**
+- Start fresh → **Clear its conversation**
+- Discard → **Drop it; Drop the plan**
+- Allow → **Let it; Not now**
+- Back to my tree → **Back to {Mate}'s**
+- parked → **Stopped**
+- writer, reader, lead → **Builds, Reviews, Plans**
+- backup set, backup store → **backup, backup bucket**
+- git repositories → **repositories**
+- environment deploy token, token-encryption key → **deploy tokens, key for its deploy tokens**
+- connected presence → **online**
+- degraded → **Needs attention**
+- healthy → **Running**
+- log in, logged in, log out → **sign in, signed in, sign out**
+- Sign in an agent → **Sign {Mate} in**
+- Basic user (a role's name) → **Developer**; Member (no access) → **Guest**
+- surface → **page**
+- container (a Mate's) → **its computer**; closed off → **private network ready**
 
 ## 3. Visual grammar
 
@@ -98,7 +131,7 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
 - **R4** — No legacy vocabulary in user-facing copy
   - _Enforced by:_ `t3code/no-legacy-vocabulary` (closed sink list, word boundaries)
   - _Test(s):_ `oxlint-plugin-t3code/rules/no-legacy-vocabulary.test.ts`
-  - _Status:_ landed (W1-R4 `3521900ec`; ledger 102 after W1-D-NAMING)
+  - _Status:_ landed (W1-R4 `3521900ec`); each finding quotes the glossary's replacement
 - **R5** — One status resolver, one phrase producer
   - _Enforced by:_ `packages/shared/src/threadStatus.ts` + the vector test + zone rule 7 (bans the
     known local status-table shapes in the named consumers)

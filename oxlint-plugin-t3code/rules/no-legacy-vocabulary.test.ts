@@ -187,6 +187,67 @@ describe("t3code/no-legacy-vocabulary", () => {
     },
   );
 
+  // The glossary's retired words, each reported with the word that replaces it.
+  const RETIRED_WORDS: ReadonlyArray<{
+    readonly copy: string;
+    readonly name: string;
+    readonly say: string;
+  }> = [
+    { copy: "Log in to Zerops", name: "log in", say: "sign in, signed in, sign out" },
+    {
+      copy: "Already have an account? Log in",
+      name: "log in",
+      say: "sign in, signed in, sign out",
+    },
+    { copy: "Zerops Mate is logged in.", name: "log in", say: "sign in, signed in, sign out" },
+    { copy: "Log out", name: "log in", say: "sign in, signed in, sign out" },
+    { copy: "No open pull request found.", name: "pull request", say: "change" },
+    { copy: "Open PR", name: "pull request", say: "change" },
+    {
+      copy: "Squash-merges 3 commits into main as one.",
+      name: "squash",
+      say: "adds {Mate}'s work to the main version",
+    },
+    { copy: "Merge to stage", name: "merge to stage", say: "approve it; it runs on Stage" },
+    { copy: "appdev #1 landed", name: "landed", say: "merged, or in {Mate}'s code" },
+    {
+      copy: "History · appdev",
+      name: "appdev",
+      say: "{Mate}'s workspace, or {Mate}'s preview for its own address",
+    },
+    { copy: "Northwind has no recipe yet.", name: "recipe", say: "setup, or setup files" },
+    { copy: "The group's import files", name: "import files", say: "setup files" },
+    { copy: "from zcp's status file", name: "zcp", say: "Zerops Control Plane" },
+    {
+      copy: "Sign in a coding agent",
+      name: "sign in an agent",
+      say: "Sign {Mate} in with Claude or ChatGPT",
+    },
+    { copy: "Needs Basic user access", name: "Basic user", say: "Developer" },
+    { copy: "Open a surface", name: "surface", say: "page" },
+  ];
+
+  for (const { copy, name, say } of RETIRED_WORDS) {
+    webFile.invalid(
+      `reports "${copy}" and says what replaces ${name}`,
+      `const view = <p>${copy}</p>;`,
+      (output) => {
+        assert.include(output, `(${name})`);
+        assert.include(output, `say \\"${say}\\"`);
+      },
+    );
+  }
+
+  for (const copy of [
+    "Sign in to Mate",
+    "The last backup failed. HQ's log in Zerops says why.",
+    "Add another login",
+    "Merged into main",
+    "Theme surface",
+  ]) {
+    webFile.valid(`allows the glossary's own words: "${copy}"`, `const view = <p>${copy}</p>;`);
+  }
+
   webFile.valid(
     "allows the required Zerops Control Plane service name",
     `const view = <span>Zerops Control Plane</span>;`,
