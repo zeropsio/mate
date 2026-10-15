@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
-import { Avatar } from "../zerops/primitives";
+import { PersonAvatar } from "../zerops/primitives";
 import { selfLowerWords } from "../zerops/projects/projectPeople.logic";
 import { MemberProjectAccess } from "./MemberProjectAccess";
 import { SettingsPageContainer } from "./settingsLayout";
@@ -144,7 +144,7 @@ export function TeamMemberView({
   return (
     <div className="tm-page" data-zerops-surface="team-member">
       <header className="tm-head">
-        <Avatar initials={person.initials} size="xl" src={person.avatarUrl} />
+        <PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />
         <h1 className="tm-head-name">{person.name}</h1>
         {person.email === null || person.email === person.name ? null : (
           <span className="tm-head-line">{person.email}</span>

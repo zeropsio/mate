@@ -3198,6 +3198,31 @@ code {
 
 /* ==== end of a Mate's face, picked ==== */
 
+/* A person's disc (`PersonAvatar`, and the seat on a Mate's face): their picture, or their letter
+   on their own hue (`personMark`), lighter at the top left; lighter on a light ground and deeper on
+   a dark one. A hairline keeps a pale picture off the ground. */
+@layer components {
+  .person-avatar {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 9999px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--color-white);
+    background: linear-gradient(
+      140deg,
+      oklch(calc(var(--person-l) + 0.06) var(--person-c) var(--person-hue)),
+      oklch(calc(var(--person-l) - 0.12) calc(var(--person-c) + 0.03) var(--person-hue))
+    );
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent);
+    user-select: none;
+  }
+}
+
 /* ==== Pass 16 · the menu's rows ==== */
 
 @layer components {
@@ -4409,16 +4434,7 @@ code {
     overflow: hidden;
     border-radius: 9999px;
     font-size: 9px;
-    font-weight: 600;
-    line-height: 1;
-    color: var(--color-white);
-    background: linear-gradient(
-      140deg,
-      oklch(calc(var(--menu-owner-l) + 0.06) var(--menu-owner-c) var(--menu-owner-hue)),
-      oklch(calc(var(--menu-owner-l) - 0.12) calc(var(--menu-owner-c) + 0.03) var(--menu-owner-hue))
-    );
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--contrast-sidebar-foreground) 8%, transparent);
-    user-select: none;
   }
 
   /* The face wears the badge's seat cut out of it: a 2 px gap all round the
@@ -4803,14 +4819,13 @@ code {
   }
 }
 
-/* The owner's disc is lighter on a light menu and deeper on a dark one. */
 :root {
-  --menu-owner-l: 0.74;
-  --menu-owner-c: 0.07;
+  --person-l: 0.74;
+  --person-c: 0.07;
 }
 
 :root.dark {
-  --menu-owner-l: 0.55;
+  --person-l: 0.55;
 }
 
 /* ==== end of the menu's rows ==== */
@@ -5433,7 +5448,7 @@ code {
   width: 10px;
   height: 10px;
   border-radius: 9999px;
-  background: oklch(var(--menu-owner-l) var(--menu-owner-c) var(--menu-owner-hue));
+  background: oklch(var(--person-l) var(--person-c) var(--person-hue));
   box-shadow: 0 0 0 1.5px var(--card);
   color: var(--color-white);
   font-size: 7px;
@@ -12163,13 +12178,6 @@ a.message-file:focus-visible {
 .rv-remark > :first-child {
   grid-row: 1 / span 2;
 }
-.rv-remark-avatar {
-  width: 20px;
-  height: 20px;
-  font-size: 12px;
-  line-height: 1;
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
-}
 .rv-remark-who {
   display: flex;
   min-width: 0;
@@ -13261,8 +13269,8 @@ button.rv-relrow:hover .rv-relrow-go {
 
 .arrival-glyph-you {
   display: flex;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   overflow: hidden;
   border-radius: 9999px;
   box-shadow:

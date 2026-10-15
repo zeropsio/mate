@@ -28,7 +28,7 @@ import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenReview } from "~/zerops/review";
 import { mainStageOf } from "../review/reviewReads";
 import { mateDecision } from "../mateDecision.logic";
-import { Avatar } from "../primitives";
+import { PersonAvatar } from "../primitives";
 import { SidebarMateAge } from "../SidebarMateAge";
 import type { MateRowSlot } from "../SidebarMateRow.logic";
 import { formatWorkingTime } from "../SidebarZeropsTree.logic";
@@ -418,11 +418,11 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     return (
       <span className="ov-card-people">
         {owners.map((owner) => (
-          <Avatar
-            className="size-5 text-3xs"
-            initials={initialsOf(owner.name)}
+          <PersonAvatar
             key={owner.userId}
-            src={owner.avatarUrl ?? null}
+            name={owner.name}
+            picture={owner.avatarUrl ?? null}
+            size={20}
           />
         ))}
       </span>
@@ -430,15 +430,6 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   };
 
   return { cardPlaces, renderPlacePanel, renderChanges, renderCardPeople };
-}
-
-/** "Ada Lovelace" → "AL"; one name → its first letter. */
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/u);
-  return parts
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toLocaleUpperCase())
-    .join("");
 }
 
 /** A working Mate's clock, a step a second (R6). */

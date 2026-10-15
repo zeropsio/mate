@@ -133,7 +133,7 @@ export function CrewmateEmptyState({
           <>
             <MateFace
               className={MATE_EMPTY_FACE_CLASS}
-              size="lg"
+              size={64}
               state={atRest}
               tint={profile.tint}
             />
@@ -150,7 +150,7 @@ export function CrewmateEmptyState({
                 <MateFace
                   className="shrink-0"
                   shape={mateFace.shape}
-                  size="sm"
+                  size={20}
                   state={mateFaceFor(mateFace.connected, undefined)}
                   tint={mateFace.tint}
                 />

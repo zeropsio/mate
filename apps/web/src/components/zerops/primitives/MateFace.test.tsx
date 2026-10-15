@@ -155,7 +155,7 @@ describe("MateFace", () => {
   });
 
   it("shuts its eyes as hairlines that survive a 14 px face", () => {
-    const html = renderToStaticMarkup(<MateFace size="dot" state="sleep" tint="rose" />);
+    const html = renderToStaticMarkup(<MateFace size={16} state="sleep" tint="rose" />);
     const face = parts(html);
     expect(face.shut.map((line) => line.opacity)).toEqual(["1", "1"]);
     expect(face.eyes.map((eye) => eye.opacity)).toEqual(["0", "0"]);
@@ -166,9 +166,9 @@ describe("MateFace", () => {
   // Waking — a Mate on its way up (`matePose`) — draws asleep's closed eyes; only its state, and
   // the stylesheet's breath for it, tell the two apart.
   it("shuts its eyes waking as asleep, and says it is waking", () => {
-    const html = renderToStaticMarkup(<MateFace size="sm" state="waking" tint="sky" />);
+    const html = renderToStaticMarkup(<MateFace size={20} state="waking" tint="sky" />);
     const face = parts(html);
-    const asleep = parts(renderToStaticMarkup(<MateFace size="sm" state="sleep" tint="sky" />));
+    const asleep = parts(renderToStaticMarkup(<MateFace size={20} state="sleep" tint="sky" />));
     expect(face.shut.map((line) => line.opacity)).toEqual(["1", "1"]);
     expect(face.eyes).toEqual(asleep.eyes);
     expect(html).toContain('data-mate-face-state="waking"');

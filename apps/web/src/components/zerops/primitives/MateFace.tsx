@@ -35,21 +35,24 @@ import {
   type MateMomentPlayer,
 } from "./mateFaceMoment.logic";
 
-type MateFaceSize = "dot" | "sm" | "md" | "lg";
+/** One scale with a person's disc (`PersonAvatar`), so a Mate beside a person stands as tall. */
+type MateFaceSize = 16 | 20 | 24 | 32 | 64;
 
 const SIZE_CLASS: Record<MateFaceSize, string> = {
-  /** In a menu row, where a status dot would be. */
-  dot: "size-3.5",
+  /** In a line of text, where a status dot would be. */
+  16: "size-4",
   /** Beside a name in a row of text. */
-  sm: "size-5",
-  /** The card's avatar, beside a 14 px name. */
-  md: "size-7",
+  20: "size-5",
+  /** Beside a one-line name: a tab, a card's head. */
+  24: "size-6",
+  /** A row's lead beside two lines: its name and the line under it. */
+  32: "size-8",
   /** Alone on a page, where there is no card yet to sit in. */
-  lg: "size-12",
+  64: "size-16",
 };
 
 /** Strokes stay legible at every size: they are set in pixels, not in the box. */
-const STROKE_PX: Record<MateFaceSize, number> = { dot: 1.25, sm: 1.5, md: 1.75, lg: 2.5 };
+const STROKE_PX: Record<MateFaceSize, number> = { 16: 1.25, 20: 1.5, 24: 1.75, 32: 2.25, 64: 3 };
 
 const TINT_CLASS: Record<MateTintId, string> = {
   coral: "fill-[var(--zerops-mate-tint-coral)]",
@@ -258,7 +261,7 @@ function MateFace({ mark, ...props }: MateFaceProps) {
       aria-hidden="true"
       className={cn(
         "relative grid shrink-0 place-items-center",
-        SIZE_CLASS[props.size ?? "md"],
+        SIZE_CLASS[props.size ?? 24],
         props.className,
       )}
     >
@@ -269,7 +272,7 @@ function MateFace({ mark, ...props }: MateFaceProps) {
 
 function MateShapeFace({
   className,
-  size = "md",
+  size = 24,
   state,
   tint,
   shape: chosenShape,

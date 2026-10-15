@@ -294,7 +294,7 @@ function ComposerCrewmateDecorator(props: ComposerCrewmateChip) {
       spellCheck={false}
       data-composer-crewmate-chip={props.handle}
     >
-      <MateFace size="dot" state="idle" tint={props.tint} />
+      <MateFace size={16} state="idle" tint={props.tint} />
       <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>@{props.handle}</span>
     </span>
   );

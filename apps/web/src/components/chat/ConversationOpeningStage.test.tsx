@@ -50,7 +50,7 @@ async function opening(ready = false, header = { cues: [] as ReadonlyArray<MateF
       root.render(
         <ConversationOpeningProvider>
           <ConversationOpeningAvatar>
-            <MateFace state="idle" tint="rose" shape="flower" size="sm" cues={header.cues} />
+            <MateFace state="idle" tint="rose" shape="flower" size={20} cues={header.cues} />
           </ConversationOpeningAvatar>
           <section key={route}>
             {hasStage ? (
@@ -482,7 +482,7 @@ it("keeps the opening face visible and interactive outside a withheld settling p
       root.render(
         <ConversationOpeningProvider>
           <ConversationOpeningAvatar>
-            <MateFace state="idle" tint="rose" size="sm" />
+            <MateFace state="idle" tint="rose" size={20} />
           </ConversationOpeningAvatar>
           <ConversationOpeningLayer>
             <div

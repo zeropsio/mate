@@ -53,7 +53,7 @@ import {
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { Avatar } from "../zerops/primitives";
+import { PersonAvatar } from "../zerops/primitives";
 import { PageWaitLine, WaitLine } from "../zerops/WaitLine";
 import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
@@ -307,7 +307,7 @@ function PlaceChips({ places }: { readonly places: readonly LimitsPlace[] }) {
           className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
         >
           {place.owner ? (
-            <Avatar initials={place.owner.initials} size="xs" src={place.owner.avatarUrl} />
+            <PersonAvatar name={place.owner.name} picture={place.owner.avatarUrl} size={16} />
           ) : null}
           <span className="truncate">{place.name}</span>
           {place.owner ? <span className="sr-only">{`, ${place.owner.name}'s Mate`}</span> : null}

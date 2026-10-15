@@ -33,7 +33,7 @@ const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const ONLY = params.get("n");
 const ONLY_ASK = params.get("ask");
 
-const FACE = <MateFace size="md" state="needs" tint="sky" />;
+const FACE = <MateFace size={24} state="needs" tint="sky" />;
 const nothing = async () => undefined;
 
 const VAULT_ASK: VaultAsk = {
@@ -107,7 +107,7 @@ const ASKS: ReadonlyArray<{ readonly name: string; readonly top: ReactNode }> = 
     name: "colleague",
     top: (
       <ComposerPendingUserInputReadOnlyPanel
-        face={<MateFace size="md" state="needs" tint="rose" />}
+        face={<MateFace size={24} state="needs" tint="rose" />}
         pendingUserInputs={[QUESTION]}
         waitingLabel="Waiting for Theo"
         who="Rosa"

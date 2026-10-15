@@ -98,7 +98,7 @@ describe("a change's conversation in its review", () => {
 
   it("draws Ask in the face its person picked", () => {
     const markup = html({ asker: { name: "Nova", tint: "slate", shape: "clover" } });
-    expect(markup).toContain('data-mate-face-shape="clover" data-mate-face-size="dot"');
+    expect(markup).toContain('data-mate-face-shape="clover" data-mate-face-size="16"');
   });
 
   it("tells the verbs apart without a line explaining them", () => {

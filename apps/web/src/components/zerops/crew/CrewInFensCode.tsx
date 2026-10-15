@@ -81,7 +81,7 @@ export function CrewInFensCode({
                 type="button"
               >
                 <span className="flex justify-center">
-                  <MateFace size="sm" state="idle" tint={owner?.tint ?? "slate"} />
+                  <MateFace size={20} state="idle" tint={owner?.tint ?? "slate"} />
                 </span>
                 <span className="crew-ink-2 truncate text-line leading-4.5">{task.title}</span>
                 <span className="text-line leading-4.5 tabular-nums text-muted-foreground">

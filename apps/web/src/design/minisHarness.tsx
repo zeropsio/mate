@@ -132,7 +132,7 @@ function MateRow({ row }: { readonly row: Row }) {
       type="button"
     >
       <span className="flex size-10 items-center justify-center">
-        <MateFace greets size="md" state="working" tint={row.tint} className="size-10" />
+        <MateFace greets size={32} state="working" tint={row.tint} />
       </span>
       <span className="flex min-w-0 flex-col">
         <span className="flex h-5.5 min-w-0 items-center gap-2">

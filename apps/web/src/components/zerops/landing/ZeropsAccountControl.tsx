@@ -15,7 +15,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../ui/menu";
-import { Avatar } from "../primitives";
+import { PersonAvatar } from "../primitives";
 import { zeropsAccountDisplay, type ZeropsAccountDisplay } from "./ZeropsAccountControl.logic";
 
 export interface ZeropsAccountControlProps {
@@ -39,7 +39,7 @@ export function ZeropsAccountControl({
         className="min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent"
         data-zerops-account-control="true"
       >
-        <Avatar initials={account.initials} src={account.avatarUrl} />
+        <PersonAvatar name={account.name} picture={account.avatarUrl} size={24} />
         <span className="hidden max-w-40 truncate text-sm font-normal sm:inline">
           {account.name}
         </span>
@@ -66,7 +66,7 @@ export function ZeropsAccountMenu({
   return (
     <>
       <div className="flex items-center gap-3 px-2 py-2" data-zerops-account-identity="true">
-        <Avatar initials={account.initials} size="md" src={account.avatarUrl} />
+        <PersonAvatar name={account.name} picture={account.avatarUrl} size={32} />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-foreground">
             {account.fullName ?? account.name}

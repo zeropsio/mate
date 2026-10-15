@@ -1,3 +1,4 @@
+import { personMark } from "./primitives/person.logic";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { lastKnownMateWords, mateUnreachableWords } from "../../zerops/lastKnownMate.logic";
@@ -74,23 +75,19 @@ export interface OwnerMark {
 }
 
 /**
- * The person as a 16 px mark: their picture, or their initial on a colour of
- * their own. The hue is read off the name, so it is the same on every row and
- * every reload without anything stored.
+ * The person as a 16 px mark: their picture, or their letter on a colour of their own
+ * (`personMark`), the same as every other surface draws them.
  */
 export function ownerMark(owner: {
   readonly name: string;
   readonly initials: string;
   readonly avatarUrl: string | null;
 }): OwnerMark {
-  let hash = 5381;
-  for (const character of owner.name) {
-    hash = (hash * 33 + (character.codePointAt(0) ?? 0)) % 1_000_003;
-  }
+  const mark = personMark({ name: owner.name, picture: owner.avatarUrl });
   return {
-    initial: (owner.initials.trim().charAt(0) || owner.name.trim().charAt(0)).toLocaleUpperCase(),
-    hue: hash % 360,
-    picture: owner.avatarUrl !== null && owner.avatarUrl.length > 0 ? owner.avatarUrl : null,
+    initial: mark.letter || owner.initials.trim().charAt(0).toLocaleUpperCase(),
+    hue: mark.hue,
+    picture: mark.picture,
     label: `${owner.name}'s Mate`,
   };
 }

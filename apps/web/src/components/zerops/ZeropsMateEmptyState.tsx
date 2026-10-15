@@ -520,7 +520,7 @@ function ArrivalComposition({
           paces={pacing}
           restarting={restarting}
           shape={mate.shape}
-          size="lg"
+          size={64}
           state={state}
           style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
           tint={mate.tint}

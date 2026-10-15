@@ -193,7 +193,7 @@ function LabelSpecimens() {
           ))}
           <Specimen label={`${specimenLabel({ tone: "attention", place: "corner" })} on a face`}>
             <span className="relative flex">
-              <MateFace className="size-9" size="lg" state="needs" tint="sky" />
+              <MateFace className="size-9" size={32} state="needs" tint="sky" />
               <MateDot place="corner" tone="attention" />
             </span>
           </Specimen>

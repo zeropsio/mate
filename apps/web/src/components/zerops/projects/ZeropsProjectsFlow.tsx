@@ -21,7 +21,7 @@ import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { ReactNode } from "react";
 
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
-import { MateFace, Pill } from "../primitives";
+import { MateFace, Pill, type MateFaceSize } from "../primitives";
 import { firstRunWords } from "./firstRun.logic";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import { PageWaitLine } from "../WaitLine";
@@ -116,7 +116,7 @@ export interface ZeropsProjectsFlowProps<T> {
     },
   ) => ReactNode;
   /** A Mate's face, beside its name in a row. */
-  readonly renderMateFace: (item: T, size: "sm" | "md") => ReactNode;
+  readonly renderMateFace: (item: T, size: MateFaceSize) => ReactNode;
   /**
    * How a Mate opens into its conversation, wherever the list names it;
    * `undefined` where it cannot open yet (coming up, busy), and the name is
@@ -198,7 +198,7 @@ function FirstRun({
       className="flex min-h-[60vh] max-w-xl flex-col items-start justify-center gap-6"
       data-zerops-surface="first-run"
     >
-      <MateFace className="size-20" size="lg" state="idle" tint="slate" />
+      <MateFace className="size-20" size={64} state="idle" tint="slate" />
       <div className="flex min-w-0 flex-col items-start gap-2">
         <h2 className="text-xl font-semibold tracking-tight text-foreground">{words.heading}</h2>
         <p className="text-sm leading-6 text-muted-foreground">{words.body}</p>

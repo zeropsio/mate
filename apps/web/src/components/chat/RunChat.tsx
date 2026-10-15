@@ -1224,7 +1224,7 @@ function StepMark({ icon, running }: { readonly icon: LucideIcon; readonly runni
     return ctx.speaker.helper ? (
       <HelperFace />
     ) : (
-      <MateFace shape={ctx.speaker.shape} size="sm" state="working" tint={ctx.speaker.tint} />
+      <MateFace shape={ctx.speaker.shape} size={20} state="working" tint={ctx.speaker.tint} />
     );
   return (
     <span className={ran ? "run-mark-done" : "contents"}>
@@ -2753,7 +2753,7 @@ const THOUGHT_MARK = (
 function SpeakerMark() {
   const ctx = use(TimelineRowCtx);
   if (ctx.speaker.helper) return <HelperFace />;
-  return <MateFace shape={ctx.speaker.shape} size="sm" state="idle" tint={ctx.speaker.tint} />;
+  return <MateFace shape={ctx.speaker.shape} size={20} state="idle" tint={ctx.speaker.tint} />;
 }
 
 /** What the chat draws: a line on its own, or a run of calls in one card, keyed by its first. */
@@ -3406,7 +3406,7 @@ function NowLine({
           greets
           known={ctx.arrivedAfter !== null && !ctx.syncing}
           shape={ctx.speaker.shape}
-          size="sm"
+          size={20}
           state={face.state}
           tint={ctx.speaker.tint}
         />

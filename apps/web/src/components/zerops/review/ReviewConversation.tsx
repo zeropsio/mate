@@ -27,7 +27,7 @@ import { useState, type KeyboardEvent, type ReactElement } from "react";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 
-import { Avatar, MateFace } from "../primitives";
+import { PersonAvatar, MateFace } from "../primitives";
 import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
 
@@ -39,11 +39,6 @@ interface Asker {
   readonly name: string;
   readonly tint: MateTintId | undefined;
   readonly shape?: MateShapeId | undefined;
-}
-
-/** A person's mark: the first letter they are known by, which a 20 px disc holds at 12 px. */
-function initialOf(name: string): string {
-  return name.trim().slice(0, 1).toUpperCase();
 }
 
 export function ReviewConversation({
@@ -133,7 +128,7 @@ function Remarks({
       )}
       {remarks.slice(hidden).map((remark) => (
         <li className="rv-remark" data-zerops-surface="zerops-change-remark" key={remark.id}>
-          <Avatar className="rv-remark-avatar" initials={initialOf(remark.speaker)} size="sm" />
+          <PersonAvatar name={remark.speaker} size={20} />
           <span className="rv-remark-who">
             {remark.speaker}
             <span className="rv-remark-at">{historyAge(remark.at, now)}</span>
@@ -258,13 +253,7 @@ function SayBox({
             verb={<button className="rv-say-ask" type="button" />}
           >
             {asker.tint === undefined ? null : (
-              <MateFace
-                className="size-4"
-                shape={asker.shape}
-                size="dot"
-                state="idle"
-                tint={asker.tint}
-              />
+              <MateFace shape={asker.shape} size={16} state="idle" tint={asker.tint} />
             )}
             {changeAskLabel(asker.name)}
           </SayVerb>

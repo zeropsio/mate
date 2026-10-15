@@ -18,12 +18,12 @@ import {
   type RuntimesLine,
 } from "~/zerops/mateArrival";
 
-import { Avatar } from "./primitives";
+import { PersonAvatar } from "./primitives";
 import type { SignInPhrasePart } from "./ZeropsAgentSignIn.logic";
 
 /** The person, as their own step wears them. */
 export interface ArrivalYou {
-  readonly initials: string;
+  readonly name: string;
   readonly avatarUrl: string | null;
 }
 
@@ -233,12 +233,7 @@ export function ArrivalStepGlyph({
     case "you":
       return (
         <span className="arrival-glyph-you">
-          <Avatar
-            className="size-full"
-            initials={you?.initials ?? ""}
-            size="xs"
-            src={you?.avatarUrl ?? null}
-          />
+          <PersonAvatar name={you?.name ?? ""} picture={you?.avatarUrl ?? null} size={16} />
         </span>
       );
   }

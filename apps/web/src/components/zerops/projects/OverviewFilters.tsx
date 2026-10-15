@@ -88,7 +88,7 @@ export function OverviewFilterEmpty({
 }) {
   return (
     <div className="ov-filter-empty" data-zerops-surface="overview-filter-empty" role="status">
-      <MateFace className="size-10" size="md" state="idle" tint="slate" />
+      <MateFace size={32} state="idle" tint="slate" />
       <p className="ov-filter-empty-title">
         {show === "waiting" ? "Nothing waits on you" : "No Mate of yours yet"}
       </p>

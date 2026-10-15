@@ -25,7 +25,7 @@ import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { Avatar, MateFace } from "~/components/zerops/primitives";
+import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "~/components/zerops/projects/PlacePanel";
@@ -633,12 +633,7 @@ function HarnessPage() {
               return people.length === 0 ? null : (
                 <span className="ov-card-people">
                   {people.map((person) => (
-                    <Avatar
-                      className="size-5 text-3xs"
-                      initials={person.initials}
-                      key={person.userId}
-                      size="xs"
-                    />
+                    <PersonAvatar key={person.userId} name={person.name} size={20} />
                   ))}
                 </span>
               );
@@ -678,9 +673,7 @@ function HarnessPage() {
                       />
                     )
                   }
-                  face={
-                    <MateFace className="size-8" size="md" state={entry.face} tint={entry.tint} />
-                  }
+                  face={<MateFace size={32} state={entry.face} tint={entry.tint} />}
                   key={entry.id}
                   name={entry.name}
                   onOpen={() => acted.push(`open:${entry.id}`)}
@@ -689,9 +682,7 @@ function HarnessPage() {
                 />
               );
             }}
-            renderMateFace={(entry) => (
-              <MateFace className="size-4" size="sm" state="idle" tint={entry.tint} />
-            )}
+            renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
             renderPlacePanel={(entry, line) => {
               const found = byId.get(entry.group.groupId);
               if (found === undefined) return null;

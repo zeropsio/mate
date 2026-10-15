@@ -180,7 +180,7 @@ export function CrewTellComposer({
                     onClick={() => setPicked(tellPicks(picked, mate.handle, crewmates))}
                     type="button"
                   >
-                    <MateFace className="size-4" size="dot" state="idle" tint={mate.tint} />
+                    <MateFace size={16} state="idle" tint={mate.tint} />
                   </button>
                 ))}
               </span>
@@ -189,7 +189,7 @@ export function CrewTellComposer({
         ) : (
           <CrewTip tip={CREW_TO_LEAD_LINE}>
             <span className="crew-chip" data-crew-composer-to="lead">
-              <MateFace className="size-4" size="dot" state={lead.face} tint={lead.tint} />
+              <MateFace size={16} state={lead.face} tint={lead.tint} />
               {crewToWord(lead.name)}
             </span>
           </CrewTip>

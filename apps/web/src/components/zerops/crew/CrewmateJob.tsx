@@ -210,7 +210,7 @@ function JobForm({
   return (
     <>
       <div className="mt-3 flex items-center gap-3" data-crew-job-head>
-        <MateFace className="size-10" size="lg" state="idle" tint={tint} />
+        <MateFace size={32} state="idle" tint={tint} />
         <span className="flex min-w-0 flex-col">
           <span className="truncate font-semibold text-base leading-6">
             {draft.displayName.trim() === ""
@@ -315,7 +315,7 @@ function JobForm({
                     role="radio"
                     type="button"
                   >
-                    <MateFace size="md" state="idle" tint={option} />
+                    <MateFace size={24} state="idle" tint={option} />
                   </button>
                 ))}
               </span>

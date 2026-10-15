@@ -237,7 +237,7 @@ function FacePreview({
             );
           }}
           shape={shown.before.shape}
-          size="lg"
+          size={64}
           state="idle"
           tint={shown.before.tint}
         />
@@ -247,7 +247,7 @@ function FacePreview({
         data-mate-face-preview={shown.turn === 0 ? undefined : "in"}
         key={`in-${shown.turn}`}
         shape={shown.face.shape}
-        size="lg"
+        size={64}
         state="idle"
         tint={shown.face.tint}
       />

@@ -6,7 +6,7 @@ import type * as React from "react";
 import { cn } from "../../lib/utils";
 import type { UsageEnvironmentOwner } from "../../zerops/usageEnvironmentIdentities";
 import { Badge } from "../ui/badge";
-import { Avatar } from "../zerops/primitives/Avatar";
+import { PersonAvatar } from "../zerops/primitives/PersonAvatar";
 import type {
   UsageDimension,
   UsageDimensionMetric,
@@ -83,7 +83,7 @@ export function OwnerName({
 
 export function OwnerAvatar({ owner }: { readonly owner: UsageEnvironmentOwner | null }) {
   return owner === null ? null : (
-    <Avatar className="size-4 text-[8px]" initials={owner.initials} src={owner.avatarUrl} />
+    <PersonAvatar name={owner.name} picture={owner.avatarUrl} size={16} />
   );
 }
 
@@ -328,11 +328,11 @@ export function UsageDimensionTable({
                       </DrillButton>
                       <span className="flex shrink-0 -space-x-1">
                         {project.owners.map((projectOwner) => (
-                          <Avatar
+                          <PersonAvatar
                             key={projectOwner.id}
-                            className="size-4 text-[8px] ring-1 ring-background"
-                            initials={projectOwner.initials}
-                            src={projectOwner.avatarUrl}
+                            name={projectOwner.name}
+                            picture={projectOwner.avatarUrl}
+                            size={16}
                             title={projectOwner.name}
                           />
                         ))}

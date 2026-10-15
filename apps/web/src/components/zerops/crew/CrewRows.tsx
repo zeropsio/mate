@@ -335,7 +335,7 @@ function CrewRow(
       data-crew-row={model.handle}
       data-needs={model.needsYou || model.plan ? "" : undefined}
     >
-      <MateFace greets size="md" state={model.pose} tint={model.tint} />
+      <MateFace greets size={24} state={model.pose} tint={model.tint} />
       <div className="flex min-w-0 flex-col">
         <div className="flex h-5 items-center gap-2">
           {open === null ? (

@@ -200,7 +200,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <DatabaseIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {props.item.type === "crewmate" ? (
-        <MateFace size="dot" state="idle" tint={props.item.tint} />
+        <MateFace size={16} state="idle" tint={props.item.tint} />
       ) : null}
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">

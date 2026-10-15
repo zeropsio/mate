@@ -194,7 +194,7 @@ function ProposalBody({
           <MateFace
             mark={false}
             shape={recipient.shape}
-            size="sm"
+            size={20}
             state="idle"
             tint={recipient.tint}
           />

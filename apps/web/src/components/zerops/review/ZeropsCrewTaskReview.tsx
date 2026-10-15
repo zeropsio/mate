@@ -201,9 +201,7 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
       meta={
         <>
           <span className="inline-flex items-center gap-1.5">
-            {face.tint === null ? null : (
-              <MateFace className="size-4" size="dot" state={face.face} tint={face.tint} />
-            )}
+            {face.tint === null ? null : <MateFace size={16} state={face.face} tint={face.tint} />}
             {face.name}
           </span>
           {task.diffStat === null ? null : (

@@ -310,7 +310,7 @@ export function HarnessPressPage({ birthId }: { readonly birthId: string }) {
                 retries.get(birthId)?.();
               }}
               progress={progress}
-              you={{ initials: "AR", avatarUrl: null }}
+              you={{ name: "Ada", avatarUrl: null }}
             />
           ),
         }}
@@ -418,7 +418,7 @@ function HarnessMatePage({
               nowMs={nowMs}
               {...(retry === null ? {} : { onTryAgain: () => void retry() })}
               progress={progress}
-              you={{ initials: "AR", avatarUrl: null }}
+              you={{ name: "Ada", avatarUrl: null }}
             />
           ),
         }}

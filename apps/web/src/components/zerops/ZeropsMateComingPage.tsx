@@ -1061,13 +1061,13 @@ const SILENT_STAGE: Exclude<MateVoice, { readonly surface: "none" }> = {
   processes: false,
 };
 
-/** The person, as their own step wears them: their picture, else their initials. */
+/** The person, as their own step wears them: their picture, else their letter. */
 export function personOf(
   user: Parameters<typeof zeropsAccountDisplay>[0] | undefined,
 ): ArrivalYou | null {
   if (user === undefined || user === null) return null;
   const display = zeropsAccountDisplay(user);
-  return { initials: display.initials, avatarUrl: display.avatarUrl };
+  return { name: display.name, avatarUrl: display.avatarUrl };
 }
 
 /**

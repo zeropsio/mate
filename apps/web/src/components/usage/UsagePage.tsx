@@ -53,7 +53,7 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { Avatar } from "../zerops/primitives/Avatar";
+import { PersonAvatar } from "../zerops/primitives/PersonAvatar";
 import {
   usageDimensions,
   type UsageDimension,
@@ -1061,7 +1061,7 @@ function UsageScopeChips({
       <WorkspaceBreadcrumbItem className="min-w-0 shrink">
         <span className="flex min-w-0 items-center gap-1.5 text-foreground">
           {chip.owner === null ? null : (
-            <Avatar initials={chip.owner.initials} size="xs" src={chip.owner.avatarUrl} />
+            <PersonAvatar name={chip.owner.name} picture={chip.owner.avatarUrl} size={16} />
           )}
           <span className="truncate">{chip.label}</span>
           <button

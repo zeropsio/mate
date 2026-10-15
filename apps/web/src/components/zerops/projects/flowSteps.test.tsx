@@ -99,6 +99,6 @@ describe("a Mate being created", () => {
     { case: "its birth stopped", failed: true, state: "sleep" },
   ] as const)("$case: its face $state", ({ failed, state }) => {
     const coming = { face: { tint: "coral", shape: "gem" }, failed } as const;
-    expect(stateOf(renderToStaticMarkup(<ComingMateFace coming={coming} size="sm" />))).toBe(state);
+    expect(stateOf(renderToStaticMarkup(<ComingMateFace coming={coming} size={20} />))).toBe(state);
   });
 });

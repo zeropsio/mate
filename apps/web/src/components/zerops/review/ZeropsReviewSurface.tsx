@@ -168,7 +168,7 @@ export function ZeropsReviewSurface({
                 <MateFace
                   className="size-5.5"
                   shape={face.shape}
-                  size="sm"
+                  size={20}
                   state={face.state ?? "idle"}
                   tint={face.tint}
                 />
@@ -728,7 +728,7 @@ export function ReviewReleaseRows({
               <MateFace
                 className="size-5.5"
                 shape={row.face.shape}
-                size="sm"
+                size={20}
                 state={row.face.state ?? "idle"}
                 tint={row.face.tint}
               />

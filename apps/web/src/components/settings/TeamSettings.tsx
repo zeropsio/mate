@@ -11,7 +11,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
-import { Avatar } from "../zerops/primitives";
+import { PersonAvatar } from "../zerops/primitives";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { reachWords, shownTeam, type TeamPerson, type TeamView } from "./teamSettings.logic";
 import { useTeam } from "./useTeam";
@@ -110,7 +110,7 @@ function PersonCard({ person }: { readonly person: TeamPerson }) {
       to="/settings/team/$clientUserId"
     >
       <span className="tm-card-face">
-        <Avatar initials={person.initials} size="xl" src={person.avatarUrl} />
+        <PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />
       </span>
       <span className="tm-card-name" data-part="name">
         {person.name}

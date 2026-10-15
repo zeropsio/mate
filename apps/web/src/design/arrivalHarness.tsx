@@ -85,7 +85,7 @@ const VERA: ZeropsMateIdentity = {
   project: "Acme Shop",
   connected: false,
 };
-const YOU = { initials: "AR", avatarUrl: null };
+const YOU = { name: "Ada", avatarUrl: null };
 
 const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
 
@@ -1040,9 +1040,8 @@ function Header({ state }: { readonly state: HarnessState }) {
       {state.conversation === true ? (
         <span className="flex items-center gap-2.5">
           <MateFace
-            className="size-6"
             shape={state.mate.shape}
-            size="sm"
+            size={24}
             state={state.mate.connected ? "idle" : "sleep"}
             tint={state.mate.tint}
           />

@@ -20,7 +20,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { Avatar } from "../zerops/primitives";
+import { PersonAvatar } from "../zerops/primitives";
 import { ZeropsHqCard } from "../zerops/ZeropsHqCard";
 import { zeropsAccountDisplay } from "../zerops/landing/ZeropsAccountControl.logic";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -84,7 +84,7 @@ export function ZeropsSettings() {
           status={
             account === null ? null : (
               <span className="flex items-center gap-2" data-zerops-account-line="true">
-                <Avatar initials={account.initials} src={account.avatarUrl} />
+                <PersonAvatar name={account.name} picture={account.avatarUrl} size={24} />
                 <span className="truncate text-foreground">{account.fullName ?? account.name}</span>
                 {account.email === null ? null : <span className="truncate">{account.email}</span>}
               </span>

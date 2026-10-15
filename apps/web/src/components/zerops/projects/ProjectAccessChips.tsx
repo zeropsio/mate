@@ -45,7 +45,7 @@ import {
 } from "../../ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
-import { Avatar } from "../primitives";
+import { PersonAvatar } from "../primitives";
 import {
   asksFirst,
   BADGE_WORDS,
@@ -219,7 +219,7 @@ function AccessChip({
             )
           }
         >
-          <Avatar initials={person.initials} size="md" src={person.avatarUrl} />
+          <PersonAvatar name={person.name} picture={person.avatarUrl} size={32} />
           <span className="ov-chip-text">
             <span
               className="ov-chip-name"
@@ -463,7 +463,7 @@ export function AddAccessPicker({
               data-ticked={ticked[candidate.clientUserId] !== undefined || undefined}
               key={candidate.clientUserId}
             >
-              <Avatar initials={candidate.initials} size="md" src={candidate.avatarUrl} />
+              <PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={32} />
               <span className="ov-pick-text">
                 <span className="ov-pick-name">{candidate.name}</span>
                 <span className="ov-pick-role">

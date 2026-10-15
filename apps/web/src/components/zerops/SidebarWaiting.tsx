@@ -243,9 +243,8 @@ function WaitingEntry({
           </span>
         ) : (
           <MateFace
-            className="size-8"
             shape={item.mate.shape}
-            size="md"
+            size={32}
             state={item.mate.face}
             tint={item.mate.tint}
           />

@@ -665,7 +665,7 @@ function StageLine({
 function MateHome({ mate }: { mate: ZeropsMateOnMap }) {
   return (
     <div className="mt-2.5 flex min-w-0 max-w-full items-center gap-2" data-zerops-mate-home>
-      <MateFace shape={mate.shape} size="sm" state={mate.face} tint={mate.tint} />
+      <MateFace shape={mate.shape} size={20} state={mate.face} tint={mate.tint} />
       <span className="min-w-0 text-sm leading-snug">
         <span className="font-medium text-foreground">{mate.name}</span>
         <span className="text-muted-foreground"> lives here</span>

@@ -3929,7 +3929,7 @@ function MateRowView<T extends RosterCandidate>({
               known={known}
               restarting={face.restarting}
               shape={shape}
-              size={kid ? "md" : "lg"}
+              size={kid ? 24 : 32}
               state={view.face}
               tint={tint}
             />
@@ -4711,7 +4711,7 @@ function ComingMateRow({
           <MateFace
             className={kid ? "size-7" : "size-9"}
             shape={coming.face?.shape ?? mateShapeOf(undefined, tint)}
-            size={kid ? "md" : "lg"}
+            size={kid ? 24 : 32}
             state={mateBirthFace(coming.failed === true)}
             tint={tint}
           />

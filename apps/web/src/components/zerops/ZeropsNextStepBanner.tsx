@@ -141,7 +141,7 @@ export function ZeropsNextStepStrip({
         className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
         data-composer-top="review"
       >
-        <MateFace shape={strip.shape} size="md" state="needs" tint={strip.tint} />
+        <MateFace shape={strip.shape} size={24} state="needs" tint={strip.tint} />
         <p className="truncate font-medium text-foreground text-line leading-4.5">{strip.title}</p>
         {dismissButton(strip.target, onDismiss, "-my-1 justify-self-end")}
         {lines.map((line) => (
@@ -182,7 +182,7 @@ export function ZeropsNextStepStrip({
       className="grid grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-x-3 border-foreground/8 border-b pt-3 pe-2 pb-3 ps-4"
       data-composer-top="review"
     >
-      <MateFace shape={strip.shape} size="md" state="needs" tint={strip.tint} />
+      <MateFace shape={strip.shape} size={24} state="needs" tint={strip.tint} />
       <div className="min-w-0">
         <p className="truncate font-medium text-foreground text-line leading-4.5">{strip.title}</p>
         <p className="truncate text-muted-foreground text-line leading-4.5">{strip.detail}</p>

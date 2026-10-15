@@ -65,7 +65,7 @@ export function CrewSectionEmpty({
   return (
     <div className="flex flex-col items-center px-12 pt-49 text-center" data-crew-section="none">
       <div className="flex items-center gap-2.5">
-        <MateFace className="size-10" shape={mate.shape} size="lg" state="idle" tint={mate.tint} />
+        <MateFace shape={mate.shape} size={32} state="idle" tint={mate.tint} />
         <span className="flex items-center gap-1.5" aria-hidden="true">
           <span className="crew-seat" />
           <span className="crew-seat" />

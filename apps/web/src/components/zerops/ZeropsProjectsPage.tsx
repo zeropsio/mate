@@ -1935,7 +1935,7 @@ export function ZeropsProjectsContent({
       return (
         <MateFace
           shape={mateShapeOf(candidate.project, tint)}
-          size="sm"
+          size={20}
           state={mateFace(candidate)}
           tint={tint}
         />

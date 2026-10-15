@@ -101,7 +101,7 @@ const ADMIN = { roleCode: "ADMIN", id: "ota" };
 
 describe("a person's own page", () => {
   it("Their face, name and e-mail head the page", () => {
-    expect(page("zora", OWNER).head).toBe("ZMZora Malazora@example.com");
+    expect(page("zora", OWNER).head).toBe("ZZora Malazora@example.com");
   });
 
   it("Their role is four cards in legacy's order, theirs lit; Update waits until something changed", () => {

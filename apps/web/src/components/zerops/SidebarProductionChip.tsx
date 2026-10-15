@@ -117,7 +117,7 @@ export function AskToFix({
           <MateFace
             className="size-4.5"
             shape={mate.shape}
-            size="sm"
+            size={20}
             state="idle"
             tint={mate.tint}
           />
@@ -152,7 +152,7 @@ export function AskToFix({
               <MateFace
                 className="size-4.5"
                 shape={other.shape}
-                size="sm"
+                size={20}
                 state="idle"
                 tint={other.tint}
               />
@@ -164,13 +164,7 @@ export function AskToFix({
       {drafting ? (
         <div className="zerops-envpop-draft" data-zerops-surface="sidebar-production-draft">
           <div className="zerops-envpop-draft-to">
-            <MateFace
-              className="size-3.5"
-              shape={mate.shape}
-              size="dot"
-              state="idle"
-              tint={mate.tint}
-            />
+            <MateFace shape={mate.shape} size={16} state="idle" tint={mate.tint} />
             {`Opens ${mate.name}'s conversation with this in the composer`}
           </div>
           {draftParts(fixRequestPrompt(problem)).map((part): ReactNode =>

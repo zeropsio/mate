@@ -80,7 +80,7 @@ const CLOSE_HELD = "Stop the agent before closing this chat";
 function CrewmateFace({ crewmate }: { readonly crewmate: LineCrewmate }) {
   if (crewmate.tint === null) return <span aria-hidden="true" className="size-5 shrink-0" />;
   return (
-    <MateFace greets known={crewmate.known} size="sm" state={crewmate.face} tint={crewmate.tint} />
+    <MateFace greets known={crewmate.known} size={20} state={crewmate.face} tint={crewmate.tint} />
   );
 }
 
@@ -236,14 +236,13 @@ function MatePill({
   const face = useMemo(
     () => (
       <MateFace
-        className="size-6"
         cues={mate.cues}
         greets
         known={mate.known ?? false}
         mark={asMark}
         restarting={mate.restarting}
         shape={mate.shape}
-        size="sm"
+        size={24}
         state={mate.face}
         tint={mate.tint}
       />

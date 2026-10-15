@@ -55,7 +55,7 @@ export function ProjectCluster({
             greets
             known={face.known}
             shape={face.shape}
-            size="md"
+            size={24}
             state={face.state}
             tint={face.tint}
           />

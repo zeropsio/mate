@@ -355,7 +355,7 @@ function CardComingMate<T>({
   return (
     <div aria-busy="true" className="ov-mate" data-zerops-surface="mate-coming" role="listitem">
       <span className="ov-mate-face">
-        <ComingMateFace coming={mate.coming} size="md" />
+        <ComingMateFace coming={mate.coming} size={24} />
       </span>
       <span className="ov-mate-text">
         <span className="ov-mate-l1">
@@ -416,7 +416,7 @@ function CardMates<T>({
           <span className="ov-fold-faces">
             {rest.slice(0, 3).map((mate) => (
               <Fragment key={props.getKey(mate.item)}>
-                {props.renderMateFace(mate.item, "sm")}
+                {props.renderMateFace(mate.item, 20)}
               </Fragment>
             ))}
           </span>

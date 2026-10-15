@@ -80,7 +80,7 @@ interface Project {
 function Row({ project }: { readonly project: Project }) {
   return (
     <div className="menu-row group relative items-center rounded-xl hover:bg-sidebar-row-hover">
-      <MateFace className="size-10" shape="clover" size="lg" state="idle" tint={project.tint} />
+      <MateFace shape="clover" size={32} state="idle" tint={project.tint} />
       <span className="flex min-w-0 flex-col">
         <span className="flex h-5.5 min-w-0 items-center gap-2">
           <span className="menu-name min-w-0 flex-1 truncate font-medium">

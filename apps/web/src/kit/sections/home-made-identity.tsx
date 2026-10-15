@@ -2,9 +2,8 @@ import { MATE_SHAPE_IDS, MATE_TINT_IDS, type MateMarkState } from "@t3tools/shar
 
 import { MateMark } from "~/components/MateMark";
 import { ZeropsMark } from "~/components/ZeropsMark";
-import { zeropsInitials } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 import { MateOwnerMark } from "~/components/zerops/MateOwnerMark";
-import { Avatar, MateFace } from "~/components/zerops/primitives";
+import { MateFace, PersonAvatar, type MateFaceSize } from "~/components/zerops/primitives";
 import { ownerMark } from "~/components/zerops/SidebarMateRow.logic";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION } from "~/components/usage/usageProviders";
 
@@ -24,88 +23,109 @@ const STATES = variantsOf<MateMarkState>({
   waking: true,
   closed: true,
 });
-const FACE_SIZES = ["dot", "sm", "md", "lg"] as const;
-const AVATAR_SIZES = ["xs", "sm", "md", "xl"] as const;
+const SIZES: ReadonlyArray<MateFaceSize> = [16, 20, 24, 32, 64];
 
-const FACE_SOURCE = "apps/web/src/components/zerops/primitives/MateFace.tsx";
-const AVATAR_SOURCE = "apps/web/src/components/zerops/primitives/Avatar.tsx";
 const MARK_SOURCE = "apps/web/src/components/MateMark.tsx";
-const OWNER_SOURCE = "apps/web/src/components/zerops/MateOwnerMark.tsx";
 
-// One person, as each identity mark draws them.
+// One person, as each surface names them: in full, or by the first name alone.
 const PERSON = { name: "Ada Lovelace", avatarUrl: null } as const;
+const PEOPLE = ["Ada Lovelace", "Bruno Diaz", "Chen Wei", "Mira", "Petra Malá"] as const;
 
 /** A Mate's face with its owner's mark cut into its corner, as the menu's row seats them. */
 function SeatedFace({ seat }: { readonly seat: Parameters<typeof MateOwnerMark>[0]["seat"] }) {
   return (
     <span className="relative flex">
       <span className="menu-face-cut relative flex">
-        <MateFace className="size-9" size="lg" state="idle" tint="sky" />
+        <MateFace className="size-9" size={32} state="idle" tint="sky" />
       </span>
       <MateOwnerMark seat={seat} />
     </span>
   );
 }
 
-function IdentitySpecimens() {
-  const adaInitials = zeropsInitials(PERSON.name);
+function Chosen() {
   return (
-    <CensusLooks>
-      <CensusCount files={69} kit="the kit has no avatar or identity mark" looks={6} />
-      <CensusLook
-        source={FACE_SOURCE}
-        files={40}
-        name="MateFace"
-        note="a Mate: its tint, shape and state"
-        uses={59}
-      >
+    <div className="flex flex-col gap-8">
+      <SpecimenBlock title="Chosen · MateFace: a Mate — its tint, its shape, its eyes carry its state">
         <SpecimenMatrix
           rowProp="tint"
           rows={MATE_TINT_IDS}
           columnProp="state"
           columns={STATES}
-          render={(tint, state) => <MateFace size="md" state={state} tint={tint} />}
+          render={(tint, state) => <MateFace size={32} state={state} tint={tint} />}
         />
-        {FACE_SIZES.map((size) => (
-          <Specimen key={size} label={specimenLabel({ size, tint: "coral", state: "idle" })}>
-            <MateFace size={size} state="idle" tint="coral" />
+        <SpecimenGrid>
+          {SIZES.map((size) => (
+            <Specimen key={size} label={specimenLabel({ size, tint: "coral" })}>
+              <MateFace size={size} state="idle" tint="coral" />
+            </Specimen>
+          ))}
+          {MATE_SHAPE_IDS.map((shape) => (
+            <Specimen key={shape} label={specimenLabel({ shape, size: 32 })}>
+              <MateFace shape={shape} size={32} state="idle" tint="violet" />
+            </Specimen>
+          ))}
+          <Specimen label={specimenLabel({ mark: true, size: 32 })}>
+            <MateFace mark size={32} state="idle" tint="amber" />
           </Specimen>
-        ))}
-        {MATE_SHAPE_IDS.map((shape) => (
-          <Specimen key={shape} label={specimenLabel({ shape, tint: "violet", size: "md" })}>
-            <MateFace shape={shape} size="md" state="idle" tint="violet" />
+          <Specimen label={specimenLabel({ gaze: "up", state: "working", size: 64 })}>
+            <MateFace gaze="up" size={64} state="working" tint="olive" />
           </Specimen>
-        ))}
-        <Specimen label={specimenLabel({ mark: true, tint: "amber", size: "md" })}>
-          <MateFace mark size="md" state="idle" tint="amber" />
-        </Specimen>
-        <Specimen label={specimenLabel({ gaze: "up", state: "working", size: "lg" })}>
-          <MateFace gaze="up" size="lg" state="working" tint="olive" />
-        </Specimen>
-        <Specimen label={specimenLabel({ restarting: true, size: "lg" })}>
-          <MateFace restarting size="lg" state="idle" tint="rose" />
-        </Specimen>
-      </CensusLook>
+          <Specimen label={specimenLabel({ restarting: true, size: 64 })}>
+            <MateFace restarting size={64} state="idle" tint="rose" />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock title="Chosen · PersonAvatar: a person — their picture, or their letter on their own hue">
+        <SpecimenGrid>
+          {SIZES.map((size) => (
+            <Specimen key={size} label={specimenLabel({ name: PERSON.name, size })}>
+              <PersonAvatar name={PERSON.name} size={size} />
+            </Specimen>
+          ))}
+          {PEOPLE.map((name) => (
+            <Specimen key={name} label={specimenLabel({ name, size: 32 })}>
+              <PersonAvatar name={name} size={32} />
+            </Specimen>
+          ))}
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock title={`Chosen · one person, "${PERSON.name}", everywhere the app draws them`}>
+        <SpecimenGrid>
+          <Specimen label="the account menu and its foot: PersonAvatar size={32}">
+            <PersonAvatar name="Ada" size={32} />
+          </Specimen>
+          <Specimen label="a team card: PersonAvatar size={64}">
+            <PersonAvatar name={PERSON.name} size={64} />
+          </Specimen>
+          <Specimen label="the overview card's people: PersonAvatar size={20}">
+            <PersonAvatar name={PERSON.name} size={20} />
+          </Specimen>
+          <Specimen label="on their Mate's face: MateOwnerMark">
+            <SeatedFace seat={{ kind: "person", mark: ownerMark({ ...PERSON, initials: "" }) }} />
+          </Specimen>
+          <Specimen label='nobody&apos;s Mate yet: seat={{ kind: "nobody" }}'>
+            <SeatedFace seat={{ kind: "nobody", label: "Nobody's Mate yet" }} />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </div>
+  );
+}
 
-      <CensusLook
-        source={AVATAR_SOURCE}
-        files={12}
-        name="Avatar"
-        note="a person: grey, one or two letters"
-        uses={17}
-      >
-        {AVATAR_SIZES.map((size) => (
-          <Specimen key={size} label={specimenLabel({ initials: adaInitials, size })}>
-            <Avatar initials={adaInitials} size={size} />
-          </Specimen>
-        ))}
-      </CensusLook>
-
+function OtherMarks() {
+  return (
+    <CensusLooks>
+      <CensusCount
+        files={16}
+        kit="MateFace and PersonAvatar (above) stand for every Mate and every person; these marks stand for something else"
+        looks={3}
+      />
       <CensusLook
         source={MARK_SOURCE}
         files={9}
         name="MateMark"
-        note="the product, or one Mate in its tint"
+        note="the product's own mark, and the Chief's face"
         uses={11}
       >
         <Specimen label="(defaults)">
@@ -114,18 +134,7 @@ function IdentitySpecimens() {
         <Specimen label={specimenLabel({ playful: true, awake: true })}>
           <MateMark awake className="size-8" playful />
         </Specimen>
-        {(["working", "needs", "done", "sleep"] as const).map((state) => (
-          <Specimen key={state} label={specimenLabel({ playful: true, awake: true, state })}>
-            <MateMark awake className="size-8" playful state={state} />
-          </Specimen>
-        ))}
-        {MATE_TINT_IDS.map((tint) => (
-          <Specimen key={tint} label={specimenLabel({ tint })}>
-            <MateMark className="size-8" tint={tint} />
-          </Specimen>
-        ))}
       </CensusLook>
-
       <CensusLook
         source="apps/web/src/components/ZeropsMark.tsx"
         files={6}
@@ -139,37 +148,6 @@ function IdentitySpecimens() {
           </Specimen>
         ))}
       </CensusLook>
-
-      <CensusLook
-        source={OWNER_SOURCE}
-        files={6}
-        name="MateOwnerMark"
-        note="a person on a Mate's corner: tinted, one letter"
-        uses={7}
-      >
-        <Specimen label='seat={{ kind: "person" }} on a face'>
-          <SeatedFace
-            seat={{
-              kind: "person",
-              mark: ownerMark({ ...PERSON, initials: adaInitials }),
-            }}
-          />
-        </Specimen>
-        {["Bruno Diaz", "Chen Wei", "Mira"].map((name) => (
-          <Specimen key={name} label={`seat of "${name}"`}>
-            <SeatedFace
-              seat={{
-                kind: "person",
-                mark: ownerMark({ name, initials: zeropsInitials(name), avatarUrl: null }),
-              }}
-            />
-          </Specimen>
-        ))}
-        <Specimen label='seat={{ kind: "nobody" }}'>
-          <SeatedFace seat={{ kind: "nobody", label: "Nobody's Mate yet" }} />
-        </Specimen>
-      </CensusLook>
-
       <CensusLook
         source="apps/web/src/components/usage/usageProviders.ts"
         files={1}
@@ -186,22 +164,6 @@ function IdentitySpecimens() {
           );
         })}
       </CensusLook>
-
-      <SpecimenBlock title={`One person, "${PERSON.name}", as the app draws them in three places`}>
-        <SpecimenGrid>
-          <Specimen label="Avatar: the account menu, team, usage">
-            <Avatar initials={adaInitials} size="sm" />
-          </Specimen>
-          <Specimen label="Avatar: the overview card's people">
-            <Avatar className="size-5 text-3xs" initials={adaInitials} />
-          </Specimen>
-          <Specimen label="MateOwnerMark: the menu, the overview's Mates">
-            <SeatedFace
-              seat={{ kind: "person", mark: ownerMark({ ...PERSON, initials: adaInitials }) }}
-            />
-          </Specimen>
-        </SpecimenGrid>
-      </SpecimenBlock>
     </CensusLooks>
   );
 }
@@ -210,9 +172,14 @@ export default defineKitSection({
   id: "home-made-identity",
   title: "Identity marks",
   purpose:
-    "Who or what a thing belongs to: a Mate, a person, the product, the platform, an agent's maker. No organisation or project has a mark of its own.",
+    "Who or what a thing belongs to: a Mate (MateFace), a person (PersonAvatar), the product, the platform, an agent's maker. No organisation or project has a mark of its own.",
   group: "Home-made",
   kind: "Identity",
-  source: "apps/web/src/components",
-  render: () => <IdentitySpecimens />,
+  source: "apps/web/src/components/zerops/primitives",
+  render: () => (
+    <div className="flex flex-col gap-10">
+      <Chosen />
+      <OtherMarks />
+    </div>
+  ),
 });

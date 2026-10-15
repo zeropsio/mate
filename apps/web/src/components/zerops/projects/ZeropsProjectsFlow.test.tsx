@@ -75,7 +75,7 @@ describe("first run", () => {
     const html = render({ onCreateProject: () => {} });
     expect(html).toContain('data-zerops-surface="first-run"');
     expect(html).toContain("Start a project");
-    expect(html).toContain('data-mate-face-size="lg"');
+    expect(html).toContain('data-mate-face-size="64"');
     expect(html).toContain('data-zerops-primitive="pill"');
   });
 

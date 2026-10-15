@@ -30,7 +30,7 @@ export function ComposerAskFace({ environmentId }: { readonly environmentId: Env
   return mate === undefined ? (
     <ComposerAskMark />
   ) : (
-    <MateFace shape={mate.shape} size="md" state="needs" tint={mate.tint} />
+    <MateFace shape={mate.shape} size={24} state="needs" tint={mate.tint} />
   );
 }
 
