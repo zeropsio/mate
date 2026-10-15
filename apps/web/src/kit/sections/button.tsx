@@ -123,7 +123,7 @@ function ButtonSpecimens() {
           </Specimen>
           <Specimen label='size="sm-multiline" in a 160px box'>
             <div className="flex w-40">
-              <Button size="sm-multiline" variant="outline">
+              <Button size="md" variant="outline">
                 Deploy the storefront to every preview
               </Button>
             </div>

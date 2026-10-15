@@ -2113,14 +2113,14 @@ export default function GitActionsControl({
             <Button
               className="w-full max-w-full sm:w-auto"
               variant="outline"
-              size="sm-multiline"
+              size="md"
               onClick={continuePendingDefaultBranchAction}
             >
               {pendingDefaultBranchActionCopy?.continueLabel ?? "Continue"}
             </Button>
             <Button
               className="w-full max-w-full sm:w-auto"
-              size="sm-multiline"
+              size="md"
               onClick={checkoutFeatureBranchAndContinuePendingAction}
             >
               Check out feature branch & continue
