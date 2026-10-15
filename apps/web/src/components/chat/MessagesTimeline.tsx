@@ -213,6 +213,7 @@ import {
   type TimelineRowActivityState,
   type TimelineRowSharedState,
 } from "./timelineContext";
+import { makeTimelineRowReads, TimelineRowReadsCtx } from "./timelineRowReads";
 import type { DockModel } from "./conversationDock.logic";
 import {
   ErrorLine,
@@ -862,6 +863,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The list stands where it stays: a reading position put back, or the end
   // reached. Until then it is out of sight (`data-timeline-placing`).
   const [listPlaced, setListPlaced] = useState(false);
+  // Rows still reading what they show keep the conversation out of sight while it is placed.
+  const [rowReads] = useState(makeTimelineRowReads);
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
@@ -2059,6 +2062,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           listReady,
           offBy: target === null ? null : viewport.scrollTop - target,
           elapsedMs: performance.now() - placingSince,
+          rowsReading: rowReads.reading(),
         },
         stableFrames,
       );
@@ -2249,7 +2253,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   return (
     <>
       <div className="h-full min-h-0" data-conversation-content="">
-        {content}
+        <TimelineRowReadsCtx value={rowReads}>{content}</TimelineRowReadsCtx>
       </div>
       {kept?.shown === false || pauseStageId !== null ? null : (
         <ConversationOpeningStage
