@@ -97,6 +97,7 @@ import {
 import { answeredDeploys } from "../ZeropsDeployAnswer";
 import { jobInFlight } from "@t3tools/client-runtime/zerops/hq";
 import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
+import { Button } from "~/components/ui/button";
 
 type ReleaseTarget = Extract<ReviewTarget, { readonly kind: "release" | "rollback" }>;
 
@@ -784,13 +785,13 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
             </p>
             {version.suggestions.map((suggestion) => (
               <div className="rv-note rv-version-use" key={suggestion.source}>
-                <button
-                  className="rv-textbtn"
+                <Button
                   onClick={() => version.onChange(suggestion.tag.slice(1))}
-                  type="button"
+                  size="sm"
+                  variant="link"
                 >
                   Use {suggestion.tag}
-                </button>
+                </Button>
                 <span>Set in the code, in {suggestion.source.split("/").at(-1)}</span>
               </div>
             ))}

@@ -30,6 +30,7 @@ import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 import { PersonAvatar, MateFace } from "../primitives";
 import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
+import { Button } from "~/components/ui/button";
 
 /** What was being written on each change, kept while the tab is open. */
 const drafts = new Map<string, string>();
@@ -114,16 +115,16 @@ function Remarks({
     <ol className="rv-remarks">
       {hidden === 0 ? null : (
         <li>
-          <button
-            className="rv-textbtn rv-fold"
-            data-fold="remarks"
+          <Button
+            className="ml-5.5"
             onClick={() => {
               setAll(true);
             }}
-            type="button"
+            size="sm"
+            variant="link"
           >
             Show {hidden} earlier
-          </button>
+          </Button>
         </li>
       )}
       {remarks.slice(hidden).map((remark) => (

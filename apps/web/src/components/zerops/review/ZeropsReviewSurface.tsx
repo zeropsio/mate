@@ -219,9 +219,9 @@ export function ZeropsReviewSurface({
           <div className="rv-why" data-tone={verdict.tone}>
             {whySaid ? <span>{verdict.why}</span> : null}
             {fix === undefined ? null : (
-              <button className="rv-textbtn" onClick={fix.onPress} type="button">
+              <Button onClick={fix.onPress} size="sm" variant="link">
                 {fix.label}
-              </button>
+              </Button>
             )}
           </div>
         ) : null}
@@ -433,9 +433,9 @@ export function ReviewFailed({
         {what} <span className="rv-failed-why">{reason}</span>
       </span>
       {onRetry === undefined ? null : (
-        <button className="rv-textbtn" onClick={onRetry} type="button">
+        <Button onClick={onRetry} size="sm" variant="link">
           Try again
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -675,15 +675,16 @@ export function ReviewDiff({
         ))}
       </div>
       {rest?.kind === "show" ? (
-        <button
-          className="rv-textbtn rv-diff-more"
+        <Button
+          className="mt-1 mb-0.5 ml-15 self-start"
           onClick={() => {
             setAll(true);
           }}
-          type="button"
+          size="sm"
+          variant="link"
         >
           {rest.label}
-        </button>
+        </Button>
       ) : null}
       {rest?.kind === "cut" ? <p className="rv-diff-note">{rest.words}</p> : null}
     </div>

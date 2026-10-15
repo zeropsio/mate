@@ -1474,7 +1474,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-micro-label-font-weight: 600;
   --zerops-micro-label-tracking: 0.06em;
   --zerops-micro-label-opacity: 0.45;
-  --zerops-pill-radius: 80px;
   --zerops-chip-radius: 10px;
   --zerops-card-radius: 10px;
   --zerops-key-chip-radius: 3px;
@@ -1568,7 +1567,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-micro-label-font-weight: 600;
     --zerops-micro-label-tracking: 0.06em;
     --zerops-micro-label-opacity: 0.45;
-    --zerops-pill-radius: 80px;
     --zerops-chip-radius: 10px;
     --zerops-card-radius: 10px;
     --zerops-key-chip-radius: 3px;
@@ -11425,7 +11423,6 @@ a.message-file:focus-visible {
 }
 .rv-x:focus-visible,
 .rv-file:focus-visible,
-.rv-textbtn:focus-visible,
 .rv-link:focus-visible,
 .rv-fold-row:focus-visible,
 .rv-try:focus-visible {
@@ -11520,7 +11517,7 @@ a.message-file:focus-visible {
 .rv-why[data-tone="failed"] {
   background: color-mix(in oklab, var(--zerops-status-failed) 10%, transparent);
 }
-.rv-why .rv-textbtn {
+.rv-why > [data-slot="button"] {
   margin: -3px 0 -3px -8px;
 }
 
@@ -11559,20 +11556,6 @@ a.message-file:focus-visible {
 }
 
 /* Blue is only for what can be clicked. */
-.rv-textbtn {
-  padding: 3px 8px;
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-  white-space: nowrap;
-  color: var(--info-foreground);
-  cursor: pointer;
-  transition: background-color 150ms ease;
-}
-.rv-textbtn:hover {
-  background: color-mix(in oklab, var(--info-foreground) 10%, transparent);
-}
 .rv-link {
   color: var(--info-foreground);
   text-decoration: none;
@@ -11963,9 +11946,6 @@ a.message-file:focus-visible {
   line-height: 20px;
   color: var(--muted-foreground);
 }
-.rv-diff-more {
-  margin: 4px 0 2px 60px;
-}
 
 /* What could not be read, where it would have stood, with Try again: amber, it didn't go
    through; a failure never blanks its section. */
@@ -11987,7 +11967,7 @@ a.message-file:focus-visible {
 .rv-failed-why {
   color: var(--muted-foreground);
 }
-.rv-failed .rv-textbtn {
+.rv-failed > [data-slot="button"] {
   margin: 0 -8px 0 auto;
 }
 .rv-files .rv-failed {
@@ -11997,12 +11977,6 @@ a.message-file:focus-visible {
   padding: 0 6px 0 60px;
 }
 /* A fold's way open: its words on the edge of what it opens. */
-.rv-fold {
-  margin: 4px 0 0 -8px;
-}
-.rv-fold[data-fold="remarks"] {
-  margin: 0 0 0 22px;
-}
 
 /* The conversation: marks in a 20 px column, words beside them; then the one box. */
 .rv-remarks {

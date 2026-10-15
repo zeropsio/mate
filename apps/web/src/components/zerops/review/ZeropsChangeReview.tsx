@@ -856,9 +856,9 @@ export function ReviewQuestionBlock({
           {option.label}
         </Button>
       ))}
-      <button className="rv-textbtn" onClick={onDismiss} type="button">
+      <Button onClick={onDismiss} size="sm" variant="link">
         {question.dismiss}
-      </button>
+      </Button>
     </div>
   );
 }
