@@ -6,6 +6,7 @@
  * list. While its setup runs the same row opens the Chief page; before that there is no row.
  */
 import type { MateMarkState } from "@t3tools/shared/brand";
+import { Link } from "@tanstack/react-router";
 import { CircleAlertIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -203,6 +204,49 @@ export function SidebarChiefTile({
             <button
               aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
               className="menu-rail-count"
+              data-waiting-trigger=""
+              data-zerops-surface="sidebar-waiting"
+              type="button"
+            />
+          }
+          verbs={waiting.verbs}
+        >
+          <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
+        </SidebarWaitingPopover>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The Chief's place at the menu's top while the person has none: the Chief's row's box, bare, the
+ * product's mark where the Chief's stands, leading to the overview, and what waits on the person
+ * counted where the Chief's row counts it. The bar keeps the height the boot frame draws, so the
+ * rows under it never move when a Chief comes, or on a reload.
+ */
+export function SidebarChiefPlace({
+  waiting,
+}: {
+  readonly waiting: SidebarChiefRowProps["waiting"];
+}) {
+  const items = waiting?.items ?? [];
+  const summary = items.length === 0 ? undefined : waitingSummary(items);
+  return (
+    <div className="menu-top-chief" data-zerops-surface="sidebar-chief-place">
+      <Link aria-label="Overview" className="menu-chief-place" to="/zerops">
+        <span className="menu-chief-body">
+          <span aria-hidden="true" className="menu-chief-mark">
+            <MateMark awake playful className="h-9 w-7.5" />
+          </span>
+        </span>
+      </Link>
+      {waiting === undefined || summary === undefined ? null : (
+        <SidebarWaitingPopover
+          items={items}
+          trigger={
+            <button
+              aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
+              className="menu-chief-count"
               data-waiting-trigger=""
               data-zerops-surface="sidebar-waiting"
               type="button"

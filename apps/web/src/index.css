@@ -5965,26 +5965,22 @@ code {
     text-overflow: ellipsis;
   }
 
-  /* What waits on the person in the bar where no Chief's row stands (`SidebarTopWaitingCount`):
-     the Chief's count, beside the squares. */
-  .menu-top-count {
+  /* The Chief's place while there is none (`SidebarChiefPlace`): the Chief's row's box, bare, the
+     mark where the Chief's stands, so the bar keeps the height the boot frame draws. */
+  .menu-chief-place {
     display: grid;
-    place-items: center;
-    min-width: 28px;
-    height: 28px;
-    padding: 0 9px;
-    border-radius: 9999px;
-    background: var(--zerops-status-attention-surface);
-    color: var(--zerops-status-attention-text);
-    font-size: 13px;
-    line-height: 16px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    cursor: pointer;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    height: var(--sidebar-chief-row-height);
+    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
+    margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
+    border-radius: 12px;
     outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      scale 150ms var(--ease-out-strong);
+  }
+
+  .menu-chief-place:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
   }
 
   .menu-chief-count {
@@ -6016,9 +6012,7 @@ code {
 
   @media (hover: hover) and (pointer: fine) {
     .menu-chief-count:hover,
-    .menu-chief-count[data-popup-open],
-    .menu-top-count:hover,
-    .menu-top-count[data-popup-open] {
+    .menu-chief-count[data-popup-open] {
       background: color-mix(
         in oklab,
         var(--zerops-status-attention-text) 16%,
@@ -6027,14 +6021,12 @@ code {
     }
   }
 
-  .menu-chief-count:focus-visible,
-  .menu-top-count:focus-visible {
+  .menu-chief-count:focus-visible {
     box-shadow: 0 0 0 2px var(--ring);
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .menu-chief-count:active,
-    .menu-top-count:active {
+    .menu-chief-count:active {
       scale: 0.96;
     }
   }

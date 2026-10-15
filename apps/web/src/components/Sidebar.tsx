@@ -215,7 +215,6 @@ import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
-import { SidebarTopWaitingCount } from "./zerops/SidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarScopeButton } from "./zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
@@ -227,6 +226,7 @@ import { useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
 import { useOwnChief } from "~/zerops/ownChief";
 import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
 import { useAccountHq } from "~/zerops/accountHq";
+import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
 import { SidebarRail, useRailTiles } from "./zerops/SidebarRail";
 import { SidebarStage } from "./zerops/SidebarStage";
@@ -2700,8 +2700,8 @@ export default function Sidebar() {
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
   // The menu's top: the person's Chief, as the open menu's row or the rail's tile — once it exists
-  // or is being set up. Before that the account menu offers it (`chiefOffered`), and the top is
-  // the mark, with what waits on the person beside it.
+  // or is being set up. Before that the account menu offers it (`chiefOffered`), and its place
+  // holds the mark, with what waits on the person beside it (`SidebarChiefPlace`).
   const zeropsChiefShown =
     zeropsSignedIn &&
     zeropsHoldsChief &&
@@ -2729,11 +2729,6 @@ export default function Sidebar() {
           zeropsListHeld ? undefined : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
         }
       />
-    ) : undefined;
-  // Without a Chief's row the count of what waits on the person stands in the bar by itself.
-  const zeropsTopWaiting =
-    zeropsSignedIn && !zeropsChiefShown && !zeropsListHeld && zeropsWaiting.items.length > 0 ? (
-      <SidebarTopWaitingCount items={zeropsWaiting.items} verbs={zeropsWaitingVerbs} />
     ) : undefined;
   // Search and the +, on the open menu's top row and under the rail's Chief.
   const zeropsJump = (
@@ -2793,22 +2788,29 @@ export default function Sidebar() {
   return (
     <SidebarStage rail={zeropsRail}>
       <SidebarChromeHeader
-        brand={zeropsChiefTop(false)}
+        brand={
+          zeropsChiefTop(false) ??
+          (zeropsSignedIn && zeropsHoldsChief ? (
+            // The Chief's place while there is none: the mark, and what waits on the person.
+            <SidebarChiefPlace
+              waiting={
+                zeropsListHeld
+                  ? undefined
+                  : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
+              }
+            />
+          ) : undefined)
+        }
         isElectron={isElectron}
         status={
-          zeropsHqOutage === null && zeropsTopWaiting === undefined ? undefined : (
-            <>
-              {zeropsHqOutage === null ? null : (
-                <SidebarHqStatus
-                  compact={zeropsChiefShown}
-                  serviceUrl={hqServiceUrl}
-                  kind={zeropsHqOutage.kind}
-                  line={zeropsHqOutage.line}
-                  onAgain={zeropsHqOutage.again ? zeropsRetry : undefined}
-                />
-              )}
-              {zeropsTopWaiting}
-            </>
+          zeropsHqOutage === null ? undefined : (
+            <SidebarHqStatus
+              compact={zeropsSignedIn && zeropsHoldsChief}
+              serviceUrl={hqServiceUrl}
+              kind={zeropsHqOutage.kind}
+              line={zeropsHqOutage.line}
+              onAgain={zeropsHqOutage.again ? zeropsRetry : undefined}
+            />
           )
         }
         actions={
