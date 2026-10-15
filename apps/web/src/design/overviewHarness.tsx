@@ -574,7 +574,7 @@ const HARNESS_CHANGES: ReadonlyArray<CardChange> = [true, false].map((open, inde
   pull: {
     repository: "app",
     number: index + 1,
-    title: open ? "Promo microsite: the rules and the receipt upload" : "The group's import files",
+    title: open ? "Promo microsite: the rules and the receipt upload" : "Setup for new Mates",
     kind: "code",
     mateProjectId: "p-wren",
     url: undefined,

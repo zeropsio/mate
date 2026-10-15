@@ -894,7 +894,7 @@ export function ProviderInstanceCard({
                 This instance uses a driver (
                 <code className="text-foreground">{String(instance.driver)}</code>) that is not
                 shipped with the current build. Configuration values are preserved but cannot be
-                edited from this surface.
+                edited here.
               </p>
             </div>
           ) : null}

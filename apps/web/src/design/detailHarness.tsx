@@ -863,13 +863,13 @@ function Harness() {
       </State>
 
       <State
-        label="Environments · nothing, recipe not ready"
-        note="Neither tier is held by the recipe on main yet: both slots say they wait for the Mate's recipe, with no Add."
+        label="Environments · nothing, setup not ready"
+        note="Neither tier is held by the setup on main yet: both slots say they wait for the Mate's setup, with no Add."
       >
         <EnvironmentsFrame environments={[]} facts={{ recipeTiers: [] }} />
       </State>
       <State
-        label="Environments · nothing, recipe ready"
+        label="Environments · nothing, setup ready"
         note="Two quiet slots, each with its own Add — peers, neither optional, neither first."
       >
         <EnvironmentsFrame environments={[]} facts={{}} />

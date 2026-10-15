@@ -284,7 +284,7 @@ function unreachedConversationOf(thread: HarnessThread): TimelineEntry[] {
       message: {
         id: MessageId.make(thought),
         role: "reasoning",
-        text: "Reading how the import files list the services before answering.",
+        text: "Reading how the setup files list the services before answering.",
         turnId: TurnId.make(`${thread.key}-turn-${last}`),
         createdAt: liveAt(3),
         updatedAt: liveAt(3),
