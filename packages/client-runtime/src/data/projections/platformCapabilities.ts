@@ -10,6 +10,8 @@
  * - `reachesEveryProject` — the organization role reaches every project by itself (Read only or
  *   above); below it, a person sees only the projects they are given.
  * - `manageOrganization` — an owner or an admin: the team, and who has access to what.
+ * - `editFinances` — an owner, or a member Zerops lets edit finances: the organization's billing,
+ *   its credit included.
  * - `read`, `operate`, `administer` — the viewer's effective role on `projectId`, and
  *   `projectAccessKnown` whether that project's access is read: until it is, `false` is no refusal.
  */
@@ -62,6 +64,7 @@ export interface PlatformCapabilities {
   readonly setUpChief: boolean;
   readonly reachesEveryProject: boolean;
   readonly manageOrganization: boolean;
+  readonly editFinances: boolean;
   readonly projectAccessKnown: boolean;
   readonly read: boolean;
   readonly operate: boolean;
@@ -84,6 +87,8 @@ export const platformCapabilities: Projection<PlatformCapabilitiesKey, PlatformC
       setUpChief: createProject,
       reachesEveryProject: member !== undefined && roleAtLeast(member.roleCode, "READ_ONLY"),
       manageOrganization: member !== undefined && roleAtLeast(member.roleCode, "ADMIN"),
+      editFinances:
+        member !== undefined && (member.roleCode === "OWNER" || member.canEditFinances === true),
       projectAccessKnown: access !== undefined && access.kind !== "unknown",
       read: roleAtLeast(role, "READ_ONLY"),
       operate: roleAtLeast(role, "BASIC_USER"),
@@ -107,6 +112,17 @@ export function roleOffers(
     newProject: unknown || capabilities.createProject,
     setUpChief: unknown || capabilities.setUpChief,
   };
+}
+
+/**
+ * Whether the organization's credit is the viewer's to add in HQ: only for someone who may edit
+ * its finances; anyone else asks an owner. While the membership is not read, what is drawn stays
+ * drawn, as with `roleOffers`.
+ */
+export function creditOffers(
+  capabilities: Pick<PlatformCapabilities, "membershipKnown" | "editFinances">,
+): { readonly addCredit: boolean } {
+  return { addCredit: !capabilities.membershipKnown || capabilities.editFinances };
 }
 
 /**

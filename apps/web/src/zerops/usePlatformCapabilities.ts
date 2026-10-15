@@ -1,5 +1,6 @@
 import { Atom } from "effect/reactivity";
 import {
+  creditOffers,
   platformCapabilities,
   platformViewer,
   projectRoleOffers,
@@ -16,6 +17,7 @@ const UNKNOWN = Atom.make({
   setUpChief: false,
   reachesEveryProject: false,
   manageOrganization: false,
+  editFinances: false,
   projectAccessKnown: false,
   read: false,
   operate: false,
@@ -55,6 +57,12 @@ export function usePlatformCapabilities(environmentId: EnvironmentId | null) {
 export function useRoleOffers() {
   const capabilities = usePlatformCapabilities(null);
   return useMemo(() => roleOffers(capabilities), [capabilities]);
+}
+
+/** Whether the organization's credit is the viewer's to add in HQ (`creditOffers`). */
+export function useCreditOffers() {
+  const capabilities = usePlatformCapabilities(null);
+  return useMemo(() => creditOffers(capabilities), [capabilities]);
 }
 
 /**

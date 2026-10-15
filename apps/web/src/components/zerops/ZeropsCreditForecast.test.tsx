@@ -14,6 +14,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
 
+const billing = vi.hoisted(() => ({ addCredit: true }));
+vi.mock("~/zerops/usePlatformCapabilities", () => ({
+  useCreditOffers: () => ({ addCredit: billing.addCredit }),
+}));
+
 const ORG = "org-acme";
 const SCOPE = creditScope(ORG);
 
@@ -96,6 +101,7 @@ const said = () => text(tree?.toJSON() ?? null);
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  billing.addCredit = true;
 });
 afterEach(() => {
   act(() => tree?.unmount());
@@ -129,6 +135,17 @@ describe("the create dialog's word on credit", () => {
     const link = tree!.root.findByType("a");
     expect(link.props.href).toBe(`https://hq.zerops.io/organizations/${ORG}`);
     expect(link.props.target).toBe("_blank");
+  });
+
+  it("asks a member who may not edit the organization's finances to have an owner add credit, with no way to HQ", () => {
+    account(["hq"]);
+    creditRead(false);
+    billing.addCredit = false;
+    show();
+    expect(said()).toBe(
+      "Zerops needs credit on this organization before it makes another project. Ask an owner to add credit.",
+    );
+    expect(tree!.root.findAllByType("a")).toHaveLength(0);
   });
 
   it("says nothing about credit for an organization a top-up verified", () => {

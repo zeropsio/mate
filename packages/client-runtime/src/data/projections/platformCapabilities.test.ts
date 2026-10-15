@@ -5,6 +5,7 @@ import { readsOfState } from "../store.ts";
 import { liveProjects } from "../__fixtures__/account.ts";
 import { organizationUserFamily } from "../families/organizationUser.ts";
 import {
+  creditOffers,
   platformCapabilities,
   platformMembership,
   platformViewer,
@@ -42,6 +43,7 @@ describe("Zerops native capability table", () => {
           setUpChief: create || flag,
           reachesEveryProject: role !== "NO_ACCESS",
           manageOrganization: administer,
+          editFinances: role === "OWNER",
           projectAccessKnown: true,
           read,
           operate,
@@ -177,6 +179,29 @@ describe("Zerops native capability table", () => {
       }),
     ).toBeUndefined();
   });
+
+  it.each([
+    ["OWNER", false, true],
+    ["ADMIN", false, false],
+    ["ADMIN", true, true],
+    ["BASIC_USER", true, true],
+    ["NO_ACCESS", false, false],
+  ] as const)(
+    "a %s member who may edit finances (%s) is offered adding the organization's credit: %s",
+    (role, canEditFinances, offered) => {
+      const reads = readsOfState(stateOf([...liveProjects("org", [{ id: "p" }])]));
+      const viewer = {
+        id: "org",
+        name: "Org",
+        membershipId: "member",
+        roleCode: role,
+        canEditFinances,
+      };
+      expect(creditOffers(platformCapabilities.derive(reads, { orgId: "org", viewer }))).toEqual({
+        addCredit: offered,
+      });
+    },
+  );
 
   it.each([
     ["OWNER", undefined, true],

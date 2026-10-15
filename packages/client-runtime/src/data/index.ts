@@ -321,6 +321,7 @@ export { moveRemainder, type MoveRemainder } from "./projections/moveRemainder.t
 export type { MoveProjectIntent } from "./operations/moveProject.ts";
 
 export {
+  creditOffers,
   platformMembership,
   platformCapabilities,
   platformViewer,
