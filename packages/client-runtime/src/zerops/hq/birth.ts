@@ -126,6 +126,8 @@ export interface HqBirthDeps {
   readonly waits: HqBirthWaits;
   /** The journal's claim, a lease. */
   readonly now: () => number;
+  /** The claim's renewal while a long wait is pending. */
+  readonly every: (ms: number, tick: () => Promise<void>) => () => void;
   /** A new bootstrap import or claim id. */
   readonly newBirthId: () => string;
 }
@@ -321,6 +323,7 @@ export async function runHqBirth(input: {
           },
         ),
       now: deps.now,
+      every: deps.every,
       newId: deps.newBirthId,
     });
     const shared = await journal.acquire((read) => input.moved({ ...read, projectId }));
@@ -341,7 +344,7 @@ export async function runHqBirth(input: {
       await advance({ step: "credential" });
 
     if (record.step === "services") {
-      const services = up ?? (await waits.untilServices(orgId, projectId));
+      const services = up ?? (await journal.holding(waits.untilServices(orgId, projectId)));
       await advance({
         step: "credential",
         serviceId: services.serviceId,
@@ -380,7 +383,9 @@ export async function runHqBirth(input: {
         );
         await advance({ deployProcessId: deployed.processId! });
       }
-      const status = await waits.untilProcessEnds(orgId, projectId, record.deployProcessId!);
+      const status = await journal.holding(
+        waits.untilProcessEnds(orgId, projectId, record.deployProcessId!),
+      );
       if (status !== "FINISHED") {
         // Only manual Again sends a new build.
         await advance({ deployProcessId: null });
@@ -392,7 +397,7 @@ export async function runHqBirth(input: {
     }
 
     if (record.step === "domain") {
-      const domain = await waits.untilZone(orgId, projectId);
+      const domain = await journal.holding(waits.untilZone(orgId, projectId));
       if (record.syncProcessId == null) {
         const routed = await performed("routing", { projectId, serviceId, domain }, () =>
           taken<{ readonly processId: string | null }>((accepted) =>
@@ -407,7 +412,9 @@ export async function runHqBirth(input: {
         if (routed.processId !== undefined) await advance({ syncProcessId: routed.processId });
       }
       if (record.syncProcessId != null) {
-        const status = await waits.untilProcessEnds(orgId, projectId, record.syncProcessId);
+        const status = await journal.holding(
+          waits.untilProcessEnds(orgId, projectId, record.syncProcessId),
+        );
         if (status !== "FINISHED") {
           await advance({ syncProcessId: null });
           throw new BirthStopped(
