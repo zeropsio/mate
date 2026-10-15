@@ -242,6 +242,7 @@ export {
   projectProcessesAtom,
   projectServicesAtom,
   creditForecastAtom,
+  creditReadGenerationAtom,
   projectsServicesAtom,
   projectUsageAtom,
   NOT_READ_VAULT,

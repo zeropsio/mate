@@ -127,8 +127,8 @@ describe("the create dialog's word on credit", () => {
 
   it("forecasts that an organization no top-up verified needs credit for another project, with HQ to add it", () => {
     account(["hq"]);
-    creditRead(false);
     show();
+    act(() => creditRead(false));
     expect(said()).toBe(
       "Zerops needs credit on this organization before it makes another project. Add credit in HQ",
     );
@@ -139,13 +139,21 @@ describe("the create dialog's word on credit", () => {
 
   it("asks a member who may not edit the organization's finances to have an owner add credit, with no way to HQ", () => {
     account(["hq"]);
-    creditRead(false);
     billing.addCredit = false;
     show();
+    act(() => creditRead(false));
     expect(said()).toBe(
       "Zerops needs credit on this organization before it makes another project. Ask an owner to add credit.",
     );
     expect(tree!.root.findAllByType("a")).toHaveLength(0);
+  });
+
+  it("says nothing on reopening from the record read before the dialog opened, only from its own read", () => {
+    account(["hq"]);
+    creditRead(false);
+    stream({ kind: "demand", demanded: false });
+    show();
+    expect(tree?.toJSON()).toBeNull();
   });
 
   it("says nothing about credit for an organization a top-up verified", () => {

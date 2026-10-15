@@ -90,7 +90,46 @@ describe("whether a new project waits for credit, before Create", () => {
     },
   ])("$name", ({ inputs, needsCredit }) => {
     const state = apply(emptyAccount, inputs);
-    expect(creditForecast.derive(readsOfState(state), ORG)).toBe(needsCredit);
+    expect(creditForecast.derive(readsOfState(state), { orgId: ORG, openedAt: 0 })).toBe(
+      needsCredit,
+    );
+  });
+
+  it("a dialog opened again after a top-up says nothing from the record read before, only from its own read", () => {
+    const before = apply(emptyAccount, [
+      ...ONE_PROJECT,
+      ...credit(false),
+      event(CREDIT, { kind: "demand", demanded: false }),
+    ]);
+    const openedAt = before.streams.get(CREDIT)!.generation;
+    const reopened = apply(before, [
+      event(CREDIT, { kind: "demand", demanded: true }),
+      event(CREDIT, { kind: "attempt" }),
+      event(CREDIT, { kind: "handshake" }),
+    ]);
+    expect(creditForecast.derive(readsOfState(reopened), { orgId: ORG, openedAt })).toBe(false);
+
+    const generation = reopened.streams.get(CREDIT)!.generation;
+    const answered = apply(reopened, [
+      { kind: "baseline-begin", scope: CREDIT, generation },
+      {
+        kind: "baseline-commit",
+        scope: CREDIT,
+        generation,
+        via: "zerops-read",
+        members: [ORG],
+        rows: [
+          {
+            family: "organizationCredit",
+            id: ORG,
+            value: { verified: false },
+            revision: { kind: "zerops", version: null },
+          } as Row,
+        ],
+      },
+      event(CREDIT, { kind: "baseline-committed" }),
+    ]);
+    expect(creditForecast.derive(readsOfState(answered), { orgId: ORG, openedAt })).toBe(true);
   });
 });
 
