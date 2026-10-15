@@ -6,7 +6,7 @@
 import { RegistryContext } from "@effect/atom-react";
 import { hqBirthProgress, hqBirthRequestId } from "@t3tools/client-runtime/data";
 import { HQ_BIRTH_DOING, HQ_BIRTH_STEPS } from "@t3tools/client-runtime/zerops/hq";
-import { useCallback, useContext } from "react";
+import { useCallback, useContext, type ReactNode } from "react";
 
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useAccountOperations } from "~/zerops/accountOperations";
@@ -16,13 +16,12 @@ import type { HqGate } from "~/zerops/hqGate";
 import { useAccountData } from "~/zerops/ZeropsAccountData";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
-import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
+import { PageStandIn } from "../RoutePending";
 
 import { Button } from "../ui/button";
 import { Failure } from "../ui/failure";
 import { Progress } from "../ui/progress";
 import { StatusPage } from "../ui/status-page";
-import { PageWaitLine } from "./WaitLine";
 
 type ClosedGate = Exclude<HqGate, { readonly kind: "open" }>;
 
@@ -61,6 +60,7 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
       onStart={() => bear(false)}
       onTryAgain={() => bear(true)}
       onReadAgain={reread}
+      standIn={<PageStandIn />}
     />
   );
 }
@@ -75,6 +75,7 @@ export function HqGateScreen({
   onStart,
   onTryAgain,
   onReadAgain,
+  standIn = null,
 }: {
   readonly organizationName: string;
   readonly gate: ClosedGate;
@@ -82,6 +83,8 @@ export function HqGateScreen({
   readonly onStart?: () => void;
   readonly onTryAgain: () => void;
   readonly onReadAgain: () => void;
+  /** What stands in while the members are read: the page's own shape (`PageStandIn`). */
+  readonly standIn?: ReactNode;
 }) {
   if (gate.kind === "birth") {
     return (
@@ -102,10 +105,10 @@ export function HqGateScreen({
         size="page"
       />
     ) : (
-      // The boot's own wait, said once: the line the frame already shows stays until the app paints.
-      <main className="flex h-full min-h-0 flex-1" data-zerops-surface="hq-gate">
-        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="load" text={READING_PROJECTS_LINE} />
-      </main>
+      // The reload's one stand-in: the page's own shape until the gate knows what stands here.
+      <div className="contents" data-zerops-surface="hq-gate">
+        {standIn}
+      </div>
     );
   }
   return <StatusPage data-zerops-surface="hq-gate" title={gate.line} />;

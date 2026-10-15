@@ -29,25 +29,18 @@ function LoadingCensus() {
     >
       <CensusLook
         name="Spinner and a quiet line"
-        uses="the boot's one line: 9 sites in 7 files"
+        uses="3 sites in 3 files"
         places={[
           "apps/web/src/components/zerops/WaitLine.tsx:14 WaitLine",
-          "apps/web/src/components/zerops/WaitLine.tsx:29 PageWaitLine (8 uses)",
-          "apps/web/src/components/RoutePending.tsx RoutePending (the overview's route)",
-          "apps/web/src/components/zerops/ZeropsHqGate.tsx (reading the members)",
-          "apps/web/src/components/zerops/ZeropsProjectsPage.tsx:2480, :2765 (the overview)",
-          "apps/web/src/components/zerops/projects/ZeropsProjectsFlow.tsx:269",
           "apps/web/src/components/usage/UsageLimits.tsx:613, :653 (under the cards)",
-          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:122 (the boot frame)",
+          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:122 (a sign-in's return)",
           "apps/web/src/components/chat/ConversationPanelStandIn.tsx:28 useConversationPanelStandIn",
           "apps/web/src/components/zerops/landing/ZeropsDeviceLoginWait.tsx:36",
           "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx:34",
-          "apps/web/src/routes/_chat.tsx:134 ChatRoutePending",
-          "apps/web/src/routes/_chat.index.tsx:300 (the door's wait)",
         ]}
       >
-        <Specimen label='<WaitLine text="Reading your projects…" />'>
-          <WaitLine text="Reading your projects…" />
+        <Specimen label='<WaitLine text="Reading subscription limits…" />'>
+          <WaitLine text="Reading subscription limits…" />
         </Specimen>
       </CensusLook>
 

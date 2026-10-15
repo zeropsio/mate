@@ -9,7 +9,6 @@ import { AsyncResult } from "effect/reactivity";
 import { RotateCcwIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { PageWaitLine } from "../components/zerops/WaitLine";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
@@ -31,7 +30,7 @@ import { hqMatesAtom, zeropsEnvironmentsAtom } from "../state/zerops";
 import { homeTarget, homeView, hqHomeMate } from "../zerops/homeLanding.logic";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useDiscoveryStatus } from "../zerops/useDiscoveryStatus";
-import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../zerops/waitLine.logic";
+import { PageStandIn } from "../components/RoutePending";
 import { countDoorEnvironments, resolveDoor } from "./-door";
 
 function ChatIndexRouteView() {
@@ -293,13 +292,9 @@ function IndexDraftLanding() {
       );
     case "projects":
       return <ZeropsHostedLanding />;
-    // While it works out where to land, and on its way there: the wait line, never a guess.
+    // While it works out where to land, and on its way there: the overview's shape, the home's.
     case "wait":
-      return (
-        <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">
-          <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
-        </SidebarInset>
-      );
+      return <PageStandIn />;
   }
 }
 

@@ -20,12 +20,11 @@ import type {
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { ReactNode } from "react";
 
-import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { MateFace, Pill, type MateFaceSize } from "../primitives";
 import { firstRunWords } from "./firstRun.logic";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
-import { PageWaitLine } from "../WaitLine";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
+import { OverviewCardsStandIn } from "./OverviewStandIn";
 import { OtherContainers, OtherProjects } from "./ProjectList";
 import { ProjectCards, ProjectPage } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
@@ -266,7 +265,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
       role="region"
     >
       {!empty || props.placementNotice === undefined ? null : props.placementReading === true ? (
-        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={props.placementNotice} />
+        <OverviewCardsStandIn />
       ) : (
         <>
           <p role="status" className="text-sm text-muted-foreground">

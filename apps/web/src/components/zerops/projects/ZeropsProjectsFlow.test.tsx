@@ -157,7 +157,8 @@ it("cold HQ placement stays unknown on Projects until owner evidence arrives", (
     expect(words()).not.toContain("Not in a project");
     expect(words()).not.toContain("Other containers");
     act(() => vi.advanceTimersByTime(1_000));
-    expect(words()).toContain("Reading HQ placement…");
+    // The cards' shape stands in where they will be, never a guess at their placement.
+    expect(words()).toContain('"aria-busy":"true"');
     expect(words()).not.toContain("Not in a project");
     expect(words()).not.toContain("Other containers");
     // A later owner delivery replaces the unknown state with the actual placement.

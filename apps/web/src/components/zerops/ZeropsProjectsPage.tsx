@@ -214,6 +214,7 @@ import {
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
 import { OverviewFilterEmpty, OverviewFilters } from "./projects/OverviewFilters";
+import { OverviewCardsStandIn, OverviewStandInBody } from "./projects/OverviewStandIn";
 import { applicationContents, deleteOffered, groupIsEmpty } from "./projects/emptyApps.logic";
 import {
   type ZeropsRowAction,
@@ -231,8 +232,6 @@ import {
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { PageWaitLine } from "./WaitLine";
-import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
 import { useMenuRows, usePaintStanding } from "~/zerops/useMenuRows";
 
 /** One creation in flight, or just finished, on this screen. */
@@ -2483,8 +2482,8 @@ export function ZeropsProjectsContent({
         </>
       ) : null}
       {listingNotice === null ? null : listingNotice.region === "placeholder" ? (
-        // Nothing read yet: the one wait line at the page's centre, where the boot frame said it.
-        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={listingNotice.message.text} />
+        // Nothing read yet: the cards' shape, where they will stand.
+        <OverviewCardsStandIn />
       ) : listingNotice.region === "message" ? (
         <Failure action={listingAffordance} cause={listingNotice.message.text} />
       ) : // The list's freshness is the title's row's (`ZeropsProjectsHeader`), never a line here.
@@ -2768,9 +2767,7 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
     // overview's top carries neither a switcher nor a reload, nor an empty bar above its title (the
     // owner, 2026-10-11).
     <ZeropsHostedFrame bar={false} width="full">
-      {paints ? null : (
-        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
-      )}
+      {paints ? null : <OverviewStandInBody />}
       {scoped && !firstRun && paints ? (
         <ZeropsProjectsHeader
           setupChief={setupChief}

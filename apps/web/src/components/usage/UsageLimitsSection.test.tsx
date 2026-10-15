@@ -16,7 +16,6 @@ vi.mock("~/zerops/useWaitLine", () => ({
 }));
 vi.mock("../zerops/WaitLine", () => ({
   WaitLine: ({ text }: { text: string }) => <p data-wait-line="">{text}</p>,
-  PageWaitLine: ({ text }: { text: string | null }) => <p data-wait-line="">{text}</p>,
 }));
 
 import { READING_LIMITS_LINE, UsageLimitsSection } from "./UsageLimits";
