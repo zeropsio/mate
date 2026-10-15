@@ -306,6 +306,14 @@ export function putLiveNext(run: PutLiveRun, facts: PutLiveFacts): PutLiveNext {
   return { kind: "wait" };
 }
 
+/**
+ * Whether a run holds the project's release doors: production it is making is released by the run
+ * once it can take a release, so no door asks the person to release it meanwhile.
+ */
+export function putLiveHoldsRelease(run: Pick<PutLiveRun, "phase"> | undefined): boolean {
+  return run?.phase === "merging" || run?.phase === "creating";
+}
+
 // ---------------------------------------------------------------------------
 // The row in the conversation
 // ---------------------------------------------------------------------------

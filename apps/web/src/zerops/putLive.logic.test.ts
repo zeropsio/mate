@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   PUT_LIVE_LATER,
   putLiveAddress,
+  putLiveHoldsRelease,
   putLiveLines,
   putLiveNext,
   putLiveOffered,
@@ -155,6 +156,19 @@ describe("putting an app live", () => {
     });
     expect(retried).toMatchObject({ phase: "creating", productionId: "p-prod", tag: undefined });
   });
+
+  it.each([
+    ["merging", true],
+    ["creating", true],
+    ["releasing", false],
+    ["live", false],
+    ["failed", false],
+  ] as const)(
+    "offers no release door while it makes production, only once it releases (%s)",
+    (phase, held) => {
+      expect(putLiveHoldsRelease({ phase })).toBe(held);
+    },
+  );
 
   it("never moves a finished run back", () => {
     const live: PutLiveRun = { ...start({ merged: true }), phase: "live", tag: "v0.1.0" };
