@@ -1169,7 +1169,7 @@ export function ComingBelow({
         )}
         {onRemove === undefined ? null : (
           <Button
-            size="compact"
+            size="sm"
             disabled={removing || setupFailureDetails.retrying}
             onClick={onRemove}
             variant="outline"
@@ -1197,12 +1197,12 @@ export function ComingBelow({
             {MATE_STAND_UP_RETRY_LABEL}
           </Button>
           {ends?.onStartOver === undefined ? null : (
-            <Button size="compact" onClick={ends.onStartOver} variant="outline">
+            <Button size="sm" onClick={ends.onStartOver} variant="outline">
               Start over
             </Button>
           )}
           {ends === undefined ? null : (
-            <Button size="compact" onClick={ends.onDismiss} variant="ghost">
+            <Button size="sm" onClick={ends.onDismiss} variant="ghost">
               Dismiss
             </Button>
           )}
@@ -1224,12 +1224,12 @@ export function ComingBelow({
             </Button>
           )}
           {ends?.onStartOver === undefined ? null : (
-            <Button size="compact" onClick={ends.onStartOver} variant="outline">
+            <Button size="sm" onClick={ends.onStartOver} variant="outline">
               Start over
             </Button>
           )}
           {ends === undefined ? null : (
-            <Button size="compact" onClick={ends.onDismiss} variant="ghost">
+            <Button size="sm" onClick={ends.onDismiss} variant="ghost">
               Dismiss
             </Button>
           )}
@@ -1240,7 +1240,7 @@ export function ComingBelow({
             Go to projects
           </Button>
           {ends === undefined ? null : (
-            <Button size="compact" onClick={ends.onDismiss} variant="ghost">
+            <Button size="sm" onClick={ends.onDismiss} variant="ghost">
               Dismiss
             </Button>
           )}

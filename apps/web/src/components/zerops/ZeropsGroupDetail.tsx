@@ -1533,7 +1533,7 @@ export function ZeropsStopPane({
               data-zerops-primary-action="Run again"
               disabled={runAgain.running}
               onClick={runAgain.onRunAgain}
-              size="compact"
+              size="sm"
               variant="outline"
             >
               {flowVerbLabel("redeploy", runAgain.running)}
@@ -1620,7 +1620,7 @@ export function ZeropsStopPane({
                       <Button
                         disabled={addService.running(hostname)}
                         onClick={() => addService.onAdd(hostname)}
-                        size="compact"
+                        size="sm"
                         variant="outline"
                       >
                         {addService.running(hostname)
@@ -1861,7 +1861,7 @@ function StopServiceLine({
                 <Button
                   disabled={opening || enablingServiceId !== null}
                   onClick={() => onEnableRoute?.(offer.serviceId)}
-                  size="compact"
+                  size="sm"
                   variant="outline"
                 >
                   {opening ? "Opening…" : "Open to the internet"}
@@ -1895,7 +1895,7 @@ function StopServiceLine({
               onClick={() =>
                 row.job?.redeploy !== undefined && deployAgain.onDeployAgain(row.job.redeploy)
               }
-              size="compact"
+              size="sm"
               variant="outline"
             >
               {flowVerbLabel("redeploy", deployAgain.running(row.job.redeploy.service))}
@@ -1925,7 +1925,7 @@ function StopServiceLine({
             <Button
               disabled={deployAgain.running(again.service)}
               onClick={() => deployAgain.onDeployAgain(again)}
-              size="compact"
+              size="sm"
               variant="outline"
             >
               {deployAgain.running(again.service)

@@ -2143,7 +2143,7 @@ export function ZeropsProjectsContent({
               onClick={() => {
                 runRowAction(candidate, action.kind);
               }}
-              size="compact"
+              size="sm"
               variant="outline"
             >
               {busy ? (action.kind === "remove" ? "Removing…" : "Setting up…") : action.label}
@@ -2214,7 +2214,7 @@ export function ZeropsProjectsContent({
           onClick={() => {
             runRowAction(candidate, "start");
           }}
-          size="compact"
+          size="sm"
           variant="outline"
         >
           <PlayIcon />
@@ -2230,7 +2230,7 @@ export function ZeropsProjectsContent({
           onClick={() => {
             runRowAction(candidate, "remove");
           }}
-          size="compact"
+          size="sm"
           variant="outline"
         >
           {busy ? "Removing…" : "Remove"}

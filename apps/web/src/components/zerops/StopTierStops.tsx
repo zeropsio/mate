@@ -67,7 +67,7 @@ export function StopTierStops({
               <Button
                 disabled={deleting !== null}
                 onClick={() => setAsking(row)}
-                size="compact"
+                size="sm"
                 variant="outline"
               >
                 {deleting === row.hostname ? "Deleting…" : "Delete"}

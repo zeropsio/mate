@@ -29,7 +29,7 @@ export function ZeropsDeployLog({
           Deploy history unavailable in Zerops’ recent processes.
         </p>
       ) : null}
-      <Button aria-expanded={open} onClick={() => setOpen(!open)} size="compact" variant="ghost">
+      <Button aria-expanded={open} onClick={() => setOpen(!open)} size="sm" variant="ghost">
         {open ? "Hide deploy" : unavailable ? "Check deploy history" : "View deploy"}
       </Button>
       {open ? (

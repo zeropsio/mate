@@ -531,7 +531,7 @@ function ZeropsLoginRow({
               onClick={() => {
                 onCancel(login);
               }}
-              size="compact"
+              size="sm"
               variant="ghost"
             >
               Cancel
@@ -580,7 +580,7 @@ function ZeropsLoginRow({
               onClick={() => {
                 onSignOut(login);
               }}
-              size="compact"
+              size="sm"
               variant="ghost"
             >
               Sign out
@@ -593,7 +593,7 @@ function ZeropsLoginRow({
               onClick={() => {
                 onRemove(login);
               }}
-              size="compact"
+              size="sm"
               variant="ghost"
             >
               {pending ? "Working…" : "Remove"}
@@ -648,7 +648,7 @@ function AddLoginControl({
           onClick={() => {
             setOpen(true);
           }}
-          size="compact"
+          size="sm"
           variant="ghost"
         >
           + Add another login
@@ -684,7 +684,7 @@ function AddLoginControl({
             onClick={() => {
               setKind("subscription");
             }}
-            size="compact"
+            size="sm"
             type="button"
             variant={kind === "subscription" ? "primary" : "outline"}
           >
@@ -694,7 +694,7 @@ function AddLoginControl({
             onClick={() => {
               setKind("apiKey");
             }}
-            size="compact"
+            size="sm"
             type="button"
             variant={kind === "apiKey" ? "primary" : "outline"}
           >
@@ -734,7 +734,7 @@ function AddLoginControl({
           onClick={() => {
             setOpen(false);
           }}
-          size="compact"
+          size="sm"
           type="button"
           variant="ghost"
         >
@@ -891,7 +891,7 @@ function CancelLoginButton({
       onClick={() => {
         onCancel(agentId);
       }}
-      size="compact"
+      size="sm"
       variant="ghost"
     >
       Cancel
@@ -947,7 +947,7 @@ function ZeropsAgentAuthActionButton({
     // The watcher marks this within seconds of the credential artifact
     // appearing — there is nothing for the user to click while it does.
     return (
-      <Button disabled size="compact" variant="outline">
+      <Button disabled size="sm" variant="outline">
         {agent.verification?.status === "checking" ? "Checking…" : "Registering…"}
       </Button>
     );
@@ -971,7 +971,7 @@ function ZeropsAgentAuthActionButton({
         onClick={() => {
           onSignIn(agent.agentId);
         }}
-        size="compact"
+        size="sm"
         variant={ownership === "someone-else" ? "link" : "outline"}
       >
         {ownership === "mine" ? "Switch account" : AGENT_OWNERSHIP_RECOVERY_LABEL}
@@ -983,7 +983,7 @@ function ZeropsAgentAuthActionButton({
           onClick={() => {
             onSignOut(agent.agentId);
           }}
-          size="compact"
+          size="sm"
           variant="ghost"
         >
           {signOutPending ? "Signing out…" : "Sign out"}

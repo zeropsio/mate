@@ -256,7 +256,7 @@ function Chosen() {
             <div className="w-[28rem]">
               <SheetSection
                 action={
-                  <Button size="xs" variant="ghost">
+                  <Button size="sm" variant="ghost">
                     Add a domain
                   </Button>
                 }
@@ -282,7 +282,7 @@ function Chosen() {
             <div className="w-[28rem]">
               <Section
                 action={
-                  <Button size="xs" variant="ghost">
+                  <Button size="sm" variant="ghost">
                     Add access
                   </Button>
                 }
@@ -303,7 +303,7 @@ function Chosen() {
             <div className="w-[36rem]">
               <SettingsSection
                 headerAction={
-                  <Button size="xs" variant="ghost">
+                  <Button size="sm" variant="ghost">
                     Restore defaults
                   </Button>
                 }
