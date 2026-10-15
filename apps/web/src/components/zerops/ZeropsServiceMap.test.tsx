@@ -331,6 +331,14 @@ describe("ZeropsServiceMap — the card", () => {
     expect(html.match(/data-zerops-service-row=/gu)).toHaveLength(1);
   });
 
+  it("names a pair's nested half the Mate's preview, never its project's stage", () => {
+    const html = render(
+      topology([service({ hostname: "kanbandev" }), service({ hostname: "kanbanstage" })]),
+    );
+    expect(html).toContain("<span>preview</span>");
+    expect(html).not.toContain("<span>stage</span>");
+  });
+
   it("marks a transient service without animating it", () => {
     const html = render(
       topology([service({ hostname: "kanbandev", status: "CREATING", transient: true })]),

@@ -51,6 +51,20 @@ describe("mateAddresses", () => {
       ],
     },
     {
+      name: "a pair in a project that is itself the stage reads as dev and stage: there the half is the stage, not a preview",
+      input: {
+        services: [
+          svc("appstage", ["https://appstage-1-3000.example.app"]),
+          svc("appdev", ["https://appdev-1-3000.example.app"]),
+        ],
+        ownRole: "stage",
+      },
+      expected: [
+        { service: "appdev", role: "dev", url: "https://appdev-1-3000.example.app" },
+        { service: "appstage", role: "stage", url: "https://appstage-1-3000.example.app" },
+      ],
+    },
+    {
       name: "a pair grown out of one service pairs `app` with `appstage`",
       input: {
         services: [

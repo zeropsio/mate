@@ -642,7 +642,7 @@ function StageLine({
   return (
     <div className="mt-2 border-t border-border/60 pt-2" data-zerops-service-stage>
       <ServiceHeader
-        aside="stage"
+        aside="preview"
         portLabel={portLabel}
         folded={folded}
         routes={routes}

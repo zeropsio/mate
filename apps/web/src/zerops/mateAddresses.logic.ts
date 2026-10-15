@@ -111,13 +111,13 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
           );
     const route = service.routes.find((entry) => isServiceBrowserUrl(entry.url));
     if (route === undefined) continue;
+    const projectRole = input.ownRole === undefined ? undefined : ADDRESS_ROLE[input.ownRole];
+    // A pair's half is the Mate's preview, unless its project is itself the stage or production.
     const role = devOf.has(service.hostname)
-      ? "preview"
+      ? (projectRole ?? "preview")
       : devs.has(service.hostname) || isDevHostname(service.hostname)
         ? "dev"
-        : input.ownRole === undefined
-          ? undefined
-          : ADDRESS_ROLE[input.ownRole];
+        : projectRole;
     add(service.hostname, role, route.url);
   }
   const environments = input.environments ?? [];
