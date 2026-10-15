@@ -224,4 +224,48 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
     reason:
       "Home-made label: private to the conversation strip, which reads the Mate's crew and chats.",
   },
+  {
+    name: "Conversation rename inputs",
+    source: "apps/web/src/components/Sidebar.tsx, ChatHeader.tsx",
+    reason:
+      "Home-made field: the menu row's and the header's rename fields belong to a thread's row and header, which read the thread.",
+  },
+  {
+    name: "JumpBox search",
+    source: "apps/web/src/components/zerops/JumpBox.tsx",
+    reason:
+      "Home-made field: it lives in the command dialog over the menu and searches the menu's index; design/sidebarHarness shows it.",
+  },
+  {
+    name: "Sites filter",
+    source: "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    reason: "Home-made field: it filters a project's sites, which it reads.",
+  },
+  {
+    name: "Data panel inputs and filter selects",
+    source: "apps/web/src/components/zerops/ZeropsDataPanel.tsx, zerops/ZeropsDataFilters.tsx",
+    reason:
+      "Home-made field: they edit and filter a service's database, read through the data layer.",
+  },
+  {
+    name: "Native <select>",
+    source:
+      "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx, zerops/ZeropsRepositoryBrowser.tsx",
+    reason:
+      "Home-made field: they pick a Mate's owner from the organisation's members, and a repository's branch.",
+  },
+  {
+    name: "Colour hex inputs",
+    source:
+      "apps/web/src/components/settings/ProviderAccentColorPicker.tsx, settings/ThemeColorPicker.tsx",
+    reason:
+      "Home-made field: the accent's sits in its picker's popover (open it from the swatches under Home-made actions); the theme's needs the theme being edited.",
+  },
+  {
+    name: "Composer-like text areas",
+    source:
+      "apps/web/src/components/zerops/crew/CrewTellComposer.tsx, review/ReviewConversation.tsx, chat/ComposerPictureView.tsx, zerops/ZeropsAgentSignIn.tsx, GitActionsControl.tsx",
+    reason:
+      'Home-made field: each writes to a Mate, a review, a picture, a sign-in or a repository it reads first. The overview\'s answer field (ov-reply-in) shows after pressing "Change…" on Overview buttons.',
+  },
 ];
