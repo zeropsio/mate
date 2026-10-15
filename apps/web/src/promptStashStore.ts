@@ -198,13 +198,18 @@ function persistEntries(entries: ReadonlyArray<PromptStashEntry>): {
   durable: boolean;
 } {
   try {
-    baseStashStorage.setItem(
+    const landed = baseStashStorage.setItem(
       PROMPT_STASH_STORAGE_KEY,
       JSON.stringify({
         version: PROMPT_STASH_STORAGE_VERSION,
         state: { entries },
       }),
     );
+    // A full origin skips the write rather than throwing.
+    if (landed === false) {
+      console.error("[PROMPT-STASH] Could not persist stash: browser storage is full.");
+      return { written: false, durable: false };
+    }
     return { written: true, durable: storageIsDurable };
   } catch (error) {
     console.error("[PROMPT-STASH] Could not persist stash (storage quota?).", error);

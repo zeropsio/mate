@@ -1,3 +1,4 @@
+import { writeBrowserStorage } from "./storage";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import {
   EnvironmentRpcSubscriptionObserver,
@@ -66,7 +67,7 @@ function getClientId(): string {
     const existing = window.localStorage.getItem(CLIENT_ID_STORAGE_KEY);
     if (existing) return existing;
     const next = randomUUID();
-    window.localStorage.setItem(CLIENT_ID_STORAGE_KEY, next);
+    writeBrowserStorage(window.localStorage, CLIENT_ID_STORAGE_KEY, next);
     return next;
   } catch {
     return "ephemeral-browser-client";

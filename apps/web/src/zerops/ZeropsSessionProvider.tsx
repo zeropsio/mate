@@ -1,3 +1,4 @@
+import { writeBrowserStorage } from "../lib/storage";
 import { browserTransportFetch } from "@t3tools/client-runtime/data";
 /**
  * The signed-in Zerops account, available to every route.
@@ -170,7 +171,11 @@ function ownerRecordIn(browser: Window) {
     },
     write: (owner: ZeropsSessionOwner) => {
       try {
-        browser.localStorage.setItem(ZEROPS_SESSION_OWNER_STORAGE_KEY, JSON.stringify(owner));
+        writeBrowserStorage(
+          browser.localStorage,
+          ZEROPS_SESSION_OWNER_STORAGE_KEY,
+          JSON.stringify(owner),
+        );
       } catch {
         /* A storage policy can make this login memory-only. */
       }

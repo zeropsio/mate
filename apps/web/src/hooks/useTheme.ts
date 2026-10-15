@@ -1,3 +1,4 @@
+import { writeBrowserStorage } from "../lib/storage";
 import type { DesktopBridge } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import * as Schema from "effect/Schema";
@@ -153,7 +154,7 @@ function writeAppearanceModePreference(appearanceMode: ThemePreferenceMode): voi
   try {
     // The legacy follow-system flag is read-only migration input now; the
     // mode key is the single source of truth.
-    window.localStorage.setItem(THEME_APPEARANCE_MODE_STORAGE_KEY, appearanceMode);
+    writeBrowserStorage(window.localStorage, THEME_APPEARANCE_MODE_STORAGE_KEY, appearanceMode);
   } catch (cause) {
     throw new ThemeStorageError({
       operation: "write",
@@ -184,7 +185,7 @@ export function readThemePreference(): Theme {
 export function writeThemePreference(theme: Theme): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, theme);
+    writeBrowserStorage(window.localStorage, STORAGE_KEY, theme);
     themeStorageReadFailure = null;
   } catch (cause) {
     throw new ThemeStorageError({
@@ -489,7 +490,7 @@ export function useTheme() {
       } catch (cause) {
         if (previousHalvesRaw !== null) {
           try {
-            window.localStorage.setItem(THEME_HALVES_STORAGE_KEY, previousHalvesRaw);
+            writeBrowserStorage(window.localStorage, THEME_HALVES_STORAGE_KEY, previousHalvesRaw);
           } catch {
             // Storage is failing wholesale; the outer handler reports it.
           }
@@ -567,7 +568,7 @@ export function useTheme() {
         if (next.light === undefined && next.dark === undefined) {
           window.localStorage.removeItem(THEME_HALVES_STORAGE_KEY);
         } else {
-          window.localStorage.setItem(THEME_HALVES_STORAGE_KEY, JSON.stringify(next));
+          writeBrowserStorage(window.localStorage, THEME_HALVES_STORAGE_KEY, JSON.stringify(next));
         }
       } catch (cause) {
         const error = new ThemeStorageError({

@@ -6,6 +6,7 @@
  * by the HTML, and never replaced by a copy of itself (the owner, 2026-10-02: "full animated Mate
  * logo, then it turns into a little different smaller logo").
  */
+import { writeBrowserStorage } from "../lib/storage";
 import * as Schema from "effect/Schema";
 
 import { isElectron } from "~/env";
@@ -82,7 +83,7 @@ export function rememberBootFrame(status: ZeropsSessionStatus): void {
   if (memory === "keep") return;
   try {
     if (memory === "remember") {
-      window.localStorage.setItem(BOOT_FRAME_STORAGE_KEY, BOOT_FRAME_SIGNED_IN);
+      writeBrowserStorage(window.localStorage, BOOT_FRAME_STORAGE_KEY, BOOT_FRAME_SIGNED_IN);
     } else {
       window.localStorage.removeItem(BOOT_FRAME_STORAGE_KEY);
       // Signed out, a frame shown again is the sign-in's.

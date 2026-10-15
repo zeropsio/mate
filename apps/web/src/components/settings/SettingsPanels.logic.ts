@@ -1,3 +1,4 @@
+import { writeBrowserStorage } from "../../lib/storage";
 import type {
   BackgroundActivityProfile,
   BackgroundActivitySettings,
@@ -45,7 +46,7 @@ export function readLastEnabledProjectGroupingMode(): SidebarProjectGroupingMode
 export function rememberEnabledProjectGroupingMode(mode: SidebarProjectGroupingMode): void {
   if (mode === "separate") return;
   try {
-    localStorage.setItem(LAST_ENABLED_PROJECT_GROUPING_MODE_KEY, mode);
+    writeBrowserStorage(localStorage, LAST_ENABLED_PROJECT_GROUPING_MODE_KEY, mode);
   } catch {
     // Storage can be unavailable in restricted browser contexts.
   }
