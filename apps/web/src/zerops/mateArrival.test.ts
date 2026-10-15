@@ -265,7 +265,7 @@ describe("arrivalSteps", () => {
         label: "Wren's workspace",
         state: "active",
         time: "0:44",
-        note: "about 2 min",
+        note: "about 2–3 min",
       },
       {
         id: "you",
@@ -534,7 +534,7 @@ describe("the stage's words", () => {
     {
       kind: "coming",
       headline: "Wren is coming up on Beviro.",
-      sentence: "About two minutes.",
+      sentence: "Usually two to four minutes.",
       face: "waking",
     },
     {
@@ -594,11 +594,11 @@ describe("the stage's words", () => {
   });
 
   it.each([
-    [undefined, "About two minutes."],
-    [20_000, "About two minutes."],
-    [75_000, "About a minute left."],
+    [undefined, "Usually two to four minutes."],
+    [20_000, "Usually two to four minutes."],
+    [75_000, "Usually two to four minutes."],
     [140_000, "Almost there."],
-    [600_000, "Almost there."],
+    [600_000, "Taking longer than usual."],
   ])("coming up %s ms in: %s", (elapsedMs, words) => {
     expect(comingSentence(elapsedMs)).toBe(words);
   });

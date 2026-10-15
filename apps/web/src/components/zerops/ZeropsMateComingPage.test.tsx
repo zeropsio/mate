@@ -1256,7 +1256,7 @@ describe("ComingBelow — a Mate half made", () => {
     const said = JSON.stringify(rendered!.toJSON());
     expect(said).toContain("Dan's workspace");
     expect(said).not.toContain("139:30");
-    expect(said).not.toContain("about 2 min");
+    expect(said).not.toContain("about 2–3 min");
     expect(said).toContain("Stopped");
   });
 });
@@ -2042,7 +2042,7 @@ describe("a Mate with no deployment", () => {
       },
     ]);
     openView();
-    expect(said()).toContain("About two minutes.");
+    expect(said()).toContain("Usually two to four minutes.");
     app.listing = listingOf([
       {
         ...QUINN,

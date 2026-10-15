@@ -184,14 +184,14 @@ describe("the New Mate dialog", () => {
     const tree = mount(form());
     expect(next(tree)).toEqual({
       steps: [
-        ["Otto comes up", "about 1½–2 min"],
+        ["Otto comes up", "about 2–4 min"],
         ["You sign Otto in with your Claude or ChatGPT subscription", ""],
         ["Otto sets up development, deploying Acme Docs' code", "up to 15 min"],
       ],
       note: "You can leave meanwhile.",
     });
     type(tree, "Ada");
-    expect(next(tree).steps[0]).toEqual(["Ada comes up", "about 1½–2 min"]);
+    expect(next(tree).steps[0]).toEqual(["Ada comes up", "about 2–4 min"]);
     expect(said(tree)).toBe("");
     const html = renderToStaticMarkup(form());
     expect(html).toContain(">Add a project Mate to Acme Docs<");
@@ -374,7 +374,7 @@ describe("the New Mate dialog", () => {
     const tree = mount(form({ tier: undefined, recipe: "absent" }));
     expect(next(tree)).toEqual({
       steps: [
-        ["Otto comes up", "about 1½–2 min"],
+        ["Otto comes up", "about 2–4 min"],
         ["You sign Otto in with your Claude or ChatGPT subscription", ""],
         ["You tell Otto what to build", ""],
       ],

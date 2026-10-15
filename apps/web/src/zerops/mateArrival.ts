@@ -23,6 +23,7 @@ import {
   type MateSetup,
   type MateSetupFailure,
 } from "@t3tools/client-runtime/zerops/mateSetup";
+import { TAKING_LONGER_LINE } from "@t3tools/client-runtime/data";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import {
@@ -109,18 +110,21 @@ export interface ArrivalSentenceContext {
   readonly agentReady?: boolean | undefined;
 }
 
-/** How long a Mate takes from the press until it answers, measured (a wizard birth, 2026-09-22). */
-export const MATE_ARRIVAL_TYPICAL_MS = 160_000;
+/**
+ * Past this a Mate coming up is late. From the press until it answers measured +160 s (a wizard
+ * birth, 2026-09-22) and +202 s (an Add, 2026-10-15).
+ */
+const MATE_ARRIVAL_LATE_MS = 240_000;
 
 /**
- * How long is left while it comes up, from how long it has taken: honest to the measured birth —
- * first connect at +160 s — and never a count down past it.
+ * How long is left while it comes up, from how long it has taken: honest to the measured births,
+ * never a count down past them, and late once it outlasts them.
  */
 export function comingSentence(elapsedMs: number | undefined): string {
   // What comes after is the steps' last row, with what the person signs it in with.
-  if (elapsedMs === undefined || elapsedMs < 60_000) return "About two minutes.";
-  if (elapsedMs < 120_000) return "About a minute left.";
-  return "Almost there.";
+  if (elapsedMs === undefined || elapsedMs < 120_000) return "Usually two to four minutes.";
+  if (elapsedMs < MATE_ARRIVAL_LATE_MS) return "Almost there.";
+  return TAKING_LONGER_LINE;
 }
 
 /** The one sentence under the headline; empty where the headline says it all. */
@@ -306,8 +310,11 @@ const WORKSPACE_STEP_IDS: ReadonlySet<string> = new Set([
   "connect",
 ]);
 
-/** How long its workspace takes once its project stands, measured (2026-09-22: +25 s → +160 s). */
-const WORKSPACE_ABOUT = "about 2 min";
+/**
+ * How long its workspace takes once its project stands, measured: +25 s → +160 s (2026-09-22),
+ * +36 s → +202 s (2026-10-15).
+ */
+const WORKSPACE_ABOUT = "about 2–3 min";
 
 const timeOf = (
   startedAt: string | undefined,

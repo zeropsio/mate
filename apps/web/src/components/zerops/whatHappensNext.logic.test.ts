@@ -6,7 +6,7 @@ import { newMateNext, newProjectNext, type WhatHappensNext } from "./whatHappens
 const rows = (next: WhatHappensNext) => next.steps.map((step) => [step.words, step.time]);
 
 // Board D1 (2026-09-30): both dialogs end with what happens after the press, with honest times.
-// A Mate added to a project with code is up in about 1½–2 minutes and signed in by its person,
+// A Mate added to a project with code is up in about 2–4 minutes and signed in by its person,
 // then sets up development, deploying the project's code, in up to 15 minutes; they can leave
 // meanwhile. The project's first Mate, with nothing to deploy yet, is told what to build.
 describe("newMateNext — what happens once a Mate is added", () => {
@@ -15,7 +15,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       case: "a project with code: up, signed in, development set up",
       input: { groupName: "Beviro", botName: "Wren", recipe: "recipe" },
       steps: [
-        ["Wren comes up", "about 1½–2 min"],
+        ["Wren comes up", "about 2–4 min"],
         ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
         ["Wren sets up development, deploying Beviro's code", "up to 15 min"],
       ],
@@ -25,7 +25,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       case: "its code still being read: as with code, the likelier",
       input: { groupName: "Beviro", botName: "Wren", recipe: "reading" },
       steps: [
-        ["Wren comes up", "about 1½–2 min"],
+        ["Wren comes up", "about 2–4 min"],
         ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
         ["Wren sets up development, deploying Beviro's code", "up to 15 min"],
       ],
@@ -35,7 +35,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       case: "a name ending in s takes the bare apostrophe",
       input: { groupName: "Acme Docs", botName: "Quinn", recipe: "recipe" },
       steps: [
-        ["Quinn comes up", "about 1½–2 min"],
+        ["Quinn comes up", "about 2–4 min"],
         ["You sign Quinn in with your Claude or ChatGPT subscription", undefined],
         ["Quinn sets up development, deploying Acme Docs' code", "up to 15 min"],
       ],
@@ -45,7 +45,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       case: "the project's first Mate, nothing to deploy: told what to build",
       input: { groupName: "Beviro", botName: "Wren", recipe: "none" },
       steps: [
-        ["Wren comes up", "about 1½–2 min"],
+        ["Wren comes up", "about 2–4 min"],
         ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
         ["You tell Wren what to build", undefined],
       ],
@@ -55,7 +55,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       case: "a name cleared: the Mate, until it has one",
       input: { groupName: "Beviro", botName: "   ", recipe: "recipe" },
       steps: [
-        ["The Mate comes up", "about 1½–2 min"],
+        ["The Mate comes up", "about 2–4 min"],
         ["You sign the Mate in with your Claude or ChatGPT subscription", undefined],
         ["The Mate sets up development, deploying Beviro's code", "up to 15 min"],
       ],
@@ -65,7 +65,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
       case: "a name typed with stray spaces reads as the Mate will be called",
       input: { groupName: "Beviro", botName: "  Mira   Lin ", recipe: "none" },
       steps: [
-        ["Mira Lin comes up", "about 1½–2 min"],
+        ["Mira Lin comes up", "about 2–4 min"],
         ["You sign Mira Lin in with your Claude or ChatGPT subscription", undefined],
         ["You tell Mira Lin what to build", undefined],
       ],
@@ -86,7 +86,7 @@ describe("newProjectNext — what happens once a project is created", () => {
       case: "the project and its Mate",
       input: { projectName: "Acme Shop", botName: "Vera" },
       steps: [
-        ["Acme Shop and Vera come up", "about 1½–2 min"],
+        ["Acme Shop and Vera come up", "about 2–4 min"],
         ["You sign Vera in with your Claude or ChatGPT subscription", undefined],
         ["You tell Vera what to build", undefined],
       ],
@@ -95,7 +95,7 @@ describe("newProjectNext — what happens once a project is created", () => {
       case: "nothing named yet: the project and the Mate",
       input: { projectName: " ", botName: "" },
       steps: [
-        ["The project and the Mate come up", "about 1½–2 min"],
+        ["The project and the Mate come up", "about 2–4 min"],
         ["You sign the Mate in with your Claude or ChatGPT subscription", undefined],
         ["You tell the Mate what to build", undefined],
       ],
