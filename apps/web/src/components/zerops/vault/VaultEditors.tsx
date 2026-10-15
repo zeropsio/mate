@@ -345,7 +345,7 @@ export function VaultReview(props: VaultReviewProps) {
                 <Button
                   onClick={() => setForced((current) => new Set(current).add(write.key))}
                   size="sm"
-                  variant="ghost"
+                  variant="destructive"
                 >
                   Remove anyway
                 </Button>

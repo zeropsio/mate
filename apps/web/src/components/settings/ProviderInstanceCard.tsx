@@ -32,6 +32,15 @@ import {
 import { cn } from "../../lib/utils";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { normalizeProviderAccentColor } from "../../providerInstances";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -434,6 +443,7 @@ export function ProviderInstanceCard({
   isUpdating = false,
 }: ProviderInstanceCardProps) {
   const [activeTab, setActiveTab] = useState<"models" | "configuration">("configuration");
+  const [deleting, setDeleting] = useState(false);
   const enabled = resolveProviderInstanceEnabled(instance);
   // A locally disabled provider stays neutral even if its last server status
   // is stale. Enabled providers use the server status when one is available.
@@ -620,7 +630,7 @@ export function ProviderInstanceCard({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  onClick={onDelete}
+                  onClick={() => setDeleting(true)}
                   aria-label={`Delete provider instance ${instanceId}`}
                 >
                   <Trash2Icon className="size-3" />
@@ -629,6 +639,29 @@ export function ProviderInstanceCard({
             />
             <TooltipPopup side="top">Delete instance</TooltipPopup>
           </Tooltip>
+          {/* Its settings go with it — sign-in, environment, models — and nothing brings them back. */}
+          <AlertDialog open={deleting} onOpenChange={setDeleting}>
+            <AlertDialogPopup>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {displayName}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Its settings go with it, and it can't be brought back.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    setDeleting(false);
+                    onDelete();
+                  }}
+                >
+                  Delete instance
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogPopup>
+          </AlertDialog>
         </span>
       ) : null}
     </>
