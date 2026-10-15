@@ -2471,17 +2471,21 @@ describe("ZeropsApiClient.writeNewProjectAccess — a project's people, given on
 
     expect(stub.requests.map((request) => request.method)).toEqual(["GET", "PUT"]);
     // The platform replaces the record: what the write must not change goes back as it was read.
+    // A project write takes its people one level deeper than a creation does: a flat list is
+    // refused as invalid input (measured 2026-10-15).
     expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
       name: "Shop - stage",
       description: "",
       tagList: ["mate"],
       publicIpV4Shared: false,
       maxCreditLimit: null,
-      userRoles: [
-        { id: "cu-creator", roleCode: "OWNER" },
-        { id: "cu-ada", roleCode: "ADMIN" },
-        { id: "cu-bo", roleCode: "READ_ONLY" },
-      ],
+      userRoles: {
+        userRoles: [
+          { id: "cu-creator", roleCode: "OWNER" },
+          { id: "cu-ada", roleCode: "ADMIN" },
+          { id: "cu-bo", roleCode: "READ_ONLY" },
+        ],
+      },
     });
   });
 });
