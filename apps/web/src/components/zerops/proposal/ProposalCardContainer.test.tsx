@@ -395,7 +395,7 @@ describe("an access proposal's real card", () => {
     source.members = members([{ id: "cu-dana", name: "Dana Developer", email: "dana@x.io" }]);
     await draw();
     expect(document.body.textContent).toContain(
-      "No one in your organization is greta@x.io. Invite them from the application's People, then ask again.",
+      "No one in your organization is greta@x.io. Invite them from Team, then ask again.",
     );
     await press("Approve");
     expect(source.run).not.toHaveBeenCalled();

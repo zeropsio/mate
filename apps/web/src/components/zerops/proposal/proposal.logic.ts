@@ -469,7 +469,7 @@ export function accessProposalPlan(input: {
     if (found.length === 0)
       return {
         kind: "held",
-        words: `No one in your organization is ${person}. Invite them from the application's People, then ask again.`,
+        words: `No one in your organization is ${person}. Invite them from Team, then ask again.`,
       };
     if (found.length > 1)
       return {

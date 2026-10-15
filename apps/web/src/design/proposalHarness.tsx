@@ -168,8 +168,7 @@ const CARDS: ReadonlyArray<{
   {
     proposal: { ...ACCESS, id: "access-unknown" },
     stage: "open",
-    approveBlocked:
-      "No one in your organization is Greta. Invite them from the application's People, then ask again.",
+    approveBlocked: "No one in your organization is Greta. Invite them from Team, then ask again.",
   },
   { proposal: { ...ACCESS, id: "access-done" }, stage: "done" },
   { proposal: RESTART, stage: "open" },

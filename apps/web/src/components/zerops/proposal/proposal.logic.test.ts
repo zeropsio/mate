@@ -799,8 +799,7 @@ describe("accessProposalPlan", () => {
       },
       {
         kind: "held",
-        words:
-          "No one in your organization is Zoe. Invite them from the application's People, then ask again.",
+        words: "No one in your organization is Zoe. Invite them from Team, then ask again.",
       },
     ],
     [
