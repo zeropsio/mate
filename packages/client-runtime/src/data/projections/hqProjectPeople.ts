@@ -29,6 +29,8 @@ export interface HqProjectPeople {
   /** The Chief of this Mate's person and whether the reader is that person. */
   readonly chief?: { readonly projectId: string | null; readonly mine: boolean | undefined };
   readonly owner: HqMateOwner | null;
+  /** HQ names the reader as its person (`mine`); `undefined` where HQ does not say. */
+  readonly mine: boolean | undefined;
   /** Its Mate waits on the reader, as HQ says (`waitsOnViewer`). */
   readonly waitsOnViewer: boolean | undefined;
   /**
@@ -62,6 +64,7 @@ function peopleOf(
         ? undefined
         : person.ownerUserId !== null,
     owner: ownerOf(read, orgId, person?.ownerUserId),
+    mine: person?.mine,
     waitsOnViewer: person?.waitsOnViewer,
     signedInNow: withheld ? undefined : signedInNow,
     everSignedIn: withheld ? undefined : everSignedIn,

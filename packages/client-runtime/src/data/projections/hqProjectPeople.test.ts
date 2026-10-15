@@ -113,6 +113,25 @@ const removed = apply(read, [
 const people = (state: AccountState) => hqProjectPeople.derive(readsOfState(state), ORG);
 
 describe("hqProjectPeople", () => {
+  it("a Mate is the reader's own only where HQ names them its person", () => {
+    const next = apply(read, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: generations,
+        reset: false,
+        rows: [
+          {
+            ...placement("ada", { ownerUserId: "u-jan", waitsOnViewer: false, mine: true }, {}),
+            revision: { ...revision, revision: 2 },
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(people(next).ada?.mine).toBe(true);
+    expect(people(read).bob?.mine).toBe(false);
+  });
   it("a Mate the reader may not operate says nothing of its sign-in, which HQ does not tell them", () => {
     expect(people(read).watched).toMatchObject({ signedInNow: undefined, everSignedIn: undefined });
     // A Mate the reader operates says whether anybody ever signed in, nobody included.
@@ -203,6 +222,7 @@ describe("hqProjectPeople", () => {
       project: "ada",
       expected: {
         owned: true,
+        mine: false,
         owner: { userId: "u-jan", name: "Jan Novák", avatarUrl: "https://img/jan.png" },
         waitsOnViewer: true,
         signedInNow: { "claude-code": "u-jan" },
@@ -214,6 +234,7 @@ describe("hqProjectPeople", () => {
       project: "bob",
       expected: {
         owned: true,
+        mine: false,
         owner: { userId: "u-eva", name: "Eva", avatarUrl: null },
         waitsOnViewer: false,
         signedInNow: {},
@@ -225,6 +246,7 @@ describe("hqProjectPeople", () => {
       project: "nobody",
       expected: {
         owned: false,
+        mine: false,
         owner: null,
         waitsOnViewer: false,
         signedInNow: {},
@@ -236,6 +258,7 @@ describe("hqProjectPeople", () => {
       project: "ghost",
       expected: {
         owned: true,
+        mine: false,
         owner: null,
         waitsOnViewer: false,
         signedInNow: {},
@@ -288,6 +311,7 @@ describe("hqProjectPeople", () => {
     ]);
     expect(people(partial).ada).toEqual({
       owned: true,
+      mine: false,
       owner: null,
       waitsOnViewer: true,
       signedInNow: { "claude-code": "u-jan" },
