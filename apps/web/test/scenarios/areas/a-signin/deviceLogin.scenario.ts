@@ -65,19 +65,26 @@ describe("A: sign-in through the Zerops window", () => {
       }),
     );
 
-    // Catches a request the platform forgot leaving the landing waiting forever.
+    // Catches a request the platform forgot leaving the landing waiting forever, or Mate closing
+    // the window the person is still using (halfway through signing up) when a code lapses.
     it.effect("a Zerops window left past its time says to start again", () =>
       Effect.gen(function* () {
         const s = yield* deviceLoginScenario();
+        yield* Effect.promise(() => s.clock.install());
         const window = zeropsWindow(s);
         yield* Effect.promise(() => s.page.goto(s.web.origin));
         const opened = yield* window.opens("Continue with your Zerops account");
+        yield* window.says("MATE-0001");
+        // A request lapses after five minutes: Mate asks for a new code and leaves the window be.
+        yield* Effect.promise(() => s.clock.advance(6 * 60_000, true));
+        yield* window.says("MATE-0002");
         yield* window.says("Finish in the Zerops window.");
-        const closed = new Promise<void>((resolve) => opened.once("close", () => resolve()));
-        yield* window.expires;
+        expect(opened.isClosed()).toBe(false);
+        // Half an hour on, the person has walked away.
+        for (let lapse = 0; lapse < 4; lapse++)
+          yield* Effect.promise(() => s.clock.advance(6 * 60_000, true));
         yield* window.says("The Zerops window timed out. Start again.");
-        // The window has nothing left to answer: Mate closes it.
-        yield* Effect.promise(() => closed);
+        expect(opened.isClosed()).toBe(false);
         yield* s.then.noExternalNetwork;
       }),
     );

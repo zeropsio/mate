@@ -115,7 +115,8 @@ function browserPorts(): ZeropsDeviceLoginPorts {
   return {
     open: (url) => window.open(url, "zerops-hq", "popup,width=520,height=760"),
     fetch: browserTransportFetch,
-    nowMs: () => performance.now(),
+    // The wall clock: a sign-in waits half an hour across lapses, and a test's clock moves it.
+    nowMs: () => Date.now(),
     wait: browserWait,
     appCode: zeropsLoginAppCode(),
     consentOrigin: zeropsConsentOrigin(),
@@ -123,9 +124,19 @@ function browserPorts(): ZeropsDeviceLoginPorts {
 }
 
 /**
+ * How long a sign-in waits for the person. A request lapses after five minutes, which a first
+ * sign-up (a form, a browser check, a confirmation e-mail) easily outlasts; the run renews it
+ * until then, and stops asking once the person has plainly walked away.
+ */
+const WAIT_FOR_PERSON_MS = 30 * 60_000;
+
+/**
  * Runs one device login. Call it on the person's click: the Zerops window opens synchronously
- * here, before anything is awaited. The window is closed once the run settles; HQ's own page
- * would close itself, app.zerops.io's would not.
+ * here, before anything is awaited. A request that lapses is renewed with a new code, and the
+ * window is left alone: the person may be halfway through signing up in it. "Open it again"
+ * then points it at the current request. The window is closed once the person is answered
+ * (approved, denied) or cancels here; HQ's own page would close itself, app.zerops.io's would
+ * not. A run that finally lapses leaves the window as the person left it.
  */
 export function runZeropsDeviceLogin(input: {
   readonly kind: ZeropsDeviceLoginKind;
@@ -139,7 +150,12 @@ export function runZeropsDeviceLogin(input: {
   const ports = input.ports ?? browserPorts();
   const controller = new AbortController();
   let zeropsWindow = ports.open("about:blank");
+  /** The consent page of the request asked now. */
   let consentUrl: string | null = null;
+  /** The consent page the window was last pointed at; older than `consentUrl` after a renewal. */
+  let windowUrl: string | null = null;
+  /** Set by the first request: whether the browser kept the window from opening. */
+  let blocked: boolean | null = null;
   input.onStage({ kind: "opening" });
   const linkFor = (verificationUrl: string, popup: boolean) =>
     zeropsDeviceLoginUrl({
@@ -148,6 +164,7 @@ export function runZeropsDeviceLogin(input: {
       ...(input.intent === undefined ? {} : { intent: input.intent }),
       popup,
     });
+  const windowOpen = () => zeropsWindow !== null && !zeropsWindow.closed;
   const closeWindow = () => {
     try {
       if (zeropsWindow !== null && !zeropsWindow.closed) zeropsWindow.close();
@@ -155,49 +172,60 @@ export function runZeropsDeviceLogin(input: {
       // A window another origin took over may refuse; it closes itself or stays as the person left it.
     }
   };
+  const begunAt = ports.nowMs();
   const outcome = (async (): Promise<ZeropsDeviceLoginOutcome> => {
+    let settled: ZeropsDeviceLoginOutcome | null = null;
     try {
-      const bearer = input.bearer === undefined ? undefined : await input.bearer();
-      const request = await startZeropsDeviceLogin({
-        fetch: ports.fetch,
-        apiBase: input.apiBase,
-        appCode: ports.appCode,
-        kind: input.kind,
-        ...(bearer === undefined ? {} : { bearer }),
-        nowMs: ports.nowMs(),
-      });
-      if (controller.signal.aborted) return { kind: "cancelled" };
-      // Closed before the request existed reads as blocked: the person opens the link themselves.
-      const opened = zeropsWindow !== null && !zeropsWindow.closed ? zeropsWindow : null;
-      consentUrl = linkFor(request.verificationUrl, opened !== null);
-      if (opened !== null) opened.location.href = consentUrl;
-      input.onStage({
-        kind: "waiting",
-        url: consentUrl,
-        blocked: opened === null,
-        userCode: request.userCode,
-      });
-      return await pollZeropsDeviceLogin({
-        request,
-        check: () =>
-          checkZeropsDeviceLogin({ fetch: ports.fetch, apiBase: input.apiBase, request }),
-        wait: ports.wait,
-        nowMs: ports.nowMs,
-        signal: controller.signal,
-      });
+      while (true) {
+        const bearer = input.bearer === undefined ? undefined : await input.bearer();
+        const request = await startZeropsDeviceLogin({
+          fetch: ports.fetch,
+          apiBase: input.apiBase,
+          appCode: ports.appCode,
+          kind: input.kind,
+          ...(bearer === undefined ? {} : { bearer }),
+          nowMs: ports.nowMs(),
+        });
+        if (controller.signal.aborted) return (settled = { kind: "cancelled" });
+        const first = blocked === null;
+        // Closed before the first request existed reads as blocked: the person opens the link.
+        if (blocked === null) blocked = !windowOpen();
+        consentUrl = linkFor(request.verificationUrl, !blocked);
+        if (first && !blocked) {
+          zeropsWindow!.location.href = consentUrl;
+          windowUrl = consentUrl;
+        }
+        input.onStage({ kind: "waiting", url: consentUrl, blocked, userCode: request.userCode });
+        const answer = await pollZeropsDeviceLogin({
+          request,
+          check: () =>
+            checkZeropsDeviceLogin({ fetch: ports.fetch, apiBase: input.apiBase, request }),
+          wait: ports.wait,
+          nowMs: ports.nowMs,
+          signal: controller.signal,
+        });
+        if (answer.kind === "expired" && ports.nowMs() - begunAt < WAIT_FOR_PERSON_MS) continue;
+        return (settled = answer);
+      }
     } finally {
-      closeWindow();
+      // Never the window the person is still using: only one answered, cancelled, or still blank.
+      if (settled === null ? windowUrl === null : settled.kind !== "expired") closeWindow();
     }
   })();
   return {
     outcome,
     reopen: () => {
       if (consentUrl === null) return;
-      if (zeropsWindow !== null && !zeropsWindow.closed) {
-        zeropsWindow.focus();
+      if (windowOpen()) {
+        if (windowUrl !== consentUrl) {
+          zeropsWindow!.location.href = consentUrl;
+          windowUrl = consentUrl;
+        }
+        zeropsWindow!.focus();
         return;
       }
       zeropsWindow = ports.open(consentUrl);
+      windowUrl = consentUrl;
     },
     cancel: () => controller.abort(),
   };
