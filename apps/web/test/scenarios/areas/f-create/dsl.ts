@@ -148,10 +148,18 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
       yield* fill("Its first Mate", "Nova");
     }),
     submitProject: click("Create Garden with Nova"),
-    /** Shop's card in the overview: its ··· holds Add Mate, Add stage and Put it live. */
+    /** Shop's card in the overview: its ··· holds Add Mate and Add stage; its Production, Put it live. */
     openAdd: (role: "Mate" | "stage" | "production") =>
       Effect.gen(function* () {
         yield* Effect.promise(() => page.goto(`${s.web.origin}/zerops`));
+        // Production is put live from its sheet, opened from Shop's card; its own form — a name,
+        // an agent, a Git branch — is the sheet's quiet way out.
+        if (role === "production") {
+          yield* click("Put it live");
+          yield* text("Put Shop live");
+          yield* click("Set up production yourself…");
+          return;
+        }
         // The page's ··· for Shop — on its card, or its row among the projects without work —
         // never the menu heading's of the same name.
         yield* Effect.promise(async () => {
@@ -226,7 +234,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
               );
               // A stage stands under its name; production as the project's Production, set up.
               return tag === "prod"
-                ? words.has("Production") && !words.has("Set up production")
+                ? words.has("Production") && !words.has("Put it live")
                 : words.has(name);
             },
             { timeout: 15_000, polling: "raf" },

@@ -39,6 +39,9 @@ export function PutLiveHost() {
   const runs = usePutLive((state) => state.runs);
   const [shown, setShown] = useState(asked);
   if (asked !== null && asked !== shown) setShown(asked);
+  // Production's own form opens once the sheet has gone, as from any other door: the focus goes
+  // back to what opened the sheet first, and the form takes it from there.
+  const then = useRef<(() => void) | null>(null);
   if (status !== "signed-in") return null;
   return (
     <>
@@ -47,11 +50,23 @@ export function PutLiveHost() {
           if (!open) close();
         }}
         onOpenChangeComplete={(open) => {
-          if (!open && usePutLive.getState().asked === null) setShown(null);
+          if (open || usePutLive.getState().asked !== null) return;
+          setShown(null);
+          const next = then.current;
+          then.current = null;
+          next?.();
         }}
         open={asked !== null}
       >
-        {shown === null ? null : <PutLiveSheetContainer ask={shown} key={shown.groupId} />}
+        {shown === null ? null : (
+          <PutLiveSheetContainer
+            ask={shown}
+            key={shown.groupId}
+            onLeave={(next) => {
+              then.current = next;
+            }}
+          />
+        )}
       </Dialog>
       {[...runs.values()].map((run) =>
         run.phase === "live" || run.phase === "failed" ? null : (
@@ -79,7 +94,14 @@ function useGroupEntry(groupId: string) {
   );
 }
 
-function PutLiveSheetContainer({ ask }: { readonly ask: PutLiveAsk }) {
+function PutLiveSheetContainer({
+  ask,
+  onLeave,
+}: {
+  readonly ask: PutLiveAsk;
+  /** What runs once the sheet has gone. */
+  readonly onLeave: (next: () => void) => void;
+}) {
   const entry = useGroupEntry(ask.groupId);
   const recipe = useZeropsGroupRecipe({ appId: ask.groupId, tier: "production", enabled: true });
   const flow = useCompactProjectFlows(useMemo(() => [ask.groupId], [ask.groupId])).flows.get(
@@ -128,11 +150,13 @@ function PutLiveSheetContainer({ ask }: { readonly ask: PutLiveAsk }) {
             ? { ...model, hold: "Production can be added here only as a Git branch." }
             : model
       }
-      onGitBranch={
-        offers?.git === true
+      onSetUpYourself={
+        offers?.production === true
           ? () => {
+              onLeave(() => {
+                addEnvironment(ask.groupId, "production");
+              });
               close();
-              addEnvironment(ask.groupId, "production");
             }
           : undefined
       }

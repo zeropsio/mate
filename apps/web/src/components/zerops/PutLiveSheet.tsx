@@ -26,14 +26,17 @@ export function PutLiveSheet({
   model,
   onPutLive,
   onSeeCode,
-  onGitBranch,
+  onSetUpYourself,
 }: {
   readonly model: PutLiveSheetModel;
   readonly onPutLive: () => void;
   /** Opens the change's review, where its code is read. */
   readonly onSeeCode: (() => void) | undefined;
-  /** Where HQ offers it: production as a branch of the person's Git repository, set up instead. */
-  readonly onGitBranch?: (() => void) | undefined;
+  /**
+   * The project's own form for production, for what this sheet decides for the person: its name,
+   * an agent in it, or a branch of their Git repository instead of a Zerops project.
+   */
+  readonly onSetUpYourself?: (() => void) | undefined;
 }) {
   const press = useRef<HTMLButtonElement>(null);
   return (
@@ -73,9 +76,9 @@ export function PutLiveSheet({
             <p className="text-muted-foreground text-sm">{model.where.line}</p>
           </section>
           <p className="text-muted-foreground text-sm">{model.later}</p>
-          {onGitBranch === undefined ? null : (
-            <button className={TEXT_BUTTON} onClick={onGitBranch} type="button">
-              Deploy to a Git branch instead…
+          {onSetUpYourself === undefined ? null : (
+            <button className={TEXT_BUTTON} onClick={onSetUpYourself} type="button">
+              Set up production yourself…
             </button>
           )}
         </div>

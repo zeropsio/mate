@@ -300,7 +300,7 @@ describe("a card's production", () => {
       />,
     );
     const button = offered.root.findAll(
-      (node) => node.type === "button" && node.children.includes("Set up production"),
+      (node) => node.type === "button" && node.children.includes("Put it live"),
     );
     expect(button).toHaveLength(1);
     act(() => {
@@ -311,7 +311,7 @@ describe("a card's production", () => {
       render({ groups: [none], setUpProduction: () => undefined }),
       'data-zerops-group="aaa"',
     );
-    expect(withheld).not.toContain("Set up production");
+    expect(withheld).not.toContain("Put it live");
     expect(withheld).toContain("Not released yet");
   });
 
@@ -326,7 +326,7 @@ describe("a card's production", () => {
       />,
     );
     const button = busy.root.findAll(
-      (node) => node.type === "button" && node.children.includes("Set up production"),
+      (node) => node.type === "button" && node.children.includes("Put it live"),
     );
     expect(button.map((node) => node.props.disabled)).toEqual([true]);
     expect(

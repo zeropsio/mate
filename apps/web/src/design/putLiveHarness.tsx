@@ -136,7 +136,7 @@ function Harness() {
             ],
             recipe: "present",
           })}
-          onGitBranch={noop}
+          onSetUpYourself={noop}
           onPutLive={noop}
           onSeeCode={noop}
         />
