@@ -155,12 +155,41 @@ describe("container machine (DESIGN §4.5)", () => {
     const ended = drive([{ type: "PROCESS", running: false }], running);
     expect(ended.machine.timer).toEqual(instant(ended.nowMs + 90_000));
 
-    const late = drive([{ type: "TICK" }], ended);
+    const lapsed = drive([{ type: "TICK" }], ended);
+    const late = drive([probed({ kind: "initializing", initAt: null }, lapsed.nowMs)], lapsed);
     expect(containerVerdict(late.machine)).toEqual({ level: "booting", overdue: true });
     expect(late.machine.timer).toBeNull();
 
     // The next read fact moves the level, and the new level starts on time.
     const answered = drive([probed(READY, late.nowMs)], late);
+    expect(containerVerdict(answered.machine)).toEqual({ level: "ready" });
+    expect(answered.machine.overdue).toBe(false);
+  });
+
+  it("a boot whose cap ran out while nothing read it is not late until a read since says so", () => {
+    const booting = drive([active, probed({ kind: "initializing", initAt: null }, START_MS)]);
+    const capEnd = booting.machine.timer!;
+    // The tab read nothing since its cap began (a hidden tab pauses its probes): its cap running
+    // out asks for a read, and says nothing late until that read answers.
+    const lapsed = transitionContainer(booting.machine, { type: "TICK" }, { now: capEnd });
+    expect(containerVerdict(lapsed.state)).toEqual({ level: "booting", overdue: false });
+    expect(lapsed.effects).toContainEqual({ kind: "probe" });
+
+    const stillStarting = drive(
+      [probed({ kind: "initializing", initAt: null }, capEnd.wall + 1_000)],
+      { machine: lapsed.state, nowMs: capEnd.wall + 1_000 },
+    );
+    expect(containerVerdict(stillStarting.machine)).toEqual({ level: "booting", overdue: true });
+  });
+
+  it("a boot whose cap ran out while nothing read it is ready at the first read that answers, never late", () => {
+    const booting = drive([active, probed({ kind: "initializing", initAt: null }, START_MS)]);
+    const capEnd = booting.machine.timer!;
+    const lapsed = transitionContainer(booting.machine, { type: "TICK" }, { now: capEnd });
+    const answered = drive([probed(READY, capEnd.wall + 120_000)], {
+      machine: lapsed.state,
+      nowMs: capEnd.wall + 120_000,
+    });
     expect(containerVerdict(answered.machine)).toEqual({ level: "ready" });
     expect(answered.machine.overdue).toBe(false);
   });
@@ -198,6 +227,8 @@ describe("container machine (DESIGN §4.5)", () => {
           intent: { kind: "update", since: instant(START_MS + 3_000), from: "0.11.40" },
         },
         { type: "TICK" },
+        // Read since its cap ran out, still on the version it started from.
+        probed(READY, START_MS + 3_000 + CONTAINER_CAPS_MS.updating + 1_000),
       ],
       ready(),
     );

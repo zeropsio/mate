@@ -783,6 +783,9 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         entry.containerTimer?.();
         entry.containerTimer = null;
         return;
+      case "probe":
+        requestFor(entry, { fresh: true });
+        return;
       case "read-mate-flag":
         if (entry.readingFlag) return;
         entry.readingFlag = true;

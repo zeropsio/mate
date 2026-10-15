@@ -5,7 +5,9 @@
  * - **Levels change only on read facts**: a platform status push, a process the activity feed
  *   reports, a probe reading, a link connect, the Mate flag's read, or an intent our own verb
  *   created. A cap past its budget sets `overdue` on the current level and changes nothing else
- *   (MC-13, I13).
+ *   (MC-13, I13). A level probes read is late only once a reading sent since its cap ran out still
+ *   finds it not up: its cap running out asks for one (`probe`), and a tab that reads nothing — a
+ *   hidden one pauses its probes — never calls a Mate that may have answered late.
  * - A reading counts for a level only if its probe was sent after the level began: the old server
  *   answering before a restart takes it down never ends that restart.
  * - Our restart shows `restarting(you)` and our update `updating`, from the verb's acceptance
@@ -145,7 +147,9 @@ export type ContainerEffect =
     }
   | { readonly kind: "cancel"; readonly key: typeof CONTAINER_TIMER_KEY }
   /** Read `ZCP_MATE_ENABLED`: a container predating Mate is Enable only when the flag is off. */
-  | { readonly kind: "read-mate-flag" };
+  | { readonly kind: "read-mate-flag" }
+  /** Read the container now: its cap ran out, and only a reading since says whether it is late. */
+  | { readonly kind: "probe" };
 
 export interface ContainerContext {
   readonly now: Instant;
@@ -262,6 +266,9 @@ export const platformSaysDown = (machine: ContainerMachine): boolean => {
     platform.project !== "ACTIVE" || (platform.service !== null && platform.service !== "ACTIVE")
   );
 };
+
+/** The level is one probes read on their own ladder: a reading can prove it up. */
+const readByProbes = (machine: ContainerMachine): boolean => probeCadence(machine).kind === "poll";
 
 /** The held reading is an unanswered probe sent since the container was last known up. */
 export const unansweredSinceUp = (machine: ContainerMachine): boolean =>
@@ -672,13 +679,25 @@ export function transitionContainer(
   ctx: ContainerContext,
 ): { readonly state: ContainerMachine; readonly effects: ReadonlyArray<ContainerEffect> } {
   const { now } = ctx;
-  // Timers are hints: whatever the event, a cap that has run out is overdue first.
+  const lapsed = (held: ContainerMachine): held is ContainerMachine & { timer: Instant } =>
+    held.timer !== null && reached(held.timer, now);
+  // Timers are hints: whatever the event, a cap that has run out on a level no probe reads is
+  // overdue first.
   const due =
-    machine.timer !== null && reached(machine.timer, now)
+    lapsed(machine) && !readByProbes(machine)
       ? { ...machine, overdue: true, timer: null }
       : machine;
-  const next = withTimer(apply(due, event, now));
+  let next = withTimer(apply(due, event, now));
   const effects: Array<ContainerEffect> = [];
+  // A level probes read is overdue once a reading sent since its cap ran out leaves it on that
+  // level; until one is, its cap asks for one.
+  if (lapsed(next) && readByProbes(next)) {
+    if (next.reading !== null && notBefore(next.reading.sentAt, next.timer)) {
+      next = { ...next, overdue: true, timer: null };
+    } else {
+      effects.push({ kind: "probe" });
+    }
+  }
   if (!sameJson(next.timer, machine.timer)) {
     effects.push(
       next.timer === null
