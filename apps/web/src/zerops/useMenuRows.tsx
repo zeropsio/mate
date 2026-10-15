@@ -4,7 +4,7 @@ import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { SidebarZeropsTree } from "../components/zerops/SidebarZeropsTree";
-import { menuRowsAtom, type MenuRows } from "./menuRows";
+import { menuRowsAtom, type MenuRows, type MenuStanding } from "./menuRows";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const NO_ROWS: ReadonlyArray<CandidateRow> = [];
@@ -18,25 +18,17 @@ const NO_ACTION = () => {};
 export const MENU_SOURCES_PATIENCE_MS = STREAM_POLICY.reconnectGraceMs;
 
 /**
- * The menu's rows for the organization in view (`menuRowsAtom`), and whether they are settled:
- * its sources get `MENU_SOURCES_PATIENCE_MS` for their first answers, and rows once drawn stand.
+ * Where a surface's first paint stands for the organization in view — the menu's rows, the
+ * overview's cards: its sources get `MENU_SOURCES_PATIENCE_MS` for their first answers
+ * (`waitedOut`), and once it painted (`latch(true)`, called in render) nothing makes it wait again.
  */
-export function useMenuRows<Row extends CandidateRow>(
-  candidates: ReadonlyArray<Row>,
-): MenuRows<Row> {
-  const organizationId = useZeropsSession().activeOrganization?.id;
+export function usePaintStanding(
+  organizationId: string | undefined,
+): readonly [MenuStanding, (painted: boolean) => void] {
   const [waitedFor, setWaitedFor] = useState<string | undefined>(undefined);
   const [drawnFor, setDrawnFor] = useState<string | undefined>(undefined);
   const waitedOut = organizationId !== undefined && waitedFor === organizationId;
   const drawn = organizationId !== undefined && drawnFor === organizationId;
-  const rows = useMemo(
-    () => menuRowsAtom(organizationId, candidates, { waitedOut, drawn }),
-    [organizationId, candidates, waitedOut, drawn],
-  );
-  const menu = useAtomValue(rows);
-  // Drawn once, for this organization: kept from this render on, before anything paints.
-  if (menu.settled && organizationId !== undefined && drawnFor !== organizationId)
-    setDrawnFor(organizationId);
   useEffect(() => {
     if (organizationId === undefined || drawn || waitedOut) return;
     const timer = window.setTimeout(() => {
@@ -46,6 +38,30 @@ export function useMenuRows<Row extends CandidateRow>(
       window.clearTimeout(timer);
     };
   }, [drawn, organizationId, waitedOut]);
+  const standing = useMemo(() => ({ waitedOut, drawn }), [waitedOut, drawn]);
+  // Painted once, for this organization: kept from this render on, before anything paints.
+  const latch = (painted: boolean) => {
+    if (painted && organizationId !== undefined && drawnFor !== organizationId)
+      setDrawnFor(organizationId);
+  };
+  return [standing, latch];
+}
+
+/**
+ * The menu's rows for the organization in view (`menuRowsAtom`), and whether they are settled,
+ * standing as `usePaintStanding` keeps them.
+ */
+export function useMenuRows<Row extends CandidateRow>(
+  candidates: ReadonlyArray<Row>,
+): MenuRows<Row> {
+  const organizationId = useZeropsSession().activeOrganization?.id;
+  const [standing, latch] = usePaintStanding(organizationId);
+  const rows = useMemo(
+    () => menuRowsAtom(organizationId, candidates, standing),
+    [organizationId, candidates, standing],
+  );
+  const menu = useAtomValue(rows);
+  latch(menu.settled);
   return menu;
 }
 
