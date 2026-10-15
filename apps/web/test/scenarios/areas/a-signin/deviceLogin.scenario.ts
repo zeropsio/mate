@@ -75,10 +75,11 @@ describe("A: sign-in through the Zerops window", () => {
         yield* Effect.promise(() => s.page.goto(s.web.origin));
         const opened = yield* window.opens("Continue with your Zerops account");
         yield* window.says("MATE-0001");
-        // A request lapses after five minutes: Mate asks for a new code and leaves the window be.
+        // A request lapses after five minutes: Mate asks for a new code and leaves the window be,
+        // saying the window may still show the old one.
         yield* Effect.promise(() => s.clock.advance(6 * 60_000, true));
         yield* window.says("MATE-0002");
-        yield* window.says("Finish in the Zerops window.");
+        yield* window.says("the code in the Zerops window may have changed");
         expect(opened.isClosed()).toBe(false);
         // Half an hour on, the person has walked away.
         for (let lapse = 0; lapse < 4; lapse++)
