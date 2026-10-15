@@ -4,6 +4,15 @@ import { ComposerPictureView } from "~/components/chat/ComposerPictureView";
 import { ExpandedImageDialog } from "~/components/chat/ExpandedImageDialog";
 import { Button } from "~/components/ui/button";
 import { CommandDialog, CommandDialogPopup } from "~/components/ui/command";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "~/components/ui/dialog";
 import { Menu, MenuTrigger } from "~/components/ui/menu";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import { SidebarChromeHeader } from "~/components/sidebar/SidebarChrome";
@@ -20,7 +29,7 @@ import type { ComposerPicture } from "~/lib/composerPictures";
 import { CensusSpecimen, KitViewer } from "../census";
 import { KIT_MENU_MATES, kitMateActions } from "../fixtures/menuTree";
 import { defineKitSection } from "../kitSection";
-import { SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
 
 const noop = () => {};
 
@@ -262,6 +271,67 @@ function WaitingOpener() {
   );
 }
 
+/**
+ * A dialog whose step says less than the one before: it stays the height it was and where it was
+ * (top-anchored, never re-centred), its button where the person saw it.
+ */
+function SteppingDialogOpener() {
+  const [open, setOpen] = useState(false);
+  const [done, setDone] = useState(false);
+  return (
+    <Dialog
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setDone(false);
+      }}
+      open={open}
+    >
+      <Button onClick={() => setOpen(true)} variant="outline">
+        Sign in a coding agent
+      </Button>
+      <DialogPopup>
+        <DialogHeader>
+          <DialogTitle>{done ? "Claude is signed in" : "Sign in Claude"}</DialogTitle>
+          <DialogDescription>
+            {done
+              ? "Fen can work now."
+              : "Open the sign-in page, approve Mate there, and paste the code it shows you back here. The code is good for ten minutes."}
+          </DialogDescription>
+        </DialogHeader>
+        {done ? null : (
+          <DialogPanel>
+            <p className="m-0 text-muted-foreground text-sm">
+              The sign-in page opens in a new tab; this dialog waits for its code.
+            </p>
+          </DialogPanel>
+        )}
+        <DialogFooter>
+          {done ? (
+            <Button onClick={() => setOpen(false)}>Done</Button>
+          ) : (
+            <Button onClick={() => setDone(true)}>Paste the code</Button>
+          )}
+        </DialogFooter>
+      </DialogPopup>
+    </Dialog>
+  );
+}
+
+function Chosen() {
+  return (
+    <SpecimenBlock title="Chosen · Dialog: top-anchored, never shrinks or re-centres while open; DialogMediaPopup for a picture">
+      <SpecimenGrid>
+        <Specimen label="<DialogPopup> whose step says less">
+          <SteppingDialogOpener />
+        </Specimen>
+        <Specimen label="<DialogMediaPopup> (ExpandedImageDialog)">
+          <ExpandedImageOpener />
+        </Specimen>
+      </SpecimenGrid>
+    </SpecimenBlock>
+  );
+}
+
 function Overlays() {
   return (
     <SpecimenGrid>
@@ -297,16 +367,6 @@ function Overlays() {
       </CensusSpecimen>
       <CensusSpecimen
         entry={{
-          source: "apps/web/src/components/chat/ExpandedImageDialog.tsx",
-          uses: 2,
-          files: 2,
-        }}
-        label='<ExpandedImageDialog preview> · a hand-rolled role="dialog"'
-      >
-        <ExpandedImageOpener />
-      </CensusSpecimen>
-      <CensusSpecimen
-        entry={{
           source: "apps/web/src/components/zerops/crew/CrewmateMenu.tsx",
           uses: 2,
           files: 2,
@@ -337,15 +397,20 @@ function Overlays() {
 
 export default defineKitSection({
   id: "home-made-overlays",
-  title: "Home-made overlays",
+  title: "Overlays",
   purpose:
-    "7 home-made menus, popovers and dialogs in 12 files, most used first; the kit's Menu, Popover, Dialog and Sheet stand for them.",
+    "The kit's Dialog first; then the menus, popovers and dialogs still home-made, most used first.",
   group: "Home-made",
   kind: "Overlays",
   source: "apps/web/src/components",
   render: () => (
     <KitViewer>
-      <Overlays />
+      <div className="flex flex-col gap-10">
+        <Chosen />
+        <SpecimenBlock title="Still home-made">
+          <Overlays />
+        </SpecimenBlock>
+      </div>
     </KitViewer>
   ),
 });

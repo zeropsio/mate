@@ -1,5 +1,6 @@
 "use client";
 
+import { useHeldHeight } from "~/components/ui/useHeldHeight";
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 
 import { XIcon } from "lucide-react";
@@ -10,6 +11,7 @@ import {
   DIALOG_BACKDROP_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
+  DIALOG_VIEWPORT_CLASS,
 } from "~/components/ui/dialog-styles";
 import { gatedPortal } from "~/components/ui/portal-gate";
 
@@ -31,10 +33,7 @@ function AlertDialogBackdrop({ className, ...props }: AlertDialogPrimitive.Backd
 function AlertDialogViewport({ className, ...props }: AlertDialogPrimitive.Viewport.Props) {
   return (
     <AlertDialogPrimitive.Viewport
-      className={cn(
-        "fixed inset-0 z-50 grid grid-rows-[1fr_auto_1fr] justify-items-center p-4",
-        className,
-      )}
+      className={cn(DIALOG_VIEWPORT_CLASS, className)}
       data-slot="alert-dialog-viewport"
       {...props}
     />
@@ -51,6 +50,7 @@ function AlertDialogPopup({
   bottomStickOnMobile?: boolean;
   portalContainer?: AlertDialogPrimitive.Portal.Props["container"];
 }) {
+  const held = useHeldHeight(props.ref);
   return (
     <AlertDialogPortal container={portalContainer}>
       <AlertDialogBackdrop />
@@ -66,6 +66,7 @@ function AlertDialogPopup({
           )}
           data-slot="alert-dialog-popup"
           {...props}
+          ref={held}
         >
           {children}
           <AlertDialogPrimitive.Close

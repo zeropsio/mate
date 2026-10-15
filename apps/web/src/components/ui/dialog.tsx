@@ -8,9 +8,11 @@ import {
   DIALOG_BACKDROP_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
+  DIALOG_VIEWPORT_CLASS,
 } from "~/components/ui/dialog-styles";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { gatedPortal } from "~/components/ui/portal-gate";
+import { useHeldHeight } from "~/components/ui/useHeldHeight";
 
 type DialogProps = Omit<DialogPrimitive.Root.Props, "open" | "onOpenChange"> &
   (
@@ -47,10 +49,7 @@ function DialogBackdrop({ className, ...props }: DialogPrimitive.Backdrop.Props)
 function DialogViewport({ className, ...props }: DialogPrimitive.Viewport.Props) {
   return (
     <DialogPrimitive.Viewport
-      className={cn(
-        "fixed inset-0 z-50 grid grid-rows-[1fr_auto_1fr] justify-items-center p-4",
-        className,
-      )}
+      className={cn(DIALOG_VIEWPORT_CLASS, className)}
       data-slot="dialog-viewport"
       {...props}
     />
@@ -69,6 +68,7 @@ function DialogPopup({
   bottomStickOnMobile?: boolean;
   keepMounted?: boolean;
 }) {
+  const held = useHeldHeight(props.ref);
   return (
     <DialogPortal keepMounted={keepMounted}>
       <DialogBackdrop />
@@ -84,6 +84,7 @@ function DialogPopup({
           )}
           data-slot="dialog-popup"
           {...props}
+          ref={held}
         >
           {children}
           {showCloseButton && (
@@ -97,6 +98,33 @@ function DialogPopup({
           )}
         </DialogPrimitive.Popup>
       </DialogViewport>
+    </DialogPortal>
+  );
+}
+
+/**
+ * A picture or a video as large as the window lets it be: no card around it, the page dimmed to
+ * near black behind it, the whole window its own. Esc closes it, as the media's own controls do.
+ */
+function DialogMediaPopup({ children, ...props }: DialogPrimitive.Popup.Props) {
+  return (
+    <DialogPortal>
+      <DialogPrimitive.Backdrop
+        className="dialog-media-backdrop fixed inset-0 z-50 transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0"
+        data-slot="dialog-backdrop"
+      />
+      <DialogPrimitive.Viewport className="fixed inset-0 z-50" data-slot="dialog-viewport">
+        <DialogPrimitive.Popup
+          // Modal, and said so: the composer behind takes letters typed outside any field unless
+          // a modal dialog is open (`typeToFocus`).
+          aria-modal="true"
+          className="size-full outline-none transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0 [-webkit-app-region:no-drag]"
+          data-slot="dialog-popup"
+          {...props}
+        >
+          {children}
+        </DialogPrimitive.Popup>
+      </DialogPrimitive.Viewport>
     </DialogPortal>
   );
 }
@@ -189,4 +217,5 @@ export {
   DialogDescription,
   DialogPanel,
   DialogViewport,
+  DialogMediaPopup,
 };

@@ -4,6 +4,7 @@ import { AssetImage } from "~/assets/AssetImage";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
+import { Dialog, DialogMediaPopup } from "../ui/dialog";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ZoomableImage, type ZoomableImageHandle } from "./ZoomableImage";
 
@@ -27,12 +28,6 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
-        return;
-      }
       if (zoomableImageRef.current?.pan(event.key)) {
         event.preventDefault();
         event.stopPropagation();
@@ -52,7 +47,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigateImage, onClose, preview.images.length]);
+  }, [navigateImage, preview.images.length]);
 
   const item = preview.images[index];
   const reference = parseMateImageSource(item?.src);
@@ -66,88 +61,94 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   if (!item) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 [--media-height:min(86vh,calc(100vh-160px))] [--media-width:92vw] [-webkit-app-region:no-drag] sm:[--media-width:calc(92vw-96px)]"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Expanded image preview"
+    // The kit's media dialog does the modal work: the focus trap, Esc, the scroll lock, and what
+    // is inert behind it. The arrows and the zoom's own keys are the viewer's.
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      open
     >
-      <button
-        type="button"
-        className="absolute inset-0 z-0 cursor-zoom-out"
-        aria-label="Close image preview"
-        onClick={onClose}
-      />
-      {preview.images.length > 1 && (
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
-          aria-label="Previous image"
-          {...previousIntent}
-          onClick={() => navigateImage(-1)}
-        >
-          <ChevronLeftIcon className="size-5" />
-        </Button>
-      )}
-      <div className="relative isolate z-10 max-h-[92vh] max-w-[var(--media-width)]">
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          className="absolute right-2 top-2 z-20"
-          onClick={onClose}
-          aria-label="Close image preview"
-        >
-          <XIcon />
-        </Button>
-        {failedImageSrc === item.src ? (
-          <AssetImage
-            loading="lazy"
-            decoding="async"
-            src={item.src}
-            alt={item.name}
-            className="max-h-[var(--media-height)] max-w-[var(--media-width)] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
-            draggable={false}
+      <DialogMediaPopup aria-label="Expanded image preview">
+        <div className="flex size-full items-center justify-center px-4 py-6 [--media-height:min(86vh,calc(100vh-160px))] [--media-width:92vw] sm:[--media-width:calc(92vw-96px)]">
+          <button
+            type="button"
+            className="absolute inset-0 z-0 cursor-zoom-out"
+            aria-label="Close image preview"
+            onClick={onClose}
           />
-        ) : (
-          <ZoomableImage
-            ref={zoomableImageRef}
-            key={`${index}:${item.src}`}
-            src={item.src}
-            name={item.name}
-            dimensions={original.dimensions}
-            onError={() => setFailedImageSrc(item.src)}
-          />
-        )}
-        <p className="mt-2 max-w-[var(--media-width)] truncate text-center text-xs text-muted-foreground/80">
-          {item.name}
-          {reference !== null && original.read.kind === "ready" && original.url ? (
-            <a
-              className="ml-3 underline"
-              href={original.url}
-              download={original.read.occurrence?.name ?? item.name}
+          {preview.images.length > 1 && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
+              aria-label="Previous image"
+              {...previousIntent}
+              onClick={() => navigateImage(-1)}
             >
-              Download original
-            </a>
-          ) : null}
-          {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
-        </p>
-      </div>
-      {preview.images.length > 1 && (
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
-          aria-label="Next image"
-          {...nextIntent}
-          onClick={() => navigateImage(1)}
-        >
-          <ChevronRightIcon className="size-5" />
-        </Button>
-      )}
-    </div>
+              <ChevronLeftIcon className="size-5" />
+            </Button>
+          )}
+          <div className="relative isolate z-10 max-h-[92vh] max-w-[var(--media-width)]">
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              className="absolute right-2 top-2 z-20"
+              onClick={onClose}
+              aria-label="Close image preview"
+            >
+              <XIcon />
+            </Button>
+            {failedImageSrc === item.src ? (
+              <AssetImage
+                loading="lazy"
+                decoding="async"
+                src={item.src}
+                alt={item.name}
+                className="max-h-[var(--media-height)] max-w-[var(--media-width)] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
+                draggable={false}
+              />
+            ) : (
+              <ZoomableImage
+                ref={zoomableImageRef}
+                key={`${index}:${item.src}`}
+                src={item.src}
+                name={item.name}
+                dimensions={original.dimensions}
+                onError={() => setFailedImageSrc(item.src)}
+              />
+            )}
+            <p className="mt-2 max-w-[var(--media-width)] truncate text-center text-xs text-muted-foreground/80">
+              {item.name}
+              {reference !== null && original.read.kind === "ready" && original.url ? (
+                <a
+                  className="ml-3 underline"
+                  href={original.url}
+                  download={original.read.occurrence?.name ?? item.name}
+                >
+                  Download original
+                </a>
+              ) : null}
+              {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
+            </p>
+          </div>
+          {preview.images.length > 1 && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
+              aria-label="Next image"
+              {...nextIntent}
+              onClick={() => navigateImage(1)}
+            >
+              <ChevronRightIcon className="size-5" />
+            </Button>
+          )}
+        </div>
+      </DialogMediaPopup>
+    </Dialog>
   );
 });

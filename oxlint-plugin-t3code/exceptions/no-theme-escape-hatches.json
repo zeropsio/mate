@@ -704,14 +704,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 [--media-height:min(86vh,calc(100vh-160px))] [--media-width:92vw] [-webkit-app-region:no-drag] sm:[--media-width:calc(92vw-96px)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ExpandedImageDialog awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
     "kind": "Literal",
     "fingerprint": "\"dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25\"",

@@ -522,6 +522,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
+/* Behind a picture or a video shown as large as the window lets it be: near black in both themes. */
+@utility dialog-media-backdrop {
+  background: color-mix(in srgb, var(--color-black) 75%, transparent);
+}
+
 @utility dropdown-glass {
   background: color-mix(
     in srgb,
