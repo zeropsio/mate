@@ -1,5 +1,5 @@
 /**
- * A person's role, as their own page and the invitation set it — legacy Zerops's *Role preset*:
+ * A person's role, as their own page and the invitation set it — legacy Zerops's presets, labelled *Role*:
  * four cards (Owner, Admin, Developer, Guest), each saying what it gives; then *Advanced*, a panel
  * the cards' width of Settings rows — the Zerops role as a select, each of its three flags as a
  * switch — which opens by itself where the membership is no preset. A card or a role the editor
@@ -44,7 +44,7 @@ export function TeamRoleEditor({
   return (
     <div className="tm-role" data-zerops-surface="team-role">
       <span className="tm-label" id={`${id}-preset`}>
-        Role preset
+        Role
       </span>
       <div aria-labelledby={`${id}-preset`} className="tm-role-cards" role="radiogroup">
         {cards.map((card) => (
