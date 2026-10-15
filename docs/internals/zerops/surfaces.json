@@ -996,15 +996,12 @@
       "kind": "component-set",
       "title": "Zerops web primitives",
       "components": [
-        "apps/web/src/components/zerops/primitives/StatusDot.tsx",
+        "apps/web/src/components/zerops/primitives/statusBadgeTone.ts",
         "apps/web/src/components/zerops/primitives/VerdictPanel.tsx",
         "apps/web/src/components/zerops/primitives/MicroLabel.tsx",
-        "apps/web/src/components/zerops/primitives/Chip.tsx",
-        "apps/web/src/components/zerops/primitives/Pill.tsx",
         "apps/web/src/components/zerops/primitives/MintPanel.tsx",
         "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
         "apps/web/src/components/zerops/primitives/StepGlyph.tsx",
-        "apps/web/src/components/zerops/primitives/KeyChip.tsx",
         "apps/web/src/components/zerops/primitives/PersonAvatar.tsx",
         "apps/web/src/components/zerops/primitives/LivenessLine.tsx",
         "apps/web/src/components/zerops/primitives/MateFace.tsx"
@@ -1022,14 +1019,10 @@
         "none": "Foundation primitives have no user-facing behavior to document."
       },
       "tests": [
-        "apps/web/src/components/zerops/primitives/StatusDot.test.tsx",
         "apps/web/src/components/zerops/primitives/MicroLabel.test.tsx",
-        "apps/web/src/components/zerops/primitives/Chip.test.tsx",
-        "apps/web/src/components/zerops/primitives/Pill.test.tsx",
         "apps/web/src/components/zerops/primitives/PersonAvatar.test.tsx",
         "apps/web/src/components/zerops/primitives/MintPanel.test.tsx",
         "apps/web/src/components/zerops/primitives/ProcessSteps.test.tsx",
-        "apps/web/src/components/zerops/primitives/KeyChip.test.tsx",
         "apps/web/src/components/zerops/primitives/LivenessLine.test.tsx",
         "apps/web/src/components/zerops/primitives/MateFace.test.tsx",
         "apps/web/src/components/zerops/showcaseScenes.render.test.tsx"
