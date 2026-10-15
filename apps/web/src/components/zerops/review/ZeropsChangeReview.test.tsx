@@ -928,7 +928,7 @@ describe("the one question after the first merge", () => {
     const text = textOf(render(FIRST, [changed("a.ts")], asking));
     expect(text).toContain("Your code is on main. No stage or production runs it yet");
     expect(text).toContain("Add stage");
-    expect(text).toContain("Add production");
+    expect(text).toContain("Put it live");
     expect(text).toContain("Not now");
   });
 

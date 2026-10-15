@@ -151,8 +151,9 @@ export interface ReviewSecondary {
 
 /**
  * The one question a review may ask after a merge: where the code should run, with a button for
- * each environment the person may add, and a quiet way to say not now. It is asked once and
- * remembers nothing: no answer is stored, and no later merge asks it.
+ * each environment the person may add — production's is *Put it live*, which makes it and releases
+ * to it in one step — and a quiet way to say not now. It is asked once and remembers nothing: no
+ * answer is stored, and no later merge asks it.
  */
 export interface ReviewQuestion {
   readonly text: string;
@@ -665,7 +666,7 @@ function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined 
   const options = (
     [
       ["stage", input.addable?.stage === true, "Add stage"],
-      ["production", input.addable?.production === true, "Add production"],
+      ["production", input.addable?.production === true, "Put it live"],
     ] as const
   ).flatMap(([tier, offered, label]) => (offered ? [{ tier, label }] : []));
   if (options.length === 0) return undefined;

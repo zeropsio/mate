@@ -47,6 +47,7 @@ import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useAddEnvironment, useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
+import { usePutLive } from "~/zerops/putLive";
 import { type ZeropsChangeOffers, useChangeOffers } from "~/zerops/useChangeOffers";
 import {
   mergedMain,
@@ -252,6 +253,7 @@ function ChangeReviewData({
   const mates = useZeropsReviewMates(target.groupId);
   const pictures = useHqPictureSource();
   const addEnvironment = useAddEnvironment();
+  const askPutLive = usePutLive((state) => state.ask);
   const question = useEnvironmentQuestionFacts(target.groupId, flow);
   const verbs = useFlowVerbs();
   const mateNames = useMateNames();
@@ -343,8 +345,21 @@ function ChangeReviewData({
       productionHeld={question.productionHeld}
       addable={question.addable}
       onAddEnvironment={(tier) => {
-        addEnvironment(target.groupId, tier);
         onClose();
+        // Production is put live in one step, over this conversation; a stage is the project's form.
+        if (tier === "production")
+          askPutLive({
+            groupId: target.groupId,
+            change: {
+              repository: pull.repository,
+              number: pull.number,
+              title: pull.title,
+              head: pull.headSha,
+              merged: true,
+              description: pull.description,
+            },
+          });
+        else addEnvironment(target.groupId, tier);
       }}
       frame={frame}
       hqAddress={hqAddress}

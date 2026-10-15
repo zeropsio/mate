@@ -1282,7 +1282,7 @@ describe("changeReview: where should it run (the one question)", () => {
       text: "Your code is on main. No stage or production runs it yet; Nova's preview is only for trying it out.",
       options: [
         { tier: "stage", label: "Add stage" },
-        { tier: "production", label: "Add production" },
+        { tier: "production", label: "Put it live" },
       ],
       dismiss: "Not now",
     });
@@ -1329,7 +1329,7 @@ describe("changeReview: where should it run (the one question)", () => {
 
   it.each<[string, ChangeReviewInput["addable"], ReadonlyArray<string>]>([
     ["only a stage may be added", { stage: true, production: false }, ["Add stage"]],
-    ["only a production may be added", { stage: false, production: true }, ["Add production"]],
+    ["only a production may be added", { stage: false, production: true }, ["Put it live"]],
   ])("offers just the tier left where %s", (_name, addable, labels) => {
     expect(
       changeReview(first({ addable })).question?.options.map((option) => option.label),
