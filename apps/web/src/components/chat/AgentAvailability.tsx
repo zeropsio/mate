@@ -108,7 +108,7 @@ export function UnavailableAgentControl({
             }
             className="shrink-0"
             data-chat-provider-unavailable="true"
-            size="md"
+            size="sm"
             type="button"
             variant="ghost"
           />

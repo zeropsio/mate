@@ -53,7 +53,7 @@ export function FileBrowserPanelState(
         <Button
           type="button"
           variant="secondary"
-          size="md"
+          size="sm"
           disabled={state.retryPending}
           aria-busy={state.retryPending || undefined}
           onClick={props.onRetry}

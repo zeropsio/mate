@@ -45,7 +45,7 @@ export function ContextWindowMeter(props: {
         closeDelay={onCompact ? 150 : 0}
         render={
           <Button
-            size="icon-md"
+            size="icon-sm"
             variant="ghost"
             className="size-7"
             aria-label={

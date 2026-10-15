@@ -2223,7 +2223,7 @@ export function GeneralSettingsPanel() {
                   <TooltipTrigger
                     render={
                       <Button
-                        size="icon-md"
+                        size="icon-sm"
                         variant="secondary"
                         aria-label="Configure advanced background activity"
                         onClick={() => setBackgroundActivityDialogOpen(true)}

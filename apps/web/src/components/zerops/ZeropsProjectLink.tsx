@@ -17,7 +17,7 @@ export function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string 
           <span className="hidden text-line @3xl/header-actions:inline">Open in Zerops</span>
         </a>
       }
-      size="md"
+      size="sm"
       variant="ghost"
     />
   );

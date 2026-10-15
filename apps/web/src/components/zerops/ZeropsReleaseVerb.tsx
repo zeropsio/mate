@@ -93,7 +93,7 @@ export interface ReleaseOffer {
 export function ReleaseAction({
   release,
   label = REVIEW_RELEASE_LABEL,
-  size = "md",
+  size = "sm",
   variant,
 }: {
   readonly release: ReleaseOffer;

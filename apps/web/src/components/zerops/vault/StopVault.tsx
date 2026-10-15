@@ -31,7 +31,7 @@ export function StopVaultToggle({
   readonly onToggle: () => void;
 }) {
   return (
-    <Button aria-pressed={open} onClick={onToggle} size="md" variant={open ? "secondary" : "ghost"}>
+    <Button aria-pressed={open} onClick={onToggle} size="sm" variant={open ? "secondary" : "ghost"}>
       <Vault aria-hidden="true" />
       Vault
     </Button>

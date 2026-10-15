@@ -54,7 +54,7 @@ function AlertSpecimens() {
                 <AlertTitle>Nothing deployed yet</AlertTitle>
                 <AlertDescription>Push to main and the first build starts.</AlertDescription>
                 <AlertAction>
-                  <Button size="md">Push now</Button>
+                  <Button size="sm">Push now</Button>
                 </AlertAction>
               </Alert>
             </div>

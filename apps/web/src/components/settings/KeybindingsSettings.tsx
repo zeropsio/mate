@@ -370,7 +370,7 @@ function WhenExpressionNodeEditor({
           <Button
             type="button"
             variant="ghost"
-            size="icon-md"
+            size="icon-sm"
             className="size-7"
             aria-label="Remove condition"
             onClick={onRemove}
@@ -405,7 +405,7 @@ function WhenExpressionNodeEditor({
             <Button
               type="button"
               variant="ghost"
-              size="icon-md"
+              size="icon-sm"
               className="ml-auto size-7"
               aria-label="Remove negated group"
               onClick={onRemove}
@@ -519,7 +519,7 @@ function WhenExpressionNodeEditor({
           <Button
             type="button"
             variant="ghost"
-            size="icon-md"
+            size="icon-sm"
             className="ml-auto size-7"
             aria-label="Remove group"
             onClick={onRemove}
@@ -856,7 +856,7 @@ function KeybindingTableRow({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-md"
+                  size="icon-sm"
                   className="size-7 sm:size-7"
                   disabled={isSaving}
                   aria-label={`Actions for ${commandLabel(row.command)}`}
@@ -1013,7 +1013,7 @@ function NewKeybindingTableRow({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon-md"
+                size="icon-sm"
                 className="size-7"
                 disabled={isSaving}
                 aria-label="Cancel new keybinding"

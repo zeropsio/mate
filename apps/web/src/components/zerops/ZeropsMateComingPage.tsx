@@ -1007,7 +1007,7 @@ export function MateComingHeader({
             aria-label="More header actions"
             data-chat-header-ghost
             inert
-            size="icon-md"
+            size="icon-sm"
             variant="ghost"
           >
             <EllipsisIcon className="size-4" />

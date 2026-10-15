@@ -850,7 +850,7 @@ export function ReviewQuestionBlock({
           onClick={() => {
             onAnswer(option.tier);
           }}
-          size="md"
+          size="sm"
           variant="secondary"
         >
           {option.label}

@@ -720,7 +720,7 @@ export function ZeropsGroupPane({
                         onClick={() => {
                           onFinish(slot.id);
                         }}
-                        size="md"
+                        size="sm"
                         variant="secondary"
                       >
                         Finish setup
@@ -742,7 +742,7 @@ export function ZeropsGroupPane({
                         onClick={() => {
                           onAdd(slot.tier);
                         }}
-                        size="md"
+                        size="sm"
                         variant="secondary"
                       >
                         {environmentDoorLabel(slot.tier, slot.name)}

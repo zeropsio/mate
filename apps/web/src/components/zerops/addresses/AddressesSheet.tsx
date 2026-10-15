@@ -173,7 +173,7 @@ function SheetHeader({
       {places.length > 1 ? (
         <Menu>
           <MenuTrigger
-            render={<Button aria-label={`Place: ${current}`} size="md" variant="secondary" />}
+            render={<Button aria-label={`Place: ${current}`} size="sm" variant="secondary" />}
           >
             {current}
             <ChevronDownIcon />
@@ -197,7 +197,7 @@ function SheetHeader({
         <span className="truncate text-muted-foreground text-sm">{current}</span>
       )}
       <span className="grow" />
-      <Button aria-label="Close" onClick={onClose} size="icon-md" variant="ghost">
+      <Button aria-label="Close" onClick={onClose} size="icon-sm" variant="ghost">
         <XIcon />
       </Button>
     </div>

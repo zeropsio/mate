@@ -62,7 +62,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
         const button = (
           <Button
             key={option.decision}
-            size="md"
+            size="sm"
             variant={variant}
             className="max-w-full"
             data-approval-decision={option.decision}

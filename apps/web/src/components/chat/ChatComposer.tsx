@@ -4005,7 +4005,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     ) : showProviderUnavailable && !zeropsSignInRequired ? (
                       <Button
                         type="button"
-                        size="md"
+                        size="sm"
                         variant="ghost"
                         disabled={!providerSetupInstanceId}
                         onClick={() => {

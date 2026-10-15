@@ -399,7 +399,7 @@ export function UsagePage({
         <Button
           onClick={refreshWindow}
           aria-label={showingLimits ? "Refresh limits" : "Refresh usage"}
-          size="icon-md"
+          size="icon-sm"
           variant="ghost"
         >
           <RefreshCwIcon className="size-3.5" />
@@ -460,7 +460,7 @@ export function UsagePage({
         <Button
           onClick={refreshWindow}
           aria-label={showingLimits ? "Refresh limits" : "Refresh usage"}
-          size="icon-md"
+          size="icon-sm"
           variant="ghost"
         >
           <RefreshCwIcon className="size-3.5" />

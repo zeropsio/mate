@@ -79,7 +79,7 @@ export function TeamList({
               <Button
                 data-zerops-surface="invite-team"
                 render={<Link to="/settings/team/invite" />}
-                size="md"
+                size="sm"
               >
                 <PlusIcon aria-hidden="true" />
                 Invite

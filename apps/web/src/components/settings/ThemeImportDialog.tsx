@@ -472,7 +472,7 @@ export function ThemeImportDialog({
               />
             );
             const chooseButton = (label = "Choose files") => (
-              <Button disabled={isReading} size="md" variant="secondary" onClick={openFilePicker}>
+              <Button disabled={isReading} size="sm" variant="secondary" onClick={openFilePicker}>
                 <DownloadIcon />
                 {isReading ? "Reading…" : label}
               </Button>
@@ -497,16 +497,16 @@ export function ThemeImportDialog({
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button size="md" onClick={() => resolveConflicts("update")}>
+                    <Button size="sm" onClick={() => resolveConflicts("update")}>
                       Update existing
                     </Button>
-                    <Button size="md" variant="secondary" onClick={() => resolveConflicts("copy")}>
+                    <Button size="sm" variant="secondary" onClick={() => resolveConflicts("copy")}>
                       Keep both
                     </Button>
-                    <Button size="md" variant="ghost" onClick={() => setConflicts(null)}>
+                    <Button size="sm" variant="ghost" onClick={() => setConflicts(null)}>
                       Back
                     </Button>
-                    <Button size="md" variant="ghost" onClick={() => onOpenChange(false)}>
+                    <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
                       Cancel
                     </Button>
                   </div>

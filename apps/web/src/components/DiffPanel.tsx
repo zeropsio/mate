@@ -808,7 +808,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
               render={
                 <Button
                   type="button"
-                  size="icon-md"
+                  size="icon-sm"
                   variant="ghost"
                   aria-label={branchDiffPreview.isPending ? "Refreshing diff" : "Refresh diff"}
                   onClick={refreshGitDiff}
@@ -830,7 +830,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
               render={
                 <Button
                   type="button"
-                  size="icon-md"
+                  size="icon-sm"
                   variant="ghost"
                   aria-label={allDiffFilesCollapsed ? "Expand all files" : "Collapse all files"}
                   onClick={toggleDiffFileCollapse}

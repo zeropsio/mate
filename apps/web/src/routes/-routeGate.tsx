@@ -154,14 +154,14 @@ function RouteGateActions({
       {openInZerops ? (
         <Button
           render={<a href={zeropsProjectUrl(projectId)} target="_blank" rel="noreferrer" />}
-          size="md"
+          size="sm"
           variant="secondary"
         >
           Open in Zerops
         </Button>
       ) : null}
       {toProjects ? (
-        <Button render={<Link to="/zerops" />} size="md" variant="secondary">
+        <Button render={<Link to="/zerops" />} size="sm" variant="secondary">
           Go to projects
         </Button>
       ) : null}

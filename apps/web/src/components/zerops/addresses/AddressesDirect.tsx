@@ -210,7 +210,7 @@ function PortRow({
                 render={
                   <Button
                     aria-label={`More for port ${port.publicPort}`}
-                    size="icon-md"
+                    size="icon-sm"
                     variant="ghost"
                   />
                 }
@@ -398,7 +398,7 @@ function PortForm({
           <Button
             aria-label={`Remove address ${index + 1}`}
             onClick={() => setRanges(ranges.filter((_, at) => at !== index))}
-            size="icon-md"
+            size="icon-sm"
             type="button"
             variant="ghost"
           >
@@ -563,11 +563,11 @@ function PortForm({
         </Confirm>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={busy || ctx.hold} size="md" type="submit">
+          <Button disabled={busy || ctx.hold} size="sm" type="submit">
             {busy ? <Spinner aria-hidden="true" /> : null}
             {press}
           </Button>
-          <Button onClick={onDone} size="md" type="button" variant="ghost">
+          <Button onClick={onDone} size="sm" type="button" variant="ghost">
             Cancel
           </Button>
         </div>

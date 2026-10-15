@@ -218,7 +218,7 @@ export function WaitingNotice({
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={busy || held} onClick={onPublish} size="md" variant="secondary">
+          <Button disabled={busy || held} onClick={onPublish} size="sm" variant="secondary">
             {busy ? <Spinner aria-hidden="true" /> : null}
             {waiting.length === 1 ? "Put it live" : "Put them live"}
           </Button>
@@ -321,7 +321,7 @@ function DomainRow({
                 render={
                   <Button
                     aria-label={`More for ${domain.domainName}`}
-                    size="icon-md"
+                    size="icon-sm"
                     variant="ghost"
                   />
                 }
@@ -755,11 +755,11 @@ function AddDomainForm({
         </Confirm>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={!ready || busy || ctx.hold} size="md" type="submit">
+          <Button disabled={!ready || busy || ctx.hold} size="sm" type="submit">
             {busy ? <Spinner aria-hidden="true" /> : null}
             {name === "" ? "Add" : `Add ${name}`}
           </Button>
-          <Button onClick={onDone} size="md" type="button" variant="ghost">
+          <Button onClick={onDone} size="sm" type="button" variant="ghost">
             Cancel
           </Button>
           <span className="text-muted-foreground text-xs">

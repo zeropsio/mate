@@ -23,10 +23,10 @@ const buttonVariants = cva(
     },
     variants: {
       size: {
-        sm: "h-fit min-h-6 gap-1 px-[calc(--spacing(2)-1px)] py-px text-caption [&_svg:not([class*='size-'])]:size-3.5",
+        sm: "h-fit min-h-7 gap-1.5 px-[calc(--spacing(2.5)-1px)] py-[calc(--spacing(1)-1px)] text-body [&_svg:not([class*='size-'])]:size-3.5",
         md: "h-fit min-h-8 gap-1.5 px-[calc(--spacing(3)-1px)] py-[calc(--spacing(1)-1px)] text-body",
         lg: "h-fit min-h-10 gap-2 px-[calc(--spacing(4)-1px)] py-[calc(--spacing(1)-1px)] text-body",
-        "icon-sm": "size-6 [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-sm": "size-7 [&_svg:not([class*='size-'])]:size-3.5",
         "icon-md": "size-8",
       },
       variant: {

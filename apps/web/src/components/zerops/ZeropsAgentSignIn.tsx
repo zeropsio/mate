@@ -481,11 +481,11 @@ function OpenCard({
                 autoFocus
                 variant="secondary"
                 onClick={onDismiss}
-                size="md"
+                size="sm"
               >
                 Cancel
               </Button>
-              <Button data-sign-in-replace onClick={onReplace} size="md">
+              <Button data-sign-in-replace onClick={onReplace} size="sm">
                 {REPLACE_SIGN_IN_PRESS}
               </Button>
             </div>
@@ -558,7 +558,7 @@ function OpenCardSteps({
         <span className="arrival-open-step-words" role="alert">
           {steps.why}
         </span>
-        <Button disabled={disabled} onClick={onRetry} size="md" variant="secondary">
+        <Button disabled={disabled} onClick={onRetry} size="sm" variant="secondary">
           <RotateCcwIcon aria-hidden="true" />
           {words.tryAgain}
         </Button>
@@ -599,7 +599,7 @@ function OpenCardSteps({
                 target="_blank"
               />
             }
-            size="md"
+            size="sm"
           >
             {words.openPress}
             <ArrowUpRightIcon aria-hidden="true" />
@@ -725,7 +725,7 @@ function TypeCodeStep({
                 () => undefined,
               );
             }}
-            size="md"
+            size="sm"
             variant="secondary"
           >
             {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}

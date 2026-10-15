@@ -40,7 +40,7 @@ function EmptySpecimens() {
                   <EmptyDescription>Add one and Mate deploys it here.</EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
-                  <Button size="md">Add a service</Button>
+                  <Button size="sm">Add a service</Button>
                 </EmptyContent>
               </Empty>
             </div>

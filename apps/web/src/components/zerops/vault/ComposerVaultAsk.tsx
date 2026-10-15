@@ -72,7 +72,7 @@ export function ComposerVaultAsk(props: ComposerVaultAskProps) {
             <Button
               disabled={busy}
               onClick={props.onNotNow}
-              size="md"
+              size="sm"
               type="button"
               variant="ghost"
             >
@@ -148,7 +148,7 @@ export function ComposerVaultAsk(props: ComposerVaultAskProps) {
                 aria-pressed={shown}
                 disabled={open === null}
                 onClick={() => setShown((current) => !current)}
-                size="icon-md"
+                size="icon-sm"
                 type="button"
                 variant="ghost"
               >

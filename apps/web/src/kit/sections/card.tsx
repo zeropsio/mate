@@ -26,7 +26,7 @@ function SampleCard({ variant }: { readonly variant?: "default" | "flat" }) {
         <CardTitle>storefront</CardTitle>
         <CardDescription>Node.js 22 · two containers</CardDescription>
         <CardAction>
-          <Button aria-label="More" size="icon-md" variant="ghost">
+          <Button aria-label="More" size="icon-sm" variant="ghost">
             <MoreHorizontalIcon />
           </Button>
         </CardAction>
@@ -35,7 +35,7 @@ function SampleCard({ variant }: { readonly variant?: "default" | "flat" }) {
         <p className="m-0 text-sm">Deployed eight minutes ago from main.</p>
       </CardPanel>
       <CardFooter>
-        <Button size="md" variant="secondary">
+        <Button size="sm" variant="secondary">
           Open logs
         </Button>
       </CardFooter>
@@ -75,7 +75,7 @@ function CardSpecimens() {
             <SampleCard />
             <SampleCard />
             <CardFrameFooter>
-              <Button size="md" variant="ghost">
+              <Button size="sm" variant="ghost">
                 Add a service
               </Button>
             </CardFrameFooter>

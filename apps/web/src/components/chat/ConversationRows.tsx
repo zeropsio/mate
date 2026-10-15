@@ -658,7 +658,7 @@ export function LimitContinue({
   }
   if (onContinue === null) return null;
   return (
-    <Button className="relative z-1" variant="ghost" size="md" onClick={press}>
+    <Button className="relative z-1" variant="ghost" size="sm" onClick={press}>
       Continue
     </Button>
   );
@@ -744,7 +744,7 @@ export function PauseBlock({
         </p>
       ) : null}
       {onContinue === null && !blockedByAnswer ? null : (
-        <Button size="md" variant="ghost" disabled={blockedByAnswer} onClick={press}>
+        <Button size="sm" variant="ghost" disabled={blockedByAnswer} onClick={press}>
           Continue
         </Button>
       )}

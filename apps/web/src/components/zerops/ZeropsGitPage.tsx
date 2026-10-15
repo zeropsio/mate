@@ -51,7 +51,7 @@ function ReadTrouble({
       </p>
       {onAgain === undefined ? null : (
         <div>
-          <Button variant="ghost" size="md" onClick={onAgain}>
+          <Button variant="ghost" size="sm" onClick={onAgain}>
             Read again
           </Button>
         </div>
@@ -132,7 +132,7 @@ export function ZeropsGitOverview({
             <Button
               key={value}
               variant={view === value ? "secondary" : "ghost"}
-              size="md"
+              size="sm"
               aria-pressed={view === value}
               onClick={() => {
                 setView(value);
@@ -158,7 +158,7 @@ export function ZeropsGitOverview({
       {presentation.changed ? (
         <div className="flex items-center gap-3" role="status">
           <span className="text-sm text-muted-foreground">The repository list has changed.</span>
-          <Button variant="secondary" size="md" onClick={() => setHeld(undefined)}>
+          <Button variant="secondary" size="sm" onClick={() => setHeld(undefined)}>
             Update list
           </Button>
         </div>
@@ -364,7 +364,7 @@ export function ZeropsGitPage() {
               Repositories and open changes across your projects.
             </p>
           </div>
-          <Button variant="ghost" size="md" onClick={readAgain}>
+          <Button variant="ghost" size="sm" onClick={readAgain}>
             Read again
           </Button>
         </div>

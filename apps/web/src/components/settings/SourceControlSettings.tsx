@@ -477,7 +477,7 @@ export function EmptySourceControlDiscovery({
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button size="md" variant="secondary" onClick={onScan} disabled={isPending}>
+          <Button size="sm" variant="secondary" onClick={onScan} disabled={isPending}>
             <RefreshCwIcon className={cn("size-3.5", isPending && "animate-spin")} />
             Scan
           </Button>
