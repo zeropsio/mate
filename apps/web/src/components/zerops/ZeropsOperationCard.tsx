@@ -395,7 +395,7 @@ function DeployPipeline({
   return <PipelineStepList aria-label={label} beneath={because([failed])} steps={[failed]} />;
 }
 
-function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
+export function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
   return (
     <ServiceBrowserLink
       aria-label={`Open ${url}`}

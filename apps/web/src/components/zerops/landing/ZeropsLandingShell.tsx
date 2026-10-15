@@ -141,7 +141,7 @@ function useFrameWaitLine(signedIn: boolean, own: string | undefined): string | 
   return showing ? text : null;
 }
 
-function FormError({ message }: { readonly message: string | null }) {
+export function FormError({ message }: { readonly message: string | null }) {
   if (!message) return null;
   return (
     <p

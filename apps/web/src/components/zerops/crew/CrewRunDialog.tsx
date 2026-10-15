@@ -148,7 +148,7 @@ const fitted = (text: string) => ({ width: `calc(${Math.max(1, text.length)}ch +
  * An amount, typed, beside its unit — and *No limit* after it. While *No limit* is the pick the
  * field holds no figure, so it never reads as the limit; the figure comes back on a focus.
  */
-function LimitField(props: {
+export function LimitField(props: {
   readonly label: string;
   readonly kind: CrewLimitKind | null;
   readonly text: string;

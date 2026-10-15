@@ -79,7 +79,7 @@ function SearchOptionButton(props: {
   );
 }
 
-function EmptyContentSearchDialog() {
+export function EmptyContentSearchDialog() {
   return (
     <CommandPaletteContent
       aria-label="Search project contents"

@@ -87,7 +87,7 @@ function highlightJson(value: string): string {
   return highlighted + escapeJsonHtml(value.slice(cursor));
 }
 
-function ThemeJsonEditor({
+export function ThemeJsonEditor({
   id,
   value,
   onChange,

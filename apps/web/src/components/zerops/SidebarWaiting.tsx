@@ -530,7 +530,7 @@ function MateActions({
  * An item's buttons, or the one-line reply that takes their place: Enter sends, Esc gives the
  * buttons back.
  */
-function Replying({
+export function Replying({
   children,
   replying,
   sending,
