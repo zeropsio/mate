@@ -1219,7 +1219,7 @@ export function ComingBelow({
           {/* Credit may come from another tab, another device or before a reload: *Try again*
               stands beside the way to HQ for as long as the refusal does. */}
           {onTryAgain === undefined ? null : (
-            <Button variant="secondary" size="compact" onClick={onTryAgain}>
+            <Button variant="secondary" size="sm" onClick={onTryAgain}>
               {MATE_STAND_UP_RETRY_LABEL}
             </Button>
           )}
