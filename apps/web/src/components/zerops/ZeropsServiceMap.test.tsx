@@ -616,6 +616,36 @@ describe("ZeropsServiceDetail — the pop", () => {
     expect(html).toContain("kanbandev-26a7-3000.prg1.zerops.app</span>");
   });
 
+  it("names a stage partner's routes as its stage's, never as the dev service's own", () => {
+    const html = renderDetail(
+      topology([
+        service({
+          hostname: "appdev",
+          routes: [
+            {
+              port: 3000,
+              url: "https://appdev-1-3000.zerops.app",
+              host: "appdev-1-3000.zerops.app",
+            },
+          ],
+        }),
+        service({
+          hostname: "appstage",
+          routes: [
+            {
+              port: 3000,
+              url: "https://appstage-1-3000.zerops.app",
+              host: "appstage-1-3000.zerops.app",
+            },
+          ],
+        }),
+      ]),
+    );
+
+    expect(html).toContain("appdev-1-3000.zerops.app</span>");
+    expect(html).toContain("appstage · appstage-1-3000.zerops.app</span>");
+  });
+
   it("offers a production project as a linked route", () => {
     const lifecycle = {
       threadId: "thread-1",

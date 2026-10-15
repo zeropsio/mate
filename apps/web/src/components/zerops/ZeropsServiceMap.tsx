@@ -473,9 +473,12 @@ function RouteLink({ href, label }: { href: string; label: string }) {
 function ServiceRoutes({
   row,
   routes,
+  of,
 }: {
   row?: ZeropsServiceRow;
   routes: ReadonlyArray<ZeropsServiceRoute>;
+  /** Another service's routes listed here: each names it, as production's do. */
+  of?: string;
 }) {
   const production = row?.production ?? [];
   if (routes.length === 0 && production.length === 0) {
@@ -484,7 +487,11 @@ function ServiceRoutes({
   return (
     <ul className="mt-2 flex min-w-0 max-w-full flex-col gap-1" data-zerops-service-routes>
       {routes.map((route) => (
-        <RouteLink href={route.url} key={route.url} label={route.host} />
+        <RouteLink
+          href={route.url}
+          key={route.url}
+          label={of === undefined ? route.host : `${of} · ${route.host}`}
+        />
       ))}
       {production.map((link) =>
         link.url === undefined ? (
@@ -585,7 +592,9 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
         </p>
       )}
       <ServiceRoutes routes={row.service.routes} row={row} />
-      {row.stage === undefined ? null : <ServiceRoutes routes={row.stage.routes} />}
+      {row.stage === undefined ? null : (
+        <ServiceRoutes of={row.stage.hostname} routes={row.stage.routes} />
+      )}
       {row.metrics.length === 0 ? null : (
         <div
           className="mt-3 flex flex-col gap-2 border-t border-border/60 pt-3"
