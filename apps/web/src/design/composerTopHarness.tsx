@@ -145,7 +145,7 @@ function stripOf(count: number): ZeropsNextStepStripModel {
   return {
     title:
       count === 1
-        ? `Wren is waiting for your review of #${String(first[1])}`
+        ? "Wren is waiting for your review"
         : `Wren is waiting for your review of ${String(count)} changes`,
     detail: first[2],
     tint: "sky",

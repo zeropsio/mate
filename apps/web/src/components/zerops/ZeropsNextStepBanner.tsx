@@ -56,7 +56,7 @@ export interface ZeropsNextStepLine {
 }
 
 export interface ZeropsNextStepStripModel {
-  /** `Nova is waiting for your review of #2`, or `of 2 changes` */
+  /** `Nova is waiting for your review`, or `… of 2 changes` */
   readonly title: string;
   /** The change's own title — the newest's, where several wait. */
   readonly detail: string;

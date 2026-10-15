@@ -41,7 +41,7 @@ describe("mateNextStep", () => {
       mate: "p-wren",
       mateName: "Wren",
       step: {
-        title: "Wren is waiting for your review of #1",
+        title: "Wren is waiting for your review",
         detail: "Greet with a fuller line",
         number: 1,
       },
@@ -52,7 +52,7 @@ describe("mateNextStep", () => {
       mate: "p-wren",
       mateName: undefined,
       step: {
-        title: "This Mate is waiting for your review of #1",
+        title: "This Mate is waiting for your review",
         detail: "Greet with a fuller line",
         number: 1,
       },
@@ -112,7 +112,7 @@ describe("mateNextStep", () => {
       mate: "p-wren",
       mateName: "Wren",
       step: {
-        title: "Wren is waiting for your review of #1",
+        title: "Wren is waiting for your review",
         detail: "Greet with a fuller line",
         number: 1,
       },
@@ -164,7 +164,7 @@ describe("mateNextStep", () => {
 // change like yours", the same section over the read-along line, waiting for a review, not yours.
 describe("mateNextStep: a colleague's Mate", () => {
   it.each([
-    { case: "one change", pulls: [pull()], title: "Rosa is waiting for a review of #1" },
+    { case: "one change", pulls: [pull()], title: "Rosa is waiting for a review" },
     {
       case: "two changes",
       pulls: [pull(), pull({ repository: "api", number: 2 })],
@@ -195,7 +195,7 @@ describe("mateNextStep: every change of its own waiting, newest first", () => {
   const app4 = pull({ repository: "appdev", number: 4, title: "Fix the menu", updatedAt: at(13) });
 
   it.each([
-    ["one: the change itself, no list", [app1], "Wren is waiting for your review of #1", [], 0],
+    ["one: the change itself, no list", [app1], "Wren is waiting for your review", [], 0],
     [
       "two: a count, then each in its own line",
       [app1, api1],
