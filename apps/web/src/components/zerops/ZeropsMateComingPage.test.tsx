@@ -2037,7 +2037,8 @@ describe("a Mate with no deployment", () => {
         service: {
           ...QUINN.service!,
           status: "READY_TO_DEPLOY",
-          created: "2020-01-01T00:00:00Z",
+          // Just made: its first build is still inside its grace, so nothing says it is late.
+          created: new Date().toISOString(),
         },
       },
     ]);
