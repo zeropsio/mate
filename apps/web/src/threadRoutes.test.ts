@@ -152,6 +152,8 @@ describe("resolveThreadRouteStage", () => {
     conversationShown: false,
     nobodyLivesHere: false,
     readGivenUp: false,
+    directoryAnswered: true,
+    promotedDraft: false,
   };
 
   it("A reload holds the Mate's opening until its conversation's messages are read, never a pane without them", () => {
@@ -177,6 +179,26 @@ describe("resolveThreadRouteStage", () => {
     expect(
       resolveThreadRouteStage({ ...base, readGivenUp: true, serverThreadShellExists: false }),
     ).toBe("opening");
+  });
+
+  it("A reload holds the Mate's opening until HQ has answered, so what it names lands with the conversation", () => {
+    const unanswered = { ...base, renderState: "ready" as const, directoryAnswered: false };
+    expect(resolveThreadRouteStage(unanswered)).toBe("opening");
+    expect(resolveThreadRouteStage({ ...unanswered, readGivenUp: true })).toBe("conversation");
+    expect(resolveThreadRouteStage({ ...unanswered, conversationShown: true })).toBe(
+      "conversation",
+    );
+  });
+
+  it("A promoted draft's conversation stays on screen whatever HQ has said", () => {
+    expect(
+      resolveThreadRouteStage({
+        ...base,
+        renderState: "ready",
+        directoryAnswered: false,
+        promotedDraft: true,
+      }),
+    ).toBe("conversation");
   });
 
   it("A conversation that is gone says so, whoever lives there", () => {

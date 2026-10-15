@@ -60,8 +60,9 @@ export type ThreadRouteStage = "opening" | "conversation" | "missing" | "quiet";
  * Mate's opening until the conversation's messages are read, so the conversation's first frame is
  * whole — header, messages and composer at once — rather than a header over an empty pane. A pane
  * already showing a conversation keeps it while the next one's messages are read (it repaints that
- * thread's last timeline meanwhile). Where nobody lives, there is no Mate's view to hold; where
- * the messages cannot be read, the opening hands over after a short wait.
+ * thread's last timeline meanwhile). Arriving, it also waits for HQ's answer, which names the
+ * header and adds rows of its own. Where nobody lives, there is no Mate's view to hold; where the
+ * messages or HQ's answer do not come, the opening hands over after a short wait.
  */
 export function resolveThreadRouteStage(input: {
   readonly renderState: ThreadRouteRenderState;
@@ -75,8 +76,21 @@ export function resolveThreadRouteStage(input: {
    * the list named the thread.
    */
   readonly readGivenUp: boolean;
+  /**
+   * HQ has answered for the directory (or refused, or stopped being asked often): until then the
+   * header's identity and the rows HQ's facts add are the last visit's, and land after the reveal.
+   */
+  readonly directoryAnswered: boolean;
+  /** The conversation is a draft just promoted on this screen: it is on screen already. */
+  readonly promotedDraft: boolean;
 }): ThreadRouteStage {
-  if (input.renderState === "ready") return "conversation";
+  const arriving =
+    !input.conversationShown &&
+    !input.promotedDraft &&
+    !input.nobodyLivesHere &&
+    !input.directoryAnswered &&
+    !input.readGivenUp;
+  if (input.renderState === "ready") return arriving ? "opening" : "conversation";
   if (input.renderState === "missing") return "missing";
   if (
     input.serverThreadShellExists &&
