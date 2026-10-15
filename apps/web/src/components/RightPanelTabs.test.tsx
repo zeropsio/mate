@@ -112,7 +112,7 @@ describe("RightPanelTabs launcher", () => {
     });
     expect(html.match(/Available when a project is open\./gu)).toHaveLength(2);
     expect(html).toContain("Available for Git repositories.");
-    expect(html).toContain("Available from a thread.");
+    expect(html).toContain("Available from a chat.");
     expect(html).toContain("Available from a conversation.");
     expect(html.match(/Available in a Zerops project\./gu)).toHaveLength(6);
   });

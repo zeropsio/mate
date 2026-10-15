@@ -71,7 +71,7 @@ afterEach(() => {
 });
 
 function press(key: string) {
-  const launcher = host.querySelector<HTMLElement>('[aria-label="Open a surface"]');
+  const launcher = host.querySelector<HTMLElement>('[aria-label="Open a page"]');
   if (!launcher) throw new Error("no launcher");
   act(() => {
     launcher.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));

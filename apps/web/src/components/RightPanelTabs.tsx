@@ -87,7 +87,7 @@ interface RightPanelTabsProps {
 }
 
 const SURFACE_DISABLED_REASONS = {
-  terminal: "Terminal surfaces are only available from a project thread.",
+  terminal: "The terminal is available from a project's chat.",
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
   agents: "Agents are only available from a thread.",
@@ -345,7 +345,7 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
       ref={focusOnMount}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      aria-label="Open a surface"
+      aria-label="Open a page"
       data-surface-launcher-keys={availableActions.map((action) => action.shortcut ?? "").join("")}
       className={cn(
         "flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 outline-none @container",
@@ -358,10 +358,8 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
           from its title instead of losing the top under the tab bar. */}
       <div className="m-auto w-full max-w-lg">
         <div className="mb-4 text-center">
-          <h3 className="font-medium text-foreground text-sm">Open a surface</h3>
-          <p className="mt-1 text-muted-foreground text-xs">
-            Choose what to show in the right panel.
-          </p>
+          <h3 className="font-medium text-foreground text-sm">Open a page</h3>
+          <p className="mt-1 text-muted-foreground text-xs">Choose what to show beside the chat.</p>
         </div>
         <div className="grid grid-cols-1 gap-2 @[24rem]:grid-cols-2">
           {props.actions.map((action) =>
@@ -748,7 +746,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                 render={
                   <Button
                     ref={addSurfaceTriggerRef}
-                    aria-label="Add panel surface"
+                    aria-label="Add a page"
                     className="shrink-0"
                     size="icon-xs"
                     variant="ghost-muted"

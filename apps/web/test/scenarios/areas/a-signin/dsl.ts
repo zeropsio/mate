@@ -243,7 +243,7 @@ export function vault(page: Page) {
   return {
     opens: Effect.promise(async () => {
       await page.locator("::-p-aria(Toggle right panel)").click();
-      await page.locator('[aria-label="Open a surface"] ::-p-text(Vault)').click();
+      await page.locator('[aria-label="Open a page"] ::-p-text(Vault)').click();
     }),
     /** Opens the value's row and asks Zerops to show it. */
     shows: (key: string) =>

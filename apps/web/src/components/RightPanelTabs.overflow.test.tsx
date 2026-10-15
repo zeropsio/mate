@@ -104,7 +104,7 @@ describe("RightPanelTabs overflow", () => {
     layOut(250);
     render();
     const strip = host.querySelector("[data-slot='scroll-area-viewport']");
-    const add = host.querySelector('[aria-label="Add panel surface"]');
+    const add = host.querySelector('[aria-label="Add a page"]');
     expect(strip?.querySelectorAll("[data-tab-id]")).toHaveLength(SURFACES.length);
     expect(add).not.toBeNull();
     expect(strip?.contains(add ?? null)).toBe(false);
