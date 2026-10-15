@@ -105,7 +105,6 @@ import {
   pressNote,
   SETUP_FAILURE_WORDS,
   type ArrivalSubstep,
-  type ArrivalStep,
 } from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { dismissCreation, useCreations } from "~/zerops/creations";
@@ -154,7 +153,6 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { MateDetailFailure } from "./MateDetailFailure";
 import { useCloseOffHolds, useMateDetailRead } from "~/zerops/accountEnvironments";
 import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
-import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 import { ZeropsProjectLink } from "./ZeropsProjectLink";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";

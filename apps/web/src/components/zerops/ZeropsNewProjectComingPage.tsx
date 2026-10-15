@@ -29,7 +29,6 @@ import {
   newProjectProgress,
 } from "~/zerops/newProjectBirth";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
-import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import {
   ComingBelow,
@@ -51,8 +50,6 @@ const NOBODY = {
 
 export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: string }) {
   const navigate = useNavigate();
-  const { user } = useZeropsSession();
-  // The person's own step wears their picture.
   const birth = useCreation(birthId);
 
   // The platform took its Mate's project: that Mate's view takes the route, in place of this one.
