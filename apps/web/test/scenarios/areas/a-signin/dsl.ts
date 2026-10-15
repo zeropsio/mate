@@ -79,7 +79,7 @@ export function account(page: Page) {
     }),
     needsAdministrator: Effect.promise(async () => {
       await page.waitForFunction(
-        () => document.body.innerText.includes("An admin sets up Mate for this organization."),
+        () => document.body.innerText.includes("An admin sets up HQ for this organization."),
         { polling: "raf", timeout: 10_000 },
       );
     }),
