@@ -103,6 +103,11 @@ export interface MatePress {
   readonly organizationId: string;
   /** When the platform took the project, wall ms. */
   readonly startedAt: number;
+  /**
+   * The person's first press of the Add that made it, wall ms (`pressSince`): a press tried again
+   * is taken later. A New project's press starts on its first press already.
+   */
+  readonly pressedAt?: number;
   /** Its group, as the press knew it; null for a project already listed. */
   readonly placement: BirthPlacement | null;
   /** Whether a Mate container comes up at all: false for a stage or a production. */
@@ -151,6 +156,15 @@ const usePressStore = create<MatePressStore>(() => ({ presses: {} }));
 onAccountLifetimeClose(() => {
   usePressStore.setState({ presses: {} });
 });
+
+/**
+ * When a Mate's setup began, as every clock of it counts — its menu row, its card, its own view
+ * (board D1, 2026-09-30; the owner, 2026-10-15: one time for one Mate): the first press of the
+ * Create or Add that made it, through any Try again; else when the platform took its press.
+ */
+export function pressSince(press: Pick<MatePress, "startedAt" | "pressedAt">): number {
+  return press.pressedAt ?? press.startedAt;
+}
 
 /** The platform took the project of a press: it is drawn from now on. */
 export function beginPress(press: Omit<MatePress, "state">): void {
@@ -720,7 +734,7 @@ export function pressComing(press: MatePress | undefined):
   | undefined {
   if (press === undefined) return undefined;
   return {
-    startedAt: press.startedAt,
+    startedAt: pressSince(press),
     // A Finish setup that stopped with its Mate's container brings nothing more: it is not coming.
     container: press.container && !stoppedWithContainer(press),
     retryable: press.state.kind === "failed" && press.state.retry !== null,
@@ -751,10 +765,18 @@ export function placedPressesIn(
   made: ReadonlyArray<ZeropsPlacedBirth> = [],
 ): ReadonlyArray<ZeropsPlacedBirth> {
   return [
-    ...presses.flatMap(({ projectId, organizationId: madeIn, startedAt, placement }) =>
-      placement === null || organizationId === undefined || madeIn !== organizationId
+    ...presses.flatMap((press) =>
+      press.placement === null ||
+      organizationId === undefined ||
+      press.organizationId !== organizationId
         ? []
-        : [{ projectId, startedAt, placement }],
+        : [
+            {
+              projectId: press.projectId,
+              startedAt: pressSince(press),
+              placement: press.placement,
+            },
+          ],
     ),
     ...made,
   ];

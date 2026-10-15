@@ -101,6 +101,7 @@ import { takeMateConversation } from "~/zerops/mateOpening";
 import {
   arrivalSteps,
   inFirstSeenOrder,
+  onSetupClock,
   pressNote,
   SETUP_FAILURE_WORDS,
   type ArrivalSubstep,
@@ -136,6 +137,7 @@ import {
   finishSetupView,
   forgetPress,
   pressFailure,
+  pressSince,
   useMatePress,
 } from "~/zerops/matePress";
 import { useDeleteProject } from "~/zerops/deleteProject";
@@ -551,13 +553,17 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
   // Made here, the steps this tab runs stay under the project's row until the hand-over.
+  // Its running step and its sentence count on its row's clock: from the first press.
   const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
       : {
-          ...(made === undefined || made.adds !== undefined
-            ? progress.progress
-            : newProjectProgress(made, progress.progress, progress.nowMs)),
+          ...onSetupClock(
+            made === undefined || made.adds !== undefined
+              ? progress.progress
+              : newProjectProgress(made, progress.progress, progress.nowMs),
+            press === undefined ? undefined : pressSince(press),
+          ),
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
           ...(setupFailure === undefined ? {} : { setupFailure }),

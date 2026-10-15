@@ -241,7 +241,15 @@ function NewMateDialog({
               runAdd(
                 held,
                 (creationId) => operations.readCreation(organizationId, creationId),
-                (creationId) => create({ group, environments, role: "dev", choice, creationId }),
+                (creationId) =>
+                  create({
+                    group,
+                    environments,
+                    role: "dev",
+                    choice,
+                    creationId,
+                    pressedAt: held.startedAt,
+                  }),
                 (reason) => refuseAddHere(id, reason),
               ),
             ),

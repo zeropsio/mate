@@ -89,6 +89,7 @@ import {
   forgetPress,
   matePressPlacement,
   pressFailureLine,
+  pressSince,
   placedPressesIn,
   mateFinishRegistration,
   readMatePress,
@@ -1321,6 +1322,11 @@ export function ZeropsProjectsContent({
    * "Enable Zerops Mate"). Never a status verb: connecting is what clicking
    * the card does, and the boot is the face's to carry.
    */
+  // A Mate this tab pressed counts on its row's clock: from the first press.
+  const birthSince = (projectId: string) => {
+    const press = presses.find((entry) => entry.projectId === projectId);
+    return press === undefined ? undefined : pressSince(press);
+  };
   const renderMateLine = (
     candidate: ZeropsCandidatePresentation,
     presentation: ZeropsRowPresentation,
@@ -1349,6 +1355,7 @@ export function ZeropsProjectsContent({
     ) {
       return (
         <ZeropsMateBirthLine
+          since={birthSince(candidate.project.id)}
           input={{
             candidate,
             health: candidateHealth.get(candidate.key),
