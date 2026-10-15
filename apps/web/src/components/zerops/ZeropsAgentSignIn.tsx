@@ -39,7 +39,7 @@ import { mateLoginAsAgentRow } from "@t3tools/client-runtime/zerops/logins";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
 import { Loading } from "../ui/loading";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import {
   Dialog,
   DialogHeader,
@@ -454,9 +454,9 @@ function OpenCard({
         </span>
         <span className="flex-1" />
         {onSwitch === null ? null : (
-          <button className="arrival-link" data-sign-in-switch onClick={onSwitch} type="button">
+          <InlineButton data-sign-in-switch onClick={onSwitch} tone="muted">
             {words.switchTo}
-          </button>
+          </InlineButton>
         )}
       </div>
       <div aria-live="polite" className="arrival-open-body">
@@ -505,15 +505,14 @@ function OpenCard({
         <span>{signInFoot(mateName)}</span>
         {attempt === undefined ||
         (steps.kind === "steps" && steps.second.kind === "terminal") ? null : (
-          <button
+          <InlineButton
+            tone="muted"
             aria-expanded={watching}
-            className="arrival-link"
             data-sign-in-watch
             onClick={() => setWatching((value) => !value)}
-            type="button"
           >
             {watching ? HIDE_WHATS_HAPPENING : SHOW_WHATS_HAPPENING}
-          </button>
+          </InlineButton>
         )}
       </div>
     </div>
@@ -581,9 +580,12 @@ function OpenCardSteps({
           page.url === undefined ? (
             <span />
           ) : (
-            <a className="arrival-link" href={page.url} rel="noopener noreferrer" target="_blank">
+            <InlineButton
+              render={<a href={page.url} rel="noopener noreferrer" target="_blank" />}
+              tone="muted"
+            >
               {words.openAgain}
-            </a>
+            </InlineButton>
           )
         ) : (
           <Button

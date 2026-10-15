@@ -208,14 +208,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"cursor-pointer mt-1 text-[11px] font-medium text-foreground/70 underline-offset-2 hover:text-foreground hover:underline\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
     "kind": "Literal",
     "fingerprint": "<> focus-visible:ring-[3px] in \"group inline-flex h-7 items-center gap-1.5 rounded-md border border-transparent px-1.5 outline-none transition-colors hover:border-border/70 hover:bg-background focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
@@ -1083,14 +1075,6 @@
     "path": "apps/web/src/components/zerops/primitives/MintPanel.tsx",
     "kind": "Literal",
     "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"rounded-[var(--zerops-card-radius)] bg-[var(--zerops-mint-panel)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/primitives/Pill.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-pill-radius)] in \"inline-flex items-center justify-center gap-2 rounded-[var(--zerops-pill-radius)] border text-sm font-medium outline-none transition-[background-color,transform] duration-150 focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-background active:scale-[0.97] disabled:pointer-events-none disabled:opacity-64 motion-reduce:transition-none\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"

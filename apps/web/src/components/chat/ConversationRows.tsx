@@ -37,7 +37,7 @@ import {
   spokenUpcomingTimestamp,
 } from "../../timestampFormat";
 import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
@@ -182,15 +182,7 @@ export function HeldMessageLine({
           ? "Sends when the limit resets"
           : `Sends when the limit resets ${spokenUpcoming(resetsAt, timestampFormat)}`}
       </span>
-      {onWithdraw === null ? null : (
-        <button
-          className="cursor-pointer rounded-sm font-medium text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onWithdraw}
-          type="button"
-        >
-          Don't send
-        </button>
-      )}
+      {onWithdraw === null ? null : <InlineButton onClick={onWithdraw}>Don't send</InlineButton>}
     </p>
   );
 }
@@ -415,14 +407,13 @@ export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) 
   const unavailable = action?.unavailable ?? null;
   const button =
     action === undefined ? null : (
-      <button
-        className="ms-3 shrink-0 cursor-pointer rounded-sm font-medium text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60 disabled:hover:no-underline"
+      <InlineButton
+        className="ms-3 shrink-0"
         disabled={unavailable !== null}
         onClick={action.onAction}
-        type="button"
       >
         {action.label}
-      </button>
+      </InlineButton>
     );
   return (
     <div

@@ -36,7 +36,7 @@ import {
 import { shellEnvironment } from "../../state/shell";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -195,13 +195,9 @@ function ExpandableText({
         {text}
       </div>
       {canExpand ? (
-        <button
-          type="button"
-          className="cursor-pointer mt-1 text-[11px] font-medium text-foreground/70 underline-offset-2 hover:text-foreground hover:underline"
-          onClick={() => setExpanded((value) => !value)}
-        >
+        <InlineButton className="mt-1" tone="muted" onClick={() => setExpanded((value) => !value)}>
           {expanded ? "Show less" : expandLabel}
-        </button>
+        </InlineButton>
       ) : null}
     </div>
   );

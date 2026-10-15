@@ -168,9 +168,8 @@ describe("Claude's steps", () => {
     expect(press?.getAttribute("target")).toBe("_blank");
     click(press);
     expect(host.textContent).toContain("Claude is open in a new tab.");
-    expect(host.querySelector<HTMLAnchorElement>(".arrival-link[href]")?.textContent).toBe(
-      "Open again",
-    );
+    const again = host.querySelector<HTMLAnchorElement>('a[href="https://claude.example/oauth"]');
+    expect(again?.textContent).toBe("Open again");
   });
 
   it("signs in on paste: the pasted code goes to the login at once, and is checked", () => {

@@ -35,6 +35,7 @@ import {
   type TimelineRowActivityState,
   type TimelineRowSharedState,
 } from "./timelineContext";
+import { InlineButton } from "~/components/ui/button";
 
 const NOOP = () => undefined;
 
@@ -63,13 +64,9 @@ function HelperTask({ prompt }: { readonly prompt: string }) {
         {prompt}
       </p>
       {open || cut ? (
-        <button
-          className="justify-self-start cursor-pointer rounded text-info-foreground text-line hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-          onClick={() => setOpen((value) => !value)}
-          type="button"
-        >
+        <InlineButton className="justify-self-start" onClick={() => setOpen((value) => !value)}>
           {open ? "Less" : "All of it"}
-        </button>
+        </InlineButton>
       ) : null}
     </section>
   );

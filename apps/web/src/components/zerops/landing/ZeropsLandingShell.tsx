@@ -16,7 +16,7 @@ import { bootFrameSlot, showAppFrame } from "~/zerops/bootFrame";
 import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { MateMark } from "../../MateMark";
 import { ZeropsMark } from "../../ZeropsMark";
@@ -50,13 +50,9 @@ export function ZeropsLandingShell({
         {onManualConnect === undefined ? null : (
           <p className="text-center text-xs text-muted-foreground">
             Not using Zerops?{" "}
-            <button
-              type="button"
-              className="underline underline-offset-2 hover:text-foreground"
-              onClick={onManualConnect}
-            >
+            <InlineButton tone="muted" onClick={onManualConnect}>
               Connect a backend manually
-            </button>
+            </InlineButton>
           </p>
         )}
       </div>
@@ -193,13 +189,9 @@ export function ZeropsHandoverActions({
             </>
           ) : null}
         </p>
-        <button
-          type="button"
-          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          onClick={nativeSignIn.onCancel}
-        >
+        <InlineButton tone="muted" onClick={nativeSignIn.onCancel}>
           Cancel
-        </button>
+        </InlineButton>
       </div>
     );
   }
@@ -212,13 +204,9 @@ export function ZeropsHandoverActions({
       </Button>
       <p className="text-center text-xs text-muted-foreground">
         No account yet?{" "}
-        <button
-          type="button"
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onCreateAccount}
-        >
+        <InlineButton tone="muted" onClick={onCreateAccount}>
           Create one on Zerops
-        </button>
+        </InlineButton>
       </p>
       <FormError message={nativeSignIn?.error ?? null} />
     </div>

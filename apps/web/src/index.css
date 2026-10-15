@@ -13157,30 +13157,6 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 /* A quiet press inside the sign-in: muted, underlined, 13 px. */
-.arrival-link {
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 18px;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
-  text-underline-offset: 3px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    color 150ms var(--ease-out-strong),
-    text-decoration-color 150ms var(--ease-out-strong);
-}
-
-.arrival-link:hover {
-  color: var(--foreground);
-  text-decoration-color: currentColor;
-}
-
-.arrival-link:focus-visible {
-  border-radius: 3px;
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
 
 /* Claude's code: pasted here, sent on paste. */
 .arrival-input {

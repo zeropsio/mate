@@ -34,7 +34,7 @@ import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { cn } from "~/lib/utils";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
 import {
   formatWorkDuration,
@@ -785,13 +785,9 @@ function Instruments({
                   />
                 ))}
               </ul>
-              <button
-                className="mt-2 ms-9 cursor-pointer text-info-foreground text-line hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                onClick={onOpenAgents}
-                type="button"
-              >
+              <InlineButton className="mt-2 ms-9" onClick={onOpenAgents}>
                 Open the helpers panel
-              </button>
+              </InlineButton>
             </InstrumentDetail>
           ) : null}
         </Arriving>

@@ -5,7 +5,7 @@
  * so a failed sign-in looks like the sign-in it came from, not like a crash.
  */
 
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { ZeropsLandingShell } from "./ZeropsLandingShell";
 
 export function ZeropsHandoverFailed({
@@ -24,13 +24,9 @@ export function ZeropsHandoverFailed({
           Try again
         </Button>
         <p className="text-center text-xs text-muted-foreground">
-          <button
-            className="underline underline-offset-2 hover:text-foreground"
-            onClick={onBack}
-            type="button"
-          >
+          <InlineButton tone="muted" onClick={onBack}>
             Back to sign-in
-          </button>
+          </InlineButton>
         </p>
       </div>
     </ZeropsLandingShell>

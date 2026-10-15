@@ -7,7 +7,7 @@
  * code may have changed and offers opening it again first.
  */
 import { Spinner } from "../../ui/spinner";
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import type { ZeropsDeviceLoginStage } from "~/zerops/deviceLogin";
 
 export function ZeropsDeviceLoginWait({
@@ -61,21 +61,13 @@ export function ZeropsDeviceLoginWait({
       </p>
       <p className="space-x-3 text-xs text-muted-foreground">
         {stage.kind === "waiting" && !blocked && !older ? (
-          <button
-            type="button"
-            className="underline underline-offset-2 hover:text-foreground"
-            onClick={onReopen}
-          >
+          <InlineButton tone="muted" onClick={onReopen}>
             Reopen the Zerops window
-          </button>
+          </InlineButton>
         ) : null}
-        <button
-          type="button"
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onCancel}
-        >
+        <InlineButton tone="muted" onClick={onCancel}>
           Cancel sign-in
-        </button>
+        </InlineButton>
       </p>
     </div>
   );

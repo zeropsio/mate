@@ -6,7 +6,7 @@ import { ZeropsGitChangeRow } from "./ZeropsGitChangeRow";
 import { GitTokenGuide } from "./GitTokenGuide";
 import { ZeropsGitCredentials } from "./ZeropsGitCredentials";
 import type { RepositorySource, RepositoryQuery } from "@t3tools/shared/hqGit";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { useRepositorySource } from "~/zerops/useRepositorySource";
 
 export function ZeropsRepositorySource({
@@ -122,13 +122,7 @@ export function ZeropsRepositoryBrowser({
   const heading = (
     <>
       <nav className="flex min-w-0 flex-wrap items-center gap-2 text-sm" aria-label="Repository">
-        <button
-          type="button"
-          className="cursor-pointer rounded-sm text-primary underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onBack}
-        >
-          Git
-        </button>
+        <InlineButton onClick={onBack}>Git</InlineButton>
         <span className="text-muted-foreground"> / {project} / </span>
         <span className="break-all font-medium text-foreground">{repo}</span>
         {repo === "group" ? <span className="text-xs text-muted-foreground">Setup</span> : null}

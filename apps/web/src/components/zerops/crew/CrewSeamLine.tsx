@@ -1,3 +1,5 @@
+import { InlineButton } from "~/components/ui/button";
+
 /**
  * A crew seam (PRD §4.5, design-system *Seams*): one quiet line across the
  * conversation where something about the crewmate changed — "Started fresh
@@ -23,13 +25,7 @@ export function CrewSeamLine({
         {link === undefined ? null : (
           <>
             <span aria-hidden="true">—</span>
-            <button
-              className="cursor-pointer text-message-action hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={link.onOpen}
-              type="button"
-            >
-              {link.label} ↗
-            </button>
+            <InlineButton onClick={link.onOpen}>{link.label} ↗</InlineButton>
           </>
         )}
       </span>
