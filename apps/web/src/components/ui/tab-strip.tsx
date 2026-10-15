@@ -48,7 +48,11 @@ function TabStrip({ items, activeId, onSelect, action, children, dragRegion }: T
     const active = Array.from(
       listRef.current?.querySelectorAll<HTMLElement>("[data-tab-id]") ?? [],
     ).find((tab) => tab.dataset.tabId === activeId);
-    active?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    // After the strip's first layout: on mount its viewport has no width to scroll in yet.
+    const frame = requestAnimationFrame(() =>
+      active?.scrollIntoView({ block: "nearest", inline: "nearest" }),
+    );
+    return () => cancelAnimationFrame(frame);
   }, [activeId]);
 
   // The tabs the strip's edges cut off, re-read as it scrolls or resizes.

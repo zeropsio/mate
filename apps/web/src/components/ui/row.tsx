@@ -52,6 +52,12 @@ const HEAD_CLASS: Record<RowSize, string> = {
   lg: "h-5.5 text-[15px] leading-5.25",
 };
 
+const BADGES_CLASS: Record<RowSize, string> = {
+  sm: "h-5",
+  md: "h-5",
+  lg: "h-5.5",
+};
+
 const LINE_CLASS: Record<RowSize, string> = {
   sm: "text-xs leading-4",
   md: "text-line leading-5",
@@ -137,7 +143,12 @@ function Row({
               </span>
               {badges === undefined || badges === null ? null : (
                 <span
-                  className="flex h-full min-w-0 flex-auto flex-wrap items-center gap-1.5 overflow-hidden"
+                  className={cn(
+                    // One line tall: a badge that does not fit wraps under it, out of sight, whole.
+                    // The empty first item keeps even the first badge from holding the line alone.
+                    "flex min-w-0 flex-auto flex-wrap content-start items-center gap-1.5 overflow-hidden *:shrink-0 before:block before:h-full before:w-0 before:-me-1.5",
+                    BADGES_CLASS[rowSize],
+                  )}
                   data-slot="row-badges"
                 >
                   {badges}
