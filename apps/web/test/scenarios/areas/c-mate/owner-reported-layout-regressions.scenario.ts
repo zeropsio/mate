@@ -62,6 +62,55 @@ async function ownerMenu(page: Page) {
   await menuAt(page, 435);
 }
 
+/** One change of what a reloaded Chief's page shows, read each frame. */
+interface ChiefPageFrame {
+  /** The conversation column's right edge (its header's), or null before it draws. */
+  readonly column: number | null;
+  /** The inline panel's left edge, or null while there is none. */
+  readonly panel: number | null;
+  /** The panel's wait line, if one shows. */
+  readonly panelWait: string | null;
+  /** The conversation is shown (placed), not its opening. */
+  readonly shown: boolean;
+  /** The composer's top while it shows, null while it is held or absent. */
+  readonly composer: number | null;
+  /** The top of the composer's room while it is held unseen (`ComposerRoomHeld`). */
+  readonly held: number | null;
+  /** The top of the conversation's last row while it shows. */
+  readonly lastRow: number | null;
+}
+
+// Runs in every new document: each change of the Chief's page, frame by frame, until its
+// conversation has stood shown for 60 frames.
+function recordChiefPage() {
+  const frames: ChiefPageFrame[] = [];
+  (window as unknown as { chiefFrames: ChiefPageFrame[] }).chiefFrames = frames;
+  let shownFor = 0;
+  const round = (value: number | undefined) => (value === undefined ? null : Math.round(value));
+  const sample = () => {
+    const header = document.querySelector("main [data-chat-header]");
+    const panel = document.querySelector('[data-preview-panel-mode="inline"]');
+    const wait = panel?.querySelector<HTMLElement>("[data-zerops-wait-line]");
+    const shownList = document.querySelector("[data-timeline-thread]:not([data-timeline-placing])");
+    const composer = document.querySelector('[data-slot="composer-shell"]:not([data-room-held])');
+    const held = document.querySelector('[data-slot="composer-shell"][data-room-held]');
+    const rows = shownList?.querySelectorAll("[data-timeline-root]");
+    const frame: ChiefPageFrame = {
+      column: round(header?.getBoundingClientRect().right),
+      panel: round(panel?.getBoundingClientRect().left),
+      panelWait: wait === undefined || wait === null ? null : wait.innerText.trim(),
+      shown: shownList !== null,
+      composer: round(composer?.getBoundingClientRect().top),
+      held: round(held?.getBoundingClientRect().top),
+      lastRow: round(rows?.[rows.length - 1]?.getBoundingClientRect().top),
+    };
+    if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
+    if (frame.shown) shownFor += 1;
+    if (shownFor < 60) requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+}
+
 /**
  * What the conversation's end paints, read from the page: each row's painted parts (its bubble or
  * card, its text, its pictures), never the row's own box, which carries its spacing.
@@ -518,6 +567,101 @@ describe("owner-reported layout regressions", () => {
         ).toBeLessThan(60);
         yield* s.then.noExternalNetwork;
       }),
+    );
+  });
+
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "a reload of the Chief's page keeps its split from the first frame, and nothing moves once its conversation shows",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([], { mate: "real" });
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.project("Chief", { mate: true });
+          const { zerops, core, owner } = s.drivers;
+          zerops.put("project", {
+            ...zerops.rows("project").find((project) => project.id === "Chief")!,
+            tagList: ["chief"],
+          });
+          zerops.put("user-data", {
+            id: "chief-token",
+            clientId: "ORG",
+            serviceStackId: "service-Chief",
+            projectId: "Chief",
+            key: "ZCP_ORG_TOKEN",
+            type: "USER",
+            sensitive: true,
+            editable: true,
+            content: "scenario-chief-token",
+          });
+          const registered = yield* core.call("POST", "/api/chief", {
+            session: owner,
+            body: { projectId: "Chief" },
+          });
+          expect(registered.status, "ASSERTION: HQ names the person's Chief").toBe(200);
+          yield* s.given.signedIn;
+          yield* Effect.promise(() => ownerMenu(s.page));
+          yield* Effect.promise(() =>
+            s.page
+              .locator('[data-sidebar="sidebar"] [data-zerops-surface="sidebar-chief-row"]')
+              .click(),
+          );
+          yield* Effect.promise(() =>
+            s.page.waitForSelector('[role="textbox"]', { visible: true, timeout: 8000 }),
+          );
+          const mate = s.drivers.realMates.get("Chief")!;
+          yield* mate.provider.turn([{ kind: "say", text: "I will look into your organization." }]);
+          yield* s.when.conversation.sends("Look into my organization.");
+          yield* s.then.conversation.showsMessage("I will look into your organization.");
+          yield* Effect.promise(async () => {
+            await s.page.waitForFunction(() => !location.pathname.includes("/draft/"), {
+              timeout: 8000,
+            });
+            await s.page.locator('[data-zerops-surface="chief-overview"]').click();
+            await s.page.waitForSelector('[data-preview-panel-mode="inline"]', { timeout: 8000 });
+            await waitForStillFrames(s.page);
+          });
+          const frames = yield* Effect.promise(async () => {
+            await s.page.evaluateOnNewDocument(recordChiefPage);
+            await s.page.reload({ waitUntil: "domcontentloaded" });
+            await s.page.waitForFunction(
+              () => {
+                const frames = (window as unknown as { chiefFrames?: ChiefPageFrame[] })
+                  .chiefFrames;
+                return frames !== undefined && frames.filter((frame) => frame.shown).length > 0;
+              },
+              { timeout: 20_000 },
+            );
+            await waitForStillFrames(s.page, { stillFrames: 30 });
+            return s.page.evaluate(
+              () => (window as unknown as { chiefFrames: ChiefPageFrame[] }).chiefFrames,
+            );
+          });
+          const trace = frames.map((frame) => JSON.stringify(frame)).join("\n");
+          const drawn = frames.filter((frame) => frame.column !== null);
+          expect(
+            new Set(drawn.map((frame) => frame.column)).size,
+            `ASSERTION: the conversation's column never changes width:\n${trace}`,
+          ).toBe(1);
+          expect(
+            drawn.every((frame) => frame.panel !== null),
+            `ASSERTION: the panel stands beside it from the first frame:\n${trace}`,
+          ).toBe(true);
+          const shown = frames.filter((frame) => frame.shown);
+          expect(
+            shown.every((frame) => (frame.composer ?? frame.held) !== null),
+            `ASSERTION: the conversation shows with its composer, or its room held:\n${trace}`,
+          ).toBe(true);
+          expect(
+            new Set(shown.map((frame) => `${frame.composer ?? frame.held}/${frame.lastRow}`)).size,
+            `ASSERTION: nothing moves once the conversation shows:\n${trace}`,
+          ).toBe(1);
+          expect(
+            new Set(frames.flatMap((frame) => (frame.panelWait === null ? [] : [frame.panelWait])))
+              .size,
+            `ASSERTION: the panel waits with one look:\n${trace}`,
+          ).toBeLessThanOrEqual(1);
+        }),
     );
   });
 

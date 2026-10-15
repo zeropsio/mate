@@ -210,6 +210,7 @@ import {
 } from "../rightPanelStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
+import { conversationPanelWidth } from "./chat/conversationPanelStandIn.logic";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { useMateAddresses } from "../zerops/useMateAddresses";
 import { useCrew } from "../zerops/crew/useCrew";
@@ -8030,6 +8031,12 @@ function ConversationView(props: ChatViewProps) {
       {panelToggleControls}
     </div>
   );
+  // A Chief's overview opens wide enough for two of its cards side by side, as its opening's
+  // panel stood (`conversationPanelWidth`).
+  const rightPanelDefaultWidth = conversationPanelWidth({
+    chief: chiefConversation,
+    surfaces: rightPanelState.surfaces,
+  });
   const rightPanelAvailability = resolveRightPanelAvailability({
     projectOpen: activeProject !== null,
     gitRepo: isGitRepo,
@@ -8892,9 +8899,9 @@ function ConversationView(props: ChatViewProps) {
         <RightPanelTabs
           mode="inline"
           widthStorageKey={`t3code:preview-panel-width:${activeThreadKey}`}
-          // A Chief's overview opens wide enough for two of its cards side by side (380 + 16 + 380,
-          // 24 on each side).
-          {...(chiefConversation ? { defaultWidth: 840 } : {})}
+          {...(rightPanelDefaultWidth === undefined
+            ? {}
+            : { defaultWidth: rightPanelDefaultWidth })}
           maximized={rightPanelMaximized}
           surfaces={rightPanelState.surfaces}
           activeSurfaceId={activeRightPanelSurface?.id ?? null}
