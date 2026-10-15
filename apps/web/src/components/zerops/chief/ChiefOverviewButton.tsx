@@ -27,7 +27,7 @@ export function ChiefOverviewButton({
         if (threadRef === null) void navigate({ to: "/zerops" });
         else useRightPanelStore.getState().open(threadRef, "overview");
       }}
-      size="sm"
+      size="md"
       variant="ghost-muted"
     >
       <LayersIcon className="size-3.5 shrink-0" />

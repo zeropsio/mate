@@ -30,7 +30,7 @@ export function ZeropsGitChangeRow({
       </div>
       <Button
         variant="outline"
-        size="sm"
+        size="md"
         disabled={onOpen === undefined}
         aria-label={`Review ${project} / ${repo} #${pull.number}`}
         onClick={onOpen}

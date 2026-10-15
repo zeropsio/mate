@@ -367,7 +367,7 @@ export function AddProviderInstanceDialog({
                 {accentColor ? (
                   <Button
                     type="button"
-                    size="sm"
+                    size="md"
                     variant="ghost-muted"
                     className="h-7 px-2 text-xs"
                     onClick={() => setAccentColor("")}
@@ -404,7 +404,7 @@ export function AddProviderInstanceDialog({
         <DialogFooter className="shrink-0" variant="bare">
           <Button
             variant="outline"
-            size="sm"
+            size="md"
             onClick={() => {
               if (wizardStep === 0) {
                 onOpenChange(false);
@@ -416,11 +416,11 @@ export function AddProviderInstanceDialog({
             {wizardStep === 0 ? "Cancel" : "Back"}
           </Button>
           {wizardStep < ADD_PROVIDER_WIZARD_STEPS.length - 1 ? (
-            <Button size="sm" onClick={() => navigateToStep(wizardStep + 1)}>
+            <Button size="md" onClick={() => navigateToStep(wizardStep + 1)}>
               Next
             </Button>
           ) : (
-            <Button size="sm" onClick={handleSave}>
+            <Button size="md" onClick={handleSave}>
               Add instance
             </Button>
           )}

@@ -499,7 +499,7 @@ function McpAddServer(props: {
         />
       </FieldLine>
       <div className="flex items-center gap-3">
-        <Button disabled={pending} size="sm" type="submit">
+        <Button disabled={pending} size="md" type="submit">
           {pending ? <Spinner size="xs" /> : null}
           {MCP_WORDS.add}
         </Button>

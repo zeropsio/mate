@@ -308,7 +308,7 @@ function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
             The project is still available. Try opening the draft again.
           </EmptyDescription>
           <div className="mt-5 flex justify-center">
-            <Button size="sm" onClick={onRetry}>
+            <Button size="md" onClick={onRetry}>
               <RotateCcwIcon className="size-4" />
               Try again
             </Button>

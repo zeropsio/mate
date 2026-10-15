@@ -101,7 +101,7 @@ export function GitStopDetail({
         ? delivery?.repositories.map((repo) => (
             <Button
               key={repo.repo}
-              size="sm"
+              size="md"
               variant="outline"
               disabled={busy}
               onClick={async () => {
@@ -183,7 +183,7 @@ export function GitEnvironmentRemoval({
   return (
     <>
       {remove ? (
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => setRemoving(true)}>
+        <Button size="md" variant="outline" disabled={busy} onClick={() => setRemoving(true)}>
           {label}
         </Button>
       ) : null}
@@ -239,7 +239,7 @@ export function GitEnvironmentRemoval({
             </div>
           ) : null}
           <Button
-            size="sm"
+            size="md"
             disabled={busy || !targetKnown || (delivery?.standing === "unresolved" && !historyLoss)}
             onClick={async () => {
               setBusy(true);
@@ -255,7 +255,7 @@ export function GitEnvironmentRemoval({
           >
             {busy ? "Removing…" : "Confirm removal"}
           </Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => setRemoving(false)}>
+          <Button size="md" variant="outline" disabled={busy} onClick={() => setRemoving(false)}>
             Cancel
           </Button>
         </div>
@@ -355,7 +355,7 @@ function ZeropsProductionRemoval({
   const deleteProject = environment.deleteProjectOnRemoval === true;
   return (
     <>
-      <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(true)}>
+      <Button size="md" variant="outline" disabled={busy} onClick={() => setConfirming(true)}>
         Remove production
       </Button>
       {notice === undefined ? null : (
@@ -373,7 +373,7 @@ function ZeropsProductionRemoval({
                 : `Removes production. The Zerops project ${project.name} stays as it is; Mate stops releasing to it.`}
           </p>
           <Button
-            size="sm"
+            size="md"
             disabled={busy || project === null}
             onClick={async () => {
               setBusy(true);
@@ -446,7 +446,7 @@ function ZeropsProductionRemoval({
           >
             {busy ? "Removing…" : "Confirm removal"}
           </Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(false)}>
+          <Button size="md" variant="outline" disabled={busy} onClick={() => setConfirming(false)}>
             Cancel
           </Button>
         </div>

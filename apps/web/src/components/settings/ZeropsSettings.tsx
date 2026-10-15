@@ -92,12 +92,12 @@ export function ZeropsSettings() {
           }
           control={
             account === null ? (
-              <Button size="sm" variant="outline" render={<Link to="/zerops" />}>
+              <Button size="md" variant="outline" render={<Link to="/zerops" />}>
                 Open Zerops
               </Button>
             ) : (
               <Button
-                size="sm"
+                size="md"
                 variant="outline"
                 disabled={signingOut}
                 onClick={() => {
@@ -177,13 +177,13 @@ export function ZeropsSettings() {
               admin ? (
                 <div className="flex items-center gap-2">
                   {policy.retryRead ? (
-                    <Button size="sm" variant="outline" onClick={again}>
+                    <Button size="md" variant="outline" onClick={again}>
                       Retry read
                     </Button>
                   ) : null}
                   {policy.recoverable && policy.policy.kind === "known" ? (
                     <Button
-                      size="sm"
+                      size="md"
                       variant="outline"
                       onClick={() => {
                         if (policy.policy.kind !== "known") return;
@@ -216,7 +216,7 @@ export function ZeropsSettings() {
                   )}
                 </div>
               ) : policy.retryRead ? (
-                <Button size="sm" variant="outline" onClick={again}>
+                <Button size="md" variant="outline" onClick={again}>
                   Retry read
                 </Button>
               ) : null
@@ -232,7 +232,7 @@ export function ZeropsSettings() {
               <Button
                 disabled={cleanup === "running"}
                 onClick={cleanUp}
-                size="sm"
+                size="md"
                 variant="outline"
               >
                 {signInTokensWords(cleanup)}

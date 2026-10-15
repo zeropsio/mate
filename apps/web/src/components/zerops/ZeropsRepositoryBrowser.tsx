@@ -165,7 +165,7 @@ export function ZeropsRepositoryBrowser({
             <p className="text-sm text-status-failed" role="alert">
               {changesFailure}
             </p>
-            <Button variant="ghost" size="sm" onClick={onReadChanges}>
+            <Button variant="ghost" size="md" onClick={onReadChanges}>
               Read again
             </Button>
           </div>
@@ -224,7 +224,7 @@ export function ZeropsRepositoryBrowser({
                   {source.state === "reading" ? "Reading source…" : source.words}
                 </p>
                 <div>
-                  <Button variant="ghost" size="sm" disabled={source.busy} onClick={again}>
+                  <Button variant="ghost" size="md" disabled={source.busy} onClick={again}>
                     Read again
                   </Button>
                 </div>
@@ -260,7 +260,7 @@ export function ZeropsRepositoryBrowser({
                     {query.path || "/"}
                     {value?.revision ? ` · ${value.revision.slice(0, 7)}` : ""}
                   </span>
-                  <Button variant="ghost" size="sm" disabled={source.busy} onClick={again}>
+                  <Button variant="ghost" size="md" disabled={source.busy} onClick={again}>
                     {source.busy ? "Reading source…" : "Read again"}
                   </Button>
                 </div>
@@ -268,7 +268,7 @@ export function ZeropsRepositoryBrowser({
                   <div>
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="md"
                       onClick={() =>
                         onNavigate({
                           ...(value?.revision ? { rev: value.revision } : {}),

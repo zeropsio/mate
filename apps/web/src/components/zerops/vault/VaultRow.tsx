@@ -382,7 +382,7 @@ function RowBody(props: VaultRowProps) {
             </Button>
           </Tip>
         ) : null}
-        <Button disabled={!changed || busy} onClick={save} size="sm">
+        <Button disabled={!changed || busy} onClick={save} size="md">
           {busy ? <Spinner size="xs" /> : null}
           {busy ? "Saving" : "Save"}
         </Button>

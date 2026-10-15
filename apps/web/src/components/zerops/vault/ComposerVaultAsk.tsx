@@ -72,7 +72,7 @@ export function ComposerVaultAsk(props: ComposerVaultAskProps) {
             <Button
               disabled={busy}
               onClick={props.onNotNow}
-              size="sm"
+              size="md"
               type="button"
               variant="ghost-muted"
             >

@@ -551,7 +551,7 @@ export function ZeropsProjectsHeader({
       </div>
       <div className="flex items-center gap-2">
         {newProject ? (
-          <Button onClick={askNewProject} size="sm" variant="outline">
+          <Button onClick={askNewProject} size="md" variant="outline">
             <PlusIcon />
             New project
           </Button>
@@ -584,7 +584,7 @@ function ProjectsFreshness({
       <Spinner size="sm" />
       <span>{notice.message.text}</span>
       {notice.affordance == null || onRetry === undefined ? null : (
-        <Button onClick={onRetry} size="sm" variant="outline">
+        <Button onClick={onRetry} size="md" variant="outline">
           {notice.affordance.label}
         </Button>
       )}
@@ -2076,7 +2076,7 @@ export function ZeropsProjectsContent({
   // stale read offers a retry, and the page it would go to is this one.
   const listingAffordance =
     listingNotice?.affordance == null ? null : (
-      <Button onClick={refreshCandidates} size="sm" variant="outline">
+      <Button onClick={refreshCandidates} size="md" variant="outline">
         {listingNotice.affordance.label}
       </Button>
     );

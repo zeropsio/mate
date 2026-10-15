@@ -51,7 +51,7 @@ export function ZeropsDataQuery({ onSubmit, pending = false }: ZeropsDataQueryPr
         data-zerops-data-query-submit
         disabled={pending || stmt.trim().length === 0}
         onClick={handleSubmit}
-        size="sm"
+        size="md"
         variant="secondary"
       >
         Run

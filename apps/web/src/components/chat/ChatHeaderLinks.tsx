@@ -44,7 +44,7 @@ export function ChatHeaderLinks({
           <Button
             aria-label="Open the Mate's sites"
             data-chat-header-ghost
-            size="sm"
+            size="md"
             variant="ghost-muted"
           />
         }
@@ -64,7 +64,7 @@ export function ChatHeaderLinks({
           <Button
             aria-label="Open the Mate's sites"
             data-chat-header-ghost
-            size="sm"
+            size="md"
             variant="ghost-muted"
           />
         }

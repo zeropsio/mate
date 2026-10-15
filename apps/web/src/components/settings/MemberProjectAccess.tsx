@@ -70,7 +70,7 @@ export function MemberProjectAccess({
           <Popover onOpenChange={setOpen} open={open}>
             <PopoverTrigger
               render={
-                <Button data-zerops-surface="set-custom-access" size="sm" variant="outline" />
+                <Button data-zerops-surface="set-custom-access" size="md" variant="outline" />
               }
             >
               <PlusIcon aria-hidden="true" />
@@ -214,7 +214,7 @@ export function ProjectPicker({
         </ul>
       )}
       <div className="ov-pick-foot">
-        <Button disabled={count === 0} onClick={() => onAdd(picks)} size="sm">
+        <Button disabled={count === 0} onClick={() => onAdd(picks)} size="md">
           {count > 1 ? `Add ${count} projects` : "Add projects"}
         </Button>
       </div>

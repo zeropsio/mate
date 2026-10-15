@@ -1014,7 +1014,7 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
       {state.dialog === undefined ? null : (
         <Dialog defaultOpen key={state.id}>
           <div className="self-start p-4">
-            <DialogTrigger render={<Button size="sm" variant="outline" />}>
+            <DialogTrigger render={<Button size="md" variant="outline" />}>
               Sign {state.mate.name} in
             </DialogTrigger>
           </div>
@@ -1081,7 +1081,7 @@ function Harness() {
           A Mate's arrival — Direction A, sign-in S1
         </p>
         <div className="pb-2">
-          <Button onClick={play} size="sm" variant="outline">
+          <Button onClick={play} size="md" variant="outline">
             Play the arrival
           </Button>
         </div>

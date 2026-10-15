@@ -237,7 +237,7 @@ export function TeamMemberView({
                 aria-busy={removal.pending || undefined}
                 disabled={removal.pending}
                 onClick={() => setAskingRemove(true)}
-                size="sm"
+                size="md"
                 variant="destructive-outline"
               >
                 <Trash2Icon aria-hidden="true" />

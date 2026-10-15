@@ -401,7 +401,7 @@ function RouteMenu({ routes }: { routes: ReadonlyArray<ZeropsRouteChoice> }) {
       <MenuTrigger
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
-        render={<Button data-zerops-service-route-menu size="sm" variant="outline" />}
+        render={<Button data-zerops-service-route-menu size="md" variant="outline" />}
       >
         Open
         <ChevronDownIcon aria-hidden="true" />

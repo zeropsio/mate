@@ -75,7 +75,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
           ) : (
             <Button
               key={option.decision}
-              size="sm"
+              size="md"
               variant={variant}
               className={`${APPROVAL_ACTION_CLASS_NAME} h-auto min-h-7 max-w-full px-2.5 py-1.5${
                 option.warning ? " text-warning" : ""

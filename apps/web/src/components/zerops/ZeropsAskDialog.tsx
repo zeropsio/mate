@@ -78,12 +78,12 @@ export function ZeropsAskConfirm({
       <DialogFooter>
         <DialogClose
           render={
-            <Button size="sm" variant="ghost">
+            <Button size="md" variant="ghost">
               Cancel
             </Button>
           }
         />
-        <Button data-zerops-primary-action="Send" disabled={sending} onClick={onConfirm} size="sm">
+        <Button data-zerops-primary-action="Send" disabled={sending} onClick={onConfirm} size="md">
           {sending ? "Sending…" : "Send"}
         </Button>
       </DialogFooter>

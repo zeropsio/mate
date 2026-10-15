@@ -247,7 +247,7 @@ function ProviderEnvironmentSection(props: {
         <span className="text-xs font-medium text-foreground">Environment variables</span>
         <Button
           type="button"
-          size="sm"
+          size="md"
           variant="outline"
           className="h-7 gap-1.5 px-2 text-xs"
           onClick={() =>

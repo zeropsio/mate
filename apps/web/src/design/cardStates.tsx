@@ -488,7 +488,7 @@ function WatchedToItsEnd({
           data-harness-end={brokeOff ? "broke" : reports ? "" : "alone"}
           disabled={ended}
           onClick={() => setEnded(true)}
-          size="sm"
+          size="md"
         >
           End the run
         </Button>
@@ -498,7 +498,7 @@ function WatchedToItsEnd({
             setEnded(false);
             setRound((value) => value + 1);
           }}
-          size="sm"
+          size="md"
           variant="outline"
         >
           Run it again
@@ -543,10 +543,10 @@ function BrokeOffThenNext() {
   return (
     <div className="grid max-w-[360px] gap-3">
       <div className="flex gap-2">
-        <Button data-harness-next-run="" disabled={next} onClick={() => setNext(true)} size="sm">
+        <Button data-harness-next-run="" disabled={next} onClick={() => setNext(true)} size="md">
           The next run begins
         </Button>
-        <Button onClick={() => setNext(false)} size="sm" variant="outline">
+        <Button onClick={() => setNext(false)} size="md" variant="outline">
           Back
         </Button>
       </div>

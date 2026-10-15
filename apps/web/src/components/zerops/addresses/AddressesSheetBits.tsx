@@ -225,13 +225,13 @@ export function Confirm({
             <Button
               disabled={busy || disabled}
               onClick={onConfirm}
-              size="sm"
+              size="md"
               variant={destructive ? "destructive" : "default"}
             >
               {busy ? <Spinner aria-hidden="true" /> : null}
               {confirm}
             </Button>
-            <Button disabled={busy} onClick={onCancel} size="sm" variant="ghost">
+            <Button disabled={busy} onClick={onCancel} size="md" variant="ghost">
               {cancel}
             </Button>
           </div>

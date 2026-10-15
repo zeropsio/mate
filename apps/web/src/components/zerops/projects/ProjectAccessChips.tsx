@@ -488,7 +488,7 @@ export function AddAccessPicker({
         ))}
       </dl>
       <div className="ov-pick-foot">
-        <Button disabled={picks.length === 0} onClick={() => onAdd(picks)} size="sm">
+        <Button disabled={picks.length === 0} onClick={() => onAdd(picks)} size="md">
           {picks.length > 1 ? `Add ${picks.length} people` : "Add people"}
         </Button>
       </div>

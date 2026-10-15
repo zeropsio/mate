@@ -126,7 +126,7 @@ export function ZeropsAssignMateForm({
             <p className="text-sm text-foreground" role="alert">
               Couldn't read {readFailed.organization}'s members from Zerops.
             </p>
-            <Button onClick={readFailed.onReadAgain} size="sm" type="button" variant="secondary">
+            <Button onClick={readFailed.onReadAgain} size="md" type="button" variant="secondary">
               Try again
             </Button>
           </div>

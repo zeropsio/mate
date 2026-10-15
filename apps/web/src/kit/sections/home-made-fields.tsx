@@ -23,7 +23,7 @@ function RenameOpener() {
   const [renaming, setRenaming] = useState(false);
   if (!renaming) {
     return (
-      <Button onClick={() => setRenaming(true)} size="sm" variant="outline">
+      <Button onClick={() => setRenaming(true)} size="md" variant="outline">
         Rename Fen
       </Button>
     );

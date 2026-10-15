@@ -420,7 +420,7 @@ function HeaderActions() {
         >
           <EllipsisIcon className="size-4" />
         </Button>
-        <Button data-chat-header-ghost size="sm" variant="ghost-muted">
+        <Button data-chat-header-ghost size="md" variant="ghost-muted">
           <ZeropsMark className="size-3.5 shrink-0" />
           <span className="hidden text-line @3xl/header-actions:inline">Open in Zerops</span>
         </Button>

@@ -196,7 +196,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         </div>
         {canCollapse ? (
           <div className="mt-4 flex justify-center">
-            <Button size="sm" variant="outline" onClick={() => setExpanded((value) => !value)}>
+            <Button size="md" variant="outline" onClick={() => setExpanded((value) => !value)}>
               {expanded ? "Collapse plan" : "Expand plan"}
             </Button>
           </div>
@@ -225,11 +225,11 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             </label>
           </DialogPanel>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setIsSaveDialogOpen(false)}>
+            <Button variant="outline" size="md" onClick={() => setIsSaveDialogOpen(false)}>
               Cancel
             </Button>
             <Button
-              size="sm"
+              size="md"
               onClick={() => void handleSaveToWorkspace()}
               disabled={isSavingToWorkspace}
             >

@@ -173,7 +173,7 @@ function SheetHeader({
       {places.length > 1 ? (
         <Menu>
           <MenuTrigger
-            render={<Button aria-label={`Place: ${current}`} size="sm" variant="outline" />}
+            render={<Button aria-label={`Place: ${current}`} size="md" variant="outline" />}
           >
             {current}
             <ChevronDownIcon />

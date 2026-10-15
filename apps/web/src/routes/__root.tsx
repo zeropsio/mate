@@ -522,10 +522,10 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
 
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => void router.invalidate()}>
+          <Button size="md" onClick={() => void router.invalidate()}>
             Try again
           </Button>
-          <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+          <Button size="md" variant="outline" onClick={() => window.location.reload()}>
             Reload app
           </Button>
         </div>

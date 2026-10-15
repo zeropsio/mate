@@ -35,7 +35,7 @@ export function ZeropsAccountControl({
     <Menu>
       <MenuTrigger
         aria-label={`Account: ${account.name}`}
-        render={<Button size="sm" variant="ghost" />}
+        render={<Button size="md" variant="ghost" />}
         className="min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent"
         data-zerops-account-control="true"
       >

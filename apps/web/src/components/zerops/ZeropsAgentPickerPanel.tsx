@@ -80,14 +80,14 @@ export function ZeropsAgentPickerPanel({
           onClick={() =>
             invokeZeropsAgentPickerPrimaryAction({ agentId, requestClosePicker, onOpenDialog })
           }
-          size="sm"
+          size="md"
           variant={view.primaryAction.kind === "use-my-account" ? "link" : "default"}
         >
           {view.primaryAction.label}
         </Button>
       )}
       {view.showCancel ? (
-        <Button onClick={() => onCancel(agentId)} size="sm" variant="outline">
+        <Button onClick={() => onCancel(agentId)} size="md" variant="outline">
           Cancel
         </Button>
       ) : null}

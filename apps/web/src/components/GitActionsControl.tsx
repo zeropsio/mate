@@ -918,7 +918,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                     </div>
                     <Button
                       variant="outline"
-                      size="sm"
+                      size="md"
                       className="w-full"
                       onClick={() => {
                         const api = readLocalApi();
@@ -941,14 +941,14 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
 
           <DialogFooter className="dark:border-transparent dark:bg-transparent">
             {publishWizardStep === 2 ? (
-              <Button size="sm" onClick={() => handleOpenChange(false)}>
+              <Button size="md" onClick={() => handleOpenChange(false)}>
                 Done
               </Button>
             ) : (
               <>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="md"
                   disabled={publishRepositoryAction.isPending}
                   onClick={() => {
                     if (publishWizardStep === 0) {
@@ -962,7 +962,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                 </Button>
                 {publishWizardStep < 1 ? (
                   <Button
-                    size="sm"
+                    size="md"
                     disabled={!hasReadyPublishProvider || !selectedPublishProviderReadiness.ready}
                     onClick={() => setPublishWizardStep((step) => Math.min(1, step + 1))}
                   >
@@ -970,7 +970,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                   </Button>
                 ) : (
                   <Button
-                    size="sm"
+                    size="md"
                     disabled={!canSubmitPublishRepository}
                     onClick={submitPublishRepository}
                   >
@@ -2054,7 +2054,7 @@ export default function GitActionsControl({
           <DialogFooter variant="bare">
             <Button
               variant="outline"
-              size="sm"
+              size="md"
               onClick={() => {
                 setIsCommitDialogOpen(false);
                 setDialogCommitMessage("");
@@ -2066,13 +2066,13 @@ export default function GitActionsControl({
             </Button>
             <Button
               variant="outline"
-              size="sm"
+              size="md"
               disabled={noneSelected}
               onClick={runDialogActionOnNewBranch}
             >
               Commit on new branch
             </Button>
-            <Button size="sm" disabled={noneSelected} onClick={runDialogAction}>
+            <Button size="md" disabled={noneSelected} onClick={runDialogAction}>
               Commit
             </Button>
           </DialogFooter>
@@ -2105,7 +2105,7 @@ export default function GitActionsControl({
             <Button
               className="w-full sm:mr-auto sm:w-auto"
               variant="outline"
-              size="sm"
+              size="md"
               onClick={() => setPendingDefaultBranchAction(null)}
             >
               Abort

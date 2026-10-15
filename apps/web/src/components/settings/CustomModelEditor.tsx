@@ -376,10 +376,10 @@ export function CustomModelEditor({
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
       <div className="flex gap-2">
-        <Button size="sm" variant="outline" onClick={handleSave}>
+        <Button size="md" variant="outline" onClick={handleSave}>
           Save
         </Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>
+        <Button size="md" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
       </div>

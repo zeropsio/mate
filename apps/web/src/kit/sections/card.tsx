@@ -35,7 +35,7 @@ function SampleCard({ variant }: { readonly variant?: "default" | "flat" }) {
         <p className="m-0 text-sm">Deployed eight minutes ago from main.</p>
       </CardPanel>
       <CardFooter>
-        <Button size="sm" variant="outline">
+        <Button size="md" variant="outline">
           Open logs
         </Button>
       </CardFooter>
@@ -75,7 +75,7 @@ function CardSpecimens() {
             <SampleCard />
             <SampleCard />
             <CardFrameFooter>
-              <Button size="sm" variant="ghost">
+              <Button size="md" variant="ghost">
                 Add a service
               </Button>
             </CardFrameFooter>

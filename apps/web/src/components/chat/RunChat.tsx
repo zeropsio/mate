@@ -3467,7 +3467,7 @@ function NowLine({
               <Button
                 className="relative z-1"
                 variant="ghost"
-                size="sm"
+                size="md"
                 disabled={ctx.onRestartContinue == null}
                 onClick={() => ctx.onRestartContinue?.(status.interruption!)}
               >
@@ -3498,7 +3498,7 @@ function NowLine({
         <span className="flex items-center gap-2">
           <Button
             variant="ghost"
-            size="sm"
+            size="md"
             disabled={ctx.onRestartContinue == null}
             onClick={() => ctx.onRestartContinue?.(status.interruption!)}
           >

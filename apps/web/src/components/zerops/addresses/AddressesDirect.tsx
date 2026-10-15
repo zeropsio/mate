@@ -563,11 +563,11 @@ function PortForm({
         </Confirm>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={busy || ctx.hold} size="sm" type="submit">
+          <Button disabled={busy || ctx.hold} size="md" type="submit">
             {busy ? <Spinner aria-hidden="true" /> : null}
             {press}
           </Button>
-          <Button onClick={onDone} size="sm" type="button" variant="ghost">
+          <Button onClick={onDone} size="md" type="button" variant="ghost">
             Cancel
           </Button>
         </div>

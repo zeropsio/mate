@@ -9,7 +9,7 @@ import { Specimen, SpecimenGrid } from "../Specimen";
 function Sample({ defaultOpen }: { readonly defaultOpen: boolean }) {
   return (
     <Collapsible defaultOpen={defaultOpen}>
-      <CollapsibleTrigger render={<Button size="sm" variant="ghost" />}>
+      <CollapsibleTrigger render={<Button size="md" variant="ghost" />}>
         <ChevronRightIcon />
         Build log
       </CollapsibleTrigger>

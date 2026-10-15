@@ -2749,7 +2749,7 @@ export function ArchivedThreadsPanel() {
                   <Button
                     type="button"
                     variant="outline"
-                    size="sm"
+                    size="md"
                     className="h-7 shrink-0 cursor-pointer gap-1.5 px-2.5"
                     onClick={() => {
                       void (async () => {
