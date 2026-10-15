@@ -5,7 +5,6 @@ import { hqProjectIdOf } from "~/zerops/hqWrites";
 import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { isChief } from "~/zerops/chief";
-import { useChiefSetupEntry } from "~/zerops/chiefSetup";
 import { roleOffers } from "@t3tools/client-runtime/data";
 import { usePlatformCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -529,16 +528,12 @@ function SignedOutNotice({ message }: { readonly message: string }) {
  * (`projectsFreshnessNotice`), and New project on its end. The list keeps itself current.
  */
 export function ZeropsProjectsHeader({
-  setupChief = false,
   newProject = true,
-  onSetupChief,
   notice = null,
   onRetry,
 }: {
-  readonly setupChief?: boolean;
   /** New project, where the viewer's role creates projects (`roleOffers`). */
   readonly newProject?: boolean;
-  readonly onSetupChief?: (() => void) | undefined;
   readonly notice?: ProjectsListingNotice | null;
   readonly onRetry?: (() => void) | undefined;
 }) {
@@ -553,11 +548,6 @@ export function ZeropsProjectsHeader({
         {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
       </div>
       <div className="flex items-center gap-2">
-        {setupChief ? (
-          <Button onClick={onSetupChief} size="sm" variant="outline">
-            Set up Chief
-          </Button>
-        ) : null}
         {newProject ? (
           <Button onClick={askNewProject} size="sm" variant="outline">
             <PlusIcon />
@@ -2745,9 +2735,7 @@ export function ZeropsProjectsContent({
 }
 
 export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boolean }) {
-  const setupChief = useChiefSetupEntry();
   const roleOffered = useRoleOffers();
-  const navigate = useNavigate();
   const { activeOrganization, organizationStatus, status } = useZeropsSession();
   // The same page is the signed-in door at `/`, so the search is read loosely
   // and through the route's own parser.
@@ -2798,11 +2786,7 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
       {paints ? null : <OverviewStandInBody />}
       {scoped && !firstRun && paints ? (
         <ZeropsProjectsHeader
-          setupChief={setupChief}
           newProject={roleOffered.newProject}
-          onSetupChief={() => {
-            void navigate({ to: "/chief" });
-          }}
           notice={projectsFreshnessNotice(listing, nowMs)}
           onRetry={refresh}
         />

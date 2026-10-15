@@ -555,8 +555,6 @@ it.each(["Mastermate", "Chief"])(
   (groupName) => {
     const html = renderToStaticMarkup(form({ groupName }));
     expect(html).toContain(`>Add a project Mate to ${groupName}<`);
-    expect(html).toContain(
-      "Works on this project. For your own Mate across the whole organization, use Set up Chief.",
-    );
+    expect(html).toContain("Works on this project only.");
   },
 );

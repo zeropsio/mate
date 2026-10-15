@@ -96,7 +96,8 @@ import { ChiefPage } from "../components/zerops/chief/ChiefPage";
 import { ProposalCardContainer } from "../components/zerops/proposal/ProposalCardContainer";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { SidebarChiefTop } from "../components/zerops/chief/SidebarChiefTop";
+import { Menu } from "../components/ui/menu";
+import { SidebarZeropsAccountMenu } from "../components/zerops/SidebarZeropsAccount";
 
 const NOT_SENT = { state: "not-sent", attempt: 0 } as const;
 const UNSENT: CreationRead = {
@@ -116,7 +117,7 @@ afterEach(async () => {
 });
 
 describe("every Chief creation entry uses the same setup intent", () => {
-  it.each(["/chief", "menu top row", "closed menu tile", "proposal setup"] as const)(
+  it.each(["/chief", "account menu", "proposal setup"] as const)(
     "%s creates a project tagged mate and chief",
     async (entry) => {
       vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -156,22 +157,25 @@ describe("every Chief creation entry uses the same setup intent", () => {
             />
           );
         return (
-          <SidebarChiefTop
-            chief={undefined}
-            coming={undefined}
-            conversationsRead
-            timestampFormat="locale"
-            setup="offer"
-            unfinished={false}
-            currentMate={false}
-            currentPage={false}
-            onOpenMate={() => {
-              throw new Error("No Chief exists to open");
-            }}
-            onOpenPage={() => openPage(true)}
-            waiting={undefined}
-            tile={entry === "closed menu tile"}
-          />
+          <Menu>
+            <SidebarZeropsAccountMenu
+              account={{
+                name: "Alex",
+                fullName: null,
+                initials: "A",
+                email: null,
+                avatarUrl: null,
+              }}
+              activeOrganization={null}
+              chief={{ icon: null, onSetUp: () => openPage(true) }}
+              destination={null}
+              destinationIcon={() => null}
+              onGo={() => {}}
+              onSelectOrganization={() => {}}
+              onSignOut={() => {}}
+              organizations={[]}
+            />
+          </Menu>
         );
       }
       const container = document.createElement("div");
@@ -179,7 +183,9 @@ describe("every Chief creation entry uses the same setup intent", () => {
       root = createRoot(container);
       await act(async () => root!.render(<Entry />));
       if (entry !== "/chief") {
-        const door = container.querySelector<HTMLButtonElement>("button");
+        const door = container.querySelector<HTMLElement>(
+          entry === "account menu" ? "[data-zerops-account-chief]" : "button",
+        );
         expect(door?.getAttribute("aria-label") ?? door?.textContent).toContain("Chief");
         await act(async () => door!.click());
       }

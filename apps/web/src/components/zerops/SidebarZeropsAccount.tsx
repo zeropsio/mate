@@ -9,7 +9,8 @@
  * places fold into its menu where a name is cheaper than a glyph.
  *
  * The viewer's photo, name and role ("Acme · Owner"), then one ··· whose menu holds Show and
- * Order, the organization, the places and Sign out. On the rail the photo alone opens it.
+ * Order, the organization, the places and Sign out — and, once it is useful, the one quiet offer of
+ * a Chief (`chiefOffered`). On the rail the photo alone opens it.
  */
 
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -25,6 +26,7 @@ import {
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
 import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
+import { useChiefOffer } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useSidebar } from "../ui/sidebar";
 import {
@@ -80,6 +82,11 @@ export interface SidebarZeropsAccountProps {
   readonly signOutError?: string | null;
   /** The rail: the picture alone, with the name only in the tooltip's place. */
   readonly collapsed?: boolean;
+  /**
+   * *Set up Chief*, where the account menu offers it (`chiefOffered`): its icon, the caller's, and
+   * what a press opens.
+   */
+  readonly chief?: { readonly icon: ReactNode; readonly onSetUp: () => void } | undefined;
 }
 
 export function SidebarZeropsAccount({
@@ -94,6 +101,7 @@ export function SidebarZeropsAccount({
   signingOut = false,
   signOutError = null,
   collapsed = false,
+  chief,
 }: SidebarZeropsAccountProps) {
   const accountMenu = useContext(AccountMenuContext);
   const control = collapsed ? "rail" : "menu";
@@ -119,6 +127,7 @@ export function SidebarZeropsAccount({
         organizations={organizations}
         signingOut={signingOut}
         signOutError={signOutError}
+        chief={chief}
       />
     </MenuPopup>
   );
@@ -196,6 +205,7 @@ export function SidebarZeropsAccountMenu({
   onSignOut,
   signingOut = false,
   signOutError = null,
+  chief,
 }: Omit<SidebarZeropsAccountProps, "collapsed">) {
   const choices = sidebarAccountOrganizationChoices(organizations);
   const projectOrder = useProjectOrder();
@@ -298,6 +308,15 @@ export function SidebarZeropsAccountMenu({
       )}
 
       <MenuSeparator />
+      {/* A Chief is optional: offered here once, quietly, while it is useful and the person may
+          set one up; once it exists it is the menu's top row instead. */}
+      {chief === undefined ? null : (
+        <MenuItem data-zerops-account-chief="" onClick={chief.onSetUp}>
+          {chief.icon}
+          <span className="min-w-0 flex-1 truncate">Set up Chief</span>
+          <span className="text-[11px] text-muted-foreground">One Mate for every project</span>
+        </MenuItem>
+      )}
       {SIDEBAR_ACCOUNT_DESTINATIONS.map((entry) => (
         <MenuItem
           data-zerops-account-destination={entry.id}
@@ -338,9 +357,12 @@ export function SidebarZeropsAccountMenu({
  */
 export function SidebarZeropsAccountRow({
   destinationIcon,
+  chiefIcon,
   collapsed = false,
 }: {
   readonly destinationIcon: (id: SidebarAccountDestination["id"]) => ReactNode;
+  /** *Set up Chief*'s icon, where the account menu offers it. */
+  readonly chiefIcon: ReactNode;
   /** The rail's photo alone; the open menu, peeking over the rail too, keeps its whole row. */
   readonly collapsed?: boolean;
 }) {
@@ -355,6 +377,7 @@ export function SidebarZeropsAccountRow({
   });
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const chiefOffer = useChiefOffer();
 
   if (session === null || session.status !== "signed-in") return null;
   const { user, organizations, activeOrganization, selectOrganization, signOut } = session;
@@ -391,6 +414,17 @@ export function SidebarZeropsAccountRow({
       organizations={organizations}
       signingOut={signingOut}
       signOutError={signOutError}
+      chief={
+        chiefOffer
+          ? {
+              icon: chiefIcon,
+              onSetUp: () => {
+                closeMobile();
+                void navigate({ to: "/chief" });
+              },
+            }
+          : undefined
+      }
     />
   );
 }

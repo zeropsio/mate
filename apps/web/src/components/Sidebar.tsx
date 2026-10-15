@@ -22,6 +22,7 @@ import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contract
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { hasUnseenCompletion, resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import {
+  Building2Icon,
   ChevronDownIcon,
   CircleAlertIcon,
   CircleCheckIcon,
@@ -214,6 +215,7 @@ import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
+import { SidebarTopWaitingCount } from "./zerops/SidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarScopeButton } from "./zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
@@ -221,7 +223,9 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, useMenuProjects, useOverviewKey } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
-import { useChiefSetupEntry, useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
+import { useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
+import { useOwnChief } from "~/zerops/ownChief";
+import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
 import { useAccountHq } from "~/zerops/accountHq";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
 import { SidebarRail, useRailTiles } from "./zerops/SidebarRail";
@@ -1953,7 +1957,7 @@ export default function Sidebar() {
   }, [isMobile, router, setOpenMobile]);
   const zeropsListed = zeropsCandidates;
   const chiefSetupLine = useChiefSetupLine();
-  const chiefSetupEntry = useChiefSetupEntry();
+  const ownChief = useOwnChief();
   const chiefUnfinished = useChiefUnfinished(zeropsChief?.project.id ?? null);
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
@@ -2695,9 +2699,18 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
-  // The menu's top: the person's Chief, as the open menu's row or the rail's tile.
+  // The menu's top: the person's Chief, as the open menu's row or the rail's tile — once it exists
+  // or is being set up. Before that the account menu offers it (`chiefOffered`), and the top is
+  // the mark, with what waits on the person beside it.
+  const zeropsChiefShown =
+    zeropsSignedIn &&
+    zeropsHoldsChief &&
+    chiefTopShown({
+      own: zeropsChief === undefined ? ownChief : zeropsChief.project.id,
+      setup: chiefSetupLine,
+    });
   const zeropsChiefTop = (tile: boolean) =>
-    zeropsSignedIn && zeropsHoldsChief && (zeropsChief !== undefined || roleOffered.setUpChief) ? (
+    zeropsChiefShown ? (
       <SidebarChiefTop
         chief={zeropsChief}
         coming={zeropsChief === undefined ? undefined : zeropsComing(zeropsChief)}
@@ -2709,7 +2722,6 @@ export default function Sidebar() {
         onOpenMate={onZeropsSelect}
         onOpenPage={openChiefPage}
         setup={chiefSetupLine}
-        offer={chiefSetupEntry}
         tile={tile}
         timestampFormat={timestampFormat}
         unfinished={chiefUnfinished}
@@ -2717,6 +2729,11 @@ export default function Sidebar() {
           zeropsListHeld ? undefined : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
         }
       />
+    ) : undefined;
+  // Without a Chief's row the count of what waits on the person stands in the bar by itself.
+  const zeropsTopWaiting =
+    zeropsSignedIn && !zeropsChiefShown && !zeropsListHeld && zeropsWaiting.items.length > 0 ? (
+      <SidebarTopWaitingCount items={zeropsWaiting.items} verbs={zeropsWaitingVerbs} />
     ) : undefined;
   // Search and the +, on the open menu's top row and under the rail's Chief.
   const zeropsJump = (
@@ -2742,7 +2759,11 @@ export default function Sidebar() {
   const zeropsRail = isMobile ? null : (
     <SidebarRail
       account={
-        <SidebarZeropsAccountRow collapsed destinationIcon={sidebarAccountDestinationIcon} />
+        <SidebarZeropsAccountRow
+          chiefIcon={<Building2Icon />}
+          collapsed
+          destinationIcon={sidebarAccountDestinationIcon}
+        />
       }
       actions={
         rosterOnly ? (
@@ -2775,14 +2796,19 @@ export default function Sidebar() {
         brand={zeropsChiefTop(false)}
         isElectron={isElectron}
         status={
-          zeropsHqOutage === null ? undefined : (
-            <SidebarHqStatus
-              compact={zeropsSignedIn && zeropsHoldsChief}
-              serviceUrl={hqServiceUrl}
-              kind={zeropsHqOutage.kind}
-              line={zeropsHqOutage.line}
-              onAgain={zeropsHqOutage.again ? zeropsRetry : undefined}
-            />
+          zeropsHqOutage === null && zeropsTopWaiting === undefined ? undefined : (
+            <>
+              {zeropsHqOutage === null ? null : (
+                <SidebarHqStatus
+                  compact={zeropsChiefShown}
+                  serviceUrl={hqServiceUrl}
+                  kind={zeropsHqOutage.kind}
+                  line={zeropsHqOutage.line}
+                  onAgain={zeropsHqOutage.again ? zeropsRetry : undefined}
+                />
+              )}
+              {zeropsTopWaiting}
+            </>
           )
         }
         actions={

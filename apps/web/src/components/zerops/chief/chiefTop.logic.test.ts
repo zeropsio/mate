@@ -7,6 +7,7 @@ import {
   chiefPageView,
   chiefRowLine,
   chiefRowOpens,
+  chiefTopShown,
   type ChiefPageView,
 } from "./chiefTop.logic";
 
@@ -185,5 +186,25 @@ describe("chiefNameParts", () => {
     ["Chief Mate", { head: "", noun: "Chief Mate" }],
   ])("keeps the Chief's noun whole in %s: the words before it give way first", (title, parts) => {
     expect(chiefNameParts(title)).toEqual(parts);
+  });
+});
+
+describe("chiefTopShown", () => {
+  it.each<[string, Parameters<typeof chiefTopShown>[0], boolean]>([
+    ["the menu holds no Chief row before one exists", { own: null, setup: "offer" }, false],
+    [
+      "the menu holds no Chief row while whose Chief is not known",
+      { own: undefined, setup: null },
+      false,
+    ],
+    ["the Chief is a menu row while it is being set up", { own: null, setup: "running" }, true],
+    [
+      "the Chief is a menu row once its setup stopped, to try again",
+      { own: null, setup: "stopped" },
+      true,
+    ],
+    ["the Chief is a menu row once it exists", { own: "chief-project", setup: null }, true],
+  ])("%s", (_title, input, shown) => {
+    expect(chiefTopShown(input)).toBe(shown);
   });
 });

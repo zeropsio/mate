@@ -32,6 +32,7 @@ import { mateDecision } from "./mateDecision.logic";
 import { MateFace } from "./primitives";
 import {
   releaseWaitingLine,
+  waitingSummary,
   waitingTitle,
   type WaitingItem,
   type WaitingMate,
@@ -587,5 +588,39 @@ export function Replying({
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * What waits on the person, counted in the open menu's top bar where no Chief's row stands to hold
+ * the count (`SidebarChiefRow`'s): beside the squares, its own door to the list.
+ */
+export function SidebarTopWaitingCount({
+  items,
+  verbs,
+}: {
+  readonly items: ReadonlyArray<WaitingItem>;
+  readonly verbs: WaitingVerbs;
+}) {
+  if (items.length === 0) return null;
+  const summary = waitingSummary(items);
+  return (
+    <SidebarWaitingPopover
+      items={items}
+      trigger={
+        <button
+          aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
+          className="menu-top-count"
+          data-waiting-trigger=""
+          data-zerops-surface="sidebar-waiting"
+          type="button"
+        />
+      }
+      verbs={verbs}
+    >
+      <span data-waiting-line="" data-zerops-surface="sidebar-waiting-count">
+        {items.length}
+      </span>
+    </SidebarWaitingPopover>
   );
 }

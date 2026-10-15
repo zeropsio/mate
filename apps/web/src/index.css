@@ -5965,6 +5965,28 @@ code {
     text-overflow: ellipsis;
   }
 
+  /* What waits on the person in the bar where no Chief's row stands (`SidebarTopWaitingCount`):
+     the Chief's count, beside the squares. */
+  .menu-top-count {
+    display: grid;
+    place-items: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 9px;
+    border-radius: 9999px;
+    background: var(--zerops-status-attention-surface);
+    color: var(--zerops-status-attention-text);
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      scale 150ms var(--ease-out-strong);
+  }
+
   .menu-chief-count {
     /* Over the Chief's row, whose lit layer makes it a positioned box of its own, on its middle. */
     position: relative;
@@ -5994,7 +6016,9 @@ code {
 
   @media (hover: hover) and (pointer: fine) {
     .menu-chief-count:hover,
-    .menu-chief-count[data-popup-open] {
+    .menu-chief-count[data-popup-open],
+    .menu-top-count:hover,
+    .menu-top-count[data-popup-open] {
       background: color-mix(
         in oklab,
         var(--zerops-status-attention-text) 16%,
@@ -6003,12 +6027,14 @@ code {
     }
   }
 
-  .menu-chief-count:focus-visible {
+  .menu-chief-count:focus-visible,
+  .menu-top-count:focus-visible {
     box-shadow: 0 0 0 2px var(--ring);
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .menu-chief-count:active {
+    .menu-chief-count:active,
+    .menu-top-count:active {
       scale: 0.96;
     }
   }

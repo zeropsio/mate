@@ -1,5 +1,6 @@
 import {
   ArrowLeftIcon,
+  Building2Icon,
   ChartNoAxesColumnIcon,
   GitPullRequestIcon,
   LayersIcon,
@@ -331,7 +332,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
         // listed above it, and folds the four destinations into its menu —
         // where each has a name rather than an unlabelled glyph.
         <SidebarMenuItem className="min-w-0 flex-1">
-          <SidebarZeropsAccountRow destinationIcon={sidebarAccountDestinationIcon} />
+          <SidebarZeropsAccountRow
+            chiefIcon={<Building2Icon />}
+            destinationIcon={sidebarAccountDestinationIcon}
+          />
         </SidebarMenuItem>
       )}
       <SidebarUpdatePill />
