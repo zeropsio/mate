@@ -531,7 +531,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         ) : null}
         {sections.length === 0 && made.length === 0 && q !== "" ? (
           <p className="px-1 py-2 text-line text-muted-foreground">Nothing matches “{q}”.</p>
-        ) : sections.length === 0 && q === "" && mode.kind === "list" ? (
+        ) : sections.length === 0 && made.length === 0 && q === "" && mode.kind === "list" ? (
           <p className="px-1 py-2 text-line text-muted-foreground">No values yet.</p>
         ) : null}
       </>
