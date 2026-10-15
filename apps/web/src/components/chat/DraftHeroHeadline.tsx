@@ -36,6 +36,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateMark } from "../MateMark";
 import { MateFace } from "../zerops/primitives";
 import { mateFaceFor } from "~/zerops/agentActivity";
+import { draftHeroProjectName } from "./DraftHeroHeadline.logic";
 
 interface DraftHeroHeadlineProps {
   readonly activeProjectRef: ScopedProjectRef | null;
@@ -129,7 +130,8 @@ export function DraftHeroHeadline({
   // Zerops project's own name over the workspace folder); the logical
   // group's name is the fallback, not the other way round.
   const activeProjectDisplayName = activeProjectTitle ?? activeProjectGroup?.displayName ?? null;
-  const hasResolvedProject = activeProjectTitle !== null;
+  const projectName = draftHeroProjectName({ mateProject: mate?.project, activeProjectTitle });
+  const hasResolvedProject = projectName !== null;
   const selectorLabel = mate?.project ?? activeProjectDisplayName;
   const canChooseProject = projectPickerEntries.length > 0;
   const shouldShowProjectMenu = canChooseProject;
@@ -202,7 +204,7 @@ export function DraftHeroHeadline({
       onClick={openAddProject}
       className="pointer-events-auto inline cursor-pointer border-muted-foreground/35 border-b border-dotted text-muted-foreground/60 transition-colors hover:border-muted-foreground/60 hover:text-muted-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {activeProjectTitle ?? "Add a project"}
+      {projectName ?? "Add a project"}
     </button>
   );
 
@@ -212,7 +214,7 @@ export function DraftHeroHeadline({
   // announced phrase.
   const projectSelectorText = shouldShowProjectMenu
     ? (selectorLabel ?? "Choose a project")
-    : (activeProjectTitle ?? "Add a project");
+    : (projectName ?? "Add a project");
   const headingLabel = hasResolvedProject
     ? chiefAsks !== undefined
       ? chiefAsks
