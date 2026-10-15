@@ -858,7 +858,7 @@ export function ThemeLibrary({
         <h3 className="text-sm font-medium tracking-[-0.005em] text-foreground">Themes</h3>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
-            size="xs"
+            size="sm"
             variant="outline"
             onClick={() =>
               openThemeEditor({
@@ -872,7 +872,7 @@ export function ThemeLibrary({
             <PaintbrushIcon />
             Create theme
           </Button>
-          <Button size="xs" variant="outline" onClick={() => onImportOpenChange(true)}>
+          <Button size="sm" variant="outline" onClick={() => onImportOpenChange(true)}>
             <PlusIcon />
             Add theme
           </Button>

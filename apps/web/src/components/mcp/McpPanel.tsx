@@ -296,7 +296,7 @@ function McpServerDetails(props: {
             <Button
               disabled={pending !== null}
               onClick={() => void run("remove", { kind: "remove", name: row.name })}
-              size="xs"
+              size="sm"
               variant="destructive"
             >
               {pending === "remove" ? <Spinner size="xs" /> : null}
@@ -305,7 +305,7 @@ function McpServerDetails(props: {
             <Button
               disabled={pending !== null}
               onClick={() => setArmed(false)}
-              size="xs"
+              size="sm"
               variant="ghost"
             >
               {MCP_WORDS.keep}
@@ -317,7 +317,7 @@ function McpServerDetails(props: {
               <Button
                 disabled={pending !== null}
                 onClick={() => void run("reconnect", { kind: "reconnect", name: row.name })}
-                size="xs"
+                size="sm"
                 variant="outline"
               >
                 {pending === "reconnect" ? <Spinner size="xs" /> : null}
@@ -334,7 +334,7 @@ function McpServerDetails(props: {
                     enabled: row.actions.toggle === "on",
                   })
                 }
-                size="xs"
+                size="sm"
                 variant="outline"
               >
                 {pending === "toggle" ? <Spinner size="xs" /> : null}
@@ -345,7 +345,7 @@ function McpServerDetails(props: {
               <Button
                 disabled={pending !== null}
                 onClick={() => setArmed(true)}
-                size="xs"
+                size="sm"
                 variant="ghost-destructive"
               >
                 {MCP_WORDS.remove}

@@ -106,7 +106,7 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
                 stackToggle={
                   hasStack ? (
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="ghost"
                       aria-expanded={expanded}
                       aria-controls={detailsId}

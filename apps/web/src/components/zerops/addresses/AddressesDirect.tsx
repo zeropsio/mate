@@ -84,7 +84,7 @@ export function AddressesDirect({
           <Button
             disabled={ctx.hold}
             onClick={() => setMode({ kind: "open-port" })}
-            size="xs"
+            size="sm"
             variant="ghost-primary"
           >
             <PlusIcon />
@@ -407,7 +407,7 @@ function PortForm({
         </div>
       ))}
       <div>
-        <Button onClick={() => setRanges([...ranges, ""])} size="xs" type="button" variant="ghost">
+        <Button onClick={() => setRanges([...ranges, ""])} size="sm" type="button" variant="ghost">
           <PlusIcon />
           Add an address
         </Button>

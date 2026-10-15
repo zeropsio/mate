@@ -344,7 +344,7 @@ export const OpenInPicker = memo(function OpenInPicker({
     <Group aria-label="Open in editor">
       <Button
         aria-label={compact ? "Open file in preferred editor" : undefined}
-        size="xs"
+        size="sm"
         variant="outline"
         disabled={!preferredEditor || !openInCwd || remote.mode === "remote-unavailable"}
         onClick={() => openInEditor(preferredEditor)}

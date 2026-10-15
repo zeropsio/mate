@@ -1128,7 +1128,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                           props.onRequestClose?.();
                           props.onOpenProviderSetup?.(entry.instanceId);
                         }}
-                        size="xs"
+                        size="sm"
                         variant="link"
                       >
                         {providerSetupEntries.length > 1

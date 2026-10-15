@@ -681,7 +681,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                               render={
                                 <Button
                                   variant="outline"
-                                  size="xs"
+                                  size="sm"
                                   className="h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground"
                                   onClick={(event) => {
                                     event.preventDefault();
@@ -1833,7 +1833,7 @@ export default function GitActionsControl({
           </>
         )
       ) : !isRepo ? (
-        <Button variant="outline" size="xs" disabled={initAction.isPending} onClick={initializeGit}>
+        <Button variant="outline" size="sm" disabled={initAction.isPending} onClick={initializeGit}>
           <GitBranchPlusIcon className="size-3.5" aria-hidden />
           <span className="ml-0.5">
             {initAction.isPending ? "Initializing..." : "Initialize Git"}
@@ -1849,7 +1849,7 @@ export default function GitActionsControl({
                   <Button
                     aria-disabled="true"
                     className="cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none"
-                    size="xs"
+                    size="sm"
                     variant="outline"
                   />
                 }
@@ -1869,7 +1869,7 @@ export default function GitActionsControl({
           ) : (
             <Button
               variant="outline"
-              size="xs"
+              size="sm"
               className="ps-[8.5px]"
               disabled={isGitActionRunning || quickAction.disabled}
               onClick={runQuickAction}
@@ -1950,7 +1950,7 @@ export default function GitActionsControl({
                   {allFiles.length > 0 && (
                     <Button
                       variant="ghost"
-                      size="xs"
+                      size="sm"
                       onClick={() => setIsEditingFiles((prev) => !prev)}
                     >
                       {isEditingFiles ? "Done" : "Edit"}

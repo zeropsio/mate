@@ -314,7 +314,7 @@ function IpSection({
                 <Button
                   disabled={ctx.hold}
                   onClick={() => setMode({ kind: "ipv4" })}
-                  size="xs"
+                  size="sm"
                   variant="outline"
                 >
                   Get one
@@ -383,7 +383,7 @@ const paidUntil = (validTill: string | undefined) => {
 
 function OpenInZerops({ url }: { readonly url: string }): ReactNode {
   return (
-    <Button render={<a href={url} rel="noreferrer" target="_blank" />} size="xs" variant="link">
+    <Button render={<a href={url} rel="noreferrer" target="_blank" />} size="sm" variant="link">
       <ZeropsMark className="size-3.25" />
       Open in Zerops
     </Button>

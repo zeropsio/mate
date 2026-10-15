@@ -397,7 +397,7 @@ function AboutVersionSection() {
             <TooltipTrigger
               render={
                 <Button
-                  size="xs"
+                  size="sm"
                   variant={action === "install" ? "default" : "outline"}
                   disabled={buttonDisabled || isUpdateActionPending}
                   onClick={handleButtonClick}
@@ -2551,7 +2551,7 @@ export function GeneralSettingsPanel() {
           {...searchableSetting("diagnostics")}
           description={diagnosticsDescription}
           control={
-            <Button render={<Link to="/settings/diagnostics" />} size="xs" variant="outline">
+            <Button render={<Link to="/settings/diagnostics" />} size="sm" variant="outline">
               View diagnostics
             </Button>
           }

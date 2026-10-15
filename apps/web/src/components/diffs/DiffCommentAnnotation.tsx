@@ -114,12 +114,12 @@ export function DiffCommentAnnotation({
       />
       <div className="mt-1.5 flex items-center gap-1">
         <span className="mr-auto text-3xs text-muted-foreground/70">⌘/Ctrl Enter to send</span>
-        <Button variant="ghost-muted" size="xs" onClick={onCancel}>
+        <Button variant="ghost-muted" size="sm" onClick={onCancel}>
           Cancel
         </Button>
         {secondaryAction ? (
           <Button
-            size="xs"
+            size="sm"
             variant="outline"
             disabled={!secondaryAction.allowEmpty && !trimmedText}
             onClick={() => secondaryAction.onAction(trimmedText)}
@@ -128,7 +128,7 @@ export function DiffCommentAnnotation({
             {secondaryAction.label}
           </Button>
         ) : null}
-        <Button size="xs" disabled={pending || !trimmedText} onClick={() => onComment(trimmedText)}>
+        <Button size="sm" disabled={pending || !trimmedText} onClick={() => onComment(trimmedText)}>
           {submitLabel}
         </Button>
       </div>

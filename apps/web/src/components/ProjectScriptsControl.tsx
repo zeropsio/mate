@@ -268,7 +268,7 @@ export default function ProjectScriptsControl({
             <TooltipTrigger
               render={
                 <Button
-                  size="xs"
+                  size="sm"
                   variant="outline"
                   className="w-7 sm:w-6 @3xl/header-actions:w-auto!"
                   aria-label={`Run ${primaryScript.name}`}
@@ -308,7 +308,7 @@ export default function ProjectScriptsControl({
             setActionsMenuOpen({ presentation, scripts: false, imports: open })
           }
         >
-          <MenuTrigger render={<Button size="xs" variant="outline" aria-label="Project actions" />}>
+          <MenuTrigger render={<Button size="sm" variant="outline" aria-label="Project actions" />}>
             <PlusIcon className="size-3.5" />
             <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
               Add action
@@ -328,7 +328,7 @@ export default function ProjectScriptsControl({
           <TooltipTrigger
             render={
               <Button
-                size="xs"
+                size="sm"
                 variant="outline"
                 className="w-7 sm:w-6 @3xl/header-actions:w-auto!"
                 aria-label="Add action"

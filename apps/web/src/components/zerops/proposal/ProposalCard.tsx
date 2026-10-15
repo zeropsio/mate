@@ -271,17 +271,17 @@ function ProposalFoot(props: ProposalCardProps) {
               <Button
                 disabled={props.approveBlocked !== undefined}
                 onClick={props.onApprove}
-                size="xs"
+                size="sm"
               >
                 Approve
               </Button>
             )
           ) : (
-            <Button onClick={props.onSetUpChief} size="xs">
+            <Button onClick={props.onSetUpChief} size="sm">
               Set up Chief
             </Button>
           )}
-          <Button onClick={props.onDecline} size="xs" variant="ghost-muted">
+          <Button onClick={props.onDecline} size="sm" variant="ghost-muted">
             Decline
           </Button>
           {props.approveBlocked === undefined || props.onSetUpChief !== undefined ? null : (
@@ -327,11 +327,11 @@ function ProposalFoot(props: ProposalCardProps) {
       </span>
       {stage === "done" && props.onOpenRecipient !== undefined ? (
         proposal.kind === "mate.message" ? (
-          <Button onClick={props.onOpenRecipient} size="xs" variant="outline">
+          <Button onClick={props.onOpenRecipient} size="sm" variant="outline">
             Open {props.recipient?.name ?? proposal.params.to.mateName}
           </Button>
         ) : proposal.kind === "chief.message" ? (
-          <Button onClick={props.onOpenRecipient} size="xs" variant="outline">
+          <Button onClick={props.onOpenRecipient} size="sm" variant="outline">
             Open Chief
           </Button>
         ) : null
@@ -372,7 +372,7 @@ function DomainFoot(props: ProposalCardProps & { readonly stage: "done" | "unsee
           {domainState?.words ?? proposalOutcomeWords(proposal, stage)}
         </span>
         {props.onOpenAddresses === undefined ? null : (
-          <Button onClick={props.onOpenAddresses} size="xs" variant="outline">
+          <Button onClick={props.onOpenAddresses} size="sm" variant="outline">
             Open addresses
           </Button>
         )}

@@ -834,7 +834,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   className="size-6"
                 />
                 <Button
-                  size="xs"
+                  size="sm"
                   variant="outline"
                   type="button"
                   aria-label="Choose a project icon file"
@@ -1059,7 +1059,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               description="Removes this checkout and its threads from the project group. Files on disk are not touched."
               control={
                 <Button
-                  size="xs"
+                  size="sm"
                   variant="destructive-outline"
                   onClick={() => void removeMembers([selectedCheckout])}
                 >
@@ -1081,7 +1081,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                 <Menu>
                   <MenuTrigger
                     render={
-                      <Button size="xs" variant="ghost" disabled={isSavingScripts} type="button" />
+                      <Button size="sm" variant="ghost" disabled={isSavingScripts} type="button" />
                     }
                   >
                     Import scripts
@@ -1113,7 +1113,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                 </Menu>
               ) : null}
               <Button
-                size="xs"
+                size="sm"
                 variant="outline"
                 disabled={isSavingScripts}
                 onClick={() =>

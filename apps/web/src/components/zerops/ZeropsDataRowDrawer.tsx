@@ -121,11 +121,11 @@ export function ZeropsDataRowDrawer({
       </dl>
 
       <div className="flex flex-wrap gap-2">
-        <Button data-zerops-data-row-copy onClick={onCopyJson} size="xs" variant="outline">
+        <Button data-zerops-data-row-copy onClick={onCopyJson} size="sm" variant="outline">
           <CopyIcon />
           Copy as JSON
         </Button>
-        <Button data-zerops-data-row-explain onClick={onExplain} size="xs" variant="outline">
+        <Button data-zerops-data-row-explain onClick={onExplain} size="sm" variant="outline">
           <MessageSquarePlusIcon />
           Explain this row
         </Button>

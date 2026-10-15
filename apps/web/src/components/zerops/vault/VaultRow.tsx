@@ -109,7 +109,7 @@ function CopyReference({ text, label }: { readonly text: string; readonly label?
           event.stopPropagation();
           copyToClipboard(text, undefined);
         }}
-        size={label === undefined ? "icon-xs" : "xs"}
+        size={label === undefined ? "icon-xs" : "sm"}
         variant="ghost-muted"
       >
         {label === undefined ? null : <span className="font-mono font-normal">{label}</span>}
@@ -421,7 +421,7 @@ function RowBody(props: VaultRowProps) {
                 disabled={props.restarting.has(reader.serviceId)}
                 key={reader.serviceId}
                 onClick={() => props.onRestart(reader.serviceId, reader.hostname)}
-                size="xs"
+                size="sm"
                 variant="outline"
               >
                 {props.restarting.has(reader.serviceId) ? <Spinner size="xs" /> : <RotateCwIcon />}
@@ -436,12 +436,12 @@ function RowBody(props: VaultRowProps) {
         <CopyReference label={reference.own} text={reference.own} />
         <span className="grow" />
         {!masked ? null : (
-          <Button disabled={busy} onClick={() => setLocking(true)} size="xs" variant="ghost-muted">
+          <Button disabled={busy} onClick={() => setLocking(true)} size="sm" variant="ghost-muted">
             <EyeOffIcon />
             Hide it
           </Button>
         )}
-        <Button disabled={busy} onClick={remove} size="xs" variant="ghost-destructive">
+        <Button disabled={busy} onClick={remove} size="sm" variant="ghost-destructive">
           Remove
         </Button>
       </div>
@@ -457,7 +457,7 @@ function RowBody(props: VaultRowProps) {
             still show it to yourself here, and your apps still get it.
           </p>
           <div className="flex justify-end gap-1.5">
-            <Button onClick={() => setLocking(false)} size="xs" variant="ghost-muted">
+            <Button onClick={() => setLocking(false)} size="sm" variant="ghost-muted">
               Cancel
             </Button>
             <Button
@@ -471,7 +471,7 @@ function RowBody(props: VaultRowProps) {
                   sensitive: true,
                 });
               }}
-              size="xs"
+              size="sm"
             >
               Hide it
             </Button>
@@ -494,10 +494,10 @@ function RowBody(props: VaultRowProps) {
             />
           </p>
           <div className="flex justify-end gap-1.5">
-            <Button onClick={remove} size="xs" variant="ghost-destructive">
+            <Button onClick={remove} size="sm" variant="ghost-destructive">
               Remove anyway
             </Button>
-            <Button onClick={() => setGuard(false)} size="xs" variant="outline">
+            <Button onClick={() => setGuard(false)} size="sm" variant="outline">
               Cancel
             </Button>
           </div>

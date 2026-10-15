@@ -109,7 +109,7 @@ function DirectAssetImage({
         >
           <Button
             variant="ghost-muted"
-            size="xs"
+            size="sm"
             onClick={(event) => {
               event.stopPropagation();
               setFailedSrc(undefined);
@@ -263,7 +263,7 @@ function ManagedAssetImage({
           {!decodeFailed && read.kind === "failed" && read.retryable ? (
             <Button
               variant="ghost-muted"
-              size="xs"
+              size="sm"
               onClick={(event) => {
                 event.stopPropagation();
                 setFailedUrl(undefined);

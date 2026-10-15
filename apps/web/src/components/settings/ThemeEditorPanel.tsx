@@ -1187,7 +1187,7 @@ export function ThemeEditorPanel({
               <Button
                 aria-label={isInspecting ? "Cancel inspecting app colors" : "Inspect app colors"}
                 aria-pressed={isInspecting}
-                size="xs"
+                size="sm"
                 variant={isInspecting ? "secondary" : "ghost"}
                 onClick={() => {
                   if (isInspecting) {

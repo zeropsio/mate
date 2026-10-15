@@ -124,7 +124,7 @@ export function ServiceBrowserPanel({
             blank page to find out. */}
         <Button
           variant="ghost"
-          size="xs"
+          size="sm"
           className="shrink-0 text-muted-foreground"
           render={<a href={url} target="_blank" rel="noreferrer" />}
         >
@@ -141,7 +141,7 @@ export function ServiceBrowserPanel({
           </p>
           <Button
             variant="ghost-muted"
-            size="xs"
+            size="sm"
             className="shrink-0"
             onClick={() => setCookieNoteRead(true)}
           >

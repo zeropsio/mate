@@ -114,7 +114,7 @@ export function ZeropsDataFilters({
           data-zerops-data-filter-add
           disabled={columns.length === 0}
           onClick={addFilter}
-          size="xs"
+          size="sm"
           variant="ghost"
         >
           <FilterIcon />
@@ -124,19 +124,19 @@ export function ZeropsDataFilters({
           <Button
             data-zerops-data-filter-raw-toggle
             onClick={onToggleRaw}
-            size="xs"
+            size="sm"
             variant={rawOpen ? "secondary" : "ghost"}
           >
             WHERE…
           </Button>
         ) : null}
         {dirty ? (
-          <Button data-zerops-data-filter-apply onClick={onApply} size="xs" variant="secondary">
+          <Button data-zerops-data-filter-apply onClick={onApply} size="sm" variant="secondary">
             Apply
           </Button>
         ) : null}
         {canClear ? (
-          <Button data-zerops-data-filter-clear onClick={onClear} size="xs" variant="ghost">
+          <Button data-zerops-data-filter-clear onClick={onClear} size="sm" variant="ghost">
             Clear
           </Button>
         ) : null}

@@ -166,7 +166,7 @@ function CheckpointRootDiff(
         </button>
         {expanded && notRecorded === null && (
           <Button
-            size="xs"
+            size="sm"
             variant="outline"
             disabled={query.isPending && !query.error}
             onClick={query.refresh}

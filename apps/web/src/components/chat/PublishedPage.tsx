@@ -239,7 +239,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           <p>The page tried to open something else, so it was closed.</p>
           <Button
             type="button"
-            size="xs"
+            size="sm"
             variant="outline"
             onClick={() => {
               setShowing((count) => count + 1);

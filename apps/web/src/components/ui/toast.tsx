@@ -390,7 +390,7 @@ function ToastBodyContent({
               {...props}
               className={className}
               key={id}
-              size="xs"
+              size="sm"
               type="button"
               variant={secondaryActionVariant}
             />
@@ -399,7 +399,7 @@ function ToastBodyContent({
             <Button
               {...secondaryActionRest}
               className={secondaryActionClassName}
-              size="xs"
+              size="sm"
               type="button"
               variant={secondaryActionVariant}
             />

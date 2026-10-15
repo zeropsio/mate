@@ -292,7 +292,7 @@ export function ZeropsHqCardView({
           <Button
             className="self-start"
             render={<a href={projectUrl} rel="noreferrer" target="_blank" />}
-            size="xs"
+            size="sm"
             variant="link"
           >
             Open in Zerops

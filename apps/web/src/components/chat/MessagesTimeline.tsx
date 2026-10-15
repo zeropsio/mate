@@ -3686,7 +3686,7 @@ function RevertUserMessageButton({
         render={
           <Button
             type="button"
-            size="xs"
+            size="sm"
             variant="ghost"
             disabled={activity.isRevertingCheckpoint || activity.isWorking}
             onClick={() => ctx.onRevertToTurnCount(turnCount, messageId)}
@@ -4075,7 +4075,7 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
           {canCollapse ? (
             <Button
               type="button"
-              size="xs"
+              size="sm"
               variant="ghost-muted"
               aria-expanded={expanded}
               onClick={() => setExpanded((value) => !value)}

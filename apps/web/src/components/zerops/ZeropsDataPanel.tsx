@@ -665,7 +665,7 @@ export function ZeropsDataPanel({
         <Button
           data-zerops-data-retry
           onClick={() => requestServices()}
-          size="xs"
+          size="sm"
           variant="outline"
         >
           Try again
@@ -1006,7 +1006,7 @@ export function ZeropsDataPanel({
                   <Button
                     data-zerops-data-document-search-back
                     onClick={handleDocumentSearchClear}
-                    size="xs"
+                    size="sm"
                     variant="ghost"
                   >
                     Back to index

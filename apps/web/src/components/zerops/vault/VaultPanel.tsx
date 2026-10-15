@@ -272,7 +272,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           setQuery("");
           setMode({ kind: "add" });
         }}
-        size="xs"
+        size="sm"
         variant="outline"
       >
         <PlusIcon />

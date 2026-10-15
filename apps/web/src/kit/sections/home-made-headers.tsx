@@ -74,7 +74,7 @@ function Chosen() {
           <div className="w-[36rem]">
             <SectionHeader
               action={
-                <Button size="xs" variant="ghost">
+                <Button size="sm" variant="ghost">
                   Restore defaults
                 </Button>
               }

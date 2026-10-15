@@ -934,7 +934,7 @@ export function EnvironmentProviderSettings({
                   <TooltipTrigger
                     render={
                       <Button
-                        size="xs"
+                        size="sm"
                         variant="ghost-muted"
                         disabled={isRefreshingProviders}
                         aria-busy={isRefreshingProviders}

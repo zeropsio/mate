@@ -3489,7 +3489,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           <Button
             type="button"
             variant="ghost"
-            size="xs"
+            size="sm"
             aria-label={`Remove ${attachment.name} from this answer`}
             onClick={() => props.questionAttachments?.remove(attachment.id)}
           >
@@ -3499,7 +3499,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             <Button
               type="button"
               variant="ghost"
-              size="xs"
+              size="sm"
               onClick={() => props.questionAttachments?.retry(attachment.id)}
             >
               Retry upload

@@ -2573,7 +2573,7 @@ export function OpenCommandPaletteDialog(props: {
           render={
             <Button
               variant="outline"
-              size="xs"
+              size="sm"
               tabIndex={-1}
               className="absolute inset-e-2.5 top-1/2 -translate-y-1/2"
               aria-label={`${remoteProjectButtonLabel ?? "Continue"} (Enter)`}
@@ -2600,7 +2600,7 @@ export function OpenCommandPaletteDialog(props: {
           render={
             <Button
               variant="outline"
-              size="xs"
+              size="sm"
               tabIndex={-1}
               className="absolute inset-e-2.5 top-1/2 -translate-y-1/2"
               aria-label={`${submitActionLabel} (${addShortcutLabel})`}

@@ -104,7 +104,7 @@ export function ZeropsChangeLinkChip({
             </Tooltip>
           )}
           {landed.readAgain === undefined ? null : (
-            <Button variant="link" size="xs" onClick={landed.readAgain}>
+            <Button variant="link" size="sm" onClick={landed.readAgain}>
               Read again
             </Button>
           )}

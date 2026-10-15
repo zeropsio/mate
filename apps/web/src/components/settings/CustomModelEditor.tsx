@@ -272,7 +272,7 @@ export function CustomModelEditor({
           {descriptor.choices.map((choice) => renderChoice(descriptor, choice))}
           <Button
             type="button"
-            size="xs"
+            size="sm"
             variant="ghost-muted"
             className="-ml-2 self-start"
             onClick={() =>
@@ -352,7 +352,7 @@ export function CustomModelEditor({
               <Button
                 key={preset.id}
                 type="button"
-                size="xs"
+                size="sm"
                 variant="ghost-muted"
                 className={cn("-ml-2 first:ml-0")}
                 onClick={() => addDescriptor(descriptorFromPreset(preset))}
@@ -363,7 +363,7 @@ export function CustomModelEditor({
             ))}
           <Button
             type="button"
-            size="xs"
+            size="sm"
             variant="ghost-muted"
             onClick={() => addDescriptor(emptyEditorDescriptor())}
           >

@@ -105,7 +105,7 @@ export function AddressesWeb({
           <Button
             disabled={ctx.hold}
             onClick={() => setMode({ kind: "add-domain" })}
-            size="xs"
+            size="sm"
             variant="ghost-primary"
           >
             <PlusIcon />
@@ -452,7 +452,7 @@ function Records({
           <Button
             aria-expanded={ways}
             onClick={() => setWays((open) => !open)}
-            size="xs"
+            size="sm"
             variant="ghost-muted"
           >
             <ChevronRightIcon className={ways ? "rotate-90" : undefined} />
@@ -466,7 +466,7 @@ function Records({
                 <b className="font-medium text-foreground">Your own IPv4:</b> then the A record
                 alone is enough.{" "}
                 {onOwnIpv4 === undefined ? null : (
-                  <Button onClick={onOwnIpv4} size="xs" variant="link">
+                  <Button onClick={onOwnIpv4} size="sm" variant="link">
                     Get your own IPv4
                   </Button>
                 )}
@@ -509,7 +509,7 @@ function CheckAgain({
               routingId: domain.routingId,
             })
           }
-          size="xs"
+          size="sm"
           variant="outline"
         >
           {busy ? <Spinner aria-hidden="true" /> : null}

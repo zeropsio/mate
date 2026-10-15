@@ -368,7 +368,7 @@ function CardsAndRows() {
         <ul className="m-0 w-[44rem] list-none p-0">
           <ZeropsEnvironmentRow
             action={
-              <Button size="xs" variant="outline">
+              <Button size="sm" variant="outline">
                 Release
               </Button>
             }
