@@ -37,22 +37,28 @@ import {
 } from "../zerops/projects/projectPeople.logic";
 import { ROLE_CODE_WORDS } from "./teamSettings.logic";
 
-/** Each preset as its card says it: legacy Zerops's words. */
+/**
+ * Each preset as its card says it: what the person can do in Mate, true to what Zerops gives the
+ * role — an owner everything; an admin every project and inviting below admin, never billing; a
+ * Developer (`NO_ACCESS` that creates projects) the projects given them and their own; a Guest
+ * (`NO_ACCESS`) only the projects given them, read only, starting nothing.
+ */
 export const PRESET_WORDS: Readonly<
   Record<TeamRole, { readonly label: string; readonly description: string }>
 > = {
-  owner: { label: "Owner", description: "Full control over company settings, billing, and team." },
+  owner: { label: "Owner", description: "Everything, billing and the team included." },
   admin: {
     label: "Admin",
-    description: "Full control over all projects. Can invite developers and guests.",
+    description: "Every project and its Mates; invites developers and guests. No billing.",
   },
   developer: {
     label: "Developer",
-    description: "Can create new projects and be assigned to projects.",
+    description: "Works in the projects you give them and starts projects of their own.",
   },
   guest: {
     label: "Guest",
-    description: "Can NOT create projects. Can only be assigned to projects.",
+    description:
+      "Follows the work and opens the app in the projects you give them. Starts nothing.",
   },
 };
 
@@ -423,5 +429,124 @@ export function teamInviteStep(
       return { step: "details", email, existing: null };
     case "member":
       return { problem: `${email} is in ${organizationName} already.` };
+  }
+}
+
+/** One project an invitation gives: a Mate project whole, or a Zerops project outside any. */
+export interface InviteProject {
+  /** The Mate project's group id, or the outside project's own id. */
+  readonly key: string;
+  readonly name: string;
+  /** Every Zerops project it holds: its places and its Mates. */
+  readonly projectIds: ReadonlyArray<string>;
+}
+
+/**
+ * What an invitation offers to give, by name: each Mate project as one choice holding all of its
+ * places and Mates — the same projects its People section gives — then projects outside any by
+ * their own names. Chiefs never.
+ */
+export function inviteProjects(input: {
+  readonly groups: ReadonlyArray<{
+    readonly groupId: string;
+    readonly name: string;
+    readonly projects: ReadonlyArray<{ readonly projectId: string; readonly kind: string }>;
+  }>;
+  readonly roster: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  readonly chiefs: ReadonlySet<string>;
+}): ReadonlyArray<InviteProject> {
+  const grouped = new Set(
+    input.groups.flatMap(({ projects }) => projects.map(({ projectId }) => projectId)),
+  );
+  const apps = input.groups.flatMap((group) =>
+    group.projects.length === 0 ||
+    group.projects.some(({ projectId }) => input.chiefs.has(projectId))
+      ? []
+      : [
+          {
+            key: group.groupId,
+            name: group.name,
+            projectIds: group.projects.map(({ projectId }) => projectId),
+          },
+        ],
+  );
+  const outside = input.roster.flatMap(({ id, name }) =>
+    grouped.has(id) || input.chiefs.has(id) ? [] : [{ key: id, name, projectIds: [id] }],
+  );
+  return [...apps, ...outside].toSorted((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * The projects an invitation starts with: the one it was opened from, else the organization's
+ * only project; none where there are several to choose from.
+ */
+export function invitePreselect(input: {
+  readonly projects: ReadonlyArray<InviteProject>;
+  /** The project the invitation was opened from (its group id). */
+  readonly from: string | undefined;
+}): ReadonlyArray<string> {
+  if (input.from !== undefined)
+    return input.projects.some(({ key }) => key === input.from) ? [input.from] : [];
+  return input.projects.length === 1 ? [input.projects[0]!.key] : [];
+}
+
+/** The access an invitation gives on its projects. */
+export type InviteLevel = "full" | "read";
+
+/**
+ * The levels an invitation offers for a membership, the first chosen: a Developer works (Full) or
+ * looks (Read); a Guest only looks; a role that reaches every project by itself is given none.
+ */
+export function inviteLevels(membership: OrgMembership): {
+  readonly levels: ReadonlyArray<InviteLevel>;
+  readonly level: InviteLevel | null;
+} {
+  if (membership.roleCode !== "NO_ACCESS") return { levels: [], level: null };
+  return membership.canCreateProjects
+    ? { levels: ["full", "read"], level: "full" }
+    : { levels: ["read"], level: "read" };
+}
+
+const INVITE_ROLE: Readonly<Record<InviteLevel, ProjectAccessRole>> = {
+  full: "ADMIN",
+  read: "READ_ONLY",
+};
+
+/** What the invitation sends: every project of each picked one, at the level chosen. */
+export function inviteGrants(input: {
+  readonly projects: ReadonlyArray<InviteProject>;
+  readonly picked: ReadonlyArray<string>;
+  readonly level: InviteLevel;
+}): ReadonlyArray<{ readonly projectId: string; readonly roleCode: ProjectAccessRole }> {
+  return input.projects.flatMap(({ key, projectIds }) =>
+    input.picked.includes(key)
+      ? projectIds.map((projectId) => ({ projectId, roleCode: INVITE_ROLE[input.level] }))
+      : [],
+  );
+}
+
+/**
+ * What the invitation's projects say the chosen role reaches: a Developer the projects picked and
+ * their own, a Guest only those picked — or, with no project to pick yet, what they will get —
+ * and a role that reaches every project says so, with nothing to pick.
+ */
+export function inviteReachLine(membership: OrgMembership, projects: number): string {
+  switch (membership.roleCode) {
+    case "OWNER":
+      return "An owner reaches every project.";
+    case "ADMIN":
+      return "An admin reaches every project.";
+    case "BASIC_USER":
+      return "A basic user works on every project by their role.";
+    case "READ_ONLY":
+      return "A read-only member sees every project by their role.";
+    case "NO_ACCESS":
+      if (membership.canCreateProjects)
+        return projects === 0
+          ? "No projects to give yet: they can start their own."
+          : "They get the projects you pick here, and the ones they start.";
+      return projects === 0
+        ? "No projects to give yet: they see the ones you add them to later."
+        : "They see only the projects you pick here.";
   }
 }

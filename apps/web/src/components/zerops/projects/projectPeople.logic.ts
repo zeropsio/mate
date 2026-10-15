@@ -69,6 +69,16 @@ export type ChipLevel = AccessLevel | "mixed" | "hidden";
  */
 export type GivenLevel = "full" | "read" | "none";
 
+/**
+ * Read and Full in one line each, said once where they are chosen — an invitation's projects and
+ * *Add access* — never as bare words: Full is the project's own admin role (`GIVEN_ROLE`), so the
+ * person works with its Mates and changes it; Read sees it and changes nothing.
+ */
+export const ACCESS_LEVEL_LINES: Readonly<Record<"full" | "read", string>> = {
+  full: "Works with the project's Mates and changes the project.",
+  read: "Follows the work and opens the app; changes nothing.",
+};
+
 /** What the viewer may change of one person's access here. */
 export interface PersonChange {
   /** Their membership (`clientUser`) id. */

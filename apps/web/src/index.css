@@ -8035,6 +8035,30 @@ label.tm-advanced-row:not([data-disabled]) {
   gap: 6px;
 }
 
+/* An invitation's projects: one lifted list, a row per project, its tick where a face stands. */
+.tm-invite-projects {
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--ov-lift);
+}
+
+.tm-invite-project {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.tm-invite-project:hover {
+  background: var(--ov-hover);
+}
+
 /* *Add a Mate* at the foot of a project page's Mates: a row the size of a folded one, its plus
    where a face stands. */
 .ov-add {

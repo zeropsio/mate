@@ -6,6 +6,12 @@ import {
   addressProblem,
   advancedChoices,
   draftChanges,
+  inviteGrants,
+  inviteLevels,
+  invitePreselect,
+  inviteProjects,
+  inviteReachLine,
+  PRESET_WORDS,
   membershipChanged,
   nameProblem,
   pickerLevels,
@@ -284,6 +290,140 @@ describe("what Project access says a role reaches by itself", () => {
       });
       expect(intro).toContain(says);
       expect(intro).not.toMatch(/you add|Set a different/u);
+    },
+  );
+});
+
+describe("an invitation on one page", () => {
+  const SNAP = {
+    groupId: "g-snap",
+    name: "Snap",
+    projects: [
+      { projectId: "snap-prod", kind: "production" },
+      { projectId: "snap-fen", kind: "mate" },
+    ],
+  };
+  const BEVIRO = {
+    groupId: "g-beviro",
+    name: "Beviro",
+    projects: [{ projectId: "beviro-kai", kind: "mate" }],
+  };
+
+  it("Each Mate project is one choice holding all its places and Mates; outside projects by their own names; Chiefs never", () => {
+    expect(
+      inviteProjects({
+        groups: [
+          SNAP,
+          {
+            groupId: "g-chief",
+            name: "Petra's Chief",
+            projects: [{ projectId: "chief", kind: "mate" }],
+          },
+        ],
+        roster: [
+          { id: "snap-fen", name: "Snap - Fen" },
+          { id: "old", name: "legacy-api" },
+          { id: "chief", name: "Chief" },
+        ],
+        chiefs: new Set(["chief"]),
+      }),
+    ).toEqual([
+      { key: "old", name: "legacy-api", projectIds: ["old"] },
+      { key: "g-snap", name: "Snap", projectIds: ["snap-prod", "snap-fen"] },
+    ]);
+  });
+
+  const choices = inviteProjects({ groups: [SNAP, BEVIRO], roster: [], chiefs: new Set() });
+  it.each([
+    {
+      sentence: "Inviting from a project picks that project",
+      projects: choices,
+      from: "g-beviro",
+      picked: ["g-beviro"],
+    },
+    {
+      sentence: "The organization's only project is picked",
+      projects: choices.slice(0, 1),
+      from: undefined,
+      picked: [choices[0]!.key],
+    },
+    {
+      sentence: "With several projects and none to start from, none is picked",
+      projects: choices,
+      from: undefined,
+      picked: [],
+    },
+    {
+      sentence: "A project to start from that the viewer can't give isn't picked",
+      projects: choices,
+      from: "g-gone",
+      picked: [],
+    },
+  ])("$sentence", ({ projects, from, picked }) => {
+    expect(invitePreselect({ projects, from })).toEqual(picked);
+  });
+
+  it("Each picked project gives every one of its places and Mates at the chosen level: Full as full, Read as read only", () => {
+    expect(inviteGrants({ projects: choices, picked: ["g-snap"], level: "full" })).toEqual([
+      { projectId: "snap-prod", roleCode: "ADMIN" },
+      { projectId: "snap-fen", roleCode: "ADMIN" },
+    ]);
+    expect(inviteGrants({ projects: choices, picked: ["g-beviro"], level: "read" })).toEqual([
+      { projectId: "beviro-kai", roleCode: "READ_ONLY" },
+    ]);
+  });
+
+  it.each([
+    { role: "developer", levels: ["full", "read"], level: "full" },
+    { role: "guest", levels: ["read"], level: "read" },
+    { role: "admin", levels: [], level: null },
+    { role: "owner", levels: [], level: null },
+  ] as const)(
+    "a $role is given projects at $levels, $level first; a role reaching every project is given none",
+    ({ role, levels, level }) => {
+      expect(inviteLevels(presetMembership(role))).toEqual({ levels, level });
+    },
+  );
+
+  it("a member who works on or sees every project by their role is given no projects", () => {
+    expect(inviteLevels(membership("BASIC_USER"))).toEqual({ levels: [], level: null });
+    expect(inviteLevels(membership("READ_ONLY"))).toEqual({ levels: [], level: null });
+  });
+
+  it.each([
+    { role: "owner", says: /billing/u, never: /^$/u },
+    { role: "admin", says: /every project/iu, never: /billing and/u },
+    { role: "developer", says: /projects of their own/u, never: /every project/iu },
+    { role: "guest", says: /Starts nothing/u, never: /starts projects/u },
+  ] as const)(
+    "the $role card says what the role can do, true to what Zerops gives it",
+    ({ role, says, never }) => {
+      expect(PRESET_WORDS[role].description).toMatch(says);
+      if (role !== "owner") expect(PRESET_WORDS[role].description).not.toMatch(never);
+    },
+  );
+});
+
+describe("what an invitation's projects say a role reaches", () => {
+  it.each([
+    { role: "owner", projects: 2, says: "An owner reaches every project." },
+    { role: "admin", projects: 2, says: "An admin reaches every project." },
+    {
+      role: "developer",
+      projects: 2,
+      says: "They get the projects you pick here, and the ones they start.",
+    },
+    { role: "developer", projects: 0, says: "No projects to give yet: they can start their own." },
+    { role: "guest", projects: 2, says: "They see only the projects you pick here." },
+    {
+      role: "guest",
+      projects: 0,
+      says: "No projects to give yet: they see the ones you add them to later.",
+    },
+  ] as const)(
+    "a $role with $projects projects to give is told: $says",
+    ({ role, projects, says }) => {
+      expect(inviteReachLine(presetMembership(role), projects)).toBe(says);
     },
   );
 });
