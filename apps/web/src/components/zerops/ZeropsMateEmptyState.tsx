@@ -181,7 +181,7 @@ export function useMateEmptyState({
     viewerSubject !== undefined &&
     mateStandUpSignedIn(agentAuth, viewerSubject);
   const agentReady = !viewerSignedIn && zeropsOtherAgentReady(providers);
-  const standUp = useMateStandUp({ environmentId, threadRef, messageCount: 0 });
+  const standUp = useMateStandUp({ environmentId, threadRef, messageCount: 0, live: true });
   const phase = mateStandUpPhase({
     marker: mate.standUp,
     viewer: viewerSubject,
