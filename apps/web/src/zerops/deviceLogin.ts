@@ -53,6 +53,12 @@ export type ZeropsDeviceLoginStage =
       readonly url: string;
       readonly blocked: boolean;
       readonly userCode: string;
+      /**
+       * The request was renewed since the Zerops window (or the link's tab) was last pointed at
+       * one: what it shows may be the lapsed request, with an older code. Mate cannot read that
+       * window, and never navigates one the person may be typing in; "Open it again" does.
+       */
+      readonly windowMayBeOlder: boolean;
     };
 
 export interface ZeropsDeviceLoginRun {
@@ -133,10 +139,11 @@ const WAIT_FOR_PERSON_MS = 30 * 60_000;
 /**
  * Runs one device login. Call it on the person's click: the Zerops window opens synchronously
  * here, before anything is awaited. A request that lapses is renewed with a new code, and the
- * window is left alone: the person may be halfway through signing up in it. "Open it again"
- * then points it at the current request. The window is closed once the person is answered
- * (approved, denied) or cancels here; HQ's own page would close itself, app.zerops.io's would
- * not. A run that finally lapses leaves the window as the person left it.
+ * window is left alone: the person may be halfway through signing up in it, so the stage says it
+ * may show an older code, and "Open it again" then points it at the current request. The window
+ * is closed once the person is answered (approved, denied) or cancels here; HQ's own page would
+ * close itself, app.zerops.io's would not. A run that finally lapses leaves the window as the
+ * person left it.
  */
 export function runZeropsDeviceLogin(input: {
   readonly kind: ZeropsDeviceLoginKind;
@@ -156,6 +163,8 @@ export function runZeropsDeviceLogin(input: {
   let windowUrl: string | null = null;
   /** Set by the first request: whether the browser kept the window from opening. */
   let blocked: boolean | null = null;
+  /** The stage last told, so pointing the window again can tell it afresh. */
+  let shown: Extract<ZeropsDeviceLoginStage, { kind: "waiting" }> | null = null;
   input.onStage({ kind: "opening" });
   const linkFor = (verificationUrl: string, popup: boolean) =>
     zeropsDeviceLoginUrl({
@@ -195,7 +204,15 @@ export function runZeropsDeviceLogin(input: {
           zeropsWindow!.location.href = consentUrl;
           windowUrl = consentUrl;
         }
-        input.onStage({ kind: "waiting", url: consentUrl, blocked, userCode: request.userCode });
+        shown = {
+          kind: "waiting",
+          url: consentUrl,
+          blocked,
+          userCode: request.userCode,
+          // A blocked window's link may have been opened in a tab Mate never sees.
+          windowMayBeOlder: !first && (blocked || (windowOpen() && windowUrl !== consentUrl)),
+        };
+        input.onStage(shown);
         const answer = await pollZeropsDeviceLogin({
           request,
           check: () =>
@@ -222,10 +239,14 @@ export function runZeropsDeviceLogin(input: {
           windowUrl = consentUrl;
         }
         zeropsWindow!.focus();
-        return;
+      } else {
+        zeropsWindow = ports.open(consentUrl);
+        windowUrl = consentUrl;
       }
-      zeropsWindow = ports.open(consentUrl);
-      windowUrl = consentUrl;
+      if (shown?.windowMayBeOlder === true && !shown.blocked) {
+        shown = { ...shown, windowMayBeOlder: false };
+        input.onStage(shown);
+      }
     },
     cancel: () => controller.abort(),
   };

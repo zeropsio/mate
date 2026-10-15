@@ -129,6 +129,7 @@ describe("runZeropsDeviceLogin", () => {
       url: `${VERIFY}&display=popup`,
       blocked: false,
       userCode: "ABCD-EFGH",
+      windowMayBeOlder: false,
     });
     // Settled: the window is closed, since app.zerops.io's page does not close itself.
     expect(opened[0]?.window?.closed).toBe(true);
@@ -156,6 +157,7 @@ describe("runZeropsDeviceLogin", () => {
       url: VERIFY,
       blocked: true,
       userCode: "ABCD-EFGH",
+      windowMayBeOlder: false,
     });
   });
 
@@ -235,6 +237,7 @@ describe("runZeropsDeviceLogin", () => {
       url: `${VERIFY.replace("req-1", "req-2")}&display=popup`,
       blocked: false,
       userCode: "CODE-0002",
+      windowMayBeOlder: true,
     });
     run.cancel();
     release();
@@ -262,6 +265,35 @@ describe("runZeropsDeviceLogin", () => {
     const window = opened[0]?.window;
     expect(window?.location.href).toBe(`${VERIFY.replace("req-1", "req-2")}&display=popup`);
     expect(window?.focused).toBe(1);
+    run.cancel();
+    release();
+    await run.outcome;
+  });
+
+  it("says the Zerops window may show an older code once the request is renewed, until the person opens it again", async () => {
+    const { ports, stages, onStage } = tab({
+      renewals: true,
+      checks: [new Response(null, { status: 404 })],
+    });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let waits = 0;
+    const run = runZeropsDeviceLogin({
+      kind: "login",
+      apiBase: API,
+      onStage,
+      ports: { ...ports, wait: () => (++waits > 1 ? held : Promise.resolve()) },
+    });
+    await vi.waitFor(() => expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002" }));
+    expect(stages.find((stage) => stage.kind === "waiting")).toMatchObject({
+      userCode: "ABCD-EFGH",
+      windowMayBeOlder: false,
+    });
+    expect(stages.at(-1)).toMatchObject({ windowMayBeOlder: true });
+    run.reopen();
+    expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002", windowMayBeOlder: false });
     run.cancel();
     release();
     await run.outcome;
