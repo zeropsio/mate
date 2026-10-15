@@ -128,7 +128,11 @@ function HqBirth({
   if (birth === undefined) {
     return (
       <StatusPage
-        actions={<Button onClick={onStart}>Set up HQ</Button>}
+        actions={
+          <Button onClick={onStart} size="lg">
+            Set up HQ
+          </Button>
+        }
         data-zerops-surface="hq-gate"
         title={`Set up HQ for ${organizationName}`}
       >
