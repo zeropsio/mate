@@ -62,11 +62,12 @@ function render(
       </Dialog>,
     ),
   );
+  // A stage's or a production's own form is the sheet's quiet way out.
   if (props.git === undefined && props.role !== "dev" && !destination) {
     act(() =>
-      host
-        .querySelector("form")!
-        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+      [...document.querySelectorAll("button")]
+        .find((button) => button.textContent === "Set it up yourself…")!
+        .click(),
     );
   }
   return document.body.innerHTML;
@@ -183,40 +184,50 @@ it("offers Git without a recipe when HQ authorizes while Zerops stays the defaul
       onAdded: () => {},
     },
   });
-  expect(html).toContain("Where does it go?");
-  expect(html).toContain("A branch in your Git repository");
+  expect(html).toContain("Use a branch in your Git repository instead…");
   expect(html).toContain("A new Zerops project");
   expect(html).not.toContain('data-zerops-surface="git-environment-form"');
 });
 
-it("New production starts with only a destination and Continue", () => {
-  const html = render({
-    role: "prod",
-    git: {
-      repos: [],
-      takenNames: [],
-      offered: { add: true, connect: true, replace: true },
-      setup: {
-        connect: async () => ({ ok: false, reason: "refused" }),
-        preview: async () => [],
-        add: async () => {},
-      },
-      onAdded: () => {},
+it("Adding a stage is one sheet: what it is for, where, and one button", () => {
+  const onCreate = vi.fn();
+  const html = render({ onCreate }, true);
+  expect(html).toContain("Add a stage to Acme Docs");
+  expect(html).toContain("A place to try merged changes before they go live.");
+  expect(html).toContain("Acme Docs - stage");
+  // Nothing it knows is asked: no name, agent or application fields.
+  expect(
+    host.ownerDocument.querySelectorAll('[role="dialog"] input:not([type="hidden"])'),
+  ).toHaveLength(0);
+  act(() =>
+    [...document.querySelectorAll("button")]
+      .find((button) => button.textContent === "Add stage")!
+      .click(),
+  );
+  expect(onCreate).toHaveBeenCalledWith({
+    name: "Acme Docs - stage",
+    withAgent: true,
+    recipe: {
+      kind: "tier",
+      tier: "stage",
+      yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
     },
   });
-  expect(html).toContain("Production is where a release goes");
-  expect(html).toContain(">Continue<");
-  expect(html).not.toContain('data-zerops-surface="environment-creation-form"');
-  expect(html).not.toContain('data-zerops-surface="git-environment-form"');
-  expect(html).not.toContain('value="Acme Docs - stage"');
 });
 
-it("The destination is the first page while HQ authority is still arriving", () => {
-  const html = render({ role: "prod" }, true);
-  expect(html).toContain("Where does it go?");
-  expect(html).toContain(">Continue<");
-  expect(html).not.toContain('data-zerops-surface="environment-creation-form"');
+it("The sheet waits for the recipe before it adds anything, saying so", () => {
+  const html = render({ role: "prod", recipe: "reading", tier: undefined }, true);
+  expect(html).toContain("Set up production for Acme Docs");
+  const button = [...document.querySelectorAll("button")].find(
+    (entry) => entry.textContent === "Set up production",
+  );
+  expect(button?.hasAttribute("disabled")).toBe(true);
 });
+
+const gitChoice = () =>
+  [...document.querySelectorAll("button")].find(
+    (button) => button.textContent === "Use a branch in your Git repository instead…",
+  );
 
 function gitAuthority(can: HqOffers | undefined, current = true) {
   const add = hqOffer(can, "add_git_environment", {
@@ -259,8 +270,7 @@ it.each([
 ])("says why the Git choice is unavailable when $situation", ({ can, current, reason }) => {
   const html = render({ role: "prod", git: gitAuthority(can, current) });
   expect(html).toContain(reason);
-  const choice = host.querySelectorAll('[role="radio"]')[1];
-  expect(choice?.getAttribute("aria-disabled")).toBe("true");
+  expect(gitChoice()?.hasAttribute("disabled")).toBe(true);
 });
 
 it("updates the Git choice's reason when HQ refuses setup after the form opens", () => {
@@ -274,5 +284,5 @@ it("updates the Git choice's reason when HQ refuses setup after the form opens",
     git: gitAuthority({ add_git_environment: { allow: false, reason: "not_structure_writer" } }),
   });
   expect(html).toContain("Only an owner or admin of the organization can do this.");
-  expect(host.querySelectorAll('[role="radio"]')[1]?.getAttribute("aria-disabled")).toBe("true");
+  expect(gitChoice()?.hasAttribute("disabled")).toBe(true);
 });

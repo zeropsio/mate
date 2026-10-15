@@ -176,19 +176,13 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
         });
         yield* click(`Add ${role}`);
       }),
+    /** The sheet's quiet ways out: production's or a stage's own form, or a Git branch. */
     chooseDestination: (target: "zerops" | "git") =>
-      Effect.gen(function* () {
-        yield* text("Where does it go?");
-        yield* Effect.promise(() =>
-          page
-            .locator(
-              `::-p-text(${target === "zerops" ? "A Zerops project" : "A branch in your Git repository"})`,
-            )
-            .setTimeout(15_000)
-            .click(),
-        );
-        yield* click("Continue");
-      }),
+      click(
+        target === "zerops"
+          ? "Set it up yourself…"
+          : "Use a branch in your Git repository instead…",
+      ),
     withAgent: Effect.promise(() =>
       page
         .locator('[data-zerops-surface="environment-creation-form"] [role="switch"]')

@@ -174,81 +174,116 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
   );
 }
 
+/**
+ * A stage or a production, as one sheet: what it is for in one line, where it goes, one button —
+ * asking nothing the project already says: its name after the project, its recipe, no agent. Its
+ * own form (the name, an agent, the application) and a branch of the person's Git repository are
+ * the sheet's quiet ways out (the owner delegated the call on 2026-10-15: adding an environment is
+ * one sheet, like putting it live).
+ */
 function EnvironmentDestinationForm(props: ZeropsEnvironmentCreationFormProps) {
-  const [target, setTarget] = useState("zerops");
-  const [continued, setContinued] = useState(false);
-  if (!continued) {
+  const [view, setView] = useState<"sheet" | "form" | "git">("sheet");
+  if (view === "git" && props.git !== undefined)
     return (
-      <form
-        className="flex min-h-0 flex-col"
-        data-zerops-surface="environment-destination-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setContinued(true);
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>
-            New {props.role === "prod" ? "production" : "stage"} environment
-          </DialogTitle>
-          <DialogDescription>
-            {props.role === "prod"
-              ? "Production is where a release goes"
-              : "Stage is where merged changes go"}
-            : a Zerops project Mate deploys, or a branch in your repository, where whatever you have
-            set up there takes over.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogPanel>
-          <div className="space-y-2">
-            <span className="text-sm">Where does it go?</span>
-            <RadioGroup aria-label="Where does it go?" value={target} onValueChange={setTarget}>
-              <label className="flex items-start gap-3 rounded-lg border p-4 text-sm">
-                <Radio value="zerops" />
-                <span className="space-y-1">
-                  <span className="block font-medium">A Zerops project</span>
-                  <span className="block text-muted-foreground">
-                    A new Zerops project in {props.groupName}. It takes a couple of minutes to come
-                    up.
-                  </span>
-                </span>
-              </label>
-              <label className="flex items-start gap-3 rounded-lg border p-4 text-sm">
-                <Radio value="git" disabled={props.git?.offered.add !== true} />
-                <span className="space-y-1">
-                  <span className="block font-medium">A branch in your Git repository</span>
-                  <span className="block text-muted-foreground">
-                    {props.git?.offered.add === true
-                      ? "Mate pushes there. What that repository does with a push is up to how it is set up."
-                      : (props.git?.unavailableReason ?? "HQ has not said yet.")}
-                  </span>
-                </span>
-              </label>
-            </RadioGroup>
-          </div>
-        </DialogPanel>
-        <DialogFooter>
-          <Button variant="ghost" type="button" onClick={props.onCancel}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={target === "git" && props.git?.offered.add !== true}>
-            Continue
-          </Button>
-        </DialogFooter>
-      </form>
+      <GitEnvironmentForm
+        {...props.git}
+        groupName={props.groupName}
+        defaultName={props.defaultName}
+        tier={props.role === "prod" ? "production" : "stage"}
+        onBack={() => setView("sheet")}
+        onCancel={props.onCancel}
+      />
     );
-  }
-  return target === "git" && props.git !== undefined ? (
-    <GitEnvironmentForm
-      {...props.git}
-      groupName={props.groupName}
-      defaultName={props.defaultName}
-      tier={props.role === "prod" ? "production" : "stage"}
-      onBack={() => setContinued(false)}
-      onCancel={props.onCancel}
-    />
-  ) : (
-    <EnvironmentForm {...props} onBack={() => setContinued(false)} />
+  if (view === "form") return <EnvironmentForm {...props} onBack={() => setView("sheet")} />;
+  return (
+    <EnvironmentSheet {...props} onGit={() => setView("git")} onYourself={() => setView("form")} />
+  );
+}
+
+/** The sheet's quiet ways out: blue words, their text on the words' edge. */
+const SHEET_LINK =
+  "menu-textbtn -ms-2 self-start outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50";
+
+function EnvironmentSheet(
+  props: ZeropsEnvironmentCreationFormProps & {
+    readonly onYourself: () => void;
+    readonly onGit: () => void;
+  },
+) {
+  const { groupName, role, defaultName, tier, tierServices, recipe } = props;
+  const what = environmentWord(role);
+  const options = recipeOptions({ roleLabel: what, tier, services: tierServices, recipe });
+  const held = creationRecipeHold(recipe);
+  const option = options[0];
+  const gitOffered = props.git?.offered.add === true;
+  return (
+    <form
+      className="flex min-h-0 flex-col"
+      data-zerops-surface="environment-destination-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (held !== undefined || option === undefined) return;
+        props.onCreate({
+          name: defaultName,
+          withAgent: props.defaultWithAgent,
+          recipe: option.choice,
+        });
+      }}
+    >
+      <DialogHeader>
+        <DialogTitle>
+          {role === "prod" ? `Set up production for ${groupName}` : `Add a stage to ${groupName}`}
+        </DialogTitle>
+        <DialogDescription>
+          {role === "prod"
+            ? "Where your releases go live."
+            : "A place to try merged changes before they go live."}
+        </DialogDescription>
+      </DialogHeader>
+      <DialogPanel>
+        <div className="flex flex-col gap-6">
+          <section aria-label="Where" className="flex flex-col gap-1">
+            <h3 className="text-muted-foreground text-xs">Where</h3>
+            <p className="font-medium text-foreground text-sm">{defaultName}</p>
+            <p className="text-muted-foreground text-sm">
+              A new Zerops project with its own address, ready in a few minutes.
+            </p>
+          </section>
+          <div className="flex flex-col gap-1">
+            <button className={SHEET_LINK} onClick={props.onYourself} type="button">
+              Set it up yourself…
+            </button>
+            {props.git === undefined ? null : (
+              <>
+                <button
+                  className={SHEET_LINK}
+                  disabled={!gitOffered}
+                  onClick={props.onGit}
+                  type="button"
+                >
+                  Use a branch in your Git repository instead…
+                </button>
+                {gitOffered ? null : (
+                  <p className="text-muted-foreground text-xs">
+                    {props.git.unavailableReason ?? "HQ has not said yet."}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </DialogPanel>
+      <DialogFooter>
+        {held === undefined ? null : (
+          <p className="me-auto self-center text-muted-foreground text-sm" role="status">
+            {held}
+          </p>
+        )}
+        <Button disabled={held !== undefined || option === undefined} type="submit">
+          {role === "prod" ? "Set up production" : "Add stage"}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }
 
