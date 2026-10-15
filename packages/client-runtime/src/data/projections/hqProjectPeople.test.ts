@@ -58,6 +58,8 @@ const rows: ReadonlyArray<Row> = [
     { ownerUserId: null, waitsOnViewer: false, role: "READ_ONLY", mayWrite: false },
     {},
   ),
+  // A Mate the reader may read and not operate: HQ sends it no overview, so no signer.
+  placement("watched", { ownerUserId: "u-jan", waitsOnViewer: false, mayWrite: false }, {}),
   {
     family: "hqPerson",
     id: "u-jan",
@@ -111,6 +113,12 @@ const removed = apply(read, [
 const people = (state: AccountState) => hqProjectPeople.derive(readsOfState(state), ORG);
 
 describe("hqProjectPeople", () => {
+  it("a Mate the reader may not operate says nothing of its sign-in, which HQ does not tell them", () => {
+    expect(people(read).watched).toMatchObject({ signedInNow: undefined, everSignedIn: undefined });
+    // A Mate the reader operates says whether anybody ever signed in, nobody included.
+    expect(people(read).nobody).toMatchObject({ signedInNow: {}, everSignedIn: {} });
+  });
+
   it("a Mate's Chief identity arrives from HQ after first paint and never from its reader", () => {
     expect(people(read).ada?.chief).toBeUndefined();
     const next = apply(read, [
@@ -241,7 +249,7 @@ describe("hqProjectPeople", () => {
         owned: undefined,
         owner: null,
         waitsOnViewer: false,
-        signedInNow: {},
+        signedInNow: undefined,
         everSignedIn: undefined,
       },
     },

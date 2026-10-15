@@ -1,7 +1,7 @@
 /**
  * Who each project HQ places is, for the reader, as HQ computed it: its
  * owner — named and pictured from HQ's person records —, whether its Mate waits on the reader, and
- * who is signed in to each agent's own login now and who ever was. Nothing is computed here from member lists or roles; an
+ * who is signed in to each agent's own login now and who ever was — of a Mate the reader operates. Nothing is computed here from member lists or roles; an
  * owner HQ names no person record of is drawn as nobody's. A project HQ removed, or withheld, is in
  * none of it. To a viewer who may not operate a Mate (`mayWrite` false: HQ's `observe_mate`), HQ
  * sends no signers and no owner it read off the Mate: empty there is withheld, never "nobody".
@@ -31,8 +31,11 @@ export interface HqProjectPeople {
   readonly owner: HqMateOwner | null;
   /** Its Mate waits on the reader, as HQ says (`waitsOnViewer`). */
   readonly waitsOnViewer: boolean | undefined;
-  /** Who is signed in to each login now, by login id: whose the composer is. */
-  readonly signedInNow: PlacementValue["signedInNow"];
+  /**
+   * Who is signed in to each login now, by login id: whose the composer is. `undefined` for a Mate
+   * the reader may not operate: HQ sends them no overview of it, and its empty record is no fact.
+   */
+  readonly signedInNow: PlacementValue["signedInNow"] | undefined;
   /**
    * Who last signed each login in, by login id, signed out since or not: whether anybody has.
    * Undefined where HQ withholds it from the viewer.
@@ -60,7 +63,7 @@ function peopleOf(
         : person.ownerUserId !== null,
     owner: ownerOf(read, orgId, person?.ownerUserId),
     waitsOnViewer: person?.waitsOnViewer,
-    signedInNow,
+    signedInNow: withheld ? undefined : signedInNow,
     everSignedIn: withheld ? undefined : everSignedIn,
   };
 }
