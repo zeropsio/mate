@@ -57,11 +57,7 @@ import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/Ze
 import type { Spoken } from "~/components/zerops/MateLinkLine";
 import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import {
-  arrivalHeaderFace,
-  type ArrivalService,
-  type ArrivalStepInput,
-} from "~/zerops/mateArrival";
+import { type ArrivalService, type ArrivalStepInput } from "~/zerops/mateArrival";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
@@ -1040,32 +1036,19 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
 function Header({ state }: { readonly state: HarnessState }) {
   return (
     <WorkspacePageHeader className="relative bg-background">
-      <span className="flex items-center gap-2.5">
-        <MateFace
-          className="size-6"
-          shape={state.mate.shape}
-          size="sm"
-          state={
-            state.conversation === true
-              ? state.mate.connected
-                ? "idle"
-                : "sleep"
-              : arrivalHeaderFace({
-                  kind:
-                    state.coming === "not-created"
-                      ? "failed"
-                      : state.coming === "reaching"
-                        ? "reaching"
-                        : "coming",
-                  over: state.coming === undefined,
-                  arriving: state.logins !== undefined,
-                  connected: state.mate.connected,
-                })
-          }
-          tint={state.mate.tint}
-        />
-        <span className="font-semibold text-base">{state.mate.name}</span>
-      </span>
+      {/* The stage under it names the Mate until its conversation takes over (the product's header). */}
+      {state.conversation === true ? (
+        <span className="flex items-center gap-2.5">
+          <MateFace
+            className="size-6"
+            shape={state.mate.shape}
+            size="sm"
+            state={state.mate.connected ? "idle" : "sleep"}
+            tint={state.mate.tint}
+          />
+          <span className="font-semibold text-base">{state.mate.name}</span>
+        </span>
+      ) : null}
       {state.crew === true ? (
         <span className="ms-6 flex items-center gap-4 text-muted-foreground text-sm">
           <span>Conversation</span>
