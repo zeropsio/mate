@@ -14,6 +14,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group"
 import { PersonAvatar } from "../zerops/primitives";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { reachWords, shownTeam, type TeamPerson, type TeamView } from "./teamSettings.logic";
+import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
 
 /** Settings → Team. */
@@ -85,7 +86,7 @@ export function TeamList({
     >
       <div className="tm-team px-3 sm:px-4">
         {view.kind === "reading" ? (
-          <p className="tm-empty">Reading who is on the team…</p>
+          <Loading count={4} label="Who is on the team" shape="rows" />
         ) : view.kind === "unreadable" ? (
           <p className="tm-empty">{view.line}</p>
         ) : shown.length === 0 ? (

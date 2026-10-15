@@ -161,9 +161,8 @@ import {
 } from "~/zerops/inventoryContext";
 import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
-import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
 import { unreadFlowWords } from "~/zerops/hqRead.logic";
-import { PageWaitLine } from "./WaitLine";
+import { Loading } from "../ui/loading";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -933,7 +932,7 @@ function ZeropsUnresolvedStopDetailPage({
       {note !== null ? (
         <Note>{note}</Note>
       ) : (
-        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
+        <Loading count={2} label="This project" shape="cards" />
       )}
     </DetailShell>
   );
@@ -2194,7 +2193,7 @@ export interface Crumb {
 }
 
 /**
- * A detail page whose flow is not read yet: the boot's wait line past its beat while the app reads
+ * A detail page whose flow is not read yet: a stand-in shaped like its cards while the app reads
  * it, and its own words where nothing will (`unreadFlowWords`) — HQ is unavailable, a project not here any more or not
  * the viewer's in Zerops, or reads that failed.
  */
@@ -2208,7 +2207,7 @@ function UnreadDetail({ groupId }: { readonly groupId: string }) {
     orgRole,
   });
   if (words !== null) return <Note>{words}</Note>;
-  return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />;
+  return <Loading count={2} label="This project" shape="cards" />;
 }
 
 function DetailShell({

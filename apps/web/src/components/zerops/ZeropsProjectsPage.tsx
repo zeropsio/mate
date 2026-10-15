@@ -167,6 +167,7 @@ import {
 } from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
+import { Failure } from "../ui/failure";
 import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
@@ -2485,23 +2486,10 @@ export function ZeropsProjectsContent({
         // Nothing read yet: the one wait line at the page's centre, where the boot frame said it.
         <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={listingNotice.message.text} />
       ) : listingNotice.region === "message" ? (
-        <div
-          className="flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
-          role="alert"
-        >
-          <span>{listingNotice.message.text}</span>
-          {listingAffordance}
-        </div>
+        <Failure action={listingAffordance} cause={listingNotice.message.text} />
       ) : // The list's freshness is the title's row's (`ZeropsProjectsHeader`), never a line here.
       null}
-      {pageError === null ? null : (
-        <div
-          className="rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
-          role="alert"
-        >
-          {pageError}
-        </div>
-      )}
+      {pageError === null ? null : <Failure cause={pageError} />}
       {/* Nothing to show while the account's line says Zerops isn't answering: the page's own
           words, and no retry — Try now is the line's (`projectsTroubleView`). */}
       {troubleView.empty === null ? null : (

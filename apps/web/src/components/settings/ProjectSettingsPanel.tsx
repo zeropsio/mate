@@ -75,8 +75,7 @@ import {
   useServerConfigs,
   useThreadShells,
 } from "../../state/entities";
-import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../../zerops/waitLine.logic";
-import { PageWaitLine } from "../zerops/WaitLine";
+import { Loading } from "../ui/loading";
 import { projectEnvironment } from "../../state/projects";
 import { primaryServerProvidersAtom, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -285,7 +284,11 @@ export function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
     count: groups.length,
   });
   if (state === "reading") {
-    return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />;
+    return (
+      <div className="p-8">
+        <Loading label="Your projects" shape="page" />
+      </div>
+    );
   }
   if (!selected) {
     return (

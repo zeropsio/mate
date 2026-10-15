@@ -52,6 +52,7 @@ function page(
   who: string,
   viewer: { readonly roleCode: string; readonly id: string },
   grants: AccessDraft | null = {},
+  grantsUnread?: string,
 ) {
   const view = teamPeople({
     members: { known: true, status: "ready", refused: false, list: TEAM },
@@ -69,6 +70,7 @@ function page(
       <TeamMemberView
         actions={ACTIONS}
         grants={grants}
+        {...(grantsUnread === undefined ? {} : { grantsUnread })}
         organizationName="Acme"
         person={person}
         projects={PROJECTS}
@@ -93,6 +95,7 @@ function page(
     setCustom: body.querySelector('[data-zerops-surface="set-custom-access"]') !== null,
     save: button("Save project access"),
     danger: button("Remove from Acme") ?? button("Withdraw invite"),
+    access: body.querySelector('[aria-label="Project access"]'),
   };
 }
 
@@ -156,5 +159,22 @@ describe("a person's own page", () => {
     { sentence: "An invitation's danger zone withdraws it", who: "ivo", words: "Withdraw invite" },
   ])("$sentence", ({ who, words }) => {
     expect(page(who, OWNER).danger?.textContent).toBe(words);
+  });
+
+  it("Their project access on its way stands in shaped like it, and one that could not be read says why, never reading forever", () => {
+    const reading = page("zora", OWNER, null).access;
+    expect(reading?.querySelector('[role="status"][aria-busy="true"]')).not.toBeNull();
+    expect(reading?.textContent).not.toContain("Reading");
+
+    const refused = page(
+      "zora",
+      OWNER,
+      null,
+      "Zerops didn't let you read their project access.",
+    ).access;
+    expect(refused?.querySelector('[role="alert"]')?.textContent).toContain(
+      "Zerops didn't let you read their project access.",
+    );
+    expect(refused?.querySelector('[aria-busy="true"]')).toBeNull();
   });
 });

@@ -54,7 +54,8 @@ import {
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PersonAvatar } from "../zerops/primitives";
-import { PageWaitLine, WaitLine } from "../zerops/WaitLine";
+import { Loading } from "../ui/loading";
+import { WaitLine } from "../zerops/WaitLine";
 import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { PROVIDER_PRESENTATION } from "./usageProviders";
@@ -588,7 +589,7 @@ export function UsageLimitsSection({
     }));
 
   if (state === "wait") {
-    return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_LIMITS_LINE} />;
+    return <Loading count={1} label={READING_LIMITS_LINE} shape="cards" />;
   }
   if (state === "unavailable" || (state === "none" && unavailableNames.length > 0)) {
     return (
