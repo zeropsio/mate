@@ -185,8 +185,6 @@ export interface CrewWorld {
    * task's landing anchor.
    */
   readonly ownRef: Effect.Effect<string>;
-  /** zcp's dev-server pidfile, as this world's crew reads it. */
-  readonly devServerPidFile: string;
   /** Where the server stores a chat's pictures and files. */
   readonly attachmentsDir: string;
   /** Writes the crew home's files: one writer `backend` on the test service, and `files` over it. */

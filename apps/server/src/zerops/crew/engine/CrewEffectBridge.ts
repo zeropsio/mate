@@ -31,11 +31,10 @@ import type { Command } from "../../../engine/domain/command.ts";
 import type { EffectRow } from "../../../engine/outbox/EffectOutbox.ts";
 import type { EffectHandler, HandlerResult } from "../../../engine/outbox/EffectWorker.ts";
 import type { CheckOutcome } from "../CrewChecks.ts";
-import { crewLane } from "../CrewDefinition.ts";
 import { CREW_ID } from "../CrewHome.ts";
-import { readDeclaredPorts } from "../crewPorts.ts";
 import { CrewReads } from "../CrewReads.ts";
-import { CrewShell } from "../CrewShell.ts";
+import { copyWorkDir } from "../CrewRuntime.ts";
+import { CrewShell, laneDirectory } from "../CrewShell.ts";
 import { CrewStore } from "../CrewStore.ts";
 import {
   CrewWorkspace,
@@ -552,19 +551,14 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
     handlerOf(HANDLER_KINDS.claimRead),
     {
       payload: (asked) => Effect.succeed({ host: asked.host }),
-      // The dev server a claim restarts, and where the claimant's copy is on the service.
+      // What dev serves, the dev server a claim stands in for, and where the claimant's copy runs it.
       verdict: (value, asked) =>
-        Effect.gen(function* () {
-          const command = yield* reads.devServerCommand(asked.host);
-          const yaml = yield* reads.zeropsYaml(asked.host);
-          const port =
-            yaml === undefined ? null : (readDeclaredPorts(yaml, asked.host)?.main ?? null);
-          const repository = yield* shell.repository(asked.host);
-          return {
-            served: value.served,
-            devServer: command === undefined || port === null ? null : { port, command },
-            workDir: crewLane(repository, asked.handle).remoteDir,
-          };
+        Effect.succeed({
+          ...value,
+          workDir:
+            value.devServer === null
+              ? laneDirectory(asked.handle)
+              : copyWorkDir(asked.handle, value.devServer),
         }),
     },
   );
