@@ -16,6 +16,8 @@ const person = (fields: {
   waitsOnViewer: boolean;
   chiefProjectId?: string | null;
   mine?: boolean;
+  role?: string;
+  mayWrite?: boolean;
 }) => ({
   role: "DEVELOPER",
   mayWrite: true,
@@ -50,6 +52,12 @@ const rows: ReadonlyArray<Row> = [
   placement("nobody", { ownerUserId: null, waitsOnViewer: false }, {}),
   // HQ named an owner it sends no person record of: nobody is drawn.
   placement("ghost", { ownerUserId: "u-ghost", waitsOnViewer: false }, {}),
+  // A read-only viewer, who may not operate this Mate: HQ withholds who signs it in and owns it.
+  placement(
+    "guest",
+    { ownerUserId: null, waitsOnViewer: false, role: "READ_ONLY", mayWrite: false },
+    {},
+  ),
   {
     family: "hqPerson",
     id: "u-jan",
@@ -224,6 +232,17 @@ describe("hqProjectPeople", () => {
         waitsOnViewer: false,
         signedInNow: {},
         everSignedIn: {},
+      },
+    },
+    {
+      name: "a viewer who may not operate it is told nothing of who signed it in or owns it",
+      project: "guest",
+      expected: {
+        owned: undefined,
+        owner: null,
+        waitsOnViewer: false,
+        signedInNow: {},
+        everSignedIn: undefined,
       },
     },
   ])("$name", ({ project, expected }) => {
