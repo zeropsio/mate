@@ -12,7 +12,9 @@
 import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/data";
 import {
   changeState,
+  isRecipeProposal,
   placeAddresses,
+  PRODUCTION_DEPLOYING,
   type FlowPullRequest,
   type FlowReleaseRow,
   type GroupFlow,
@@ -168,6 +170,12 @@ function flowLine(
     }
     case "live":
     case "ready-to-release":
+      // A release offered does not make production run anything: a new one runs nothing until its
+      // first release (the onboarding run read "Running" for a minute there).
+      if (production.stop.state === "empty")
+        return { dot: "none", words: ["Not released yet"], trouble: false };
+      if (production.stop.state === "deploying")
+        return { dot: "releasing", words: [PRODUCTION_DEPLOYING], trouble: false };
       return {
         dot: "running",
         words: ["Running", production.stop.version?.label, since].filter(
@@ -334,9 +342,21 @@ export function readyTitle(ready: CardReady): string {
   return `${count} change${ready.count === 1 ? "" : "s"} ready to release`;
 }
 
-/** "On stage, tested. Production runs v2.3.1." */
-export function readyLine(ready: CardReady): string {
-  const where = ready.stage === undefined ? "Merged." : `On ${ready.stage}, tested.`;
+/**
+ * "On stage. Production runs v2.3.1." — where the changes are as the stage's deploys say, never
+ * that anyone tried them there: nothing a release offers says a test ran on the stage.
+ */
+export function readyLine(
+  ready: CardReady,
+  /** The stage runs every change the release carries; `undefined` while that is unread. */
+  onStage: boolean | undefined,
+): string {
+  const where =
+    ready.stage === undefined || onStage === undefined
+      ? "Merged."
+      : onStage
+        ? `On ${ready.stage}.`
+        : `Not on ${ready.stage} yet.`;
   const runs = ready.failed
     ? ready.from === undefined
       ? "Production's last release failed."
@@ -624,7 +644,10 @@ export const CARD_CHANGES = 5;
 export interface CardChange {
   readonly pull: FlowPullRequest;
   readonly open: boolean;
-  /** "Ready to merge", what stops it; "In v1.0.4", "On stage", "Not released yet", "Merged". */
+  /**
+   * "Ready to merge", what stops it; "In v1.0.4", "On stage", "Deploying to stage…", "Not released
+   * yet", "Merged"; "Setup files, not app code" for a Mate's recipe proposal.
+   */
   readonly words: string;
   /** Its words' tone: the change state's for an open one; quiet for a merged one. */
   readonly tone: NonNullable<ReturnType<typeof changeState>>["tone"];
@@ -636,19 +659,55 @@ const newestFirst = (left: string | undefined, right: string | undefined) =>
   (right ?? "").localeCompare(left ?? "");
 
 /**
+ * What the stage that follows `main` runs, as HQ's deploys say it (`stageStandings`): the commits
+ * its services run and the ones being deployed there, whole; and each repository's `main` head.
+ */
+export interface CardStage {
+  readonly runs: ReadonlyArray<string>;
+  readonly deploying: ReadonlyArray<string>;
+  readonly mainHeads: ReadonlyMap<string, string>;
+}
+
+const sameSha = (left: string, right: string | undefined) =>
+  right !== undefined && left.toLowerCase() === right.toLowerCase();
+
+/**
+ * Whether a stage commit `sha` holds the merged change `pull`: its repository's `main` head, or the
+ * squash of a change of it merged at or after it — squashes land on `main` one after the other.
+ */
+function holds(
+  sha: string,
+  pull: FlowPullRequest,
+  merged: ReadonlyArray<FlowPullRequest>,
+  mainHeads: ReadonlyMap<string, string>,
+): boolean {
+  if (sameSha(sha, mainHeads.get(pull.repository))) return true;
+  return merged.some(
+    (other) =>
+      other.repository === pull.repository &&
+      sameSha(sha, other.mergeCommitSha) &&
+      other.mergedAt !== undefined &&
+      pull.mergedAt !== undefined &&
+      other.mergedAt >= pull.mergedAt,
+  );
+}
+
+/**
  * A card's latest changes (the owner, 2026-10-11: "quick history of latest PRs"): the open ones
  * first, each with what stops it, then the merged ones, each with where it went — in the oldest
- * release made after it landed, else on stage, else not released yet where the project has a
- * production, else merged — newest first, `limit` at most. Merged ones are known only while the
- * project's detail is read.
+ * release made after it landed, else on stage where the stage runs it, deploying to it where it is
+ * being deployed there, else not released yet where the project has a production, else merged —
+ * newest first, `limit` at most. A Mate's recipe proposal is its setup files, which go to no place
+ * (the onboarding run read them "On stage" beside the reviewed change). Merged ones are known only
+ * while the project's detail is read.
  */
 export function cardChanges(input: {
   readonly open: ReadonlyArray<FlowPullRequest>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
   /** Newest first, as the flow lists them. */
   readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "taggedAt">>;
-  /** The project has a stage, where a merged change goes first. */
-  readonly stage: boolean;
+  /** What the stage a merged change goes to first runs; `undefined` where the project has none. */
+  readonly stage: CardStage | undefined;
   /** The project has a production, where a merged change is released. */
   readonly production: boolean;
   readonly limit: number;
@@ -668,21 +727,28 @@ export function cardChanges(input: {
   const merged = input.merged
     .filter((pull) => pull.mergedAt !== undefined)
     .toSorted((left, right) => newestFirst(left.mergedAt, right.mergedAt))
-    .map((pull): CardChange => {
+    .map((pull, _index, landed): CardChange => {
       const took = input.releases.findLast(
         (release) => pull.mergedAt !== undefined && release.taggedAt >= pull.mergedAt,
       );
+      const stage = input.stage;
+      const on = (shas: ReadonlyArray<string> | undefined) =>
+        stage !== undefined &&
+        (shas ?? []).some((sha) => holds(sha, pull, landed, stage.mainHeads));
       return {
         pull,
         open: false,
-        words:
-          took !== undefined
+        words: isRecipeProposal(pull)
+          ? "Setup files, not app code"
+          : took !== undefined
             ? `In ${took.tag}`
-            : input.stage
+            : on(stage?.runs)
               ? "On stage"
-              : input.production
-                ? "Not released yet"
-                : "Merged",
+              : on(stage?.deploying)
+                ? "Deploying to stage…"
+                : input.production
+                  ? "Not released yet"
+                  : "Merged",
         tone: "off",
         at: pull.mergedAt,
       };

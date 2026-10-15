@@ -153,6 +153,8 @@ export interface ZeropsProjectsFlowProps<T> {
         readonly stageChips?: ReadonlyMap<string, ProductionChip | undefined> | undefined;
         readonly since?: string | undefined;
         readonly down?: ReadonlyMap<string, ReadonlyArray<string>> | undefined;
+        /** The stage runs every change a release would carry; `undefined` while unread. */
+        readonly releaseOnStage?: boolean | undefined;
       })
     | undefined;
   /** A place's panel: its facts and its actions; without it, its line. */

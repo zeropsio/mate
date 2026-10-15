@@ -10,7 +10,7 @@ import { GitDeliveryStatus } from "../GitDeliveryStatus";
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
-import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import { stageMarks, stageStandings, type ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { deployActivatedAt, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { useNavigate } from "@tanstack/react-router";
@@ -26,6 +26,7 @@ import { useAskMateToFix } from "~/zerops/fixRequest";
 import { useMateWrite } from "~/zerops/useMateWrite";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenReview } from "~/zerops/review";
+import { mainStageOf } from "../review/reviewReads";
 import { mateDecision } from "../mateDecision.logic";
 import { Avatar } from "../primitives";
 import { SidebarMateAge } from "../SidebarMateAge";
@@ -52,6 +53,7 @@ import {
   cardPeople,
   rollBackTarget,
   type CardMateReading,
+  type CardStage,
   type PlaceLine,
 } from "./projectCard.logic";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
@@ -165,9 +167,36 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     return { read, releases, chip, stageChips, down, since, prodItem, prodStop };
   };
 
+  /**
+   * What the stage that follows `main` runs, as HQ's deploys say it, and whether it runs every
+   * change a release would carry — `undefined` while either is unread.
+   */
+  const stageOf = (entry: ProjectsFlowGroup<T>) => {
+    const read = flows.get(entry.group.groupId);
+    const environment = read === undefined ? undefined : mainStageOf(read);
+    if (read === undefined || environment === undefined) return undefined;
+    const standings = stageStandings(environment);
+    const mainHeads = new Map(
+      (read.repos ?? []).flatMap(({ name, mainHead }) =>
+        mainHead === null ? [] : [[name, mainHead] as const],
+      ),
+    );
+    const marks = stageMarks({ contents: read.release.contents, stage: standings, mainHeads });
+    const stage: CardStage = {
+      runs: [...standings.runs.values()].filter((sha) => sha !== undefined),
+      deploying: [...standings.deploying.values()],
+      mainHeads,
+    };
+    return {
+      stage,
+      runsRelease:
+        marks.size === 0 ? undefined : [...marks.values()].every((mark) => mark === "on-stage"),
+    };
+  };
+
   const cardPlaces = (entry: ProjectsFlowGroup<T>) => {
     const { chip, stageChips, down, since } = placesOf(entry);
-    return { chip, stageChips, down, since };
+    return { chip, stageChips, down, since, releaseOnStage: stageOf(entry)?.runsRelease };
   };
 
   const renderPlacePanel = (entry: ProjectsFlowGroup<T>, line: PlaceLine): ReactNode => {
@@ -330,7 +359,11 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       open: entry.flow.pullRequests.map((change) => change.pull),
       merged: read?.merged ?? [],
       releases: read?.releasesKnown === true ? read.releases : [],
-      stage: entry.flow.stages.length > 0,
+      // A stage whose deploys are unread runs nothing this can tell.
+      stage:
+        entry.flow.stages.length === 0
+          ? undefined
+          : (stageOf(entry)?.stage ?? { runs: [], deploying: [], mainHeads: new Map() }),
       production: entry.flow.production.kind !== "absent",
       limit: CARD_CHANGES,
     });
