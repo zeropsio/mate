@@ -338,7 +338,7 @@ function EnvironmentForm({
             htmlFor={`${id}-agent`}
           >
             <span className="flex flex-col gap-0.5">
-              <span>Runs an agent</span>
+              <span>Has its own Mate</span>
               <span className="text-xs text-muted-foreground">{agentSwitchNote(role)}</span>
             </span>
             <Switch
@@ -352,9 +352,9 @@ function EnvironmentForm({
         </div>
 
         <div className="space-y-2">
-          <span className="text-sm">Application</span>
+          <span className="text-sm">Starts with</span>
           <RadioGroup
-            aria-label="Application"
+            aria-label="Starts with"
             className="gap-2"
             onValueChange={(value) => {
               setChosenRecipeId(String(value));
@@ -431,12 +431,12 @@ function environmentWord(role: ZeropsEnvironmentRole): string {
  */
 function agentSwitchNote(role: ZeropsEnvironmentRole): string {
   if (role === "prod") {
-    return "Production usually does not: an agent with a shell in production is a separate decision.";
+    return "Production usually does not: a Mate with a shell in production is a separate decision.";
   }
   if (role === "stage") {
-    return "A stage is usually a deploy target, so this is only worth it if someone will work here.";
+    return "Only if someone will build directly in stage.";
   }
-  return "A Zerops Mate container with a coding agent you can talk to.";
+  return "A Mate you can talk to, with a workspace of its own.";
 }
 
 export function FieldError({ children }: { readonly children: string }) {

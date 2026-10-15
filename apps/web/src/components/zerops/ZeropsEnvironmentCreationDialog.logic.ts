@@ -56,24 +56,24 @@ export function recipeOptions(input: {
   if (input.tier !== undefined) {
     options.push({
       id: "tier",
-      label: `The project's ${input.roleLabel} recipe`,
+      label: "Same services as the project",
       // Every service arrives empty: the platform cannot clone a private
       // repository, so the tier is imported `startWithoutCode` and the first
       // deploy fills them.
       detail:
         input.services.length === 0
-          ? "From the project's repository, on main."
-          : `${input.services.join(", ")} · imported without code; the first deploy fills them`,
+          ? "As the project's setup files describe them."
+          : `${input.services.join(", ")} · your code arrives with the first deploy`,
       choice: input.tier,
     });
   }
   options.push({
     id: "none",
-    label: "Nothing yet",
+    label: "Empty",
     detail:
       options.length === 0 && input.recipe === "absent"
-        ? "This project has no recipe on main yet. The agent sets the application up."
-        : "The agent sets the application up.",
+        ? "This project has no setup files yet. Set it up later."
+        : "Set it up later.",
     choice: { kind: "none" },
   });
   return options;
@@ -167,8 +167,8 @@ export function validateCreationForm(
     // not in this dialog at all — it is a pull request on the group repo.
     errors.recipe =
       context.recipe === "absent"
-        ? "This project has no recipe on main yet. Merge one first, or switch the agent on."
-        : "Take the project's recipe, or switch the agent on to have one set up.";
+        ? "This project has no setup files yet. Merge its setup change first, or give it its own Mate."
+        : "Start with the project's services, or give it its own Mate to set them up.";
   }
   return errors;
 }
@@ -187,7 +187,7 @@ export function creationRecipe(read: {
   return read.loading || read.state === "loading" ? "reading" : read.state;
 }
 
-const RECIPE_UNREADABLE = "The project's recipe can't be read right now.";
+const RECIPE_UNREADABLE = "The project's setup files can't be read right now.";
 
 /** What holds a stage's or a production's form: its recipe still being read, or not readable. */
 export function creationRecipeHold(recipe: CreationRecipe): string | undefined {
@@ -303,7 +303,7 @@ export function newMateSubmit(input: {
 }
 
 /** The quiet line while the group repo is read for the recipe. */
-export const READING_RECIPE = "Reading the project's recipe…";
+export const READING_RECIPE = "Reading the project's setup files…";
 
 /**
  * What the Mate's dialog says: what the button does, and the one quiet line beside it, for what
@@ -392,7 +392,7 @@ export function newMateDoor(input: {
     case "unreadable":
       return {
         kind: "closed",
-        reason: `${crewPossessive(groupName)} recipe can't be read right now.`,
+        reason: `${crewPossessive(groupName)} setup files can't be read right now.`,
         action: { kind: "retry", label: "Try again", busy: input.rereading },
       };
     case "absent":

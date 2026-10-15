@@ -95,7 +95,7 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(html).toContain(">Add a project Mate to Acme Docs<");
     expect(html).toContain("Add Otto to Acme Docs");
     expect(html).not.toContain("Environment");
-    expect(html).not.toContain("Application");
+    expect(html).not.toContain("Starts with");
   });
 
   it("keeps a stage's own form, its title naming the role", () => {
@@ -106,15 +106,15 @@ describe("ZeropsEnvironmentCreationForm", () => {
 
   it("offers the project's own recipe, and nothing yet", () => {
     const html = render();
-    expect(html).toContain("The project's stage recipe");
+    expect(html).toContain("Same services as the project");
     expect(html).toContain("app, db");
-    expect(html).toContain("Nothing yet");
+    expect(html).toContain("Empty");
   });
 
   it("offers only an empty environment when HQ says nothing is merged on main", () => {
     const html = render({ tier: undefined, tierServices: [], recipe: "absent" });
-    expect(html).not.toContain("stage recipe");
-    expect(html).toContain("no recipe on main yet");
+    expect(html).not.toContain("Same services as the project");
+    expect(html).toContain("no setup files yet");
     expect(submitDisabled(html)).toBe(false);
   });
 
@@ -122,8 +122,8 @@ describe("ZeropsEnvironmentCreationForm", () => {
   // main yet" and refused a press, then switched to the recipe by itself.
   it("says it is still reading the recipe, never that there is none, and waits for it", () => {
     const html = render({ tier: undefined, tierServices: [], recipe: "reading" });
-    expect(html).toContain("Reading the project's recipe…");
-    expect(html).not.toContain("no recipe on main yet");
+    expect(html).toContain("Reading the project's setup files…");
+    expect(html).not.toContain("no setup files yet");
     expect(submitDisabled(html)).toBe(true);
   });
 
@@ -134,9 +134,9 @@ describe("ZeropsEnvironmentCreationForm", () => {
       recipe: "unreadable",
       onRecipeRetry: () => {},
     });
-    expect(html).toContain("The project's recipe can't be read right now.");
+    expect(html).toContain("The project's setup files can't be read right now.");
     expect(html).toContain("Try again");
-    expect(html).not.toContain("no recipe on main yet");
+    expect(html).not.toContain("no setup files yet");
     expect(submitDisabled(html)).toBe(true);
   });
 

@@ -44,7 +44,7 @@ describe("F: creation through the hosted client", () => {
           yield* c.chooseDestination("zerops");
           yield* c.fill("Environment", "Shop-b");
           yield* c.agentIsOff;
-          yield* c.text(`The project's ${role} recipe`);
+          yield* c.text("Same services as the project");
           yield* c.click(`Add ${role} to Shop`);
           yield* c.environmentAppears("Shop-b", role === "production" ? "prod" : "stage");
           yield* c.text("Shop-b is set up");

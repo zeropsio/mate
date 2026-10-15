@@ -50,7 +50,7 @@ describe("recipeOptions", () => {
       recipe: "present",
     });
     expect(options.map((option) => option.id)).toEqual(["tier", "none"]);
-    expect(options[0]?.label).toBe("The project's stage recipe");
+    expect(options[0]?.label).toBe("Same services as the project");
   });
 
   /**
@@ -66,7 +66,7 @@ describe("recipeOptions", () => {
       services: ["app", "db"],
       recipe: "present",
     });
-    expect(options[0]?.detail).toBe("app, db · imported without code; the first deploy fills them");
+    expect(options[0]?.detail).toBe("app, db · your code arrives with the first deploy");
   });
 
   it("explains a project with no recipe rather than showing a lone option", () => {
@@ -77,9 +77,7 @@ describe("recipeOptions", () => {
       recipe: "absent",
     });
     expect(options.map((option) => option.id)).toEqual(["none"]);
-    expect(options[0]?.detail).toBe(
-      "This project has no recipe on main yet. The agent sets the application up.",
-    );
+    expect(options[0]?.detail).toBe("This project has no setup files yet. Set it up later.");
   });
 
   // F9 (e2e, 2026-10-03): a recipe not read yet read as a missing one for a minute.
@@ -92,7 +90,7 @@ describe("recipeOptions", () => {
         services: [],
         recipe,
       });
-      expect(options[0]?.detail).toBe("The agent sets the application up.");
+      expect(options[0]?.detail).toBe("Set it up later.");
     },
   );
 
@@ -103,7 +101,7 @@ describe("recipeOptions", () => {
       services: [],
       recipe: "present",
     });
-    expect(options[0]?.detail).toBe("From the project's repository, on main.");
+    expect(options[0]?.detail).toBe("As the project's setup files describe them.");
   });
 });
 
@@ -222,7 +220,7 @@ describe("validateCreationForm", () => {
       { ...valid, withAgent: false, recipeId: "none" },
       { options, recipe: "present" },
     );
-    expect(errors.recipe).toContain("switch the agent on");
+    expect(errors.recipe).toContain("give it its own Mate");
   });
 
   it("refuses an option that is not on offer", () => {
@@ -244,19 +242,19 @@ describe("validateCreationForm, on an environment with no agent", () => {
     {
       recipe: "absent",
       withAgent: false,
-      says: "This project has no recipe on main yet. Merge one first, or switch the agent on.",
+      says: "This project has no setup files yet. Merge its setup change first, or give it its own Mate.",
     },
-    { recipe: "reading", withAgent: false, says: "Reading the project's recipe…" },
-    { recipe: "reading", withAgent: true, says: "Reading the project's recipe…" },
+    { recipe: "reading", withAgent: false, says: "Reading the project's setup files…" },
+    { recipe: "reading", withAgent: true, says: "Reading the project's setup files…" },
     {
       recipe: "unreadable",
       withAgent: false,
-      says: "The project's recipe can't be read right now.",
+      says: "The project's setup files can't be read right now.",
     },
     {
       recipe: "unreadable",
       withAgent: true,
-      says: "The project's recipe can't be read right now.",
+      says: "The project's setup files can't be read right now.",
     },
   ] as const)(
     "with the recipe $recipe, the agent $withAgent: $says",
@@ -283,7 +281,7 @@ describe("validateCreationForm, on an environment with no agent", () => {
         { name: "Acme - production", withAgent: false, recipeId: "none" },
         { options, recipe: "present" },
       ).recipe,
-    ).toBe("Take the project's recipe, or switch the agent on to have one set up.");
+    ).toBe("Start with the project's services, or give it its own Mate to set them up.");
   });
 });
 
@@ -533,7 +531,7 @@ describe("newMateWords — what the Mate's dialog says", () => {
       input: { groupName: "Acme Docs", botName: "Quinn", recipe: "reading", waitingOn: null },
       words: {
         button: "Add Quinn to Acme Docs",
-        line: "Reading the project's recipe…",
+        line: "Reading the project's setup files…",
       },
     },
     {
@@ -576,7 +574,7 @@ describe("newMateWords — what the Mate's dialog says", () => {
 describe("newMateDoor — whether the project takes another Mate, and why not", () => {
   const CLEO = { projectId: "cleo-project", name: "Cleo" };
   const JUNO = { projectId: "juno-project", name: "Juno" };
-  const UNREADABLE = "Beviro's recipe can't be read right now.";
+  const UNREADABLE = "Beviro's setup files can't be read right now.";
   it.each<{
     readonly case: string;
     readonly input: Partial<Parameters<typeof newMateDoor>[0]>;
