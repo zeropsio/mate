@@ -37,7 +37,7 @@ describe("mateAddresses", () => {
    */
   it.each<{ name: string; input: MateAddressInput; expected: ReturnType<typeof brief> }>([
     {
-      name: "a dev/stage pair reads as dev and stage, dev first",
+      name: "a dev/stage pair reads as dev and preview, dev first: the Mate's preview is never its project's stage",
       input: {
         services: [
           svc("appstage", ["https://appstage-1-3000.example.app"]),
@@ -47,7 +47,7 @@ describe("mateAddresses", () => {
       },
       expected: [
         { service: "appdev", role: "dev", url: "https://appdev-1-3000.example.app" },
-        { service: "appstage", role: "stage", url: "https://appstage-1-3000.example.app" },
+        { service: "appstage", role: "preview", url: "https://appstage-1-3000.example.app" },
       ],
     },
     {
@@ -60,7 +60,7 @@ describe("mateAddresses", () => {
       },
       expected: [
         { service: "app", role: "dev", url: "https://app-1-3000.example.app" },
-        { service: "appstage", role: "stage", url: "https://appstage-1-3000.example.app" },
+        { service: "appstage", role: "preview", url: "https://appstage-1-3000.example.app" },
       ],
     },
     {
@@ -74,7 +74,7 @@ describe("mateAddresses", () => {
       },
       expected: [
         { service: "webdev", role: "dev", url: "https://webdev-1-3000.example.app" },
-        { service: "webstage", role: "stage", url: "https://webstage-1-3000.example.app" },
+        { service: "webstage", role: "preview", url: "https://webstage-1-3000.example.app" },
         { service: "docs", role: undefined, url: "https://docs-1-80.example.app" },
       ],
     },
@@ -133,7 +133,7 @@ describe("mateAddresses", () => {
       },
       expected: [
         { service: "app", role: "dev", url: "https://app-1-3000.example.app" },
-        { service: "appstage", role: "stage", url: "https://appstage-1-3000.example.app" },
+        { service: "appstage", role: "preview", url: "https://appstage-1-3000.example.app" },
         { service: "app production", role: "production", url: "https://shop.example.com" },
       ],
     },
