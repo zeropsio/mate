@@ -129,3 +129,36 @@ describe("a card with no change to list", () => {
     if (failure !== undefined) expect(text).not.toContain("No changes yet");
   });
 });
+
+// The onboarding run: a guest's card read "No changes yet — a Mate opens one as it works" beside a
+// production running v0.1.0, while HQ withheld the project's changes from her.
+describe("a card's changes it may not read", () => {
+  it.each([
+    { case: "withheld", unknown: "Needs Basic user access", says: "Needs Basic user access" },
+    { case: "known to be none", unknown: undefined, says: "No changes yet" },
+  ])(
+    "says why where its changes are $case, never that there are none",
+    async ({ unknown, says }) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <CardChanges
+            changes={[]}
+            changesKnown
+            mateName={() => undefined}
+            onOpen={() => {}}
+            unknown={unknown}
+          />,
+        );
+      });
+      unmounts.push(() => {
+        root.unmount();
+        container.remove();
+      });
+      expect(container.textContent).toContain(says);
+      if (unknown !== undefined) expect(container.textContent).not.toContain("No changes yet");
+    },
+  );
+});

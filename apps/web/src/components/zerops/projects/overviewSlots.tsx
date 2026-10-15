@@ -56,6 +56,7 @@ import {
   type CardStage,
   type PlaceLine,
 } from "./projectCard.logic";
+import { CHANGES_UNKNOWN_LINE } from "./projectsView.logic";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
 
 /** What a card's places need of an environment: how its services stand and where they answer. */
@@ -388,6 +389,11 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         }}
         mateName={mateName}
         releases={releases}
+        unknown={
+          entry.changesUnknown === undefined
+            ? undefined
+            : CHANGES_UNKNOWN_LINE[entry.changesUnknown]
+        }
         onOpen={(change, from) => {
           openReview(
             {

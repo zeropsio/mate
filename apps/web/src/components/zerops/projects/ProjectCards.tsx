@@ -250,6 +250,7 @@ export function CardChanges({
   face,
   mateName,
   onOpen,
+  unknown,
 }: {
   readonly changes: ReadonlyArray<CardChange>;
   /** HQ has told the project's changes: until then none listed is no answer (`changesKnown`). */
@@ -266,13 +267,17 @@ export function CardChanges({
   readonly face?: ((projectId: string) => ReactNode) | undefined;
   readonly mateName: (projectId: string) => string | undefined;
   readonly onOpen: (change: CardChange, from: HTMLElement) => void;
+  /** Why its changes are not known, where HQ did not tell them (`changesUnknownOf`). */
+  readonly unknown?: string | undefined;
 }) {
   const rows = cardChangeRows(changes, releases);
   return (
     <section aria-label="Changes" className="ov-sec" data-zerops-surface="card-changes">
       <h3 className="ov-sec-name">Changes</h3>
       {rows.length === 0 ? (
-        changesFailure !== undefined ? (
+        unknown !== undefined ? (
+          <p className="ov-sec-empty">{unknown}</p>
+        ) : changesFailure !== undefined ? (
           <p className="ov-sec-empty">{changesFailure}</p>
         ) : changesKnown ? (
           <p className="ov-sec-empty">No changes yet — a Mate opens one as it works.</p>
@@ -544,7 +549,8 @@ function ProjectCard<T>({
       )}
       <CardMates all={page !== undefined} entry={entry} onAdd={page?.onAddMate} props={props} />
       {page?.people}
-      {unknown.kind === "unread" ? (
+      {/* Its changes say why they are unknown where the card draws them. */}
+      {unknown.kind === "unread" && props.renderChanges === undefined ? (
         <p className="ov-card-note" data-zerops-row-line="unread">
           {unknown.text}
         </p>
