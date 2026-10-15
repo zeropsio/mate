@@ -1123,7 +1123,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                         {getProviderStatusMessage(entry.snapshot)}
                       </p>
                       <Button
-                        className="mt-1 px-0 text-foreground"
+                        className="mt-1"
                         onClick={() => {
                           props.onRequestClose?.();
                           props.onOpenProviderSetup?.(entry.instanceId);

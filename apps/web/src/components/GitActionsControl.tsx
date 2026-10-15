@@ -682,7 +682,6 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                                 <Button
                                   variant="secondary"
                                   size="sm"
-                                  className="h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground"
                                   onClick={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();

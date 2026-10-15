@@ -1667,7 +1667,7 @@ export function ZeropsStopPane({
               </ul>
               {earlier === 0 || allReleases ? null : (
                 <Button
-                  className="my-1 text-muted-foreground"
+                  className="my-1"
                   onClick={() => {
                     setAllReleases(true);
                   }}

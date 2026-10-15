@@ -106,39 +106,7 @@
   {
     "path": "apps/web/src/components/GitActionsControl.tsx",
     "kind": "Literal",
-    "fingerprint": "<Button> px-1.5 in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/GitActionsControl.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> rounded-[.25rem] in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/GitActionsControl.tsx",
-    "kind": "Literal",
     "fingerprint": "<Button> rounded-e-none in \"cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/GitActionsControl.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-[10px] in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/GitActionsControl.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-warning-foreground in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
@@ -512,38 +480,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> gap-2 in \"shrink-0 gap-2 px-2 text-secondary-label sm:px-3\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> px-2 in \"shrink-0 gap-2 px-2 text-secondary-label sm:px-3\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> sm:px-3 in \"shrink-0 gap-2 px-2 text-secondary-label sm:px-3\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-secondary-label in \"shrink-0 gap-2 px-2 text-secondary-label sm:px-3\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
     "kind": "Literal",
     "fingerprint": "<Alert> alert-glass in \"alert-glass rounded-2xl\"",
@@ -643,22 +579,6 @@
     "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> [--control-icon-color:currentColor] in \"[--control-icon-color:currentColor] text-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> gap-1 in \"shrink-0 gap-1 px-1.5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> px-1.5 in \"shrink-0 gap-1 px-1.5\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
@@ -816,22 +736,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> gap-1 in \"shrink-0 gap-1 px-1.5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> px-1.5 in \"shrink-0 gap-1 px-1.5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuTrigger> border-b in \"pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
@@ -970,22 +874,6 @@
   {
     "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
     "kind": "Literal",
-    "fingerprint": "<Button> px-0 in \"mt-1 px-0 text-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-foreground in \"mt-1 px-0 text-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ModelPickerContent.tsx",
-    "kind": "Literal",
     "fingerprint": "<ComboboxEmpty> font-normal in \"not-empty:py-6 empty:h-0 text-xs font-normal leading-snug\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
@@ -1067,22 +955,6 @@
     "path": "apps/web/src/components/chat/TerminalContextInlineChip.tsx",
     "kind": "Literal",
     "fingerprint": "<TooltipPopup> leading-tight in \"max-w-80 whitespace-pre-wrap leading-tight\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> px-2 in \"h-7 px-2 text-xs\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-xs in \"h-7 px-2 text-xs\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
@@ -1522,14 +1394,6 @@
   {
     "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
     "kind": "Literal",
-    "fingerprint": "<Button> gap-1.5 in \"h-7 gap-1.5 px-2 text-xs\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
     "fingerprint": "<Button> hover:text-update-foreground in \"text-update-foreground hover:text-update-foreground\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
@@ -1546,46 +1410,6 @@
   {
     "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
     "kind": "Literal",
-    "fingerprint": "<Button> p-0 in \"size-5 rounded-sm p-0\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> p-0 in \"size-6 shrink-0 rounded-sm p-0\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> px-2 in \"h-7 gap-1.5 px-2 text-xs\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> rounded-sm in \"size-5 rounded-sm p-0\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> rounded-sm in \"size-6 shrink-0 rounded-sm p-0\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
     "fingerprint": "<Button> text-update-foreground in \"text-update-foreground hover:text-update-foreground\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
@@ -1595,14 +1419,6 @@
     "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> text-warning in \"text-warning hover:text-warning\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-xs in \"h-7 gap-1.5 px-2 text-xs\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
@@ -1664,22 +1480,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> hover:text-muted-foreground in \"text-muted-foreground/60 hover:text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-muted-foreground/60 in \"text-muted-foreground/60 hover:text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
     "kind": "Literal",
     "fingerprint": "<Collapsible> border-border/70 in \"mt-2 border-t border-border/70\"",
@@ -1696,49 +1496,9 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> gap-1.5 in \"h-7 shrink-0 cursor-pointer gap-1.5 px-2.5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> px-2.5 in \"h-7 shrink-0 cursor-pointer gap-1.5 px-2.5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/settings/SettingsSidebarNav.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarFooter> p-[var(--sidebar-content-inset)] in \"p-[var(--sidebar-content-inset)]\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/SourceControlSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> gap-1.5 in \"h-8 gap-1.5 px-3 text-xs\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/SourceControlSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> px-3 in \"h-8 gap-1.5 px-3 text-xs\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/SourceControlSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-xs in \"h-8 gap-1.5 px-3 text-xs\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
@@ -1960,14 +1720,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-muted-foreground in \"my-1 text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
     "kind": "Literal",
     "fingerprint": "<DialogPanel> gap-5 in \"flex flex-col gap-5 space-y-0\"",
@@ -1995,14 +1747,6 @@
     "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
     "kind": "Literal",
     "fingerprint": "<RadioGroup> gap-2 in \"gap-2\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectMenu.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-muted-foreground in \"size-7 text-muted-foreground\"",
     "owner": "web-intake",
     "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
     "expires": "F6"

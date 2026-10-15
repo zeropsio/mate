@@ -247,9 +247,8 @@ function ProviderEnvironmentSection(props: {
         <span className="text-xs font-medium text-foreground">Environment variables</span>
         <Button
           type="button"
-          size="md"
+          size="sm"
           variant="secondary"
-          className="h-7 gap-1.5 px-2 text-xs"
           onClick={() =>
             setRows([
               ...rows,
@@ -710,7 +709,6 @@ export function ProviderInstanceCard({
                       size="icon-sm"
                       variant="ghost"
                       className={cn(
-                        "size-5 rounded-sm p-0",
                         versionAdvisory.emphasis === "strong"
                           ? "text-warning hover:text-warning"
                           : "text-update-foreground hover:text-update-foreground",
@@ -772,7 +770,7 @@ export function ProviderInstanceCard({
                                 type="button"
                                 size="icon-sm"
                                 variant="ghost"
-                                className="size-6 shrink-0 rounded-sm p-0"
+                                className="shrink-0"
                                 onClick={() =>
                                   copyToClipboard(updateCommand, {
                                     providerName: displayName,

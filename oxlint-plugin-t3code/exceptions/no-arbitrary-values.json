@@ -112,22 +112,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/GitActionsControl.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> rounded-[.25rem] in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/GitActionsControl.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-[10px] in \"h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/RightPanelTabs.tsx",
     "kind": "Literal",
     "fingerprint": "<> pb-[calc(var(--workspace-topbar-height)+--spacing(6))] in \"pb-[calc(var(--workspace-topbar-height)+--spacing(6))]\"",

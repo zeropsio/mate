@@ -89,7 +89,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
           variant="ghost"
           aria-expanded={expanded}
           aria-label={label}
-          className="shrink-0 gap-1 px-1.5"
+          className="shrink-0"
           onClick={onToggle}
           onPointerDown={(event) => event.preventDefault()}
         >

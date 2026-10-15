@@ -2749,8 +2749,8 @@ export function ArchivedThreadsPanel() {
                   <Button
                     type="button"
                     variant="secondary"
-                    size="md"
-                    className="h-7 shrink-0 cursor-pointer gap-1.5 px-2.5"
+                    size="sm"
+                    className="shrink-0"
                     onClick={() => {
                       void (async () => {
                         const result = await unarchiveThread(

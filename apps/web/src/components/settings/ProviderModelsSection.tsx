@@ -266,7 +266,6 @@ export function ProviderModelsSection({
                           <Button
                             size="icon-sm"
                             variant="ghost"
-                            className="text-muted-foreground/60 hover:text-muted-foreground"
                             aria-label={`Details for ${model.name}`}
                           />
                         }
