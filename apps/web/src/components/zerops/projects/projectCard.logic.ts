@@ -809,7 +809,10 @@ export function cardChangeRows(
 /** A release as production's panel reads it: newest first, as the flow lists them. */
 type PanelRelease = Pick<FlowReleaseRow, "tag" | "taggedAt" | "standing" | "rollBack">;
 
-/** The changes the release production runs brought: merged after the one before it was made. */
+/**
+ * The changes the release production runs brought: the app's own, merged after the one before it
+ * was made. The group's setup (its import files) is no change a release ships.
+ */
 export function broughtBy(
   merged: ReadonlyArray<FlowPullRequest>,
   releases: ReadonlyArray<PanelRelease>,
@@ -820,6 +823,7 @@ export function broughtBy(
   const before = releases[at + 1];
   return merged.filter(
     (pull) =>
+      pull.kind === "code" &&
       pull.mergedAt !== undefined &&
       pull.mergedAt <= live.taggedAt &&
       (before === undefined || pull.mergedAt > before.taggedAt),

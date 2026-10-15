@@ -745,6 +745,14 @@ describe("production's panel", () => {
     expect(broughtBy(merged, [])).toEqual([]);
   });
 
+  it("leaves the group's own setup out of what a release brought: only the app's changes", () => {
+    const merged = [
+      pull({ number: 1, mergedAt: "2026-10-03T10:00:00Z" }),
+      pull({ number: 1, mergedAt: "2026-10-04T10:00:00Z", kind: "recipe", repository: "recipe" }),
+    ];
+    expect(broughtBy(merged, releases).map((entry) => entry.kind)).toEqual(["code"]);
+  });
+
   it("offers going back to the newest release before it that may be rolled back to", () => {
     expect(rollBackTarget(releases)).toBe("v2.2.0");
     expect(rollBackTarget([release("v1.0.0", "2026-09-01T00:00:00Z", "live")])).toBeUndefined();
