@@ -152,6 +152,7 @@ import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { MateFace, StatusDot } from "./primitives";
 import { useOverviewSlots } from "./projects/overviewSlots";
 import { OverviewCardMate } from "./projects/OverviewCardMate";
+import { ArrivalWelcome } from "./projects/ArrivalWelcome";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsHqCard } from "./ZeropsHqCard";
@@ -2020,6 +2021,22 @@ export function ZeropsProjectsContent({
     );
     return { waits, mine };
   }, [candidates, personFacts, waiting.items]);
+  // A first visit's welcome (`arrival.logic`): the projects as listed, which hold a Mate of the
+  // viewer's own and which take one; decided once who started each Mate and HQ's offers are read.
+  const arrivalApps = useMemo(
+    () =>
+      flowGroups.map((entry) => ({
+        groupId: entry.group.groupId,
+        name: entry.group.name,
+        mine: filterFacts.mine.has(entry.group.groupId),
+        addMate: addMateOffer(entry.group.groupId).kind === "allowed",
+      })),
+    [addMateOffer, filterFacts, flowGroups],
+  );
+  const arrivalSettled =
+    candidates.every(
+      (candidate) => !hasMate(candidate) || personFacts[candidate.project.id] !== undefined,
+    ) && flowGroups.every((entry) => addMateOffer(entry.group.groupId).kind !== "unknown");
   const keptGroups = flowGroups.filter((entry) =>
     overviewKeeps({
       show: search.show,
@@ -2503,6 +2520,16 @@ export function ZeropsProjectsContent({
           {notice}
         </p>
       ))}
+      {project === undefined && activeOrganization !== null ? (
+        <ArrivalWelcome
+          apps={arrivalApps}
+          onStart={addMate}
+          orgId={activeOrganization.id}
+          organizationName={activeOrganization.name}
+          settled={arrivalSettled}
+          viewer={activeOrganization}
+        />
+      ) : null}
       {project === undefined && flowGroups.some((entry) => entry.flow.mates.length > 0) ? (
         <OverviewFilters
           mine={flowGroups.filter((entry) => filterFacts.mine.has(entry.group.groupId)).length}
