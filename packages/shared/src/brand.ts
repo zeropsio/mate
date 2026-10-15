@@ -624,13 +624,13 @@ export const RADII = {
 } as const;
 
 /**
- * The one type scale: five steps, measured from what the app set most (12 and 14 px carried
- * nine in ten sizes). A size between two steps takes the nearer one. Pixels.
+ * The one type scale: five steps, the sizes the owner's design canvas is built on. A size between
+ * two steps takes the nearer one. Pixels.
  */
 export const TYPE_SCALE = {
   caption: { fontSize: 12, lineHeight: 16 },
-  body: { fontSize: 14, lineHeight: 20 },
-  emphasis: { fontSize: 16, lineHeight: 24 },
+  body: { fontSize: 13, lineHeight: 20 },
+  emphasis: { fontSize: 15, lineHeight: 24 },
   title: { fontSize: 20, lineHeight: 28 },
   display: { fontSize: 28, lineHeight: 36 },
 } as const;

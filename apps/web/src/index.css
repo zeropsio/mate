@@ -221,9 +221,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   /* generated:scale-tokens start */
   --text-caption: 0.75rem;
   --text-caption--line-height: 1rem;
-  --text-body: 0.875rem;
+  --text-body: 0.8125rem;
   --text-body--line-height: 1.25rem;
-  --text-emphasis: 1rem;
+  --text-emphasis: 0.9375rem;
   --text-emphasis--line-height: 1.5rem;
   --text-title: 1.25rem;
   --text-title--line-height: 1.75rem;

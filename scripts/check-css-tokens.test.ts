@@ -101,9 +101,9 @@ describe("CSS token scanning", () => {
 
 describe("the scale in hand-written CSS", () => {
   it.each([
-    ["font-size", "14px", undefined],
+    ["font-size", "13px", undefined],
     ["font-size", "0.75rem", undefined],
-    ["font-size", "13px", "font-size"],
+    ["font-size", "14px", "font-size"],
     ["font-size", "0.86em", undefined],
     ["font-size", "var(--text-line)", undefined],
     ["border-radius", "8px", undefined],
@@ -129,7 +129,7 @@ describe("the scale in hand-written CSS", () => {
     assert.deepStrictEqual(
       countOffScaleDeclarations(`
         :root { --radius-x: 10px; }
-        .a { font-size: 13px; border-radius: 10px; }
+        .a { font-size: 14px; border-radius: 10px; }
         .b { font-size: 12px; transition: opacity 120ms ease; }
       `),
       { "font-size": 1, "border-radius": 1, duration: 1 },
@@ -139,13 +139,13 @@ describe("the scale in hand-written CSS", () => {
   it("refuses a web stylesheet that adds a value between the steps and ignores other clients", () => {
     const budget = { "font-size": 1, "border-radius": 0, duration: 0 } as const;
     const within = checkOffScaleBudget(
-      [{ path: "apps/web/src/a.css", source: ".a { font-size: 13px; }" }],
+      [{ path: "apps/web/src/a.css", source: ".a { font-size: 14px; }" }],
       budget,
     );
     assert.deepStrictEqual(within.messages, []);
     const over = checkOffScaleBudget(
       [
-        { path: "apps/web/src/a.css", source: ".a { font-size: 13px; }" },
+        { path: "apps/web/src/a.css", source: ".a { font-size: 14px; }" },
         { path: "apps/web/src/b.css", source: ".b { font-size: 11px; }" },
         { path: "apps/mobile/global.css", source: ".c { border-radius: 10px; }" },
       ],

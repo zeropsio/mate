@@ -338,7 +338,7 @@ export const countOffScaleDeclarations = (
  * change that removes some lowers it; a new size, corner or length between the steps is refused.
  */
 export const OFF_SCALE_BUDGET: Readonly<Record<ScaleProperty, number>> = {
-  "font-size": 122,
+  "font-size": 83,
   "border-radius": 105,
   duration: 105,
 };
