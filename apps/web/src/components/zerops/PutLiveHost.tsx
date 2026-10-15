@@ -1,0 +1,210 @@
+/**
+ * *Put it live* over whatever is on screen (`putLive.ts`): the sheet when a door asks for it, and
+ * each project's run, driven from here so it outlives the sheet and the view the person moves to.
+ * A run merges the change when it still waits, makes production with what the project already
+ * says — its name after the project, its recipe, no agent — and releases to it once HQ holds it;
+ * the conversation draws where it got (`PutLiveTop`).
+ */
+import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { useAtomValue } from "@effect/atom-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { hqNavigationAtom } from "~/state/zerops";
+import { useFlowVerbs } from "~/zerops/flowVerbs";
+import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
+import { useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
+import { usePutLive, type PutLiveAsk } from "~/zerops/putLive";
+import { putLiveNext, putLiveSheet, type PutLiveRun } from "~/zerops/putLive.logic";
+import { useOpenReview } from "~/zerops/review";
+import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
+import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+
+import { Dialog } from "../ui/dialog";
+import { emptyApplications } from "./projects/emptyApps.logic";
+import { PutLiveSheet } from "./PutLiveSheet";
+import { proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+
+export function PutLiveHost() {
+  const { status } = useZeropsSession();
+  const asked = usePutLive((state) => state.asked);
+  const close = usePutLive((state) => state.close);
+  const runs = usePutLive((state) => state.runs);
+  const [shown, setShown] = useState(asked);
+  if (asked !== null && asked !== shown) setShown(asked);
+  if (status !== "signed-in") return null;
+  return (
+    <>
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) close();
+        }}
+        onOpenChangeComplete={(open) => {
+          if (!open && usePutLive.getState().asked === null) setShown(null);
+        }}
+        open={asked !== null}
+      >
+        {shown === null ? null : <PutLiveSheetContainer ask={shown} key={shown.groupId} />}
+      </Dialog>
+      {[...runs.values()].map((run) =>
+        run.phase === "live" || run.phase === "failed" ? null : (
+          <PutLiveDriver key={run.groupId} run={run} />
+        ),
+      )}
+    </>
+  );
+}
+
+/** The project as the menu draws it: its name, and its environments for the creation. */
+function useGroupEntry(groupId: string) {
+  const { activeOrganization } = useZeropsSession();
+  const { listing } = useZeropsCandidates();
+  const presses = useMatePresses();
+  const hqStructure = useAtomValue(hqNavigationAtom);
+  return useMemo(
+    () =>
+      buildZeropsGroupTree(heldCandidates(listing).rows, {
+        order: "name",
+        births: placedPressesIn(presses, activeOrganization?.id),
+        apps: emptyApplications(hqStructure, activeOrganization?.id),
+      }).groups.find((candidate) => candidate.group.groupId === groupId),
+    [activeOrganization?.id, groupId, hqStructure, listing, presses],
+  );
+}
+
+function PutLiveSheetContainer({ ask }: { readonly ask: PutLiveAsk }) {
+  const entry = useGroupEntry(ask.groupId);
+  const recipe = useZeropsGroupRecipe({ appId: ask.groupId, tier: "production", enabled: true });
+  const start = usePutLive((state) => state.start);
+  const close = usePutLive((state) => state.close);
+  const openReview = useOpenReview();
+  const project = entry?.group.name ?? "The project";
+  const model = putLiveSheet({ project, change: ask.change, recipe: recipe.state });
+  const { description: _description, ...change } = ask.change;
+  return (
+    <PutLiveSheet
+      model={model}
+      onPutLive={() => {
+        start({ groupId: ask.groupId, project, change });
+      }}
+      onSeeCode={() => {
+        close();
+        openReview({
+          kind: "change",
+          groupId: ask.groupId,
+          repository: ask.change.repository,
+          number: ask.change.number,
+        });
+      }}
+    />
+  );
+}
+
+/** What a run reads of its project's flow. */
+function factsOf(flow: ZeropsProjectFlow) {
+  return {
+    production: flow.environments.find((entry) => entry.tier === "production")?.projectId,
+    gate: flow.release.gate,
+    releases: flow.releases,
+  };
+}
+
+/**
+ * One run, driven step by step: each step's write is sent once per time the run reaches it, and
+ * what it came to moves the run on. Mounted while the run is under way; a failure unmounts it, and
+ * *Try again* mounts it afresh at the step that failed.
+ */
+function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
+  const step = usePutLive((state) => state.step);
+  const verbs = useFlowVerbs();
+  const create = useEnvironmentCreation();
+  const entry = useGroupEntry(run.groupId);
+  const recipe = useZeropsGroupRecipe({
+    appId: run.groupId,
+    tier: "production",
+    enabled: run.phase === "creating" && run.productionId === undefined,
+  });
+  const flow = useProjectFlows(
+    useMemo(() => [run.groupId], [run.groupId]),
+    { compare: true },
+  ).flows.get(run.groupId);
+  // The step whose write was sent: a re-render never sends it twice.
+  const sent = useRef<string | null>(null);
+  const key = `${run.phase}:${run.productionId ?? ""}:${run.tag ?? ""}`;
+
+  useEffect(() => {
+    if (sent.current === key) return;
+    const { groupId } = run;
+    const fail = (words: string, halfMade?: boolean) =>
+      step(groupId, { kind: "failed", words, halfMade });
+
+    if (run.phase === "merging" && run.change !== undefined) {
+      sent.current = key;
+      void verbs
+        .merge(groupId, run.change, run.change.head)
+        .then((outcome) => (outcome.ok ? step(groupId, { kind: "merged" }) : fail(outcome.reason)));
+      return;
+    }
+
+    if (run.phase === "creating" && run.productionId === undefined) {
+      if (entry === undefined || recipe.loading || recipe.state === "loading") return;
+      sent.current = key;
+      if (recipe.tier === undefined) {
+        fail(
+          recipe.state === "absent"
+            ? "The project has no production recipe yet: ask the Mate to add one."
+            : "The project's recipe can't be read right now.",
+        );
+        return;
+      }
+      const { group, environments } = entry;
+      void create({
+        group,
+        environments: environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
+        role: "prod",
+        choice: {
+          name: proposedEnvironmentName({
+            groupName: group.name,
+            roleLabel: "production",
+            taken: environments.flatMap(({ item }) =>
+              item === undefined ? [] : [item.project.name],
+            ),
+          }),
+          withAgent: false,
+          recipe: recipe.tier,
+        },
+      }).then((made) => {
+        if (made.kind === "refused") {
+          fail(made.reason ?? "Production couldn't be made.");
+          return;
+        }
+        const { outcome } = made;
+        if (outcome.ok) step(groupId, { kind: "created", productionId: outcome.projectId });
+        else fail(outcome.error, outcome.projectId !== undefined || outcome.uncertain === true);
+      });
+      return;
+    }
+
+    if (flow === undefined) return;
+    const next = putLiveNext(run, factsOf(flow));
+    if (next.kind === "wait") return;
+    sent.current = key;
+    if (next.kind === "failed") {
+      fail(next.words);
+      return;
+    }
+    if (next.kind === "live") {
+      step(groupId, { kind: "live", at: Date.now() });
+      return;
+    }
+    void verbs.release(flow).then((outcome) => {
+      if (outcome.ok)
+        step(groupId, { kind: "released", tag: outcome.tag ?? flow.release.suggestion });
+      else fail(outcome.reason);
+    });
+  }, [create, entry, flow, key, recipe, run, step, verbs]);
+
+  return null;
+}
