@@ -62,16 +62,19 @@ function askedOf(marker: MateStandUpMarker, viewer: string | undefined): boolean
 
 /**
  * Whether a conversation is where its Mate's stand-up waits: the Mate's main conversation, or a
- * draft while the Mate has no conversation yet for the ask to go into. Once one exists the ask goes
- * there, and a draft is a new chat like any other.
+ * draft while the Mate is read to have no conversation yet for the ask to go into. Once one exists
+ * the ask goes there, and a draft is a new chat like any other; before the Mate's conversations
+ * are read, a draft waits on nothing.
  */
 export function mateStandUpAwaitedIn(input: {
   /** The conversation on screen: the Mate's main one, another, or a draft. */
   readonly conversation: "main" | "other" | "draft";
   /** The Mate holds a conversation, as its environment's conversations read so far. */
   readonly mateHasConversation: boolean;
+  /** The Mate's conversations have been read at all. */
+  readonly conversationsRead: boolean;
 }): boolean {
-  if (input.conversation === "draft") return !input.mateHasConversation;
+  if (input.conversation === "draft") return input.conversationsRead && !input.mateHasConversation;
   return input.conversation === "main";
 }
 
@@ -83,7 +86,7 @@ export function mateStandUpAwaitedIn(input: {
 export function mateStandUpHandOver<Id extends string>(input: {
   readonly marker: MateStandUpMarker;
   readonly viewer: string | undefined;
-  /** The draft opened while its Mate had no conversation (or none read yet). */
+  /** The draft opened while its Mate was read to have no conversation. */
   readonly openedBeforeConversation: boolean;
   /** Something is typed in the draft: it is the person's, and stays. */
   readonly typed: boolean;

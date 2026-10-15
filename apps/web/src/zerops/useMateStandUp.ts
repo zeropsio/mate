@@ -14,7 +14,7 @@ import { zeropsCommands } from "../state/zeropsCommands";
 import { useMateOfEnvironment } from "./accountEnvironments";
 import { useMateSetup, refreshMateSetup } from "./useMateSetup";
 
-import { useThreadShells } from "../state/entities";
+import { useEnvironmentConversationsRead, useThreadShells } from "../state/entities";
 import { zeropsMateAt } from "./mateIdentities";
 import {
   mateStandUpAskLine,
@@ -81,10 +81,12 @@ export function useMateStandUp(input: {
           ).primary,
     [environmentId, threads],
   );
+  const conversationsRead = useEnvironmentConversationsRead(environmentId);
   const main = threadRef !== null && primary?.id === threadRef.threadId;
   const awaitedHere = mateStandUpAwaitedIn({
     conversation: threadRef === null ? "draft" : main ? "main" : "other",
     mateHasConversation: primary !== undefined,
+    conversationsRead,
   });
   const conversation: MateStandUpConversation = mateStandUpConversation({
     main: threadRef === null ? null : main,
@@ -135,7 +137,8 @@ export function useMateStandUp(input: {
 /**
  * Where a draft that waited on its person's stand-up hands over to (`mateStandUpHandOver`): the
  * Mate's main conversation once the ask made it, else null. Whether the draft opened before the
- * Mate had a conversation is read once, at its first render.
+ * Mate had a conversation is read once, at the first render its Mate's conversations are read:
+ * until then nothing is decided, and nothing hands over.
  */
 export function useMateStandUpHandOver(
   draft: {
@@ -149,14 +152,15 @@ export function useMateStandUpHandOver(
   const viewer = useZeropsSessionOptional()?.user?.id;
   const threads = useThreadShells();
   const environmentId = draft?.environmentId ?? null;
+  const conversationsRead = useEnvironmentConversationsRead(environmentId);
   const { primary } = resolvePrimaryConversation(
     threads.filter((thread) => thread.environmentId === environmentId),
   );
-  const [opened, setOpened] = useState(() => ({
-    key: draft?.key,
-    beforeConversation: primary === undefined,
-  }));
+  const openedAs = (): boolean | null => (conversationsRead ? primary === undefined : null);
+  const [opened, setOpened] = useState(() => ({ key: draft?.key, beforeConversation: openedAs() }));
   if (opened.key !== draft?.key) {
+    setOpened({ key: draft?.key, beforeConversation: openedAs() });
+  } else if (opened.beforeConversation === null && conversationsRead) {
     setOpened({ key: draft?.key, beforeConversation: primary === undefined });
   }
   if (draft === null) return null;
@@ -165,7 +169,7 @@ export function useMateStandUpHandOver(
   const threadId = mateStandUpHandOver({
     marker: whoLivesHere.mate.standUp,
     viewer,
-    openedBeforeConversation: opened.beforeConversation,
+    openedBeforeConversation: opened.beforeConversation === true,
     typed: draft.typed,
     main: primary,
   });

@@ -14,6 +14,7 @@ const world = vi.hoisted(() => ({
   viewer: "u-ada" as string | undefined,
   standUp: { by: "u-ada" } as { readonly by: string } | undefined,
   threads: [] as ReadonlyArray<Record<string, unknown>>,
+  conversationsRead: true,
   failed: false,
   retry: vi.fn(async (_input: unknown) => ({ _tag: "Success", value: true })),
 }));
@@ -59,6 +60,7 @@ vi.mock("./accountEnvironments", () => ({
 }));
 vi.mock("../state/entities", () => ({
   useThreadShells: () => world.threads,
+  useEnvironmentConversationsRead: () => world.conversationsRead,
 }));
 
 function shell(ref: ScopedThreadRef, createdAt: string) {
@@ -118,6 +120,8 @@ async function handsOverTo(input: {
   readonly opened: ReadonlyArray<Record<string, unknown>>;
   readonly later: ReadonlyArray<Record<string, unknown>>;
   readonly typed?: boolean;
+  /** The Mate's conversations were read when the draft opened. */
+  readonly openedRead?: boolean;
 }) {
   const document = new TestNode("#document", null, 9);
   vi.stubGlobal("document", document);
@@ -144,8 +148,10 @@ async function handsOverTo(input: {
   }
   const root = createRoot(document.createElement("div") as unknown as Element);
   world.threads = input.opened;
+  world.conversationsRead = input.openedRead ?? true;
   await act(async () => root.render(createElement(View)));
   world.threads = input.later;
+  world.conversationsRead = true;
   await act(async () => root.render(createElement(View)));
   await act(async () => root.unmount());
   return targets.at(-1);
@@ -158,6 +164,7 @@ beforeEach(() => {
   world.viewer = ADA;
   world.standUp = { by: ADA };
   world.threads = [shell(MAIN, "2026-09-29T10:00:00.000Z")];
+  world.conversationsRead = true;
 });
 
 afterEach(() => {
@@ -251,6 +258,17 @@ describe("a new Mate's opening draft and its stand-up", () => {
     world.viewer = "u-otto";
     const main = [shell(MAIN, "2026-09-29T10:00:00.000Z")];
     expect(await handsOverTo({ opened: [], later: main })).toBeNull();
+  });
+
+  it("withholds no draft's composer before the Mate's conversations are read", async () => {
+    world.threads = [];
+    world.conversationsRead = false;
+    expect((await holdsComposer(null, 0)).holds).toBe(false);
+  });
+
+  it("keeps a draft reloaded before its Mate's conversations were read, when they already held one", async () => {
+    const main = [shell(MAIN, "2026-09-29T10:00:00.000Z")];
+    expect(await handsOverTo({ opened: [], openedRead: false, later: main })).toBeNull();
   });
 
   it("hands nothing over while the Mate has no conversation yet", async () => {
