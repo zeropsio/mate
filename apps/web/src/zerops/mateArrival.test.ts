@@ -264,8 +264,9 @@ describe("arrivalSteps", () => {
         id: "workspace",
         label: "Wren's workspace",
         state: "active",
-        time: "0:44",
-        note: "about 2–3 min",
+        // Running, it shows its setup's clock: 72 s since its project was made.
+        time: "1:12",
+        note: "about 2–4 min",
       },
       {
         id: "you",
@@ -331,8 +332,8 @@ describe("arrivalSteps", () => {
     },
   );
 
-  it("shows no workspace duration before its process start is known", () => {
-    // Measured live (Gita, 2026-09-30): 0:12, then 0:08 once the container's own start was read.
+  it("keeps its running workspace on its setup's clock as its own start is read, never moving it back", () => {
+    // Measured live (2026-09-30): 0:12, then 0:08 once the container's own start was read.
     const projectOnly: BirthFacts = {
       ...CREATING,
       container: { serviceId: "zcp", status: "READY_TO_DEPLOY", hasOrigin: false },
@@ -341,7 +342,7 @@ describe("arrivalSteps", () => {
     const later = NOW + 5_000;
     const before = arrivalSteps(deriveBirthProgress(projectOnly, NOW), WREN, NOW)[1]?.time;
     const after = arrivalSteps(deriveBirthProgress(CREATING, later), WREN, later)[1]?.time;
-    expect([before, after]).toEqual([undefined, "0:49"]);
+    expect([before, after]).toEqual(["1:12", "1:17"]);
   });
 
   it("says where its workspace stopped, in its own words", () => {

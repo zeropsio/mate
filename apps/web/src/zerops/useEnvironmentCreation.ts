@@ -63,6 +63,8 @@ export interface EnvironmentCreationRequest {
    * (`creationSteps`). None for a stage or a production.
    */
   readonly creationId?: string | undefined;
+  /** The person's first press of that Add, wall ms: every clock of its setup counts from it. */
+  readonly pressedAt?: number | undefined;
 }
 
 /** How a creation ended, for the surface that started it. */
@@ -328,6 +330,7 @@ export function useEnvironmentCreation(): (
             projectId,
             organizationId: organization.id,
             startedAt: Date.now(),
+            ...(request.pressedAt === undefined ? {} : { pressedAt: request.pressedAt }),
             container: withAgent,
             ...pressPlanned(plan.steps),
             placement: {

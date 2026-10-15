@@ -36,6 +36,8 @@ import { MicroLabel, StatusDot } from "./primitives";
 
 export interface ZeropsBrowserPanelProps {
   readonly threadRef: ScopedThreadRef | null;
+  /** The Mate's name, when the page knows it; "the agent" otherwise. */
+  readonly mateName?: string | undefined;
   /** For tests only: seeds the take-over toggle without simulating a click. */
   readonly initialTakeOver?: boolean;
 }
@@ -62,7 +64,11 @@ function lastSeenWords(atMs: number, url: string | undefined): string {
   return url === undefined ? `Last seen ${when}` : `Last seen ${when} · ${url}`;
 }
 
-export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowserPanelProps) {
+export function ZeropsBrowserPanel({
+  threadRef,
+  mateName,
+  initialTakeOver,
+}: ZeropsBrowserPanelProps) {
   const environmentId = threadRef?.environmentId ?? null;
   const read = useZeropsBrowserStream(environmentId);
   const lifecycle = useZeropsLifecycle(environmentId, threadRef?.threadId ?? null);
@@ -211,7 +217,11 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
           </div>
         </div>
       ) : read.status === "no-browser" ? (
-        <p className="px-1 text-muted-foreground text-xs">The agent hasn't opened a browser yet.</p>
+        // Only a browser opened to show the person reaches this panel; the
+        // Mate's own headless test browsers never do.
+        <p className="px-1 text-muted-foreground text-xs" data-zerops-browser-none>
+          {`When ${mateName ?? "the agent"} opens a browser to show you something, it appears here.`}
+        </p>
       ) : frame === undefined ? (
         <StatusDot className="px-1" label="Connecting" pulse tone="busy" />
       ) : (

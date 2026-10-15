@@ -108,8 +108,10 @@ describe("person Git write rights (E202)", () => {
             (yield* layer.branches(repo)).items.find((b) => b.ref === "refs/heads/main")!.sha,
             initial,
           );
+          // Lowered to Read, it still reads the changes and their code (the owner, 2026-10-15);
+          // it writes nothing.
           grant("READ_ONLY");
-          assert.isFalse(yield* git(["-C", dir, "fetch", "origin"], token));
+          assert.isTrue(yield* git(["-C", dir, "fetch", "origin"], token));
           assert.isFalse(
             yield* git(["-C", dir, "push", "origin", "HEAD:refs/heads/lowered"], token),
           );

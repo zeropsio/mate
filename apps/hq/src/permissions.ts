@@ -6,8 +6,8 @@
  * - **The verbs** are the places that decide today: reading a project or an application, writing an
  *   application, attaching, moving or detaching a project, an environment's deploy token, a Mate's
  *   record, a Mate's enrollment, following a Mate's live summary (who may operate it: open it, as
- *   its door does), and reading and commenting on an application's changes (`hqChanges.ts`), as
- *   main's Gitea read them, and merging or closing one, as its write team did — closing also the
+ *   its door does), and reading an application's changes (`hqChanges.ts`), by whoever sees the
+ *   application, and commenting on, merging or closing one, as its write team did — closing also the
  *   structure's writer — and asking a deploy again, as that team re-ran its job; and releasing an
  *   application to production, or rolling it back (`hqRelease.ts`), by whoever may deploy there.
  * - **A Mate's own verbs** — its enrollment, and its repositories, its own changes and git in the
@@ -170,7 +170,7 @@ export interface Targets {
   readonly add_mate: AppAccessTarget;
   /** An application's changes, as its projects. */
   readonly read_change: { readonly projectIds: ReadonlyArray<string> };
-  /** A comment on one of an application's changes: whoever reads the change. */
+  /** A comment on one of an application's changes: whoever develops it — Read only reads it. */
   readonly comment_change: { readonly projectIds: ReadonlyArray<string> };
   /** A merge of one of an application's changes into its `main`: whoever develops it. */
   readonly merge_change: { readonly projectIds: ReadonlyArray<string> };
@@ -319,7 +319,11 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       ? "NO_ACCESS"
       : asOrgRole(grantOn(projectId) ?? member.roleCode);
   const readsProject = (projectId: string) => roleAtLeast(roleOn(projectId), "READ_ONLY");
-  /** An application is seen from org Read only up, or through one of its projects (#219). */
+  /**
+   * An application is seen from org Read only up, or through one of its projects (#219) — and
+   * with it its changes, releases and environments: Read on a project is seeing what happens in
+   * it, never merging or releasing it (the owner, 2026-10-15).
+   */
   const seesApp = (projectIds: ReadonlyArray<string>, createdBy?: string) =>
     roleAtLeast(member.roleCode, "READ_ONLY") ||
     projectIds.some(readsProject) ||
@@ -330,13 +334,6 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
    */
   const writesApp = (projectIds: ReadonlyArray<string>) =>
     projectIds.some((projectId) => roleAtLeast(roleOn(projectId), "BASIC_USER"));
-  /**
-   * An application's changes are read as main's Gitea read them: from org Read only up, or with
-   * Basic user or above on one of its projects — a Read only grant shows the application, not
-   * its changes.
-   */
-  const seesChanges = (projectIds: ReadonlyArray<string>) =>
-    roleAtLeast(member.roleCode, "READ_ONLY") || writesApp(projectIds);
   const exists = (projectId: string) =>
     projectOf(projectId) === undefined ? deny("project_gone") : ALLOW;
   /**
@@ -365,9 +362,11 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
         : deny("cannot_create_projects");
     }
     case "read_change":
+      return seesApp(request.target.projectIds) ? ALLOW : deny("app_not_seen");
+    // A comment is a write into the team's work: Read reads it, whoever develops it says something.
     case "comment_change":
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
-      return seesChanges(request.target.projectIds) ? ALLOW : deny("changes_not_seen");
+      return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
     case "push_repo":
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
       return member.roleCode === "OWNER" || writesApp(request.target.projectIds)
@@ -404,10 +403,8 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       // Its production is one of its projects, whatever HQ named beside it.
       const app = productionProjectId === null ? projectIds : [...projectIds, productionProjectId];
       if (!seesApp(app)) return deny("app_not_seen");
-      // That it has none is told to whoever reads its changes, as its environments are.
-      if (productionProjectId === null) {
-        return deny(seesChanges(app) ? "no_production" : "not_releaser");
-      }
+      // That it has none is told to whoever sees it: they read its environments.
+      if (productionProjectId === null) return deny("no_production");
       return roleAtLeast(roleOn(productionProjectId), "BASIC_USER")
         ? ALLOW
         : lacking(productionProjectId, "not_releaser");

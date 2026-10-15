@@ -16,16 +16,17 @@ import {
   useZeropsBirthProgress,
   type UseZeropsBirthProgressInput,
 } from "~/zerops/useZeropsBirthProgress";
+import { onSetupClock } from "~/zerops/mateArrival";
 
 import {
   BIRTH_STEP_TONE,
   birthLineDetailStep,
   birthStepToProcessStep,
-  formatBirthElapsed,
   type BirthLineProgress,
   type BirthLineStep,
 } from "./ZeropsBirthProgress.logic";
 import { ProcessSteps } from "./primitives";
+import { formatWorkingTime } from "./SidebarZeropsTree.logic";
 
 const SEGMENT_TONE_CLASS: Readonly<Record<ServiceStatusToneId, string>> = {
   ok: "bg-[var(--zerops-status-ok)]",
@@ -45,9 +46,18 @@ export interface ZeropsBirthLineProps {
  * A Mate card's line while its Mate is being born — the hook and the line in
  * one component, so a list of cards can render one per card.
  */
-export function ZeropsMateBirthLine({ input }: { readonly input: UseZeropsBirthProgressInput }) {
+export function ZeropsMateBirthLine({
+  input,
+  since,
+}: {
+  readonly input: UseZeropsBirthProgressInput;
+  /** When its setup began, where this tab pressed it (`pressSince`): its row's clock. */
+  readonly since?: number | undefined;
+}) {
   const birth = useZeropsBirthProgress(input);
-  return birth === null ? null : <ZeropsBirthLine nowMs={birth.nowMs} progress={birth.progress} />;
+  return birth === null ? null : (
+    <ZeropsBirthLine nowMs={birth.nowMs} progress={onSetupClock(birth.progress, since)} />
+  );
 }
 
 /** The Mate card's line while it is still coming to life. */
@@ -77,7 +87,7 @@ export function ZeropsBirthLine({ progress, nowMs, className }: ZeropsBirthLineP
           </span>
           {elapsedMs === undefined ? null : (
             <span className="shrink-0 font-mono text-[11px] tabular-nums">
-              {formatBirthElapsed(elapsedMs)}
+              {formatWorkingTime(elapsedMs)}
             </span>
           )}
         </span>

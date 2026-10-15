@@ -767,7 +767,7 @@ describe("an application's releases in HQ", () => {
     );
 
     it.effect(
-      "asks the same of a rollback as of a release, and tells no production only to a developer",
+      "asks the same of a rollback as of a release, and tells no production to whoever sees the application",
       () =>
         withReleases(({ appId, commit }) =>
           Effect.gen(function* () {
@@ -793,10 +793,11 @@ describe("an application's releases in HQ", () => {
             assert.deepStrictEqual(yield* both("admin"), refused("forbidden", "not_releaser"));
             assert.deepStrictEqual(yield* both("viewer"), refused("forbidden", "not_releaser"));
             assert.deepStrictEqual(yield* both("stranger"), refused("forbidden", "app_not_seen"));
-            // With no production, a developer hears so; who only sees the application, not.
+            // With no production, whoever sees the application hears so: a reader reads its
+            // environments (the owner, 2026-10-15).
             yield* sql`DELETE FROM hq_app_project WHERE project_id = 'P_PROD'`;
             assert.deepStrictEqual(yield* both("dev"), refused("forbidden", "no_production"));
-            assert.deepStrictEqual(yield* both("viewer"), refused("forbidden", "not_releaser"));
+            assert.deepStrictEqual(yield* both("viewer"), refused("forbidden", "no_production"));
           }),
         ),
     );
@@ -901,25 +902,27 @@ describe("an application's releases in HQ", () => {
                 VALUES (${appId}::uuid, ${named}, ${groupHead}, '[]', 'dev', 'approved')`;
             }
           }
+          const newest = [
+            "v1.0.2",
+            "v1.0.1",
+            "v1.0.0",
+            "v0.10.2",
+            "v0.10.1",
+            "v0.10.0",
+            "v0.9.2",
+            "v0.9.1",
+            "v0.9.0",
+            "v0.3.2",
+          ];
           assert.deepStrictEqual(
             (yield* releases.list("dev", appId)).map((release) => release.tag),
-            [
-              "v1.0.2",
-              "v1.0.1",
-              "v1.0.0",
-              "v0.10.2",
-              "v0.10.1",
-              "v0.10.0",
-              "v0.9.2",
-              "v0.9.1",
-              "v0.9.0",
-              "v0.3.2",
-            ],
+            newest,
           );
-          assert.deepStrictEqual(yield* refusal(releases.list("viewer", appId)), [
-            "forbidden",
-            "changes_not_seen",
-          ]);
+          // Read on one of its projects reads its releases (the owner, 2026-10-15).
+          assert.deepStrictEqual(
+            (yield* releases.list("viewer", appId)).map((release) => release.tag),
+            newest,
+          );
           assert.deepStrictEqual(yield* refusal(releases.list("stranger", appId)), [
             "forbidden",
             "app_not_seen",

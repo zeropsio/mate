@@ -258,19 +258,15 @@ describe("what lies between two commits of a repository", () => {
           (yield* compare(dev, `head=${two.squash}`, "0b7c4c1e-9f1d-4a43-8f43-6d2b8a1c2e10")).body,
           { code: "forbidden", reason: "app_not_seen" },
         );
-        // Seeing the application's project read only is seeing it, not its changes.
+        // Read on the application's project is reading its changes (the owner, 2026-10-15).
         const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
         Object.assign(project, { userRoles: [{ clientUserId: "C-dev", roleCode: "READ_ONLY" }] });
-        const refused = yield* compare(dev, `head=${two.squash}`).pipe(
-          Effect.filterOrFail(
-            (answer) =>
-              answer.type === "compare-error" &&
-              (answer.body as { reason?: string }).reason === "changes_not_seen",
-          ),
+        const answered = yield* compare(dev, `head=${two.squash}`).pipe(
+          Effect.filterOrFail((answer) => answer.type === "compare"),
           Effect.retry(Schedule.spaced(Duration.millis(50))),
           Effect.timeout(Duration.seconds(5)),
         );
-        assert.deepStrictEqual(refused.body, { code: "forbidden", reason: "changes_not_seen" });
+        assert.strictEqual(answered.type, "compare");
       }).pipe(Effect.scoped),
     );
   });

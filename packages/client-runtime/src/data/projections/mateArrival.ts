@@ -77,7 +77,7 @@ export type MateComing =
       readonly kind: "coming";
       /** How far it has got, as the projects page says it. */
       readonly line: string;
-      /** When the platform took it, wall ms, where this browser pressed it: its row's clock. */
+      /** When its setup began, wall ms, where this browser pressed it: its first press, its clock. */
       readonly since?: number | undefined;
     }
   | {
@@ -95,7 +95,7 @@ export interface MateComingInput {
   /** Its press, where this browser made one. */
   readonly press:
     | {
-        /** When the platform took the project, wall ms. */
+        /** When its setup began, wall ms: the person's first press (board D1). */
         readonly startedAt?: number | undefined;
         /** Whether a Mate container is being brought up at all. */
         readonly container: boolean;

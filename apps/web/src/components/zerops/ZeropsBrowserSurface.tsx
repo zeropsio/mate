@@ -14,8 +14,10 @@ import { ZeropsBrowserPanel } from "./ZeropsBrowserPanel";
 
 export function ZeropsBrowserSurface({
   threadRef,
+  mateName,
 }: {
   readonly threadRef: ScopedThreadRef | null;
+  readonly mateName?: string | undefined;
 }) {
   const { addresses } = useMateAddresses(
     threadRef?.environmentId ?? null,
@@ -49,7 +51,7 @@ export function ZeropsBrowserSurface({
             </ul>
           </section>
         )}
-        <ZeropsBrowserPanel threadRef={threadRef} />
+        <ZeropsBrowserPanel mateName={mateName} threadRef={threadRef} />
       </div>
     </div>
   );
