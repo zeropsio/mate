@@ -194,7 +194,7 @@ export function ZeropsChangeLinkChip({
       <TooltipTrigger render={chip} />
       <TooltipPopup side="top">
         {state.word}
-        {landedSince ? " — landed after this was written" : ""}
+        {landedSince ? " — merged after this was written" : ""}
       </TooltipPopup>
     </Tooltip>
   );

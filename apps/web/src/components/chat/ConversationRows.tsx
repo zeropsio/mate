@@ -305,10 +305,7 @@ export function EventLine({
           icon={<GitMergeIcon className="size-3.5 text-status-ok" />}
           timestampFormat={timestampFormat}
         >
-          <span className="font-medium text-foreground">
-            {event.event.repository} #{event.event.number}
-          </span>{" "}
-          landed · {event.event.title}
+          <span className="font-medium text-foreground">{event.event.title}</span> merged
         </EventShell>
       );
     case "compaction":
