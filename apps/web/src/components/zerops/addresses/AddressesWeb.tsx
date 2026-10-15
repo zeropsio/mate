@@ -321,7 +321,7 @@ function DomainRow({
                 render={
                   <Button
                     aria-label={`More for ${domain.domainName}`}
-                    size="icon-sm"
+                    size="icon-md"
                     variant="ghost-muted"
                   />
                 }

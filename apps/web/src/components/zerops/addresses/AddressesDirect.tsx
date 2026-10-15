@@ -210,7 +210,7 @@ function PortRow({
                 render={
                   <Button
                     aria-label={`More for port ${port.publicPort}`}
-                    size="icon-sm"
+                    size="icon-md"
                     variant="ghost-muted"
                   />
                 }
@@ -398,7 +398,7 @@ function PortForm({
           <Button
             aria-label={`Remove address ${index + 1}`}
             onClick={() => setRanges(ranges.filter((_, at) => at !== index))}
-            size="icon-sm"
+            size="icon-md"
             type="button"
             variant="ghost-muted"
           >

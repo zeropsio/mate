@@ -339,7 +339,7 @@ function RowBody(props: VaultRowProps) {
               aria-label="Show"
               disabled={revealing}
               onClick={() => void show()}
-              size="icon-sm"
+              size="icon-md"
               variant="ghost-muted"
             >
               {revealing ? <Spinner size="xs" /> : <EyeIcon />}
@@ -351,7 +351,7 @@ function RowBody(props: VaultRowProps) {
             <Button
               aria-label={reveal ? "Hide" : "Show"}
               onClick={() => setReveal((current) => !current)}
-              size="icon-sm"
+              size="icon-md"
               variant="ghost-muted"
             >
               {reveal ? <EyeOffIcon /> : <EyeIcon />}
@@ -363,7 +363,7 @@ function RowBody(props: VaultRowProps) {
             <Button
               aria-label="Copy"
               onClick={() => copyToClipboard(revealed ?? value.value ?? "", undefined)}
-              size="icon-sm"
+              size="icon-md"
               variant="ghost-muted"
             >
               {isCopied ? <CheckIcon /> : <CopyIcon />}
@@ -375,7 +375,7 @@ function RowBody(props: VaultRowProps) {
             <Button
               aria-label="Make up a value"
               onClick={() => setDraft(generateVaultValue())}
-              size="icon-sm"
+              size="icon-md"
               variant="ghost-muted"
             >
               <DicesIcon />

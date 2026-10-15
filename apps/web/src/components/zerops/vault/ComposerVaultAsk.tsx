@@ -148,7 +148,7 @@ export function ComposerVaultAsk(props: ComposerVaultAskProps) {
                 aria-pressed={shown}
                 disabled={open === null}
                 onClick={() => setShown((current) => !current)}
-                size="icon-sm"
+                size="icon-md"
                 type="button"
                 variant="ghost-muted"
               >

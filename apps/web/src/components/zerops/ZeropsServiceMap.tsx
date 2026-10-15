@@ -386,7 +386,7 @@ function RouteButton({ route }: { route: ZeropsServiceRoute }) {
           target="_blank"
         />
       }
-      size="icon-sm"
+      size="icon-md"
       variant="outline"
     >
       <ServiceBrowserLinkIndicator href={route.url} />
@@ -447,7 +447,7 @@ function DataButton({
         onOpen(hostname);
       }}
       onPointerDown={(event) => event.stopPropagation()}
-      size="icon-sm"
+      size="icon-md"
       variant="outline"
     >
       <DatabaseIcon aria-hidden="true" />

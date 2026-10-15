@@ -113,7 +113,7 @@ export function ServiceBrowserPanel({
         </a>
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon-md"
           aria-label={`Reload ${service}`}
           onClick={() => setRevision((value) => value + 1)}
         >

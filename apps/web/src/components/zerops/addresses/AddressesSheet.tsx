@@ -197,7 +197,7 @@ function SheetHeader({
         <span className="truncate text-muted-foreground text-sm">{current}</span>
       )}
       <span className="grow" />
-      <Button aria-label="Close" onClick={onClose} size="icon-sm" variant="ghost">
+      <Button aria-label="Close" onClick={onClose} size="icon-md" variant="ghost">
         <XIcon />
       </Button>
     </div>

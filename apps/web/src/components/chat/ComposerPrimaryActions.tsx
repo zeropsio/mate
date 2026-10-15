@@ -125,7 +125,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         {pendingAction.questionIndex > 0 ? (
           compact ? (
             <Button
-              size="icon-sm"
+              size="icon-md"
               variant="outline"
               {...pointerFocusProps}
               onClick={onPreviousPendingQuestion}

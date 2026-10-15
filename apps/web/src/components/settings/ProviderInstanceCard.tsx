@@ -334,7 +334,7 @@ function ProviderEnvironmentSection(props: {
                     <div className="flex justify-end">
                       <Button
                         type="button"
-                        size="icon-sm"
+                        size="icon-md"
                         variant="ghost-destructive"
                         className="size-8"
                         onClick={() => removeVariable(variable.id)}

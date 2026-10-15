@@ -239,7 +239,7 @@ function Harness() {
         <Menu>
           <MenuTrigger
             data-harness-menu="header"
-            render={<Button aria-label="More" size="icon-sm" variant="ghost" />}
+            render={<Button aria-label="More" size="icon-md" variant="ghost" />}
           >
             <EllipsisIcon />
           </MenuTrigger>

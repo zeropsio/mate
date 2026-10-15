@@ -26,7 +26,7 @@ function SampleCard({ variant }: { readonly variant?: "default" | "flat" }) {
         <CardTitle>storefront</CardTitle>
         <CardDescription>Node.js 22 · two containers</CardDescription>
         <CardAction>
-          <Button aria-label="More" size="icon-sm" variant="ghost">
+          <Button aria-label="More" size="icon-md" variant="ghost">
             <MoreHorizontalIcon />
           </Button>
         </CardAction>

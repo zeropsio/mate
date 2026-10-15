@@ -415,7 +415,7 @@ function HeaderActions() {
         <Button
           aria-label="More header actions"
           data-chat-header-ghost
-          size="icon-sm"
+          size="icon-md"
           variant="ghost-muted"
         >
           <EllipsisIcon className="size-4" />
