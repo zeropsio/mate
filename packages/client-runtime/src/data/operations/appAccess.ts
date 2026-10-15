@@ -122,9 +122,15 @@ export const setProjectAccess: OperationKind<"set-project-access"> = {
   ...answered,
 };
 
+export const grantNewProjectAccess: OperationKind<"grant-new-project-access"> = {
+  kind: "grant-new-project-access",
+  ...answered,
+};
+
 export const APP_ACCESS_KINDS = [
   checkInvitee,
   inviteMember,
   setAppAccess,
   setProjectAccess,
+  grantNewProjectAccess,
 ] as const;

@@ -1,7 +1,12 @@
+import * as Effect from "effect/Effect";
+import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { OperationIntent } from "../data/model.ts";
-import type { RunToEnd } from "../data/operations/runToEnd.ts";
+import { liveZerops } from "../data/__fixtures__/account.ts";
+import type { OperationIntent, OperationResult } from "../data/model.ts";
+import { makeOperations } from "../data/operations/coordinator.ts";
+import { runToEnd, type RunToEnd } from "../data/operations/runToEnd.ts";
+import { makeAccountStore } from "../data/store.ts";
 import { ZeropsApiError } from "./api.ts";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
@@ -379,6 +384,64 @@ describe("runEnvironmentCreation", () => {
         .slice(0, expected.length)
         .map((call) => (call.startsWith("importProject:") ? "importProject:0" : call)),
     ).toEqual(expected);
+  });
+
+  it("A Mate added by someone other than the owner is created and its people get their access", async () => {
+    // The account's own registry runs every step: a kind it lacks stops the press at once.
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [] }).forEach(store.dispatch);
+    const answers: Partial<Record<OperationIntent["kind"], OperationResult>> = {
+      "import-project": { projectId: "proj-1" },
+      "grant-new-project-access": { projectId: "proj-1" },
+      "import-container": { serviceName: "zcp", imported: true },
+      "harden-project": { keyNotLowered: null },
+    };
+    const sent: Array<string> = [];
+    const operations = makeOperations({
+      store,
+      executors: {
+        zerops: {
+          submit: (requestId, intent) =>
+            Effect.sync(() => {
+              sent.push(intent.kind);
+              return {
+                requestId,
+                operationId: requestId,
+                executor: "zerops" as const,
+                affected: [],
+                handles: [],
+                acceptance: { kind: "accepted" as const, result: answers[intent.kind] },
+                outcome: { kind: "succeeded" as const, evidence: "Zerops answered." },
+              };
+            }),
+        },
+      },
+      makeId: () => `r${sent.length}`,
+    });
+    const { platform } = fakePlatform();
+    const planned = planEnvironmentCreation({
+      clientId: "client-1",
+      name: "Sia",
+      recipe: { kind: "tier", tier: "mate", yaml: `project:\n  name: x\n${TIER_YAML}` },
+      role: "dev",
+      agents: ["claude-code"],
+      userRoles: [{ clientUserId: "cu-owner", roleCode: "ADMIN" }],
+    });
+    if (!planned.ok) throw new Error(planned.reason);
+
+    const { outcome } = await run(planned.steps, {
+      ...platform,
+      run: runToEnd({ operations, store, registry }),
+    });
+
+    expect(outcome).toEqual({
+      ok: true,
+      projectId: "proj-1",
+      serviceName: "zcp",
+      awaitingAgent: true,
+    });
+    expect(sent.slice(0, 2)).toEqual(["import-project", "grant-new-project-access"]);
   });
 
   it("imports a stage's or a production's tier whole, every runtime empty for HQ", async () => {

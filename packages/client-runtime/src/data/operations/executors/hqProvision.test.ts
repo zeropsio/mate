@@ -52,6 +52,7 @@ function setup(uncertain = false) {
     },
     waits: { untilServices: notCalled, untilZone: notCalled, untilProcessEnds: notCalled },
     now: () => 0,
+    every: () => () => undefined,
     newBirthId: () => "claim",
   };
   const submit = hqProvisionExecutor({ store, deps });

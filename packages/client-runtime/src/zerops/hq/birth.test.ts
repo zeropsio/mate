@@ -40,6 +40,9 @@ function fakeZerops(
   const failures = new Map<string, unknown>();
   const ends = new Map<string, string>();
   const waited: string[] = [];
+  /** What happens while a process is followed, once: time passing, another browser opening Mate. */
+  const during = new Map<string, () => Promise<void>>();
+  const timers = new Set<() => Promise<void>>();
   let processes = 0;
   const imported = (yaml: string) => {
     const projectId = `hq${env.size + 1}`;
@@ -91,6 +94,11 @@ function fakeZerops(
     waited,
     ends,
     failOnce: (name: string, failure: unknown) => failures.set(name, failure),
+    whileFollowing: (processId: string, act: () => Promise<void>) => during.set(processId, act),
+    /** Each running timer fires once, its work settled. */
+    tick: async () => {
+      for (const tick of [...timers]) await tick();
+    },
     journal: (projectId = "hq1") => env.get(projectId)!,
     deps: (now = { at: 0 }, id = "b1"): HqBirthDeps => ({
       run,
@@ -136,10 +144,17 @@ function fakeZerops(
         },
         untilProcessEnds: async (_orgId, _projectId, processId) => {
           waited.push(`process ${processId}`);
+          const act = during.get(processId);
+          during.delete(processId);
+          await act?.();
           return ends.get(processId) ?? "FINISHED";
         },
       },
       now: () => now.at,
+      every: (_ms, tick) => {
+        timers.add(tick);
+        return () => timers.delete(tick);
+      },
       newBirthId: () => id,
     }),
   };
@@ -546,5 +561,75 @@ describe("HQ birth takeover", () => {
     const { outcome } = await birth(record, zerops);
     expect(outcome).toMatchObject({ ok: false, step: "credential", uncertain: true });
     expect(zerops.writes).toEqual([]);
+  });
+
+  it("A setup whose own claim lapsed during a long wait goes on, never naming another browser", async () => {
+    const zerops = fakeZerops();
+    const now = { at: 0 };
+    zerops.whileFollowing("deploy-1", async () => {
+      now.at += 3 * HQ_BIRTH_CLAIM_MS;
+    });
+    const { outcome } = await birth(HQ_BIRTH_START, zerops, { deps: zerops.deps(now) });
+    expect(outcome).toEqual({ ok: true, hq: { projectId: "hq1", address: ADDRESS } });
+    expect(zerops.writes).toEqual(ALL_WRITES);
+  });
+
+  it("A browser that took the claim over after it lapsed stops the first one", async () => {
+    const zerops = fakeZerops();
+    const now = { at: 0 };
+    let other: Awaited<ReturnType<typeof birth>> | undefined;
+    zerops.whileFollowing("deploy-1", async () => {
+      now.at += 3 * HQ_BIRTH_CLAIM_MS;
+      other = await birth(HQ_BIRTH_START, zerops, { deps: zerops.deps(now, "b2") });
+    });
+    const first = await birth(HQ_BIRTH_START, zerops, { deps: zerops.deps(now) });
+    expect(other?.outcome).toEqual({ ok: true, hq: { projectId: "hq1", address: ADDRESS } });
+    expect(first.outcome).toEqual({
+      ok: false,
+      step: "domain",
+      reason: "Another browser is continuing HQ's setup. Open Mate again to follow its progress.",
+      uncertain: false,
+    });
+    // Each write was sent once, by whichever browser held the claim.
+    expect(zerops.writes).toEqual(ALL_WRITES);
+  });
+
+  it("A deploy longer than the claim keeps its claim, so another browser opening Mate follows it", async () => {
+    const zerops = fakeZerops();
+    const now = { at: 0 };
+    let other: Awaited<ReturnType<typeof birth>> | undefined;
+    zerops.whileFollowing("deploy-1", async () => {
+      for (let tick = 0; tick < 6; tick += 1) {
+        now.at += HQ_BIRTH_CLAIM_MS / 3;
+        await zerops.tick();
+      }
+      other = await birth(HQ_BIRTH_START, zerops, { deps: zerops.deps(now, "b2") });
+    });
+    const first = await birth(HQ_BIRTH_START, zerops, { deps: zerops.deps(now) });
+    expect(other?.outcome).toEqual({
+      ok: false,
+      step: "deploy",
+      reason: "Another browser is continuing HQ's setup. Open Mate again to follow its progress.",
+      uncertain: false,
+    });
+    expect(first.outcome).toEqual({ ok: true, hq: { projectId: "hq1", address: ADDRESS } });
+    expect(zerops.writes).toEqual(ALL_WRITES);
+  });
+
+  it("A claim the setup could not renew during a wait stops it with Zerops's words once the wait ends", async () => {
+    const zerops = fakeZerops();
+    const now = { at: 0 };
+    const reason =
+      "Zerops could not save HQ's setup record (FAILED). Inspect its env process in Zerops, then press Again.";
+    zerops.failOnce("note MATE_HQ_BIRTH_CLAIM_1", new Error(reason));
+    zerops.whileFollowing("deploy-1", async () => {
+      for (let tick = 0; tick < 3; tick += 1) {
+        now.at += HQ_BIRTH_CLAIM_MS / 3;
+        await zerops.tick();
+      }
+    });
+    const { outcome } = await birth(HQ_BIRTH_START, zerops, { deps: zerops.deps(now) });
+    expect(outcome).toEqual({ ok: false, step: "deploy", reason, uncertain: false });
+    expect(zerops.writes).toEqual(ALL_WRITES.slice(0, 4));
   });
 });

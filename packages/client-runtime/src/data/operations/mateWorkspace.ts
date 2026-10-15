@@ -38,9 +38,9 @@ declare module "../model.ts" {
   interface OperationIntents extends Intents {}
   interface OperationResults extends Results {}
 }
-export const WORKSPACE_MUTATION_KINDS: ReadonlyArray<RegisteredOperationKind> = Object.keys(
-  WORKSPACE_MUTATIONS,
-).map((kind) => ({
+export const WORKSPACE_MUTATION_KINDS: ReadonlyArray<
+  RegisteredOperationKind & { readonly kind: WorkspaceMutation }
+> = (Object.keys(WORKSPACE_MUTATIONS) as ReadonlyArray<WorkspaceMutation>).map((kind) => ({
   kind,
   executor: "mate",
   reflected: (_read, _intent, receipt) => receipt.outcome.kind === "succeeded",
