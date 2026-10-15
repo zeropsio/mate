@@ -1,9 +1,5 @@
-import { foldDraftBranches } from "./zerops/draftStorage";
-import {
-  accountLocalStorage,
-  onAccountLifetimeOpen,
-  onAccountLifetimeClose,
-} from "./zerops/accountLifetime";
+import { accountDraftStorage } from "./zerops/draftStorage";
+import { onAccountLifetimeOpen, onAccountLifetimeClose } from "./zerops/accountLifetime";
 import * as Schema from "effect/Schema";
 import { create } from "zustand";
 
@@ -120,10 +116,9 @@ const decodePersistedPromptStashState = Schema.decodeUnknownSync(PersistedPrompt
  */
 function clearOrphanedPendingImages(
   entries: ReadonlyArray<PromptStashEntry>,
-  encodingHere: ReadonlySet<string> = new Set(),
 ): ReadonlyArray<PromptStashEntry> {
   return entries.map((entry) => {
-    if (!entry.pendingImageCount || encodingHere.has(entry.id)) return entry;
+    if (!entry.pendingImageCount) return entry;
     const lostCount = entry.pendingImageCount;
     return {
       ...entry,
@@ -177,7 +172,7 @@ export function partitionStashAttachments(
 function resolveBaseStorage(): { storage: StateStorage; durable: boolean } {
   try {
     if (typeof localStorage !== "undefined") {
-      return { storage: accountLocalStorage, durable: true };
+      return { storage: accountDraftStorage, durable: true };
     }
   } catch {
     // Fall through to the in-memory store.
@@ -222,7 +217,7 @@ function persistEntries(entries: ReadonlyArray<PromptStashEntry>): {
   }
 }
 
-/** Reads the persisted queue as it stands now: another tab may have changed it since. */
+/** Reads the persisted queue, settling stale pending counts. */
 function readPersistedEntries(): ReadonlyArray<PromptStashEntry> | null {
   try {
     const raw = baseStashStorage.getItem(PROMPT_STASH_STORAGE_KEY);
@@ -230,27 +225,11 @@ function readPersistedEntries(): ReadonlyArray<PromptStashEntry> | null {
     const parsed: unknown = JSON.parse(raw);
     const state = (parsed as { state?: unknown } | null)?.state;
     if (!state) return null;
-    return decodePersistedPromptStashState(state).entries;
+    return clearOrphanedPendingImages(decodePersistedPromptStashState(state).entries);
   } catch {
     return null;
   }
 }
-
-/**
- * Every change starts from the stored queue, so a tab never drops what another tab stashed. Only
- * this tab's own pending entries are still encoding; the stored queue keeps others' raw counts.
- */
-const currentEntries = (local: ReadonlyArray<PromptStashEntry>) => {
-  const stored = readPersistedEntries();
-  if (stored === null) return local;
-  const encodingHere = new Set(
-    local.filter((entry) => entry.pendingImageCount).map((entry) => entry.id),
-  );
-  return clearOrphanedPendingImages(stored, encodingHere);
-};
-
-/** The queue a tab opens with, settling pending counts its writer can no longer finish. */
-const loadEntries = () => clearOrphanedPendingImages(readPersistedEntries() ?? []);
 
 interface PromptStashStoreState {
   entries: ReadonlyArray<PromptStashEntry>;
@@ -293,7 +272,7 @@ interface PromptStashStoreState {
 export const usePromptStashStore = create<PromptStashStoreState>()((set, get) => ({
   entries: [],
   stashEntry: (entry) => {
-    const nextEntries = [entry, ...currentEntries(get().entries)];
+    const nextEntries = [entry, ...get().entries];
     const evicted = nextEntries.length > MAX_STASH_ENTRIES ? (nextEntries.pop() ?? null) : null;
     const { written, durable } = persistEntries(nextEntries);
     // A rejected write must not leave the entry visible either: the caller
@@ -306,7 +285,7 @@ export const usePromptStashStore = create<PromptStashStoreState>()((set, get) =>
     return { evicted, written: true, durable };
   },
   takeEntry: (entryId) => {
-    const entries = currentEntries(get().entries);
+    const entries = get().entries;
     const entry = entries.find((candidate) => candidate.id === entryId) ?? null;
     if (!entry) return { entry: null, durable: true };
     const nextEntries = entries.filter((candidate) => candidate.id !== entryId);
@@ -315,7 +294,7 @@ export const usePromptStashStore = create<PromptStashStoreState>()((set, get) =>
     return { entry, durable };
   },
   finalizeEntryImages: (entryId, images) => {
-    const entries = currentEntries(get().entries);
+    const entries = get().entries;
     const index = entries.findIndex((candidate) => candidate.id === entryId);
     const existing = index === -1 ? undefined : entries[index];
     // Restored or deleted mid-encode: nothing to attach to.
@@ -335,12 +314,7 @@ export const usePromptStashStore = create<PromptStashStoreState>()((set, get) =>
 }));
 
 onAccountLifetimeOpen(() => {
-  if (storageIsDurable) {
-    foldDraftBranches(accountLocalStorage, PROMPT_STASH_STORAGE_KEY, (value) =>
-      accountLocalStorage.setItem(PROMPT_STASH_STORAGE_KEY, value),
-    );
-  }
-  usePromptStashStore.setState({ entries: loadEntries() });
+  usePromptStashStore.setState({ entries: readPersistedEntries() ?? [] });
 });
 onAccountLifetimeClose(() => {
   usePromptStashStore.setState({ entries: [] });
@@ -353,5 +327,5 @@ onAccountLifetimeClose(() => {
  */
 export function writePromptStashStorageForTest(raw: string): void {
   baseStashStorage.setItem(PROMPT_STASH_STORAGE_KEY, raw);
-  usePromptStashStore.setState({ entries: loadEntries() });
+  usePromptStashStore.setState({ entries: readPersistedEntries() ?? [] });
 }

@@ -82,12 +82,7 @@ import {
 import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
 import { INLINE_FILE_PLACEHOLDER, type ComposerFileAttachment } from "./lib/composerFiles";
 import { createDeferredStorage } from "./lib/storage";
-import { quotaStorage } from "./lib/__fixtures__/quotaStorage";
-import {
-  accountLocalStorage,
-  closeAccountLifetime,
-  openAccountLifetime,
-} from "./zerops/accountLifetime";
+import { closeAccountLifetime, openAccountLifetime } from "./zerops/accountLifetime";
 
 function makeImage(input: {
   id: string;
@@ -2456,7 +2451,10 @@ function createMockStorage() {
 describe("composer draft persistence", () => {
   it("defers attachment reads and serialization until typing stops, then restores the last draft", async () => {
     // Drafts persist into the signed-in account's storage only.
-    vi.stubGlobal("window", { localStorage: quotaStorage(5_242_880) });
+    vi.stubGlobal("window", {
+      localStorage: createMockStorage(),
+      sessionStorage: createMockStorage(),
+    });
     openAccountLifetime("composer-persistence-test");
     await useComposerDraftStore.persist.clearStorage();
     vi.useFakeTimers();
@@ -2502,8 +2500,7 @@ describe("composer draft persistence", () => {
 
       await vi.advanceTimersByTimeAsync(300);
       expect(attachmentReads).toBe(1);
-      // Once per stored entry: the two drafts and the sticky provider.
-      expect(stringify).toHaveBeenCalledTimes(3);
+      expect(stringify).toHaveBeenCalledTimes(1);
 
       resetComposerDraftStore();
       await useComposerDraftStore.persist.rehydrate();
@@ -2519,118 +2516,6 @@ describe("composer draft persistence", () => {
       vi.unstubAllGlobals();
       resetComposerDraftStore();
     }
-  });
-});
-
-describe("composer drafts across tabs and reloads", () => {
-  const owner = "drafts-owner";
-  const mine = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("mine"));
-  const theirs = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("theirs"));
-  const legacyKey = "t3code:composer-drafts:v1";
-  const legacyCopy = (prompt: string) =>
-    JSON.stringify({
-      version: 8,
-      state: {
-        draftsByThreadKey: { [scopedThreadKey(mine)]: { prompt, attachments: [] } },
-        draftThreadsByThreadKey: {},
-        logicalProjectDraftThreadKeyByLogicalProjectKey: {},
-      },
-    });
-  let browser: ReturnType<typeof quotaStorage>;
-  /** A reload: this tab's pending draft is written, then the account's drafts are read anew. */
-  const reload = () => {
-    closeAccountLifetime();
-    openAccountLifetime(owner);
-  };
-
-  beforeEach(() => {
-    browser = quotaStorage(5_242_880);
-    vi.stubGlobal("window", { localStorage: browser });
-  });
-
-  afterEach(() => {
-    closeAccountLifetime();
-    vi.unstubAllGlobals();
-  });
-
-  it("two tabs typing in different threads keep both drafts", () => {
-    openAccountLifetime(owner);
-    // Another tab, opened before this one wrote anything, saves its draft of another thread.
-    accountLocalStorage.setItem(
-      `${COMPOSER_DRAFT_STORAGE_KEY}:draftsByThreadKey:${scopedThreadKey(theirs)}`,
-      JSON.stringify({ prompt: "their words", attachments: [] }),
-    );
-
-    useComposerDraftStore.getState().setPrompt(mine, "my words");
-    reload();
-
-    expect(draftFor(ThreadId.make("mine"), TEST_ENVIRONMENT_ID)?.prompt).toBe("my words");
-    expect(draftFor(ThreadId.make("theirs"), TEST_ENVIRONMENT_ID)?.prompt).toBe("their words");
-  });
-
-  it("a draft survives a reload", () => {
-    openAccountLifetime(owner);
-    useComposerDraftStore.getState().setPrompt(mine, "half a thought");
-
-    reload();
-
-    expect(draftFor(ThreadId.make("mine"), TEST_ENVIRONMENT_ID)?.prompt).toBe("half a thought");
-  });
-
-  it("a sent message leaves no draft behind", () => {
-    openAccountLifetime(owner);
-    useComposerDraftStore.getState().setPrompt(mine, "words on their way");
-    reload();
-
-    useComposerDraftStore.getState().clearComposerContent(mine);
-    reload();
-
-    expect(draftFor(ThreadId.make("mine"), TEST_ENVIRONMENT_ID)).toBeUndefined();
-    expect([...browser.values.values()].some((value) => value.includes("on their way"))).toBe(
-      false,
-    );
-  });
-
-  it("old per-tab copies are removed on load", () => {
-    const stored = (key: string) => `mate:account:${owner}:${legacyKey}:${key}`;
-    for (let load = 0; load < 8; load += 1)
-      browser.setItem(stored(`tab:${load}`), legacyCopy("old"));
-    browser.setItem(stored("tab:7"), legacyCopy("typed last"));
-    browser.setItem(stored("latest"), "7");
-
-    openAccountLifetime(owner);
-
-    expect(draftFor(ThreadId.make("mine"), TEST_ENVIRONMENT_ID)?.prompt).toBe("typed last");
-    expect([...browser.values.keys()].filter((key) => key.includes(legacyKey))).toEqual([]);
-    reload();
-    expect(draftFor(ThreadId.make("mine"), TEST_ENVIRONMENT_ID)?.prompt).toBe("typed last");
-  });
-
-  describe("a full localStorage", () => {
-    it("an origin filled with draft branches makes room for the next write", () => {
-      const branch = (id: string) => `mate:account:${owner}:${legacyKey}:tab:${id}`;
-      // The owner's browser: 588 branches of about 8.7k characters, the rest of 5 MiB in other keys.
-      const copy = legacyCopy("x".repeat(8_400));
-      browser.values.set(`mate:account:${owner}:${legacyKey}:latest`, "587");
-      for (let load = 0; load < 588; load += 1) browser.values.set(branch(String(load)), copy);
-      let filled = 0;
-      while (filled < 5_242_880) {
-        try {
-          browser.setItem(`filler-${filled}`, "x".repeat(1_000));
-          filled += 1_000;
-        } catch {
-          break;
-        }
-      }
-      openAccountLifetime(owner);
-
-      accountLocalStorage.setItem("t3code:right-panel-state:v2", "y".repeat(7_118));
-
-      expect(browser.getItem(`mate:account:${owner}:t3code:right-panel-state:v2`)).toHaveLength(
-        7_118,
-      );
-      expect([...browser.values.keys()].filter((key) => key.includes(":tab:"))).toEqual([]);
-    });
   });
 });
 

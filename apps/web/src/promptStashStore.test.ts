@@ -1,7 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { removeLocalStorageItem } from "./hooks/useLocalStorage";
-import { quotaStorage } from "./lib/__fixtures__/quotaStorage";
 
 import { INLINE_PICTURE_PLACEHOLDER as P } from "./lib/composerPictures";
 import {
@@ -290,50 +289,5 @@ describe("promptStashStore", () => {
       }),
     );
     expect(usePromptStashStore.getState().entries).toEqual([]);
-  });
-
-  it("two tabs stashing keep both prompts", () => {
-    // Another tab stashes after this one read the queue.
-    writePromptStashStorageForTest(
-      JSON.stringify({ version: 2, state: { entries: [makeEntry({ id: "other tab" })] } }),
-    );
-    usePromptStashStore.setState({ entries: [] });
-
-    usePromptStashStore.getState().stashEntry(makeEntry({ id: "this tab" }));
-
-    expect(usePromptStashStore.getState().entries.map((entry) => entry.id)).toEqual([
-      "this tab",
-      "other tab",
-    ]);
-  });
-});
-
-describe("prompt stash in an account's storage", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.resetModules();
-  });
-
-  it("old per-tab copies of stashed prompts are removed on load", async () => {
-    const browser = quotaStorage(5_242_880);
-    vi.stubGlobal("localStorage", browser);
-    vi.stubGlobal("window", { localStorage: browser });
-    vi.resetModules();
-    const stash = await import("./promptStashStore");
-    const account = await import("./zerops/accountLifetime");
-    const key = `mate:account:owner:${stash.PROMPT_STASH_STORAGE_KEY}`;
-    const copy = (id: string) =>
-      JSON.stringify({ version: 2, state: { entries: [makeEntry({ id })] } });
-    browser.setItem(`${key}:tab:old`, copy("stashed in a closed tab"));
-    browser.setItem(`${key}:tab:new`, copy("stashed last"));
-    browser.setItem(`${key}:latest`, "new");
-
-    account.openAccountLifetime("owner");
-
-    expect(stash.usePromptStashStore.getState().entries.map((entry) => entry.id)).toEqual([
-      "stashed last",
-    ]);
-    expect([...browser.values.keys()]).toEqual([key]);
-    account.closeAccountLifetime();
   });
 });

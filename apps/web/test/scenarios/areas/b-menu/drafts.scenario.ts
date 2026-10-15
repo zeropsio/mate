@@ -42,43 +42,50 @@ describe("B: text-only drafts", () => {
           yield* Effect.promise(async () => {
             await s.page.setViewport({ width: 1786, height: 1000 });
             await s.page.evaluate(() => {
-              const prefix = "mate:account:owner:t3code:composer-drafts:v2";
+              const branch = sessionStorage.getItem("mate:draft-tab:v1")!;
+              const prefix = "mate:account:owner:t3code:composer-drafts:v1";
               const loaded = document.createElement("canvas").toDataURL("image/png");
-              localStorage.setItem(prefix, "8");
               localStorage.setItem(
-                `${prefix}:draftsByThreadKey:draft-menu`,
+                `${prefix}:tab:${branch}`,
                 JSON.stringify({
-                  prompt: "Liu opened Zerops Mate on this project.\n![missing](missing.png)",
-                  attachments: [
-                    {
-                      id: "loaded",
-                      name: "loaded.png",
-                      mimeType: "image/png",
-                      sizeBytes: 1,
-                      dataUrl: loaded,
+                  version: 8,
+                  state: {
+                    draftsByThreadKey: {
+                      "draft-menu": {
+                        prompt: "Liu opened Zerops Mate on this project.\n![missing](missing.png)",
+                        attachments: [
+                          {
+                            id: "loaded",
+                            name: "loaded.png",
+                            mimeType: "image/png",
+                            sizeBytes: 1,
+                            dataUrl: loaded,
+                          },
+                          {
+                            id: "missing",
+                            name: "missing.png",
+                            mimeType: "image/png",
+                            sizeBytes: 1,
+                            dataUrl: "data:image/png;base64,aW52YWxpZA==",
+                          },
+                        ],
+                      },
                     },
-                    {
-                      id: "missing",
-                      name: "missing.png",
-                      mimeType: "image/png",
-                      sizeBytes: 1,
-                      dataUrl: "data:image/png;base64,aW52YWxpZA==",
+                    draftThreadsByThreadKey: {
+                      "draft-menu": {
+                        threadId: "draft-menu",
+                        environmentId: "previous-environment",
+                        projectId: "workspace",
+                        createdAt: "2026-10-08T00:00:00Z",
+                        runtimeMode: "full-access",
+                        interactionMode: "default",
+                        branch: null,
+                        worktreePath: null,
+                        envMode: "local",
+                      },
                     },
-                  ],
-                }),
-              );
-              localStorage.setItem(
-                `${prefix}:draftThreadsByThreadKey:draft-menu`,
-                JSON.stringify({
-                  threadId: "draft-menu",
-                  environmentId: "previous-environment",
-                  projectId: "workspace",
-                  createdAt: "2026-10-08T00:00:00Z",
-                  runtimeMode: "full-access",
-                  interactionMode: "default",
-                  branch: null,
-                  worktreePath: null,
-                  envMode: "local",
+                    logicalProjectDraftThreadKeyByLogicalProjectKey: {},
+                  },
                 }),
               );
             });
