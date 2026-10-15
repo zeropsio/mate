@@ -50,12 +50,15 @@ export function ZeropsDeviceLoginWait({
           <p className="text-sm text-muted-foreground">Finish in the Zerops window.</p>
         </>
       )}
-      {stage.kind === "waiting" ? (
-        <p className="text-xs text-muted-foreground">
-          {older ? "The code is now " : "If Zerops shows a code, it's "}
-          <span className="font-mono text-foreground">{stage.userCode}</span>
-        </p>
-      ) : null}
+      {/* The code's line is held from the first frame: its arrival a moment later moves nothing. */}
+      <p className="min-h-4 text-xs text-muted-foreground" aria-live="polite">
+        {stage.kind === "waiting" ? (
+          <>
+            {older ? "The code is now " : "If Zerops shows a code, it's "}
+            <span className="font-mono text-foreground">{stage.userCode}</span>
+          </>
+        ) : null}
+      </p>
       <p className="space-x-3 text-xs text-muted-foreground">
         {stage.kind === "waiting" && !blocked && !older ? (
           <button

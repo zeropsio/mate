@@ -29,7 +29,7 @@ function StatusPage({
   return (
     <main
       className={cn(
-        "flex h-full min-h-0 w-full flex-1 flex-col items-center overflow-y-auto px-6 pt-[22vh] pb-10",
+        "flex h-full min-h-0 w-full flex-1 flex-col items-center overflow-y-auto px-6 pt-status-page pb-10",
         className,
       )}
       data-slot="status-page"

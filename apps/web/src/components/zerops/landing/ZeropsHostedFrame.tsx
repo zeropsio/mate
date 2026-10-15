@@ -104,7 +104,9 @@ export function ZeropsHostedFrame({
 
         {centered ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-            <div className="flex flex-1 items-center justify-center p-6">{children}</div>
+            {/* Hung from a fixed height, never centred on its own: a card that grows grows
+                downward, and the boot's splash mark (index.html) stands where its mark lands. */}
+            <div className="flex flex-1 justify-center px-6 pt-status-page pb-6">{children}</div>
             {footer === undefined ? null : (
               <footer className="flex shrink-0 justify-center px-6 pb-6">{footer}</footer>
             )}

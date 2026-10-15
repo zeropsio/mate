@@ -29,7 +29,7 @@ export function ZeropsHandoverFailed({
             onClick={onBack}
             type="button"
           >
-            Back to Zerops Mate
+            Back to sign-in
           </button>
         </p>
       </div>
