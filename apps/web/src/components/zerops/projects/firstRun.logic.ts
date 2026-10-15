@@ -28,7 +28,7 @@ export function firstRunWords(input: {
         }
       : {
           heading: "Start a project",
-          body: `Projects your team gives you access to appear here. ${MATE_IS} Name a project of your own and it is up in a few minutes.`,
+          body: `You're a Developer: you start projects and join the ones you're added to. Projects your team gives you access to appear here. ${MATE_IS}`,
           newProject: true,
         };
   return input.reachesEveryProject
@@ -39,7 +39,7 @@ export function firstRunWords(input: {
       }
     : {
         heading: "Nothing is shared with you yet",
-        body: "Projects an owner or admin gives you access to appear here.",
+        body: "You're a Guest: you follow the projects you're added to. Projects an owner or admin gives you access to appear here.",
         newProject: false,
       };
 }
