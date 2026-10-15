@@ -314,7 +314,7 @@ export function SidebarZeropsAccountMenu({
         <MenuItem data-zerops-account-chief="" onClick={chief.onSetUp}>
           {chief.icon}
           <span className="min-w-0 flex-1 truncate">Set up Chief</span>
-          <span className="text-[11px] text-muted-foreground">One Mate for every project</span>
+          <span className="text-xs text-muted-foreground">One Mate for every project</span>
         </MenuItem>
       )}
       {SIDEBAR_ACCOUNT_DESTINATIONS.map((entry) => (
