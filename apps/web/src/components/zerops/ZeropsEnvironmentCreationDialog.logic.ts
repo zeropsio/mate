@@ -403,7 +403,7 @@ export function newMateDoor(input: {
     const where = change.mate === undefined ? "a change" : `${crewPossessive(change.mate)} change`;
     return {
       kind: "closed",
-      reason: `${crewPossessive(groupName)} recipe is waiting in ${where}. New Mates start from it once it's merged.`,
+      reason: `${crewPossessive(groupName)} setup for new Mates is waiting in ${where}. New Mates can join once it's merged.`,
       action: { kind: "change", label: "Review the change", number: change.number },
     };
   }
@@ -411,13 +411,13 @@ export function newMateDoor(input: {
   if (writer !== undefined && others.length === 0) {
     return {
       kind: "closed",
-      reason: `${groupName} has no recipe yet. ${writer.name} writes it when it finishes setting ${groupName} up, and new Mates start from it.`,
+      reason: `${writer.name} is still setting ${groupName} up. New Mates can join once it's done.`,
       action: { kind: "mate", label: `Open ${writer.name}`, projectId: writer.projectId },
     };
   }
   return {
     kind: "closed",
-    reason: `${groupName} has no recipe yet. ${crewPossessive(groupName)} Mates write it when one of them finishes setting ${groupName} up.`,
+    reason: `${crewPossessive(groupName)} Mates are still setting it up. New Mates can join once one of them is done.`,
     action: undefined,
   };
 }

@@ -439,13 +439,12 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
   const REVIEW: NewMateDoorClosed = {
     kind: "closed",
     reason:
-      "Acme Docs' recipe is waiting in Cleo's change. New Mates start from it once it's merged.",
+      "Acme Docs' setup for new Mates is waiting in Cleo's change. New Mates can join once it's merged.",
     action: { kind: "change", label: "Review the change", number: 11 },
   };
   const OPEN_CLEO: NewMateDoorClosed = {
     kind: "closed",
-    reason:
-      "Acme Docs has no recipe yet. Cleo writes it when it finishes setting Acme Docs up, and new Mates start from it.",
+    reason: "Cleo is still setting Acme Docs up. New Mates can join once it's done.",
     action: { kind: "mate", label: "Open Cleo", projectId: "cleo-project" },
   };
   const RETRY: NewMateDoorClosed = {
@@ -456,7 +455,7 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
   const NOBODY: NewMateDoorClosed = {
     kind: "closed",
     reason:
-      "Acme Docs has no recipe yet. Acme Docs' Mates write it when one of them finishes setting Acme Docs up.",
+      "Acme Docs' Mates are still setting it up. New Mates can join once one of them is done.",
     action: undefined,
   };
 

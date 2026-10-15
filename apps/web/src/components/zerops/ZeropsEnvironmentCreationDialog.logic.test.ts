@@ -611,7 +611,7 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       door: {
         kind: "closed",
         reason:
-          "Beviro's recipe is waiting in Cleo's change. New Mates start from it once it's merged.",
+          "Beviro's setup for new Mates is waiting in Cleo's change. New Mates can join once it's merged.",
         action: { kind: "change", label: "Review the change", number: 11 },
       },
     },
@@ -620,7 +620,8 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       input: { recipe: "absent", mates: [CLEO, JUNO], change: { number: 12, mate: undefined } },
       door: {
         kind: "closed",
-        reason: "Beviro's recipe is waiting in a change. New Mates start from it once it's merged.",
+        reason:
+          "Beviro's setup for new Mates is waiting in a change. New Mates can join once it's merged.",
         action: { kind: "change", label: "Review the change", number: 12 },
       },
     },
@@ -629,8 +630,7 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       input: { recipe: "absent" },
       door: {
         kind: "closed",
-        reason:
-          "Beviro has no recipe yet. Cleo writes it when it finishes setting Beviro up, and new Mates start from it.",
+        reason: "Cleo is still setting Beviro up. New Mates can join once it's done.",
         action: { kind: "mate", label: "Open Cleo", projectId: "cleo-project" },
       },
     },
@@ -640,7 +640,7 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       door: {
         kind: "closed",
         reason:
-          "Beviro has no recipe yet. Beviro's Mates write it when one of them finishes setting Beviro up.",
+          "Beviro's Mates are still setting it up. New Mates can join once one of them is done.",
         action: undefined,
       },
     },
@@ -677,7 +677,7 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       door: {
         kind: "closed",
         reason:
-          "Acme Docs' recipe is waiting in Otis' change. New Mates start from it once it's merged.",
+          "Acme Docs' setup for new Mates is waiting in Otis' change. New Mates can join once it's merged.",
         action: { kind: "change", label: "Review the change", number: 11 },
       },
     },
