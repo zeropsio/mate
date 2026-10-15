@@ -57,7 +57,13 @@ import {
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { NOTHING_DEPLOYED, stopTone, type Deployment } from "@t3tools/client-runtime/zerops/flow";
+import {
+  deployBuilding,
+  deployRuns,
+  NOTHING_DEPLOYED,
+  stopTone,
+  type Deployment,
+} from "@t3tools/client-runtime/zerops/flow";
 import {
   knownPresentation,
   type KnownAffordance,
@@ -246,7 +252,7 @@ function creationDeployed(
 ): boolean {
   if (creation.outcome?.kind !== "done" || creation.outcome.projectId === undefined) return false;
   const shown = deployments.get(creation.outcome.projectId);
-  return shown?.state === "known" && shown.value.kind !== "none";
+  return deployRuns(shown) || deployBuilding(shown) !== undefined;
 }
 
 export function autoConnectServedZeropsEnvironment(input: {
