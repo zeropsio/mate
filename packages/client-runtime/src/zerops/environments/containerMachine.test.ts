@@ -182,6 +182,26 @@ describe("container machine (DESIGN §4.5)", () => {
     expect(containerVerdict(stillStarting.machine)).toEqual({ level: "booting", overdue: true });
   });
 
+  it("a boot whose cap ran out on the wall clock while the device slept asks for one read, and is late once that read finds it not up", () => {
+    const booting = drive([active, probed({ kind: "initializing", initAt: null }, START_MS)]);
+    const capEnd = booting.machine.timer!;
+    // The laptop slept: the wall clock passed the cap, the monotonic clock paused well short of it.
+    const woke: Instant = { wall: capEnd.wall + 60_000, mono: capEnd.mono - 80_000 };
+    const lapsed = transitionContainer(booting.machine, { type: "TICK" }, { now: woke });
+    expect(lapsed.effects).toContainEqual({ kind: "probe" });
+    expect(containerVerdict(lapsed.state)).toEqual({ level: "booting", overdue: false });
+
+    // The read it asked for, sent after waking, still finds it starting: late, and no further probe.
+    const sentAt: Instant = { wall: woke.wall + 500, mono: woke.mono + 500 };
+    const read = transitionContainer(
+      lapsed.state,
+      { type: "PROBED", reading: { kind: "initializing", initAt: null }, sentAt },
+      { now: { wall: woke.wall + 1_000, mono: woke.mono + 1_000 } },
+    );
+    expect(read.effects).not.toContainEqual({ kind: "probe" });
+    expect(containerVerdict(read.state)).toEqual({ level: "booting", overdue: true });
+  });
+
   it("a boot whose cap ran out while nothing read it is ready at the first read that answers, never late", () => {
     const booting = drive([active, probed({ kind: "initializing", initAt: null }, START_MS)]);
     const capEnd = booting.machine.timer!;

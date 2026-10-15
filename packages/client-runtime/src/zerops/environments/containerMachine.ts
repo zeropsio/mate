@@ -690,9 +690,10 @@ export function transitionContainer(
   let next = withTimer(apply(due, event, now));
   const effects: Array<ContainerEffect> = [];
   // A level probes read is overdue once a reading sent since its cap ran out leaves it on that
-  // level; until one is, its cap asks for one.
+  // level; until one is, its cap asks for one. "Since" uses the same clocks as "ran out": after a
+  // sleep pauses the monotonic clock, a reading sent past the cap on the wall clock counts.
   if (lapsed(next) && readByProbes(next)) {
-    if (next.reading !== null && notBefore(next.reading.sentAt, next.timer)) {
+    if (next.reading !== null && reached(next.timer, next.reading.sentAt)) {
       next = { ...next, overdue: true, timer: null };
     } else {
       effects.push({ kind: "probe" });
