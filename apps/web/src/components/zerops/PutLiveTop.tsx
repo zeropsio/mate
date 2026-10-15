@@ -34,11 +34,19 @@ import { ComposerAsk, ComposerAskButton } from "../chat/ComposerAsk";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useProductionAddresses } from "./review/reviewReads";
 import { MateFace } from "./primitives";
-import { WaitLine } from "./WaitLine";
+import { Spinner } from "../ui/spinner";
 
-/** The one wait row's step: the existing wait line, until the shared progress piece lands. */
+/**
+ * The one wait row's step: the wait line's spinner and words, at the composer top's detail size so
+ * the row keeps the strip's height — until the shared progress piece lands, here alone.
+ */
 export function PutLiveProgress({ step }: { readonly step: string }) {
-  return <WaitLine text={step} />;
+  return (
+    <span aria-live="polite" className="flex items-center gap-1.5" role="status">
+      <Spinner aria-hidden="true" role="presentation" size="xs" />
+      <span className="truncate">{step}</span>
+    </span>
+  );
 }
 
 export interface PutLiveRowProps {
@@ -70,13 +78,15 @@ export function PutLiveRow(props: PutLiveRowProps) {
         actions={
           <>
             {address === undefined ? null : (
-              <ComposerAskButton
+              <button
+                className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   props.onCopy(address.url);
                 }}
+                type="button"
               >
                 {props.copied ? "Copied" : "Copy link"}
-              </ComposerAskButton>
+              </button>
             )}
             <DismissButton onDismiss={props.onDismiss} />
           </>
@@ -90,7 +100,7 @@ export function PutLiveRow(props: PutLiveRowProps) {
             progress.title
           ) : (
             <a
-              className="text-base text-foreground underline-offset-4 hover:underline"
+              className="block truncate text-base text-foreground leading-4.5 underline-offset-4 hover:underline"
               href={address.url}
               rel="noreferrer"
               target="_blank"

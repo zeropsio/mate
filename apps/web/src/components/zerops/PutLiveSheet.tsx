@@ -4,6 +4,8 @@
  * already knows: production's name, its recipe and its first version are decided, and the release
  * follows production by itself (`putLive.logic.ts`).
  */
+import { useRef } from "react";
+
 import type { PutLiveSheetModel } from "~/zerops/putLive.logic";
 
 import { Button } from "../ui/button";
@@ -15,6 +17,10 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
+
+/** A quiet way out beside the words: blue words, their text on the words' edge. */
+const TEXT_BUTTON =
+  "menu-textbtn -ms-2 self-start outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function PutLiveSheet({
   model,
@@ -29,8 +35,14 @@ export function PutLiveSheet({
   /** Where HQ offers it: production as a branch of the person's Git repository, set up instead. */
   readonly onGitBranch?: (() => void) | undefined;
 }) {
+  const press = useRef<HTMLButtonElement>(null);
   return (
-    <DialogPopup className="max-w-md" data-zerops-surface="put-live-sheet">
+    <DialogPopup
+      className="max-w-md"
+      data-zerops-surface="put-live-sheet"
+      // Its one button, never the quiet ways out beside the words.
+      initialFocus={press}
+    >
       <DialogHeader>
         <DialogTitle>{model.title}</DialogTitle>
         <DialogDescription className="sr-only">
@@ -50,11 +62,9 @@ export function PutLiveSheet({
               </ul>
             )}
             {onSeeCode === undefined ? null : (
-              <div>
-                <Button onClick={onSeeCode} size="sm" variant="link">
-                  See the code
-                </Button>
-              </div>
+              <button className={TEXT_BUTTON} onClick={onSeeCode} type="button">
+                See the code
+              </button>
             )}
           </section>
           <section aria-label="Where" className="flex flex-col gap-1">
@@ -64,11 +74,9 @@ export function PutLiveSheet({
           </section>
           <p className="text-muted-foreground text-sm">{model.later}</p>
           {onGitBranch === undefined ? null : (
-            <div>
-              <Button onClick={onGitBranch} size="sm" variant="link">
-                Deploy to a Git branch instead…
-              </Button>
-            </div>
+            <button className={TEXT_BUTTON} onClick={onGitBranch} type="button">
+              Deploy to a Git branch instead…
+            </button>
           )}
         </div>
       </DialogPanel>
@@ -78,7 +86,7 @@ export function PutLiveSheet({
             {model.hold}
           </p>
         )}
-        <Button disabled={model.hold !== undefined} onClick={onPutLive}>
+        <Button disabled={model.hold !== undefined} onClick={onPutLive} ref={press}>
           {model.button}
         </Button>
       </DialogFooter>
