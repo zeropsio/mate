@@ -17,7 +17,7 @@ import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -82,6 +82,8 @@ export interface ZeropsNewProjectFormProps {
   readonly onCreate: (choice: NewProjectChoice) => void;
   /** Who will reach its first Mate's project, as people chips; absent, nothing of access. */
   readonly access?: ProjectAccessSlot | undefined;
+  /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
+  readonly forecast?: ReactNode;
 }
 
 const PROJECT_FIELD = "zerops-new-project";
@@ -103,6 +105,7 @@ export function ZeropsNewProjectForm({
   onCancel,
   onCreate,
   access,
+  forecast,
 }: ZeropsNewProjectFormProps) {
   const [name, setName] = useState("");
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
@@ -233,6 +236,7 @@ export function ZeropsNewProjectForm({
                 {access(setUserRoles)}
               </div>
             )}
+            {forecast}
           </div>
         </DialogPanel>
       ) : null}

@@ -163,6 +163,7 @@ import {
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { ProjectAccessDraft, roleProjectKind } from "./projects/ProjectPeople";
@@ -2598,6 +2599,9 @@ export function ZeropsProjectsContent({
               onChange={onChange}
             />
           )}
+          {...(activeOrganization == null
+            ? {}
+            : { forecast: <ZeropsCreditForecast organizationId={activeOrganization.id} /> })}
           fallbackFocus={() =>
             document
               .getElementById(`project-${creationRequest.groupId}`)

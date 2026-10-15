@@ -76,6 +76,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
+import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
 import { ZeropsNewProjectDialog, type NewProjectChoice } from "./ZeropsNewProjectForm";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 
@@ -238,6 +239,7 @@ function NewProjectDialog() {
     <ZeropsNewProjectDialog
       // A brand new app: its creator, and whom the organization's roles give it.
       access={(onChange) => <ProjectAccessDraft groupId={null} kind="mate" onChange={onChange} />}
+      forecast={<ZeropsCreditForecast organizationId={activeOrganization.id} />}
       closed={
         addProject.offered
           ? undefined
