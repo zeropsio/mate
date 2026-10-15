@@ -78,7 +78,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerClassName?: string;
   triggerAriaLabel?: string;
   /**
-   * Replaces the trigger's visible text (e.g. "Sign in an agent" when
+   * Replaces the trigger's visible text (e.g. "Sign this Mate in" when
    * nothing is selected because no agent is runnable, D6) without touching
    * the icon or badge, which already render nothing for an unmatched
    * `activeInstanceId`.

@@ -969,7 +969,7 @@ export function ZeropsAgentSignInDialogPopup({
           {title !== undefined
             ? `Sign in ${title}`
             : mateName === null
-              ? "Sign in a coding agent"
+              ? "Sign this Mate in"
               : `Sign ${mateName} in`}
         </DialogTitle>
       </DialogHeader>
