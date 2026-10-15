@@ -55,6 +55,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 
 import { Input } from "~/components/ui/input";
 
+import { putLiveAddress } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useFixMates } from "~/zerops/fixMates";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
@@ -593,6 +594,10 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
         ? "what production runs"
         : undefined;
   const ready = model.verdict.state === "release-ready";
+  const openLive =
+    model.primary === undefined && props.outcome.kind === "released" && props.git === undefined
+      ? putLiveAddress(props.production?.addresses ?? [])
+      : undefined;
   const now = productionNow({
     live,
     since: sinceWords(props.production?.at, props.now),
@@ -640,20 +645,37 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
         props.git !== undefined ? undefined : <span>{ready ? line : line.replace(/\.$/u, "")}</span>
       }
       onClose={props.onClose}
+      // Released, it ends on the live app: its address the way in, a domain of its own beside it.
+      secondary={
+        openLive !== undefined && props.onAddDomain !== undefined
+          ? { label: "Put it on your domain", enabled: true, onPress: props.onAddDomain }
+          : undefined
+      }
       primary={
         model.primary === undefined ||
         (model.primary.label === "Replace token" && props.onReplaceToken === undefined)
-          ? model.primary === undefined &&
-            props.outcome.kind === "released" &&
-            props.onAddDomain !== undefined
+          ? openLive !== undefined
             ? {
-                label: "Put it on your domain",
+                label: "Open",
+                text: `Open ${openLive.host}`,
                 enabled: true,
-                safe: false,
+                safe: true,
                 icon: "globe",
-                onPress: props.onAddDomain,
+                onPress: () => {
+                  window.open(openLive.url, "_blank", "noopener,noreferrer");
+                },
               }
-            : undefined
+            : model.primary === undefined &&
+                props.outcome.kind === "released" &&
+                props.onAddDomain !== undefined
+              ? {
+                  label: "Put it on your domain",
+                  enabled: true,
+                  safe: false,
+                  icon: "globe",
+                  onPress: props.onAddDomain,
+                }
+              : undefined
           : {
               ...model.primary,
               enabled: model.primary.enabled && checkedVersion?.error === undefined,
