@@ -28,6 +28,7 @@ import { projectProcesses, type ProjectProcesses } from "./projections/processes
 import type { ProjectValue } from "./families/project.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
+import { creditForecast } from "./projections/creditForecast.ts";
 import { vault } from "./projections/vault.ts";
 import type { VaultView } from "./projections/vaultModel.ts";
 import {
@@ -113,6 +114,18 @@ export const projectServicesAtom = Atom.family((projectId: string) =>
     if (account === null || account.orgId === null) return NOT_READ_SERVICES;
     return get(account.data.project(projectServices, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-services:${projectId}`)),
+);
+
+/**
+ * Whether a new project in the organization the mounted account observes waits for credit
+ * (`creditForecast`); `false` without one, or for another organization.
+ */
+export const creditForecastAtom = Atom.family((orgId: string) =>
+  Atom.make((get): boolean => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId !== orgId) return false;
+    return get(account.data.project(creditForecast, orgId));
+  }).pipe(Atom.withLabel(`data:credit-forecast:${orgId}`)),
 );
 
 export const NOT_READ_USAGE: ProjectUsage = {

@@ -130,6 +130,8 @@ export {
   type ZeropsAddress,
 } from "./projections/addresses.ts";
 export { addonsScope, type ProjectIpv4Addon } from "./families/projectAddons.ts";
+export { creditForecast } from "./projections/creditForecast.ts";
+export { creditScope } from "./families/organizationCredit.ts";
 export type { PortRoutingWrite } from "./operations/addressWrites.ts";
 export type { Invitee, InviteeCheck } from "./operations/appAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
@@ -239,6 +241,7 @@ export {
   projectStandingAtom,
   projectProcessesAtom,
   projectServicesAtom,
+  creditForecastAtom,
   projectsServicesAtom,
   projectUsageAtom,
   NOT_READ_VAULT,
