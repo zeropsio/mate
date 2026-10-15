@@ -102,7 +102,8 @@ const EXPECTED: ReadonlyArray<readonly [string, Row]> = [
     "reader",
     {
       read_change: ALLOW,
-      comment_change: ALLOW,
+      // A comment is a write into the team's work: Read reads it (the owner, 2026-10-15).
+      comment_change: no("not_app_developer"),
       merge_change: no("not_app_developer"),
       close_change: no("not_app_developer"),
       redeploy: no("not_app_developer"),

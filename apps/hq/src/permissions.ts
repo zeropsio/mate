@@ -6,8 +6,8 @@
  * - **The verbs** are the places that decide today: reading a project or an application, writing an
  *   application, attaching, moving or detaching a project, an environment's deploy token, a Mate's
  *   record, a Mate's enrollment, following a Mate's live summary (who may operate it: open it, as
- *   its door does), and reading and commenting on an application's changes (`hqChanges.ts`), by
- *   whoever sees the application, and merging or closing one, as its write team did — closing also the
+ *   its door does), and reading an application's changes (`hqChanges.ts`), by whoever sees the
+ *   application, and commenting on, merging or closing one, as its write team did — closing also the
  *   structure's writer — and asking a deploy again, as that team re-ran its job; and releasing an
  *   application to production, or rolling it back (`hqRelease.ts`), by whoever may deploy there.
  * - **A Mate's own verbs** — its enrollment, and its repositories, its own changes and git in the
@@ -170,7 +170,7 @@ export interface Targets {
   readonly add_mate: AppAccessTarget;
   /** An application's changes, as its projects. */
   readonly read_change: { readonly projectIds: ReadonlyArray<string> };
-  /** A comment on one of an application's changes: whoever reads the change. */
+  /** A comment on one of an application's changes: whoever develops it — Read only reads it. */
   readonly comment_change: { readonly projectIds: ReadonlyArray<string> };
   /** A merge of one of an application's changes into its `main`: whoever develops it. */
   readonly merge_change: { readonly projectIds: ReadonlyArray<string> };
@@ -362,8 +362,11 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
         : deny("cannot_create_projects");
     }
     case "read_change":
-    case "comment_change":
       return seesApp(request.target.projectIds) ? ALLOW : deny("app_not_seen");
+    // A comment is a write into the team's work: Read reads it, whoever develops it says something.
+    case "comment_change":
+      if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
+      return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
     case "push_repo":
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
       return member.roleCode === "OWNER" || writesApp(request.target.projectIds)

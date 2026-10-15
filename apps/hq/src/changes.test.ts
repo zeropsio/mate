@@ -1140,74 +1140,98 @@ describe("a Mate's changes in HQ", () => {
       }),
     );
 
-    it.effect("whoever reads a change comments on it and sees its pictures", () =>
-      Effect.gen(function* () {
-        const { call, fake, url } = yield* startCore(true);
-        yield* untilHealth(call, "active");
-        const owner = yield* sessionFor(call, "door-owner");
-        const { appId, auth } = yield* mateWithChange(call, fake, owner);
-        const comments = `/api/apps/${appId}/changes/appdev/1/comments`;
-        const say = (session: string, body: string) =>
-          call("POST", comments, { session, body: { body } });
+    it.effect(
+      "whoever develops it comments on a change; whoever reads it reads them and sees its pictures",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, auth } = yield* mateWithChange(call, fake, owner);
+          const comments = `/api/apps/${appId}/changes/appdev/1/comments`;
+          const say = (session: string, body: string) =>
+            call("POST", comments, { session, body: { body } });
 
-        const listed = Effect.map(
-          call("GET", `/api/apps/${appId}/changes`, { session: owner }),
-          (answer) =>
-            (
-              answer.body as {
-                readonly changes: ReadonlyArray<{ updatedAt: string; comments: number }>;
-              }
-            ).changes[0]!,
-        );
-        const updatedAt = Effect.map(listed, (change) => Date.parse(change.updatedAt));
-        // A change carries how many comments it has: the room a review holds while it reads them.
-        assert.strictEqual((yield* listed).comments, 0);
-        const before = yield* updatedAt;
-        yield* Effect.sleep(Duration.millis(5));
-        const said = yield* say(owner, "Looks good");
-        // A comment moves the change.
-        assert.isAbove(yield* updatedAt, before);
-        assert.strictEqual(said.status, 200);
-        const comment = said.body as Record<string, unknown>;
-        assert.deepStrictEqual([comment["authorUserId"], comment["body"]], ["owner", "Looks good"]);
-        const reader = yield* sessionFor(call, "door-reader");
-        assert.strictEqual((yield* say(reader, "Rename it, please.")).status, 200);
-        const dev = yield* sessionFor(call, "door-dev");
-        assert.deepStrictEqual((yield* say(dev, "Me too")).body, {
-          code: "forbidden",
-          reason: "app_not_seen",
-        });
-        assert.strictEqual((yield* say(owner, "  ")).status, 400);
-        assert.strictEqual((yield* listed).comments, 2);
-        const read = (yield* call("GET", comments, { session: reader })).body as {
-          readonly comments: ReadonlyArray<{
-            readonly authorUserId: string;
-            readonly body: string;
-          }>;
-        };
-        assert.deepStrictEqual(
-          read.comments.map((entry) => [entry.authorUserId, entry.body]),
-          [
+          const listed = Effect.map(
+            call("GET", `/api/apps/${appId}/changes`, { session: owner }),
+            (answer) =>
+              (
+                answer.body as {
+                  readonly changes: ReadonlyArray<{ updatedAt: string; comments: number }>;
+                }
+              ).changes[0]!,
+          );
+          const updatedAt = Effect.map(listed, (change) => Date.parse(change.updatedAt));
+          // A change carries how many comments it has: the room a review holds while it reads them.
+          assert.strictEqual((yield* listed).comments, 0);
+          const before = yield* updatedAt;
+          yield* Effect.sleep(Duration.millis(5));
+          const said = yield* say(owner, "Looks good");
+          // A comment moves the change.
+          assert.isAbove(yield* updatedAt, before);
+          assert.strictEqual(said.status, 200);
+          const comment = said.body as Record<string, unknown>;
+          assert.deepStrictEqual(
+            [comment["authorUserId"], comment["body"]],
             ["owner", "Looks good"],
-            ["reader", "Rename it, please."],
-          ],
-        );
-        yield* rowsWhere(
-          url,
-          "SELECT kind FROM hq_git_event WHERE kind = 'commented'",
-          (rows) => rows.length === 2,
-        );
-        // The longest comment, in characters JSON spells widest, is still a comment; a NUL is none.
-        assert.strictEqual((yield* say(owner, "\u0001".repeat(20_000))).status, 200);
-        assert.strictEqual((yield* say(owner, "a\u0000b")).status, 400);
-
-        for (const [type, bytes] of RASTERS) {
-          const uploaded = yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
-            headers: { ...auth, "content-type": type },
-            body: bytes,
+          );
+          // A comment is a write into the team's work: Read reads it (the owner, 2026-10-15).
+          const reader = yield* sessionFor(call, "door-reader");
+          assert.deepStrictEqual((yield* say(reader, "Rename it, please.")).body, {
+            code: "forbidden",
+            reason: "not_app_developer",
           });
-          const path = (uploaded.body as { path: string }).path;
-          const picture = yield* call("GET", path, { session: reader });
+          const dev = yield* sessionFor(call, "door-dev");
+          assert.deepStrictEqual((yield* say(dev, "Me too")).body, {
+            code: "forbidden",
+            reason: "app_not_seen",
+          });
+          assert.strictEqual((yield* say(owner, "  ")).status, 400);
+          assert.strictEqual((yield* listed).comments, 1);
+          const read = (yield* call("GET", comments, { session: reader })).body as {
+            readonly comments: ReadonlyArray<{
+              readonly authorUserId: string;
+              readonly body: string;
+            }>;
+          };
+          assert.deepStrictEqual(
+            read.comments.map((entry) => [entry.authorUserId, entry.body]),
+            [["owner", "Looks good"]],
+          );
+          yield* rowsWhere(
+            url,
+            "SELECT kind FROM hq_git_event WHERE kind = 'commented'",
+            (rows) => rows.length === 1,
+          );
+          // The longest comment, in characters JSON spells widest, is still a comment; a NUL is none.
+          assert.strictEqual((yield* say(owner, "\u0001".repeat(20_000))).status, 200);
+          assert.strictEqual((yield* say(owner, "a\u0000b")).status, 400);
+
+          for (const [type, bytes] of RASTERS) {
+            const uploaded = yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
+              headers: { ...auth, "content-type": type },
+              body: bytes,
+            });
+            const path = (uploaded.body as { path: string }).path;
+            const picture = yield* call("GET", path, { session: reader });
+            assert.deepStrictEqual(
+              [
+                picture.status,
+                picture.headers.get("content-type"),
+                picture.headers.get("x-content-type-options"),
+                [...picture.bytes],
+              ],
+              [200, type, "nosniff", [...bytes]],
+            );
+            assert.include(picture.headers.get("cache-control") ?? "", "private");
+            assert.strictEqual((yield* call("GET", path)).status, 401);
+            assert.strictEqual((yield* call("GET", path, { session: dev })).status, 403);
+          }
+          const kept = (yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
+            headers: { ...auth, "content-type": "image/png" },
+            body: PNG,
+          })).body as { readonly path: string };
+          const picture = yield* call("GET", kept.path, { session: reader });
           assert.deepStrictEqual(
             [
               picture.status,
@@ -1215,33 +1239,15 @@ describe("a Mate's changes in HQ", () => {
               picture.headers.get("x-content-type-options"),
               [...picture.bytes],
             ],
-            [200, type, "nosniff", [...bytes]],
+            [200, "image/png", "nosniff", [...PNG]],
           );
-          assert.include(picture.headers.get("cache-control") ?? "", "private");
-          assert.strictEqual((yield* call("GET", path)).status, 401);
-          assert.strictEqual((yield* call("GET", path, { session: dev })).status, 403);
-        }
-        const kept = (yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
-          headers: { ...auth, "content-type": "image/png" },
-          body: PNG,
-        })).body as { readonly path: string };
-        const picture = yield* call("GET", kept.path, { session: reader });
-        assert.deepStrictEqual(
-          [
-            picture.status,
-            picture.headers.get("content-type"),
-            picture.headers.get("x-content-type-options"),
-            [...picture.bytes],
-          ],
-          [200, "image/png", "nosniff", [...PNG]],
-        );
-        assert.strictEqual((yield* call("GET", kept.path, { session: dev })).status, 403);
-        const missing = kept.path.replace(/[^/]+$/u, "4f1c2b9a-0d3e-4c55-9b8f-2a7e6d1c0b3a");
-        assert.deepStrictEqual((yield* call("GET", missing, { session: reader })).body, {
-          code: "attachment_not_found",
-          reason: "attachment_not_found",
-        });
-      }),
+          assert.strictEqual((yield* call("GET", kept.path, { session: dev })).status, 403);
+          const missing = kept.path.replace(/[^/]+$/u, "4f1c2b9a-0d3e-4c55-9b8f-2a7e6d1c0b3a");
+          assert.deepStrictEqual((yield* call("GET", missing, { session: reader })).body, {
+            code: "attachment_not_found",
+            reason: "attachment_not_found",
+          });
+        }),
     );
 
     it.effect(

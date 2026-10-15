@@ -1024,16 +1024,16 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
   ],
   comment_change: [
     [
-      "org Read only comments on whatever change they read",
+      "org Read only reads a change and does not comment on it",
       { orgRole: "READ_ONLY" },
-      { verb: "comment_change", target: { projectIds: [] } },
-      "allow",
+      { verb: "comment_change", target: { projectIds: ["P"] } },
+      "not_app_developer",
     ],
     [
       "org none, a Read only grant on a project of it",
       {},
       { verb: "comment_change", target: { projectIds: ["P_SEEN"] } },
-      "allow",
+      "not_app_developer",
     ],
     [
       "org none, a Basic user grant on P",
@@ -1910,6 +1910,15 @@ it("a project creator sees their own empty application before its first project 
   });
 });
 
+it("read on a project sees its changes and cannot comment on them", () => {
+  const facts = factsOf({ ...BASE, override: "READ_ONLY" });
+  const target = { projectIds: ["P"] };
+  expect([
+    outcome(can(PERSON, "read_change", target, facts)),
+    outcome(can(PERSON, "comment_change", target, facts)),
+  ]).toEqual(["allow", "not_app_developer"]);
+});
+
 // The owner, 2026-10-15: a Guest given Read on a project read "No changes yet" beside a release
 // of two. Read on a project is seeing what happens in it — its changes, its releases, its
 // environments — never merging or releasing them.
@@ -1926,12 +1935,13 @@ describe("Read access on a project", () => {
     { org: "ADMIN", grant: "READ_ONLY", sees: true, merges: false, releases: false },
     { org: "OWNER", grant: null, sees: true, merges: true, releases: true },
   ] as const)(
-    "a project's Read access sees its changes and releases, never merges or releases them: org $org, grant $grant",
+    "a project's Read access sees its changes and releases, never comments on, merges or releases them: org $org, grant $grant",
     ({ org, grant, sees, merges, releases }) => {
       const facts = factsOf({ ...BASE, orgRole: org, override: grant });
       const target = { projectIds: app };
       expect({
         changes: can(PERSON, "read_change", target, facts).allow,
+        comments: can(PERSON, "comment_change", target, facts).allow,
         merges: can(PERSON, "merge_change", target, facts).allow,
         releases: can(
           PERSON,
@@ -1945,7 +1955,7 @@ describe("Read access on a project", () => {
           { projectIds: app, productionProjectId: null, productionTarget: "git" },
           facts,
         ).allow,
-      }).toEqual({ changes: sees, merges, releases, gitReleases: releases });
+      }).toEqual({ changes: sees, comments: merges, merges, releases, gitReleases: releases });
     },
   );
 });
