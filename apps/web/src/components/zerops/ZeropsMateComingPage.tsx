@@ -71,13 +71,10 @@ import {
   birthRuntimesFacts,
   type BirthCopyService,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import { mateArriving } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { stageSpeaks } from "~/zerops/mateOpeningStage";
 import { ConversationFooterStandIn } from "./ConversationFooterStandIn";
-import type { EnvironmentId } from "@t3tools/contracts";
-import type { MateMarkState } from "@t3tools/shared/brand";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 
@@ -96,15 +93,12 @@ import {
 } from "@t3tools/client-runtime/data";
 import { mateOpeningPhrase } from "~/zerops/mateComing";
 import {
-  mateIdentityPose,
   mateStageAwake,
   zeropsMateIdentityOf,
   type ZeropsMateIdentity,
 } from "~/zerops/mateIdentities";
-import { mateFaceFor } from "~/zerops/agentActivity";
 import { takeMateConversation } from "~/zerops/mateOpening";
 import {
-  arrivalHeaderFace,
   arrivalSteps,
   inFirstSeenOrder,
   pressNote,
@@ -128,7 +122,7 @@ import {
   type MateOperationRefusal,
 } from "~/zerops/mateNoticeVoice";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
-import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useToldActivity, useLastKnownMateWords } from "~/zerops/useMenuMateReadings";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
@@ -155,7 +149,6 @@ import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useZeropsData } from "~/zerops/zeropsDataContext";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
-import { ConversationStripView } from "../chat/ConversationStrip";
 import { MateDetailFailure } from "./MateDetailFailure";
 import { useCloseOffHolds, useMateDetailRead } from "~/zerops/accountEnvironments";
 import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
@@ -701,7 +694,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Mate" then.
   const named = mate;
   // The minute clock its pose reads (`mateArriving`).
-  const clockMs = useNowMs();
   const nowMs = useSecondsNowMs(
     page?.kind === "reaching" && reachabilityCountsDown(page.reachability),
   );
@@ -884,18 +876,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         header={
           <MateComingHeader
             arriving={shown !== undefined && !handingArrival}
-            face={
-              opening
-                ? "sleep"
-                : view === null || shown === undefined || handingArrival
-                  ? undefined
-                  : arrivalHeaderFace({
-                      kind: view.kind,
-                      over: view.over === true,
-                      connected: environmentId !== null,
-                      arriving: mateArriving(mate.arrivingUntil, clockMs),
-                    })
-            }
             mate={{
               ...mate,
               projectUrl: projectUnavailable ? undefined : mate.projectUrl,
@@ -989,14 +969,11 @@ export function MateComingHeader({
   standsIn = null,
   arriving = false,
   besidePanel = false,
-  face,
 }: {
   /** Its conversation's panel stands beside it, holding the layout controls (`MateComingFrame`). */
   readonly besidePanel?: boolean;
-  /** A new Mate coming up: its face and name only. */
+  /** A new Mate coming up: no way to its project yet. */
   readonly arriving?: boolean;
-  /** The pose the stage under it wears (`arrivalHeaderFace`); else its own (`mateFaceFor`). */
-  readonly face?: MateMarkState | undefined;
   readonly mate: Pick<
     ZeropsMateIdentity,
     "name" | "tint" | "shape" | "connected" | "arrivingUntil" | "chief"
@@ -1010,32 +987,11 @@ export function MateComingHeader({
    */
   readonly standsIn?: { readonly subject: string | null } | null;
 }) {
-  const nowMs = useNowMs();
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-      {mate.chief === true ? (
-        // The Chief is named by the menu's top row, lit while it is open: its header is controls.
-        <span className="min-w-0 flex-1" />
-      ) : (
-        <ConversationStripView
-          chats={null}
-          crew={null}
-          mate={{
-            name: mate.name,
-            tint: mate.tint,
-            shape: mate.shape,
-            face: face ?? mateFaceFor(mate.connected, undefined, mateIdentityPose(mate, nowMs)),
-            open: true,
-            threadId: null,
-            tooltip: standsIn?.subject ?? null,
-          }}
-          onCloseChat={() => undefined}
-          onOpen={() => undefined}
-          onRename={null}
-          renameField={null}
-          renderCrewmateMenu={() => null}
-        />
-      )}
+      {/* The stage under it names the Mate, its face large: the header holds its place unnamed
+          (the owner: the name up here while it is huge below is the same fact twice). */}
+      <span className="min-w-0 flex-1" />
       <span className="flex size-4 shrink-0" />
       <div
         className={
