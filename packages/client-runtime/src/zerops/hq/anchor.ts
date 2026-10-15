@@ -37,6 +37,21 @@ export type OfficialHq =
   /** Admin names point at more than one project, or none of them is an active token yet. */
   | { readonly kind: "unclear"; readonly projectIds: ReadonlyArray<string> };
 
+/**
+ * The Headquarters projects: the official HQ's, or every one unclear anchors name. Each holds HQ's
+ * own credentials, so no access to it is ever offered or written for a person.
+ */
+export function hqProjectsOf(hq: OfficialHq): ReadonlySet<string> {
+  switch (hq.kind) {
+    case "official":
+      return new Set([hq.projectId]);
+    case "unclear":
+      return new Set(hq.projectIds);
+    case "none":
+      return new Set();
+  }
+}
+
 /** `<projectId>` and `<address>` of an anchor name; the address holds `:` itself. */
 function parseAnchor(name: string): { readonly projectId: string; readonly address: string } {
   const rest = name.slice(ANCHOR_PREFIX.length);
