@@ -73,7 +73,7 @@ export function renderSkillInlineMarkdownChildren(
   });
 }
 
-function SkillChip(props: { skill: InlineSkill; rawText: string }) {
+export function SkillChip(props: { skill: InlineSkill; rawText: string }) {
   return (
     <span className="inline-flex align-middle leading-none" data-markdown-copy={props.rawText}>
       <span

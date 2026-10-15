@@ -186,4 +186,42 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
       "apps/web/src/components/chat/RunChat.tsx, chat/BrowserStrip.tsx, chat/MessagePictures.tsx, zerops/ZeropsOrganizationScope.tsx, zerops/ZeropsAgentSignIn.tsx",
     reason: "Home-made action: each is fed by a thread, a run's pictures or the signed-in account.",
   },
+  {
+    name: "ThreadSyncStatusPill",
+    source: "apps/web/src/components/chat/ThreadSyncStatusPill.tsx",
+    reason: "Home-made label: it portals into the conversation header's slot (useThreadSyncSlot).",
+  },
+  {
+    name: "SidebarUpdatePill",
+    source: "apps/web/src/components/sidebar/SidebarUpdatePill.tsx",
+    reason: "Home-made label: desktop only; it reads the desktop app's update state.",
+  },
+  {
+    name: "SidebarProviderUpdatePill",
+    source: "apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx",
+    reason: "Home-made label: it reads the server's providers and navigates to their settings.",
+  },
+  {
+    name: "ReleaseTag, ReviewTag (menu-tag)",
+    source: "apps/web/src/components/zerops/SidebarProjectReview.tsx",
+    reason:
+      "Home-made label: they open a review through useOpenReview, an operation on the data layer.",
+  },
+  {
+    name: "ZeropsChangeLinkChip",
+    source: "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
+    reason: "Home-made label: it resolves its link through HQ's address (useHqAddress).",
+  },
+  {
+    name: "AccessChip",
+    source: "apps/web/src/components/zerops/projects/ProjectAccessChips.tsx",
+    reason:
+      "Home-made label: a person's access to a project, with the menu that changes it; it needs the project's people.",
+  },
+  {
+    name: "MatePill",
+    source: "apps/web/src/components/chat/ConversationStrip.tsx",
+    reason:
+      "Home-made label: private to the conversation strip, which reads the Mate's crew and chats.",
+  },
 ];

@@ -180,7 +180,7 @@ function sourceStatusTone(status: ResourceTelemetrySourceStatus): "default" | "w
   return "danger";
 }
 
-function SourceStatusBadge({
+export function SourceStatusBadge({
   label,
   status,
   presentation,
