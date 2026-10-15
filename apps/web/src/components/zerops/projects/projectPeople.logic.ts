@@ -165,7 +165,7 @@ const ORG_ROLE_WORDS: Readonly<Record<ZeropsOrgRole, string>> = {
   ADMIN: "Admin",
   BASIC_USER: "Developer",
   READ_ONLY: "Read only",
-  NO_ACCESS: "Member",
+  NO_ACCESS: "Guest",
 };
 
 /** "Ada L." — a first name and the last name's initial; a single word or an address as it is. */

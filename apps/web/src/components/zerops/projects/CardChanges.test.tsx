@@ -153,7 +153,7 @@ it("holds the line of a card's changes while HQ has not told them, so the card d
 // production running v0.1.0, while HQ withheld the project's changes from her.
 describe("a card's changes it may not read", () => {
   it.each([
-    { case: "withheld", unknown: "Needs Basic user access", says: "Needs Basic user access" },
+    { case: "withheld", unknown: "Needs Developer access", says: "Needs Developer access" },
     { case: "known to be none", unknown: undefined, says: "No changes yet" },
   ])(
     "says why where its changes are $case, never that there are none",

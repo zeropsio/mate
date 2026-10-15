@@ -856,8 +856,8 @@ describe("each person as a chip", () => {
     );
     expect(view.kind === "people" && view.candidates.map(({ name, role }) => [name, role])).toEqual(
       [
-        ["Ada", "Member"],
-        ["Zoe", "Member"],
+        ["Ada", "Guest"],
+        ["Zoe", "Guest"],
       ],
     );
   });
