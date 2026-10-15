@@ -142,12 +142,6 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
       "Home-made action: it opens the Chief's overview through the router and the right panel's store.",
   },
   {
-    name: "ReviewButton, OpenButton (menu-wait-button)",
-    source: "apps/web/src/components/zerops/SidebarWaiting.tsx",
-    reason:
-      "Home-made action: they open a review through useOpenReview, an operation on the data layer.",
-  },
-  {
     name: "FixAction, RestartAction (run-result-action)",
     source: "apps/web/src/components/chat",
     reason:

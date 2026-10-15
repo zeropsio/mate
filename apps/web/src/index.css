@@ -6177,48 +6177,6 @@ code {
     margin-top: 12px;
   }
 
-  .menu-wait-button {
-    height: 32px;
-    padding: 0 14px;
-    border-radius: 10px;
-    background: color-mix(in oklab, var(--foreground) 8%, transparent);
-    color: var(--foreground);
-    font-size: 14px;
-    font-weight: 500;
-    white-space: nowrap;
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      scale 160ms var(--ease-out-strong);
-  }
-
-  .menu-wait-button:hover {
-    background: color-mix(in oklab, var(--foreground) 13%, transparent);
-  }
-
-  .menu-wait-button[data-main] {
-    background: var(--foreground);
-    color: var(--background);
-  }
-
-  .menu-wait-button[data-main]:hover {
-    background: color-mix(in oklab, var(--foreground) 86%, var(--background));
-  }
-
-  .menu-wait-button:active {
-    scale: 0.97;
-  }
-
-  .menu-wait-button:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-
-  .menu-wait-button:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
   .menu-wait-reply {
     display: flex;
     flex: 1 1 100%;
@@ -6801,8 +6759,7 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .menu-round-button:active,
-  .menu-wait-button:active {
+  .menu-round-button:active {
     scale: none;
   }
 
