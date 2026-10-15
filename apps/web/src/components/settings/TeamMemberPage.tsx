@@ -238,7 +238,7 @@ export function TeamMemberView({
                 disabled={removal.pending}
                 onClick={() => setAskingRemove(true)}
                 size="md"
-                variant="destructive-outline"
+                variant="destructive"
               >
                 <Trash2Icon aria-hidden="true" />
                 {end === "withdraw" ? "Withdraw invite" : `Remove from ${organizationName}`}

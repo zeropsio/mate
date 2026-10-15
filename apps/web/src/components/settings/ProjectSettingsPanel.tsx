@@ -1060,7 +1060,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               control={
                 <Button
                   size="sm"
-                  variant="destructive-outline"
+                  variant="destructive"
                   onClick={() => void removeMembers([selectedCheckout])}
                 >
                   <Trash2Icon className="size-3.5" />
@@ -1200,7 +1200,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
             }
             control={
               <Button
-                variant="destructive-outline"
+                variant="destructive"
                 onClick={() => void removeMembers(group.memberProjects)}
               >
                 <Trash2Icon />

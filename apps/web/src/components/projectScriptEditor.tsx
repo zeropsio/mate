@@ -328,7 +328,7 @@ export function ProjectScriptEditorDialog({
             {isEditing && (
               <Button
                 type="button"
-                variant="destructive-outline"
+                variant="destructive"
                 className="mr-auto"
                 onClick={() => setDeleteConfirmOpen(true)}
               >

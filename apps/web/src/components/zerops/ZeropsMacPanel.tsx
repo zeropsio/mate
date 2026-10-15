@@ -273,7 +273,7 @@ function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
         )}
         <p className="mac-remove-forget">
           Mac gone, or not answering?
-          <Button onClick={forget} size="sm" variant="destructive-outline">
+          <Button onClick={forget} size="sm" variant="destructive">
             Forget it here
           </Button>
         </p>
