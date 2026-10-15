@@ -918,6 +918,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       // the scrolls it hears: the list's own reading goes stale mid-glide.
       follows: () => followingEndRef.current,
       room: () => followRoomRef.current,
+      // Placed out of sight, it stands at its end at once, so it is shown standing still.
+      unseen: () => !listPlacedRef.current,
       placeEnd: () => {
         void listRef.current?.scrollToEnd({ animated: false, viewOffset: followRoomRef.current });
       },

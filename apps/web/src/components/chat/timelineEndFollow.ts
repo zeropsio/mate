@@ -93,6 +93,7 @@ export function createEndFollow({
   viewport,
   follows,
   room = () => 0,
+  unseen = () => false,
   placeEnd,
 }: {
   readonly viewport: () => HTMLElement | null;
@@ -103,9 +104,15 @@ export function createEndFollow({
    * what an answered ask over the composer covered, while the view eases out of it.
    */
   readonly room?: () => number;
+  /**
+   * Its conversation is not shown yet (placed out of sight): nobody watches it glide, so it stands
+   * at the end at once, and the conversation is shown standing still.
+   */
+  readonly unseen?: () => boolean;
   /** The list commits this measured alignment after pending virtualizer layout. */
   readonly placeEnd: () => void;
 }): EndFollow {
+  const unwatched = () => outOfSight() || unseen();
   const page = typeof document === "undefined" ? undefined : document;
   let frame = 0;
   let last = 0;
@@ -151,7 +158,7 @@ export function createEndFollow({
       stopGlide();
       return;
     }
-    at = approach(at, end, last === 0 ? 1000 / 60 : now - last, FOLLOW_TAU_MS, outOfSight());
+    at = approach(at, end, last === 0 ? 1000 / 60 : now - last, FOLLOW_TAU_MS, unwatched());
     last = now;
     scrollOwn(element, at);
     if (at !== end) frame = requestAnimationFrame(step);
@@ -230,7 +237,7 @@ export function createEndFollow({
       // Standing in the room under the end is the person's: it is not taken back.
       if (frame !== 0 || Math.abs(gap) < 0.5 || (gap < 0 && room() > 0)) return;
       // Out of sight, nobody watches it glide: it stands there at once.
-      if (gap < GLIDE_FROM_PX || reducedMotion() || outOfSight()) {
+      if (gap < GLIDE_FROM_PX || reducedMotion() || unwatched()) {
         scrollOwn(element, end);
         at = element.scrollTop;
         return;
