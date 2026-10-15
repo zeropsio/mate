@@ -1416,7 +1416,8 @@ export class ZeropsApiClient {
             publicIpV4Shared: project.publicIpV4Shared,
             maxCreditLimit: project.maxCreditLimit,
           }),
-          userRoles: creationUserRoles(list),
+          // One level deeper than a creation's list: a flat list is refused as invalid input.
+          userRoles: { userRoles: creationUserRoles(list) },
         }),
       },
       {
