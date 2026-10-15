@@ -186,7 +186,7 @@ describe("a finished release keeps the facts it was made with", () => {
     (_name, step) => {
       expect(step.model.meta.join(" · ")).toBe("the first release · 1 change");
       expect(step.facts.contents).toEqual(ONE_CHANGE);
-      expect(step.facts.where).toEqual([{ service: "app", line: "redeploys from 5e1d0a7" }]);
+      expect(step.facts.where).toEqual([{ service: "app", line: "gets v0.1.0" }]);
       // There is nothing it replaced: no roll back is offered, least of all to itself.
       expect(step.model.ifWrong).toBeUndefined();
       expect(step.model.consequence).not.toMatch(/roll back/u);
@@ -217,7 +217,7 @@ describe("a finished release keeps the facts it was made with", () => {
     "a second release, %s: replaces v0.1.0, and rolls back to it",
     (_name, step) => {
       expect(step.model.meta.join(" · ")).toBe("replaces v0.1.0 · 1 change");
-      expect(step.facts.where).toEqual([{ service: "app", line: "redeploys from 5e1d0a7" }]);
+      expect(step.facts.where).toEqual([{ service: "app", line: "gets v0.1.1" }]);
       expect(step.model.ifWrong).toBe(
         "Roll back to v0.1.0 from production's menu. It gets its own review.",
       );
@@ -534,7 +534,7 @@ describe("a release review has a row per part", () => {
       name: "a one-part release says where its part deploys from, as it always did",
       candidate: [["app", "5e1d0a7"]],
       production: [["app", "3fa9c21"]],
-      where: [{ service: "app", line: "redeploys from 5e1d0a7" }],
+      where: [{ service: "app", line: "gets v0.2.0" }],
     },
     {
       name: "a release of three parts says for each part whether it redeploys or stays",
@@ -549,9 +549,9 @@ describe("a release review has a row per part", () => {
         ["worker", "3fa9c21"],
       ],
       where: [
-        { service: "api", line: "redeploys from 5e1d0a7" },
-        { service: "web", line: "stays on 5e1d0a7" },
-        { service: "worker", line: "redeploys from 5e1d0a7" },
+        { service: "api", line: "gets v0.2.0" },
+        { service: "web", line: "stays as it is" },
+        { service: "worker", line: "gets v0.2.0" },
       ],
     },
   ] as const)("$name", ({ candidate, production, where }) => {
@@ -715,7 +715,7 @@ describe("a release opened on its way follows its own tag to the end", () => {
       expect(last?.model.verdict).toMatchObject(verdict);
       expect(last?.model.consequence).toBe(foot);
       expect(last?.model.meta.join(" · ")).toBe("the first release · 1 change");
-      expect(last?.facts.where).toEqual([{ service: "app", line: "redeploys from 5e1d0a7" }]);
+      expect(last?.facts.where).toEqual([{ service: "app", line: "gets v0.1.0" }]);
     },
   );
 

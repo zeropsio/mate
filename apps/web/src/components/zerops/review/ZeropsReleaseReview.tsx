@@ -678,7 +678,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
                 <p className="rv-words">
                   {repo.repository} ·{" "}
                   {repo.included ? "Included" : `Left out: ${repo.reason ?? "Not ready"}`} ·{" "}
-                  {repo.sha?.slice(0, 7) ?? "No commit on main"}
+                  {repo.sha?.slice(0, 7) ?? "Nothing merged yet"}
                 </p>
                 {repo.remote == null ? null : (
                   <p className="rv-note">
@@ -713,7 +713,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           {props.git !== undefined || untold.length === 0 ? null : (
             <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>
           )}
-          {/* Which commit each service redeploys from, until HQ answers where it went. */}
+          {/* Which release each service gets, until HQ answers where it went. */}
           {props.git === undefined && answer === undefined
             ? props.where.map((entry) => (
                 <p className="rv-note" key={entry.service}>
@@ -769,7 +769,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
                 >
                   Use {suggestion.tag}
                 </button>
-                <span>Declared on main in {suggestion.source}</span>
+                <span>Set in the code, in {suggestion.source.split("/").at(-1)}</span>
               </div>
             ))}
           </div>

@@ -28,7 +28,7 @@ export interface ReleaseFacts {
   readonly replaces: ReleaseReplaces;
   /** What goes out, per comparison HQ answered (`ZeropsReleaseOffer.contents`). */
   readonly contents: ReadonlyArray<Moved>;
-  /** Where: per service, what it redeploys from, or what it stays on. */
+  /** Where: per service, the release it gets, or what it stays on. */
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   /** The production services that redeploy — every one, when the comparison moves none. */
   readonly services: ReadonlyArray<string>;
@@ -59,9 +59,7 @@ export function releaseFacts(input: {
     contents: input.contents,
     where: input.comparison.map((row) => ({
       service: row.service,
-      line: row.changed
-        ? `redeploys from ${row.candidate ?? "main"}`
-        : `stays on ${row.production ?? "what it runs"}`,
+      line: row.changed ? `gets ${input.tag}` : "stays as it is",
     })),
     services: moving.length === 0 ? input.productionServices : moving,
   };
@@ -211,15 +209,15 @@ export function releaseOutcomeOf(input: {
   if (input.superseded !== undefined) return { kind: "superseded", ...input.superseded };
   if (input.stalled === true) return { kind: "stalled", at: tagged?.taggedAt };
   if (input.pressing && tagged === undefined) {
-    return { kind: "releasing", progress: `Tagging main as ${input.tag}` };
+    return { kind: "releasing", progress: `Preparing ${input.tag}` };
   }
   const since = tagged?.taggedAt === undefined ? Number.NaN : Date.parse(tagged.taggedAt);
   if (Number.isNaN(since)) {
-    return { kind: "releasing", progress: `Production redeploys from ${input.tag}` };
+    return { kind: "releasing", progress: `Putting ${input.tag} live` };
   }
   const elapsed = Math.max(0, Math.floor((input.clockMs - since) / 1000));
   const clock = `${String(Math.floor(elapsed / 60))}:${String(elapsed % 60).padStart(2, "0")}`;
-  return { kind: "releasing", progress: `Production redeploys from ${input.tag} · ${clock}` };
+  return { kind: "releasing", progress: `Putting ${input.tag} live · ${clock}` };
 }
 
 /**
