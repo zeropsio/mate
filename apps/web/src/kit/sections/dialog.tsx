@@ -34,7 +34,7 @@ function Opener({
   return (
     <Specimen label={label}>
       <Dialog>
-        <DialogTrigger render={<Button variant="outline" />}>Open</DialogTrigger>
+        <DialogTrigger render={<Button variant="secondary" />}>Open</DialogTrigger>
         <DialogPopup showCloseButton={showCloseButton}>
           <DialogHeader>
             <DialogTitle>Rename the project</DialogTitle>

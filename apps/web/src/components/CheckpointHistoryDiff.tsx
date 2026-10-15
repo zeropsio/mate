@@ -167,7 +167,7 @@ function CheckpointRootDiff(
         {expanded && notRecorded === null && (
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             disabled={query.isPending && !query.error}
             onClick={query.refresh}
             aria-label={`Retry ${entry.root.label} diff`}

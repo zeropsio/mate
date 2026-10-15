@@ -472,7 +472,7 @@ export function ThemeImportDialog({
               />
             );
             const chooseButton = (label = "Choose files") => (
-              <Button disabled={isReading} size="md" variant="outline" onClick={openFilePicker}>
+              <Button disabled={isReading} size="md" variant="secondary" onClick={openFilePicker}>
                 <DownloadIcon />
                 {isReading ? "Reading…" : label}
               </Button>
@@ -500,7 +500,7 @@ export function ThemeImportDialog({
                     <Button size="md" onClick={() => resolveConflicts("update")}>
                       Update existing
                     </Button>
-                    <Button size="md" variant="outline" onClick={() => resolveConflicts("copy")}>
+                    <Button size="md" variant="secondary" onClick={() => resolveConflicts("copy")}>
                       Keep both
                     </Button>
                     <Button size="md" variant="ghost" onClick={() => setConflicts(null)}>

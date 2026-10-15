@@ -268,7 +268,7 @@ export function TeamMemberView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               onClick={() => {
                 setAskingRemove(false);
@@ -289,7 +289,7 @@ export function TeamMemberView({
             <AlertDialogDescription>{selfWords.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               onClick={() => {
                 setAskingSelf(false);

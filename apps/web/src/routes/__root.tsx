@@ -525,7 +525,7 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
           <Button size="md" onClick={() => void router.invalidate()}>
             Try again
           </Button>
-          <Button size="md" variant="outline" onClick={() => window.location.reload()}>
+          <Button size="md" variant="secondary" onClick={() => window.location.reload()}>
             Reload app
           </Button>
         </div>

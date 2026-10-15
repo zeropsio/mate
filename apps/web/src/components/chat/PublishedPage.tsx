@@ -240,7 +240,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           <Button
             type="button"
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={() => {
               setShowing((count) => count + 1);
               setLeft(false);

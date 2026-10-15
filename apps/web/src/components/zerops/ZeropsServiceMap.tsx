@@ -387,7 +387,7 @@ function RouteButton({ route }: { route: ZeropsServiceRoute }) {
         />
       }
       size="icon-md"
-      variant="outline"
+      variant="secondary"
     >
       <ServiceBrowserLinkIndicator href={route.url} />
     </Button>
@@ -401,7 +401,7 @@ function RouteMenu({ routes }: { routes: ReadonlyArray<ZeropsRouteChoice> }) {
       <MenuTrigger
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
-        render={<Button data-zerops-service-route-menu size="md" variant="outline" />}
+        render={<Button data-zerops-service-route-menu size="md" variant="secondary" />}
       >
         Open
         <ChevronDownIcon aria-hidden="true" />
@@ -448,7 +448,7 @@ function DataButton({
       }}
       onPointerDown={(event) => event.stopPropagation()}
       size="icon-md"
-      variant="outline"
+      variant="secondary"
     >
       <DatabaseIcon aria-hidden="true" />
     </Button>

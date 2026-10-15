@@ -716,7 +716,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                       ? " Showing last-known refs."
                       : null}
                     {refPresentation.canRetry ? (
-                      <Button size="sm" variant="outline" onClick={refreshGitDiff}>
+                      <Button size="sm" variant="secondary" onClick={refreshGitDiff}>
                         Refresh diff
                       </Button>
                     ) : null}
@@ -798,7 +798,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
           />
         )}
         {selectedTurn && !selectedTurn.history && (
-          <Button size="sm" variant="outline" onClick={activeCheckpointDiff.refresh}>
+          <Button size="sm" variant="secondary" onClick={activeCheckpointDiff.refresh}>
             Retry diff
           </Button>
         )}

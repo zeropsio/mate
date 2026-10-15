@@ -36,7 +36,7 @@ function AlertSpecimens() {
                 <AlertTitle>The deploy finished</AlertTitle>
                 <AlertDescription>storefront runs the build from 18:02.</AlertDescription>
                 <AlertAction>
-                  <Button size="sm" variant="outline">
+                  <Button size="sm" variant="secondary">
                     Open
                   </Button>
                 </AlertAction>
@@ -69,7 +69,7 @@ function AlertSpecimens() {
                   React 18 and the project pins React 19. Pin one of them, then deploy again.
                 </AlertDescription>
                 <AlertAction>
-                  <Button size="sm" variant="outline">
+                  <Button size="sm" variant="secondary">
                     Show log
                   </Button>
                 </AlertAction>

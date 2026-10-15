@@ -447,7 +447,7 @@ export function ProviderModelsSection({
             placeholder={driverKind ? CUSTOM_MODEL_PLACEHOLDER_BY_KIND[driverKind] : "model-slug"}
             spellCheck={false}
           />
-          <Button className="shrink-0" variant="outline" onClick={handleAdd}>
+          <Button className="shrink-0" variant="secondary" onClick={handleAdd}>
             <PlusIcon className="size-3.5" />
             Add
           </Button>

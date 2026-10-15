@@ -131,7 +131,7 @@ export function ZeropsGitOverview({
           ).map(([value, label]) => (
             <Button
               key={value}
-              variant={view === value ? "outline" : "ghost-muted"}
+              variant={view === value ? "secondary" : "ghost-muted"}
               size="md"
               aria-pressed={view === value}
               onClick={() => {
@@ -158,7 +158,7 @@ export function ZeropsGitOverview({
       {presentation.changed ? (
         <div className="flex items-center gap-3" role="status">
           <span className="text-sm text-muted-foreground">The repository list has changed.</span>
-          <Button variant="outline" size="md" onClick={() => setHeld(undefined)}>
+          <Button variant="secondary" size="md" onClick={() => setHeld(undefined)}>
             Update list
           </Button>
         </div>

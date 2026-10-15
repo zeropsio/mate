@@ -2572,7 +2572,7 @@ export function OpenCommandPaletteDialog(props: {
         <TooltipTrigger
           render={
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               tabIndex={-1}
               className="absolute inset-e-2.5 top-1/2 -translate-y-1/2"
@@ -2599,7 +2599,7 @@ export function OpenCommandPaletteDialog(props: {
         <TooltipTrigger
           render={
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               tabIndex={-1}
               className="absolute inset-e-2.5 top-1/2 -translate-y-1/2"

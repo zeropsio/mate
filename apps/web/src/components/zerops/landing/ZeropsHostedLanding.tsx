@@ -64,7 +64,7 @@ export function ZeropsHostedLanding() {
         <div className="flex flex-wrap justify-center gap-3">
           <Button onClick={verifyAgain}>Verify again</Button>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => {
               void signOut();
             }}

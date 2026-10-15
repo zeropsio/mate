@@ -120,7 +120,7 @@ export function GitRemoteSettings({
             Connect a GitHub repository to release this project to a Git branch.
           </p>
           {connectable ? (
-            <Button size="md" variant="outline" onClick={() => setOpenedFor(appId)}>
+            <Button size="md" variant="secondary" onClick={() => setOpenedFor(appId)}>
               Connect repository
             </Button>
           ) : null}
@@ -249,7 +249,7 @@ function Remote({
         </>
       )}
       {permitted && !editing ? (
-        <Button size="md" variant="outline" onClick={() => setEditing(true)}>
+        <Button size="md" variant="secondary" onClick={() => setEditing(true)}>
           {remote == null ? "Connect repository" : "Replace token"}
         </Button>
       ) : null}
@@ -261,7 +261,7 @@ function Remote({
       !editing ? (
         <Button
           size="md"
-          variant="outline"
+          variant="secondary"
           onClick={() => {
             setUrl(remote.url);
             setVerifiedAddress(undefined);
@@ -320,7 +320,7 @@ function Remote({
             </Button>
             <Button
               size="md"
-              variant="outline"
+              variant="secondary"
               disabled={busy}
               onClick={() => {
                 setToken("");
@@ -344,7 +344,7 @@ function Remote({
       allowed("disconnect_remote") &&
       actions?.disconnect !== undefined ? (
         <>
-          <Button size="md" variant="outline" onClick={() => setDisconnecting(true)}>
+          <Button size="md" variant="secondary" onClick={() => setDisconnecting(true)}>
             Disconnect
           </Button>
           {disconnecting ? (
@@ -372,7 +372,7 @@ function Remote({
               >
                 Confirm disconnect
               </Button>
-              <Button size="md" variant="outline" onClick={() => setDisconnecting(false)}>
+              <Button size="md" variant="secondary" onClick={() => setDisconnecting(false)}>
                 Cancel
               </Button>
             </div>
@@ -388,7 +388,7 @@ function Remote({
           </p>
           <Button
             size="md"
-            variant="outline"
+            variant="secondary"
             disabled={busy}
             onClick={async () => {
               setBusy(true);

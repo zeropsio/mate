@@ -403,7 +403,7 @@ export function AddProviderInstanceDialog({
 
         <DialogFooter className="shrink-0" variant="bare">
           <Button
-            variant="outline"
+            variant="secondary"
             size="md"
             onClick={() => {
               if (wizardStep === 0) {

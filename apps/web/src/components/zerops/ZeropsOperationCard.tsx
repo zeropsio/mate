@@ -822,7 +822,7 @@ export function ZeropsOperationCard(props: {
               ) : null}
               {props.onRestartRetry === undefined ? null : (
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="md"
                   disabled={retryBusy || props.restartRetryDisabled}
                   onClick={async () => {

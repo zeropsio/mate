@@ -87,7 +87,7 @@ export function ZeropsAgentPickerPanel({
         </Button>
       )}
       {view.showCancel ? (
-        <Button onClick={() => onCancel(agentId)} size="md" variant="outline">
+        <Button onClick={() => onCancel(agentId)} size="md" variant="secondary">
           Cancel
         </Button>
       ) : null}

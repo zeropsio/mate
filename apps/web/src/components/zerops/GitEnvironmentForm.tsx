@@ -291,7 +291,7 @@ export function GitEnvironmentForm({
             />
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               disabled={
                 busy ||
                 uncertain ||
@@ -444,7 +444,7 @@ export function GitEnvironmentForm({
         {step !== "repository" || onBack ? (
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             disabled={busy}
             onClick={() => {
               setToken("");

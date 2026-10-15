@@ -52,7 +52,7 @@ export function FileBrowserPanelState(
         <p className="text-xs leading-relaxed text-foreground">{state.message}</p>
         <Button
           type="button"
-          variant="outline"
+          variant="secondary"
           size="md"
           disabled={state.retryPending}
           aria-busy={state.retryPending || undefined}

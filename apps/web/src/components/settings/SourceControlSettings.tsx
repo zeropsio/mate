@@ -479,7 +479,7 @@ export function EmptySourceControlDiscovery({
         <EmptyContent>
           <Button
             size="md"
-            variant="outline"
+            variant="secondary"
             className="h-8 gap-1.5 px-3 text-xs"
             onClick={onScan}
             disabled={isPending}

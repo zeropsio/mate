@@ -666,7 +666,7 @@ export function ZeropsDataPanel({
           data-zerops-data-retry
           onClick={() => requestServices()}
           size="sm"
-          variant="outline"
+          variant="secondary"
         >
           Try again
         </Button>

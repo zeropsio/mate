@@ -8853,7 +8853,9 @@ function ConversationView(props: ChatViewProps) {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+                  <AlertDialogClose render={<Button variant="secondary" />}>
+                    Cancel
+                  </AlertDialogClose>
                   <Button
                     variant="primary"
                     onClick={() => {
@@ -8999,7 +9001,7 @@ function ConversationView(props: ChatViewProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               onClick={() => {
                 if (!pendingRevert || pendingRevert.routeThreadKey !== routeThreadKey) return;

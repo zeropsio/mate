@@ -120,7 +120,7 @@ function MenuSpecimens() {
       </Specimen>
       <Specimen label='<MenuPopup side="right">'>
         <Menu>
-          <MenuTrigger render={<Button variant="outline" />}>Open to the right</MenuTrigger>
+          <MenuTrigger render={<Button variant="secondary" />}>Open to the right</MenuTrigger>
           <MenuPopup side="right">
             <MenuItem>Rename</MenuItem>
             <MenuItem variant="destructive">Delete</MenuItem>

@@ -680,7 +680,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                             <TooltipTrigger
                               render={
                                 <Button
-                                  variant="outline"
+                                  variant="secondary"
                                   size="sm"
                                   className="h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground"
                                   onClick={(event) => {
@@ -917,7 +917,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                       </span>
                     </div>
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="md"
                       className="w-full"
                       onClick={() => {
@@ -947,7 +947,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
             ) : (
               <>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="md"
                   disabled={publishRepositoryAction.isPending}
                   onClick={() => {
@@ -1833,7 +1833,12 @@ export default function GitActionsControl({
           </>
         )
       ) : !isRepo ? (
-        <Button variant="outline" size="sm" disabled={initAction.isPending} onClick={initializeGit}>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={initAction.isPending}
+          onClick={initializeGit}
+        >
           <GitBranchPlusIcon className="size-3.5" aria-hidden />
           <span className="ml-0.5">
             {initAction.isPending ? "Initializing..." : "Initialize Git"}
@@ -1850,7 +1855,7 @@ export default function GitActionsControl({
                     aria-disabled="true"
                     className="cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none"
                     size="sm"
-                    variant="outline"
+                    variant="secondary"
                   />
                 }
               >
@@ -1868,7 +1873,7 @@ export default function GitActionsControl({
             </Popover>
           ) : (
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               className="ps-[8.5px]"
               disabled={isGitActionRunning || quickAction.disabled}
@@ -1889,7 +1894,7 @@ export default function GitActionsControl({
             }}
           >
             <MenuTrigger
-              render={<Button aria-label="Git action options" size="icon-sm" variant="outline" />}
+              render={<Button aria-label="Git action options" size="icon-sm" variant="secondary" />}
               disabled={isGitActionRunning}
             >
               <ChevronDownIcon aria-hidden="true" className="size-4" />
@@ -2053,7 +2058,7 @@ export default function GitActionsControl({
           </DialogPanel>
           <DialogFooter variant="bare">
             <Button
-              variant="outline"
+              variant="secondary"
               size="md"
               onClick={() => {
                 setIsCommitDialogOpen(false);
@@ -2065,7 +2070,7 @@ export default function GitActionsControl({
               Cancel
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               size="md"
               disabled={noneSelected}
               onClick={runDialogActionOnNewBranch}
@@ -2104,7 +2109,7 @@ export default function GitActionsControl({
           <DialogFooter variant="bare" className="sm:flex-wrap sm:items-center">
             <Button
               className="w-full sm:mr-auto sm:w-auto"
-              variant="outline"
+              variant="secondary"
               size="md"
               onClick={() => setPendingDefaultBranchAction(null)}
             >
@@ -2112,7 +2117,7 @@ export default function GitActionsControl({
             </Button>
             <Button
               className="w-full max-w-full sm:w-auto"
-              variant="outline"
+              variant="secondary"
               size="md"
               onClick={continuePendingDefaultBranchAction}
             >

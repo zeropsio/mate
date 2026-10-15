@@ -99,7 +99,7 @@ export function VaultLines(props: VaultLinesProps) {
               disabled={hiding || readable.some(props.busy)}
               onClick={() => void hideAll()}
               size="sm"
-              variant="outline"
+              variant="secondary"
             >
               {hiding ? <Spinner size="xs" /> : null}
               {readable.length === 1 ? "Hide it" : "Hide them"}
@@ -146,7 +146,7 @@ function RestartLine(props: {
           disabled={props.restarting || asking}
           onClick={() => setAsking(true)}
           size="sm"
-          variant="outline"
+          variant="secondary"
         >
           {props.restarting ? <Spinner size="xs" /> : <RotateCwIcon />}
           {props.restarting ? `Restarting ${props.hostname}…` : `Restart ${props.hostname}`}

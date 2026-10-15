@@ -507,11 +507,11 @@ function WhenExpressionNodeEditor({
             <SelectItem value="or">or</SelectItem>
           </SelectContent>
         </Select>
-        <Button type="button" variant="outline" size="sm" onClick={addCondition}>
+        <Button type="button" variant="secondary" size="sm" onClick={addCondition}>
           <PlusIcon className="size-3.5" />
           Condition
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={addGroup}>
+        <Button type="button" variant="secondary" size="sm" onClick={addGroup}>
           <PlusIcon className="size-3.5" />
           Group
         </Button>
@@ -615,11 +615,11 @@ function WhenExpressionBuilder({
           <div className="text-sm font-medium text-foreground">When</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={addRootCondition}>
+          <Button type="button" variant="secondary" size="sm" onClick={addRootCondition}>
             <PlusIcon className="size-3.5" />
             Condition
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={addRootGroup}>
+          <Button type="button" variant="secondary" size="sm" onClick={addRootGroup}>
             <PlusIcon className="size-3.5" />
             Group
           </Button>
@@ -666,7 +666,7 @@ function WhenExpressionBuilder({
                 <PlusIcon className="size-3.5" />
                 Condition
               </Button>
-              <Button type="button" variant="outline" size="sm" onClick={addRootGroup}>
+              <Button type="button" variant="secondary" size="sm" onClick={addRootGroup}>
                 <PlusIcon className="size-3.5" />
                 Group
               </Button>

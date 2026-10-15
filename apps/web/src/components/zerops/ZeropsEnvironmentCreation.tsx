@@ -214,7 +214,7 @@ export function ZeropsEnvironmentCreation({
       {line === null ? null : <p className="text-xs text-muted-foreground">{line}</p>}
       {outcome === undefined ? null : (
         <div className="flex justify-end">
-          <Button onClick={onDismiss} size="md" variant="outline">
+          <Button onClick={onDismiss} size="md" variant="secondary">
             {/* It stands on the projects page: closing it goes nowhere else. */}
             Dismiss
           </Button>

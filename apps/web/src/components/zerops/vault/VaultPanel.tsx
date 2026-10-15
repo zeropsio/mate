@@ -273,7 +273,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           setMode({ kind: "add" });
         }}
         size="sm"
-        variant="outline"
+        variant="secondary"
       >
         <PlusIcon />
         Add

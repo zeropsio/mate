@@ -141,7 +141,7 @@ export function ContextWindowMeter(props: {
             <>
               <Button
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 className="mt-1 w-full justify-center"
                 disabled={compactDisabled}
                 onClick={onCompact}

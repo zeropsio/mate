@@ -422,7 +422,7 @@ function RowBody(props: VaultRowProps) {
                 key={reader.serviceId}
                 onClick={() => props.onRestart(reader.serviceId, reader.hostname)}
                 size="sm"
-                variant="outline"
+                variant="secondary"
               >
                 {props.restarting.has(reader.serviceId) ? <Spinner size="xs" /> : <RotateCwIcon />}
                 Restart {reader.hostname}
@@ -497,7 +497,7 @@ function RowBody(props: VaultRowProps) {
             <Button onClick={remove} size="sm" variant="ghost-destructive">
               Remove anyway
             </Button>
-            <Button onClick={() => setGuard(false)} size="sm" variant="outline">
+            <Button onClick={() => setGuard(false)} size="sm" variant="secondary">
               Cancel
             </Button>
           </div>

@@ -686,7 +686,7 @@ function AddLoginControl({
             }}
             size="sm"
             type="button"
-            variant={kind === "subscription" ? "primary" : "outline"}
+            variant={kind === "subscription" ? "primary" : "secondary"}
           >
             Another account
           </Button>
@@ -696,7 +696,7 @@ function AddLoginControl({
             }}
             size="sm"
             type="button"
-            variant={kind === "apiKey" ? "primary" : "outline"}
+            variant={kind === "apiKey" ? "primary" : "secondary"}
           >
             API key
           </Button>
@@ -947,7 +947,7 @@ function ZeropsAgentAuthActionButton({
     // The watcher marks this within seconds of the credential artifact
     // appearing — there is nothing for the user to click while it does.
     return (
-      <Button disabled size="sm" variant="outline">
+      <Button disabled size="sm" variant="secondary">
         {agent.verification?.status === "checking" ? "Checking…" : "Registering…"}
       </Button>
     );
@@ -972,7 +972,7 @@ function ZeropsAgentAuthActionButton({
           onSignIn(agent.agentId);
         }}
         size="sm"
-        variant={ownership === "someone-else" ? "link" : "outline"}
+        variant={ownership === "someone-else" ? "link" : "secondary"}
       >
         {ownership === "mine" ? "Switch account" : AGENT_OWNERSHIP_RECOVERY_LABEL}
       </Button>

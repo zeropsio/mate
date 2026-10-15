@@ -31,7 +31,7 @@ function Opener({ footer }: { readonly footer: "default" | "bare" }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter variant={footer}>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <AlertDialogClose render={<Button variant="destructive" />}>Delete</AlertDialogClose>
           </AlertDialogFooter>
         </AlertDialogPopup>

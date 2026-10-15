@@ -22,7 +22,7 @@ function DesktopDownloadRowContent() {
         <Button
           render={<a href={DESKTOP_RELEASES_URL} rel="noreferrer" target="_blank" />}
           size="sm"
-          variant="outline"
+          variant="secondary"
         >
           Download
         </Button>

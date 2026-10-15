@@ -310,7 +310,7 @@ function FailureCensus() {
                 description: "The server did not answer.",
               })
             }
-            variant="outline"
+            variant="secondary"
           >
             Plain error toast
           </Button>
@@ -329,7 +329,7 @@ function FailureCensus() {
                 }),
               )
             }
-            variant="outline"
+            variant="secondary"
           >
             Stacked error toast
           </Button>

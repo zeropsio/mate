@@ -120,7 +120,7 @@ export function DiffCommentAnnotation({
         {secondaryAction ? (
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             disabled={!secondaryAction.allowEmpty && !trimmedText}
             onClick={() => secondaryAction.onAction(trimmedText)}
           >

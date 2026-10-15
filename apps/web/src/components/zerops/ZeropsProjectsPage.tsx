@@ -551,7 +551,7 @@ export function ZeropsProjectsHeader({
       </div>
       <div className="flex items-center gap-2">
         {newProject ? (
-          <Button onClick={askNewProject} size="md" variant="outline">
+          <Button onClick={askNewProject} size="md" variant="secondary">
             <PlusIcon />
             New project
           </Button>
@@ -584,7 +584,7 @@ function ProjectsFreshness({
       <Spinner size="sm" />
       <span>{notice.message.text}</span>
       {notice.affordance == null || onRetry === undefined ? null : (
-        <Button onClick={onRetry} size="md" variant="outline">
+        <Button onClick={onRetry} size="md" variant="secondary">
           {notice.affordance.label}
         </Button>
       )}
@@ -2076,7 +2076,7 @@ export function ZeropsProjectsContent({
   // stale read offers a retry, and the page it would go to is this one.
   const listingAffordance =
     listingNotice?.affordance == null ? null : (
-      <Button onClick={refreshCandidates} size="md" variant="outline">
+      <Button onClick={refreshCandidates} size="md" variant="secondary">
         {listingNotice.affordance.label}
       </Button>
     );
@@ -2144,7 +2144,7 @@ export function ZeropsProjectsContent({
                 runRowAction(candidate, action.kind);
               }}
               size="sm"
-              variant="outline"
+              variant="secondary"
             >
               {busy ? (action.kind === "remove" ? "Removing…" : "Setting up…") : action.label}
             </Button>
@@ -2215,7 +2215,7 @@ export function ZeropsProjectsContent({
             runRowAction(candidate, "start");
           }}
           size="sm"
-          variant="outline"
+          variant="secondary"
         >
           <PlayIcon />
           {busy ? "Starting…" : "Start"}
@@ -2231,7 +2231,7 @@ export function ZeropsProjectsContent({
             runRowAction(candidate, "remove");
           }}
           size="sm"
-          variant="outline"
+          variant="secondary"
         >
           {busy ? "Removing…" : "Remove"}
         </Button>

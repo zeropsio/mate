@@ -218,7 +218,7 @@ export function WaitingNotice({
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={busy || held} onClick={onPublish} size="md" variant="outline">
+          <Button disabled={busy || held} onClick={onPublish} size="md" variant="secondary">
             {busy ? <Spinner aria-hidden="true" /> : null}
             {waiting.length === 1 ? "Put it live" : "Put them live"}
           </Button>
@@ -510,7 +510,7 @@ function CheckAgain({
             })
           }
           size="sm"
-          variant="outline"
+          variant="secondary"
         >
           {busy ? <Spinner aria-hidden="true" /> : null}
           {busy ? "Checking…" : "Check again"}

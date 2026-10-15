@@ -327,11 +327,11 @@ function ProposalFoot(props: ProposalCardProps) {
       </span>
       {stage === "done" && props.onOpenRecipient !== undefined ? (
         proposal.kind === "mate.message" ? (
-          <Button onClick={props.onOpenRecipient} size="sm" variant="outline">
+          <Button onClick={props.onOpenRecipient} size="sm" variant="secondary">
             Open {props.recipient?.name ?? proposal.params.to.mateName}
           </Button>
         ) : proposal.kind === "chief.message" ? (
-          <Button onClick={props.onOpenRecipient} size="sm" variant="outline">
+          <Button onClick={props.onOpenRecipient} size="sm" variant="secondary">
             Open Chief
           </Button>
         ) : null
@@ -372,7 +372,7 @@ function DomainFoot(props: ProposalCardProps & { readonly stage: "done" | "unsee
           {domainState?.words ?? proposalOutcomeWords(proposal, stage)}
         </span>
         {props.onOpenAddresses === undefined ? null : (
-          <Button onClick={props.onOpenAddresses} size="sm" variant="outline">
+          <Button onClick={props.onOpenAddresses} size="sm" variant="secondary">
             Open addresses
           </Button>
         )}

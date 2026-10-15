@@ -70,7 +70,7 @@ export function MemberProjectAccess({
           <Popover onOpenChange={setOpen} open={open}>
             <PopoverTrigger
               render={
-                <Button data-zerops-surface="set-custom-access" size="md" variant="outline" />
+                <Button data-zerops-surface="set-custom-access" size="md" variant="secondary" />
               }
             >
               <PlusIcon aria-hidden="true" />

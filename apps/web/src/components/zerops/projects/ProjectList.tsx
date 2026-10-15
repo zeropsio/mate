@@ -128,7 +128,7 @@ export function OtherContainers<T>({
               className="ms-auto"
               onClick={() => props.onRetryContainers(silent)}
               size="sm"
-              variant="outline"
+              variant="secondary"
             >
               Try again ({summary.retry})
             </Button>

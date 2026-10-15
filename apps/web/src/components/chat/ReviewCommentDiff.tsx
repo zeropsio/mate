@@ -17,7 +17,7 @@ function DiffFailure() {
         Could not load diff.
       </div>
       {failure.rawPatch}
-      <Button variant="outline" size="md" onClick={failure.retry}>
+      <Button variant="secondary" size="md" onClick={failure.retry}>
         Retry diff
       </Button>
     </div>

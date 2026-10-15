@@ -68,7 +68,7 @@ export function StopTierStops({
                 disabled={deleting !== null}
                 onClick={() => setAsking(row)}
                 size="sm"
-                variant="outline"
+                variant="secondary"
               >
                 {deleting === row.hostname ? "Deleting…" : "Delete"}
               </Button>
@@ -92,7 +92,7 @@ export function StopTierStops({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               onClick={() => {
                 if (asking !== null) confirm(asking);

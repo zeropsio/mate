@@ -718,7 +718,7 @@ export function ZeropsGroupPane({
                           onFinish(slot.id);
                         }}
                         size="md"
-                        variant="outline"
+                        variant="secondary"
                       >
                         Finish setup
                       </Button>
@@ -740,7 +740,7 @@ export function ZeropsGroupPane({
                           onAdd(slot.tier);
                         }}
                         size="md"
-                        variant="outline"
+                        variant="secondary"
                       >
                         {environmentDoorLabel(slot.tier, slot.name)}
                       </Button>
@@ -804,7 +804,7 @@ export function ZeropsGroupPane({
         {repo === undefined ? (
           <EmptyState
             action={
-              <Button onClick={onSetUp} size="sm" variant="outline">
+              <Button onClick={onSetUp} size="sm" variant="secondary">
                 Set up an environment
               </Button>
             }
@@ -1534,7 +1534,7 @@ export function ZeropsStopPane({
               disabled={runAgain.running}
               onClick={runAgain.onRunAgain}
               size="sm"
-              variant="outline"
+              variant="secondary"
             >
               {flowVerbLabel("redeploy", runAgain.running)}
             </Button>
@@ -1621,7 +1621,7 @@ export function ZeropsStopPane({
                         disabled={addService.running(hostname)}
                         onClick={() => addService.onAdd(hostname)}
                         size="sm"
-                        variant="outline"
+                        variant="secondary"
                       >
                         {addService.running(hostname)
                           ? flowVerbLabel("add-service", true)
@@ -1862,7 +1862,7 @@ function StopServiceLine({
                   disabled={opening || enablingServiceId !== null}
                   onClick={() => onEnableRoute?.(offer.serviceId)}
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                 >
                   {opening ? "Opening…" : "Open to the internet"}
                 </Button>
@@ -1896,7 +1896,7 @@ function StopServiceLine({
                 row.job?.redeploy !== undefined && deployAgain.onDeployAgain(row.job.redeploy)
               }
               size="sm"
-              variant="outline"
+              variant="secondary"
             >
               {flowVerbLabel("redeploy", deployAgain.running(row.job.redeploy.service))}
             </Button>
@@ -1926,7 +1926,7 @@ function StopServiceLine({
               disabled={deployAgain.running(again.service)}
               onClick={() => deployAgain.onDeployAgain(again)}
               size="sm"
-              variant="outline"
+              variant="secondary"
             >
               {deployAgain.running(again.service)
                 ? flowVerbLabel("redeploy", true)

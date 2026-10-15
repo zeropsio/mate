@@ -253,13 +253,13 @@ export function PullRequestThreadDialog({
           {errorMessage ? <p className="text-destructive text-xs">{errorMessage}</p> : null}
         </DialogPanel>
         <DialogFooter>
-          <Button type="button" variant="outline" size="md" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="secondary" size="md" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
             type="button"
             size="md"
-            variant="outline"
+            variant="secondary"
             onClick={() => {
               void handleConfirm("local");
             }}

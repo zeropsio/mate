@@ -851,7 +851,7 @@ export function ReviewQuestionBlock({
             onAnswer(option.tier);
           }}
           size="md"
-          variant="outline"
+          variant="secondary"
         >
           {option.label}
         </Button>

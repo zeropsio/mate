@@ -253,7 +253,7 @@ function AccessChip({
               <AlertDialogDescription>{change.selfLower.description}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+              <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
               <Button
                 onClick={() => {
                   if (asking !== null) onChoose?.(asking);

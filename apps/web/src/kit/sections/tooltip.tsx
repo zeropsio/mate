@@ -18,7 +18,7 @@ function TooltipSpecimens() {
           {VARIANTS.map((variant) => (
             <Specimen key={variant} label={specimenLabel({ variant })}>
               <Tooltip>
-                <TooltipTrigger render={<Button variant="outline" />}>{variant}</TooltipTrigger>
+                <TooltipTrigger render={<Button variant="secondary" />}>{variant}</TooltipTrigger>
                 <TooltipPopup variant={variant}>
                   {variant === "code" ? "zcli push --service-id storefront" : "Deploys main"}
                 </TooltipPopup>
@@ -43,7 +43,7 @@ function TooltipSpecimens() {
           ))}
           <Specimen label="long text">
             <Tooltip>
-              <TooltipTrigger render={<Button variant="outline" />}>Hover</TooltipTrigger>
+              <TooltipTrigger render={<Button variant="secondary" />}>Hover</TooltipTrigger>
               <TooltipPopup>
                 The preview sleeps after an hour without visits and wakes on the next one, which
                 takes a few seconds.

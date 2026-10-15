@@ -52,7 +52,7 @@ function ExpandedImageOpener() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button onClick={() => setOpen(true)} variant="outline">
+      <Button onClick={() => setOpen(true)} variant="secondary">
         Open the picture
       </Button>
       {open ? (
@@ -83,7 +83,7 @@ function PictureViewOpener() {
   const [picture, setPicture] = useState(PICTURE);
   return (
     <>
-      <Button onClick={() => setOpen(true)} variant="outline">
+      <Button onClick={() => setOpen(true)} variant="secondary">
         Open a pasted picture
       </Button>
       {open ? (
@@ -114,7 +114,7 @@ function ReviewDialogOpener() {
   const from = useRef<HTMLButtonElement | null>(null);
   return (
     <>
-      <Button onClick={() => setOpen(true)} ref={from} variant="outline">
+      <Button onClick={() => setOpen(true)} ref={from} variant="secondary">
         Review a change
       </Button>
       <ZeropsReviewDialog
@@ -180,7 +180,7 @@ function JumpBoxOpener() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button onClick={() => setOpen(true)} variant="outline">
+      <Button onClick={() => setOpen(true)} variant="secondary">
         Jump to…
       </Button>
       <CommandDialog onOpenChange={setOpen} open={open}>
@@ -218,7 +218,7 @@ function MateMenuOpener() {
 function CrewmateMenuOpener() {
   return (
     <Menu>
-      <MenuTrigger render={<Button variant="outline" />}>Ada ⌄</MenuTrigger>
+      <MenuTrigger render={<Button variant="secondary" />}>Ada ⌄</MenuTrigger>
       <CrewmateMenuPopup
         model={crewmateMenuModel({
           crewmate: { kind: "writer", jobFirstLine: "Builds the API", displayName: "Ada" },

@@ -111,19 +111,19 @@ function ButtonSpecimens() {
             </Button>
           </Specimen>
           <Specimen label="trailing icon">
-            <Button variant="outline">
+            <Button variant="secondary">
               Continue
               <ArrowRightIcon />
             </Button>
           </Specimen>
           <Specimen label="long text in a 160px box">
             <div className="flex w-40">
-              <Button variant="outline">Deploy the storefront to every preview</Button>
+              <Button variant="secondary">Deploy the storefront to every preview</Button>
             </div>
           </Specimen>
           <Specimen label='size="sm-multiline" in a 160px box'>
             <div className="flex w-40">
-              <Button size="md" variant="outline">
+              <Button size="md" variant="secondary">
                 Deploy the storefront to every preview
               </Button>
             </div>

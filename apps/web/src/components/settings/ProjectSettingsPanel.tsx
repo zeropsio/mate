@@ -835,7 +835,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                 />
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   type="button"
                   aria-label="Choose a project icon file"
                   disabled={isSavingFavicon}
@@ -1114,7 +1114,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               ) : null}
               <Button
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 disabled={isSavingScripts}
                 onClick={() =>
                   setEditorRequest({ scriptId: null, initial: EMPTY_PROJECT_SCRIPT_INPUT })

@@ -248,7 +248,7 @@ function ProviderEnvironmentSection(props: {
         <Button
           type="button"
           size="md"
-          variant="outline"
+          variant="secondary"
           className="h-7 gap-1.5 px-2 text-xs"
           onClick={() =>
             setRows([

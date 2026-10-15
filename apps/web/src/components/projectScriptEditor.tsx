@@ -249,7 +249,7 @@ export function ProjectScriptEditorDialog({
                       render={
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="secondary"
                           className="size-9 shrink-0"
                           aria-label="Choose icon"
                         />
@@ -335,7 +335,7 @@ export function ProjectScriptEditorDialog({
                 Delete
               </Button>
             )}
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
             </Button>
             <Button form={formId} type="submit">
@@ -352,7 +352,7 @@ export function ProjectScriptEditorDialog({
             <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               variant="destructive"
               onClick={() => {

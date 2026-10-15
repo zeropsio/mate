@@ -34,7 +34,7 @@ export function StopReadAgain({ projectId }: { readonly projectId: string }) {
   return (
     <Button
       size="sm"
-      variant="outline"
+      variant="secondary"
       disabled={running}
       onClick={() => {
         if (running) return;

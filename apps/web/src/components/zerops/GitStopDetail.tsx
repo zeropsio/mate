@@ -102,7 +102,7 @@ export function GitStopDetail({
             <Button
               key={repo.repo}
               size="md"
-              variant="outline"
+              variant="secondary"
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
@@ -183,7 +183,7 @@ export function GitEnvironmentRemoval({
   return (
     <>
       {remove ? (
-        <Button size="md" variant="outline" disabled={busy} onClick={() => setRemoving(true)}>
+        <Button size="md" variant="secondary" disabled={busy} onClick={() => setRemoving(true)}>
           {label}
         </Button>
       ) : null}
@@ -255,7 +255,7 @@ export function GitEnvironmentRemoval({
           >
             {busy ? "Removing…" : "Confirm removal"}
           </Button>
-          <Button size="md" variant="outline" disabled={busy} onClick={() => setRemoving(false)}>
+          <Button size="md" variant="secondary" disabled={busy} onClick={() => setRemoving(false)}>
             Cancel
           </Button>
         </div>
@@ -355,7 +355,7 @@ function ZeropsProductionRemoval({
   const deleteProject = environment.deleteProjectOnRemoval === true;
   return (
     <>
-      <Button size="md" variant="outline" disabled={busy} onClick={() => setConfirming(true)}>
+      <Button size="md" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>
         Remove production
       </Button>
       {notice === undefined ? null : (
@@ -446,7 +446,12 @@ function ZeropsProductionRemoval({
           >
             {busy ? "Removing…" : "Confirm removal"}
           </Button>
-          <Button size="md" variant="outline" disabled={busy} onClick={() => setConfirming(false)}>
+          <Button
+            size="md"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => setConfirming(false)}
+          >
             Cancel
           </Button>
         </div>

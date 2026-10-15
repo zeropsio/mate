@@ -318,7 +318,7 @@ function McpServerDetails(props: {
                 disabled={pending !== null}
                 onClick={() => void run("reconnect", { kind: "reconnect", name: row.name })}
                 size="sm"
-                variant="outline"
+                variant="secondary"
               >
                 {pending === "reconnect" ? <Spinner size="xs" /> : null}
                 {MCP_WORDS.reconnect}
@@ -335,7 +335,7 @@ function McpServerDetails(props: {
                   })
                 }
                 size="sm"
-                variant="outline"
+                variant="secondary"
               >
                 {pending === "toggle" ? <Spinner size="xs" /> : null}
                 {row.actions.toggle === "on" ? MCP_WORDS.turnOn : MCP_WORDS.turnOff}

@@ -20,7 +20,7 @@ function Body() {
       <PopoverTitle>Who can open it</PopoverTitle>
       <p className="m-0 text-sm">Everyone on the team sees the preview; the public does not.</p>
       <div className="flex justify-end">
-        <PopoverClose render={<Button size="md" variant="outline" />}>Done</PopoverClose>
+        <PopoverClose render={<Button size="md" variant="secondary" />}>Done</PopoverClose>
       </div>
     </div>
   );
@@ -34,7 +34,7 @@ function PopoverSpecimens() {
           {WIDTHS.map((width) => (
             <Specimen key={width} label={specimenLabel({ width })}>
               <Popover>
-                <PopoverTrigger render={<Button variant="outline" />}>Open</PopoverTrigger>
+                <PopoverTrigger render={<Button variant="secondary" />}>Open</PopoverTrigger>
                 <PopoverPopup width={width}>
                   <Body />
                 </PopoverPopup>
@@ -48,7 +48,7 @@ function PopoverSpecimens() {
           {PADDINGS.map((padding) => (
             <Specimen key={padding} label={specimenLabel({ padding, width: "md" })}>
               <Popover>
-                <PopoverTrigger render={<Button variant="outline" />}>Open</PopoverTrigger>
+                <PopoverTrigger render={<Button variant="secondary" />}>Open</PopoverTrigger>
                 <PopoverPopup padding={padding} width="md">
                   <Body />
                 </PopoverPopup>
@@ -57,7 +57,7 @@ function PopoverSpecimens() {
           ))}
           <Specimen label="tooltipStyle">
             <Popover>
-              <PopoverTrigger render={<Button variant="outline" />}>Open</PopoverTrigger>
+              <PopoverTrigger render={<Button variant="secondary" />}>Open</PopoverTrigger>
               <PopoverPopup tooltipStyle>Saved to the project's vault.</PopoverPopup>
             </Popover>
           </Specimen>

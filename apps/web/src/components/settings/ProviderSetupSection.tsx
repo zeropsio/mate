@@ -74,7 +74,7 @@ export function ProviderSetupSection(props: ProviderSetupSectionProps) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground">Enable it to use it in threads.</span>
           {!props.readOnly ? (
-            <Button size="sm" variant="outline" onClick={props.onEnable}>
+            <Button size="sm" variant="secondary" onClick={props.onEnable}>
               Enable Antigravity
             </Button>
           ) : null}
@@ -302,7 +302,7 @@ function ProviderSetupActions({
           {installActive && installation.operationId ? (
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               disabled={actionsDisabled}
               onClick={() => {
                 const operationId = installation.operationId;
@@ -317,7 +317,7 @@ function ProviderSetupActions({
           ) : !installActive && provider.setup?.canInstall ? (
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               disabled={actionsDisabled || installation === null || authActive}
               onClick={() => void runCommand("Starting installation", () => startInstall(target))}
             >
@@ -353,7 +353,7 @@ function ProviderSetupActions({
         {authorizationUrl ? (
           <>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={() => void openSignInPage()}>
+              <Button size="sm" variant="secondary" onClick={() => void openSignInPage()}>
                 Open sign-in page
               </Button>
               <Button size="sm" variant="ghost" onClick={() => void copySignInLink()}>
@@ -398,7 +398,7 @@ function ProviderSetupActions({
               />
               <Button
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 type="submit"
                 className="w-fit"
                 disabled={actionsDisabled || !callbackUrl.trim()}
@@ -431,7 +431,7 @@ function ProviderSetupActions({
           ) : !authActive && !authenticated && provider.setup?.canAuthenticate ? (
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               disabled={actionsDisabled || !installed || auth === null || installActive}
               onClick={() => void runCommand("Starting sign-in", () => startAuth(target))}
             >
@@ -447,7 +447,7 @@ function ProviderSetupActions({
           {!authActive && provider.setup?.canAuthenticate ? (
             <Button
               size="sm"
-              variant={authenticated ? "outline" : "ghost"}
+              variant={authenticated ? "secondary" : "ghost"}
               disabled={actionsDisabled || auth === null}
               onClick={() => void signOut()}
             >
@@ -466,7 +466,7 @@ function ProviderSetupActions({
           {queryError ? (
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               className="w-fit"
               onClick={() => {
                 authQuery.refresh();

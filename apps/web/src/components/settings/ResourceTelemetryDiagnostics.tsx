@@ -1072,7 +1072,7 @@ export function ResourceTelemetryDiagnostics() {
         icon={<GaugeIcon className="size-4 text-muted-foreground" />}
         headerAction={
           collectorNeedsRetry ? (
-            <Button size="sm" variant="outline" disabled={isRetrying} onClick={retryCollector}>
+            <Button size="sm" variant="secondary" disabled={isRetrying} onClick={retryCollector}>
               <RotateCcwIcon className={cn("size-3", isRetrying && "animate-spin")} />
               Retry monitor
             </Button>

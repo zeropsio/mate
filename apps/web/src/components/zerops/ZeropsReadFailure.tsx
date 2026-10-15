@@ -15,7 +15,7 @@ export function ZeropsReadFailure({
     <Failure
       action={
         again === undefined ? undefined : (
-          <Button onClick={again} size="sm" variant="outline">
+          <Button onClick={again} size="sm" variant="secondary">
             {action}
           </Button>
         )

@@ -412,7 +412,7 @@ export function ThemeSearchSection({
                       aria-label={`${isInstalling ? progressAction : action} ${extension.name}`}
                       disabled={installingId !== null}
                       size="sm"
-                      variant="outline"
+                      variant="secondary"
                       onClick={() => void handleInstall(extension, false)}
                     >
                       {isInstalling ? (
@@ -447,7 +447,7 @@ export function ThemeSearchSection({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               onClick={() => {
                 const extension = pendingUpdate;

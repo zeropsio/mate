@@ -173,7 +173,7 @@ function SheetHeader({
       {places.length > 1 ? (
         <Menu>
           <MenuTrigger
-            render={<Button aria-label={`Place: ${current}`} size="md" variant="outline" />}
+            render={<Button aria-label={`Place: ${current}`} size="md" variant="secondary" />}
           >
             {current}
             <ChevronDownIcon />
@@ -315,7 +315,7 @@ function IpSection({
                   disabled={ctx.hold}
                   onClick={() => setMode({ kind: "ipv4" })}
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                 >
                   Get one
                 </Button>

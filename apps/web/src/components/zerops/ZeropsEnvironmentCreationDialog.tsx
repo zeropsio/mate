@@ -420,7 +420,7 @@ function EnvironmentForm({
                     disabled={recipeRereading === true}
                     onClick={onRecipeRetry}
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                   >
                     Try again
                   </Button>

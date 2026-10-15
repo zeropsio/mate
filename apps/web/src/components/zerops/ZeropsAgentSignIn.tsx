@@ -479,7 +479,7 @@ function OpenCard({
               <Button
                 data-sign-in-replace-cancel
                 autoFocus
-                variant="outline"
+                variant="secondary"
                 onClick={onDismiss}
                 size="md"
               >
@@ -559,7 +559,7 @@ function OpenCardSteps({
         <span className="arrival-open-step-words" role="alert">
           {steps.why}
         </span>
-        <Button disabled={disabled} onClick={onRetry} size="md" variant="outline">
+        <Button disabled={disabled} onClick={onRetry} size="md" variant="secondary">
           <RotateCcwIcon aria-hidden="true" />
           {words.tryAgain}
         </Button>
@@ -724,7 +724,7 @@ function TypeCodeStep({
               );
             }}
             size="md"
-            variant="outline"
+            variant="secondary"
           >
             {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
             {copied ? words.copied : words.copy}

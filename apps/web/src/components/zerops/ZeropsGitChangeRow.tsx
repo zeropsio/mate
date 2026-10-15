@@ -29,7 +29,7 @@ export function ZeropsGitChangeRow({
         </div>
       </div>
       <Button
-        variant="outline"
+        variant="secondary"
         size="md"
         disabled={onOpen === undefined}
         aria-label={`Review ${project} / ${repo} #${pull.number}`}

@@ -112,7 +112,7 @@ export function VaultStepUp({ onConfirmed }: { readonly onConfirmed: () => void 
   }
   return (
     <span className="flex flex-wrap items-center gap-x-3 gap-y-1" data-vault-step-up="ask">
-      <Button onClick={confirm} size="sm" variant="outline">
+      <Button onClick={confirm} size="sm" variant="secondary">
         Confirm in Zerops
       </Button>
       {state.kind === "failed" ? (

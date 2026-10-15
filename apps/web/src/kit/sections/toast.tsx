@@ -38,7 +38,7 @@ function AnchoredOpener() {
         })
       }
       ref={anchor}
-      variant="outline"
+      variant="secondary"
     >
       Copy
     </Button>
@@ -52,7 +52,7 @@ function ToastSpecimens() {
         <SpecimenGrid>
           {TYPES.map((type) => (
             <Specimen key={type} label={`toastManager.add({ ${specimenLabel({ type })} })`}>
-              <Button onClick={() => toastManager.add({ type, ...COPY[type] })} variant="outline">
+              <Button onClick={() => toastManager.add({ type, ...COPY[type] })} variant="secondary">
                 {type}
               </Button>
             </Specimen>
@@ -66,7 +66,7 @@ function ToastSpecimens() {
                   actionProps: { children: "Undo" },
                 })
               }
-              variant="outline"
+              variant="secondary"
             >
               with action
             </Button>
@@ -81,7 +81,7 @@ function ToastSpecimens() {
                   data: { expandableContent: SLOW_REQUESTS },
                 })
               }
-              variant="outline"
+              variant="secondary"
             >
               with details
             </Button>

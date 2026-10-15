@@ -859,7 +859,7 @@ export function ThemeLibrary({
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={() =>
               openThemeEditor({
                 editingThemeId: null,
@@ -872,7 +872,7 @@ export function ThemeLibrary({
             <PaintbrushIcon />
             Create theme
           </Button>
-          <Button size="sm" variant="outline" onClick={() => onImportOpenChange(true)}>
+          <Button size="sm" variant="secondary" onClick={() => onImportOpenChange(true)}>
             <PlusIcon />
             Add theme
           </Button>
@@ -989,7 +989,7 @@ export function ThemeLibrary({
             </div>
           ) : null}
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               disabled={themeIdsToRemove.length === 0}
               variant="destructive"

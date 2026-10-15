@@ -156,7 +156,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         </div>
         <Menu>
           <MenuTrigger
-            render={<Button aria-label="Plan actions" size="icon-sm" variant="outline" />}
+            render={<Button aria-label="Plan actions" size="icon-sm" variant="secondary" />}
           >
             <EllipsisIcon aria-hidden="true" className="size-4" />
           </MenuTrigger>
@@ -196,7 +196,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         </div>
         {canCollapse ? (
           <div className="mt-4 flex justify-center">
-            <Button size="md" variant="outline" onClick={() => setExpanded((value) => !value)}>
+            <Button size="md" variant="secondary" onClick={() => setExpanded((value) => !value)}>
               {expanded ? "Collapse plan" : "Expand plan"}
             </Button>
           </div>
@@ -225,7 +225,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             </label>
           </DialogPanel>
           <DialogFooter>
-            <Button variant="outline" size="md" onClick={() => setIsSaveDialogOpen(false)}>
+            <Button variant="secondary" size="md" onClick={() => setIsSaveDialogOpen(false)}>
               Cancel
             </Button>
             <Button
