@@ -316,6 +316,35 @@ describe("a card's places", () => {
       ["prod", "running", "Running · v2.3.1", ["https://shop.acme.com/"]],
     ]);
   });
+
+  // The onboarding run: "Running · main" stood two seconds with nowhere to go before the stage's
+  // address came. HQ brings a stage up until its address is on (`EnvironmentBirth`).
+  it.each([
+    {
+      case: "while HQ still brings it up",
+      birth: { ended: false },
+      words: "Turning its address on…",
+    },
+    { case: "once HQ has brought it up", birth: { ended: true }, words: "Running · main" },
+    { case: "where HQ did not bring it up", birth: undefined, words: "Running · main" },
+  ])("says a stage runs only with its address, $case", ({ birth, words: said }) => {
+    const lines = placeLines({
+      flow: {
+        production: { kind: "absent" },
+        stages: [
+          stop({
+            projectId: "stage",
+            name: "stage",
+            addresses: [],
+            ...(birth === undefined ? {} : { birth }),
+          }),
+        ],
+      },
+      stageChips: new Map([["stage", chip({ label: "stage", version: "main" })]]),
+      nowMs: NOW,
+    });
+    expect(lines[0]?.words.join(" · ")).toBe(said);
+  });
 });
 
 describe("since when production runs what it runs", () => {

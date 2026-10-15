@@ -206,24 +206,32 @@ function stageLine(
       words: [stop.git.line],
       trouble: stop.git.blocked,
     };
-  if (chip !== undefined) return { ...base, ...chipLine(chip, { since: undefined, down }) };
+  const said =
+    chip !== undefined ? chipLine(chip, { since: undefined, down }) : flowStageLine(stop);
+  // HQ brings a stage up until its first deploy's address is on (`EnvironmentBirth`): running
+  // with nowhere to open is still coming up, as the menu's heading says (`stopComing`).
+  if (said.dot === "running" && stop.addresses.length === 0 && stop.birth?.ended === false)
+    return { ...base, dot: "unknown", words: ["Turning its address on…"], trouble: false };
+  return { ...base, ...said };
+}
+
+/** A stage's line from the flow alone, where no chip was read. */
+function flowStageLine(stop: GroupFlowStop): Pick<PlaceLine, "dot" | "words" | "trouble"> {
   switch (stop.state) {
     case "failed":
-      return { ...base, dot: "failed", words: ["Deploy failed"], trouble: true };
+      return { dot: "failed", words: ["Deploy failed"], trouble: true };
     case "deploying":
-      return { ...base, dot: "releasing", words: ["Deploying…"], trouble: false };
+      return { dot: "releasing", words: ["Deploying…"], trouble: false };
     case "empty":
-      return { ...base, dot: "none", words: ["Not deployed yet"], trouble: false };
+      return { dot: "none", words: ["Not deployed yet"], trouble: false };
     case "checking":
       return {
-        ...base,
         dot: "unknown",
         words: [stop.readLine ?? "Checking what runs…"],
         trouble: false,
       };
     case "deployed":
       return {
-        ...base,
         dot: "running",
         words: ["Running", stop.version?.label].filter((word) => word !== undefined),
         trouble: false,
