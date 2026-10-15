@@ -821,3 +821,30 @@ export function rowMateActivitiesOf<T>(
     ];
   });
 }
+
+/**
+ * Whether the overview paints its projects, or holds its one wait line: once, whole, on the menu's
+ * own rule. It waits for its projects' first read to finish — complete and current, so no card
+ * paints without its Mates and no "Updating…" speaks over a first read — and for the menu's sources
+ * (`menuSourcesSettled`: HQ's placement and each Mate's last words), so the menu and the overview
+ * land together. A failed read, or Zerops not answering, paints the page that says so. Past the
+ * wait, what is read paints; once painted, nothing takes the page back.
+ */
+export function overviewPaints(input: {
+  readonly listing: Shown<unknown>;
+  readonly sourcesSettled: boolean;
+  readonly waitedOut: boolean;
+  readonly drawn: boolean;
+  /** The account's line says Zerops isn't answering. */
+  readonly troubled: boolean;
+}): boolean {
+  const { listing } = input;
+  if (input.drawn || input.troubled) return true;
+  if (listing.state === "failed" || listing.state === "withheld" || listing.state === "gone")
+    return true;
+  if (listing.state !== "known") return false;
+  const current =
+    listing.coverage === "complete" &&
+    (listing.freshness.kind === "live" || listing.freshness.kind === "settled");
+  return (current && input.sourcesSettled) || input.waitedOut;
+}

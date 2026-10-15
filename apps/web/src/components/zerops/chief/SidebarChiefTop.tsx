@@ -85,6 +85,7 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
           <Row
             current={currentPage || currentMate}
             face={read.face}
+            unseen={read.unseen}
             // Its words live in its conversation; the row says only what its setup needs.
             line={line?.kind === "setup" ? <ChiefSetupRowLine state={line.state} /> : undefined}
             onOpen={opens === "mate" ? () => onOpenMate(chief) : onOpenPage}

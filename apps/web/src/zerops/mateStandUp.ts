@@ -38,6 +38,24 @@ export type MateStandUpMarker = { readonly by: string } | undefined;
  */
 export type MateStandUpConversation = "empty" | "started" | "unknown";
 
+/**
+ * Where the Mate's main conversation stands for its stand-up: started once it holds a message —
+ * a copy still being read again included, since messages read are never taken back — and empty
+ * only as read live from its Mate. Any other conversation, or none, is not the stand-up's.
+ */
+export function mateStandUpConversation(input: {
+  /** Whether it is the Mate's main conversation; null where there is no server conversation. */
+  readonly main: boolean | null;
+  /** Its messages as read so far. */
+  readonly messageCount: number;
+  /** It is read live from its Mate, not a copy being read again. */
+  readonly live: boolean;
+}): MateStandUpConversation {
+  if (input.main !== true) return "unknown";
+  if (input.messageCount > 0) return "started";
+  return input.live ? "empty" : "unknown";
+}
+
 function askedOf(marker: MateStandUpMarker, viewer: string | undefined): boolean {
   return marker !== undefined && viewer !== undefined && viewer.length > 0 && marker.by === viewer;
 }

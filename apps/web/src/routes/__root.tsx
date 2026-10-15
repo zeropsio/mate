@@ -117,12 +117,19 @@ installMateDiagnostics();
 export const Route = createRootRoute({
   beforeLoad: () => ({ authGateState: { status: "hosted-static" } as AuthGateState }),
   component: RootRouteView,
+  // The whole page's wait (a route's guard holds every route above it): nothing drawn into #root,
+  // so index.html's frame stands (`bootFrame.ts`) — never a "Loading…" in place of the app.
+  pendingComponent: RootRoutePending,
   errorComponent: RootRouteErrorView,
   notFoundComponent: RootRouteNotFoundView,
   head: () => ({
     meta: [{ name: "title", content: APP_DISPLAY_NAME }],
   }),
 });
+
+function RootRoutePending() {
+  return null;
+}
 
 function RootRouteNotFoundView() {
   return (

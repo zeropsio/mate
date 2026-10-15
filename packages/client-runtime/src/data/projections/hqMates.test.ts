@@ -6,10 +6,11 @@ import { describe, expect, it } from "vite-plus/test";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
-import { makeAccountStore, type Projection } from "../store.ts";
+import { makeAccountStore, readsOfState, type Projection } from "../store.ts";
 import { mateArrival, mateNoticeDecision } from "./mateArrival.ts";
 import {
   hqMates,
+  hqMatesAnswered,
   hqMateOverview,
   hqMatePresence,
   hqMateLogins,
@@ -258,5 +259,48 @@ describe("keyed HQ Mate readers", () => {
     expect(registry.get(overview)).toBeNull();
     expect(registry.get(store.data.project(hqMates, "org")).mates).toEqual({});
     registry.dispose();
+  });
+});
+
+describe("hqMatesAnswered", () => {
+  const placed = (projectIds: ReadonlyArray<string>) => ({
+    apps: [],
+    ungrouped: projectIds.map((projectId) => ({ projectId, name: projectId, mate: { face: "" } })),
+  });
+  it.each([
+    { name: "every placed Mate's last words relayed", unanswered: [], refused: [], answered: true },
+    {
+      name: "one placed Mate's attention not yet read",
+      unanswered: ["b"],
+      refused: [],
+      answered: false,
+    },
+    {
+      name: "one placed Mate's attention refused",
+      unanswered: ["b"],
+      refused: ["b"],
+      answered: true,
+    },
+  ])("HQ answered for its Mates: $name", ({ unanswered, refused, answered }) => {
+    const store = makeAccountStore(AtomRegistry.make());
+    seedHqNavigation(store, "org", {
+      structure: placed(["a", "b"]),
+      mates: { a: mate },
+      attentionUnanswered: unanswered,
+    });
+    for (const projectId of refused) {
+      const scope = hqMateScope("org", projectId);
+      for (const event of [
+        { kind: "demand", demanded: true },
+        { kind: "attempt" },
+        {
+          kind: "fault",
+          jitter: 0,
+          fault: { outcome: "authoritative-denial", message: "No" },
+        },
+      ] as const)
+        store.dispatch({ kind: "stream", key: scope, now: 0, event });
+    }
+    expect(hqMatesAnswered.derive(readsOfState(store.state()), "org")).toBe(answered);
   });
 });

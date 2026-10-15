@@ -4,6 +4,7 @@ import {
   initialStream,
   NEXT_ACTIONS,
   STREAM_POLICY,
+  streamTrouble,
   transition,
   type StreamEvent,
   type StreamState,
@@ -323,6 +324,103 @@ describe("transition", () => {
     const closed = transition(root, { kind: "close" }, 0).state;
     expect(closed).toMatchObject({ phase: "closed", next: { kind: "none" } });
     for (const event of events) expect(transition(closed, event, 0).state).toBe(closed);
+  });
+});
+
+describe("streamTrouble — whether a stream's trouble is worth saying", () => {
+  const failed: StreamEvent = {
+    kind: "fault",
+    jitter: 0,
+    fault: { outcome: "transient", message: "closed" },
+  };
+  const firstTry = run(root, [{ kind: "demand", demanded: true }, failed], 0);
+  const lost = run(
+    run(root, [{ kind: "demand", demanded: true }, { kind: "handshake" }], 0),
+    [{ kind: "baseline-committed" }, failed, { kind: "retry-due" }, failed],
+    10_000,
+  );
+  it.each([
+    { name: "A first try failing inside its grace is a blink", stream: firstTry, trouble: null },
+    {
+      name: "A first try still failing when its grace runs out is retrying",
+      stream: run(firstTry, [{ kind: "grace-over", since: 0 }], STREAM_POLICY.reconnectGraceMs),
+      trouble: "retrying",
+    },
+    {
+      name: "A first try live again forgets its grace",
+      stream: run(
+        firstTry,
+        [{ kind: "retry-due" }, { kind: "handshake" }, { kind: "baseline-committed" }],
+        900,
+      ),
+      trouble: null,
+    },
+    { name: "A reconnect failing inside its grace is a blink", stream: lost, trouble: null },
+    {
+      name: "A reconnect still failing past its grace is retrying",
+      stream: run(lost, [{ kind: "grace-over", since: 10_000 }], 15_000),
+      trouble: "retrying",
+    },
+    {
+      name: "A child's grace starts at its own first attempt, not while it waits for its parent",
+      stream: (() => {
+        const child = initialStream({ parent: "zerops:org", mode: "sampled" });
+        const waiting = run(child, [{ kind: "demand", demanded: true }], 0);
+        const late = run(waiting, [{ kind: "grace-over", since: 0 }], 5_000);
+        return run(late, [{ kind: "attempt" }, failed], 6_000);
+      })(),
+      trouble: null,
+    },
+    {
+      name: "A session repair inside the grace is a blink",
+      stream: run(
+        root,
+        [
+          { kind: "demand", demanded: true },
+          { kind: "fault", jitter: 0, fault: { outcome: "recoverable-session", message: "401" } },
+        ],
+        0,
+      ),
+      trouble: null,
+    },
+    {
+      name: "A session repair still under way past the grace is retrying",
+      stream: run(
+        run(
+          root,
+          [
+            { kind: "demand", demanded: true },
+            {
+              kind: "fault",
+              jitter: 0,
+              fault: { outcome: "recoverable-session", message: "401" },
+            },
+          ],
+          0,
+        ),
+        [{ kind: "grace-over", since: 0 }],
+        STREAM_POLICY.reconnectGraceMs,
+      ),
+      trouble: "retrying",
+    },
+    {
+      name: "A refusal is trouble at once",
+      stream: run(
+        root,
+        [
+          { kind: "demand", demanded: true },
+          { kind: "fault", jitter: 0, fault: { outcome: "definitive-refusal", message: "No" } },
+        ],
+        0,
+      ),
+      trouble: "stopped",
+    },
+  ] satisfies ReadonlyArray<{
+    name: string;
+    stream: StreamState;
+    trouble: ReturnType<typeof streamTrouble>;
+  }>)("$name", ({ stream, trouble }) => {
+    expect(streamTrouble(stream)).toBe(trouble);
   });
 });
 

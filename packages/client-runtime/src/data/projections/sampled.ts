@@ -11,7 +11,7 @@ import { memberRolesScope } from "../families/memberProjectRoles.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 import { agentsScope } from "../families/serviceAgents.ts";
 import type { Coverage, Family, FamilyValues, PublicRead, ScopeKey, StreamKey } from "../model.ts";
-import type { StreamState } from "../streamMachine.ts";
+import { streamTrouble, type StreamState } from "../streamMachine.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
@@ -43,7 +43,6 @@ export function sampledRead<F extends Family>(
   const fact = read.fact(family, ownerId);
   const stream = read.stream(scope);
   const link = stream.parent === null ? null : read.stream(stream.parent as StreamKey);
-  const fault = link?.fault ?? stream.fault;
   const coverage = read.coverage(scope);
   let value: FamilyValues[F] | undefined;
   switch (fact.kind) {
@@ -56,7 +55,11 @@ export function sampledRead<F extends Family>(
       break;
   }
   const refused = stream.phase === "refused" || link?.phase === "refused";
-  const failing = fault !== null || refused || fact.kind === "withheld";
+  // A failed attempt retried inside its grace still reads as reading (`streamTrouble`).
+  const failing =
+    fact.kind === "withheld" ||
+    streamTrouble(stream) !== null ||
+    (link !== null && streamTrouble(link) !== null);
   const answered =
     stream.phase === "live" || (stream.phase === "paused" && stream.next.kind === "await-demand");
   const ready = fact.kind === "known" && coverage === "complete" && answered && !failing;

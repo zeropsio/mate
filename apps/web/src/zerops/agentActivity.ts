@@ -136,9 +136,10 @@ export interface ZeropsAgentActivity {
    */
   readonly subject: string | undefined;
   /**
-   * When the Mate last did something: the last turn's end while it rests, its
-   * start while it works, else the conversation's last change. What a row
-   * writes at its right edge, the way a messenger dates its rows.
+   * When the Mate last did something (`agentActivityAt`): its run's start while it works, else
+   * the later of its last run's end and the person's last message — never a restart's or a
+   * rename's bump of the chat. What a row writes at its right edge, the way a messenger dates
+   * its rows.
    */
   readonly at: string;
   /**
@@ -187,10 +188,10 @@ export interface ZeropsAgentActivity {
   /** The first line of the error the Mate stopped on: a failed row's third line. */
   readonly errorLine?: string | undefined;
   /**
-   * The Mate finished something this device has not looked at since
-   * (`hasUnseenCompletion`, the resolver's own fact): its row's name is at
-   * 600 and a blue dot stands before its age until its conversation is
-   * opened.
+   * Its latest result — finished or failed — is newer than what the person has seen: this
+   * device's visit (`hasUnseenCompletion`), under HQ's count where a Mate publishes its attention
+   * (`mateUnread`). Its row's name is at 600 and a blue dot stands before its age until its
+   * conversation is opened.
    */
   readonly unread: boolean;
   /** When the usage limit pausing it resets; absent while it is not paused. */
@@ -387,17 +388,23 @@ export function agentActivityAwaitsWords(
   return ended === null || Date.parse(ended) < Date.parse(asked);
 }
 
+/**
+ * When the Mate last did something a person would call activity: its run's start while it works,
+ * else the later of its last run's end — finished, failed or cut — and the person's last message.
+ * Never the chat's own record of a change (a rename, a restart, a version roll, a helper's word
+ * bumps it), but for a chat nobody has spoken in, which has nothing else to date it by.
+ */
 export function agentActivityAt(
   thread: Pick<AgentActivityThread, "latestTurn" | "latestUserMessageAt" | "updatedAt">,
 ): string {
   const turn = thread.latestTurn;
-  return (
-    turn?.completedAt ??
-    turn?.startedAt ??
-    turn?.requestedAt ??
-    thread.latestUserMessageAt ??
-    thread.updatedAt
-  );
+  const asked = thread.latestUserMessageAt;
+  if (turn === null) return asked ?? thread.updatedAt;
+  // A running turn's end can only be a mid-turn placeholder (the projector's word).
+  if (turn.state === "running") return turn.startedAt ?? turn.requestedAt;
+  const ranAt = turn.completedAt ?? turn.startedAt ?? turn.requestedAt;
+  if (asked === null) return ranAt;
+  return Date.parse(asked) > Date.parse(ranAt) ? asked : ranAt;
 }
 
 export function agentActivitySubject(
@@ -701,8 +708,15 @@ export function rowAgentActivity(
     status: threadStatusPill({ kind, toneId: toneIdForKind(kind) }),
     face: mateMarkStateForThread(kind, usageLimited),
     subject: agentActivitySubject(words, kind),
+    // Its run's start while on it, the question's while one waits, else its last run's end: the
+    // row's own `at` moves with anything the engine records — a restart included — so it dates
+    // only a conversation that never ran.
     at: isoOf(
-      state.kind === "working" || state.kind === "queued" ? state.since : (endedAt ?? row.at),
+      state.kind === "working" || state.kind === "queued"
+        ? state.since
+        : state.kind === "waiting"
+          ? (row.askedAt ?? endedAt ?? row.at)
+          : (endedAt ?? row.at),
     ),
     ...(row.latestRun !== null || row.subject !== null ? { hasWork: true as const } : {}),
     // Queued: the person's words are the last thing said, and the reply stands where they will.

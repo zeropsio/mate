@@ -15,6 +15,7 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { MateMark } from "../../MateMark";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { zeropsAccountDisplay } from "../landing/ZeropsAccountControl.logic";
+import { MateDot } from "../MateDot";
 import { MateOwnerMark } from "../MateOwnerMark";
 import { ownerMark } from "../SidebarMateRow.logic";
 import { SidebarWaitingPopover, type WaitingVerbs } from "../SidebarWaiting";
@@ -25,6 +26,8 @@ import { carryBandToChief } from "./chiefLitTravel";
 export interface SidebarChiefRowProps {
   /** The state its mark wears, as its Mate's face would; at rest, its own idle and blinks. */
   readonly face?: MateMarkState | undefined;
+  /** A result of it not seen (`MateRowView.unseen`): the unread dot on its mark's corner. */
+  readonly unseen?: boolean | undefined;
   /** Its second line (`chiefRowLine`), drawn; none, and "Chief" stands alone. */
   readonly line?: ReactNode;
   readonly title?: string | undefined;
@@ -39,6 +42,7 @@ export interface SidebarChiefRowProps {
 
 export function SidebarChiefRow({
   face,
+  unseen = false,
   line,
   title,
   current,
@@ -85,6 +89,9 @@ export function SidebarChiefRow({
               className="h-9 w-7.5"
               {...(face === undefined ? {} : { state: face })}
             />
+            {unseen ? (
+              <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" />
+            ) : null}
             {account === null ? null : (
               <MateOwnerMark
                 seat={{
@@ -133,6 +140,7 @@ export function SidebarChiefRow({
  */
 export function SidebarChiefTile({
   face,
+  unseen = false,
   line,
   title,
   current,
@@ -157,12 +165,17 @@ export function SidebarChiefTile({
             />
           }
         >
-          <MateMark
-            awake
-            playful
-            className="h-8.25 w-7"
-            {...(face === undefined ? {} : { state: face })}
-          />
+          <span className="relative flex">
+            <MateMark
+              awake
+              playful
+              className="h-8.25 w-7"
+              {...(face === undefined ? {} : { state: face })}
+            />
+            {unseen ? (
+              <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" />
+            ) : null}
+          </span>
         </TooltipTrigger>
         <TooltipPopup side="right">
           <span className="menu-rail-tip">

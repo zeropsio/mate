@@ -358,7 +358,12 @@ export interface MateRowView {
   readonly slot: MateRowSlot;
   /** The dot before the age: amber needs you, blue unread, red broken (S3). */
   readonly dot: "attention" | "unread" | "failed" | undefined;
-  /** Finished and not seen: the name at 600. */
+  /**
+   * Its latest result — finished or failed — not seen (`mateUnread`): the unread dot hangs by its
+   * time. Never while it works, waits on its person or sleeps at a limit: the face says that.
+   */
+  readonly unseen: boolean;
+  /** A result not seen: the name at 600. */
   readonly strongName: boolean;
   /** The second line: the person's last ask, whatever step the Mate is on. */
   readonly ask: string | undefined;
@@ -371,13 +376,17 @@ export interface MateRowView {
  * What a Mate's row says, from what its conversation says (`activity`, the
  * one resolver's reading, R5) and the face it wears (`mateFaceFor`):
  *
- * | state               | face                     | right of the name   | third line               |
- * | ------------------- | ------------------------ | ------------------- | ------------------------ |
- * | idle, seen          | still                    | age                 | its last words, muted    |
- * | working             | turns, glances           | the run's clock     | its live step, or dots   |
- * | needs you           | hops, waits with the "o" | amber dot + age     | the question, in ink     |
- * | finished, not seen  | pops, smiles             | blue dot + age      | its last words, 2nd ink  |
- * | stopped on an error | still                    | red dot + age       | the error's line, red    |
+ * | state               | face                     | right of the name    | third line              |
+ * | ------------------- | ------------------------ | -------------------- | ----------------------- |
+ * | idle, seen          | still                    | age                  | its last words, muted   |
+ * | working             | turns, glances           | the run's clock      | its live step, or dots  |
+ * | needs you           | hops, waits with the "o" | age                  | the question, in ink    |
+ * | finished, not seen  | pops, smiles             | blue dot + age       | its last words, 2nd ink |
+ * | stopped on an error | still                    | age, blue dot unseen | the error's line, red   |
+ *
+ * `dot` is its state's tone where a face alone stands for the Mate — the rail, a card, a
+ * screen reader: amber needs you, blue unread, red stopped. The row draws only the blue one
+ * (`unseen`); its face carries the rest.
  *
  * The second line is always the person's last ask. A row with no answer is
  * simply shorter; while words are coming — a run on, or a message sent and
@@ -397,6 +406,7 @@ export function mateRowView(
       face,
       slot: { kind: "none" },
       dot: needs ? "attention" : undefined,
+      unseen: false,
       strongName: false,
       ask: undefined,
       reply: undefined,
@@ -419,6 +429,7 @@ export function mateRowView(
     activity.question === undefined ? said(tone) : { kind: "words", text: activity.question, tone };
   const age: MateRowSlot = ask === undefined ? { kind: "none" } : { kind: "age" };
   const state = mateRowState(activity, face);
+  const unseen = activity.unread && (state === "unread" || state === "failed");
   const view = (reply: MateRowReply, slot: MateRowSlot = age) => ({
     state,
     face: state === "failed" && face === "needs" ? ("idle" as const) : face,
@@ -433,7 +444,8 @@ export function mateRowView(
           : state === "failed"
             ? ("failed" as const)
             : undefined,
-    strongName: state === "unread",
+    unseen,
+    strongName: unseen,
     ask,
     reply: ask === undefined ? undefined : reply,
   });
@@ -535,6 +547,7 @@ export function mateDeletingView(view: MateRowView): MateRowView {
     face: matePose(view.face, { life: "deleting" }),
     slot: { kind: "none" },
     dot: undefined,
+    unseen: false,
     strongName: false,
     ask: view.reply === undefined ? undefined : view.ask,
     reply: undefined,
@@ -872,7 +885,7 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
 }
 
 /**
- * The one line under a Mate's name (round 5): what needs the viewer in ink, a failure of the
+ * The one line under a Mate's name (round 5): what needs the viewer — and a result not seen — in ink, a failure of the
  * viewer's own Mate in the fail colour, everything else muted — never a status word, the face
  * carries the state.
  *
@@ -889,6 +902,7 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
  * | nobody signed in                         | the sign-in                                |
  * | an unsent draft                          | *Draft* and its words                      |
  * | a colleague's open change                | "<title> · in review", muted               |
+ * | finished, its result unseen               | its last words, in ink                     |
  * | otherwise                                | its last words, muted; else what was asked |
  */
 export type MateRowSecond =
@@ -975,5 +989,6 @@ export function mateRowSecond(input: {
   if (askLine?.kind === "sign-in") return { kind: "sign-in" };
   if (askLine?.kind === "draft") return { kind: "ask", pending: false };
   if (change !== undefined) return { kind: "change", title: change.title, mine: false };
-  return said("muted");
+  // A result the viewer has not seen is for them: in ink, beside the unread dot.
+  return said(view.state === "unread" ? "ink" : "muted");
 }

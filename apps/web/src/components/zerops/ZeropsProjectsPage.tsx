@@ -1,6 +1,6 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
-import { tiersAddable } from "./projects/projectsView.logic";
+import { overviewPaints, tiersAddable } from "./projects/projectsView.logic";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
 import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
@@ -221,7 +221,8 @@ import {
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { PageWaitLine } from "./WaitLine";
-import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
+import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
+import { useMenuRows, usePaintStanding } from "~/zerops/useMenuRows";
 
 /** One creation in flight, or just finished, on this screen. */
 interface EnvironmentCreationView {
@@ -2692,10 +2693,24 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
     : panelShow === undefined
       ? {}
       : { show: panelShow };
-  const { listing, refresh } = useZeropsCandidates();
+  const { listing, error, refresh } = useZeropsCandidates();
   const nowMs = useNowMs();
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
+  // One wait, then the page whole (`overviewPaints`): on the menu's own rule and patience, so the
+  // menu and the overview land together. Content stays mounted under the wait: its reads go on.
+  const sourcesSettled = useMenuRows(NO_ROWS).settled;
+  const [standing, latchPainted] = usePaintStanding(activeOrganization?.id);
+  const paints =
+    !scoped ||
+    overviewPaints({
+      listing,
+      sourcesSettled,
+      waitedOut: standing.waitedOut,
+      drawn: standing.drawn,
+      troubled: error !== null,
+    });
+  latchPainted(scoped && paints);
   // First run owns the page: an account with nothing in it gets the
   // invitation and no title row over it — a "Projects" heading with a reload
   // over nothing frames emptiness as a failed list.
@@ -2713,7 +2728,10 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
     // overview's top carries neither a switcher nor a reload, nor an empty bar above its title (the
     // owner, 2026-10-11).
     <ZeropsHostedFrame bar={false} width="full">
-      {scoped && !firstRun ? (
+      {paints ? null : (
+        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
+      )}
+      {scoped && !firstRun && paints ? (
         <ZeropsProjectsHeader
           setupChief={setupChief}
           onSetupChief={() => {
@@ -2723,7 +2741,9 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
           onRetry={refresh}
         />
       ) : null}
-      <ZeropsProjectsContent onShow={inPanel ? setPanelShow : undefined} search={search} />
+      <div className={paints ? "contents" : "hidden"} inert={!paints}>
+        <ZeropsProjectsContent onShow={inPanel ? setPanelShow : undefined} search={search} />
+      </div>
     </ZeropsHostedFrame>
   );
 }

@@ -7,6 +7,7 @@
  * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
  * Approve twice; an approval is carried out only once HQ kept it.
  */
+import { useTimelineRowReading } from "~/components/chat/timelineRowReads";
 import {
   NOT_READ_VAULT,
   PROJECT_ROUTINGS_LISTING,
@@ -148,6 +149,8 @@ function Proposal({
     [home, proposal, stage],
   );
   const place = useProjection(addresses, domainPlace, UNREAD_ADDRESSES);
+  // Its records and their state come with the addresses: a conversation opening waits for them.
+  useTimelineRowReading(domainPlace !== null && place.state === "reading");
   useDetailDemand(
     "publicRouting",
     PROJECT_ROUTINGS_LISTING,

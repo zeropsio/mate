@@ -547,6 +547,24 @@ describe("createEndFollow", () => {
     expect(scroll.element.scrollTop).toBe(endOf(scroll));
   });
 
+  it("stands at the end at once while its conversation is not shown yet, and glides once it is", () => {
+    const scroll = list({ top: 600, height: 1000, client: 400 });
+    let shown = false;
+    const follow = createEndFollow({
+      placeEnd: vi.fn(),
+      viewport: () => scroll.element as unknown as HTMLElement,
+      follows: () => scroll.state.follows,
+      unseen: () => !shown,
+    });
+    follow.follow();
+    grow(scroll, follow, 253);
+    expect(frames).toHaveLength(0);
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
+    shown = true;
+    grow(scroll, follow, 253);
+    expect(scroll.element.hasAttribute(GLIDING_ATTRIBUTE)).toBe(true);
+  });
+
   it("never moves a list that does not follow", () => {
     const { scroll, follow } = atItsEnd();
     scroll.state.follows = false;

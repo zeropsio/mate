@@ -10,6 +10,7 @@ import { runningWork, type ProjectKey, type RunningWork } from "./projections/pr
 import { organizationProjects } from "./projections/projects.ts";
 import type { AccountInput } from "./reducer.ts";
 import { makeAccountStore, type Projection } from "./store.ts";
+import { STREAM_POLICY, streamTrouble } from "./streamMachine.ts";
 
 const running = runningScope(ORG);
 
@@ -236,6 +237,33 @@ describe("a reconnect's grace", () => {
       expect(seen.every((live) => live)).toBe(true);
       stop();
       registry.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives a first try the same grace before its failure is trouble", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = makeAccountStore(AtomRegistry.make());
+      const link = linkKeys.zerops(ORG);
+      store.dispatch({
+        kind: "stream",
+        key: link,
+        now: 1_000,
+        event: { kind: "demand", demanded: true },
+      });
+      store.dispatch({
+        kind: "stream",
+        key: link,
+        now: 1_200,
+        event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "closed" } },
+      });
+      const trouble = () => streamTrouble(store.state().streams.get(link)!);
+      await vi.advanceTimersByTimeAsync(STREAM_POLICY.reconnectGraceMs - 1);
+      expect(trouble()).toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(trouble()).toBe("retrying");
     } finally {
       vi.useRealTimers();
     }

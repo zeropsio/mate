@@ -154,6 +154,18 @@ export function awaitDoorEnvironmentCount<
   });
 }
 
+/**
+ * Whether the door's answer at `pathname` hangs on how many environments the client holds: only
+ * then does the guard wait for the catalog. Where the gate decides alone (the hosted app, a signed-in
+ * server), a reload's route renders at once — the whole page never waits behind the catalog.
+ */
+export function doorWaitsForEnvironments(gate: AuthGateState, pathname: string): boolean {
+  return (
+    resolveDoor(gate, { pathname, environmentCount: 0 }).redirect !==
+    resolveDoor(gate, { pathname, environmentCount: 1 }).redirect
+  );
+}
+
 export function resolveDoor(
   gate: AuthGateState,
   input: {

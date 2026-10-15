@@ -1,6 +1,7 @@
 import {
   accountReadsAtom,
   makeAccountStore,
+  projectsScope,
   type AccountStore,
   type HqVerdict,
 } from "@t3tools/client-runtime/data";
@@ -134,9 +135,16 @@ describe("menuRowsAtom", () => {
       drawn: false,
     },
     {
-      case: "an official HQ's first attempt failed",
+      case: "an official HQ's first attempt failed, inside the wait",
       verdict: "official",
       hq: "transient",
+      drawn: false,
+    },
+    {
+      case: "an official HQ's first attempt failed and the wait ran out",
+      verdict: "official",
+      hq: "transient",
+      waitedOut: true,
       drawn: true,
     },
     { case: "an official HQ refused", verdict: "official", hq: "definitive-refusal", drawn: true },
@@ -144,14 +152,118 @@ describe("menuRowsAtom", () => {
     case: string;
     verdict: HqVerdict;
     hq?: Outcome | "open";
+    waitedOut?: boolean;
     drawn: boolean;
-  }>)("with the listing read, $case: drawn $drawn", ({ verdict, hq, drawn }) => {
+  }>)("with the listing read, $case: drawn $drawn", ({ verdict, hq, waitedOut, drawn }) => {
     const registry = AtomRegistry.make();
     const store = mountRoster(registry, ORG, [ADA, ZOE]);
     seedHqVerdict(store, ORG, verdict);
     if (hq !== undefined) hqLink(store, hq === "open" ? undefined : hq);
-    const frame = registry.get(menuRowsAtom(ORG, []));
+    const frame = registry.get(
+      menuRowsAtom(ORG, [], { waitedOut: waitedOut === true, drawn: false }),
+    );
     expect(frame.settled).toBe(drawn);
+  });
+
+  /** HQ's link tries again after its failed attempt: its next attempt is under way. */
+  const hqRetries = (store: AccountStore) =>
+    store.dispatch({ kind: "stream", key: `hq:${ORG}`, now: 1_000, event: { kind: "retry-due" } });
+
+  it("A first HQ hiccup holds the menu instead of drawing the names alone", () => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, ORG, [ADA, ZOE]);
+    seedHqVerdict(store, ORG, "official");
+    const atom = menuRowsAtom(ORG, []);
+    hqLink(store, "transient");
+    const frames: MenuRows[] = [registry.get(atom)];
+    hqRetries(store);
+    frames.push(registry.get(atom));
+    mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
+    const settled = registry.get(atom);
+
+    for (const frame of frames) expect(frame).toEqual({ settled: false, rows: [] });
+    expect(settled.settled).toBe(true);
+    expect(settled.rows.map(({ project }) => project.hq !== undefined)).toEqual([true, true]);
+  });
+
+  it("A first Zerops hiccup holds the menu instead of drawing it empty", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
+    seedHqVerdict(store, ORG, "official");
+    mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
+    const link = `zerops:${ORG}` as const;
+    for (const key of [link, projectsScope(ORG)])
+      store.dispatch({ kind: "stream", key, now: 0, event: { kind: "demand", demanded: true } });
+    store.dispatch({
+      kind: "stream",
+      key: link,
+      now: 0,
+      event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "closed" } },
+    });
+    const atom = menuRowsAtom(ORG, []);
+    expect(registry.get(atom)).toEqual({ settled: false, rows: [] });
+    mountRoster(registry, ORG, [ADA, ZOE], { into: store });
+    expect(drawnOrder(registry.get(atom))).toEqual([ZOE.id, ADA.id]);
+  });
+
+  it("The menu paints its rows once each Mate's last words are read, not before", () => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, ORG, [ADA, ZOE]);
+    seedHqVerdict(store, ORG, "official");
+    const atom = menuRowsAtom(ORG, []);
+    mountHqNavigation(
+      registry,
+      ORG,
+      { structure: STRUCTURE, attentionUnanswered: [ADA.id, ZOE.id] },
+      store,
+    );
+    const waiting = registry.get(atom);
+    mountHqNavigation(
+      registry,
+      ORG,
+      { structure: STRUCTURE, attentionUnanswered: [ZOE.id] },
+      store,
+    );
+    const half = registry.get(atom);
+    mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
+
+    expect(waiting).toEqual({ settled: false, rows: [] });
+    expect(half).toEqual({ settled: false, rows: [] });
+    expect(drawnOrder(registry.get(atom))).toEqual([ZOE.id, ADA.id]);
+  });
+
+  it("A Mate whose last words have not come by the wait's end paints without them", () => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, ORG, [ADA, ZOE]);
+    seedHqVerdict(store, ORG, "official");
+    mountHqNavigation(
+      registry,
+      ORG,
+      { structure: STRUCTURE, attentionUnanswered: [ZOE.id] },
+      store,
+    );
+    const frame = registry.get(menuRowsAtom(ORG, [], { waitedOut: true, drawn: false }));
+    expect(drawnOrder(frame)).toEqual([ZOE.id, ADA.id]);
+  });
+
+  it("Rows once drawn stay while HQ reads again", () => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, ORG, [ADA, ZOE]);
+    seedHqVerdict(store, ORG, "official");
+    hqLink(store, "transient");
+    // HQ did not answer within the wait: the projects stand by their names alone.
+    const fallback = registry.get(menuRowsAtom(ORG, [], { waitedOut: true, drawn: false }));
+    hqRetries(store);
+    const rereading = registry.get(menuRowsAtom(ORG, [], { waitedOut: true, drawn: true }));
+
+    expect(fallback.settled).toBe(true);
+    expect(rereading).toEqual(fallback);
   });
 
   it("draws nothing while the listing is unread, whatever HQ said", () => {

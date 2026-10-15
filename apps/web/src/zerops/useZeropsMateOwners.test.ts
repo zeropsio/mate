@@ -24,7 +24,7 @@ import {
   zeropsMateOwnerOf,
 } from "./useZeropsMateOwners";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
-import { accountReadsAtom, makeAccountStore } from "@t3tools/client-runtime/data";
+import { accountReadsAtom, makeAccountStore, STREAM_POLICY } from "@t3tools/client-runtime/data";
 import { seedHqProjectPeople } from "@t3tools/client-runtime/data/fixtures";
 
 vi.mock("./ZeropsSessionProvider", () => ({
@@ -256,10 +256,18 @@ it("a retained member list does not make a failed owner read ready for HQ verifi
     members: [{ id: "cu-jan" }],
   });
   fail = true;
-  await act(async () => {
-    account.revalidate({ family: "organizationMembers", ownerId: "org-1" });
-    await account.readDetail({ family: "organizationMembers", ownerId: "org-1" });
-  });
+  // Effect's scheduler keeps running on wall time; the grace is jumped.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    await act(async () => {
+      account.revalidate({ family: "organizationMembers", ownerId: "org-1" });
+      await account.readDetail({ family: "organizationMembers", ownerId: "org-1" });
+      // A failed read is said once its grace ran out; inside it, the read is still reading.
+      await vi.advanceTimersByTimeAsync(STREAM_POLICY.reconnectGraceMs);
+    });
+  } finally {
+    vi.useRealTimers();
+  }
   expect(seen.at(-1)).toMatchObject({
     status: "failed",
     settled: false,
