@@ -190,6 +190,8 @@ function stageLine(
   stop: GroupFlowStop,
   chip: ProductionChip | undefined,
   down: ReadonlyArray<string>,
+  /** It serves a port its public address would open; `undefined` while its services are unread. */
+  offered: boolean | undefined,
 ): PlaceLine {
   const base = {
     projectId: stop.projectId,
@@ -219,8 +221,13 @@ function stageLine(
     ),
   };
   // HQ brings a stage up until its first deploy's address is on (`EnvironmentBirth`): running
-  // with nowhere to open is still coming up, as the menu's heading says (`stopComing`).
-  if (said.dot === "running" && stop.addresses.length === 0 && stop.birth?.ended === false)
+  // with nowhere to open is still coming up, as the menu's heading says (`stopComing`). HQ ends
+  // its bringing up as that deploy ends, and the address comes in the platform's next read: one
+  // it brought up that serves a port its address opens runs once that address is there, and one
+  // serving none runs as it is.
+  const turningOn =
+    stop.birth != null && (offered ?? !stop.birth.ended) && stop.addresses.length === 0;
+  if (said.dot === "running" && turningOn)
     return { ...base, dot: "unknown", words: ["Turning its address on…"], trouble: false };
   return { ...base, ...said };
 }
@@ -265,13 +272,23 @@ export function placeLines(input: {
   readonly since?: string | undefined;
   /** The services the platform marks failed, by place. */
   readonly down?: ReadonlyMap<string, ReadonlyArray<string>> | undefined;
+  /**
+   * Whether each stage serves a port its public address would open (`derivePublicRouteOffers`),
+   * by its project; absent while its services are unread.
+   */
+  readonly addressOffered?: ReadonlyMap<string, boolean> | undefined;
   readonly nowMs: number;
 }): ReadonlyArray<PlaceLine> {
   const { production, stages } = input.flow;
   const downOf = (projectId: string | undefined) =>
     (projectId === undefined ? undefined : input.down?.get(projectId)) ?? [];
   const staged = stages.map((stop) =>
-    stageLine(stop, input.stageChips?.get(stop.projectId), downOf(stop.projectId)),
+    stageLine(
+      stop,
+      input.stageChips?.get(stop.projectId),
+      downOf(stop.projectId),
+      input.addressOffered?.get(stop.projectId),
+    ),
   );
   const prod = { kind: "production" as const, name: "prod" };
   if (production.kind === "absent")

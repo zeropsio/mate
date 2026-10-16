@@ -69,6 +69,8 @@ import { Button } from "~/components/ui/button";
 export interface PlaceItem {
   readonly project: { readonly id: string; readonly status?: string | undefined };
   readonly routes?: ReadonlyArray<ZeropsPublicRoute> | undefined;
+  /** Ports its public address would open that are not on yet; absent while its services are unread. */
+  readonly routeOffers?: ReadonlyArray<unknown> | undefined;
   readonly services?:
     | {
         readonly hostnames: ReadonlyArray<string>;
@@ -161,17 +163,24 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     );
     const stageChips = new Map<string, ProductionChip | undefined>();
     const down = new Map<string, ReadonlyArray<string>>();
+    const addressOffered = new Map<string, boolean>();
     if (prodStop !== undefined) down.set(prodStop.projectId, downOf(prodServing));
     for (const stop of entry.flow.stages) {
-      const serving = servingOf(itemOf(entry, stop.projectId));
+      const item = itemOf(entry, stop.projectId);
+      const serving = servingOf(item);
       down.set(stop.projectId, downOf(serving));
+      if (item?.routeOffers !== undefined)
+        addressOffered.set(
+          stop.projectId,
+          item.routeOffers.length + (item.routes?.length ?? 0) > 0,
+        );
       stageChips.set(stop.projectId, drawnChip(stageStopChip({ stop, serving, releases })));
     }
     const since =
       prodStop === undefined
         ? undefined
         : (deployActivatedAt(deploymentsOf(prodStop.projectId)) ?? prodItem?.services?.deployedAt);
-    return { read, releases, chip, stageChips, down, since, prodItem, prodStop };
+    return { read, releases, chip, stageChips, down, addressOffered, since, prodItem, prodStop };
   };
 
   /**
@@ -202,8 +211,15 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   };
 
   const cardPlaces = (entry: ProjectsFlowGroup<T>) => {
-    const { chip, stageChips, down, since } = placesOf(entry);
-    return { chip, stageChips, down, since, releaseOnStage: stageOf(entry)?.runsRelease };
+    const { chip, stageChips, down, addressOffered, since } = placesOf(entry);
+    return {
+      chip,
+      stageChips,
+      down,
+      addressOffered,
+      since,
+      releaseOnStage: stageOf(entry)?.runsRelease,
+    };
   };
 
   const renderPlacePanel = (entry: ProjectsFlowGroup<T>, line: PlaceLine): ReactNode => {
