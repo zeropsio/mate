@@ -56,6 +56,8 @@ export interface PlaceLine {
   readonly trouble: boolean;
   /** Its public addresses, one per service it serves, opened beside the page; none where none. */
   readonly addresses: ReadonlyArray<GroupFlowAddress>;
+  /** A wait it is in that counts from here (wall ms), against how long it usually takes. */
+  readonly clock?: { readonly since: number; readonly estimateMs: number } | undefined;
 }
 
 const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short" });

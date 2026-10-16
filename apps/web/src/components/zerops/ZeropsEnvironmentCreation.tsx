@@ -159,6 +159,27 @@ export function environmentCreationSteps(
   });
 }
 
+/**
+ * Where a creation has got, in one line: the step that failed, or the one under way, or the next —
+ * the last once all are done — by its words, and when the first began. A stage being added says it
+ * on its card's Stage line, where the stage will stand; `undefined` before its plan is known.
+ */
+export function creationNow(
+  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
+  tier: ZeropsEnvironmentCreationProps["tier"],
+): { readonly step: string | undefined; readonly startedAtMs: number | null } {
+  const steps = environmentCreationSteps(progress, 0, tier);
+  const now =
+    steps.find((step) => step.state === "failed") ??
+    steps.find((step) => step.state === "running") ??
+    steps.find((step) => step.state === "queued") ??
+    steps.at(-1);
+  return {
+    step: now?.label,
+    startedAtMs: progress.find((entry) => entry.startedAtMs !== undefined)?.startedAtMs ?? null,
+  };
+}
+
 /** A first import as measured end to end (about two minutes): what the row promises. */
 export const ENVIRONMENT_CREATION_ESTIMATE_MS = 2 * 60_000;
 

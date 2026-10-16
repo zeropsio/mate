@@ -243,6 +243,25 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
           );
         }
       }),
+    /**
+     * The stage being added has come up as far as its adding goes: its card's Stage section no
+     * longer says how far the adding has got, and its own reading speaks there.
+     */
+    stageAdded: Effect.promise(async () => {
+      try {
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[data-zerops-place="stage"]') !== null &&
+            document.querySelector('[data-zerops-place="stage"][data-zerops-setting-up]') === null,
+          { timeout: 15_000, polling: "raf" },
+        );
+      } catch (cause) {
+        throw new Error(
+          `The stage is still being added\n${await page.evaluate(() => document.body.innerText)}`,
+          { cause },
+        );
+      }
+    }),
     /** The Mate stands on its project's card in the overview. */
     mateAppearsInProject: (name: string, group: string) =>
       Effect.promise(async () => {

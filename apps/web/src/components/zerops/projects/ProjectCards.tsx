@@ -34,10 +34,12 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
-import { useNowMs } from "~/zerops/useNowMs";
+import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
+import { progressClock } from "~/components/ui/progress.logic";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { MateDot } from "../MateDot";
 import { StopReadAgain } from "../StopReadAgain";
+import { ENVIRONMENT_CREATION_ESTIMATE_MS } from "../ZeropsEnvironmentCreation";
 import { heldLine } from "./emptyApps.logic";
 import { ProjectCardStandIn } from "./OverviewStandIn";
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
@@ -57,7 +59,11 @@ import {
   type PlaceLine,
 } from "./projectCard.logic";
 import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
-import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
+import type {
+  ProjectsFlowGroup,
+  StageSettingUp,
+  ZeropsProjectsFlowProps,
+} from "./ZeropsProjectsFlow";
 import { Button } from "~/components/ui/button";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
@@ -147,7 +153,7 @@ export function PlaceDot({ dot }: { readonly dot: PlaceLine["dot"] }) {
   return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
 }
 
-/** A place's words, `·` between, in its state's ink. */
+/** A place's words, `·` between, in its state's ink — and the clock of a wait it is in. */
 export function PlaceWords({ line }: { readonly line: PlaceLine }) {
   return (
     <span className="ov-place-words" data-dot={line.dot}>
@@ -161,7 +167,29 @@ export function PlaceWords({ line }: { readonly line: PlaceLine }) {
           <span>{word}</span>
         </Fragment>
       ))}
+      {line.clock === undefined ? null : <PlaceClock clock={line.clock} />}
     </span>
+  );
+}
+
+/** How long a place's wait has run and what it usually takes: it ticks here alone, never the card. */
+function PlaceClock({ clock }: { readonly clock: NonNullable<PlaceLine["clock"]> }) {
+  const nowMs = useSecondsNowMs(true);
+  const said = progressClock({
+    startedAtMs: clock.since,
+    nowMs,
+    endedAtMs: null,
+    estimateMs: clock.estimateMs,
+  });
+  return [said.elapsed, said.note].map((word) =>
+    word === null ? null : (
+      <Fragment key={word === said.elapsed ? "elapsed" : "note"}>
+        <span aria-hidden="true" className="ov-sep">
+          ·
+        </span>
+        <span className="tabular-nums">{word}</span>
+      </Fragment>
+    ),
   );
 }
 
@@ -255,6 +283,21 @@ const NEW_STAGE: PlaceLine = {
   trouble: false,
   addresses: [],
 };
+
+/**
+ * A stage's line while it is being added: the step under way, and how long the adding has run
+ * against what it usually takes — the words its own reading takes over once the adding ends.
+ */
+function settingUpLine(line: PlaceLine, settingUp: StageSettingUp | undefined): PlaceLine {
+  const since = settingUp?.startedAtMs ?? null;
+  return {
+    ...line,
+    dot: "unknown",
+    words: [settingUp?.step ?? "Setting up…"],
+    trouble: false,
+    clock: since === null ? undefined : { since, estimateMs: ENVIRONMENT_CREATION_ESTIMATE_MS },
+  };
+}
 
 /**
  * What a place says where the page gives it nothing more: its name and its line — and, for a stage
@@ -589,17 +632,21 @@ function ProjectCard<T>({
   // The page's door decides whether a release is offered here at all (Put it live releases the
   // production it makes); where the page gives none, the card says what the flow says.
   const releaseShown = props.renderReleaseVerb === undefined || drawn(releaseDoor);
+  // A stage being added says how far it has got on its own line, where the stage stands.
+  const settingUp = props.stageSettingUp?.(entry);
   const placeFacts = props.cardPlaces?.(entry);
   const readyWhere = ready === undefined ? undefined : readyLine(ready, placeFacts?.releaseOnStage);
   // No stage yet: where one would stand, the way to add it — or that one is being set up.
   const stageSetUp =
     flow.stages.length > 0
       ? undefined
-      : flow.creatingStages.length > 0
+      : flow.creatingStages.length > 0 || settingUp !== undefined
         ? ("creating" as const)
         : props.setUpStage?.(entry);
   const addMate = page === undefined ? props.addMate?.(entry) : undefined;
-  const lines = placeLines({ flow, ...placeFacts, nowMs });
+  const lines = placeLines({ flow, ...placeFacts, nowMs }).map((line) =>
+    line.kind === "stage" && settingUp !== undefined ? settingUpLine(line, settingUp) : line,
+  );
   // Production first — what a person runs for others — then each stage behind it.
   const places = [
     ...lines.filter((line) => line.kind === "production"),
@@ -659,6 +706,9 @@ function ProjectCard<T>({
           <section
             className="ov-sec"
             data-zerops-place={line.kind}
+            data-zerops-setting-up={
+              line.kind === "stage" && settingUp !== undefined ? "true" : undefined
+            }
             key={`${line.kind}:${line.projectId ?? line.name}`}
           >
             {setUp === undefined ? (
@@ -670,9 +720,13 @@ function ProjectCard<T>({
         );
       })}
       {stageSetUp === undefined ? null : (
-        <section className="ov-sec" data-zerops-place="stage">
+        <section
+          className="ov-sec"
+          data-zerops-place="stage"
+          data-zerops-setting-up={stageSetUp === "creating" ? "true" : undefined}
+        >
           {stageSetUp === "creating" ? (
-            <PlainPanel held line={{ ...NEW_STAGE, dot: "unknown", words: ["Setting up…"] }} />
+            <PlainPanel held line={settingUpLine(NEW_STAGE, settingUp)} />
           ) : (
             <SetUpPanel line={NEW_STAGE} onSetUp={stageSetUp} />
           )}

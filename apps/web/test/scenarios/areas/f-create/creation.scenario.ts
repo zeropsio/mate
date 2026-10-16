@@ -47,7 +47,8 @@ describe("F: creation through the hosted client", () => {
           yield* c.text("Same services as the project");
           yield* c.click(`Add ${role} to Shop`);
           yield* c.environmentAppears("Shop-b", role === "production" ? "prod" : "stage");
-          yield* c.text("Shop-b is set up");
+          // A stage's adding ends on its card's Stage line; production's in its set-up card.
+          yield* role === "stage" ? c.stageAdded : c.text("Shop-b is set up");
           yield* c.acceptedOnce("Shop-b");
           yield* c.noAgentImported;
           yield* s.then.noExternalNetwork;

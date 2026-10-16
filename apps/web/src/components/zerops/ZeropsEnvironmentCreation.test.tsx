@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  creationNow,
   creationSettled,
   environmentCreationSteps,
   ZeropsEnvironmentCreation,
@@ -53,6 +54,45 @@ function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreation>[0]> 
     />,
   );
 }
+
+// The run's Add stage: its progress stood in a card of its own at the page's foot, below the fold,
+// while the stage's line on its card already said "Deploying…" — it is said on that line now.
+describe("a stage's setting up in one line", () => {
+  it.each([
+    { case: "before its plan is known", states: [], step: undefined, since: null },
+    {
+      case: "the step under way",
+      states: ["done", "running", "queued"],
+      step: "Adding its services",
+      since: 1_000,
+    },
+    {
+      case: "the next, between two",
+      states: ["done", "done", "queued"],
+      step: "Starting the stage's services",
+      since: 1_000,
+    },
+    {
+      case: "the last, once all are done",
+      states: ["done", "done", "done"],
+      step: "Starting the stage's services",
+      since: 1_000,
+    },
+    {
+      case: "the one that failed",
+      states: ["done", "failed", "queued"],
+      step: "Adding its services",
+      since: 1_000,
+    },
+  ] as const)("says $case, and since when it runs", ({ states, step, since }) => {
+    const steps = STEPS.slice(0, states.length).map((entry, index) => ({
+      step: entry,
+      state: states[index] ?? "queued",
+      ...(states[index] === "queued" ? {} : { startedAtMs: 1_000 + index * 500 }),
+    }));
+    expect(creationNow(steps, "stage")).toEqual({ step, startedAtMs: since });
+  });
+});
 
 describe("environmentCreationSteps", () => {
   it("labels each step from the plan, so a new step cannot arrive unlabelled", () => {
