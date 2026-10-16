@@ -48,6 +48,7 @@ import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
 import { CardChanges, CardMateLiftActions } from "./ProjectCards";
 import {
   broughtBy,
+  historyOffered,
   CARD_CHANGES,
   cardChanges,
   cardPeople,
@@ -328,9 +329,10 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
             Roll back to {back}
           </Button>
         )}
-        {/* Its releases, where it has any: nothing released has no history to open — and on the
-            project's own page its history stands beside the card. */}
-        {releases.length === 0 || input.onPage === true ? null : (
+        {/* Its releases, once it runs one (`historyOffered`) — and on the project's own page its
+            history stands beside the card. */}
+        {!historyOffered({ releases: releases.length, runs: stop?.version !== undefined }) ||
+        input.onPage === true ? null : (
           <Button
             onClick={() => {
               void navigate({ to: "/group/$groupId/flow", params: { groupId } });

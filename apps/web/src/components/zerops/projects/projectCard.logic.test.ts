@@ -26,6 +26,7 @@ import {
   foldWords,
   mateChangeForReview,
   panelAddresses,
+  historyOffered,
   placeLines,
   putLiveHasChange,
   readyLine,
@@ -840,6 +841,17 @@ describe("a stage's line on a card", () => {
       nowMs: NOW,
     });
     expect(lines[0]?.words.join(" · ")).toBe(said);
+  });
+});
+
+describe("production's actions", () => {
+  // The run: History came 6 s into the first release and pushed the domain door 72 px aside.
+  it.each([
+    { case: "nothing released yet", releases: 0, runs: false, offered: false },
+    { case: "its first release on its way", releases: 1, runs: false, offered: false },
+    { case: "a release it runs", releases: 1, runs: true, offered: true },
+  ])("offers production's history only once it runs a release: $case", (input) => {
+    expect(historyOffered(input)).toBe(input.offered);
   });
 });
 
