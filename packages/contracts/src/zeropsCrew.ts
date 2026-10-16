@@ -1056,11 +1056,17 @@ export type CrewProposalInput = typeof CrewProposalInput.Type;
 
 /**
  * Why no crew was proposed: the Mate's agent may not run for this person, or
- * cannot generate text (`refused`, admission's or the agent's words in
- * `detail`); the agent failed or ran out of time (`failed`); or it answered
- * something that is not a crew (`malformed`).
+ * said why it would not (`refused`, admission's or the agent's own words in
+ * `detail`); its sign-in expired or is gone (`signed-out`); the agent failed
+ * or ran out of time (`failed`); or it answered something that is not a crew
+ * (`malformed`).
  */
-export const CrewProposalFailure = Schema.Literals(["refused", "failed", "malformed"]);
+export const CrewProposalFailure = Schema.Literals([
+  "refused",
+  "signed-out",
+  "failed",
+  "malformed",
+]);
 export type CrewProposalFailure = typeof CrewProposalFailure.Type;
 
 export class CrewProposalError extends Schema.TaggedError<CrewProposalError>()(

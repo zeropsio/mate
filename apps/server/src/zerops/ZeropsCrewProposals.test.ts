@@ -158,6 +158,40 @@ describe("CrewProposals", () => {
   );
 
   it.effect.each([
+    {
+      title: "keeps the agent's own words when it says why it won't",
+      detail: "Claude CLI command failed: Credit balance is too low\nat request 7",
+      error: { reason: "refused", detail: "Credit balance is too low" },
+    },
+    {
+      title: "says the agent needs signing in again when its sign-in expired",
+      detail: "Claude CLI command failed: Invalid API key · Please run /login",
+      error: { reason: "signed-out", detail: null },
+    },
+    {
+      title: "says the agent needs signing in again when it was never signed in",
+      detail: "Codex CLI command failed: Not logged in",
+      error: { reason: "signed-out", detail: null },
+    },
+    {
+      title: "fails plainly when the agent stops without a word",
+      detail: "Codex CLI command failed with code 1.",
+      error: { reason: "failed", detail: null },
+    },
+  ])("$title", ({ detail, error }) =>
+    Effect.gen(function* () {
+      const exit = yield* propose;
+      expect(failureOf(exit)).toMatchObject({ _tag: "CrewProposalError", ...error });
+    }).pipe(
+      Effect.provide(
+        layerWith(() =>
+          Effect.fail(new TextGenerationError({ operation: "generateCrewProposal", detail })),
+        ),
+      ),
+    ),
+  );
+
+  it.effect.each([
     ["no builder", { lead: roster.lead, builders: [] }],
     ["two crewmates of one name", { lead: roster.lead, builders: [{ ...roster.lead }] }],
     [

@@ -13,7 +13,12 @@
  *
  * @module ZeropsCrewProposals
  */
-import { CrewProposal, CrewProposalError, type CrewProposalInput } from "@t3tools/contracts";
+import {
+  CrewProposal,
+  CrewProposalError,
+  type CrewProposalInput,
+  type TextGenerationError,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -24,6 +29,37 @@ import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 
 const decodeProposal = Schema.decodeUnknownEffect(CrewProposal);
+
+/** What an agent's CLI said when it stopped (`<Agent> CLI command failed: <its words>`). */
+const CLI_WORDS = /^\w+ CLI command failed: (.+)$/su;
+/** Words an agent stops with when its sign-in expired or was never made. */
+const SIGNED_OUT =
+  /\b(?:not (?:logged|signed) in|please run \/login|log ?in again|sign ?in again|unauthori[sz]ed|authentication (?:failed|required|error)|invalid api key|(?:token|credentials?|session) (?:has )?expired|401)\b/iu;
+/** How much of an agent's words the row says: its first line, bounded. */
+const WORDS_MAX = 240;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/**
+ * Why the agent produced no crew, from its failure: a sign-in it lacks as
+ * that, plainly; its own words where it gave some (a CLI that stopped saying
+ * why, OpenCode's provider message), as a refusal; anything else — a timeout,
+ * a crash, silence — as a plain failure.
+ */
+export function crewProposalFailureOf(error: TextGenerationError): CrewProposalError {
+  const spoken =
+    CLI_WORDS.exec(error.detail)?.[1] ??
+    (isRecord(error.cause) && error.cause._tag === "OpenCodeTextGenerationPromptResponseError"
+      ? error.detail
+      : null);
+  if (SIGNED_OUT.test(spoken ?? error.detail))
+    return new CrewProposalError({ reason: "signed-out", detail: null });
+  const words = spoken?.split(/\r?\n/u)[0]?.trim().slice(0, WORDS_MAX) ?? "";
+  return words === ""
+    ? new CrewProposalError({ reason: "failed", detail: null })
+    : new CrewProposalError({ reason: "refused", detail: words });
+}
 
 export class ZeropsCrewProposals extends Context.Service<
   ZeropsCrewProposals,
@@ -58,8 +94,7 @@ const make = Effect.gen(function* () {
         ),
       ),
       Effect.catchTags({
-        TextGenerationError: () =>
-          Effect.fail(new CrewProposalError({ reason: "failed", detail: null })),
+        TextGenerationError: (error) => Effect.fail(crewProposalFailureOf(error)),
         PlatformError: () => Effect.fail(new CrewProposalError({ reason: "failed", detail: null })),
       }),
     );
