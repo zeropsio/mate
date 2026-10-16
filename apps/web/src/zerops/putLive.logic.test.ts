@@ -770,6 +770,34 @@ describe("after a reload, how Put it live ended", () => {
     expect(live).toEqual({ kind: "live" });
   });
 
+  // The run's roll back read "Putting Tea Shop live", then "Released v0.1.2": a tag nobody asked
+  // for. A roll back says what it goes back to, wherever a release says it is going live.
+  it("A roll back followed in the conversation says it rolls back, and what it went back to", () => {
+    const flow = read({
+      inFlight: "v0.1.2",
+      releases: [
+        { tag: "v0.1.2", standing: undefined, rollbackOf: "v0.1.0" },
+        { tag: "v0.1.1", standing: "live" },
+        { tag: "v0.1.0", standing: undefined },
+      ],
+    });
+    const shown = resumed({ facts: flow });
+    if (shown.kind !== "follow") throw new Error("follow expected");
+    expect(putLiveProgress(shown.run)).toMatchObject({
+      title: "Rolling back to v0.1.0",
+      step: "Releasing v0.1.2",
+    });
+    const live = putLiveStep(shown.run, { kind: "live", at: 0 }, 0);
+    expect(putLiveReleased(live, 3 * 60_000)).toBe("Rolled back to v0.1.0 · 3 min ago");
+    // One that went live while the page was away says it the same way.
+    const away = resumed({
+      kept: "p-prod",
+      facts: read({ releases: [{ tag: "v0.1.2", standing: "live", rollbackOf: "v0.1.0" }] }),
+    });
+    if (away.kind !== "follow") throw new Error("follow expected");
+    expect(putLiveReleased(away.run, 0)).toBe("Rolled back to v0.1.0");
+  });
+
   it("a stopped or finished row gives way to what happened since, never stays behind it", () => {
     const stopped = resumed({ kept: "p-prod", facts: read() });
     if (stopped.kind !== "stopped") throw new Error("stopped expected");

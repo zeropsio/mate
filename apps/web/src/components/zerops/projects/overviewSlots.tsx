@@ -180,7 +180,24 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       prodStop === undefined
         ? undefined
         : (deployActivatedAt(deploymentsOf(prodStop.projectId)) ?? prodItem?.services?.deployedAt);
-    return { read, releases, chip, stageChips, down, addressOffered, since, prodItem, prodStop };
+    // The release on its way, where it is a roll back: production's line says what it goes back to.
+    const onItsWay = production.kind === "releasing" ? production.tag : chip?.next;
+    const rollsBackTo =
+      onItsWay === undefined || read?.releasesKnown !== true
+        ? undefined
+        : read.releases.find((release) => release.tag === onItsWay)?.rollbackOf;
+    return {
+      read,
+      releases,
+      chip,
+      stageChips,
+      down,
+      addressOffered,
+      rollsBackTo,
+      since,
+      prodItem,
+      prodStop,
+    };
   };
 
   /**
@@ -211,12 +228,13 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   };
 
   const cardPlaces = (entry: ProjectsFlowGroup<T>) => {
-    const { chip, stageChips, down, addressOffered, since } = placesOf(entry);
+    const { chip, stageChips, down, addressOffered, rollsBackTo, since } = placesOf(entry);
     return {
       chip,
       stageChips,
       down,
       addressOffered,
+      rollsBackTo,
       since,
       releaseOnStage: stageOf(entry)?.runsRelease,
     };

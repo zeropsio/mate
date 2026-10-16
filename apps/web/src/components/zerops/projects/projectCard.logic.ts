@@ -86,10 +86,19 @@ const joined = (names: ReadonlyArray<string>): string =>
     ? (names[0] ?? "")
     : `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`;
 
+/** A release on its way, as production's line says it: a roll back by the release it goes back to. */
+function releasingWords(tag: string, rollsBackTo: string | undefined): string {
+  return rollsBackTo === undefined ? `Releasing ${tag}` : `Rolling back to ${rollsBackTo}`;
+}
+
 /** What production's line says from its chip, the menu's reading of it. */
 function chipLine(
   chip: ProductionChip,
-  facts: { readonly since: string | undefined; readonly down: ReadonlyArray<string> },
+  facts: {
+    readonly since: string | undefined;
+    readonly down: ReadonlyArray<string>;
+    readonly rollsBackTo?: string | undefined;
+  },
 ): Pick<PlaceLine, "dot" | "words" | "trouble"> {
   const runs = chip.version;
   switch (chip.state) {
@@ -105,7 +114,9 @@ function chipLine(
     case "releasing":
       return {
         dot: "releasing",
-        words: [chip.next === undefined ? "Deploying…" : `Releasing ${chip.next}`],
+        words: [
+          chip.next === undefined ? "Deploying…" : releasingWords(chip.next, facts.rollsBackTo),
+        ],
         trouble: false,
       };
     case "failed":
@@ -143,6 +154,7 @@ function chipLine(
 function flowLine(
   production: Exclude<GroupFlowProduction, { readonly kind: "absent" }>,
   since: string | undefined,
+  rollsBackTo: string | undefined,
 ): Pick<PlaceLine, "dot" | "words" | "trouble"> {
   switch (production.kind) {
     case "creating":
@@ -160,7 +172,11 @@ function flowLine(
     case "deploying":
       return { dot: "releasing", words: ["Deploying…"], trouble: false };
     case "releasing":
-      return { dot: "releasing", words: [`Releasing ${production.tag}`], trouble: false };
+      return {
+        dot: "releasing",
+        words: [releasingWords(production.tag, rollsBackTo)],
+        trouble: false,
+      };
     case "deploy-failed": {
       const runs = production.stop.version?.label;
       return {
@@ -279,6 +295,8 @@ export function placeLines(input: {
    * by its project; absent while its services are unread.
    */
   readonly addressOffered?: ReadonlyMap<string, boolean> | undefined;
+  /** The release on its way to production rolls it back to this one (`FlowRelease.rollbackOf`). */
+  readonly rollsBackTo?: string | undefined;
   readonly nowMs: number;
 }): ReadonlyArray<PlaceLine> {
   const { production, stages } = input.flow;
@@ -327,8 +345,12 @@ export function placeLines(input: {
   const since = sinceWords(input.since, input.nowMs);
   const said =
     input.chip === undefined
-      ? flowLine(production, since)
-      : chipLine(input.chip, { since, down: downOf(stop?.projectId) });
+      ? flowLine(production, since, input.rollsBackTo)
+      : chipLine(input.chip, {
+          since,
+          down: downOf(stop?.projectId),
+          rollsBackTo: input.rollsBackTo,
+        });
   return [
     ...staged,
     { ...prod, projectId: stop?.projectId, addresses: stop?.addresses ?? [], ...said },

@@ -226,7 +226,11 @@ export function releaseOutcomeOf(input: {
   const elapsedMs = input.clockMs - since;
   const clock = formatRunClock(elapsedMs);
   const late = elapsedMs >= RELEASE_ESTIMATE_MS ? " · taking longer than usual" : "";
-  return { kind: "releasing", progress: `Putting ${input.tag} live · ${clock}${late}` };
+  return {
+    kind: "releasing",
+    progress: `Putting ${input.tag} live · ${clock}${late}`,
+    clock: `${clock}${late}`,
+  };
 }
 
 /**

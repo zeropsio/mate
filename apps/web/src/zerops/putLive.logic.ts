@@ -82,6 +82,8 @@ export interface PutLiveRun {
   readonly liveAt?: number | undefined;
   /** When the step under way began: what the wait row's clock counts from. */
   readonly stepAt?: number | undefined;
+  /** The release a followed roll back goes back to: it is said as that, never as going live. */
+  readonly rollsBackTo?: string | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -461,6 +463,8 @@ export interface PutLiveFacts {
     readonly detail?: string | undefined;
     /** When HQ made it: what a release followed from its way out counts from. */
     readonly taggedAt?: string | undefined;
+    /** The release it rolls production back to, where it is a roll back. */
+    readonly rollbackOf?: string | undefined;
   }>;
 }
 
@@ -565,7 +569,10 @@ export function putLiveProgress(run: PutLiveRun): {
   readonly step: string;
   readonly since?: number;
 } {
-  const title = `Putting ${run.project} live`;
+  const title =
+    run.rollsBackTo === undefined
+      ? `Putting ${run.project} live`
+      : `Rolling back to ${run.rollsBackTo}`;
   const since = run.stepAt === undefined ? {} : { since: run.stepAt };
   switch (run.phase) {
     case "merging":
@@ -584,7 +591,7 @@ export function putLiveProgress(run: PutLiveRun): {
               : `Releasing ${run.tag}`,
       };
     case "live":
-      return { title: `${run.project} is live`, step: releasedLine(run.tag) };
+      return { title: `${run.project} is live`, step: releasedLine(run) };
     case "failed":
       return {
         title: `${run.project} isn't live yet`,
@@ -593,13 +600,14 @@ export function putLiveProgress(run: PutLiveRun): {
   }
 }
 
-function releasedLine(tag: string | undefined): string {
-  return tag === undefined ? "Released" : `Released ${tag}`;
+function releasedLine(run: Pick<PutLiveRun, "tag" | "rollsBackTo">): string {
+  if (run.rollsBackTo !== undefined) return `Rolled back to ${run.rollsBackTo}`;
+  return run.tag === undefined ? "Released" : `Released ${run.tag}`;
 }
 
-/** The live card's second line: "Released v0.1.0 · just now". */
+/** The live card's second line: "Released v0.1.0 · just now", "Rolled back to v0.1.0 · 3 min ago". */
 export function putLiveReleased(run: PutLiveRun, nowMs: number): string {
-  const line = releasedLine(run.tag);
+  const line = releasedLine(run);
   if (run.liveAt === undefined) return line;
   const minutes = Math.floor((nowMs - run.liveAt) / 60_000);
   const age =
@@ -677,8 +685,8 @@ export function putLiveResumed(input: {
   } as const;
   const { inFlight } = facts;
   if (inFlight !== undefined && inFlight !== current?.tag) {
-    const tagged = facts.releases.find((release) => release.tag === inFlight)?.taggedAt;
-    const at = tagged === undefined ? Number.NaN : Date.parse(tagged);
+    const release = facts.releases.find((entry) => entry.tag === inFlight);
+    const at = release?.taggedAt === undefined ? Number.NaN : Date.parse(release.taggedAt);
     return {
       kind: "follow",
       run: {
@@ -686,13 +694,22 @@ export function putLiveResumed(input: {
         phase: "releasing",
         tag: inFlight,
         ...(Number.isNaN(at) ? {} : { stepAt: at }),
+        ...(release?.rollbackOf === undefined ? {} : { rollsBackTo: release.rollbackOf }),
       },
     };
   }
   const [newest] = facts.releases;
   const mine = kept !== undefined && facts.production === kept;
   if (newest?.standing === "live" && (current === undefined ? mine : newest.tag !== current.tag))
-    return { kind: "follow", run: { ...run, phase: "live", tag: newest.tag } };
+    return {
+      kind: "follow",
+      run: {
+        ...run,
+        phase: "live",
+        tag: newest.tag,
+        ...(newest.rollbackOf === undefined ? {} : { rollsBackTo: newest.rollbackOf }),
+      },
+    };
   if (current !== undefined || kept === undefined) return NONE;
   if (!mine) return { kind: "forget" };
   return {

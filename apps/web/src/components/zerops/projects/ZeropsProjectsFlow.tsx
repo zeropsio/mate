@@ -166,6 +166,8 @@ export interface ZeropsProjectsFlowProps<T> {
         readonly down?: ReadonlyMap<string, ReadonlyArray<string>> | undefined;
         /** Whether each stage serves a port its address would open (`placeLines`). */
         readonly addressOffered?: ReadonlyMap<string, boolean> | undefined;
+        /** The release on its way rolls production back to this one (`placeLines`). */
+        readonly rollsBackTo?: string | undefined;
         /** The stage runs every change a release would carry; `undefined` while unread. */
         readonly releaseOnStage?: boolean | undefined;
       })

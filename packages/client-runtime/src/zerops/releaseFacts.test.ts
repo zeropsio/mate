@@ -827,14 +827,25 @@ describe("a release is released once its deploys have ended", () => {
 // and the conversation count "42s", "7m 05s".
 describe("a release on its way says how long", () => {
   it.each([
-    { name: "in the conversation's units", since: 40_000, progress: "Putting v0.1.0 live · 40s" },
-    { name: "minutes and seconds", since: 98_000, progress: "Putting v0.1.0 live · 1m 38s" },
+    {
+      name: "in the conversation's units",
+      since: 40_000,
+      progress: "Putting v0.1.0 live · 40s",
+      clock: "40s",
+    },
+    {
+      name: "minutes and seconds",
+      since: 98_000,
+      progress: "Putting v0.1.0 live · 1m 38s",
+      clock: "1m 38s",
+    },
     {
       name: "and that it takes longer than usual once past the minute or two it promised",
       since: 130_000,
       progress: "Putting v0.1.0 live · 2m 10s · taking longer than usual",
+      clock: "2m 10s · taking longer than usual",
     },
-  ])("$name", ({ since, progress }) => {
+  ])("$name", ({ since, progress, clock }) => {
     expect(
       releaseOutcomeOf({
         tagged: row("v0.1.0", undefined, { taggedAt: new Date(NOW - since).toISOString() }),
@@ -843,6 +854,6 @@ describe("a release on its way says how long", () => {
         tag: "v0.1.0",
         clockMs: NOW,
       }),
-    ).toEqual({ kind: "releasing", progress });
+    ).toEqual({ kind: "releasing", progress, clock });
   });
 });

@@ -158,6 +158,21 @@ describe("a release as HQ records it", () => {
     expect([row.word, row.standing]).toEqual(["Approved", undefined]);
   });
 
+  it("carries the release a roll back goes back to, so every surface can say it rolls back", () => {
+    expect(
+      flowReleaseOf({
+        tag: "v0.1.2",
+        sha: OLD,
+        entries: [{ service: "api", sha: API }],
+        by: "u1",
+        at: "2026-10-02T10:00:00.000Z",
+        state: "approved",
+        reason: null,
+        rollbackOf: "v0.1.0",
+      }).rollbackOf,
+    ).toBe("v0.1.0");
+  });
+
   it("carries why a refused one was refused", () => {
     expect(
       flowReleaseOf({

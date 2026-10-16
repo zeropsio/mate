@@ -519,13 +519,33 @@ describe("a release on its way", () => {
       words: ["Releasing v2.4.0"],
     },
     {
+      // The run's roll back read as a release of a tag nobody asked for.
+      case: "is said as the roll back it is, by the release it goes back to",
+      production: { kind: "releasing", stop: stop(), line: "", tag: "v2.4.1" },
+      rollsBackTo: "v2.3.0",
+      words: ["Rolling back to v2.3.0"],
+    },
+    {
       case: "is absent while none is on its way",
       production: LIVE,
       words: ["Running", "v2.3.1"],
     },
-  ] as const)("$case", ({ production, words }) => {
+  ] as const)("$case", ({ production, words, ...rest }) => {
     const flow = { production, stages: [], main };
-    const [line] = placeLines({ flow, nowMs: 0 });
+    const rollsBackTo = "rollsBackTo" in rest ? rest.rollsBackTo : undefined;
+    const [line] = placeLines({ flow, rollsBackTo, nowMs: 0 });
+    // The menu's chip says it the same way.
+    const [chipped] = placeLines({
+      flow,
+      rollsBackTo,
+      chip: chip(
+        production.kind === "releasing"
+          ? { state: "releasing", next: production.tag }
+          : { state: "releasing" },
+      ),
+      nowMs: 0,
+    });
+    if (production.kind === "releasing") expect(chipped?.words).toEqual(words);
     expect(line?.words).toEqual(words);
     expect(cardReady(flow)).toBeUndefined();
   });
