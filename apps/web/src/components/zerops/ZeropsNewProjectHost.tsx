@@ -64,6 +64,7 @@ import { beginCreation } from "~/zerops/creations";
 import { newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
 import { useRunNewProject } from "~/zerops/useRunNewProject";
 import { useCreditForecastRead } from "~/zerops/useCreditForecast";
+import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
 import { useHqOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -122,6 +123,7 @@ function NewProjectDialog() {
   const { activeOrganization, organizationStatus, organizations, selectOrganization } =
     useZeropsSession();
   const navigate = useNavigate();
+  usePreloadMateViews();
   // The account's Mates: the names a new one may not take, and the tints its face walks past.
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);

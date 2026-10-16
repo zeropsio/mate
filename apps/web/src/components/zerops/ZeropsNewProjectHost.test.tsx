@@ -28,7 +28,10 @@ const app = vi.hoisted(() => ({
     | undefined,
 }));
 
-vi.mock("@tanstack/react-router", () => ({ useNavigate: () => app.navigate }));
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => app.navigate,
+  useRouter: () => ({ routesById: {}, loadRouteChunk: () => undefined }),
+}));
 vi.mock("~/zerops/useHqOffers", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/zerops/useHqOffers")>()),
   useOrgOffers: () => () =>

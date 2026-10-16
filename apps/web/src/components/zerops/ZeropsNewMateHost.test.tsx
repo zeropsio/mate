@@ -18,7 +18,10 @@ const app = vi.hoisted(() => ({
   dialog: undefined as Record<string, unknown> | undefined,
 }));
 
-vi.mock("@tanstack/react-router", () => ({ useNavigate: () => async () => undefined }));
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => async () => undefined,
+  useRouter: () => ({ routesById: {}, loadRouteChunk: () => undefined }),
+}));
 vi.mock("~/state/entities", () => ({
   useThreadDetail: () => undefined,
   useThreadStatus: () => undefined,
