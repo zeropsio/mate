@@ -463,40 +463,36 @@ describe("leaderLayer", () => {
     );
 
     // A deploy's new Core answers readiness by the leader's ok (`health.ts`). A write would have
-    // every hourly backup check take a new set (`backup.ts`); a session's name takes no transaction.
-    it.effect(
-      "names its lock session after its newest ok while it leads, and moves nothing a backup set compares",
-      () =>
-        Effect.gen(function* () {
-          const url = yield* (yield* TempPostgres).createDatabase;
-          const core = yield* startReading(url, anchoredWorld());
-          yield* statusWhere(core.leader, (status) => status.state === "active");
-          const session = (after: string) =>
-            core.sql<{ readonly name: string; readonly beat: string; readonly xmax: string }>`
-              SELECT application_name AS name, query_start::text AS beat,
-                     pg_snapshot_xmax(pg_current_snapshot())::text AS xmax
+    // every hourly backup check take a new set: "is not moved by the leader holding its official ok".
+    it.effect("names its lock session after its newest ok on every beat while it leads", () =>
+      Effect.gen(function* () {
+        const url = yield* (yield* TempPostgres).createDatabase;
+        const core = yield* startReading(url, anchoredWorld());
+        yield* statusWhere(core.leader, (status) => status.state === "active");
+        const session = (after: string) =>
+          core.sql<{ readonly name: string; readonly beat: string }>`
+              SELECT application_name AS name, query_start::text AS beat
               FROM pg_stat_activity
               WHERE datname = current_database() AND application_name LIKE 'hq-leader%'`.pipe(
-              Effect.map((rows) => rows[0]),
-              Effect.filterOrFail(
-                (row): row is NonNullable<typeof row> =>
-                  row !== undefined && announcedOk(row.name) !== undefined && row.beat !== after,
-              ),
-              Effect.retry(Schedule.spaced(Duration.millis(20))),
-              Effect.timeout("5 seconds"),
-              Effect.orDie,
-            );
-          const first = yield* session("");
-          const ok = yield* core.official.lastOk;
-          assert.deepStrictEqual(announcedOk(first.name), {
-            at: Math.floor(ok?.at ?? Number.NaN),
-            projectId: "P1",
-          });
-          const second = yield* session(first.beat);
-          const third = yield* session(second.beat);
-          assert.deepStrictEqual([third.name, third.xmax], [first.name, first.xmax]);
-          yield* core.stop;
-        }),
+            Effect.map((rows) => rows[0]),
+            Effect.filterOrFail(
+              (row): row is NonNullable<typeof row> =>
+                row !== undefined && announcedOk(row.name) !== undefined && row.beat !== after,
+            ),
+            Effect.retry(Schedule.spaced(Duration.millis(20))),
+            Effect.timeout("5 seconds"),
+            Effect.orDie,
+          );
+        const first = yield* session("");
+        const ok = yield* core.official.lastOk;
+        assert.deepStrictEqual(announcedOk(first.name), {
+          at: Math.floor(ok?.at ?? Number.NaN),
+          projectId: "P1",
+        });
+        const second = yield* session(first.beat);
+        assert.strictEqual(second.name, first.name);
+        yield* core.stop;
+      }),
     );
     it.effect("releases the lead on shutdown at once, and never takes it again", () =>
       Effect.gen(function* () {
