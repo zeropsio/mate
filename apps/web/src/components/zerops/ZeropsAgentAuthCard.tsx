@@ -38,7 +38,7 @@ import {
 
 import { crewLoginRunsWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateLoginSignerLine, type MateLoginRow } from "@t3tools/client-runtime/zerops/logins";
-import { Fragment, useId, useState } from "react";
+import { Fragment, useId, useState, type ReactNode } from "react";
 
 import { formatTimestamp } from "~/timestampFormat";
 import { ClaudeAI, OpenAI } from "~/components/Icons";
@@ -78,9 +78,12 @@ export function ZeropsAgentAuthCard({
   onSignOut,
   signOutPending,
   signOutError,
+  otherAgents,
   ...loginProps
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
+  /** Agents Mate signs nobody in to, whose model providers sign in here (OpenCode's keys). */
+  readonly otherAgents?: ReactNode;
   /**
    * Whether the conversation's own agent cannot work until somebody signs it in
    * (`agentAdmission(...).attention`). Another agent's missing sign-in only
@@ -134,6 +137,7 @@ export function ZeropsAgentAuthCard({
         viewerSubject={viewerSubject}
         {...loginProps}
       />
+      {otherAgents}
     </Card>
   );
 }

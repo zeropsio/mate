@@ -1384,6 +1384,70 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect(
+    "an OpenCode provider key stays out of settings.json, survives a restart and is gone once removed",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const instanceId = ProviderInstanceId.make("opencode");
+        const opencode = ProviderDriverKind.make("opencode");
+
+        yield* serverSettings.updateSettings({
+          providerInstances: {
+            [instanceId]: {
+              driver: opencode,
+              enabled: true,
+              environment: [{ name: "NEBIUS_API_KEY", value: "nb-acme-key", sensitive: true }],
+            },
+          },
+        });
+        assert.notInclude(yield* fileSystem.readFileString(serverConfig.settingsPath), "nb-acme");
+
+        // A server started afresh reads the key back from the secret store.
+        const restarted = Layer.fresh(ServerSettingsModule.layer).pipe(
+          Layer.provide(ServerSecretStore.layer),
+        );
+        const afterRestart = yield* Effect.flatMap(
+          ServerSettingsModule.ServerSettingsService,
+          (settings) => settings.getSettings,
+        ).pipe(Effect.provide(restarted));
+        assert.deepEqual(afterRestart.providerInstances[instanceId]?.environment, [
+          { name: "NEBIUS_API_KEY", value: "nb-acme-key", sensitive: true, valueRedacted: true },
+        ]);
+        // A client is told a key is set, never the key.
+        assert.deepEqual(
+          ServerSettingsModule.redactServerSettingsForClient(afterRestart).providerInstances[
+            instanceId
+          ]?.environment,
+          [{ name: "NEBIUS_API_KEY", value: "", sensitive: true, valueRedacted: true }],
+        );
+
+        const removed = yield* serverSettings.updateSettings({
+          providerInstances: { [instanceId]: { driver: opencode, enabled: true } },
+        });
+        assert.isUndefined(removed.providerInstances[instanceId]?.environment);
+        const afterRemoval = yield* Effect.flatMap(
+          ServerSettingsModule.ServerSettingsService,
+          (settings) =>
+            settings.updateSettings({
+              providerInstances: {
+                [instanceId]: {
+                  driver: opencode,
+                  enabled: true,
+                  // A stale client's "keep what is stored" finds nothing stored.
+                  environment: [
+                    { name: "NEBIUS_API_KEY", value: "", sensitive: true, valueRedacted: true },
+                  ],
+                },
+              },
+            }),
+        ).pipe(Effect.provide(restarted));
+        assert.equal(afterRemoval.providerInstances[instanceId]?.environment?.[0]?.value, "");
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("rolls back provider secret changes when the settings file commit fails", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

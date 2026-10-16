@@ -37,6 +37,7 @@ import type {
   QuestionRequest,
 } from "@opencode-ai/sdk/v2";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
+import { openCodeKeyProviderOfModel } from "@t3tools/shared/openCodeKeyProviders";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { withoutPictureOriginals } from "../../providerPictures.ts";
@@ -687,12 +688,33 @@ function sessionErrorMessage(error: unknown): string {
 }
 
 /** OpenCode's provider refused the request at its rate or usage limit (HTTP 429). */
-export function sessionErrorIsUsageLimit(error: unknown): boolean {
+function sessionErrorIsRateLimit(error: unknown): boolean {
   if (!error || typeof error !== "object" || !("name" in error) || error.name !== "APIError") {
     return false;
   }
   const data = "data" in error && error.data && typeof error.data === "object" ? error.data : null;
   return data !== null && "statusCode" in data && data.statusCode === 429;
+}
+
+/**
+ * What a failed session says, for the model its turn ran on (`provider/model`). A 429 is a
+ * usage limit, a pause until the plan's window resets — except from a provider signed in by
+ * key, which has no plan: there it is that provider rate-limiting, said in its name.
+ */
+export function openCodeSessionFailure(
+  error: unknown,
+  model: string | undefined,
+): { readonly message: string; readonly usageLimited: boolean } {
+  if (!sessionErrorIsRateLimit(error)) {
+    return { message: sessionErrorMessage(error), usageLimited: false };
+  }
+  const keyProvider = openCodeKeyProviderOfModel(model);
+  return keyProvider === undefined
+    ? { message: sessionErrorMessage(error), usageLimited: true }
+    : {
+        message: `${keyProvider.name} is rate-limiting requests. Send again in a moment.`,
+        usageLimited: false,
+      };
 }
 
 function updateProviderSession(
@@ -2597,8 +2619,10 @@ export function makeOpenCodeAdapter(
         }
 
         case "session.error": {
-          const message = sessionErrorMessage(event.properties.error);
-          const usageLimited = sessionErrorIsUsageLimit(event.properties.error);
+          const { message, usageLimited } = openCodeSessionFailure(
+            event.properties.error,
+            context.session.model,
+          );
           const activeTurnId = context.activeTurnId;
           const cancellation = context.cancellation;
           if (isOpenCodeAbortError(event.properties.error)) {

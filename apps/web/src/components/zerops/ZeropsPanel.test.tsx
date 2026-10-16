@@ -53,6 +53,9 @@ vi.mock("../../zerops/useZeropsFeeds", () => ({
   },
 }));
 
+// OpenCode's key row reads its own settings; these tests are about the agents Mate signs in.
+vi.mock("./OpenCodeAgentKeys", () => ({ OpenCodeAgentKeys: () => null }));
+
 // A press opens the sign-in (`ZeropsAgentSignInDialog`); the panel starts no login itself.
 vi.mock("../../zerops/useAgentLogin", () => ({
   useAgentLogin: () => actions.signIn,

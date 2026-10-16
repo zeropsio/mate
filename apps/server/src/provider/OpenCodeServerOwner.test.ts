@@ -13,6 +13,7 @@ import {
   type OpenCodeRuntimeShape,
 } from "./opencodeRuntime.ts";
 import * as OpenCodeServerOwner from "./OpenCodeServerOwner.ts";
+import { mergeProviderInstanceEnvironment } from "./ProviderInstanceEnvironment.ts";
 
 const unusedRuntimeMethod = () =>
   Effect.fail(
@@ -290,4 +291,32 @@ it.effect("releases an interrupted borrower and closes after the idle TTL", () =
       }),
     ).pipe(Effect.provideService(OpenCodeRuntime, testRuntime.runtime));
   }).pipe(Effect.provide(TestClock.layer())),
+);
+
+it.effect("starts OpenCode with a key stored on its instance as the provider's variable", () =>
+  Effect.gen(function* () {
+    const testRuntime = yield* makeRuntime;
+    const environments: Array<NodeJS.ProcessEnv | undefined> = [];
+    const runtime: OpenCodeRuntimeShape = {
+      ...testRuntime.runtime,
+      startOpenCodeServerProcess: (input) => {
+        environments.push(input.environment);
+        return testRuntime.runtime.startOpenCodeServerProcess(input);
+      },
+    };
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const owner = yield* OpenCodeServerOwner.make({
+          binaryPath: "opencode",
+          directory: "/project",
+          environment: mergeProviderInstanceEnvironment(
+            [{ name: "NEBIUS_API_KEY", value: "nb-acme-key", sensitive: true }],
+            { PATH: "/usr/bin" },
+          ),
+        });
+        yield* owner.withServer((server) => Effect.succeed(server.url));
+      }),
+    ).pipe(Effect.provideService(OpenCodeRuntime, runtime));
+    expect(environments).toEqual([{ PATH: "/usr/bin", NEBIUS_API_KEY: "nb-acme-key" }]);
+  }),
 );
