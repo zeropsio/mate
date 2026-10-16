@@ -1,6 +1,6 @@
 /**
- * The overview while it is read: its own shape — the title row, the filters' row and the first
- * project card — at the places the page draws them, painted once and replaced by the page
+ * The overview while it is read: its own shape — the title row, the filters' row and the project
+ * cards side by side — at the places the page draws them, painted once and replaced by the page
  * in one frame. It says no words but its title, which is the page's own and never taken back.
  * The reload's whole path stands in with it (the router, the chat's layout, the door, HQ's member
  * read), so a reload paints this once and then the cards in the same places.
