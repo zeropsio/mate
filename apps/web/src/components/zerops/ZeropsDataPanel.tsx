@@ -110,6 +110,14 @@ const STATUS_DOT_TONE: Record<
 /** Layout guess before the first measurement lands, so the panel does not flash the wrong shape. */
 /** The first Mate server that answers a connection summary. */
 const SUMMARY_SINCE = "0.15.13";
+/** A service's kind in words where Zerops has not named its type yet: never the console's family. */
+const FAMILY_WORDS: Readonly<Record<string, string>> = {
+  tabular: "Database",
+  document: "Document database",
+  kv: "Key-value store",
+  object: "Object storage",
+  stream: "Message stream",
+};
 const ASSUMED_WIDTH_MAXIMIZED = 1200;
 const ASSUMED_WIDTH_INLINE = 420;
 
@@ -655,9 +663,11 @@ export function ZeropsDataPanel({
 
   const sessionLine =
     status === "idle" || status === "starting" ? (
-      <Badge dot tone="info">
-        Starting
-      </Badge>
+      // Never a state word: the console opening is not the database starting (the onboarding run,
+      // 2026-10-16: "Starting" over a database half an hour up).
+      <p className="text-muted-foreground text-xs" data-zerops-data-starting>
+        Opening this project's data…
+      </p>
     ) : status === "unavailable" ? (
       <div className="space-y-2">
         <p className="text-muted-foreground text-xs" data-zerops-data-unavailable>
@@ -740,7 +750,11 @@ export function ZeropsDataPanel({
                               <Badge data-zerops-data-service-view-only>View only</Badge>
                             ) : null}
                           </span>
-                          <span className="text-muted-foreground">{entry.family}</span>
+                          <span className="text-muted-foreground">
+                            {row.topologyService !== undefined
+                              ? zeropsTypeShort(row.topologyService)
+                              : (FAMILY_WORDS[entry.family] ?? entry.type)}
+                          </span>
                           {rowAffordances.vpnGateReason !== undefined ? (
                             <span
                               className="text-muted-foreground"
