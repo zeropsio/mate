@@ -153,8 +153,9 @@ export class ZeropsWrites {
       const row = this.row("app-version", versionRead[1]!);
       // The REST read names no version (zerops-go `output.GetAppVersion`); a process's embedded
       // one does.
-      const { name: _unnamed, ...answered } = row ?? {};
-      return row ? { body: answered } : this.platform.error(400, "appVersionNotFound");
+      if (!row) return this.platform.error(400, "appVersionNotFound");
+      const { name: _unnamed, ...answered } = row;
+      return { body: answered };
     }
     const userData = path.match(/^\/service-stack\/([^/]+)\/user-data$/u);
     const deleteUserData =
