@@ -81,7 +81,10 @@ describe("owner-reported layout regressions", () => {
     );
 
     // The run, the owner's first release: 6 s after Release the card's History came and pushed
-    // what stood beside it, and the release's block went and pulled Project Mates 125 px up.
+    // what stood beside it, and the release's block went and pulled Project Mates 125 px up. A
+    // release on its way is production's line alone now (the owner, 2026-10-16): the ready block
+    // gives way at the press, once, and from there nothing moves until production runs it, nor as
+    // it lands.
     it.effect(
       "a project's card holds still while its release goes out: nothing on it moves from the press until production runs it",
       () =>
@@ -100,22 +103,53 @@ describe("owner-reported layout regressions", () => {
           });
           yield* Effect.promise(() => page.evaluate(recordHeldCard, cardAt));
           yield* a.when.releaseFromReview;
-          yield* a.then.text("Putting v0.1.0 live", cardAt);
+          yield* a.then.text("Releasing v0.1.0", `${cardAt} [data-zerops-place="production"]`);
           yield* a.when.finish("production");
           yield* a.then.text("Running", `${cardAt} [data-zerops-place="production"]`);
+          // What a landed card might still move shows within a beat.
+          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1_500)));
           const frames = yield* Effect.promise(() =>
             page.evaluate(() => (window as unknown as { heldFrames: HeldFrame[] }).heldFrames),
           );
-          // From before the press; its last frames are the result: production runs it.
-          const going = frames.filter((frame) => !frame.running);
+          // From the press's own frame: the ready block gives way there, in the frame production's
+          // line says the release, never a frame apart.
+          const pressed = frames.findIndex((frame) => frame.releasing || frame.running);
+          const after = pressed === -1 ? [] : frames.slice(pressed);
+          const going = after.filter((frame) => !frame.running);
           const trace = frames.map((frame) => JSON.stringify(frame)).join("\n");
           expect(going.length, `The card is watched while it releases:\n${trace}`).toBeGreaterThan(
             0,
           );
           expect(
+            frames.slice(0, Math.max(pressed, 0)).every((frame) => frame.ready),
+            `The ready block stands until production's line says the release:\n${trace}`,
+          ).toBe(true);
+          expect(
             new Set(going.map((frame) => JSON.stringify([frame.mates, frame.buttons]))).size,
             `Nothing on it moves while the release goes out:\n${trace}`,
           ).toBe(1);
+          expect(
+            new Set(after.map((frame) => frame.mates)).size,
+            `Its Mates stay where they stood as it lands:\n${trace}`,
+          ).toBe(1);
+          const lefts = (frame: HeldFrame) =>
+            new Map(
+              frame.buttons
+                .split(" | ")
+                .filter((button) => button !== "")
+                .map((button) => button.split("@") as [string, string]),
+            );
+          expect(
+            after.every((frame, index) => {
+              const before = index === 0 ? undefined : after[index - 1];
+              if (before === undefined) return true;
+              const now = lefts(frame);
+              return [...lefts(before)].every(
+                ([words, left]) => !now.has(words) || now.get(words) === left,
+              );
+            }),
+            `No button of production's moves as it lands; what the release brings comes beside them:\n${trace}`,
+          ).toBe(true);
         }),
       90_000,
     );
@@ -129,6 +163,10 @@ interface HeldFrame {
   readonly buttons: string;
   /** Production's line says it runs the release. */
   readonly running: boolean;
+  /** Production's line says the release is on its way. */
+  readonly releasing: boolean;
+  /** The ready release's block stands. */
+  readonly ready: boolean;
 }
 
 function recordHeldCard(cardAt: string) {
@@ -147,8 +185,10 @@ function recordHeldCard(cardAt: string) {
             (button) =>
               `${button.innerText}@${Math.round(button.getBoundingClientRect().left - left)}`,
           )
-          .join(" "),
+          .join(" | "),
         running: production?.textContent?.includes("Running") === true,
+        releasing: production?.textContent?.includes("Releasing") === true,
+        ready: card.querySelector("[data-zerops-card-ready]") !== null,
       };
       if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
     }

@@ -359,14 +359,6 @@ export function cardReady(flow: Pick<GroupFlow, "production" | "stages" | "main"
 }
 
 /**
- * The release on its way, by its tag, where the ready one stood: its block stays, so pressing
- * Release moves nothing on the card (the onboarding run's card jumped 125 px at the press).
- */
-export function cardReleasing(flow: Pick<GroupFlow, "production" | "stages" | "main">) {
-  return flow.production.kind === "releasing" ? flow.production.tag : undefined;
-}
-
-/**
  * Whether production's panel offers its history: once production runs a release. Before, there is
  * no history to open, and a first release on its way gets it with the rest of its result — it came
  * 6 s into the run's first release and pushed the domain's door 72 px aside.
@@ -376,11 +368,6 @@ export function historyOffered(input: {
   readonly runs: boolean;
 }): boolean {
   return input.releases > 0 && input.runs;
-}
-
-/** "Putting v2.4.0 live" — the glossary's words for a release under way. */
-export function releasingTitle(tag: string): string {
-  return `Putting ${tag} live`;
 }
 
 /**

@@ -49,7 +49,7 @@ import {
   type StopServing,
 } from "../SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
-import { CardChanges, CardMateLiftActions } from "./ProjectCards";
+import { ActionHeld, CardChanges, CardMateLiftActions } from "./ProjectCards";
 import {
   broughtBy,
   historyOffered,
@@ -334,9 +334,13 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
           </Button>
         )}
         {/* Its releases, once it runs one (`historyOffered`) — and on the project's own page its
-            history stands beside the card. */}
-        {!historyOffered({ releases: releases.length, runs: stop?.version !== undefined }) ||
-        input.onPage === true ? null : (
+            history stands beside the card. Its first release on its way holds History's room, so
+            the release lands moving nothing (the run's card grew 42 px as it landed) — through the
+            beat production's chip names what it runs before the flow's releases say it. */}
+        {input.onPage === true ? null : historyOffered({
+            releases: releases.length,
+            runs: stop?.version !== undefined,
+          }) ? (
           <Button
             onClick={() => {
               void navigate({ to: "/group/$groupId/flow", params: { groupId } });
@@ -345,7 +349,10 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
           >
             History
           </Button>
-        )}
+        ) : entry.flow.production.kind === "releasing" ||
+          (line.dot === "running" && (chip?.version ?? stop?.version) !== undefined) ? (
+          <ActionHeld>History</ActionHeld>
+        ) : null}
       </>
     ) : null;
     return (

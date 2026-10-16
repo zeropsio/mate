@@ -2728,17 +2728,10 @@ export function ZeropsProjectsContent({
             production.kind === "ready-to-release" || production.kind === "deploy-failed"
               ? production.candidate
               : undefined;
-          // A release on its way keeps its door, which opens its progress.
-          if (candidate === undefined && production.kind !== "releasing") return null;
+          if (candidate === undefined) return null;
           // Production being made by Put it live is released by it: nothing asks for a release.
           if (putLiveHoldsRelease(putLiveRuns.get(group.groupId))) return null;
-          return (
-            <ZeropsReleaseVerb
-              groupId={group.groupId}
-              label={REVIEW_RELEASE_LABEL}
-              offered={candidate !== undefined}
-            />
-          );
+          return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} offered />;
         }}
         placementNotice={placementNotice(
           placementStatus,

@@ -44,7 +44,6 @@ import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from ".
 import {
   cardChangeRows,
   cardReady,
-  cardReleasing,
   foldMates,
   foldWords,
   mateChangeForReview,
@@ -53,7 +52,6 @@ import {
   placeLines,
   readyLine,
   readyTitle,
-  releasingTitle,
   type CardChange,
   type CardMateReading,
   type PlaceLine,
@@ -173,6 +171,20 @@ export function ServicesHeld() {
     <p aria-hidden="true" className="ov-panel-services" data-zerops-services-held="">
       <span className="ov-service">{"\u200b"}</span>
     </p>
+  );
+}
+
+/**
+ * A button's room while what it opens is on its way: the button it becomes, unseen and out of
+ * reach — production's first release brings its History as it lands, into the room it held.
+ */
+export function ActionHeld({ children }: { readonly children: string }) {
+  return (
+    <span aria-hidden="true" className="contents invisible" data-zerops-action-held="" inert>
+      <Button tabIndex={-1} variant="secondary">
+        {children}
+      </Button>
+    </span>
   );
 }
 
@@ -570,15 +582,13 @@ function ProjectCard<T>({
   const quiet = [entry.line, heldLine(flow.mates.length, entry.contents)].find(
     (line) => line !== undefined,
   );
+  // A release on its way is production's line alone ("Releasing v0.1.0"): the run's card said it
+  // twice, there and in a block of its own.
   const ready = cardReady(flow);
-  const releasing = ready === undefined ? cardReleasing(flow) : undefined;
-  const releaseDoor =
-    ready === undefined && releasing === undefined ? null : props.renderReleaseVerb?.(entry);
+  const releaseDoor = ready === undefined ? null : props.renderReleaseVerb?.(entry);
   // The page's door decides whether a release is offered here at all (Put it live releases the
   // production it makes); where the page gives none, the card says what the flow says.
-  const releaseShown =
-    (ready !== undefined || releasing !== undefined) &&
-    (props.renderReleaseVerb === undefined || drawn(releaseDoor));
+  const releaseShown = props.renderReleaseVerb === undefined || drawn(releaseDoor);
   const placeFacts = props.cardPlaces?.(entry);
   const readyWhere = ready === undefined ? undefined : readyLine(ready, placeFacts?.releaseOnStage);
   // No stage yet: where one would stand, the way to add it — or that one is being set up.
@@ -668,11 +678,9 @@ function ProjectCard<T>({
           )}
         </section>
       )}
-      {!releaseShown ? null : (
+      {ready === undefined || !releaseShown ? null : (
         <section className="ov-sec" data-zerops-card-ready="true">
-          <p className="ov-ready-title">
-            {ready !== undefined ? readyTitle(ready) : releasingTitle(releasing ?? "")}
-          </p>
+          <p className="ov-ready-title">{readyTitle(ready)}</p>
           {readyWhere === undefined ? null : <p className="ov-ready-line">{readyWhere}</p>}
           {drawn(releaseDoor) ? <div className="ov-acts">{releaseDoor}</div> : null}
         </section>

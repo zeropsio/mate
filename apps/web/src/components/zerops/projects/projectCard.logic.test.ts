@@ -21,7 +21,6 @@ import {
   cardSecondWords,
   cardPeople,
   cardReady,
-  cardReleasing,
   foldMates,
   foldWords,
   mateChangeForReview,
@@ -31,7 +30,6 @@ import {
   putLiveHasChange,
   readyLine,
   readyTitle,
-  releasingTitle,
   rollBackTarget,
   siteOf,
   sinceWords,
@@ -483,20 +481,26 @@ describe("a release ready to go", () => {
   });
 });
 
-// The onboarding run: pressing Release took the release's block away and the card jumped 125 px,
-// and its end put it back for a beat.
+// The run's card said a release on its way twice: "Releasing v0.1.0" on production's line and
+// "Putting v0.1.0 live" in a block of its own (the owner, 2026-10-16: one place per fact).
 describe("a release on its way", () => {
   const main = { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false };
   it.each([
     {
-      case: "stands where the ready one stood, putting it live",
+      case: "is said once, on production's line, and offers no release beside it",
       production: { kind: "releasing", stop: stop(), line: "", tag: "v2.4.0" },
-      title: "Putting v2.4.0 live",
+      words: ["Releasing v2.4.0"],
     },
-    { case: "is absent while none is on its way", production: LIVE, title: undefined },
-  ] as const)("$case", ({ production, title }) => {
-    const tag = cardReleasing({ production, stages: [], main });
-    expect(tag === undefined ? undefined : releasingTitle(tag)).toBe(title);
+    {
+      case: "is absent while none is on its way",
+      production: LIVE,
+      words: ["Running", "v2.3.1"],
+    },
+  ] as const)("$case", ({ production, words }) => {
+    const flow = { production, stages: [], main };
+    const [line] = placeLines({ flow, nowMs: 0 });
+    expect(line?.words).toEqual(words);
+    expect(cardReady(flow)).toBeUndefined();
   });
 });
 

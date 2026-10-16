@@ -411,10 +411,13 @@ describe("a card's release on its way", () => {
       inFlight: "v0.1.0",
     },
   });
-  it("keeps the release's place while it goes out, its door opening its progress", () => {
+  // The run's card said it twice: "Releasing v0.1.0" on production's line and "Putting v0.1.0
+  // live" in a block of its own, with a "Releasing…" button (the owner, 2026-10-16).
+  it("says a release on its way once, on production's line, with no block of its own", () => {
     const html = section(render({ groups: [goingOut] }), 'data-zerops-group="aaa"');
-    expect(html).toContain("Putting v0.1.0 live");
-    expect(html).toContain('data-test-release-verb="true"');
+    expect(html).toContain("Releasing v0.1.0");
+    expect(html).not.toContain("Putting v0.1.0 live");
+    expect(html).not.toContain('data-test-release-verb="true"');
   });
   // The onboarding run: "Release" asked of the person while Put it live was making production.
   it("offers no release where the page's door is withheld, as while Put it live makes production", () => {
