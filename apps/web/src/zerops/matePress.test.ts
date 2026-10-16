@@ -780,6 +780,78 @@ describe("a press's hold at HQ", () => {
     expect(hq.calls).toEqual(["hold p-stage stage@app-1 press-s", "stopped p-stage press-s"]);
     forgetPress("p-stage");
   });
+
+  it("lets a production's hold go once it is registered, where HQ ended it: nothing renews it while its services are awaited", async () => {
+    vi.useFakeTimers();
+    try {
+      const hq = api();
+      let settle: () => void = () => {};
+      const platform = {
+        ...platformOf({ importServices: async () => undefined }),
+        untilServicesSettled: () =>
+          new Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>>(
+            (resolve) => {
+              settle = () => resolve([{ name: "app", status: "ACTIVE" }]);
+            },
+          ),
+      };
+      const pressing = runPress({
+        organizationId: "org-acme",
+        steps: [
+          { kind: "import-recipe", role: "prod", yaml: "services: []" },
+          { kind: "register" },
+          { kind: "await-ready", withAgent: false },
+        ],
+        platform,
+        isCurrent: () => true,
+        resume: { from: 0, projectId: "p-prod", projectName: "Acme - production" },
+        locks: undefined,
+        hold: pressHold(hq.api, { kind: "production", appId: "app-1" }, "press-p"),
+      });
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
+      settle();
+      expect((await pressing).ok).toBe(true);
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
+      expect(hq.calls).toEqual(["hold p-prod production@app-1 press-p"]);
+      forgetPress("p-prod");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops renewing a hold HQ says it no longer holds, and ends nothing there", async () => {
+    vi.useFakeTimers();
+    try {
+      const calls: Array<string> = [];
+      const hold = pressHold(
+        {
+          holdPress: async (projectId, press) => {
+            calls.push(`${press.renew === true ? "renew" : "hold"} ${projectId}`);
+            if (press.renew === true)
+              throw new HqError({
+                kind: "refused",
+                code: "conflict",
+                reason: "press_not_held",
+                status: 409,
+                message: "not held",
+              });
+          },
+          endPress: async (projectId) => {
+            calls.push(`end ${projectId}`);
+          },
+        },
+        { kind: "mate" },
+        "press-a",
+      );
+      await hold.take("p-1");
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 4);
+      hold.renew();
+      await hold.end(true);
+      expect(calls).toEqual(["hold p-1", "renew p-1"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("a press whose write's answer was lost", () => {

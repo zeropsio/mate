@@ -18,7 +18,8 @@ export const PRESS_STEP_RENEW_MS = 20_000;
  * record, one that stopped keeps it for its setup to be finished for its kind. A hold HQ does not
  * answer is not the press's to wait on: it goes on, renewing; only HQ's refusal for another
  * browser's press stops it. One HQ refuses this person outright leaves the press unheld, never
- * asked again.
+ * asked again. A hold HQ says it no longer holds (`press_not_held`: it ran out, or HQ ended it)
+ * is let go here too — renewed no more, and ended nothing at HQ.
  */
 export interface PressHold {
   /** Holds the press of `projectId`: `elsewhere` where another browser's press holds it. */
@@ -32,6 +33,12 @@ export interface PressHold {
   readonly imported: (processId: string) => Promise<void>;
   /** Ends the hold at the press's end: whether it `finished`, or stopped. */
   readonly end: (finished: boolean) => Promise<void>;
+  /**
+   * The press's environment is registered in its application: HQ ends a stage's or a
+   * production's hold with that registration — the press is over there — so it is let go here,
+   * renewed no more while the press waits on its services. A Mate's hold goes on to its end.
+   */
+  readonly registered: () => void;
 }
 
 export function acquireHqPressLease(
@@ -52,6 +59,14 @@ export function acquireHqPressLease(
   let taken = false;
   // Every hold sent, one after another: the end waits for the last to land.
   let sending: Promise<void> = Promise.resolve();
+  // HQ holds this press no more: nothing renews it, and its end has nothing to end there.
+  const letGo = () => {
+    projectId = null;
+    importProcessId = undefined;
+    const running = renewal;
+    renewal = null;
+    if (running !== null) Effect.runFork(Fiber.interrupt(running));
+  };
   const hold = (): Promise<void> => {
     const held = projectId;
     if (api === null || held === null || press.active?.() === false) return Promise.resolve();
@@ -65,7 +80,13 @@ export function acquireHqPressLease(
     const sent = sending.then(async () => {
       // The press ended while this waited its turn: nothing is held any more.
       if (projectId !== held || press.active?.() === false) return;
-      await api.holdPress(held, taken ? { ...body, renew: true } : body);
+      try {
+        await api.holdPress(held, taken ? { ...body, renew: true } : body);
+      } catch (cause) {
+        if (cause instanceof HqError && cause.reason === "press_not_held" && projectId === held)
+          letGo();
+        throw cause;
+      }
       taken = true;
     });
     // The next waits for this one to land, however it lands; its caller hears how.
@@ -123,6 +144,9 @@ export function acquireHqPressLease(
       } catch {
         // A hold HQ did not end runs out on its own: it is the press's lease.
       }
+    },
+    registered: () => {
+      if (press.kind !== "mate") letGo();
     },
   };
 }
