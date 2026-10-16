@@ -623,6 +623,11 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   });
   const pipeline = model.pipeline;
   const receipt = changeReceipt({ receipt: pull.receipt, head: pull.headSha });
+  // Merging and merged say all of it on the line under the title: words under the line would come
+  // in at the press and push the body down under the person's eye (a run 2 follow-up). Merging's
+  // own words only restate its title.
+  const onLine = model.verdict.state === "merging" || model.verdict.state === "merged";
+  const question = model.question === undefined || questionClosed ? undefined : model.question;
   return (
     <ZeropsReviewSurface
       ask={
@@ -637,16 +642,31 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           : undefined
       }
       back={props.back}
+      answers={
+        question === undefined ? undefined : (
+          <ReviewQuestionAnswers
+            onAnswer={(tier) => {
+              props.onAddEnvironment?.(tier);
+            }}
+            onDismiss={() => {
+              setQuestionClosed(true);
+            }}
+            question={question}
+          />
+        )
+      }
       consequence={
-        !over && !asked && props.offers?.merge === false && props.offers.why.merge !== undefined
-          ? props.offers.why.merge
-          : mergeFoot({
-              state: model.verdict.state,
-              consequence: model.consequence,
-              stage: props.stage,
-              live: props.live,
-              warning: receipt?.warning,
-            })
+        question !== undefined
+          ? question.text
+          : !over && !asked && props.offers?.merge === false && props.offers.why.merge !== undefined
+            ? props.offers.why.merge
+            : mergeFoot({
+                state: model.verdict.state,
+                consequence: model.consequence,
+                stage: props.stage,
+                live: props.live,
+                warning: receipt?.warning,
+              })
       }
       dismiss={over && !fromRelease ? "Close" : undefined}
       face={mate.tint === undefined ? undefined : { tint: mate.tint, shape: mate.shape }}
@@ -700,29 +720,20 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       }
       settled={fromRelease ? "Merged" : undefined}
       status={
-        checksSaid === undefined ? undefined : (
+        checksSaid !== undefined ? (
           <span className="rv-checks" data-mark={checksSaid.mark}>
             {checksSaid.mark === "passed" ? <CheckIcon aria-hidden="true" /> : null}
             {checksSaid.words}
           </span>
-        )
+        ) : model.verdict.state === "merged" ? (
+          <span>{model.verdict.why}</span>
+        ) : undefined
       }
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}
-      whySaid={whySaid(model.verdict, pull.ready === false)}
+      whySaid={!onLine && whySaid(model.verdict, pull.ready === false)}
     >
-      {model.question === undefined || questionClosed ? null : (
-        <ReviewQuestionBlock
-          onAnswer={(tier) => {
-            props.onAddEnvironment?.(tier);
-          }}
-          onDismiss={() => {
-            setQuestionClosed(true);
-          }}
-          question={model.question}
-        />
-      )}
       {answer === undefined ? null : (
         <ReviewSection title="Where">
           <ReviewWhere answer={answer} />
@@ -830,9 +841,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
 /**
  * The one question after an application's first merge: where the code should run, with an equal
  * button for each environment the person may add, and *Not now*, which only closes it — the
- * application's page keeps the slots.
+ * application's page keeps the slots. Its buttons stand in the foot's, its words in its line.
  */
-export function ReviewQuestionBlock({
+function ReviewQuestionAnswers({
   question,
   onAnswer,
   onDismiss,
@@ -842,23 +853,21 @@ export function ReviewQuestionBlock({
   readonly onDismiss: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2" role="group" aria-label={question.text}>
-      <p className="mr-2 text-sm text-foreground">{question.text}</p>
+    <span aria-label={question.text} className="contents" role="group">
       {question.options.map((option) => (
         <Button
           key={option.tier}
           onClick={() => {
             onAnswer(option.tier);
           }}
-          size="sm"
           variant="secondary"
         >
           {option.label}
         </Button>
       ))}
-      <Button onClick={onDismiss} size="sm" variant="link">
+      <Button onClick={onDismiss} variant="ghost">
         {question.dismiss}
       </Button>
-    </div>
+    </span>
   );
 }

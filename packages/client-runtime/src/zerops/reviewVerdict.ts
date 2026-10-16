@@ -677,12 +677,11 @@ function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined 
   if (options.length === 0) return undefined;
   // What runs it, as it is: the Mate's preview runs its own copy for trying it out, never the
   // stage (a first run asked "Where should it run?" beside "Your shop front is online").
-  const base = input.pull.baseBranch;
-  const preview = `${input.mateName}'s preview is only for trying it out.`;
+  // Its title already says where the code went: the question says only what runs it.
   return {
     text: input.downstream.stage
-      ? `Your code is on ${base} and the stage picks it up. No production runs it yet; ${preview}`
-      : `Your code is on ${base}. No stage or production runs it yet; ${preview}`,
+      ? `The stage picks it up; ${input.mateName}'s preview is only for trying it out.`
+      : `Only ${input.mateName}'s preview runs it, for trying it out.`,
     options,
     dismiss: "Not now",
   };
@@ -717,7 +716,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
         ? `${count(waiting, "change now waits", "changes now wait")} for production`
         : input.downstream.stage
           ? "the stage picks it up"
-          : `it's on ${base}`;
+          : undefined;
     const live = input.waiting?.live;
     const consequence = recipe
       ? recipeSentence(input.recipe)
@@ -728,13 +727,14 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
             : `Production still serves ${live} until you release.`))
         : input.downstream.stage
           ? `The stage picks it up from ${base}.`
-          : `It's on ${base} now.`;
+          : // Its title says where it went; nothing more follows from it.
+            "";
     return {
       verdict: {
         state: "merged",
         tone: "done",
         title: `Merged into ${base}`,
-        why: `${age} · ${next}`,
+        why: next === undefined ? age : `${age} · ${next}`,
         fix: undefined,
       },
       consequence,

@@ -198,6 +198,19 @@ describe("changeReview: the verdict comes first (R2)", () => {
     expect(changeReview(change(over)).verdict).toMatchObject(expected);
   });
 
+  // A run 2 follow-up: one merged panel said "on main" four times — its title, the words under it,
+  // the question and its foot.
+  it("says a code change nothing downstream runs is merged once, in its title", () => {
+    const review = changeReview(
+      change({
+        pull: pull({ merged: true, mergedAt: minutesAgo(0) }),
+        downstream: { production: false, stage: false },
+      }),
+    );
+    expect(review.verdict).toMatchObject({ title: "Merged into main", why: "Just now" });
+    expect(review.consequence).toBe("");
+  });
+
   it.each<[string, Partial<ChangeReviewInput>, string, string]>([
     [
       "a conflict",
@@ -1279,7 +1292,7 @@ describe("changeReview: where should it run (the one question)", () => {
 
   it("asks it once, with an equal button for each tier the person may add", () => {
     expect(changeReview(first()).question).toEqual({
-      text: "Your code is on main. No stage or production runs it yet; Nova's preview is only for trying it out.",
+      text: "Only Nova's preview runs it, for trying it out.",
       options: [
         { tier: "stage", label: "Add stage" },
         { tier: "production", label: "Put it live" },
@@ -1294,12 +1307,12 @@ describe("changeReview: where should it run (the one question)", () => {
     [
       "no stage yet",
       { production: false, stage: false },
-      "Your code is on main. No stage or production runs it yet; Nova's preview is only for trying it out.",
+      "Only Nova's preview runs it, for trying it out.",
     ],
     [
       "a stage that picks it up",
       { production: false, stage: true },
-      "Your code is on main and the stage picks it up. No production runs it yet; Nova's preview is only for trying it out.",
+      "The stage picks it up; Nova's preview is only for trying it out.",
     ],
   ] as const)(
     "says what runs the code with %s, never as if nothing did, and names the Mate's preview for what it is",
