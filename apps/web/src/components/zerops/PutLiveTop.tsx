@@ -223,7 +223,7 @@ export function usePutLiveRow(
       face={face}
       nowMs={nowMs}
       onAgain={() => {
-        step(groupId, { kind: "again" });
+        step(groupId, { kind: "again", at: Date.now() });
       }}
       onCopy={(url) => {
         copyToClipboard(url, undefined);

@@ -18,6 +18,7 @@ import { creationHandoff } from "@t3tools/client-runtime/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   changeMergeVerdict,
+  RELEASE_NOTHING_NEW_ON_MAIN,
   type ChangeReviewInput,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
@@ -57,8 +58,11 @@ export interface PutLiveRun {
   readonly failedAt?: Exclude<PutLivePhase, "live" | "failed"> | undefined;
   /** The Zerops project production runs in, once made. */
   readonly productionId?: string | undefined;
-  /** The release it made. */
+  /** The release it made — or, `adopted`, the one someone else had on its way, which it waits for. */
   readonly tag?: string | undefined;
+  readonly adopted?: boolean | undefined;
+  /** When production was made, or *Try again* pressed after: what its patience counts from. */
+  readonly since?: number | undefined;
   readonly failure?: PutLiveFailure | undefined;
   /** When the run went live. */
   readonly liveAt?: number | undefined;
@@ -91,12 +95,11 @@ export type PutLiveMergePull = ChangeReviewInput["pull"];
  */
 export function putLiveMergeGate(input: {
   readonly pull: PutLiveMergePull | undefined;
-  readonly mateName: string;
-  readonly now: number;
 }): { readonly kind: "open" } | { readonly kind: "held"; readonly words: string } {
   const { pull } = input;
   if (pull === undefined || pull.merged) return { kind: "open" };
-  const { enabled, verdict } = changeMergeVerdict({ ...input, pull });
+  // The verdict's title is all it says here: its Mate and its age are the review's to word.
+  const { enabled, verdict } = changeMergeVerdict({ pull, mateName: "", now: 0 });
   return enabled ? { kind: "open" } : { kind: "held", words: verdict.title };
 }
 
@@ -235,8 +238,13 @@ export function startPutLive(input: {
 /** What a run's step came to; each moves it on, or stops it with the cause. */
 export type PutLiveEvent =
   | { readonly kind: "merged" }
-  | { readonly kind: "created"; readonly productionId: string }
-  | { readonly kind: "released"; readonly tag: string }
+  | { readonly kind: "created"; readonly productionId: string; readonly at?: number | undefined }
+  | {
+      readonly kind: "released";
+      readonly tag: string;
+      /** Someone else's release, already on its way: the run waits for it rather than make one. */
+      readonly adopted?: boolean | undefined;
+    }
   | { readonly kind: "live"; readonly at: number }
   | {
       readonly kind: "failed";
@@ -247,7 +255,7 @@ export type PutLiveEvent =
       readonly action?: PutLiveFailure["action"] | undefined;
       readonly detail?: string | undefined;
     }
-  | { readonly kind: "again" };
+  | { readonly kind: "again"; readonly at?: number | undefined };
 
 export function putLiveStep(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
   switch (event.kind) {
@@ -260,9 +268,18 @@ export function putLiveStep(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
           }
         : run;
     case "created":
-      return run.phase === "creating" ? { ...run, productionId: event.productionId } : run;
+      return run.phase === "creating"
+        ? { ...run, productionId: event.productionId, since: event.at }
+        : run;
     case "released":
-      return run.phase === "creating" ? { ...run, phase: "releasing", tag: event.tag } : run;
+      return run.phase === "creating"
+        ? {
+            ...run,
+            phase: "releasing",
+            tag: event.tag,
+            ...(event.adopted === true ? { adopted: true } : {}),
+          }
+        : run;
     case "live":
       return run.phase === "releasing" ? { ...run, phase: "live", liveAt: event.at } : run;
     case "failed":
@@ -287,10 +304,16 @@ export function putLiveStep(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
           };
     case "again":
       if (run.phase !== "failed" || run.failedAt === undefined) return run;
-      // A release that did not go out is made again once production takes one.
-      return run.failedAt === "releasing"
-        ? { ...run, phase: "creating", tag: undefined, failedAt: undefined, failure: undefined }
-        : { ...run, phase: run.failedAt, failedAt: undefined, failure: undefined };
+      return {
+        ...run,
+        failedAt: undefined,
+        failure: undefined,
+        ...(event.at === undefined ? {} : { since: event.at }),
+        // A release that did not go out is made again once production takes one.
+        ...(run.failedAt === "releasing"
+          ? { phase: "creating", tag: undefined, adopted: undefined }
+          : { phase: run.failedAt }),
+      };
   }
 }
 
@@ -336,21 +359,62 @@ export interface PutLiveFacts {
 export type PutLiveNext =
   | { readonly kind: "wait" }
   | { readonly kind: "release" }
+  /** Someone else's release of it is on its way, or went live meanwhile: the run ends on that. */
+  | { readonly kind: "adopt"; readonly tag: string }
   | { readonly kind: "live" }
-  | { readonly kind: "failed"; readonly words: string };
+  | {
+      readonly kind: "failed";
+      readonly words: string;
+      readonly action?: PutLiveFailure["action"] | undefined;
+    };
 
-export function putLiveNext(run: PutLiveRun, facts: PutLiveFacts): PutLiveNext {
+/**
+ * How long a run waits for HQ to offer production's first release once production is made: what
+ * waiting will change — HQ listing production, reading what it can release — comes in seconds;
+ * past this, it stops and says so, with *Try again*.
+ */
+export const PUT_LIVE_PATIENCE = 3 * 60_000;
+
+const UNUSABLE_TOKEN = /^A repository has no usable token\b/u;
+const IN_FLIGHT = /^Releasing (.+)…$/u;
+const OFFER_UNKNOWN = "Release offer is unknown.";
+
+/** When a run waiting for its release stops waiting; `undefined` where nothing counts down. */
+export function putLiveDeadline(run: PutLiveRun): number | undefined {
+  return run.phase === "creating" && run.productionId !== undefined && run.since !== undefined
+    ? run.since + PUT_LIVE_PATIENCE
+    : undefined;
+}
+
+export function putLiveNext(run: PutLiveRun, facts: PutLiveFacts, now?: number): PutLiveNext {
   if (run.phase === "creating") {
     // The production this run made, once HQ holds it — never another that came up meanwhile — and
     // only what waiting will not change stops it (`creationHandoff`).
-    const verdict = creationHandoff({
-      hasProduction: run.productionId !== undefined && facts.production === run.productionId,
-      gate: facts.gate,
-    });
+    const hasProduction = run.productionId !== undefined && facts.production === run.productionId;
+    const verdict = creationHandoff({ hasProduction, gate: facts.gate });
     if (verdict === "open") return { kind: "release" };
-    return verdict === "drop" && !facts.gate.allowed
-      ? { kind: "failed", words: facts.gate.reason }
-      : { kind: "wait" };
+    if (facts.gate.allowed) return { kind: "wait" };
+    const { reason } = facts.gate;
+    if (hasProduction) {
+      const inFlight = IN_FLIGHT.exec(reason)?.[1];
+      if (inFlight !== undefined) return { kind: "adopt", tag: inFlight };
+      const live = facts.releases.find((entry) => entry.standing === "live");
+      if (reason === RELEASE_NOTHING_NEW_ON_MAIN && live !== undefined)
+        return { kind: "adopt", tag: live.tag };
+      if (UNUSABLE_TOKEN.test(reason)) return { kind: "failed", words: reason, action: "project" };
+    }
+    if (verdict === "drop") return { kind: "failed", words: reason };
+    const deadline = putLiveDeadline(run);
+    if (deadline === undefined || now === undefined || now <= deadline) return { kind: "wait" };
+    return {
+      kind: "failed",
+      words: !hasProduction
+        ? "HQ hasn't listed the new production yet."
+        : reason === OFFER_UNKNOWN
+          ? "HQ didn't say whether production can take a release."
+          : reason,
+      action: "again",
+    };
   }
   if (run.phase === "releasing" && run.tag !== undefined) {
     const row = facts.releases.find((entry) => entry.tag === run.tag);
@@ -387,7 +451,15 @@ export function putLiveProgress(run: PutLiveRun): {
     case "creating":
       return { title, step: "Making production" };
     case "releasing":
-      return { title, step: run.tag === undefined ? "Releasing" : `Releasing ${run.tag}` };
+      return {
+        title,
+        step:
+          run.tag === undefined
+            ? "Releasing"
+            : run.adopted === true
+              ? `Waiting for ${run.tag}, already on its way`
+              : `Releasing ${run.tag}`,
+      };
     case "live":
       return { title: `${run.project} is live`, step: releasedLine(run.tag) };
     case "failed":

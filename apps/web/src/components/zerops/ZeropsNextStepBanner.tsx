@@ -439,11 +439,7 @@ function PutLiveComposerTop({
   const row = usePutLiveRow(groupId, { tint: mate?.tint ?? "slate", shape: mate?.shape });
   if (row !== null && !held) return row;
   if (!offered || change === undefined) return top();
-  const gate = putLiveMergeGate({
-    pull: verdictPull,
-    mateName: mate?.name ?? "Its Mate",
-    now: Date.now(),
-  });
+  const gate = putLiveMergeGate({ pull: verdictPull });
   return top(
     gate.kind === "held"
       ? gate

@@ -1,13 +1,19 @@
-import { RELEASE_CHECKING, RELEASE_NOTHING_MERGED } from "@t3tools/client-runtime/zerops";
+import {
+  RELEASE_CHECKING,
+  RELEASE_NOTHING_MERGED,
+  RELEASE_NOTHING_NEW_ON_MAIN,
+} from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   PUT_LIVE_LATER,
   PUT_LIVE_NO_ANSWER,
+  PUT_LIVE_PATIENCE,
   putLiveAddress,
   putLiveHoldsRelease,
   putLiveLines,
   putLiveMergeGate,
+  putLiveDeadline,
   putLiveNext,
   putLiveOffered,
   putLiveProgress,
@@ -354,7 +360,7 @@ describe("Put it live merges what the review would merge", () => {
   ] as const)(
     "Put it live is one press only where the review would merge the change: %s",
     (_case, read, gate) => {
-      expect(putLiveMergeGate({ pull: read, mateName: "Nova", now: 0 })).toEqual(gate);
+      expect(putLiveMergeGate({ pull: read })).toEqual(gate);
     },
   );
 });
@@ -399,5 +405,92 @@ describe("a write that never answers", () => {
         "again",
       ),
     ).toEqual({ kind: "merged" });
+  });
+});
+
+describe("after production is made, the release it waits for", () => {
+  const made = putLiveStep(start({ merged: true }), {
+    kind: "created",
+    productionId: "p-prod",
+    at: 0,
+  });
+  const late = PUT_LIVE_PATIENCE + 1;
+  const held = (reason: string) => ({ allowed: false as const, reason });
+
+  it.each([
+    [
+      "someone else's release is under way: it waits for that one",
+      facts({ production: "p-prod", gate: held("Releasing v0.1.0…") }),
+      0,
+      { kind: "adopt", tag: "v0.1.0" },
+    ],
+    [
+      "someone else's release went live meanwhile: it is live on it",
+      facts({
+        production: "p-prod",
+        gate: held(RELEASE_NOTHING_NEW_ON_MAIN),
+        releases: [{ tag: "v0.1.0", standing: "live" }],
+      }),
+      0,
+      { kind: "adopt", tag: "v0.1.0" },
+    ],
+    [
+      "a repository's token is unusable: it stops with the fix",
+      facts({
+        production: "p-prod",
+        gate: held("A repository has no usable token. Replace the token before releasing."),
+      }),
+      0,
+      {
+        kind: "failed",
+        words: "A repository has no usable token. Replace the token before releasing.",
+        action: "project",
+      },
+    ],
+    [
+      "HQ has not said whether it offers the release: it waits",
+      facts({ production: "p-prod", gate: held("Release offer is unknown.") }),
+      PUT_LIVE_PATIENCE,
+      { kind: "wait" },
+    ],
+    [
+      "HQ still has not said once its patience ran out: it stops, to try again",
+      facts({ production: "p-prod", gate: held("Release offer is unknown.") }),
+      late,
+      {
+        kind: "failed",
+        words: "HQ didn't say whether production can take a release.",
+        action: "again",
+      },
+    ],
+    [
+      "HQ still checks once its patience ran out: it stops with HQ's words",
+      facts({ production: "p-prod", gate: held(RELEASE_CHECKING) }),
+      late,
+      { kind: "failed", words: RELEASE_CHECKING, action: "again" },
+    ],
+    [
+      "HQ never listed the new production: it stops, to try again",
+      facts(),
+      late,
+      { kind: "failed", words: "HQ hasn't listed the new production yet.", action: "again" },
+    ],
+  ] as const)("with %s", (_case, read, now, next) => {
+    expect(putLiveNext(made, read, now)).toEqual(next);
+  });
+
+  it("waits no longer than its patience, from production or the last Try again", () => {
+    expect(putLiveDeadline(made)).toBe(PUT_LIVE_PATIENCE);
+    const again = putLiveStep(putLiveStep(made, { kind: "failed", words: "x" }), {
+      kind: "again",
+      at: 5_000,
+    });
+    expect(putLiveDeadline(again)).toBe(5_000 + PUT_LIVE_PATIENCE);
+  });
+
+  it("says a release it waits for as someone else's", () => {
+    const adopted = putLiveStep(made, { kind: "released", tag: "v0.1.0", adopted: true });
+    expect(adopted.phase).toBe("releasing");
+    expect(putLiveProgress(adopted).step).toBe("Waiting for v0.1.0, already on its way");
   });
 });

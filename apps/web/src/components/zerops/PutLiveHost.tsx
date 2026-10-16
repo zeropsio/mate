@@ -20,6 +20,7 @@ import {
 } from "~/zerops/projectFlows";
 import { usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
 import {
+  putLiveDeadline,
   putLiveMergeGate,
   putLiveNext,
   putLiveSettle,
@@ -152,8 +153,6 @@ function PutLiveSheetContainer({
             (pull) =>
               pull.repository === ask.change?.repository && pull.number === ask.change.number,
           ),
-    mateName: "Its Mate",
-    now: Date.now(),
   });
   const change =
     ask.change === undefined
@@ -236,6 +235,15 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     useMemo(() => [run.groupId], [run.groupId]),
     { compare: true },
   ).flows.get(run.groupId);
+  // Its wait for the release is bounded: the run is read again once its patience runs out, even
+  // where nothing else changes.
+  const deadline = putLiveDeadline(run);
+  const [woken, wake] = useState(0);
+  useEffect(() => {
+    if (deadline === undefined) return;
+    const timer = setTimeout(() => wake(Date.now()), Math.max(0, deadline - Date.now()) + 1);
+    return () => clearTimeout(timer);
+  }, [deadline]);
   // The step whose write was sent: a re-render never sends it twice.
   const sent = useRef<string | null>(null);
   const key = `${run.phase}:${run.productionId ?? ""}:${run.tag ?? ""}`;
@@ -314,7 +322,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
           if (made.kind === "refused") return failed(made.reason ?? "Production couldn't be made.");
           const { outcome } = made;
           return outcome.ok
-            ? { kind: "created", productionId: outcome.projectId }
+            ? { kind: "created", productionId: outcome.projectId, at: Date.now() }
             : failed(outcome.error, outcome.projectId !== undefined || outcome.uncertain === true);
         },
         // What a creation that never answered made is read from the project, never made twice.
@@ -324,11 +332,15 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     }
 
     if (flow === undefined) return;
-    const next = putLiveNext(run, factsOf(flow));
+    const next = putLiveNext(run, factsOf(flow), Math.max(woken, Date.now()));
     if (next.kind === "wait") return;
     sent.current = key;
     if (next.kind === "failed") {
-      fail(next.words);
+      step(groupId, { kind: "failed", words: next.words, action: next.action });
+      return;
+    }
+    if (next.kind === "adopt") {
+      step(groupId, { kind: "released", tag: next.tag, adopted: true });
       return;
     }
     if (next.kind === "live") {
@@ -343,7 +355,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
           : failed(outcome.reason),
       "again",
     );
-  }, [create, entry, flow, key, people, recipe, run, step, verbs]);
+  }, [create, entry, flow, key, people, recipe, run, step, verbs, woken]);
 
   return null;
 }
