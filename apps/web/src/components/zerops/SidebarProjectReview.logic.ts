@@ -114,6 +114,17 @@ export function reviewItemByline(item: ProjectReviewItem): string {
   return parts.join(" · ");
 }
 
+/**
+ * What a Mate's conversation header asks to review: its Mate's changes that ask for it — none
+ * while the Mate still works on them (`changeShowsReview`), which the menu's mark keeps, quieter.
+ */
+export function headerReviewItems(
+  items: ReadonlyArray<ProjectReviewItem>,
+  mateProjectId: string | undefined,
+): ReadonlyArray<ProjectReviewItem> {
+  return items.filter((item) => item.mateProjectId === mateProjectId && item.inProgress !== true);
+}
+
 /** What the Review tag says to somebody who cannot see it. */
 export function reviewTagLabel(
   items: ReadonlyArray<Pick<ProjectReviewItem, "title">>,
