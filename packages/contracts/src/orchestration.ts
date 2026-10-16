@@ -886,6 +886,11 @@ export const OrchestrationThreadShell = Schema.Struct({
    */
   backgroundWork: Schema.optional(BackgroundWork),
   /**
+   * A person's Stop is in force: the run, and the work it started, are being ended. Optional so
+   * old servers interop; absent = no Stop known.
+   */
+  stopping: Schema.optional(Schema.Boolean),
+  /**
    * Current plan step while a turn runs, for the Working indicators
    * (sidebar row, in-chat working line). Cleared when the turn settles —
    * never persists as stale UI. Optional so old servers/clients interop.
