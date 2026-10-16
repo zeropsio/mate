@@ -479,7 +479,7 @@ describe("leaderLayer", () => {
               WHERE datname = current_database() AND application_name LIKE 'hq-leader%'`.pipe(
               Effect.map((rows) => rows[0]),
               Effect.filterOrFail(
-                (row) =>
+                (row): row is NonNullable<typeof row> =>
                   row !== undefined && announcedOk(row.name) !== undefined && row.beat !== after,
               ),
               Effect.retry(Schedule.spaced(Duration.millis(20))),
