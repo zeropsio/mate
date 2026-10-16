@@ -120,6 +120,31 @@ describe("ReleaseReviewView", () => {
     expect(markup).not.toContain("Can&#x27;t tell what app runs.");
   });
 
+  // The run: a first release opened on an editable "0.1.0", "Must be newer than every release.
+  // Next patch is v0.1.0.", "Use v1.0.0 · Set in the code, in package.json" — with no release
+  // before it, semver and package.json are questions nobody asked.
+  it("names a first release's version in words, its field and rules behind Change", () => {
+    const version = {
+      value: "0.1.0",
+      onChange: () => {},
+      tags: [],
+      suggestions: [{ tag: "v1.0.0", source: "app/package.json" }],
+      nextPatch: "v0.1.0",
+    };
+    const page = new Window().document;
+    page.body.innerHTML = render({ version, replaces: { kind: "first" } });
+    const section = [...page.querySelectorAll("section")].find(
+      (each) => each.querySelector("h3")?.textContent === "Version",
+    );
+    expect(section?.textContent).toContain("v0.1.0");
+    expect(section?.querySelector("input")).toBeNull();
+    expect(section?.textContent).not.toContain("package.json");
+    expect(section?.textContent).not.toContain("Next patch");
+    expect(
+      [...(section?.querySelectorAll("button") ?? [])].map((each) => each.textContent),
+    ).toEqual(["Change"]);
+  });
+
   // The onboarding run: at the press the Version block went and the foot rose 110 px under the
   // pointer, then Where came and it dropped 76 px.
   it("keeps its Version, not to be changed, from the press until Where takes its place", () => {
