@@ -31,7 +31,7 @@ export function ZeropsThrowawayCleanup({ view }: { readonly view: ThrowawaySweep
       role={view.state === "failed" || view.state === "unknown" ? "alert" : "status"}
     >
       {line === null ? null : <span>{line}</span>}
-      <Button disabled={busy} onClick={view.again} size="compact" variant="ghost">
+      <Button disabled={busy} onClick={view.again} size="sm" variant="ghost">
         {view.state === "failed" || view.state === "unknown"
           ? "Delete again"
           : "Clean up sign-in tokens"}

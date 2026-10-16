@@ -22,6 +22,7 @@ import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contract
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { hasUnseenCompletion, resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import {
+  Building2Icon,
   ChevronDownIcon,
   CircleAlertIcon,
   CircleCheckIcon,
@@ -180,9 +181,10 @@ import {
 } from "./sidebar/SidebarChrome";
 import { newMateView, useAddMate } from "../zerops/newMate";
 import { useAddMateOffer } from "../zerops/useHqOffers";
+import { useOpenPutLive } from "../zerops/putLive";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
-import { useRoleOffers } from "../zerops/usePlatformCapabilities";
+import { useRoleOffers, useTeamOffers } from "../zerops/usePlatformCapabilities";
 import { useCreations } from "../zerops/creations";
 import { newProjectView, placedNewProjects } from "../zerops/newProjectBirth";
 import {
@@ -221,8 +223,11 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, useMenuProjects, useOverviewKey } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
-import { useChiefSetupEntry, useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
+import { useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
+import { useOwnChief } from "~/zerops/ownChief";
+import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
 import { useAccountHq } from "~/zerops/accountHq";
+import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
 import { SidebarRail, useRailTiles } from "./zerops/SidebarRail";
 import { SidebarStage } from "./zerops/SidebarStage";
@@ -245,6 +250,7 @@ import {
   type ComposerThreadDraftState,
   type DraftSessionState,
 } from "../composerDraftStore";
+import { Kbd } from "./ui/kbd";
 
 function threadTimeLabel(thread: SidebarThreadSummary): string {
   const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
@@ -259,9 +265,9 @@ export function JumpHintBadge(props: { label: string }) {
   return (
     <span
       aria-hidden
-      className="pointer-events-none absolute right-1.5 top-1/2 z-10 inline-flex h-5 -translate-y-1/2 items-center rounded-full border border-border/80 bg-background/95 px-1.5 font-mono text-3xs font-medium tracking-tight text-foreground shadow-sm"
+      className="pointer-events-none absolute right-1.5 top-1/2 z-10 -translate-y-1/2"
     >
-      {props.label}
+      <Kbd>{props.label}</Kbd>
     </span>
   );
 }
@@ -1294,7 +1300,7 @@ export default function Sidebar() {
   // Whose each Mate is, for the badge on the corner of its face.
   const zeropsMateOwner = useZeropsMateOwners();
   // Each container's health, as the container store holds it — the tree's
-  // "some Mate in the group is up" part of *Add production*'s gate.
+  // "some Mate in the group is up" part of *Put it live*'s gate.
   // Until the listing may say "none", the tree says what it can instead. An
   // account still to choose its organization is asked on the projects screen,
   // and no listing is on its way to be waited on here.
@@ -1343,7 +1349,7 @@ export default function Sidebar() {
           releases: flow.releases,
           environmentInputs: flow.environmentInputs,
         }),
-        // What the project menu's *Add stage* and *Add production* are offered from.
+        // What the project menu's *Add stage* and *Put it live* are offered from.
         recipeRead: flow.recipeRead,
         recipeTiers: flow.recipeTiers,
         // The version a release would tag.
@@ -1750,8 +1756,9 @@ export default function Sidebar() {
   // The left menu's add button asks for a Mate on a named project: the New Mate
   // dialog opens over whatever is on screen (`ZeropsNewMateHost`).
   const addMate = useAddMate();
-  // "Add stage" / "Add production": the projects page's own form, opened there.
+  // "Add stage": the projects page's own form, opened there; "Put it live": its sheet, here.
   const askSetUp = useSetUpEnvironment((state) => state.ask);
+  const openPutLive = useOpenPutLive();
   // A Mate still coming up opens its own view, where it comes up — a New
   // project's first Mate, before the platform has made its project, by the
   // creation's own id.
@@ -1775,6 +1782,15 @@ export default function Sidebar() {
     void router.navigate({ to: "/zerops" });
   }, [isMobile, router, setOpenMobile]);
   useOverviewKey(zeropsSignedIn ? navigateToZeropsProjects : undefined);
+  // A project's ··· brings people into it: the invitation, the project picked.
+  const teamOffered = useTeamOffers();
+  const inviteToProject = useCallback(
+    (groupId: string) => {
+      if (isMobile) setOpenMobile(false);
+      void router.navigate({ to: "/settings/team/invite", search: { project: groupId } });
+    },
+    [isMobile, router, setOpenMobile],
+  );
 
   // The + asks for a Mate in one of the organization's projects, over whatever is on screen: only
   // those HQ offers a new Mate in, as the menu's own rows do.
@@ -1918,10 +1934,16 @@ export default function Sidebar() {
   );
   const onZeropsSetUp = useCallback(
     (...[groupId, tier]: TreeVerbArgs<"onSetUp">) => {
+      if (isMobile) setOpenMobile(false);
+      // Production is put live over what is on screen; a stage is the projects page's form.
+      if (tier === "production") {
+        openPutLive(groupId);
+        return;
+      }
       askSetUp(groupId, tier);
       navigateToZeropsProjects();
     },
-    [askSetUp, navigateToZeropsProjects],
+    [askSetUp, isMobile, navigateToZeropsProjects, openPutLive, setOpenMobile],
   );
   const onZeropsAskToFix = useCallback(
     (...[mateProjectId, problem]: TreeVerbArgs<"onAskToFix">) => {
@@ -1944,7 +1966,7 @@ export default function Sidebar() {
   }, [isMobile, router, setOpenMobile]);
   const zeropsListed = zeropsCandidates;
   const chiefSetupLine = useChiefSetupLine();
-  const chiefSetupEntry = useChiefSetupEntry();
+  const ownChief = useOwnChief();
   const chiefUnfinished = useChiefUnfinished(zeropsChief?.project.id ?? null);
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
@@ -2686,9 +2708,18 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
-  // The menu's top: the person's Chief, as the open menu's row or the rail's tile.
+  // The menu's top: the person's Chief, as the open menu's row or the rail's tile — once it exists
+  // or is being set up. Before that the account menu offers it (`chiefOffered`), and its place
+  // holds the mark, with what waits on the person beside it (`SidebarChiefPlace`).
+  const zeropsChiefShown =
+    zeropsSignedIn &&
+    zeropsHoldsChief &&
+    chiefTopShown({
+      own: zeropsChief === undefined ? ownChief : zeropsChief.project.id,
+      setup: chiefSetupLine,
+    });
   const zeropsChiefTop = (tile: boolean) =>
-    zeropsSignedIn && zeropsHoldsChief && (zeropsChief !== undefined || roleOffered.setUpChief) ? (
+    zeropsChiefShown ? (
       <SidebarChiefTop
         chief={zeropsChief}
         coming={zeropsChief === undefined ? undefined : zeropsComing(zeropsChief)}
@@ -2700,7 +2731,6 @@ export default function Sidebar() {
         onOpenMate={onZeropsSelect}
         onOpenPage={openChiefPage}
         setup={chiefSetupLine}
-        offer={chiefSetupEntry}
         tile={tile}
         timestampFormat={timestampFormat}
         unfinished={chiefUnfinished}
@@ -2733,7 +2763,11 @@ export default function Sidebar() {
   const zeropsRail = isMobile ? null : (
     <SidebarRail
       account={
-        <SidebarZeropsAccountRow collapsed destinationIcon={sidebarAccountDestinationIcon} />
+        <SidebarZeropsAccountRow
+          chiefIcon={<Building2Icon />}
+          collapsed
+          destinationIcon={sidebarAccountDestinationIcon}
+        />
       }
       actions={
         rosterOnly ? (
@@ -2763,7 +2797,19 @@ export default function Sidebar() {
   return (
     <SidebarStage rail={zeropsRail}>
       <SidebarChromeHeader
-        brand={zeropsChiefTop(false)}
+        brand={
+          zeropsChiefTop(false) ??
+          (zeropsSignedIn && zeropsHoldsChief ? (
+            // The Chief's place while there is none: the mark, and what waits on the person.
+            <SidebarChiefPlace
+              waiting={
+                zeropsListHeld
+                  ? undefined
+                  : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
+              }
+            />
+          ) : undefined)
+        }
         isElectron={isElectron}
         status={
           zeropsHqOutage === null ? undefined : (
@@ -2836,7 +2882,7 @@ export default function Sidebar() {
                   {isSearchingThreads ? (
                     <Button
                       type="button"
-                      size="icon-micro"
+                      size="icon-sm"
                       variant="ghost"
                       className="shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
                       aria-label="Clear thread search"
@@ -2953,8 +2999,8 @@ export default function Sidebar() {
                                 {project.displayName}
                               </span>
                               <Button
-                                size="icon-xs"
-                                variant="ghost-muted"
+                                size="icon-sm"
+                                variant="ghost"
                                 aria-label={`Add source to ${project.displayName}`}
                                 title={`Add source to ${project.displayName}`}
                                 className="ml-auto"
@@ -2968,8 +3014,8 @@ export default function Sidebar() {
                                 <GitBranchIcon className="size-3.5" />
                               </Button>
                               <Button
-                                size="icon-xs"
-                                variant="ghost-muted"
+                                size="icon-sm"
+                                variant="ghost"
                                 aria-label={`Project settings for ${project.displayName}`}
                                 title={`Project settings for ${project.displayName}`}
                                 onPointerDown={(event) => event.stopPropagation()}
@@ -3028,6 +3074,7 @@ export default function Sidebar() {
               reading={zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete}
               onNoticeAct={onZeropsNoticeAct}
               onAddMate={addMate}
+              onInvite={teamOffered.invite ? inviteToProject : undefined}
               onSetUp={onZeropsSetUp}
               getComing={zeropsComing}
               onOpenComing={openComingMate}
@@ -3229,7 +3276,7 @@ export default function Sidebar() {
                                 render={
                                   <Button
                                     type="button"
-                                    size="icon-xs"
+                                    size="icon-sm"
                                     variant="ghost"
                                     aria-label={label}
                                     className="mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
@@ -3259,7 +3306,7 @@ export default function Sidebar() {
                               render={
                                 <Button
                                   type="button"
-                                  size="icon-xs"
+                                  size="icon-sm"
                                   variant="ghost"
                                   aria-label={label}
                                   aria-current={routeThreadKey === threadKey ? "page" : undefined}

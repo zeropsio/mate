@@ -11,6 +11,7 @@ import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { Row as KitRow } from "~/components/ui/row";
 import { MateFace } from "~/components/zerops/primitives";
 import {
   changeReviewItem,
@@ -79,29 +80,26 @@ interface Project {
 
 function Row({ project }: { readonly project: Project }) {
   return (
-    <div className="menu-row group relative items-center rounded-xl hover:bg-sidebar-row-hover">
-      <MateFace className="size-10" shape="clover" size="lg" state="idle" tint={project.tint} />
-      <span className="flex min-w-0 flex-col">
-        <span className="flex h-5.5 min-w-0 items-center gap-2">
-          <span className="menu-name min-w-0 flex-1 truncate font-medium">
-            {project.name}{" "}
-            <span className="font-normal text-sidebar-muted-foreground">· {project.mate}</span>
-          </span>
-          <ProjectReviewTags
-            groupId={project.id}
-            items={project.items}
-            projectName={project.name}
-            release={project.release}
-          />
-          <span className="menu-time w-16 shrink-0 text-end text-sidebar-muted-foreground tabular-nums">
-            3m
-          </span>
-        </span>
-        <span className="menu-line2 truncate text-sidebar-muted-foreground">
-          Merged the due dates; the list sorts by them now.
-        </span>
-      </span>
-    </div>
+    <KitRow
+      badges={
+        <ProjectReviewTags
+          groupId={project.id}
+          items={project.items}
+          projectName={project.name}
+          release={project.release}
+        />
+      }
+      lead={<MateFace shape="clover" size={32} state="idle" tint={project.tint} />}
+      line="Merged the due dates; the list sorts by them now."
+      meta="3m"
+      size="lg"
+      title={
+        <>
+          {project.name}{" "}
+          <span className="font-normal text-sidebar-muted-foreground">· {project.mate}</span>
+        </>
+      }
+    />
   );
 }
 

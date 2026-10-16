@@ -318,7 +318,7 @@ export function ThemeLibraryCard({
                         render={
                           <Button
                             aria-label={`Duplicate ${theme.label}`}
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
                             onClick={(event) => {
                               event.stopPropagation();
@@ -338,7 +338,7 @@ export function ThemeLibraryCard({
                         render={
                           <Button
                             aria-label={`Edit ${theme.label}`}
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
                             onClick={(event) => {
                               event.stopPropagation();
@@ -358,7 +358,7 @@ export function ThemeLibraryCard({
                         render={
                           <Button
                             aria-label={`Export ${theme.label}`}
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
                             onClick={(event) => {
                               event.stopPropagation();
@@ -382,8 +382,8 @@ export function ThemeLibraryCard({
                                 ? `Remove themes from ${variantNavigation.collectionLabel}`
                                 : `Remove ${theme.label}`
                             }
-                            size="icon-xs"
-                            variant="ghost-destructive"
+                            size="icon-sm"
+                            variant="ghost"
                             onClick={(event) => {
                               event.stopPropagation();
                               onRemove();
@@ -858,8 +858,8 @@ export function ThemeLibrary({
         <h3 className="text-sm font-medium tracking-[-0.005em] text-foreground">Themes</h3>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
-            size="xs"
-            variant="outline"
+            size="sm"
+            variant="secondary"
             onClick={() =>
               openThemeEditor({
                 editingThemeId: null,
@@ -872,7 +872,7 @@ export function ThemeLibrary({
             <PaintbrushIcon />
             Create theme
           </Button>
-          <Button size="xs" variant="outline" onClick={() => onImportOpenChange(true)}>
+          <Button size="sm" variant="secondary" onClick={() => onImportOpenChange(true)}>
             <PlusIcon />
             Add theme
           </Button>
@@ -989,7 +989,7 @@ export function ThemeLibrary({
             </div>
           ) : null}
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               disabled={themeIdsToRemove.length === 0}
               variant="destructive"

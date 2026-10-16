@@ -30,6 +30,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { VerdictPanel, VerdictPanelWaiting } from "./primitives";
+import { InlineButton } from "~/components/ui/button";
 
 export interface ZeropsGitBlockProps {
   readonly block: GitBlock;
@@ -132,14 +133,9 @@ export function ZeropsGitBlock({
                         onOpenChange === undefined ? (
                           <span>#{block.pullRequestNumber}</span>
                         ) : (
-                          <button
-                            className="rounded-sm text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                            data-zerops-surface="git-change"
-                            onClick={onOpenChange}
-                            type="button"
-                          >
+                          <InlineButton data-zerops-surface="git-change" onClick={onOpenChange}>
                             #{block.pullRequestNumber}
-                          </button>
+                          </InlineButton>
                         ),
                     },
                   ]),

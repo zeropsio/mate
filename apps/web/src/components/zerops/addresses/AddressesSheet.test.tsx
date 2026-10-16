@@ -198,7 +198,7 @@ describe("the addresses sheet", () => {
         ports: [],
       },
     });
-    await press(button(container, "Add your domain"));
+    await press(button(container, "Put it on your domain"));
     const form = container.querySelector('[data-addresses-form="add-domain"]')!;
     await type(form.querySelector<HTMLInputElement>("input")!, "https://Docs.Shop.com/");
     await press(button(form, "Add docs.shop.com"));
@@ -417,7 +417,7 @@ describe("the addresses sheet", () => {
     });
     await press(button(container, "Get one"));
     await press(button(container, "Get it for $3"));
-    await press(button(container, "Add your domain"));
+    await press(button(container, "Put it on your domain"));
     await act(async () => answer(true));
     expect(container.querySelector('[data-addresses-form="add-domain"]')).not.toBeNull();
   });
@@ -444,7 +444,7 @@ describe("the addresses sheet", () => {
   it("changes wait until the place's addresses are read", async () => {
     const { container } = await mount({ place: { ...ADDRESSES_FIXTURE, state: "reading" } });
     expect(text(container)).toContain("Changes wait until it's read.");
-    expect(button(container, "Add your domain").disabled).toBe(true);
+    expect(button(container, "Put it on your domain").disabled).toBe(true);
     expect(button(container, "Get one").disabled).toBe(true);
   });
 });

@@ -44,7 +44,7 @@ describe("F: creation through the hosted client", () => {
           yield* c.chooseDestination("zerops");
           yield* c.fill("Environment", "Shop-b");
           yield* c.agentIsOff;
-          yield* c.text(`The project's ${role} recipe`);
+          yield* c.text("Same services as the project");
           yield* c.click(`Add ${role} to Shop`);
           yield* c.environmentAppears("Shop-b", role === "production" ? "prod" : "stage");
           yield* c.text("Shop-b is set up");
@@ -72,7 +72,7 @@ describe("F: creation through the hosted client", () => {
           yield* s.given.signedIn;
           const c = creation(s);
           yield* c.openAdd("production");
-          yield* c.text("New production environment");
+          yield* c.text("Set up production for Shop");
           expect(
             yield* Effect.promise(() =>
               s.page.$$eval(
@@ -118,12 +118,15 @@ describe("F: creation through the hosted client", () => {
           yield* Effect.promise(() =>
             s.page.goto(`${s.web.origin}/group/${s.drivers.appIds.get("Shop")}/flow`),
           );
+          // Production starts at Put it live; a Git branch production is set up from its own form.
           yield* Effect.promise(async () => {
-            const add = await s.page.waitForSelector("::-p-aria(Add production)");
+            const add = await s.page.waitForSelector("::-p-aria(Put it live)");
             await add!.evaluate((element) => (element as HTMLElement).focus());
             await s.page.keyboard.press("Enter");
           });
-          yield* c.text("Where does it go?");
+          yield* c.text("Put Shop live");
+          yield* c.click("Set up production yourself…");
+          yield* c.text("Set up production for Shop");
           if (step !== "destination") yield* c.chooseDestination("git");
           if (step === "token") {
             yield* c.fill("Repository", "https://github.com/acme/app");

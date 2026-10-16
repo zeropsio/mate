@@ -6,9 +6,10 @@
  * owner's 435 px; open it at 1786 × 1000. `?page=member` shows a developer's page with two
  * project grants (`&who=` another key: `cu-karel` an admin, `cu-iva` an invitation, `cu-me`
  * your own; `&viewer=ADMIN` as an admin sees it; `&advanced=1` a custom role with Advanced open;
- * `&picker=1` the project picker open). `?page=invite` the invitation's first step;
- * `&step=details` "Adding" a new address, a guest with Snap given. Fixtures only: no route
- * imports this module.
+ * `&picker=1` the project picker open). `?page=invite` the invitation, empty (`&from=g-snap` as
+ * opened from Snap's ···); `&step=details` a new address checked, its names asked, a guest
+ * (`&role=developer` a Developer). The team's invitation is named as its inviter typed it.
+ * Fixtures only: no route imports this module.
  */
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { presetMembership } from "@t3tools/client-runtime/zerops/teamRoles";
@@ -92,6 +93,7 @@ const INPUT: TeamInput = {
   places: { "snap-prod": SNAP, "beviro-prod": BEVIRO, "shop-prod": SHOP },
   pictures: {},
   viewerUserId: "me",
+  invitedNames: { "iva.mala@example.com": "Iva Mala" },
   viewer: { roleCode: viewerRole, membershipId: viewerRole === "OWNER" ? "cu-me" : "cu-karel" },
 };
 
@@ -103,6 +105,13 @@ const PROJECTS = [
   { projectId: "snap-prod", label: "Snap · production" },
   { projectId: "snap-stage", label: "Snap · stage" },
   { projectId: "legacy", label: "legacy-api" },
+];
+
+const INVITABLE = [
+  { key: "g-beviro", name: "Beviro", projectIds: ["beviro-prod", "beviro-stage"] },
+  { key: "legacy", name: "legacy-api", projectIds: ["legacy"] },
+  { key: "g-shop", name: "Shop", projectIds: ["shop-prod"] },
+  { key: "g-snap", name: "Snap", projectIds: ["snap-prod", "snap-stage", "snap-fen"] },
 ];
 
 const VIEW = teamPeople(INPUT);
@@ -142,17 +151,17 @@ function Page() {
   }
   if (page === "invite") {
     const details = params.get("step") === "details";
+    const role = params.get("role") === "developer" ? "developer" : "guest";
     return (
       <TeamInviteView
         actions={{ check: never, send: never }}
-        initial={
-          details ? { step: "details", email: "petra.kralova@example.com", existing: null } : null
-        }
-        initialDraft={details ? { "snap-prod": "ADMIN" } : {}}
-        initialMembership={presetMembership("guest")}
+        from={params.get("from") ?? (details ? "g-snap" : undefined)}
+        initialAnswer={details ? { kind: "new" } : undefined}
+        initialEmail={details ? "petra.kralova@example.com" : ""}
+        initialMembership={presetMembership(details ? role : "developer")}
         onSent={() => {}}
         organizationName="Acme"
-        projects={PROJECTS}
+        projects={INVITABLE}
         viewerRole={viewerRole}
       />
     );

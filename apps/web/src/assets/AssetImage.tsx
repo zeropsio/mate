@@ -108,8 +108,8 @@ function DirectAssetImage({
           className={props.className}
         >
           <Button
-            variant="ghost-muted"
-            size="xs"
+            variant="ghost"
+            size="sm"
             onClick={(event) => {
               event.stopPropagation();
               setFailedSrc(undefined);
@@ -262,8 +262,8 @@ function ManagedAssetImage({
           ) : null}
           {!decodeFailed && read.kind === "failed" && read.retryable ? (
             <Button
-              variant="ghost-muted"
-              size="xs"
+              variant="ghost"
+              size="sm"
               onClick={(event) => {
                 event.stopPropagation();
                 setFailedUrl(undefined);

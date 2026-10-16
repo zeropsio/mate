@@ -2,8 +2,9 @@
  * The Chief: a person's own Mate for the whole organization rather than one project, the way the
  * owner works with a coding agent that reaches every project. Its project carries
  * {@link CHIEF_TAG}, and HQ says whose it is (`GET /api/chief`): the viewer's own is the menu's top
- * row, apart from the projects — the Chief page's door while there is none (`ChiefPage`) — and its
- * empty conversation asks about the organization. Another person's Chief appears nowhere.
+ * row, apart from the projects, once it exists or is being set up; before that the account menu
+ * offers it (`chiefOffered`), and its empty conversation asks about the organization. Another
+ * person's Chief appears nowhere.
  */
 export const CHIEF_TAG = "chief";
 
@@ -32,6 +33,27 @@ export function hqOwnChief(
 ): OwnChief {
   const mine = Object.entries(facts).find(([, fact]) => fact.chief === "mine")?.[0];
   return mine ?? (read ? null : undefined);
+}
+
+/**
+ * Whether the account menu offers *Set up Chief*: a Chief is optional, offered once and quietly,
+ * only to a person who may set one up and has none (`entry`, `chiefSetupEntry` and their role),
+ * and only once it is useful — the organization holds a second project (an HQ app) besides any
+ * person's Chief. Nothing while the projects are not read (`apps` undefined).
+ */
+export function chiefOffered(input: {
+  readonly entry: boolean;
+  readonly apps:
+    | ReadonlyArray<{ readonly projects: ReadonlyArray<{ readonly projectId: string }> }>
+    | undefined;
+  /** Every project tagged a Chief's (`othersChiefs`): never counted as a project. */
+  readonly chiefs: ReadonlySet<string>;
+}): boolean {
+  if (!input.entry || input.apps === undefined) return false;
+  const projects = input.apps.filter((app) =>
+    app.projects.some(({ projectId }) => !input.chiefs.has(projectId)),
+  );
+  return projects.length >= 2;
 }
 
 /** Navigation to setup is offered before creation; the destination owns its permission check. */
@@ -99,7 +121,8 @@ export function chiefNames(person: ChiefPerson | null): {
 
 /**
  * Where setting up a Chief stands, for the menu's top row (`chiefRowLine`): an offer to a person with
- * none who may make its project, the setup while it runs or once it stopped, else nothing.
+ * none who may make its project, the setup while it runs or once it stopped — and, set up, still
+ * running until HQ reports the Chief, so its row never leaves and comes back — else nothing.
  */
 export function chiefSetupLine(input: {
   readonly own: OwnChief;
@@ -109,6 +132,7 @@ export function chiefSetupLine(input: {
 }): "offer" | "running" | "stopped" | null {
   if (input.setup === "running") return "running";
   if (input.setup === "failed") return "stopped";
-  if (input.setup === "done" || input.own !== null || !input.mayCreate) return null;
+  if (input.setup === "done") return typeof input.own === "string" ? null : "running";
+  if (input.own !== null || !input.mayCreate) return null;
   return "offer";
 }

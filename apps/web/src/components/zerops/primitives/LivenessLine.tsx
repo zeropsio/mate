@@ -2,7 +2,8 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import type * as React from "react";
 
 import { cn } from "~/lib/utils";
-import { StatusDot } from "./StatusDot";
+import { STATUS_BADGE_TONE } from "./statusBadgeTone";
+import { Badge } from "~/components/ui/badge";
 
 type VisibleLivenessState = "live" | "recovering" | "doorbell-down" | "last-read-failed";
 type LivenessState = VisibleLivenessState | "absent";
@@ -42,7 +43,9 @@ function LivenessLine(props: LivenessLineProps) {
       data-zerops-liveness-tone={tone}
       data-zerops-primitive="liveness-line"
     >
-      <StatusDot label={label} pulse={state === "recovering"} tone={tone} />
+      <Badge dot pulse={state === "recovering"} tone={STATUS_BADGE_TONE[tone]}>
+        {label}
+      </Badge>
     </span>
   );
 }

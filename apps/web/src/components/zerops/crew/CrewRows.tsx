@@ -59,7 +59,7 @@ import { MateFace } from "../primitives";
 import { formatWorkingTime } from "../SidebarZeropsTree.logic";
 import { crewmateMenuModel, type CrewmateMenuItemId } from "./CrewmateMenu.logic";
 import { CrewmateMenuPopup } from "./CrewmateMenu";
-import { CrewDots, CrewPress, CrewTip, useArrived } from "./CrewParts";
+import { CrewDots, CrewPress, CrewTextButton, CrewTip, useArrived } from "./CrewParts";
 import {
   CREW_ORIGIN,
   CREW_ROW_NO_THREAD,
@@ -335,7 +335,7 @@ function CrewRow(
       data-crew-row={model.handle}
       data-needs={model.needsYou || model.plan ? "" : undefined}
     >
-      <MateFace greets size="md" state={model.pose} tint={model.tint} />
+      <MateFace greets size={24} state={model.pose} tint={model.tint} />
       <div className="flex min-w-0 flex-col">
         <div className="flex h-5 items-center gap-2">
           {open === null ? (
@@ -510,16 +510,7 @@ function Action(
     (action.kind === "try" && props.tryEnabled !== true);
   if (props.quiet === "text") {
     return (
-      <CrewTip tip={action.line}>
-        <button
-          className="crew-textbtn crew-row-above"
-          disabled={disabled}
-          onClick={press}
-          type="button"
-        >
-          {action.label}
-        </button>
-      </CrewTip>
+      <CrewTextButton disabled={disabled} label={action.label} line={action.line} onPress={press} />
     );
   }
   return (
@@ -528,7 +519,7 @@ function Action(
       label={action.label}
       line={action.line}
       onPress={press}
-      tone={props.quiet === "no" ? "primary" : "quiet"}
+      variant={props.quiet === "no" ? "primary" : "secondary"}
     />
   );
 }

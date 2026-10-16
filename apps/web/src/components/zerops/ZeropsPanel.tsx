@@ -266,7 +266,7 @@ export function ZeropsPanel({
           {body}
           {topology.error === undefined ? null : (
             <div>
-              <Button variant="outline" size="sm" onClick={topology.again}>
+              <Button variant="secondary" size="sm" onClick={topology.again}>
                 Try again
               </Button>
             </div>

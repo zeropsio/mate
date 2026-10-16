@@ -17,6 +17,7 @@ import { createRoot } from "react-dom/client";
 
 import { SidebarCrewMinis, useCrewRows } from "~/components/zerops/crew/SidebarCrewMinis";
 import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewMinis.logic";
+import { Row as KitRow } from "~/components/ui/row";
 import { MateFace } from "~/components/zerops/primitives";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -125,28 +126,22 @@ const LIFE_READS = LIFE.map((kinds) => crew(3, kinds));
 function MateRow({ row }: { readonly row: Row }) {
   const facts = useCrewRows([{ projectId: row.id, mine: true, read: row.read }]).get(row.id);
   return (
-    <button
-      className="menu-row w-full min-w-0 cursor-pointer text-left text-sidebar-foreground outline-none select-none hover:bg-sidebar-row-hover"
+    <KitRow
+      badges={facts === undefined ? undefined : <SidebarCrewMinis facts={facts} />}
       data-harness-row={row.id}
       data-zerops-surface="sidebar-mate"
-      type="button"
-    >
-      <span className="flex size-10 items-center justify-center">
-        <MateFace greets size="md" state="working" tint={row.tint} className="size-10" />
-      </span>
-      <span className="flex min-w-0 flex-col">
-        <span className="flex h-5.5 min-w-0 items-center gap-2">
-          <span className="flex min-w-0 flex-1 items-center">
-            <span className="menu-name min-w-0 truncate font-medium">
-              {row.project} <span className="font-normal text-muted-foreground">· {row.mate}</span>
-            </span>
-            {facts === undefined ? null : <SidebarCrewMinis facts={facts} />}
-          </span>
-          <span className="menu-time shrink-0 text-muted-foreground tabular-nums">{row.time}</span>
-        </span>
-        <span className="menu-line2 truncate text-muted-foreground">{row.line}</span>
-      </span>
-    </button>
+      lead={<MateFace greets size={32} state="working" tint={row.tint} />}
+      line={row.line}
+      meta={row.time}
+      pressable
+      render={<button type="button" />}
+      size="lg"
+      title={
+        <>
+          {row.project} <span className="font-normal text-muted-foreground">· {row.mate}</span>
+        </>
+      }
+    />
   );
 }
 

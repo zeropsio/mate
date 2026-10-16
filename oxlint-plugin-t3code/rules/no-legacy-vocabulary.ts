@@ -99,7 +99,7 @@ const isCopyModule = (filename: string): boolean => {
 const legacyMatch = (value: string) => {
   for (const candidate of LEGACY_VOCABULARY_PATTERNS) {
     const match = candidate.pattern.exec(value);
-    if (match !== null) return { name: candidate.name, matchedText: match[0] };
+    if (match !== null) return { name: candidate.name, say: candidate.say, matchedText: match[0] };
   }
   return undefined;
 };
@@ -334,7 +334,7 @@ export default defineRule({
         node,
         message: formatFindingMessage({
           ruleName: RULE_NAME,
-          summary: `Legacy vocabulary "${match.matchedText}" (${match.name}) is not allowed in the ${kind} copy sink.`,
+          summary: `Legacy vocabulary "${match.matchedText}" (${match.name}) is not allowed in the ${kind} copy sink; say "${match.say}" (design-system.md §2).`,
           kind,
           fingerprint,
           ledgered,

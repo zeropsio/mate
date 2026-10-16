@@ -25,7 +25,8 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
-import { Avatar } from "../zerops/primitives";
+import { PageHeader } from "../ui/page-header";
+import { PersonAvatar } from "../zerops/primitives";
 import { selfLowerWords } from "../zerops/projects/projectPeople.logic";
 import { MemberProjectAccess } from "./MemberProjectAccess";
 import { SettingsPageContainer } from "./settingsLayout";
@@ -42,6 +43,8 @@ import {
   type AccessProject,
 } from "./teamMember.logic";
 import type { TeamPerson } from "./teamSettings.logic";
+import { Failure } from "../ui/failure";
+import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
 
 /** What the page asks Zerops to do; each rejects with what to tell the person. */
@@ -73,6 +76,7 @@ export function TeamMemberView({
   person,
   viewerRole,
   grants,
+  grantsUnread,
   projects,
   organizationName,
   actions,
@@ -82,6 +86,8 @@ export function TeamMemberView({
   readonly viewerRole: string | undefined;
   /** Their own level on each project; `null` while it is read. */
   readonly grants: AccessDraft | null;
+  /** Why their grants could not be read, when the read failed or was refused with none held. */
+  readonly grantsUnread?: string;
   readonly projects: ReadonlyArray<AccessProject>;
   readonly organizationName: string;
   /** Absent: nothing is changed from here. */
@@ -143,14 +149,16 @@ export function TeamMemberView({
 
   return (
     <div className="tm-page" data-zerops-surface="team-member">
-      <header className="tm-head">
-        <Avatar initials={person.initials} size="xl" src={person.avatarUrl} />
-        <h1 className="tm-head-name">{person.name}</h1>
-        {person.email === null || person.email === person.name ? null : (
-          <span className="tm-head-line">{person.email}</span>
-        )}
-        {person.pending ? <span className="tm-head-line">Invited · not joined yet</span> : null}
-      </header>
+      <PageHeader
+        lead={<PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />}
+        line={
+          [
+            ...(person.email === null || person.email === person.name ? [] : [person.email]),
+            ...(person.pending ? ["Invited · not joined yet"] : []),
+          ].join(" · ") || undefined
+        }
+        title={person.name}
+      />
 
       <section aria-label="Role" className="tm-section">
         <TeamRoleEditor
@@ -177,7 +185,11 @@ export function TeamMemberView({
 
       <section aria-label="Project access" className="tm-section">
         {grants === null && held === null ? (
-          <p className="tm-empty">Reading their projects…</p>
+          grantsUnread === undefined ? (
+            <Loading count={2} label="Their projects" shape="rows" />
+          ) : (
+            <Failure cause={grantsUnread} />
+          )
         ) : (
           <MemberProjectAccess
             memberRole={memberRole}
@@ -226,7 +238,7 @@ export function TeamMemberView({
                 disabled={removal.pending}
                 onClick={() => setAskingRemove(true)}
                 size="sm"
-                variant="destructive-outline"
+                variant="destructive"
               >
                 <Trash2Icon aria-hidden="true" />
                 {end === "withdraw" ? "Withdraw invite" : `Remove from ${organizationName}`}
@@ -256,7 +268,7 @@ export function TeamMemberView({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               onClick={() => {
                 setAskingRemove(false);
@@ -277,7 +289,7 @@ export function TeamMemberView({
             <AlertDialogDescription>{selfWords.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               onClick={() => {
                 setAskingSelf(false);
@@ -307,6 +319,15 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
   const value = read?.value;
   // One object per read: the page tells a read-back from the read a save started from.
   const grants = useMemo(() => (value === undefined ? null : draftOf(value)), [value]);
+  // A refused or failed read with nothing held says so; reading forever would be a lie.
+  const grantsUnread =
+    value !== undefined || read === undefined
+      ? undefined
+      : read.refused
+        ? "Zerops didn't let you read their project access."
+        : read.status === "failed"
+          ? "Couldn't read their project access from Zerops."
+          : undefined;
   const actions = useMemo((): TeamMemberActions | undefined => {
     if (!team.writable || clientId === null) return undefined;
     return {
@@ -325,7 +346,7 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
   return (
     <SettingsPageContainer>
       {view.kind === "reading" ? (
-        <p className="tm-empty">Reading who is on the team…</p>
+        <Loading label="Who is on the team" shape="page" />
       ) : view.kind === "unreadable" ? (
         <p className="tm-empty">{view.line}</p>
       ) : person === undefined || person === null ? (
@@ -338,6 +359,7 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
           key={`${person.key}:${JSON.stringify(person.membership)}`}
           {...(actions === undefined ? {} : { actions })}
           grants={grants}
+          {...(grantsUnread === undefined ? {} : { grantsUnread })}
           onRemoved={() => void navigate({ to: "/settings/team" })}
           organizationName={team.organizationName}
           person={person}

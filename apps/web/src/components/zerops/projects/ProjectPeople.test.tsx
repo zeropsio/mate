@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { draftView } from "./accessDraft.logic";
+import { draftSpeaks, draftView } from "./accessDraft.logic";
 import { AddAccessPicker, ProjectAccessChips, type AccessPick } from "./ProjectAccessChips";
 import {
   projectPeople,
@@ -237,6 +237,29 @@ describe("changing who can work on a project", () => {
 });
 
 describe("a new project's access in a creation dialog", () => {
+  it.each([
+    {
+      sentence: "A creator alone in the organization is asked nothing about access",
+      list: [PETR],
+      speaks: false,
+    },
+    {
+      sentence: "With teammates, who reaches the new project is chosen in the dialog",
+      list: [ANNA, PETR, JAN],
+      speaks: true,
+    },
+  ])("$sentence", ({ list, speaks }) => {
+    const view = draftView({
+      members: KNOWN(list),
+      kind: "mate",
+      app: { projects: [], grants: {}, owners: {} },
+      pictures: {},
+      creator: { membershipId: "cu-petr", userId: "u-petr" },
+      list: [],
+    });
+    expect(draftSpeaks(view)).toBe(speaks);
+  });
+
   it("The creator's chip comes first as you, full access, with no menu; Add access follows the people", () => {
     const view = draftView({
       members: KNOWN([ANNA, PETR, JAN]),
@@ -251,7 +274,7 @@ describe("a new project's access in a creation dialog", () => {
       "Project access",
     );
     expect(chipsOf(section).map(({ text }) => text)).toEqual([
-      ["👉 You", "Full"],
+      ["You", "Full"],
       ["Anna B.", "Full"],
       [],
     ]);
@@ -328,6 +351,18 @@ describe("adding people already in the organization", () => {
     act(() => box(host, "Full access for Jan Svoboda").click());
     act(() => addButton(host).click());
     expect(added[0]?.map(({ level }) => level)).toEqual(["full"]);
+  });
+
+  it("Read and Full are each explained in one line where they are chosen", () => {
+    const host = mount(() => {});
+    expect(
+      [...host.querySelectorAll('[aria-label="What Read and Full give"] > div')].map(
+        (line) => line.textContent,
+      ),
+    ).toEqual([
+      "Read: Follows the work and opens the app; changes nothing.",
+      "Full: Works with the project's Mates and changes the project.",
+    ]);
   });
 
   it("The search narrows the people by name or e-mail", () => {

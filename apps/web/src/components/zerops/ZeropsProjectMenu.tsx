@@ -63,16 +63,7 @@ export function ZeropsProjectMenu({
   if (actions.length === 0 && routes === undefined && projectId === undefined) return null;
   return (
     <Menu>
-      <MenuTrigger
-        render={
-          <Button
-            aria-label={label}
-            className="size-7 text-muted-foreground"
-            size="icon"
-            variant="ghost"
-          />
-        }
-      >
+      <MenuTrigger render={<Button aria-label={label} size="icon-md" variant="ghost" />}>
         <EllipsisIcon className="size-4" />
       </MenuTrigger>
       <MenuPopup align="end" className="min-w-48 max-w-[24rem]">

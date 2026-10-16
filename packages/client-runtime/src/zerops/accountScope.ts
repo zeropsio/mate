@@ -59,18 +59,29 @@ export function canCreateProjectsInOrganization(organization: ZeropsOrganization
 }
 
 export function zeropsOrganizationRoleLabel(organization: ZeropsOrganization): string {
-  switch (organization.roleCode) {
+  return zeropsRoleWords(organization) ?? "Member";
+}
+
+/**
+ * A membership's role in the words the invite and Team use: a preset's name (Owner, Admin,
+ * Developer, Guest), or what a Zerops role no preset names reaches. Never a Zerops role code.
+ */
+export function zeropsRoleWords(membership: {
+  readonly roleCode?: string | undefined;
+  readonly canCreateProjects?: boolean | undefined;
+}): string | undefined {
+  switch (membership.roleCode) {
     case "OWNER":
       return "Owner";
     case "ADMIN":
       return "Admin";
     case "BASIC_USER":
-      return "Basic user";
+      return "Works on every project";
     case "READ_ONLY":
-      return "Read only";
+      return "Sees every project";
     case "NO_ACCESS":
-      return organization.canCreateProjects ? "Developer" : "Guest";
+      return membership.canCreateProjects === true ? "Developer" : "Guest";
     default:
-      return "Member";
+      return undefined;
   }
 }

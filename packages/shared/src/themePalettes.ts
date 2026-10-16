@@ -180,7 +180,8 @@ export const ZEROPS_THEME: ThemeDefinition = {
       placeholder: "oklch(0.523335 0.020759 174.667)",
       secondaryLabel: "oklch(0.626728 0.018381 177.916)",
       iconMuted: "oklch(0.737586 0.018219 173.85)",
-      error: "oklch(0.687547 0.141955 21.457)",
+      // Dark enough that an action's white ink reads on the destructive fill (4.5:1).
+      error: "oklch(0.56 0.141955 21.457)",
       errorForeground: "oklch(0.687547 0.141955 21.457)",
       errorSurface: "oklch(0.286951 0.013453 17.963)",
       warning: "oklch(0.797179 0.163777 69.616)",

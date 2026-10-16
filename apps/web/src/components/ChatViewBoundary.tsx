@@ -7,7 +7,7 @@ import {
 } from "react";
 
 import type ChatViewComponent from "./ChatView";
-import { SurfaceLoading } from "./SurfaceLoading";
+import { Loading } from "./ui/loading";
 
 type ChatViewProps = ComponentProps<typeof ChatViewComponent>;
 
@@ -58,6 +58,6 @@ export default function ChatViewBoundary({
     };
   }, [view]);
   if (failure !== null) throw failure;
-  if (view === null) return waiting ?? <SurfaceLoading />;
+  if (view === null) return waiting ?? <Loading label="The conversation" shape="room" />;
   return <view.ChatView {...props} />;
 }

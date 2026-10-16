@@ -281,7 +281,8 @@ describe("B: environment identity compatibility", () => {
           );
           yield* Effect.promise(() =>
             s.page.waitForFunction(
-              () => document.querySelector("main")?.textContent?.includes("Reading your projects…"),
+              // The page stands in shaped like its cards while the project is read.
+              () => document.querySelector('main [data-slot="loading"][aria-busy="true"]') !== null,
               { timeout: 15_000, polling: "raf" },
             ),
           );

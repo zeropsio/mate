@@ -183,6 +183,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --font-sans: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono:
     ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  /* Where a whole-page status (StatusPage, the sign-in) hangs its column from: a fixed height,
+     never centred on its own, so what arrives below grows it downward. index.html's splash
+     places its mark at the same height. */
+  --spacing-status-page: 22vh;
 }
 
 @theme inline {
@@ -212,6 +216,25 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   /* Motion. drawer is the decelerating curve for surfaces that slide or pop in
      (composer context, pills). */
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  /* The system's scale (packages/shared/src/brand.ts): five type steps, three
+     nested radii, two easings. */
+  /* generated:scale-tokens start */
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-body: 0.8125rem;
+  --text-body--line-height: 1.25rem;
+  --text-emphasis: 0.9375rem;
+  --text-emphasis--line-height: 1.5rem;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.75rem;
+  --text-display: 1.75rem;
+  --text-display--line-height: 2.25rem;
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+  --radius-sheet: 1rem;
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.65, 0, 0.35, 1);
+  /* generated:scale-tokens end */
   --color-zinc-25: oklch(99.2% 0 0);
   --animate-skeleton: skeleton 2s infinite linear;
   /* Duty-cycled indicator animations: long holds with stepped ramps, so the
@@ -520,6 +543,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   @variant dark {
     background: color-mix(in srgb, var(--background) 64%, transparent);
   }
+}
+
+/* Behind a picture or a video shown as large as the window lets it be: near black in both themes. */
+@utility dialog-media-backdrop {
+  background: color-mix(in srgb, var(--color-black) 75%, transparent);
 }
 
 @utility dropdown-glass {
@@ -1446,10 +1474,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-micro-label-font-weight: 600;
   --zerops-micro-label-tracking: 0.06em;
   --zerops-micro-label-opacity: 0.45;
-  --zerops-pill-radius: 80px;
   --zerops-chip-radius: 10px;
   --zerops-card-radius: 10px;
-  --zerops-key-chip-radius: 3px;
   --zerops-flat-card-border: transparent;
   --zerops-mint-panel: #e8f7ec;
   /* A Mate's colour: one of eight per agent, none of them the brand teal
@@ -1540,10 +1566,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-micro-label-font-weight: 600;
     --zerops-micro-label-tracking: 0.06em;
     --zerops-micro-label-opacity: 0.45;
-    --zerops-pill-radius: 80px;
     --zerops-chip-radius: 10px;
     --zerops-card-radius: 10px;
-    --zerops-key-chip-radius: 3px;
     --zerops-flat-card-border: rgba(255, 255, 255, 0.06);
     --zerops-mint-panel: #19261d;
     --zerops-mate-tint-coral: #b85f4b;
@@ -2951,7 +2975,13 @@ code {
     0.999,
     1
   );
+  /* generated:motion-tokens start */
+  --duration-quick: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 260ms;
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.65, 0, 0.35, 1);
+  /* generated:motion-tokens end */
 }
 
 [data-zerops-primitive="mate-face"]
@@ -3198,25 +3228,44 @@ code {
 
 /* ==== end of a Mate's face, picked ==== */
 
+/* A person's disc (`PersonAvatar`, and the seat on a Mate's face): their picture, or their letter
+   on their own hue (`personMark`), lighter at the top left; lighter on a light ground and deeper on
+   a dark one. The letter is their hue's dark ink on the light tints and white on the deep ones, at
+   least 4.5:1 against either end of the gradient on every hue. A hairline keeps a pale picture off
+   the ground. */
+@layer components {
+  .person-avatar {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 9999px;
+    font-weight: 600;
+    line-height: 1;
+    color: oklch(var(--person-ink-l) var(--person-ink-c) var(--person-hue));
+    background: linear-gradient(
+      140deg,
+      oklch(calc(var(--person-l) + 0.06) var(--person-c) var(--person-hue)),
+      oklch(calc(var(--person-l) - 0.12) calc(var(--person-c) + 0.03) var(--person-hue))
+    );
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent);
+    user-select: none;
+  }
+}
+
+/* A tool call that failed, on its own card: the card's hairline in the failed ink. */
+[data-slot="card"][data-zerops-card-tone="failed"] {
+  border-color: color-mix(in oklab, var(--zerops-status-failed) 35%, transparent);
+}
+
 /* ==== Pass 16 · the menu's rows ==== */
 
 @layer components {
-  /* A Mate's row: its corners, and the ones a row's own hover paints. The
-     grid, the padding and the type are the row's utilities; only what no
-     scale holds lives here. */
-  /* A Mate's row: a 36 px face in a 36 px column, 12 px to the words — its name and time, and one
-     line under them, its answer (the owner, 2026-10-12: "just go with answer") — 59 px, 8 px
-     inside the row's own band. The face spans both lines, edge to edge with the words. */
-  .menu-row {
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr);
-    column-gap: 12px;
-    align-items: start;
-    min-height: 63px;
-    padding: 11px 10px;
-    border-radius: 12px;
-  }
-
+  /* A Mate's row is the kit's `Row` at its `lg` size: a 36 px face in a 36 px column, 12 px to the
+     words — its name and time, and one line under them, its answer (the owner, 2026-10-12: "just
+     go with answer") — 63 px, 8 px inside the row's own band. */
   /* One scale for the menu: a project 16/600, a name 15/21, every line under a name 14/22, the
      time and counts 12/16, muted and tabular. */
   .menu-name {
@@ -3602,8 +3651,15 @@ code {
     gap: 6px;
   }
 
-  /* Between a project's name and its Mate's: room on both sides, the dot after it. */
+  /* Between a project's name and its Mate's: room on both sides, the dot after it. It gives way
+     before either name does, a whole mark at a time (the marks after a name are the row's badges,
+     which do the same). */
   .menu-name .menu-marks {
+    flex: 0 100000 auto;
+    flex-wrap: wrap;
+    min-width: 0;
+    height: 18px;
+    overflow: hidden;
     margin-inline: 7px 1px;
   }
 
@@ -4076,7 +4132,7 @@ code {
 
   /* A Mate under its open group's row: its whole unit 18 px in, so the group's Mates read as its
      and its band and hover start where it does. */
-  .menu-unit:has(.menu-row-kid) {
+  .menu-unit:has([data-slot="row"][data-kid]) {
     margin-inline-start: 18px;
   }
 
@@ -4122,7 +4178,7 @@ code {
     pointer-events: auto;
   }
 
-  [data-tags] .menu-row .menu-line2:not(.menu-line2 .menu-line2) {
+  [data-tags] [data-slot="row"] .menu-line2:not(.menu-line2 .menu-line2) {
     padding-inline-start: calc(var(--menu-tags-w, 0px) + 6px);
   }
 
@@ -4409,16 +4465,7 @@ code {
     overflow: hidden;
     border-radius: 9999px;
     font-size: 9px;
-    font-weight: 600;
-    line-height: 1;
-    color: var(--color-white);
-    background: linear-gradient(
-      140deg,
-      oklch(calc(var(--menu-owner-l) + 0.06) var(--menu-owner-c) var(--menu-owner-hue)),
-      oklch(calc(var(--menu-owner-l) - 0.12) calc(var(--menu-owner-c) + 0.03) var(--menu-owner-hue))
-    );
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--contrast-sidebar-foreground) 8%, transparent);
-    user-select: none;
   }
 
   /* The face wears the badge's seat cut out of it: a 2 px gap all round the
@@ -4433,7 +4480,7 @@ code {
   }
 
   /* Under its project's row the face stands 28 px, 4 px into its column: the seat moves with it. */
-  .menu-row-kid .menu-face-cut,
+  [data-slot="row"][data-kid] .menu-face-cut,
   .menu-rail-face[data-kid] .menu-face-cut {
     -webkit-mask-image: radial-gradient(
       circle 10px at 26px 26px,
@@ -4456,29 +4503,6 @@ code {
     color: color-mix(in oklab, var(--sidebar-muted-foreground) 75%, transparent);
     background: none;
     box-shadow: none;
-  }
-
-  /* A verb in a row, as a blue word — *Review* on a change, on the crew's
-     line: blue is what clicks (S3), and no outlined pill repeats down the
-     list. Its hover is its own blue, faint. */
-  .menu-textbtn {
-    flex: none;
-    padding: 3px 8px;
-    border-radius: 7px;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 18px;
-    color: var(--info-foreground);
-    cursor: pointer;
-    transition: background-color 150ms ease;
-  }
-
-  .menu-textbtn:hover {
-    background: color-mix(in oklab, var(--info-foreground) 10%, transparent);
-  }
-
-  .dark .menu-textbtn:hover {
-    background: color-mix(in oklab, var(--info-foreground) 14%, transparent);
   }
 
   /* ---- The crew as mini Mates (SidebarCrewMinis.tsx) ----
@@ -4803,14 +4827,17 @@ code {
   }
 }
 
-/* The owner's disc is lighter on a light menu and deeper on a dark one. */
 :root {
-  --menu-owner-l: 0.74;
-  --menu-owner-c: 0.07;
+  --person-l: 0.74;
+  --person-c: 0.07;
+  --person-ink-l: 0.2;
+  --person-ink-c: 0.06;
 }
 
 :root.dark {
-  --menu-owner-l: 0.55;
+  --person-l: 0.49;
+  --person-ink-l: 1;
+  --person-ink-c: 0;
 }
 
 /* ==== end of the menu's rows ==== */
@@ -5433,9 +5460,9 @@ code {
   width: 10px;
   height: 10px;
   border-radius: 9999px;
-  background: oklch(var(--menu-owner-l) var(--menu-owner-c) var(--menu-owner-hue));
+  background: oklch(var(--person-l) var(--person-c) var(--person-hue));
   box-shadow: 0 0 0 1.5px var(--card);
-  color: var(--color-white);
+  color: oklch(var(--person-ink-l) var(--person-ink-c) var(--person-hue));
   font-size: 7px;
   font-weight: 700;
   line-height: 1;
@@ -5904,21 +5931,60 @@ code {
   /* The org's own Mate, set apart from every project's: its title in the menu's heaviest weight,
      tracked tight, "Mate" in the mark's teal. */
   .menu-chief-name {
-    overflow: hidden;
+    display: flex;
+    column-gap: 0.25em;
+    min-width: 0;
     font-size: 16px;
     line-height: 21px;
     font-weight: 650;
     letter-spacing: -0.01em;
     color: var(--sidebar-foreground);
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  /* Whose Chief, or what to do with it, gives way first; the noun stays whole. */
+  .menu-chief-name-head {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .menu-chief-name-noun {
+    flex: none;
+  }
+
+  /* One line, never two: what does not fit ends in an ellipsis. */
   .menu-chief-line {
     display: flex;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .menu-chief-line > * {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The Chief's place while there is none (`SidebarChiefPlace`): the Chief's row's box, bare, the
+     mark where the Chief's stands, so the bar keeps the height the boot frame draws. */
+  .menu-chief-place {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    height: var(--sidebar-chief-row-height);
+    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
+    margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
+    border-radius: 12px;
+    outline: none;
+  }
+
+  .menu-chief-place:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
   }
 
   .menu-chief-count {
@@ -6090,48 +6156,6 @@ code {
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 12px;
-  }
-
-  .menu-wait-button {
-    height: 32px;
-    padding: 0 14px;
-    border-radius: 10px;
-    background: color-mix(in oklab, var(--foreground) 8%, transparent);
-    color: var(--foreground);
-    font-size: 14px;
-    font-weight: 500;
-    white-space: nowrap;
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      scale 160ms var(--ease-out-strong);
-  }
-
-  .menu-wait-button:hover {
-    background: color-mix(in oklab, var(--foreground) 13%, transparent);
-  }
-
-  .menu-wait-button[data-main] {
-    background: var(--foreground);
-    color: var(--background);
-  }
-
-  .menu-wait-button[data-main]:hover {
-    background: color-mix(in oklab, var(--foreground) 86%, var(--background));
-  }
-
-  .menu-wait-button:active {
-    scale: 0.97;
-  }
-
-  .menu-wait-button:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-
-  .menu-wait-button:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
   }
 
   .menu-wait-reply {
@@ -6716,8 +6740,7 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .menu-round-button:active,
-  .menu-wait-button:active {
+  .menu-round-button:active {
     scale: none;
   }
 
@@ -7235,43 +7258,6 @@ a.ov-card-site:hover {
   line-height: 18px;
 }
 
-.ov-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.ov-btn {
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 10px;
-  background: color-mix(in oklab, var(--foreground) 8%, transparent);
-  color: var(--foreground);
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    scale 160ms var(--ease-out-strong);
-}
-
-.ov-btn:hover {
-  background: color-mix(in oklab, var(--foreground) 13%, transparent);
-}
-
-.ov-btn[data-main] {
-  background: var(--foreground);
-  color: var(--background);
-}
-
-.ov-btn[data-main]:hover {
-  background: color-mix(in oklab, var(--foreground) 86%, var(--background));
-}
-
-.ov-btn:active {
-  scale: 0.97;
-}
-
-.ov-btn:focus-visible,
 .ov-fold:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
@@ -7389,43 +7375,7 @@ a.ov-card-site:hover {
   white-space: nowrap;
 }
 
-.ov-chip-name[data-creator] em {
-  font-style: italic;
-  font-weight: 600;
-}
-
 /* The level: full access green, a developer's blue, read only and mixed grey. */
-.ov-chip-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 16px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--zerops-status-off-surface);
-  color: var(--muted-foreground);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  line-height: 16px;
-  text-transform: uppercase;
-}
-
-.ov-chip-badge[data-level="full"] {
-  background: var(--zerops-status-ok-surface);
-  color: var(--zerops-status-ok-text);
-}
-
-.ov-chip-badge[data-level="basic"] {
-  background: var(--zerops-status-busy-surface);
-  color: var(--zerops-status-busy-text);
-}
-
-.ov-chip-badge[data-level="mixed"] {
-  box-shadow: inset 0 0 0 1px var(--ov-rule);
-  background: transparent;
-}
-
 .ov-chip-slot {
   display: grid;
 }
@@ -7511,37 +7461,8 @@ a.ov-card-site:hover {
   padding: 0 6px 6px;
 }
 
-.ov-pick-row {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto auto;
-  column-gap: 10px;
-  align-items: center;
-  padding: 6px;
-  border-radius: 10px;
-}
-
-.ov-pick-row[data-ticked] {
+.ov-pick-list > [data-ticked] {
   background: var(--ov-hover);
-}
-
-.ov-pick-text {
-  display: grid;
-  min-width: 0;
-}
-
-.ov-pick-name {
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ov-pick-role {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 16px;
 }
 
 .ov-pick-level {
@@ -7561,13 +7482,6 @@ a.ov-card-site:hover {
   display: grid;
   padding: 10px 12px 12px;
   border-top: 1px solid var(--ov-rule);
-}
-
-/* A project kept from someone whose role reaches every project: no fill, a dashed edge. */
-.ov-chip-badge[data-level="hidden"] {
-  box-shadow: inset 0 0 0 1px var(--ov-rule);
-  background: transparent;
-  color: var(--muted-foreground);
 }
 
 /* A chip's face leads to the person's own Team page. */
@@ -7608,19 +7522,6 @@ a.ov-chip-who:focus-visible {
 .tm-team {
   display: grid;
   gap: 20px;
-}
-
-.tm-team-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tm-team-count {
-  margin-inline-end: 6px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  white-space: nowrap;
 }
 
 .tm-team-search {
@@ -7730,31 +7631,6 @@ a.ov-chip-who:focus-visible {
   width: 100%;
   max-width: 560px;
   margin: 0 auto;
-}
-
-.tm-head {
-  display: grid;
-  justify-items: center;
-  gap: 2px;
-  text-align: center;
-}
-
-.tm-head > [data-zerops-primitive="avatar"] {
-  margin-bottom: 14px;
-}
-
-.tm-head-name {
-  color: var(--foreground);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 28px;
-}
-
-.tm-head-line {
-  color: var(--muted-foreground);
-  font-size: 14px;
-  line-height: 20px;
 }
 
 .tm-section {
@@ -8061,6 +7937,30 @@ label.tm-advanced-row:not([data-disabled]) {
 .tm-field {
   display: grid;
   gap: 6px;
+}
+
+/* An invitation's projects: one lifted list, a row per project, its tick where a face stands. */
+.tm-invite-projects {
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--ov-lift);
+}
+
+.tm-invite-project {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.tm-invite-project:hover {
+  background: var(--ov-hover);
 }
 
 /* *Add a Mate* at the foot of a project page's Mates: a row the size of a folded one, its plus
@@ -8439,13 +8339,6 @@ label.tm-advanced-row:not([data-disabled]) {
   display: none;
 }
 
-.ov-panel-acts .ov-btn {
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 13px;
-}
-
 /* A card's sections: on the card itself, a hairline over each. */
 .ov-sec {
   display: grid;
@@ -8568,44 +8461,6 @@ label.tm-advanced-row:not([data-disabled]) {
   margin-top: -6px;
 }
 
-.ov-filter {
-  display: inline-flex;
-  height: 30px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 12px;
-  border-radius: 999px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong),
-    scale 160ms var(--ease-out-strong);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .ov-filter:hover {
-    background: color-mix(in oklab, var(--foreground) 5%, transparent);
-    color: var(--foreground);
-  }
-}
-
-.ov-filter:active {
-  scale: 0.96;
-}
-
-.ov-filter[data-current] {
-  background: color-mix(in oklab, var(--foreground) 8%, transparent);
-  color: var(--foreground);
-}
-
-.ov-filter:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
 .ov-filter-count {
   min-width: 18px;
   height: 18px;
@@ -8620,50 +8475,12 @@ label.tm-advanced-row:not([data-disabled]) {
   font-variant-numeric: tabular-nums;
 }
 
-.ov-filter[data-show="waiting"] .ov-filter-count {
+[data-show="waiting"] > .ov-filter-count {
   background: var(--zerops-status-attention-surface);
   color: var(--zerops-status-attention-text);
 }
 
 /* A filter that leaves nothing: a calm face, what it would show, and the way back. */
-.ov-filter-empty {
-  display: flex;
-  max-width: 380px;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 40px 4px;
-}
-
-.ov-filter-empty-title {
-  margin-top: 8px;
-  color: var(--foreground);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 22px;
-}
-
-.ov-filter-empty-line {
-  color: var(--muted-foreground);
-  font-size: 14px;
-  line-height: 20px;
-  text-wrap: pretty;
-}
-
-.ov-filter-empty-back {
-  margin-top: 6px;
-  color: var(--primary);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .ov-filter-empty-back:hover {
-    text-decoration: underline 1px;
-    text-underline-offset: 3px;
-  }
-}
-
 /* A place not set up yet: its way to be, where the person may set it up. */
 .ov-setup {
   display: inline-flex;
@@ -8871,7 +8688,6 @@ label.tm-advanced-row:not([data-disabled]) {
 
 @media (prefers-reduced-motion: reduce) {
   .ov-mate,
-  .ov-btn,
   .ov-nav,
   .ov-rail,
   .ov-fold,
@@ -8879,7 +8695,6 @@ label.tm-advanced-row:not([data-disabled]) {
     transition: opacity 150ms linear;
   }
 
-  .ov-btn:active,
   .ov-nav:active {
     scale: none;
   }
@@ -9959,24 +9774,6 @@ button.run-bar:focus-visible {
   gap: 6px;
 }
 /* Blue is something to click (S3): a text action, never a filled button. */
-.run-result-action {
-  padding: 3px 8px;
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-  color: var(--color-info-foreground);
-  transition: background-color 150ms ease;
-}
-.run-result-action:hover {
-  background: color-mix(in oklab, var(--color-info-foreground) 10%, transparent);
-}
-/* *Try it* held while there is nothing it can open yet: another crewmate's work on dev. */
-.run-result-action:disabled {
-  opacity: 0.5;
-  cursor: default;
-  background: none;
-}
 .run-result-open {
   display: flex;
   align-items: center;
@@ -9993,7 +9790,6 @@ button.run-bar:focus-visible {
   background: var(--color-accent);
   color: var(--color-foreground);
 }
-.run-result-action:focus-visible,
 .run-result-files:focus-visible,
 .run-result-open:focus-visible,
 .run-result-tile:focus-visible {
@@ -10274,41 +10070,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 /* C3: the one blue button on the composer's top — Review, Approve, Save to
    vault — blue is for what can be clicked (S3), and the ask around it stays
    neutral. */
-.composer-top-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  /* 30 px on one line; a provider's long label wraps inside it. */
-  min-height: 30px;
-  padding: 6px 12px;
-  border-radius: 9px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-size: var(--text-line);
-  font-weight: 500;
-  line-height: 18px;
-  white-space: nowrap;
-  cursor: pointer;
-  outline: none;
-  transition:
-    transform 120ms cubic-bezier(0.23, 1, 0.32, 1),
-    filter 150ms ease;
-}
-
-.composer-top-button:hover:not(:disabled) {
-  filter: brightness(1.06);
-}
-
-.composer-top-button:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-.composer-top-button:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
 /* The strip's ×: quiet beside Review, the one button that asks for anything. */
 .composer-top-dismiss {
   display: grid;
@@ -10451,22 +10212,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   [data-chat-composer-overlay]:has([data-composer-full])::before {
     animation: none;
     transition: none;
-  }
-}
-
-.composer-top-button:focus-visible {
-  box-shadow:
-    0 0 0 2px var(--card),
-    0 0 0 4px var(--ring);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .composer-top-button {
-    transition: filter 150ms ease;
-  }
-
-  .composer-top-button:active:not(:disabled) {
-    transform: none;
   }
 }
 
@@ -11494,12 +11239,9 @@ a.message-file:focus-visible {
     scale: none;
     translate: none;
   }
-  /* Fades only: a file's chevron turns and the button gives without moving. */
+  /* Fades only: a file's chevron turns without moving. */
   .rv-chev {
     transition: none;
-  }
-  .rv-btn1:active {
-    transform: none;
   }
 }
 /* The sheet's top line: whose it is — a Mate's face and "Sage · Tea Shop", or the project — its
@@ -11562,13 +11304,9 @@ a.message-file:focus-visible {
 }
 .rv-x:focus-visible,
 .rv-file:focus-visible,
-.rv-textbtn:focus-visible,
 .rv-link:focus-visible,
 .rv-fold-row:focus-visible,
-.rv-try:focus-visible,
-.rv-quiet:focus-visible,
-.rv-btn1:focus-visible,
-.rv-btn2:focus-visible {
+.rv-try:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
@@ -11660,7 +11398,7 @@ a.message-file:focus-visible {
 .rv-why[data-tone="failed"] {
   background: color-mix(in oklab, var(--zerops-status-failed) 10%, transparent);
 }
-.rv-why .rv-textbtn {
+.rv-why > [data-slot="button"] {
   margin: -3px 0 -3px -8px;
 }
 
@@ -11699,20 +11437,6 @@ a.message-file:focus-visible {
 }
 
 /* Blue is only for what can be clicked. */
-.rv-textbtn {
-  padding: 3px 8px;
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-  white-space: nowrap;
-  color: var(--info-foreground);
-  cursor: pointer;
-  transition: background-color 150ms ease;
-}
-.rv-textbtn:hover {
-  background: color-mix(in oklab, var(--info-foreground) 10%, transparent);
-}
 .rv-link {
   color: var(--info-foreground);
   text-decoration: none;
@@ -12103,9 +11827,6 @@ a.message-file:focus-visible {
   line-height: 20px;
   color: var(--muted-foreground);
 }
-.rv-diff-more {
-  margin: 4px 0 2px 60px;
-}
 
 /* What could not be read, where it would have stood, with Try again: amber, it didn't go
    through; a failure never blanks its section. */
@@ -12127,7 +11848,7 @@ a.message-file:focus-visible {
 .rv-failed-why {
   color: var(--muted-foreground);
 }
-.rv-failed .rv-textbtn {
+.rv-failed > [data-slot="button"] {
   margin: 0 -8px 0 auto;
 }
 .rv-files .rv-failed {
@@ -12137,12 +11858,6 @@ a.message-file:focus-visible {
   padding: 0 6px 0 60px;
 }
 /* A fold's way open: its words on the edge of what it opens. */
-.rv-fold {
-  margin: 4px 0 0 -8px;
-}
-.rv-fold[data-fold="remarks"] {
-  margin: 0 0 0 22px;
-}
 
 /* The conversation: marks in a 20 px column, words beside them; then the one box. */
 .rv-remarks {
@@ -12162,13 +11877,6 @@ a.message-file:focus-visible {
 }
 .rv-remark > :first-child {
   grid-row: 1 / span 2;
-}
-.rv-remark-avatar {
-  width: 20px;
-  height: 20px;
-  font-size: 12px;
-  line-height: 1;
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
 }
 .rv-remark-who {
   display: flex;
@@ -12582,53 +12290,6 @@ button.rv-relrow:hover .rv-relrow-go {
   color: var(--muted-foreground);
   text-wrap: pretty;
 }
-.rv-foot .rv-btn1,
-.rv-foot .rv-btn2 {
-  height: 38px;
-  padding: 0 16px;
-  border-radius: 12px;
-  font-size: 14px;
-}
-.rv-foot .rv-btn1 {
-  color: var(--background);
-  background: var(--foreground);
-}
-.rv-foot .rv-btn1 kbd {
-  background: color-mix(in oklab, var(--background) 18%, transparent);
-}
-.rv-foot .rv-btn1:disabled {
-  color: var(--muted-foreground);
-  background: color-mix(in oklab, var(--foreground) 10%, transparent);
-}
-.rv-foot .rv-btn2 {
-  box-shadow: none;
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-}
-.rv-foot .rv-btn2:hover {
-  background: color-mix(in oklab, var(--foreground) 10%, transparent);
-}
-/* A quiet word after the buttons: "Close without merging…", "Cancel". */
-.rv-quiet {
-  height: 30px;
-  padding: 0 8px;
-  border-radius: 8px;
-  font-size: 13px;
-  line-height: 18px;
-  white-space: nowrap;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition:
-    background-color 150ms ease,
-    color 150ms ease;
-}
-.rv-quiet:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-  color: var(--foreground);
-}
-.rv-quiet:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 /* The sheet's steps — a release and a change it carries — fill its height. */
 .rv-viewport > .rv > .rv-steps,
 .rv-viewport > .rv .rv-step[data-at="here"] {
@@ -12639,74 +12300,15 @@ button.rv-relrow:hover .rv-relrow-go {
   bottom: 0;
   max-height: none;
 }
-.rv-btn2 {
-  display: inline-flex;
-  height: 34px;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--foreground);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
-  cursor: pointer;
-  transition: background-color 150ms ease;
-}
-.rv-btn2:hover {
-  background: color-mix(in oklab, var(--foreground) 5%, transparent);
-}
-.rv-btn1 {
-  display: inline-flex;
-  height: 34px;
-  flex: none;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px 0 14px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--primary-foreground);
-  background: var(--primary);
-  cursor: pointer;
-  transition:
-    transform 120ms var(--ease-out-strong),
-    filter 150ms ease;
-}
-.rv-btn1:hover {
-  filter: brightness(1.06);
-}
-.rv-btn1:active {
-  transform: scale(0.97);
-}
-.rv-btn1 svg {
-  width: 14px;
-  height: 14px;
-}
-.rv-btn1 kbd {
-  padding: 2px 5px;
-  border-radius: 5px;
+/* The primary's keys: a chip in the button's own ink, enabled or waiting. */
+.rv-keys {
+  padding: 2px 4px;
+  border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
-  line-height: 14px;
-  background: color-mix(in oklab, var(--primary-foreground) 18%, transparent);
-}
-.rv-btn1:disabled {
-  color: var(--muted-foreground);
-  background: color-mix(in oklab, var(--foreground) 10%, transparent);
-  cursor: not-allowed;
-  filter: none;
-  transform: none;
-}
-/* A button waiting to take its keys keeps them, in its muted ink: nothing moves once it can. */
-.rv-btn1:disabled kbd {
-  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+  line-height: 16px;
+  background: color-mix(in oklab, currentColor 18%, transparent);
 }
 /* ==== end of review ==== */
 
@@ -13261,8 +12863,8 @@ button.rv-relrow:hover .rv-relrow-go {
 
 .arrival-glyph-you {
   display: flex;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   overflow: hidden;
   border-radius: 9999px;
   box-shadow:
@@ -13498,30 +13100,6 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 /* A quiet press inside the sign-in: muted, underlined, 13 px. */
-.arrival-link {
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 18px;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
-  text-underline-offset: 3px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    color 150ms var(--ease-out-strong),
-    text-decoration-color 150ms var(--ease-out-strong);
-}
-
-.arrival-link:hover {
-  color: var(--foreground);
-  text-decoration-color: currentColor;
-}
-
-.arrival-link:focus-visible {
-  border-radius: 3px;
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
 
 /* Claude's code: pasted here, sent on paste. */
 .arrival-input {
@@ -13869,119 +13447,6 @@ button.rv-relrow:hover .rv-relrow-go {
     height: 7px;
     border-radius: 9999px;
     background: var(--zerops-status-attention);
-  }
-
-  /* A row's presses: the first filled in the action blue, the rest its words. */
-  .crew-press {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    height: 28px;
-    padding: 0 14px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 18px;
-    white-space: nowrap;
-    background: var(--message-action);
-    color: var(--message-action-foreground);
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms ease,
-      transform 150ms var(--ease-out-strong);
-  }
-
-  .crew-press:hover {
-    background: var(--message-action-hover);
-  }
-
-  .crew-press:active {
-    transform: scale(0.97);
-  }
-
-  .crew-press[data-quiet] {
-    padding: 0 10px;
-    background: transparent;
-    color: var(--crew-act);
-  }
-
-  .crew-press[data-quiet]:hover {
-    background: color-mix(in oklab, var(--crew-act) 10%, transparent);
-  }
-
-  .dark .crew-press[data-quiet]:hover {
-    background: color-mix(in oklab, var(--crew-act) 14%, transparent);
-  }
-
-  .crew-press[data-muted] {
-    padding: 0 12px;
-    background: transparent;
-    color: var(--muted-foreground);
-  }
-
-  .crew-press[data-muted]:hover {
-    background: var(--sidebar-row-hover);
-  }
-
-  .crew-press[data-failed] {
-    padding: 0 4px;
-    background: transparent;
-    color: var(--destructive-foreground);
-  }
-
-  .crew-press:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  .crew-press:disabled {
-    background: color-mix(in oklab, var(--foreground) 5.5%, transparent);
-    color: var(--muted-foreground);
-    cursor: default;
-  }
-
-  .crew-press:is([data-quiet], [data-muted], [data-failed]):disabled {
-    background: transparent;
-    opacity: 0.6;
-  }
-
-  .crew-press[data-size="view"] {
-    height: 32px;
-    border-radius: 9px;
-  }
-
-  /* At a phone's width a row's presses are a finger's 32, as a view's are. */
-  @container (width < 28rem) {
-    [data-crew-rows] .crew-press {
-      height: 32px;
-      padding: 0 16px;
-      border-radius: 9px;
-    }
-
-    [data-crew-rows] .crew-press[data-quiet] {
-      padding: 0 12px;
-    }
-  }
-
-  /* A blue word in a line of text: Stop, Keep going…, Change, Ask Fen to ship them. */
-  .crew-textbtn {
-    flex: none;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: inherit;
-    color: var(--crew-act);
-    cursor: pointer;
-    outline: none;
-    border-radius: 4px;
-  }
-
-  .crew-textbtn:hover {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-
-  .crew-textbtn:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
   }
 
   /* The composer, at the top: a 48 px pill, the tab's only white surface. */

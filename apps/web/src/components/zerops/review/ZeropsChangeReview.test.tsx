@@ -442,7 +442,7 @@ describe("ChangeReviewView: an open change", () => {
     });
     expect(textOf(html)).toContain("Nothing to merge main already has all of it");
     expect(footOf(html)).toContain("Nothing to deliver: main already has this.");
-    expect(footOf(html)).not.toContain("Squash-merges");
+    expect(footOf(html)).not.toContain("Adds this change");
     expect(footOf(html)).not.toContain('data-zerops-primary-action="Merge"');
     expect(footOf(html)).toContain(">Close without merging…</button>");
   });
@@ -496,7 +496,7 @@ describe("ChangeReviewView: an open change", () => {
         "Parts 3 web · webstage · from aaaaaaa, the change is at ccccccc · verified api · apistage · from ccccccc · verified worker · workerstage · deploy failed",
       );
       expect(textOf(footOf(html))).toContain(
-        "Not tried at this change: web (older commit), worker (failed). Squash-merges",
+        "Not tried at this change: web (older commit), worker (failed). Adds this change",
       );
       expect(html).toMatch(/data-safe="true" data-zerops-primary-action="Merge"/u);
     });
@@ -509,7 +509,7 @@ describe("ChangeReviewView: an open change", () => {
     });
     expect(footOf(html)).not.toContain("<button");
     expect(textOf(html)).toContain(
-      "You need at least Basic user access to one of this project's Zerops projects to do this.",
+      "You need more than Read access to one of this project's Zerops projects to do this.",
     );
   });
 
@@ -824,12 +824,12 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
       close: false,
       why: {
         merge:
-          "You need at least Basic user access to one of this project's Zerops projects to do this.",
+          "You need more than Read access to one of this project's Zerops projects to do this.",
       },
     };
     await reviewed((host) => {
       expect(host.textContent).toContain("src/api.ts");
-      expect(host.textContent).toContain("You need at least Basic user access");
+      expect(host.textContent).toContain("You need more than Read access");
       expect(buttonsOf(host, "Merge")).toHaveLength(0);
       expect(account.verbs).toEqual([]);
     });
@@ -928,7 +928,7 @@ describe("the one question after the first merge", () => {
     const text = textOf(render(FIRST, [changed("a.ts")], asking));
     expect(text).toContain("Your code is on main. No stage or production runs it yet");
     expect(text).toContain("Add stage");
-    expect(text).toContain("Add production");
+    expect(text).toContain("Put it live");
     expect(text).toContain("Not now");
   });
 

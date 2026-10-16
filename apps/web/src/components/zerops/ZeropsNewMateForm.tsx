@@ -198,10 +198,7 @@ export function ZeropsNewMateForm({
     >
       <DialogHeader>
         <DialogTitle>{`Add a project Mate to ${groupName}`}</DialogTitle>
-        <p className="text-sm text-muted-foreground">
-          Works on this project. For your personal Mate across the organization, use Set up your
-          Chief.
-        </p>
+        <p className="text-sm text-muted-foreground">Works on this project only.</p>
       </DialogHeader>
       {/* Why the project takes no Mate now, where it takes none: its room opens as the form
           gives its own back below, so the dialog's height follows in one move. */}
@@ -284,12 +281,7 @@ export function ZeropsNewMateForm({
                   },
                 ]}
               />
-              {access === undefined ? null : (
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-sm">Project access</span>
-                  {access(setUserRoles)}
-                </div>
-              )}
+              {access === undefined ? null : access(setUserRoles)}
               {forecast}
             </div>
           </DialogPanel>

@@ -369,7 +369,7 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       want: {
         done: false,
         line: "Finishing its setup…",
-        steps: ["Registered:done", "Container:active", "Closed off:waiting"],
+        steps: ["Registered:done", "Its computer:active", "Private network ready:waiting"],
       },
     },
     {
@@ -378,7 +378,7 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       want: {
         done: false,
         line: "Finishing its setup…",
-        steps: ["Registered:done", "Container:done", "Closed off:active"],
+        steps: ["Registered:done", "Its computer:done", "Private network ready:active"],
       },
     },
     {
@@ -387,7 +387,7 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       want: {
         done: true,
         line: "Its setup is finished. It comes up on its own now, with no browser needed.",
-        steps: ["Registered:done", "Container:done", "Closed off:done"],
+        steps: ["Registered:done", "Its computer:done", "Private network ready:done"],
       },
     },
     {
@@ -396,7 +396,7 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       want: {
         done: true,
         line: "Its setup is finished. It comes up on its own now, with no browser needed. It still needs an owner to register it.",
-        steps: ["Registered:failed", "Container:done", "Closed off:done"],
+        steps: ["Registered:failed", "Its computer:done", "Private network ready:done"],
       },
     },
   ])("$case", ({ made, want }) => {
@@ -427,8 +427,8 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
     progressPress("p-hugo", progress(["done", "running", "queued"]));
     expect(drawn(finishSetupView(readMatePress("p-hugo")!))?.steps).toEqual([
       "Registered:done",
-      "Container:active",
-      "Closed off:waiting",
+      "Its computer:active",
+      "Private network ready:waiting",
     ]);
     forgetPress("p-hugo");
     // A press nobody holds keeps nothing.

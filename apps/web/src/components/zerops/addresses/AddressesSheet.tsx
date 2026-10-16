@@ -173,7 +173,7 @@ function SheetHeader({
       {places.length > 1 ? (
         <Menu>
           <MenuTrigger
-            render={<Button aria-label={`Place: ${current}`} size="sm" variant="outline" />}
+            render={<Button aria-label={`Place: ${current}`} size="sm" variant="secondary" />}
           >
             {current}
             <ChevronDownIcon />
@@ -314,8 +314,8 @@ function IpSection({
                 <Button
                   disabled={ctx.hold}
                   onClick={() => setMode({ kind: "ipv4" })}
-                  size="xs"
-                  variant="outline"
+                  size="sm"
+                  variant="secondary"
                 >
                   Get one
                 </Button>
@@ -383,7 +383,7 @@ const paidUntil = (validTill: string | undefined) => {
 
 function OpenInZerops({ url }: { readonly url: string }): ReactNode {
   return (
-    <Button render={<a href={url} rel="noreferrer" target="_blank" />} size="xs" variant="link">
+    <Button render={<a href={url} rel="noreferrer" target="_blank" />} size="sm" variant="link">
       <ZeropsMark className="size-3.25" />
       Open in Zerops
     </Button>

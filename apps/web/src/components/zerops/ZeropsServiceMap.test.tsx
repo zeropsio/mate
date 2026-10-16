@@ -170,7 +170,7 @@ describe("ZeropsServiceMap — the card", () => {
     expect(dataAt).toBeGreaterThan(runtimesAt);
     expect(infrastructureAt).toBeGreaterThan(dataAt);
     expect(html.indexOf('data-zerops-primitive="liveness-line"')).toBeLessThan(runtimesAt);
-    expect(html.match(/data-zerops-primitive="status-dot"/gu)).toHaveLength(4);
+    expect(html.match(/data-dot=""/gu)).toHaveLength(4);
     expect(html).toContain('data-zerops-primitive="mint-panel"');
     expect(html).toContain("Zerops Control Plane");
     expect(html).toContain("kanbandev");
@@ -363,7 +363,7 @@ describe("ZeropsServiceMap — the card", () => {
     expect(html).toContain('data-zerops-service-tone="outline"');
     // Settled but not running is the off tone, never a green dot.
     expect(html).toContain('data-zerops-service-tone="muted"');
-    expect(html).toMatch(/data-zerops-service-tone="muted"[^>]*data-zerops-status-tone="off"/u);
+    expect(html).toMatch(/data-tone="neutral"[^>]*data-zerops-service-tone="muted"/u);
   });
 
   it("counts a group only when there is more than one of them", () => {

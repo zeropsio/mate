@@ -86,6 +86,30 @@ export function draftPrefill(input: DraftInput): ReadonlyArray<ProjectGrant> | n
   });
 }
 
+/**
+ * The prefill as a creation that asks nothing waits for it: the people read, the grants to send, or
+ * a read that failed — a new project is never made without the people who reach the app.
+ */
+export type DraftPeople =
+  | { readonly kind: "reading" }
+  | { readonly kind: "ready"; readonly userRoles: ReadonlyArray<ProjectGrant> }
+  | { readonly kind: "failed" };
+
+export function draftPeople(input: DraftInput): DraftPeople {
+  const { members, app } = input;
+  // Someone the organization does not show its members to starts with no one but themselves.
+  if (!members.known && !members.refused)
+    return members.status === "failed" ? { kind: "failed" } : { kind: "reading" };
+  const places = app.projects.filter(({ kind }) => kind !== "mate");
+  const unread = (places.length > 0 ? places : app.projects).map(
+    ({ projectId }) => app.grants[projectId],
+  );
+  if (unread.some((read) => read?.grants === undefined && read?.status === "failed"))
+    return { kind: "failed" };
+  const userRoles = draftPrefill(input);
+  return userRoles === null ? { kind: "reading" } : { kind: "ready", userRoles };
+}
+
 const grantOf = (read: ProjectGrantsRead | undefined, clientUserId: string) =>
   read?.grants?.find((entry) => entry.clientUserId === clientUserId)?.roleCode;
 
@@ -179,5 +203,17 @@ export function draftChoose(
     list,
     clientUserId,
     roleCode === null || roleGives(orgRole, roleCode) ? null : roleCode,
+  );
+}
+
+/**
+ * Whether a creation dialog asks who reaches the new project: only where someone besides its
+ * creator is on it or can be added — a person alone in the organization is asked nothing, and
+ * nothing is drawn while the people are read.
+ */
+export function draftSpeaks(view: ProjectPeopleView): boolean {
+  return (
+    view.kind === "people" &&
+    (view.people.length > 1 || (view.invite && view.candidates.length > 0))
   );
 }

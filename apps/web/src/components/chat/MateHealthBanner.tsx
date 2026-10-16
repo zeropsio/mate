@@ -23,8 +23,8 @@ export function mateHealthBannerItem(input: {
           actions: (
             <Button
               render={<a href={input.projectUrl} target="_blank" rel="noreferrer" />}
-              size="compact"
-              variant="pill"
+              size="md"
+              variant="primary"
             >
               Open in Zerops
             </Button>

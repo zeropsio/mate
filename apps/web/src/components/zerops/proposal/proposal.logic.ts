@@ -7,6 +7,7 @@
 import type {
   DomainFace,
   PlaceAddresses,
+  ProjectGrantsRead,
   VaultScopeRef,
   VaultView,
   VaultWrite,
@@ -16,12 +17,18 @@ import type {
   HqProposalDecisionWrite,
 } from "@t3tools/client-runtime/zerops/hq";
 import type {
+  ZeropsAccessLevel,
   ZeropsChiefMessageParams,
   ZeropsMessageProposalParams,
   ZeropsProposal,
 } from "@t3tools/client-runtime/zerops/model";
 
+import { isTokenMember } from "@t3tools/client-runtime/zerops/mateAccess";
+import type { ProjectAccessChange } from "@t3tools/client-runtime/zerops/projectAccess";
+import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
+
 import { recordsOf } from "../addresses/addresses.logic";
+import { accessChanges } from "../projects/projectPeople.logic";
 
 /** What the person decided of one proposal, and how what they approved ended. */
 export type ProposalDecision =
@@ -245,6 +252,10 @@ export function proposalOutcomeWords(
       const names = domainNames(proposal.params.domains);
       return running ? `Adding ${names}…` : `Added ${names}.`;
     }
+    case "access.set": {
+      const place = proposal.projectName ?? "the project";
+      return running ? `Changing access to ${place}…` : `Access to ${place} changed.`;
+    }
   }
 }
 
@@ -376,6 +387,11 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
         : within(`${proposal.serviceName ?? "The service"}'s own`);
     case "domain.add":
       return `→ ${proposal.serviceName ?? "its service"} · port ${proposal.params.port}`;
+    case "access.set":
+      // An application's places are one place to the person: never its projects one by one.
+      return proposal.params.projects.length > 1
+        ? `All of ${project ?? "the application"}: its environments and Mates`
+        : (proposal.params.projects[0]?.name ?? project ?? null);
     case "mate.message":
     case "chief.message":
       return null;
@@ -397,4 +413,185 @@ export function proposalRecipient<
     here.find((identity) => identity.name.trim().toLowerCase() === wanted) ??
     (here.length === 1 ? here[0] : undefined)
   );
+}
+
+type AccessProposal = Extract<ZeropsProposal, { kind: "access.set" }>;
+
+/** An organization member as the access card finds people among them. */
+export interface AccessMember {
+  /** The membership (`clientUser`) id each grant is written on. */
+  readonly id: string;
+  readonly userId?: string | undefined;
+  readonly roleCode?: string | undefined;
+  readonly canCreateProjects?: boolean | undefined;
+  readonly user?:
+    | {
+        readonly id?: string | undefined;
+        readonly fullName?: string | undefined;
+        readonly firstName?: string | undefined;
+        readonly email?: string | undefined;
+      }
+    | undefined;
+}
+
+/** What approving an access proposal writes, or why Approve waits. */
+export type AccessProposalPlan =
+  | {
+      readonly kind: "ready";
+      readonly changes: ReadonlyArray<ProjectAccessChange>;
+      /** The projects it names that are never written, each saying why. */
+      readonly dropped: ReadonlyArray<string>;
+      /** What it gives, one line per person and project, with what changes from today. */
+      readonly lines: ReadonlyArray<string>;
+    }
+  | { readonly kind: "held"; readonly words: string };
+
+const folded = (text: string | undefined) => text?.trim().replace(/\s+/gu, " ").toLowerCase();
+
+/**
+ * The members a name means — people only, never HQ's or anyone's token: an address is one
+ * member's; a name is the members of that full name, else of that first name.
+ */
+function membersNamed(
+  members: ReadonlyArray<AccessMember>,
+  person: string,
+): ReadonlyArray<AccessMember> {
+  const list = members.filter((member) => !isTokenMember(member));
+  const wanted = folded(person);
+  if (person.includes("@")) return list.filter((one) => folded(one.user?.email) === wanted);
+  const full = list.filter((one) => folded(one.user?.fullName) === wanted);
+  return full.length > 0 ? full : list.filter((one) => folded(one.user?.firstName) === wanted);
+}
+
+/** A level as an access change's card says it. */
+const LEVEL_SAYS: Readonly<Record<ZeropsAccessLevel, string>> = {
+  full: "Full",
+  read: "Read",
+  none: "Hidden",
+  remove: "Their role's access",
+};
+
+/** Each person the Mate named at their level on each project, as it asked: while it is read. */
+export function accessAskLines(proposal: AccessProposal): ReadonlyArray<string> {
+  return proposal.params.people.flatMap(({ person, level }) =>
+    proposal.params.projects.map(({ name }) => `${person} · ${LEVEL_SAYS[level]} on ${name}`),
+  );
+}
+
+/** How much a role reaches on a project: hidden, reads, works, everything. */
+const reach = (role: string | undefined) =>
+  roleAtLeast(role, "ADMIN")
+    ? 3
+    : roleAtLeast(role, "BASIC_USER")
+      ? 2
+      : roleAtLeast(role, "READ_ONLY")
+        ? 1
+        : 0;
+
+const LEVEL_REACH: Readonly<Record<Exclude<ZeropsAccessLevel, "remove">, number>> = {
+  full: 3,
+  read: 1,
+  none: 0,
+};
+
+/** What a level changes from what the person reaches there today. */
+function changeWord(today: number, after: number): string {
+  if (today === after) return "unchanged";
+  if (today === 0) return "new";
+  if (after === 0) return "removed";
+  return after > today ? "raised" : "lowered";
+}
+
+/** A Guest — no role of their own, creating nothing — only ever reads. */
+const isGuest = (member: AccessMember) =>
+  asOrgRole(member.roleCode) === "NO_ACCESS" && member.canCreateProjects !== true;
+
+/**
+ * An access proposal against the organization: each person the Chief named found by their address
+ * or name among its people, and their level written on every project the proposal names that the
+ * organization holds — never the Headquarters project, never a Mate they own (as an application's
+ * People write it), and a Guest at Read at most. Approve waits while the members, the projects or
+ * whose each Mate is are read, and for a name that finds nobody or several.
+ */
+export function accessProposalPlan(input: {
+  readonly proposal: AccessProposal;
+  readonly members: { readonly known: boolean; readonly list: ReadonlyArray<AccessMember> };
+  /**
+   * Whose each project's Mate is, as HQ names its owner: projectId → their user id, `null` for
+   * nobody's; `undefined` while HQ has not said.
+   */
+  readonly owners: Readonly<Record<string, string | null | undefined>>;
+  /** The organization's projects, id → name; `undefined` while they are read. */
+  readonly projects: ReadonlyMap<string, string> | undefined;
+  /** The Headquarters projects (`hqProjectsOf`): never given to anyone. */
+  readonly hq: ReadonlySet<string>;
+  /** Each project's own grants as far as read: what each person reaches there today. */
+  readonly grants: Readonly<Record<string, ProjectGrantsRead | undefined>>;
+}): AccessProposalPlan {
+  if (!input.members.known) return { kind: "held", words: "Reading your organization's members…" };
+  const inventory = input.projects;
+  if (inventory === undefined)
+    return { kind: "held", words: "Reading your organization's projects…" };
+  const dropped: Array<string> = [];
+  const projectIds = input.proposal.params.projects.flatMap(({ id, name }) => {
+    if (input.hq.has(id)) {
+      dropped.push(`${inventory.get(id) ?? name}: the Headquarters project is never given`);
+      return [];
+    }
+    if (!inventory.has(id)) {
+      dropped.push(`${name}: not a project in your organization`);
+      return [];
+    }
+    return [id];
+  });
+  if (projectIds.length === 0)
+    return { kind: "held", words: "None of these projects can be given from here." };
+  if (projectIds.some((id) => input.owners[id] === undefined))
+    return { kind: "held", words: "Reading who owns these Mates…" };
+  const changes: Array<ProjectAccessChange> = [];
+  const lines: Array<string> = [];
+  for (const { person, level } of input.proposal.params.people) {
+    const found = membersNamed(input.members.list, person);
+    if (found.length === 0)
+      return {
+        kind: "held",
+        words: `No one in your organization is ${person}. Invite them from Team, then ask again.`,
+      };
+    if (found.length > 1)
+      return {
+        kind: "held",
+        words: `Several people here are ${person}. Ask again with their email address.`,
+      };
+    const member = found[0]!;
+    const userId = member.user?.id ?? member.userId;
+    const owned = projectIds.filter((id) => userId !== undefined && input.owners[id] === userId);
+    const capped = level === "full" && isGuest(member);
+    const given = capped ? "read" : level;
+    changes.push(...accessChanges({ clientUserId: member.id, projectIds, owned, choice: given }));
+    const who = member.user?.fullName?.trim() || person;
+    for (const projectId of projectIds) {
+      const project = inventory.get(projectId) ?? projectId;
+      if (owned.includes(projectId)) {
+        lines.push(`${who} · ${project} stays as it is: their own Mate`);
+        continue;
+      }
+      const read = input.grants[projectId];
+      const today =
+        read?.status === "ready"
+          ? reach(
+              read.grants?.find((grant) => grant.clientUserId === member.id)?.roleCode ??
+                member.roleCode,
+            )
+          : undefined;
+      const after = given === "remove" ? reach(member.roleCode) : LEVEL_REACH[given];
+      lines.push(
+        [
+          `${who} · ${LEVEL_SAYS[given]} on ${project}`,
+          ...(today === undefined ? [] : [changeWord(today, after)]),
+          ...(capped ? ["a guest only reads"] : []),
+        ].join(" · "),
+      );
+    }
+  }
+  return { kind: "ready", changes, dropped, lines };
 }

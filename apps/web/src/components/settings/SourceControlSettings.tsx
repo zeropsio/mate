@@ -285,12 +285,12 @@ function DiscoveryItemRow({
               <span className="truncate text-sm font-medium text-foreground">{item.label}</span>
               {version ? <code className="text-xs text-muted-foreground">{version}</code> : null}
               {isVcsNotReady(item) ? (
-                <Badge variant="warning" size="sm">
+                <Badge tone="warning" size="sm">
                   Coming Soon
                 </Badge>
               ) : null}
               {authStatus?.badge ? (
-                <Badge variant={authStatus.badge} size="sm">
+                <Badge tone={authStatus.badge} size="sm">
                   {authStatus.label}
                 </Badge>
               ) : null}
@@ -302,8 +302,8 @@ function DiscoveryItemRow({
           <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
             {hasDetails ? (
               <Button
-                size="compact"
-                variant="ghost-muted"
+                size="sm"
+                variant="ghost"
                 onClick={() => setIsExpanded((open) => !open)}
                 aria-expanded={isExpanded}
                 aria-label={`Toggle ${item.label} details`}
@@ -477,13 +477,7 @@ export function EmptySourceControlDiscovery({
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1.5 px-3 text-xs"
-            onClick={onScan}
-            disabled={isPending}
-          >
+          <Button size="sm" variant="secondary" onClick={onScan} disabled={isPending}>
             <RefreshCwIcon className={cn("size-3.5", isPending && "animate-spin")} />
             Scan
           </Button>
@@ -523,8 +517,8 @@ export function SourceControlSettingsPanel() {
       <TooltipTrigger
         render={
           <Button
-            size="icon-micro"
-            variant="ghost-muted"
+            size="icon-sm"
+            variant="ghost"
             onClick={handleScan}
             disabled={discovery.isPending}
             aria-label="Rescan server environment"

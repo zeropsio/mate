@@ -3489,7 +3489,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           <Button
             type="button"
             variant="ghost"
-            size="xs"
+            size="sm"
             aria-label={`Remove ${attachment.name} from this answer`}
             onClick={() => props.questionAttachments?.remove(attachment.id)}
           >
@@ -3499,7 +3499,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             <Button
               type="button"
               variant="ghost"
-              size="xs"
+              size="sm"
               onClick={() => props.questionAttachments?.retry(attachment.id)}
             >
               Retry upload
@@ -3708,7 +3708,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           "Type your own answer, or leave this blank to use the selected option"
                       : prompt.trim() ||
                         (zeropsSignInRequired
-                          ? "Sign in a coding agent to start"
+                          ? "Sign this Mate in to start"
                           : showProviderUnavailable
                             ? "Enable a provider in Settings"
                             : "Ask anything...")}
@@ -3874,7 +3874,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                             : projectSelectionRequired
                               ? "Choose a project above to start a thread"
                               : zeropsSignInRequired
-                                ? "Sign in a coding agent to start"
+                                ? "Sign this Mate in to start"
                                 : showProviderUnavailable
                                   ? "Enable a provider in Settings to send a message"
                                   : phase === "disconnected"
@@ -4014,7 +4014,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           }
                         }}
                         data-chat-provider-unavailable="true"
-                        className="shrink-0 gap-2 px-2 text-secondary-label sm:px-3"
+                        className="shrink-0"
                       >
                         <CircleAlertIcon className="size-4" />
                         {providerSetupInstanceId
@@ -4059,7 +4059,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         keybindings={keybindings}
                         modelOptionsByInstance={modelOptionsByInstance}
                         {...(zeropsSignInRequired
-                          ? { triggerLabelOverride: "Sign in an agent" }
+                          ? { triggerLabelOverride: "Sign this Mate in" }
                           : {})}
                         renderInstancePanel={renderZeropsInstancePanel}
                         terminalOpen={terminalOpen}

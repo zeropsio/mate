@@ -1,4 +1,5 @@
 import { ProviderDriverKind, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
@@ -10,12 +11,14 @@ import { SettingsBreadcrumb } from "~/components/settings/SettingsBreadcrumb";
 import type { OverviewShow } from "~/components/zerops/projects/projectsView.logic";
 import { OverviewFilters } from "~/components/zerops/projects/OverviewFilters";
 import { ZeropsDataBreadcrumbs } from "~/components/zerops/ZeropsDataBreadcrumbs";
+import { Button } from "~/components/ui/button";
+import { Tab, TabStrip } from "~/components/ui/tab-strip";
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 
 import { CensusSpecimen, KitViewer } from "../census";
 import { defineKitSection } from "../kitSection";
-import { SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const noop = () => {};
@@ -128,55 +131,83 @@ function Filters() {
 
 const CLAUDE = ProviderDriverKind.make("claudeAgent");
 
+const PAGES = ["Zerops", "Git", "Vault", "Data", "Files", "Terminal", "Browser", "Agents"] as const;
+
+/** Eight pages in a 30rem strip: the ones its edges cut off are "N more", the + stays in reach. */
+function ManyTabs() {
+  const [active, setActive] = useState<string>("Vault");
+  return (
+    <div className="flex h-10 w-[30rem] items-center border border-border bg-background px-2">
+      <TabStrip
+        action={
+          <Button aria-label="Add a page" size="icon-sm" variant="ghost">
+            <PlusIcon />
+          </Button>
+        }
+        activeId={active}
+        items={PAGES.map((page) => ({ id: page, label: page }))}
+        onSelect={setActive}
+      >
+        {PAGES.map((page) => (
+          <Tab
+            active={page === active}
+            key={page}
+            onClick={() => setActive(page)}
+            render={<button type="button" />}
+            tabId={page}
+          >
+            {page}
+          </Tab>
+        ))}
+      </TabStrip>
+    </div>
+  );
+}
+
+function Chosen() {
+  return (
+    <SpecimenBlock title="Chosen · TabStrip and Tab: filled while open; the cut-off tabs in an N more menu; the action never scrolls away">
+      <SpecimenGrid>
+        <Specimen label={'<TabStrip action items> of <Tab size="sm"> (a panel\'s pages)'}>
+          <ManyTabs />
+        </Specimen>
+        <Specimen label="the side panel's strip (RightPanelTabs on TabStrip)">
+          <SidePanelStrip />
+        </Specimen>
+        <Specimen label={"<Tab size=\"md\"> (a page's own views: the overview's filters)"}>
+          <Filters />
+        </Specimen>
+        <Specimen label={'<TabStrip> of <Tab size="md"> (a provider\'s Models / Configuration)'}>
+          <div className="h-72 w-[40rem] overflow-hidden border border-border">
+            <ProviderInstanceCard
+              driverOption={DRIVER_OPTION_BY_VALUE[CLAUDE]}
+              favoriteModels={[]}
+              hiddenModels={[]}
+              instance={{ driver: CLAUDE }}
+              instanceId={ProviderInstanceId.make("claudeAgent")}
+              liveProvider={undefined}
+              mode="editor"
+              modelOrder={[]}
+              onFavoriteModelsChange={noop}
+              onHiddenModelsChange={noop}
+              onModelOrderChange={noop}
+              onUpdate={noop}
+            />
+          </div>
+        </Specimen>
+      </SpecimenGrid>
+    </SpecimenBlock>
+  );
+}
+
 function TabsAndStrips() {
   return (
     <SpecimenGrid>
-      <CensusSpecimen
-        entry={{ source: "apps/web/src/components/RightPanelTabs.tsx", uses: 3, files: 2 }}
-        label="<RightPanelTabs surfaces activeSurfaceId> (the side panel's tab strip)"
-      >
-        <SidePanelStrip />
-      </CensusSpecimen>
-      <CensusSpecimen
-        entry={{
-          source: "apps/web/src/components/settings/providerSettingsTabs.ts",
-          uses: 3,
-          files: 2,
-        }}
-        label={`<ProviderInstanceCard ${specimenLabel({ mode: "editor" })}> (its Models / Configuration tabs)`}
-      >
-        <div className="h-72 w-[40rem] overflow-hidden border border-border">
-          <ProviderInstanceCard
-            driverOption={DRIVER_OPTION_BY_VALUE[CLAUDE]}
-            favoriteModels={[]}
-            hiddenModels={[]}
-            instance={{ driver: CLAUDE }}
-            instanceId={ProviderInstanceId.make("claudeAgent")}
-            liveProvider={undefined}
-            mode="editor"
-            modelOrder={[]}
-            onFavoriteModelsChange={noop}
-            onHiddenModelsChange={noop}
-            onModelOrderChange={noop}
-            onUpdate={noop}
-          />
-        </div>
-      </CensusSpecimen>
       <CensusSpecimen
         entry={{ source: "apps/web/src/components/chat/ConversationStrip.tsx", uses: 1, files: 1 }}
         label="<ConversationStripView mate crew> (the Mate and its crewmates as tabs)"
       >
         <ConversationLine />
-      </CensusSpecimen>
-      <CensusSpecimen
-        entry={{
-          source: "apps/web/src/components/zerops/projects/OverviewFilters.tsx",
-          uses: 1,
-          files: 1,
-        }}
-        label={`<OverviewFilters ${specimenLabel({ waiting: 3, mine: 2 })} onShow>`}
-      >
-        <Filters />
       </CensusSpecimen>
     </SpecimenGrid>
   );
@@ -210,16 +241,17 @@ function Breadcrumbs() {
 
 export default defineKitSection({
   id: "home-made-tabs",
-  title: "Home-made tabs",
+  title: "Tabs",
   purpose:
-    "6 home-made tab strips, switches that act as tabs and breadcrumbs in 12 files, most used first; the kit has no Tabs or Breadcrumb, and ToggleGroup is the nearest.",
+    "The kit's TabStrip and Tab first; then the crew's seat strip and the breadcrumbs, still home-made.",
   group: "Home-made",
   kind: "Navigation",
   source: "apps/web/src/components/RightPanelTabs.tsx",
   render: () => (
     <KitViewer>
       <div className="flex flex-col gap-8">
-        <SpecimenBlock title="Tabs and switches that act as tabs">
+        <Chosen />
+        <SpecimenBlock title="Still home-made: the crew's seats">
           <TabsAndStrips />
         </SpecimenBlock>
         <SpecimenBlock title="Breadcrumbs">

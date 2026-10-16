@@ -12,27 +12,27 @@ function GroupSpecimens() {
     <SpecimenGrid>
       <Specimen label='<Group> (orientation="horizontal")'>
         <Group>
-          <Button variant="outline">Deploy</Button>
+          <Button variant="secondary">Deploy</Button>
           <GroupSeparator />
-          <Button aria-label="More deploy choices" size="icon" variant="outline">
+          <Button aria-label="More deploy choices" size="icon-md" variant="secondary">
             <ChevronDownIcon />
           </Button>
         </Group>
       </Specimen>
       <Specimen label='<Group orientation="vertical">'>
         <Group orientation="vertical">
-          <Button variant="outline">Top</Button>
+          <Button variant="secondary">Top</Button>
           <GroupSeparator orientation="horizontal" />
-          <Button variant="outline">Middle</Button>
+          <Button variant="secondary">Middle</Button>
           <GroupSeparator orientation="horizontal" />
-          <Button variant="outline">Bottom</Button>
+          <Button variant="secondary">Bottom</Button>
         </Group>
       </Specimen>
       <Specimen label="<Group> input + button">
         <Group>
           <Input aria-label="Domain" placeholder="shop.example.com" />
           <GroupSeparator />
-          <Button variant="outline">Add</Button>
+          <Button variant="secondary">Add</Button>
         </Group>
       </Specimen>
     </SpecimenGrid>

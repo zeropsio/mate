@@ -16,6 +16,8 @@ import {
   runtimesComing,
   type ArrivalKind,
   type ArrivalSubstep,
+  arrivalRow,
+  type ArrivalStep,
 } from "./mateArrival";
 
 const WREN = { name: "Wren", project: "Beviro" };
@@ -72,7 +74,7 @@ describe("terminal setup process facts", () => {
 
   it("does not invent a duration for a failure with no source end", () => {
     const steps = [
-      { id: "container", label: "Container", state: "failed", startedAt: AGO(44) },
+      { id: "container", label: "Its computer", state: "failed", startedAt: AGO(44) },
     ] as const;
     expect(
       arrivalSteps({ steps }, WREN, NOW).find((step) => step.id === "workspace")?.time,
@@ -248,7 +250,7 @@ describe("arrivalSteps — a stand-up that failed", () => {
       }),
     ).toEqual({
       id: "standup",
-      label: "Wren stands up development",
+      label: "Wren gets the app running",
       state: "failed",
       ...(why === undefined ? {} : { why }),
     });
@@ -541,7 +543,7 @@ describe("the stage's words", () => {
     {
       kind: "sign-in",
       headline: "Sign Wren in to start.",
-      sentence: "Once it's signed in, Wren stands up development on Beviro.",
+      sentence: "Once it's signed in, Wren gets Beviro running.",
       face: "idle",
     },
     {
@@ -730,12 +732,16 @@ describe("pressNote — what the steps this tab runs leave to read whole under t
   });
   it.each([
     { case: "nothing run here", press: undefined, want: null },
-    { case: "running", press: [step("done", "Created"), step("active", "Container")], want: null },
+    {
+      case: "running",
+      press: [step("done", "Created"), step("active", "Its computer")],
+      want: null,
+    },
     {
       case: "a stop: its whole reason",
       press: [
         step("failed", "Created", "The organization has no room for another project right now."),
-        step("waiting", "Container"),
+        step("waiting", "Its computer"),
       ],
       want: {
         kind: "stopped",
@@ -745,7 +751,7 @@ describe("pressNote — what the steps this tab runs leave to read whole under t
     {
       case: "a registration not finished: what is not, and why",
       press: [
-        step("done", "Closed off"),
+        step("done", "Private network ready"),
         step("unfinished", "Not registered", "Its grant timed out."),
       ],
       want: { kind: "unfinished", text: "Not registered: Its grant timed out." },
@@ -754,11 +760,86 @@ describe("pressNote — what the steps this tab runs leave to read whole under t
       case: "a stop over a registration not finished: the stop",
       press: [
         step("unfinished", "Not registered", "Refused."),
-        step("failed", "Container", "Gone."),
+        step("failed", "Its computer", "Gone."),
       ],
       want: { kind: "stopped", text: "Gone." },
     },
   ] as const)("$case", ({ press, want }) => {
     expect(pressNote(press)).toEqual(want);
+  });
+});
+
+describe("arrivalRow — a Mate's arrival as one progress row", () => {
+  const step = (id: string, state: ArrivalStep["state"]): ArrivalStep => ({
+    id,
+    label: `${id} words`,
+    state,
+  });
+  const fact = (startedAt?: string, endedAt?: string) => ({
+    id: "f",
+    label: "f",
+    state: "done" as const,
+    ...(startedAt === undefined ? {} : { startedAt }),
+    ...(endedAt === undefined ? {} : { endedAt }),
+  });
+
+  it.each([
+    {
+      case: "A Mate's arrival says the step it is on, one at a time",
+      steps: [step("copy", "done"), step("workspace", "active"), step("you", "waiting")],
+      stopped: false,
+      want: { at: 1, state: "running", clock: true },
+    },
+    {
+      case: "A Mate's arrival that waits on the person says their step, with no clock running",
+      steps: [step("copy", "done"), step("workspace", "done"), step("you", "you")],
+      stopped: false,
+      want: { at: 2, state: "running", clock: false },
+    },
+    {
+      case: "A Mate's arrival whose every step is done ends as done",
+      steps: [step("copy", "done"), step("you", "done")],
+      stopped: false,
+      want: { at: 1, state: "done", clock: true },
+    },
+    {
+      case: "A Mate's arrival stops at the step that failed",
+      steps: [step("copy", "done"), step("workspace", "failed"), step("you", "waiting")],
+      stopped: false,
+      want: { at: 1, state: "failed", clock: true },
+    },
+    {
+      case: "A creation that stopped stops its row where it stood, a step under way included",
+      steps: [step("copy", "done"), step("workspace", "active")],
+      stopped: true,
+      want: { at: 1, state: "failed", clock: true },
+    },
+  ] as const)("$case", ({ steps, stopped, want }) => {
+    const row = arrivalRow(
+      steps,
+      [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")],
+      stopped,
+    );
+    expect(row.steps).toEqual(steps.map((one) => one.label));
+    expect({ at: row.at, state: row.state, clock: row.startedAtMs !== null }).toEqual(want);
+  });
+
+  it("A Mate's arrival clocks from the earliest start its facts hold, never a later one", () => {
+    const row = arrivalRow(
+      [step("workspace", "active")],
+      [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")],
+      false,
+    );
+    expect(row.startedAtMs).toBe(Date.parse("2026-10-15T10:00:00Z"));
+  });
+
+  it("A Mate's arrival counts from its first press, the time its menu row shows", () => {
+    const row = arrivalRow(
+      [step("workspace", "active")],
+      [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")],
+      false,
+      "2026-10-15T09:58:00Z",
+    );
+    expect(row.startedAtMs).toBe(Date.parse("2026-10-15T09:58:00Z"));
   });
 });

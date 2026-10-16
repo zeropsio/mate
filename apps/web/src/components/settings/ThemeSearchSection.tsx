@@ -299,7 +299,7 @@ export function ThemeSearchSection({
               <Button
                 key={suggestion}
                 disabled={installingId !== null}
-                size="xs"
+                size="sm"
                 variant="ghost"
                 onClick={() => {
                   if (query.trim() === suggestion) {
@@ -401,8 +401,8 @@ export function ThemeSearchSection({
                         <Button
                           aria-label={`View source for ${extension.name}`}
                           render={<a href={extension.sourceUrl} rel="noreferrer" target="_blank" />}
-                          size="icon-micro"
-                          variant="ghost-muted"
+                          size="icon-sm"
+                          variant="ghost"
                         >
                           <SourceLinkIcon url={extension.sourceUrl} />
                         </Button>
@@ -411,8 +411,8 @@ export function ThemeSearchSection({
                     <Button
                       aria-label={`${isInstalling ? progressAction : action} ${extension.name}`}
                       disabled={installingId !== null}
-                      size="xs"
-                      variant="outline"
+                      size="sm"
+                      variant="secondary"
                       onClick={() => void handleInstall(extension, false)}
                     >
                       {isInstalling ? (
@@ -447,7 +447,7 @@ export function ThemeSearchSection({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               onClick={() => {
                 const extension = pendingUpdate;

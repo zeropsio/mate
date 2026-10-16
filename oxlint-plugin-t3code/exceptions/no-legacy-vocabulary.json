@@ -16,30 +16,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing...\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy \u2014 reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
-    "kind": "JSXText",
-    "fingerprint": "Pairing code",
-    "owner": "karel",
-    "reason": "legacy pairing copy \u2014 reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/mobile/src/features/connection/pairing.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Scanned QR code did not contain a pairing URL.\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy \u2014 reworded by the door slice",
-    "expires": "F6"
-  },
-  {
     "path": "apps/mobile/src/features/review/ReviewSheet.tsx",
     "kind": "JSXText",
     "fingerprint": "This thread has no ready turn diffs and the worktree diff is empty.",
@@ -358,22 +334,6 @@
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/environments/primary/auth.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Enter a pairing token to continue.\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy \u2014 reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/environments/primary/auth.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Invalid pairing token. Check the token and try again.\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy \u2014 reworded by the door slice",
-    "expires": "F6"
   },
   {
     "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",

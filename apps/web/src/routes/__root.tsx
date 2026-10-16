@@ -46,6 +46,7 @@ import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToas
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
 import { ZeropsNewMateHost } from "../components/zerops/ZeropsNewMateHost";
+import { PutLiveHost } from "../components/zerops/PutLiveHost";
 import { ZeropsNewProjectHost } from "../components/zerops/ZeropsNewProjectHost";
 import { ChiefSetupHost } from "../components/zerops/chief/ChiefSetupHost";
 import { AddressesSheetHost } from "../components/zerops/addresses/AddressesSheetContainer";
@@ -330,7 +331,8 @@ function SignedInRootRouteView() {
           </AppSidebarLayout>
           {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
             new Mate's hand-over to its conversation; the New project dialog, of its family, the
-            same way for every "New project"; a place's addresses, wherever a door opens them.
+            same way for every "New project"; a place's addresses, wherever a door opens them; Put it
+            live, its sheet and its runs.
             None behind the organization's gate. */}
           {hqGate.kind === "open" ? (
             <>
@@ -338,6 +340,7 @@ function SignedInRootRouteView() {
               <ZeropsNewProjectHost />
               <ChiefSetupHost />
               <AddressesSheetHost />
+              <PutLiveHost />
             </>
           ) : null}
         </CommandPalette>
@@ -522,7 +525,7 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
           <Button size="sm" onClick={() => void router.invalidate()}>
             Try again
           </Button>
-          <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+          <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
             Reload app
           </Button>
         </div>
@@ -656,7 +659,7 @@ function EventRouter() {
         type: "warning",
         title: "Invalid keybindings configuration",
         description: decision.message,
-        actionVariant: "outline",
+        actionVariant: "secondary",
         actionProps: {
           children: "Open keybindings.json",
           onClick: () => {

@@ -100,7 +100,7 @@ export const KIT_OVERVIEW_PROPS: ZeropsProjectsFlowProps<KitItem> = {
   renderGroupMenu: () => null,
   renderMate: (value) => (
     <CardMate
-      face={<MateFace size="md" state="working" tint="olive" />}
+      face={<MateFace size={24} state="working" tint="olive" />}
       name={value.project.name}
       onOpen={() => {}}
       reading={cardMateReading({
@@ -113,7 +113,7 @@ export const KIT_OVERVIEW_PROPS: ZeropsProjectsFlowProps<KitItem> = {
       time="2m"
     />
   ),
-  renderMateFace: () => <MateFace size="sm" state="idle" tint="olive" />,
+  renderMateFace: () => <MateFace size={20} state="idle" tint="olive" />,
   openMate: () => undefined,
   hqCard: null,
   ungrouped: [],

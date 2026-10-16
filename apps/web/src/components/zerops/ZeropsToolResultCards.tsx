@@ -11,7 +11,8 @@ import type { ZeropsOperationStep, ZeropsReadResult } from "@t3tools/client-runt
 
 import { cn } from "~/lib/utils";
 import { formatTimestamp } from "../../timestampFormat";
-import { MicroLabel, ProcessSteps, StatusDot } from "./primitives";
+import { MicroLabel, ProcessSteps, STATUS_BADGE_TONE } from "./primitives";
+import { Badge } from "~/components/ui/badge";
 
 type ReadResultOf<K extends ZeropsReadResult["kind"]> = Extract<ZeropsReadResult, { kind: K }>;
 
@@ -115,12 +116,9 @@ function EventsBody({ readResult }: { readonly readResult: ReadResultOf<"events"
                     <span className="shrink-0 font-medium text-foreground">{row.service}</span>
                   ) : null}
                   <span className="min-w-0 truncate text-muted-foreground">{row.action}</span>
-                  <StatusDot
-                    className="ml-auto shrink-0"
-                    label={row.status.word}
-                    sentence
-                    tone={row.status.tone}
-                  />
+                  <Badge className="ml-auto shrink-0" dot tone={STATUS_BADGE_TONE[row.status.tone]}>
+                    {row.status.word}
+                  </Badge>
                 </li>
               );
             })}
@@ -154,7 +152,9 @@ function DiscoverBody({ readResult }: { readonly readResult: ReadResultOf<"disco
             >
               <div className="flex min-w-0 items-center justify-between gap-2">
                 <span className="min-w-0 truncate font-medium text-foreground">{row.hostname}</span>
-                <StatusDot className="shrink-0" label={row.status.word} tone={row.status.tone} />
+                <Badge className="shrink-0" dot tone={STATUS_BADGE_TONE[row.status.tone]}>
+                  {row.status.word}
+                </Badge>
               </div>
               {row.type !== undefined || row.note !== undefined ? (
                 <p className="truncate text-muted-foreground">

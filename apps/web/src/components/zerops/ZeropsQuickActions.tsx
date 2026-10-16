@@ -8,7 +8,7 @@
  */
 import { useComposerHandleContext } from "../../composerHandleContext";
 import type { ZeropsQuickAction } from "@t3tools/client-runtime/zerops/quickActions";
-import { Pill } from "./primitives";
+import { Button } from "../ui/button";
 
 export function ZeropsQuickActions({
   actions,
@@ -39,15 +39,16 @@ export function ZeropsQuickActions({
   return (
     <div className="flex flex-wrap gap-1.5" data-zerops-quick-actions>
       {actions.map((action) => (
-        <Pill
-          className="min-h-8 px-3 py-1.5 text-xs"
+        <Button
           key={action.id}
-          label={action.label}
           onClick={() => {
             insert(action.prompt);
           }}
-          tone="secondary"
-        />
+          size="sm"
+          variant="secondary"
+        >
+          {action.label}
+        </Button>
       ))}
     </div>
   );

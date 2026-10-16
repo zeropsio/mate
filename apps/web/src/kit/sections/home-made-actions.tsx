@@ -1,17 +1,7 @@
-import { ArchiveRestoreIcon } from "lucide-react";
-
-import { ComposerAskButton } from "~/components/chat/ComposerAsk";
-import { ComposerPlaceLine } from "~/components/chat/ComposerPlace";
 import { ComposerPrimaryActions } from "~/components/chat/ComposerPrimaryActions";
-import { MessageCopyButton } from "~/components/chat/MessageCopyButton";
 import { ProviderAccentColorPicker } from "~/components/settings/ProviderAccentColorPicker";
-import { SettingResetButton } from "~/components/settings/settingsLayout";
 import { SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
 import { DrillButton } from "~/components/usage/UsageDimensionViews";
-import { CopyButton } from "~/components/zerops/addresses/AddressesSheetBits";
-import { CrewPress, CrewTextButton } from "~/components/zerops/crew/CrewParts";
-import { Pill } from "~/components/zerops/primitives";
-import { CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 
@@ -20,7 +10,6 @@ import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
-const CREW_PARTS = "apps/web/src/components/zerops/crew/CrewParts.tsx";
 const noop = () => {};
 
 /** The send button's props at rest: a prompt typed, nothing running. */
@@ -45,55 +34,18 @@ function ActionSpecimens() {
   return (
     <CensusLooks>
       <CensusCount
-        components={18}
-        files={164}
-        kit="321 raw <button> in 148 files draw their own; the kit has Button with 13 variants and 14 sizes, rendered in 167 files"
-        looks={18}
+        components={6}
+        files={7}
+        kit="286 raw <button> in 161 files remain, most of them rows and toggles; the kit has Button with 5 variants and 5 sizes, rendered in 183 files"
+        looks={4}
       />
 
       <CensusLook
-        files={5}
-        name="SettingResetButton"
-        note="the kit's Button, icon-micro ghost-muted, in a tooltip"
-        source="apps/web/src/components/settings/settingsLayout.tsx"
-        uses={30}
-      >
-        <Specimen label={specimenLabel({ label: "Reset to default" })}>
-          <SettingResetButton label="Reset to default" onClick={noop} />
-        </Specimen>
-        <Specimen label={specimenLabel({ label: "Reset to default", disabled: true })}>
-          <SettingResetButton disabled label="Reset to default" onClick={noop} />
-        </Specimen>
-      </CensusLook>
-
-      <CensusLook
-        files={19}
+        files={1}
         name="Text-link buttons"
-        note="a word that underlines on hover; each sets its own colour and weight"
-        uses={29}
+        note="a word that underlines on hover in its own colour, beside the kit's InlineButton"
+        uses={3}
       >
-        <CensusComponent name="CrewTextButton" source={CREW_PARTS}>
-          <Specimen label={specimenLabel({ label: "Change", line: "Change the goal" })}>
-            <CrewTextButton label="Change" line="Change the goal" onPress={noop} />
-          </Specimen>
-        </CensusComponent>
-        <CensusComponent
-          name="ComposerPlaceLine (its action)"
-          source="apps/web/src/components/chat/ComposerPlace.tsx"
-        >
-          <Specimen label='notice with action "Restore"'>
-            <div className="w-[34rem]">
-              <ComposerPlaceLine
-                notice={{
-                  id: "archived",
-                  icon: <ArchiveRestoreIcon />,
-                  words: <strong>This conversation is archived.</strong>,
-                  action: { label: "Restore", onAction: noop },
-                }}
-              />
-            </div>
-          </Specimen>
-        </CensusComponent>
         <CensusComponent
           name="DrillButton"
           source="apps/web/src/components/usage/UsageDimensionViews.tsx"
@@ -104,63 +56,6 @@ function ActionSpecimens() {
             </DrillButton>
           </Specimen>
         </CensusComponent>
-      </CensusLook>
-
-      <CensusLook
-        files={9}
-        name="CrewPress"
-        note="crew-press: the crew's filled and word buttons"
-        source={CREW_PARTS}
-        uses={20}
-      >
-        {(["primary", "quiet", "muted", "failed"] as const).flatMap((tone) =>
-          (["row", "view"] as const).map((size) => (
-            <Specimen key={`${tone}-${size}`} label={specimenLabel({ tone, size })}>
-              <CrewPress label="Start the run" onPress={noop} size={size} tone={tone} />
-            </Specimen>
-          )),
-        )}
-        <Specimen label={specimenLabel({ disabled: true })}>
-          <CrewPress disabled label="Start the run" />
-        </Specimen>
-      </CensusLook>
-
-      <CensusLook
-        files={5}
-        name="Overview buttons"
-        note="ov-btn, in index.css"
-        source="apps/web/src/components/zerops/projects/ProjectCards.tsx"
-        uses={19}
-      >
-        {(["plan", "question", "fix"] as const).map((kind) => (
-          <Specimen key={kind} label={`CardMateLiftActions lift="${kind}"`}>
-            <div className="flex items-center gap-2">
-              <CardMateLiftActions
-                lift={{ kind }}
-                name="Fen"
-                onApprove={noop}
-                onFix={noop}
-                onReply={noop}
-                onReview={noop}
-              />
-            </div>
-          </Specimen>
-        ))}
-      </CensusLook>
-
-      <CensusLook
-        files={4}
-        name="ComposerAskButton"
-        note="composer-top-button: the ask's one blue button"
-        source="apps/web/src/components/chat/ComposerAsk.tsx"
-        uses={6}
-      >
-        <Specimen label="Review">
-          <ComposerAskButton>Review</ComposerAskButton>
-        </Specimen>
-        <Specimen label="disabled">
-          <ComposerAskButton disabled>Approve</ComposerAskButton>
-        </Specimen>
       </CensusLook>
 
       <CensusLook
@@ -202,18 +97,6 @@ function ActionSpecimens() {
       </CensusLook>
 
       <CensusLook
-        files={2}
-        name="CopyButton"
-        note="the kit's Button, icon-xs ghost-muted, with its own copied state"
-        source="apps/web/src/components/zerops/addresses/AddressesSheetBits.tsx"
-        uses={4}
-      >
-        <Specimen label={specimenLabel({ value: "storefront.zerops.app" })}>
-          <CopyButton value="storefront.zerops.app" />
-        </Specimen>
-      </CensusLook>
-
-      <CensusLook
         files={1}
         name="ComposerPrimaryActions (send)"
         note="a round message-action button of its own"
@@ -229,38 +112,6 @@ function ActionSpecimens() {
         <Specimen label={specimenLabel({ compact: true })}>
           <ComposerPrimaryActions {...SEND_AT_REST} compact />
         </Specimen>
-      </CensusLook>
-
-      <CensusLook
-        files={2}
-        name="Pill"
-        note="a rounded-full button, three tones"
-        source="apps/web/src/components/zerops/primitives/Pill.tsx"
-        uses={2}
-      >
-        {(["primary", "secondary", "outline"] as const).flatMap((tone) =>
-          (["default", "sm"] as const).map((size) => (
-            <Specimen key={`${tone}-${size}`} label={specimenLabel({ tone, size })}>
-              <Pill label="Deploy" size={size} tone={tone} />
-            </Specimen>
-          )),
-        )}
-      </CensusLook>
-
-      <CensusLook
-        files={1}
-        name="MessageCopyButton"
-        note="the kit's Button with its own toast"
-        source="apps/web/src/components/chat/MessageCopyButton.tsx"
-        uses={2}
-      >
-        {(["outline", "ghost"] as const).flatMap((variant) =>
-          (["xs", "icon-xs"] as const).map((size) => (
-            <Specimen key={`${variant}-${size}`} label={specimenLabel({ variant, size })}>
-              <MessageCopyButton size={size} text="Deployed." variant={variant} />
-            </Specimen>
-          )),
-        )}
       </CensusLook>
 
       <CensusLook

@@ -23,8 +23,8 @@ export function AgentAdmissionExplanation({
         <AlertAction>
           <Button
             data-zerops-primary-action="Authorize"
-            size="compact"
-            variant="pill"
+            size="md"
+            variant="primary"
             onClick={onAction}
           >
             {attention.actionLabel}

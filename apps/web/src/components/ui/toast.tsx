@@ -54,28 +54,14 @@ export type ThreadToastData = {
     props: ComponentPropsWithoutRef<"button">;
   }>;
   secondaryActionProps?: ComponentPropsWithoutRef<"button">;
-  secondaryActionVariant?:
-    | "default"
-    | "destructive"
-    | "destructive-outline"
-    | "ghost"
-    | "link"
-    | "outline"
-    | "secondary";
+  secondaryActionVariant?: "primary" | "secondary" | "ghost" | "destructive" | "link";
   /** Optional extra body shown after toggling “Show details” (e.g. a list of pending RPCs). */
   expandableContent?: ReactNode;
   expandableLabels?: { expand?: string; collapse?: string };
   /** When set with `expandableContent`, the summary + label act as one text disclosure (no separate chevron row). */
   expandableDescriptionTrigger?: boolean;
   actionLayout?: "inline" | "stacked-end";
-  actionVariant?:
-    | "default"
-    | "destructive"
-    | "destructive-outline"
-    | "ghost"
-    | "link"
-    | "outline"
-    | "secondary";
+  actionVariant?: "primary" | "secondary" | "ghost" | "destructive" | "link";
 };
 
 const toastManager = Toast.createToastManager<ThreadToastData>();
@@ -129,8 +115,8 @@ function CopyErrorButton({ text }: { text: string }) {
       <TooltipTrigger
         render={
           <Button
-            size="icon-micro"
-            variant="ghost-muted"
+            size="icon-sm"
+            variant="ghost"
             aria-label={label}
             className="[--control-icon-color:currentColor] rounded-md text-muted-foreground/80 hover:bg-transparent hover:text-muted-foreground"
             onClick={() => copyToClipboard(text)}
@@ -294,9 +280,9 @@ function deriveToastBodyDescriptor(toast: {
   const stackedActionLayout =
     hasVisibleToastAction(toast.actionProps) && toast.data?.actionLayout === "stacked-end";
   const actionVariant: NonNullable<ThreadToastData["actionVariant"]> =
-    toast.data?.actionVariant ?? "default";
+    toast.data?.actionVariant ?? "primary";
   const secondaryActionVariant: NonNullable<ThreadToastData["secondaryActionVariant"]> =
-    toast.data?.secondaryActionVariant ?? "outline";
+    toast.data?.secondaryActionVariant ?? "secondary";
   const copyErrorText =
     toast.type === "error" && typeof toast.description === "string" && !toast.data?.hideCopyButton
       ? toast.description
@@ -390,7 +376,7 @@ function ToastBodyContent({
               {...props}
               className={className}
               key={id}
-              size="xs"
+              size="sm"
               type="button"
               variant={secondaryActionVariant}
             />
@@ -399,14 +385,14 @@ function ToastBodyContent({
             <Button
               {...secondaryActionRest}
               className={secondaryActionClassName}
-              size="xs"
+              size="sm"
               type="button"
               variant={secondaryActionVariant}
             />
           ) : null}
           {hasVisibleToastAction(actionProps) ? (
             <Toast.Action
-              className={cn(buttonVariants({ size: "xs", variant: actionVariant }), "shrink-0")}
+              className={cn(buttonVariants({ size: "sm", variant: actionVariant }), "shrink-0")}
               data-slot="toast-action"
             >
               {actionProps?.children}

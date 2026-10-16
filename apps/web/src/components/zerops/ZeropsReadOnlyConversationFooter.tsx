@@ -74,7 +74,7 @@ export function ZeropsReadOnlyConversationFooter({
         <div className="flex min-w-0 flex-col items-center gap-3 px-4 py-3 text-center">
           <p className="min-w-0 flex-1 text-foreground/85 text-sm">{readOnly.notice}</p>
           {onSignIn === undefined ? null : (
-            <Button size="compact" variant="link" onClick={onSignIn}>
+            <Button size="sm" variant="link" onClick={onSignIn}>
               {AGENT_OWNERSHIP_RECOVERY_LABEL}
             </Button>
           )}

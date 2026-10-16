@@ -11,6 +11,7 @@ import {
   platformViewer,
   projectRoleOffers,
   roleOffers,
+  teamOffers,
 } from "./platformCapabilities.ts";
 
 import { membershipInputs } from "../__fixtures__/membership.ts";
@@ -132,6 +133,27 @@ describe("Zerops native capability table", () => {
         viewer: platformMembership.derive(reads, "org").viewer,
       });
       expect(roleOffers(capabilities)).toEqual({ newProject: offered, setUpChief: offered });
+    },
+  );
+  it.each([
+    ["OWNER", true, true],
+    ["ADMIN", false, true],
+    // A Developer and a Guest bring nobody in: Zerops lets only an owner or an admin invite.
+    ["NO_ACCESS", true, false],
+    ["NO_ACCESS", false, false],
+    ["BASIC_USER", false, false],
+    ["READ_ONLY", false, false],
+  ] as const)(
+    "a %s member (may create projects: %s) is offered inviting people: %s",
+    (role, flag, offered) => {
+      const reads = readsOfState(
+        stateOf([...liveProjects("org", [{ id: "p" }]), ...membershipInputs(role, flag)]),
+      );
+      const capabilities = platformCapabilities.derive(reads, {
+        orgId: "org",
+        viewer: platformMembership.derive(reads, "org").viewer,
+      });
+      expect(teamOffers(capabilities)).toEqual({ invite: offered });
     },
   );
   it("while the membership is not read, what is drawn stays drawn", () => {

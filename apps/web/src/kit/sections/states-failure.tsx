@@ -7,30 +7,21 @@ import { FileReadFailure } from "~/components/files/FilePreviewPanel";
 import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
 import { stackedThreadToast } from "~/components/ui/toastHelpers";
-import { ChiefStage } from "~/components/zerops/chief/ChiefPage";
 import { ZeropsHandoverFailed } from "~/components/zerops/landing/ZeropsHandoverFailed";
 import { FormError } from "~/components/zerops/landing/ZeropsLandingShell";
 import { MateDetailFailure } from "~/components/zerops/MateDetailFailure";
 import { ReviewFailed } from "~/components/zerops/review/ZeropsReviewSurface";
-import { ZeropsEnvironmentCreation } from "~/components/zerops/ZeropsEnvironmentCreation";
 import { FieldError } from "~/components/zerops/ZeropsEnvironmentCreationDialog";
 import { ComingBelow } from "~/components/zerops/ZeropsMateComingPage";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import { ZeropsOperationCard } from "~/components/zerops/ZeropsOperationCard";
-import { ZeropsReadFailure } from "~/components/zerops/ZeropsReadFailure";
-import { ZeropsDataStartupFailure } from "~/zerops/ZeropsAccountEnvironmentProvider";
 import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
 
 import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
 import { CensusLook, StateCensus, StateFrame, useKitNowMs } from "../states/Census";
-import {
-  failedBirthProgress,
-  failedCreationProgress,
-  showcaseOperation,
-  WREN,
-  YOU,
-} from "../states/fixtures";
+import { ChosenFailure } from "../states/Chosen";
+import { failedBirthProgress, showcaseOperation, WREN } from "../states/fixtures";
 
 /** A Mate whose container never came: the stage, its stopped steps, *Try again* and *Remove*. */
 function NotCreatedStage() {
@@ -68,7 +59,6 @@ function NotCreatedStage() {
                 created: new Date(nowMs - 136_000).toISOString(),
               },
             }}
-            you={YOU}
           />
         ),
       }}
@@ -99,7 +89,7 @@ const REFUSED_NOTICE = {
   title: "Couldn't connect to Fen",
   description: "Fen refused the connection.",
   actions: (
-    <Button size="xs" variant="pill">
+    <Button size="md" variant="primary">
       Try again
     </Button>
   ),
@@ -108,18 +98,18 @@ const REFUSED_NOTICE = {
 function FailureCensus() {
   return (
     <StateCensus
-      atom="Alert inline, toast for a failed action"
-      count="9 looks: about 35 own failure components in 30 files, role=alert at 83 sites in 57 files, 115 error toasts in 37 files; the kit Alert is used in 5 files."
+      atom="Failure inline, on a StatusPage for a whole page; a toast only for what happened elsewhere"
+      chosen={<ChosenFailure />}
+      count="8 looks: about 30 own failure components in 27 files, role=alert at about 75 sites in 52 files, 115 error toasts in 37 files."
     >
       <CensusLook
         name="Whole page: mark, title, reason, Try again"
-        uses="5 components in 5 files"
+        uses="4 components in 4 files"
         places={[
           "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.tsx:11 ZeropsHandoverFailed",
           "apps/web/src/components/zerops/landing/ZeropsAppFailed.tsx:10 ZeropsAppFailed",
           "apps/web/src/routes/__root.tsx:497 RootRouteErrorView",
           "apps/web/src/routes/_chat.index.tsx:293 DraftStartError",
-          "apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx:168 ZeropsDataStartupFailure",
         ]}
       >
         <Specimen
@@ -134,28 +124,15 @@ function FailureCensus() {
             />
           </StateFrame>
         </Specimen>
-        <Specimen
-          label="<ZeropsDataStartupFailure message={…} />"
-          source="apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx"
-        >
-          <StateFrame>
-            <ZeropsDataStartupFailure
-              message="The account's projects could not be read."
-              retry={() => {}}
-              signOut={() => {}}
-            />
-          </StateFrame>
-        </Specimen>
       </CensusLook>
 
       <CensusLook
         name="A Mate's stage in the danger tone, its steps stopped"
-        uses="about 8 sites in 5 files"
+        uses="about 6 sites in 4 files"
         places={[
           "apps/web/src/components/zerops/MateDetailFailure.tsx:6 MateDetailFailure",
           "apps/web/src/components/zerops/ZeropsMateComingPage.tsx:1076 ComingBelow (failed)",
           "apps/web/src/zerops/mateComing.ts:30 (“could not be added”)",
-          "apps/web/src/components/zerops/chief/ChiefPage.tsx:107 ChiefStage (failed step)",
           "apps/web/src/components/zerops/MateLinkStage.tsx",
         ]}
       >
@@ -179,84 +156,22 @@ function FailureCensus() {
             <NotCreatedStage />
           </StateFrame>
         </Specimen>
-        <Specimen
-          label='<ChiefStage view={{ setup: { phase: "failed", step: "hq" } }} />'
-          source="apps/web/src/components/zerops/chief/ChiefPage.tsx"
-        >
-          <StateFrame size="page">
-            <ChiefStage
-              onAgain={() => {}}
-              onFinish={() => {}}
-              onSetUp={() => {}}
-              view={{
-                kind: "steps",
-                setup: {
-                  phase: "failed",
-                  step: "hq",
-                  birthId: "b1",
-                  projectId: "p-chief",
-                  reason: "HQ is not answering right now.",
-                },
-              }}
-            />
-          </StateFrame>
-        </Specimen>
       </CensusLook>
 
       <CensusLook
         name="A failed step in a step list or card"
-        uses="about 6 sites in 4 files"
+        uses="about 5 sites in 3 files"
         places={[
-          "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx:131 (outcome failed)",
           "apps/web/src/components/zerops/ZeropsOperationCard.tsx:338 FailedBecause",
           "apps/web/src/components/chat/BrowserStrip.tsx:645 FailedTake",
           "apps/web/src/components/chat/RunChat.tsx:1243 FailedMark",
         ]}
       >
         <Specimen
-          label='<ZeropsEnvironmentCreation outcome={{ kind: "failed" }} />'
-          source="apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx"
-        >
-          <div className="w-[480px]">
-            <ZeropsEnvironmentCreation
-              name="Beviro CRM - production"
-              nowMs={31_000}
-              onDismiss={() => {}}
-              outcome={{
-                kind: "failed",
-                error: "projectImportProjectIncluded",
-                projectExists: true,
-              }}
-              progress={failedCreationProgress()}
-              tier="production"
-            />
-          </div>
-        </Specimen>
-        <Specimen
           label='<ZeropsOperationCard operation={phase: "failed"} />'
           source="apps/web/src/components/zerops/ZeropsOperationCard.tsx"
         >
           <FailedOperation />
-        </Specimen>
-      </CensusLook>
-
-      <CensusLook
-        name="Muted reason and an outline “again” button"
-        uses="6 sites in 5 files"
-        places={[
-          "apps/web/src/components/zerops/ZeropsReadFailure.tsx:4 ZeropsReadFailure",
-          "apps/web/src/components/zerops/ZeropsGroupDetail.tsx:2326 ProjectReadFailures",
-        ]}
-      >
-        <Specimen
-          label='<ZeropsReadFailure action="Read recipe again" />'
-          source="apps/web/src/components/zerops/ZeropsReadFailure.tsx"
-        >
-          <ZeropsReadFailure
-            action="Read recipe again"
-            again={() => {}}
-            reason="The recipe could not be read: HQ answered 502."
-          />
         </Specimen>
       </CensusLook>
 
@@ -395,7 +310,7 @@ function FailureCensus() {
                 description: "The server did not answer.",
               })
             }
-            variant="outline"
+            variant="secondary"
           >
             Plain error toast
           </Button>
@@ -414,7 +329,7 @@ function FailureCensus() {
                 }),
               )
             }
-            variant="outline"
+            variant="secondary"
           >
             Stacked error toast
           </Button>
@@ -428,7 +343,7 @@ export default defineKitSection({
   id: "home-made-failure",
   title: "Failure",
   purpose:
-    "Every way the app says something went wrong, and what it offers next, side by side, to pick one pattern from.",
+    "The chosen failure inline and as a page, then every way the app still says something went wrong.",
   group: "Home-made",
   kind: "Feedback",
   source: "apps/web/src/kit/sections/states-failure.tsx",

@@ -16,6 +16,7 @@ import {
   type MembersRead,
   type SampledRead,
 } from "@t3tools/client-runtime/data";
+import { hqProjectsOf } from "@t3tools/client-runtime/zerops/hq";
 import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo } from "react";
 
@@ -25,13 +26,15 @@ import {
   useDetailDemand,
   useProjection,
 } from "~/zerops/accountData";
+import { useAccountHq } from "~/zerops/accountHq";
 import { useAccountOperationsOptional, type AccountOperations } from "~/zerops/accountOperations";
 import { isChief } from "~/zerops/chief";
+import { invitedNames } from "~/zerops/invitationMemory";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 
-import { accessProjects } from "./teamMember.logic";
+import { accessProjects, inviteProjects } from "./teamMember.logic";
 import { teamGrantIds, teamPeople, type TeamPlace } from "./teamSettings.logic";
 
 const UNREAD_MEMBERS = Atom.make<MembersRead>({
@@ -87,6 +90,9 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
   );
 
   const roster = useAtomValue(shownProjectsAtom).projects;
+  // The Headquarters project holds HQ's own credentials: no one is ever given it here.
+  const { hq: officialHq } = useAccountHq(clientId ?? undefined);
+  const hq = useMemo(() => hqProjectsOf(officialHq), [officialHq]);
   const hqProjectPeople = useAtomValue(shownHqProjectPeopleAtom);
   const viewerUserId = session?.user?.id ?? null;
   const viewer = useAccountDataOptional()?.viewer;
@@ -104,6 +110,8 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
   const view = useMemo(
     () =>
       teamPeople({
+        // The names typed for invitations here, read again as the member list changes.
+        invitedNames: clientId === null ? {} : invitedNames(clientId),
         members: {
           known: members.fact.kind === "known",
           status: members.status,
@@ -126,7 +134,7 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
                 ...(viewer.roleCode === undefined ? {} : { roleCode: viewer.roleCode }),
               },
       }),
-    [grants, hqProjectPeople, members, places, viewer, viewerUserId],
+    [clientId, grants, hqProjectPeople, members, places, viewer, viewerUserId],
   );
 
   const projects = useMemo(
@@ -135,8 +143,21 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
         groups: registry.groups,
         roster,
         chiefs: new Set(roster.filter((project) => isChief(project)).map(({ id }) => id)),
+        hq,
       }),
-    [registry, roster],
+    [hq, registry, roster],
+  );
+
+  // What an invitation gives: each Mate project whole, as its People section gives it.
+  const invitable = useMemo(
+    () =>
+      inviteProjects({
+        groups: registry.groups,
+        roster,
+        chiefs: new Set(roster.filter((project) => isChief(project)).map(({ id }) => id)),
+        hq,
+      }),
+    [hq, registry, roster],
   );
 
   const operations = useAccountOperationsOptional();
@@ -169,6 +190,7 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
     organizationName,
     viewerRole: viewer?.roleCode,
     projects,
+    invitable,
     writable: operations !== null && clientId !== null,
     write,
     check,

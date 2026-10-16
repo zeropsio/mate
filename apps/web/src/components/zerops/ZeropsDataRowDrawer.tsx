@@ -22,12 +22,13 @@
  * but says plainly that this row has no key to address rather than leaving
  * the reader to notice the omission on their own.
  */
+import { Card } from "../ui/card";
 import { describeCell, rowRecord } from "@t3tools/client-runtime/zerops/dataConsole";
 import type { ZeropsDataConsoleColumn } from "@t3tools/contracts";
 import { ChevronLeftIcon, CopyIcon, MessageSquarePlusIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
-import { FlatCard, MicroLabel } from "./primitives";
+import { MicroLabel } from "./primitives";
 
 export interface ZeropsDataRowDrawerProps {
   readonly columns: ReadonlyArray<ZeropsDataConsoleColumn>;
@@ -58,12 +59,12 @@ export function ZeropsDataRowDrawer({
       : names;
 
   return (
-    <FlatCard
+    <Card
       className={
-        layout === "narrow"
-          ? "absolute inset-0 z-10 space-y-3 overflow-auto p-3"
-          : "w-72 shrink-0 space-y-3 overflow-auto p-3"
+        layout === "narrow" ? "absolute inset-0 z-10 overflow-auto" : "w-72 shrink-0 overflow-auto"
       }
+      size="sm"
+      variant="flat"
       data-zerops-data-row-drawer={layout}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
@@ -79,7 +80,7 @@ export function ZeropsDataRowDrawer({
           aria-label="Close row"
           data-zerops-data-row-close
           onClick={onClose}
-          size="icon-xs"
+          size="icon-sm"
           variant="ghost"
         >
           <ChevronLeftIcon />
@@ -120,15 +121,15 @@ export function ZeropsDataRowDrawer({
       </dl>
 
       <div className="flex flex-wrap gap-2">
-        <Button data-zerops-data-row-copy onClick={onCopyJson} size="xs" variant="outline">
+        <Button data-zerops-data-row-copy onClick={onCopyJson} size="sm" variant="secondary">
           <CopyIcon />
           Copy as JSON
         </Button>
-        <Button data-zerops-data-row-explain onClick={onExplain} size="xs" variant="outline">
+        <Button data-zerops-data-row-explain onClick={onExplain} size="sm" variant="secondary">
           <MessageSquarePlusIcon />
           Explain this row
         </Button>
       </div>
-    </FlatCard>
+    </Card>
   );
 }

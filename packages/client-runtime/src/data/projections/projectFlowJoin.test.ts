@@ -276,7 +276,7 @@ describe("joinProjectFlows", () => {
     it("says HQ's rule in its words to one it does not let release", () => {
       const refusal = {
         allowed: false,
-        reason: "You need at least Basic user access to this project's production to release it.",
+        reason: "You need more than Read access to this project's production to release it.",
       } as const;
       const release = offered({ permission: refusal, repos });
       expect(release?.gate).toEqual(refusal);

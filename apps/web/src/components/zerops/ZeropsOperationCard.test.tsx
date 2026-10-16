@@ -348,7 +348,7 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
   it("the header says the deploy's own word, the service and how long — never a clock", () => {
     const header = headerOf(render(running, observedOf(building)));
 
-    expect(header).toMatch(/data-zerops-primitive="status-dot"[^>]*>[\s\S]*?>Deploying</);
+    expect(header).toMatch(/data-dot=""[^>]*>[\s\S]*?>Deploying</);
     expect(header).not.toContain(">Running<");
     expect(header).not.toContain('data-zerops-primitive="micro-label"');
     expect(header).toMatch(/data-zerops-subject-chip[^>]*>weatherdash</);
@@ -1013,7 +1013,7 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
   const header = (html: string) => html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
   const verbOf = (html: string) =>
     header(html).match(
-      /data-zerops-primitive="status-dot"[\s\S]*?(?:data-zerops-primitive="micro-label"|class="min-w-0 truncate")>([^<]*)</,
+      /data-dot=""[\s\S]*?(?:data-zerops-primitive="micro-label"|class="min-w-0 truncate")>([^<]*)</,
     )?.[1];
   const chipOf = (html: string) =>
     header(html).match(/data-zerops-subject-chip[^>]*>([^<]*)</)?.[1];
@@ -1148,7 +1148,7 @@ describe("ZeropsOperationCard — a running card's header always says what it is
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
     const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
     const verb = header.match(
-      /data-zerops-primitive="status-dot"[\s\S]*?(?:data-zerops-primitive="micro-label"|class="min-w-0 truncate")>([^<]*)</,
+      /data-dot=""[\s\S]*?(?:data-zerops-primitive="micro-label"|class="min-w-0 truncate")>([^<]*)</,
     )?.[1];
 
     expect(verb).toBe(word);
@@ -1307,7 +1307,7 @@ describe("ZeropsOperationCard — durations against the real fixture (regression
 
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={deploy} />);
     expect(html).toContain("1m 15s");
-    expect(html).not.toContain("0 s");
+    expect(html.replace(/<[^>]*>/gu, "")).not.toContain("0 s");
   });
 
   // 5.881 s and 54.904 s: floored, as the conversation's clocks floor, so a
@@ -1318,7 +1318,7 @@ describe("ZeropsOperationCard — durations against the real fixture (regression
   ])("the $name card's clock reads $reads", ({ operation, reads }) => {
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
     expect(clockOf(html)).toBe(reads);
-    expect(html).not.toContain("0 s");
+    expect(html.replace(/<[^>]*>/gu, "")).not.toContain("0 s");
   });
 });
 
@@ -1410,9 +1410,7 @@ describe("ZeropsOperationCard — the duration renders outside the status word",
       <ZeropsOperationCard now={Date.parse("2026-09-01T00:00:42.000Z")} operation={running} />,
     );
 
-    const statusDotSpan = html.match(
-      /data-zerops-primitive="status-dot"[\s\S]*?<\/span><\/span>/,
-    )?.[0];
+    const statusDotSpan = html.match(/data-dot=""[\s\S]*?<\/span><\/span>/)?.[0];
     expect(statusDotSpan).toBeDefined();
     expect(statusDotSpan).not.toContain("42s");
 
@@ -1436,9 +1434,7 @@ describe("ZeropsOperationCard — the duration renders outside the status word",
     );
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
 
-    const statusDotSpan = html.match(
-      /data-zerops-primitive="status-dot"[\s\S]*?<\/span><\/span>/,
-    )?.[0];
+    const statusDotSpan = html.match(/data-dot=""[\s\S]*?<\/span><\/span>/)?.[0];
     expect(statusDotSpan).not.toContain("1m 12s");
 
     const durationSpanTag = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>/)?.[0];
@@ -1503,8 +1499,8 @@ describe("ZeropsOperationCard - the deploy duration renders identically live and
     const reloadedHtml = renderToStaticMarkup(<ZeropsOperationCard operation={reloadedDeploy} />);
     expect(liveHtml).toContain("1m 15s");
     expect(reloadedHtml).toContain("1m 15s");
-    expect(liveHtml).not.toContain("0 s");
-    expect(reloadedHtml).not.toContain("0 s");
+    expect(liveHtml.replace(/<[^>]*>/gu, "")).not.toContain("0 s");
+    expect(reloadedHtml.replace(/<[^>]*>/gu, "")).not.toContain("0 s");
   });
 });
 
@@ -1523,21 +1519,19 @@ describe("ZeropsOperationCard — one quiet surface", () => {
   it.each(cases)("$name: no tinted band, no kicker label, no inner rules", ({ operation }) => {
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
     const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
-    const microLabels = [
-      ...header.matchAll(/data-zerops-primitive="micro-label"[^>]*>([^<]*)</g),
+    const statusWords = [
+      ...header.matchAll(/data-dot=""[^>]*>[\s\S]*?class="min-w-0 truncate">([^<]*)</g),
     ].map((match) => match[1]);
 
     expect(header).not.toBe("");
 
     // The kicker stays only as the steps' accessible name. A card that names
-    // one service heads with its status word as the verb label; a voice-line
-    // card reads its status in sentence form, never a label.
+    // one service heads with its status word beside its dot.
     expect(header).not.toContain(operation.kicker);
-    expect(microLabels).toEqual(
-      header.includes("data-zerops-operation-subject") && operation.kind !== "deploy"
-        ? [operation.statusWord]
-        : [],
-    );
+    expect(statusWords).not.toContain(operation.kicker);
+    if (header.includes("data-zerops-operation-subject") && operation.kind !== "deploy") {
+      expect(statusWords).toEqual([operation.statusWord]);
+    }
   });
 
   it("a card with no single target: the status reads as a word beside the voice line", () => {

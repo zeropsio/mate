@@ -2,6 +2,8 @@ import { useCallback, useMemo } from "react";
 import { flowVerbKey, flowVerbLabel } from "@t3tools/client-runtime/zerops";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
+import { usePutLiveRun } from "~/zerops/putLive";
+import { putLiveHoldsRelease } from "~/zerops/putLive.logic";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { Button } from "../ui/button";
 
@@ -19,9 +21,13 @@ export function useReleaseOffer(
     [groupId, openReview],
   );
   const gate = flow?.release.gate;
+  // Production being made by Put it live is released by it, once it can take a release: no door
+  // asks the person to release it meanwhile (the onboarding run's *Review release* beside
+  // "Setting up production isn't finished").
+  const making = putLiveHoldsRelease(usePutLiveRun(groupId));
   return {
     // A branch refused by an earlier preflight may be settled since: its review checks it again.
-    offered: gate?.allowed === true || flow?.release.git?.delivery?.recheck === true,
+    offered: !making && (gate?.allowed === true || flow?.release.git?.delivery?.recheck === true),
     reason: gate === undefined || gate.allowed ? undefined : gate.reason,
     releasing:
       flow?.release.inFlight !== undefined ||
@@ -51,17 +57,14 @@ export function ZeropsReleaseVerb({
   if (!release.offered && !release.releasing) return null;
   // A card's own solid button, as *Review change* is beside it: one look for what waits on you.
   return (
-    <button
-      className="ov-btn"
-      data-main="true"
+    <Button
       data-zerops-primary-action={REVIEW_RELEASE_LABEL}
       onClick={(event) => {
         release.onReview(event.currentTarget);
       }}
-      type="button"
     >
       {release.releasing ? flowVerbLabel("release", true) : label}
-    </button>
+    </Button>
   );
 }
 
@@ -96,10 +99,10 @@ export function ReleaseAction({
   readonly release: ReleaseOffer;
   /** The door's words where the caller has them; *Review release* otherwise. */
   readonly label?: string;
-  /** `compact` where it stands among the projects page's verbs. */
-  readonly size?: "sm" | "compact";
-  /** `outline` in a stop's verdict, where a verb stands beside the sentence it acts on. */
-  readonly variant?: "outline";
+  /** `sm` where it stands among the projects page's verbs. */
+  readonly size?: "md" | "sm";
+  /** `secondary` in a stop's verdict, where a verb stands beside the sentence it acts on. */
+  readonly variant?: "secondary";
 }) {
   if (!release.offered && !release.releasing) return null;
   return (

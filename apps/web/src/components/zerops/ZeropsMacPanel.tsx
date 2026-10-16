@@ -24,10 +24,11 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
 import { useMateMacView } from "../../zerops/macViewLinks";
 import { LiveFrameViewer, type LiveFrameKey } from "./LiveFrameViewer";
-import { MicroLabel, StatusDot } from "./primitives";
+import { MicroLabel } from "./primitives";
 import { FRAME_BOX } from "./ZeropsBrowserPanel";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Button } from "../ui/button";
+import { Badge } from "~/components/ui/badge";
 
 /** How long a copy button says so. */
 const COPIED_MS = 2_000;
@@ -49,8 +50,8 @@ export function MacCommand({ command }: { readonly command: string }) {
             () => undefined,
           );
         }}
-        size="icon-xs"
-        variant="ghost-muted"
+        size="icon-sm"
+        variant="ghost"
       >
         {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
       </Button>
@@ -273,7 +274,7 @@ function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
         )}
         <p className="mac-remove-forget">
           Mac gone, or not answering?
-          <Button onClick={forget} size="xs" variant="destructive-outline">
+          <Button onClick={forget} size="sm" variant="destructive">
             Forget it here
           </Button>
         </p>
@@ -418,7 +419,11 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
           onPointer={handlePointer}
         />
       ) : live?.status === "connecting" || live?.status === "live" ? (
-        <StatusDot className="px-1" label="Connecting" pulse tone="busy" />
+        <span className="px-1">
+          <Badge dot pulse tone="info">
+            Connecting
+          </Badge>
+        </span>
       ) : null}
       {live?.removeCommands === undefined
         ? null

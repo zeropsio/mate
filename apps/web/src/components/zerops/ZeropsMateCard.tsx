@@ -271,7 +271,7 @@ export function ZeropsMateCard({
       )}
       data-zerops-mate-card={onSelect ? "opens" : "still"}
     >
-      <MateFace shape={shape} size="md" state={face} tint={tint} />
+      <MateFace shape={shape} size={24} state={face} tint={tint} />
       <div className="flex min-w-0 flex-1 flex-col">
         <div className={cn("flex min-w-0 items-center gap-2", LAYOUT[layout].lineOne)}>
           {onSelect ? (

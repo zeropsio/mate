@@ -26,7 +26,7 @@ function Opener({
   const [open, setOpen] = useState(false);
   return (
     <Specimen label={specimenLabel({ side, variant })}>
-      <Button onClick={() => setOpen(true)} variant="outline">
+      <Button onClick={() => setOpen(true)} variant="secondary">
         Open {side}
       </Button>
       <Sheet onOpenChange={setOpen} open={open}>

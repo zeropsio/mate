@@ -26,6 +26,7 @@ import {
   ChangeReviewView as ProjectedChangeReviewView,
   type ChangeReviewViewProps,
 } from "~/components/zerops/review/ZeropsChangeReview";
+import { Button } from "~/components/ui/button";
 import { CrewTaskReviewView } from "~/components/zerops/review/ZeropsCrewTaskReview";
 import {
   ReleaseReviewView,
@@ -388,7 +389,7 @@ const RECIPE: Partial<FlowPullRequest> = {
   repository: "group",
   kind: "recipe",
   number: 7,
-  title: "Add a mail service to the Remote (CDE) and Local recipes",
+  title: "Add a mail service to the Remote (CDE) and Local setups",
   line: "#7",
   url: `${HARNESS_HQ}/changes/g-snap/group/7`,
 };
@@ -1004,7 +1005,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe",
-    label: "A recipe change, ready: a service added to recipes nothing is made from",
+    label: "A setup change, ready: a service added to setups nothing is made from",
     node: (
       <Change
         conversation={comments({ kind: "read", comments: [] })}
@@ -1017,7 +1018,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe-merged-unused",
-    label: "A recipe change merged, to recipes nothing is made from: no release",
+    label: "A setup change merged, to setups nothing is made from: no release",
     node: (
       <Change
         conversation={comments({ kind: "read", comments: [] })}
@@ -1029,14 +1030,14 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe-merged",
-    label: "A recipe change merged: the stage and production get what it adds",
+    label: "A setup change merged: the stage and production get what it adds",
     node: (
       <Change
         conversation={comments({ kind: "read", comments: [] })}
         over={{
           ...RECIPE,
           ...MERGED_NOW,
-          title: "Add a mail service to the stage and production recipes",
+          title: "Add a mail service to the stage and production setups",
         }}
         readout={recipeRead(MADE_FROM_TIERS)}
         run={{ words: undefined, reading: false }}
@@ -1045,7 +1046,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe-merged-none",
-    label: "A recipe change merged, in a project with no stage or production yet",
+    label: "A setup change merged, in a project with no stage or production yet",
     node: (
       <Change
         conversation={comments({ kind: "read", comments: [] })}
@@ -1053,7 +1054,7 @@ export const REVIEW_STATES: ReadonlyArray<{
         over={{
           ...RECIPE,
           ...MERGED_NOW,
-          title: "Add a mail service to the stage and production recipes",
+          title: "Add a mail service to the stage and production setups",
         }}
         readout={recipeRead(MADE_FROM_TIERS)}
         run={{ words: undefined, reading: false }}
@@ -1124,7 +1125,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "recipe-deploy-answer",
-    label: "Recipe merged · services being added",
+    label: "Setup merged · services being added",
     node: (
       <Change
         over={{ ...RECIPE, ...MERGED_NOW }}
@@ -1287,18 +1288,17 @@ export function ReviewDialogTry({ openAtStart = false }: { readonly openAtStart?
   }, [open]);
   return (
     <div className="flex gap-3 px-2">
-      <button
-        className="rv-btn2"
+      <Button
         data-review-harness-open="ready"
         onClick={(event) => {
           setFrom(event.currentTarget);
           setRead(false);
           setOpen(true);
         }}
-        type="button"
+        variant="secondary"
       >
         Open the review as a dialog
-      </button>
+      </Button>
       <ZeropsReviewDialog
         from={from}
         labelledBy="review-try-title"
@@ -1438,17 +1438,16 @@ export function ReleaseDialogTry({ openAtStart }: { readonly openAtStart: boolea
   };
   return (
     <div className="flex gap-3 px-2">
-      <button
-        className="rv-btn2"
+      <Button
         data-review-harness-open="release"
         onClick={(event) => {
           setFrom(event.currentTarget);
           setOpen(true);
         }}
-        type="button"
+        variant="secondary"
       >
         Open the release as a dialog
-      </button>
+      </Button>
       <ZeropsReviewDialog
         from={from}
         labelledBy="release-try-title"

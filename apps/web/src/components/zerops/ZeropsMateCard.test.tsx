@@ -17,7 +17,7 @@ describe("ZeropsMateCard", () => {
     expect(html).toContain('data-zerops-mate-card="still"');
     expect(html).toContain('data-mate-face-state="working"');
     expect(html).toContain('data-mate-face-tint="coral"');
-    expect(html).toContain('data-mate-face-size="md"');
+    expect(html).toContain('data-mate-face-size="24"');
     expect(html).toContain(">Fen<");
     expect(html).toContain('data-zerops-surface="mate-line"');
     expect(html).toContain("Reviewing the migration");
@@ -99,7 +99,7 @@ describe("ZeropsMateCard", () => {
     const open = html.slice(0, html.indexOf(">"));
     expect(open).toContain('data-zerops-mate-card="opens"');
 
-    expect(html).toContain('data-mate-face-size="md"');
+    expect(html).toContain('data-mate-face-size="24"');
     // Line 1 is the name, its time, then the Preview; line 2 the line.
     const name = html.indexOf(">Fen<");
     const time = html.indexOf(">2h<");

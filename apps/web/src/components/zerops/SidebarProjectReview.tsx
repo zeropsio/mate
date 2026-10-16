@@ -557,7 +557,7 @@ function ReviewMaker({ by }: { readonly by: ProjectReviewItem["by"] }) {
   return (
     <span aria-hidden="true" className="menu-tagpop-face">
       <span className={mark === undefined ? "flex" : "menu-tagpop-cut flex"}>
-        <MateFace className="size-5.5" shape={by.shape} size="sm" state="idle" tint={by.tint} />
+        <MateFace className="size-5.5" shape={by.shape} size={20} state="idle" tint={by.tint} />
       </span>
       {mark === undefined ? null : (
         <MateOwnerMark className="menu-tagpop-owner" seat={{ kind: "person", mark }} />

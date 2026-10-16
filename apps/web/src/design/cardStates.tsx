@@ -499,7 +499,7 @@ function WatchedToItsEnd({
             setRound((value) => value + 1);
           }}
           size="sm"
-          variant="outline"
+          variant="secondary"
         >
           Run it again
         </Button>
@@ -546,7 +546,7 @@ function BrokeOffThenNext() {
         <Button data-harness-next-run="" disabled={next} onClick={() => setNext(true)} size="sm">
           The next run begins
         </Button>
-        <Button onClick={() => setNext(false)} size="sm" variant="outline">
+        <Button onClick={() => setNext(false)} size="sm" variant="secondary">
           Back
         </Button>
       </div>

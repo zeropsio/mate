@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { mateBirthFace } from "~/zerops/agentActivity";
-import { MateFace } from "../primitives";
+import { MateFace, type MateFaceSize } from "../primitives";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
 
 /** Whether a node would draw anything — a slot may answer `null` for "nothing here". */
@@ -26,7 +26,7 @@ export function ComingMateFace({
   size,
   coming,
 }: {
-  readonly size: "sm" | "md";
+  readonly size: MateFaceSize;
   readonly coming: GroupFlowComing;
 }) {
   return (

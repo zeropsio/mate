@@ -19,7 +19,7 @@ function Opener({ footer }: { readonly footer: "default" | "bare" }) {
   const [open, setOpen] = useState(false);
   return (
     <Specimen label={`<AlertDialogFooter ${specimenLabel({ variant: footer })}>`}>
-      <Button onClick={() => setOpen(true)} variant="destructive-outline">
+      <Button onClick={() => setOpen(true)} variant="destructive">
         Delete project
       </Button>
       <AlertDialog onOpenChange={setOpen} open={open}>
@@ -31,7 +31,7 @@ function Opener({ footer }: { readonly footer: "default" | "bare" }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter variant={footer}>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <AlertDialogClose render={<Button variant="destructive" />}>Delete</AlertDialogClose>
           </AlertDialogFooter>
         </AlertDialogPopup>

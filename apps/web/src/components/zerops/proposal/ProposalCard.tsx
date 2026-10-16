@@ -19,6 +19,7 @@ import {
   RotateCwIcon,
   SendIcon,
   SquareIcon,
+  UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
@@ -27,7 +28,8 @@ import { MateMark } from "../../MateMark";
 import { DnsRecords } from "../addresses/DnsRecords";
 import { Button } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
-import { FlatCard, MateFace } from "../primitives";
+import { Card } from "../../ui/card";
+import { MateFace } from "../primitives";
 import {
   chiefMessageTarget,
   proposalOutcomeWords,
@@ -76,6 +78,13 @@ export interface ProposalCardProps {
   readonly domainRecords?: ReturnType<typeof domainProposalRecords> | undefined;
   /** `domain.add`, approved: opens the project's addresses. */
   readonly onOpenAddresses?: (() => void) | undefined;
+  /**
+   * `access.set`: who gets which level on which project, one line each with what changes from
+   * today, and the projects it never writes, each saying why.
+   */
+  readonly access?:
+    | { readonly lines: ReadonlyArray<string>; readonly dropped: ReadonlyArray<string> }
+    | undefined;
 }
 
 const KIND_ICON: Record<ZeropsProposal["kind"], LucideIcon> = {
@@ -86,6 +95,7 @@ const KIND_ICON: Record<ZeropsProposal["kind"], LucideIcon> = {
   "mate.message": SendIcon,
   "chief.message": SendIcon,
   "domain.add": GlobeIcon,
+  "access.set": UsersIcon,
 };
 
 /** A secret value is never drawn: the card says it is hidden. */
@@ -100,55 +110,84 @@ export function ProposalCard(props: ProposalCardProps) {
       : undefined;
   const where = proposalWhere(proposal);
   return (
-    <FlatCard
-      className="flex min-w-0 items-start gap-2.5 px-3.5 py-3"
+    <Card
       data-proposal={proposal.id}
       data-proposal-kind={proposal.kind}
       data-proposal-stage={stage}
+      size="sm"
+      variant="flat"
     >
-      <Icon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-      <div className="grid min-w-0 flex-1 gap-2.5">
-        <div className="grid min-w-0 gap-0.5">
-          <p className="text-sm font-medium text-foreground" data-proposal-summary>
-            {stage === "open" && proposal.kind === "chief.message" && chiefTarget?.kind === "none"
-              ? "This Mate has no Chief to ask."
-              : stage === "open" &&
-                  proposal.kind === "chief.message" &&
-                  chiefTarget?.kind === "unknown"
-                ? "Finding this Mate's Chief…"
-                : proposalTitle(proposal)}
-          </p>
-          {where === null ? null : (
-            <p className="text-xs text-muted-foreground" data-proposal-where>
-              {where}
+      <div className="flex min-w-0 items-start gap-2.5">
+        <Icon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        <div className="grid min-w-0 flex-1 gap-2.5">
+          <div className="grid min-w-0 gap-0.5">
+            <p className="text-sm font-medium text-foreground" data-proposal-summary>
+              {stage === "open" && proposal.kind === "chief.message" && chiefTarget?.kind === "none"
+                ? "This Mate has no Chief to ask."
+                : stage === "open" &&
+                    proposal.kind === "chief.message" &&
+                    chiefTarget?.kind === "unknown"
+                  ? "Finding this Mate's Chief…"
+                  : proposalTitle(proposal)}
             </p>
-          )}
-          {proposal.reason === undefined || proposal.reason.trim() === "" ? null : (
-            <p className="text-xs leading-4.5 text-muted-foreground" data-proposal-reason>
-              {props.mateName}: <q className="italic">{proposal.reason}</q>
-            </p>
-          )}
+            {where === null ? null : (
+              <p className="text-xs text-muted-foreground" data-proposal-where>
+                {where}
+              </p>
+            )}
+            {proposal.reason === undefined || proposal.reason.trim() === "" ? null : (
+              <p className="text-xs leading-4.5 text-muted-foreground" data-proposal-reason>
+                {props.mateName}: <q className="italic">{proposal.reason}</q>
+              </p>
+            )}
+          </div>
+          <ProposalBody
+            access={props.access}
+            proposal={proposal}
+            recipient={props.recipient}
+            chiefTarget={stage === "open" ? chiefTarget : undefined}
+          />
+          <ProposalFoot {...props} chiefTarget={chiefTarget} />
         </div>
-        <ProposalBody
-          proposal={proposal}
-          recipient={props.recipient}
-          chiefTarget={stage === "open" ? chiefTarget : undefined}
-        />
-        <ProposalFoot {...props} chiefTarget={chiefTarget} />
       </div>
-    </FlatCard>
+    </Card>
   );
 }
 
 function ProposalBody({
+  access,
   proposal,
   recipient,
   chiefTarget,
 }: {
+  readonly access: ProposalCardProps["access"];
   readonly proposal: ZeropsProposal;
   readonly recipient: ProposalRecipient | undefined;
   readonly chiefTarget: ProposalCardProps["chiefTarget"];
 }) {
+  if (proposal.kind === "access.set") {
+    if (access === undefined) return null;
+    return (
+      <div className="grid min-w-0 gap-1.5 text-xs">
+        <ul className="grid min-w-0 gap-1 rounded-md bg-muted px-3 py-2" data-proposal-access>
+          {access.lines.map((line) => (
+            <li className="min-w-0 wrap-anywhere text-foreground" key={line}>
+              {line}
+            </li>
+          ))}
+        </ul>
+        {access.dropped.length === 0 ? null : (
+          <ul className="grid min-w-0 gap-0.5 text-muted-foreground" data-proposal-left-out>
+            {access.dropped.map((line) => (
+              <li className="min-w-0 wrap-anywhere" key={line}>
+                Left out: {line}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
   if (proposal.kind === "env.set") {
     const { key, value, secret } = proposal.params;
     return (
@@ -194,7 +233,7 @@ function ProposalBody({
           <MateFace
             mark={false}
             shape={recipient.shape}
-            size="sm"
+            size={20}
             state="idle"
             tint={recipient.tint}
           />
@@ -265,17 +304,17 @@ function ProposalFoot(props: ProposalCardProps) {
               <Button
                 disabled={props.approveBlocked !== undefined}
                 onClick={props.onApprove}
-                size="xs"
+                size="sm"
               >
                 Approve
               </Button>
             )
           ) : (
-            <Button onClick={props.onSetUpChief} size="xs">
-              Set up your Chief
+            <Button onClick={props.onSetUpChief} size="sm">
+              Set up Chief
             </Button>
           )}
-          <Button onClick={props.onDecline} size="xs" variant="ghost-muted">
+          <Button onClick={props.onDecline} size="sm" variant="ghost">
             Decline
           </Button>
           {props.approveBlocked === undefined || props.onSetUpChief !== undefined ? null : (
@@ -321,11 +360,11 @@ function ProposalFoot(props: ProposalCardProps) {
       </span>
       {stage === "done" && props.onOpenRecipient !== undefined ? (
         proposal.kind === "mate.message" ? (
-          <Button onClick={props.onOpenRecipient} size="xs" variant="outline">
+          <Button onClick={props.onOpenRecipient} size="sm" variant="secondary">
             Open {props.recipient?.name ?? proposal.params.to.mateName}
           </Button>
         ) : proposal.kind === "chief.message" ? (
-          <Button onClick={props.onOpenRecipient} size="xs" variant="outline">
+          <Button onClick={props.onOpenRecipient} size="sm" variant="secondary">
             Open Chief
           </Button>
         ) : null
@@ -366,7 +405,7 @@ function DomainFoot(props: ProposalCardProps & { readonly stage: "done" | "unsee
           {domainState?.words ?? proposalOutcomeWords(proposal, stage)}
         </span>
         {props.onOpenAddresses === undefined ? null : (
-          <Button onClick={props.onOpenAddresses} size="xs" variant="outline">
+          <Button onClick={props.onOpenAddresses} size="sm" variant="secondary">
             Open addresses
           </Button>
         )}

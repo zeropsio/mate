@@ -54,16 +54,16 @@ describe("right panel kinds", () => {
       {
         kind: "diff",
         label: "Diff",
-        description: "Review changes in this thread.",
+        description: "Review what this Mate changed.",
         shortcut: "D",
         unavailableHint: "Available for Git repositories.",
       },
       {
         kind: "agents",
         label: "Helpers",
-        description: "Follow the helpers it started and their workflows.",
+        description: "Follow this Mate's helpers and their work.",
         shortcut: "A",
-        unavailableHint: "Available from a thread.",
+        unavailableHint: "Available from a chat.",
       },
       {
         kind: "zerops",
@@ -75,7 +75,7 @@ describe("right panel kinds", () => {
       {
         kind: "browser",
         label: "Browser",
-        description: "Watch the agent's browser live.",
+        description: "Watch this Mate's browser live.",
         shortcut: "B",
         unavailableHint: "Available in a Zerops project.",
       },
@@ -110,7 +110,7 @@ describe("right panel kinds", () => {
       {
         kind: "mcp",
         label: "MCP",
-        description: "Add and check your agents' tools.",
+        description: "Add and check this Mate's tools.",
         shortcut: "M",
         unavailableHint: "Available from a conversation.",
       },

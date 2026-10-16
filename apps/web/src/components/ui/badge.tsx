@@ -2,57 +2,130 @@
 
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
+import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 
+/**
+ * The one label: a short word or count beside the thing it describes. A pill on the status
+ * surfaces, so it never reads as a press (a press is a Button, a rectangle). Five tones carry
+ * meaning, never decoration: `neutral` for a fact, `info` for work under way, `success` for
+ * done or running, `warning` for what needs the person, `danger` for what broke.
+ */
 const badgeVariants = cva(
-  "relative inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-sm border border-transparent font-medium outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-3.5 sm:[&_svg:not([class*='size-'])]:size-3 [&_svg]:pointer-events-none [&_svg]:shrink-0 [button&,a&]:cursor-pointer [button&,a&]:pointer-coarse:after:absolute [button&,a&]:pointer-coarse:after:size-full [button&,a&]:pointer-coarse:after:min-h-11 [button&,a&]:pointer-coarse:after:min-w-11",
+  "relative inline-flex min-w-0 shrink-0 items-center gap-1 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&_svg:not([class*='size-'])]:size-3 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
-    defaultVariants: {
-      size: "default",
-      variant: "default",
-    },
+    defaultVariants: { tone: "neutral", form: "pill" },
     variants: {
-      size: {
-        default:
-          "h-5.5 min-w-5.5 px-[calc(--spacing(1)-1px)] text-sm sm:h-4.5 sm:min-w-4.5 sm:text-xs",
-        lg: "h-6.5 min-w-6.5 px-[calc(--spacing(1.5)-1px)] text-base sm:h-5.5 sm:min-w-5.5 sm:text-sm",
-        sm: "h-5 min-w-5 rounded-[.25rem] px-[calc(--spacing(1)-1px)] text-xs sm:h-4 sm:min-w-4 sm:text-[.625rem]",
+      form: {
+        pill: "h-5 overflow-hidden rounded-full px-2 font-medium text-caption",
+        // The dot form takes the size and ink of the words around it.
+        dot: "gap-1.5",
       },
-      variant: {
-        default: "bg-primary text-primary-foreground [button&,a&]:hover:bg-primary/90",
-        chip: "rounded-[var(--zerops-chip-radius)] bg-muted text-foreground [button&,a&]:hover:bg-accent",
-        destructive: "bg-destructive text-white [button&,a&]:hover:bg-destructive/90",
-        error: "bg-destructive/8 text-destructive-foreground dark:bg-destructive/16",
-        info: "bg-info/8 text-info-foreground dark:bg-info/16",
-        outline:
-          "border-input bg-background text-foreground dark:bg-input/32 [button&,a&]:hover:bg-accent/50 dark:[button&,a&]:hover:bg-input/48",
-        secondary: "bg-secondary text-secondary-foreground [button&,a&]:hover:bg-secondary/90",
-        success: "bg-success/8 text-success-foreground dark:bg-success/16",
-        warning: "bg-warning/8 text-warning-foreground dark:bg-warning/16",
+      tone: {
+        neutral: "",
+        info: "",
+        success: "",
+        warning: "",
+        danger: "",
       },
     },
+    compoundVariants: [
+      { form: "pill", tone: "neutral", className: "bg-status-off-surface text-foreground" },
+      { form: "pill", tone: "info", className: "bg-status-busy-surface text-status-busy-text" },
+      { form: "pill", tone: "success", className: "bg-status-ok-surface text-status-ok-text" },
+      {
+        form: "pill",
+        tone: "warning",
+        className: "bg-status-attention-surface text-status-attention-text",
+      },
+      {
+        form: "pill",
+        tone: "danger",
+        className: "bg-status-failed-surface text-status-failed-text",
+      },
+    ],
   },
 );
 
-interface BadgeProps extends useRender.ComponentProps<"span"> {
-  variant?: VariantProps<typeof badgeVariants>["variant"];
-  size?: VariantProps<typeof badgeVariants>["size"];
-}
+const DOT_TONE = {
+  neutral: "bg-status-off",
+  info: "bg-status-busy",
+  success: "bg-status-ok",
+  warning: "bg-status-attention",
+  danger: "bg-status-failed",
+} as const;
 
-function Badge({ className, variant, size, render, ...props }: BadgeProps) {
+type BadgeTone = keyof typeof DOT_TONE;
+
+type BadgeProps = Omit<useRender.ComponentProps<"span">, "children"> & {
+  readonly tone?: BadgeTone;
+  /** The one size: 20 px, caption type. */
+  readonly size?: "sm";
+} & (
+    | { readonly dot?: false; readonly pulse?: never; readonly children: ReactNode }
+    | {
+        /** An 8 px status dot before its words; without words it needs an `aria-label`. */
+        readonly dot: true;
+        /** The dot breathes while the work it marks runs (`info`'s default). */
+        readonly pulse?: boolean;
+        readonly children: ReactNode;
+      }
+    | {
+        readonly dot: true;
+        readonly pulse?: boolean;
+        readonly children?: undefined;
+        readonly "aria-label": string;
+      }
+  );
+
+function Badge({
+  className,
+  tone = "neutral",
+  size: _size,
+  dot,
+  pulse,
+  render,
+  ...props
+}: BadgeProps) {
+  const form = dot === true ? "dot" : "pill";
+  const breathes = dot === true && (pulse ?? tone === "info");
+  const labelled = dot === true && props.children === undefined;
   const defaultProps = {
-    className: cn(badgeVariants({ className, size, variant })),
+    className: cn(badgeVariants({ form, tone }), className),
     "data-slot": "badge",
+    "data-tone": tone,
+    "data-dot": dot === true ? "" : undefined,
+    ...(labelled ? { role: "img" } : {}),
+    children:
+      dot === true ? (
+        <>
+          <span
+            aria-hidden="true"
+            data-pulse={breathes ? "" : undefined}
+            className={cn(
+              "inline-flex size-2 shrink-0 rounded-full",
+              DOT_TONE[tone],
+              breathes && "animate-status-pulse motion-reduce:animate-none",
+            )}
+          />
+          {props.children === undefined ? null : (
+            <span className="min-w-0 truncate">{props.children}</span>
+          )}
+        </>
+      ) : (
+        props.children
+      ),
   };
+  const { children: _children, ...rest } = props;
 
   return useRender({
     defaultTagName: "span",
-    props: mergeProps<"span">(defaultProps, props),
+    props: mergeProps<"span">(defaultProps, rest),
     render,
   });
 }
 
 // The *Variants function is for components/ui modules only.
-export { Badge, badgeVariants };
+export { Badge, badgeVariants, type BadgeTone };

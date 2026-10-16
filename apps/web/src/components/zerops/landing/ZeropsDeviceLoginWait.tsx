@@ -7,7 +7,7 @@
  * code may have changed and offers opening it again first.
  */
 import { Spinner } from "../../ui/spinner";
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import type { ZeropsDeviceLoginStage } from "~/zerops/deviceLogin";
 
 export function ZeropsDeviceLoginWait({
@@ -41,7 +41,7 @@ export function ZeropsDeviceLoginWait({
             The sign-in was renewed, so the code in the Zerops window may have changed.
           </p>
           <Button className="w-full" onClick={onReopen}>
-            Open it again
+            Reopen the Zerops window
           </Button>
         </>
       ) : (
@@ -50,29 +50,24 @@ export function ZeropsDeviceLoginWait({
           <p className="text-sm text-muted-foreground">Finish in the Zerops window.</p>
         </>
       )}
-      {stage.kind === "waiting" ? (
-        <p className="text-xs text-muted-foreground">
-          {older ? "The code is now " : "If Zerops shows a code, it's "}
-          <span className="font-mono text-foreground">{stage.userCode}</span>
-        </p>
-      ) : null}
+      {/* The code's line is held from the first frame: its arrival a moment later moves nothing. */}
+      <p className="min-h-4 text-xs text-muted-foreground" aria-live="polite">
+        {stage.kind === "waiting" ? (
+          <>
+            {older ? "The code is now " : "If Zerops shows a code, it's "}
+            <span className="font-mono text-foreground">{stage.userCode}</span>
+          </>
+        ) : null}
+      </p>
       <p className="space-x-3 text-xs text-muted-foreground">
         {stage.kind === "waiting" && !blocked && !older ? (
-          <button
-            type="button"
-            className="underline underline-offset-2 hover:text-foreground"
-            onClick={onReopen}
-          >
-            Open it again
-          </button>
+          <InlineButton tone="muted" onClick={onReopen}>
+            Reopen the Zerops window
+          </InlineButton>
         ) : null}
-        <button
-          type="button"
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
+        <InlineButton tone="muted" onClick={onCancel}>
+          Cancel sign-in
+        </InlineButton>
       </p>
     </div>
   );

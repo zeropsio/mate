@@ -26,7 +26,7 @@ import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOw
 import { useEngineRunCards } from "../zerops/useEngineCardPaging";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { agentContext } from "@t3tools/client-runtime/data";
-import { SurfaceLoading } from "./SurfaceLoading";
+import { Loading } from "./ui/loading";
 import { crewCardOf, engineWorkRunsOn, timelineEntryTurnId } from "./chat/conversation.logic";
 import { type BackgroundStopPress, backgroundStopShows } from "./chat/backgroundStop.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
@@ -4153,6 +4153,7 @@ function ConversationView(props: ChatViewProps) {
   const composerPlaceholders = resolveComposerPlaceholders({
     whoLivesHere: whoLivesHereKind,
     zeropsAvailable: zeropsChrome.panel === "available",
+    chief: chiefConversation,
   });
   const openFileSurface = useCallback(
     (relativePath: string) => {
@@ -8095,7 +8096,7 @@ function ConversationView(props: ChatViewProps) {
   };
   const rightPanelContent =
     activeThreadRef && activeRightPanelSurface ? (
-      <Suspense fallback={<SurfaceLoading />}>
+      <Suspense fallback={<Loading label="The panel" shape="room" />}>
         {(() => {
           switch (activeRightPanelSurface.kind) {
             case "terminal":
@@ -8121,7 +8122,7 @@ function ConversationView(props: ChatViewProps) {
               );
             case "diff":
               return (
-                <Suspense fallback={<SurfaceLoading />}>
+                <Suspense fallback={<Loading label="The changes" shape="room" />}>
                   <DiffPanel
                     key={activeThreadKey}
                     mode="embedded"
@@ -8240,7 +8241,7 @@ function ConversationView(props: ChatViewProps) {
             case "file":
               if (!activeProject || !activeWorkspaceRoot) return null;
               return (
-                <Suspense fallback={<SurfaceLoading />}>
+                <Suspense fallback={<Loading label="The files" shape="room" />}>
                   <FilePreviewPanel
                     key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
                     environmentId={activeProject.environmentId}
@@ -8852,9 +8853,11 @@ function ConversationView(props: ChatViewProps) {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+                  <AlertDialogClose render={<Button variant="secondary" />}>
+                    Cancel
+                  </AlertDialogClose>
                   <Button
-                    variant="default"
+                    variant="primary"
                     onClick={() => {
                       setBranchRestoreConfirmOpen(false);
                       void handleSwitchCheckoutToThread();
@@ -8998,7 +9001,7 @@ function ConversationView(props: ChatViewProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button
               onClick={() => {
                 if (!pendingRevert || pendingRevert.routeThreadKey !== routeThreadKey) return;

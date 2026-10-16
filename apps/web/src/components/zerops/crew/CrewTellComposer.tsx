@@ -180,7 +180,7 @@ export function CrewTellComposer({
                     onClick={() => setPicked(tellPicks(picked, mate.handle, crewmates))}
                     type="button"
                   >
-                    <MateFace className="size-4" size="dot" state="idle" tint={mate.tint} />
+                    <MateFace size={16} state="idle" tint={mate.tint} />
                   </button>
                 ))}
               </span>
@@ -189,7 +189,7 @@ export function CrewTellComposer({
         ) : (
           <CrewTip tip={CREW_TO_LEAD_LINE}>
             <span className="crew-chip" data-crew-composer-to="lead">
-              <MateFace className="size-4" size="dot" state={lead.face} tint={lead.tint} />
+              <MateFace size={16} state={lead.face} tint={lead.tint} />
               {crewToWord(lead.name)}
             </span>
           </CrewTip>
@@ -251,7 +251,7 @@ export function CrewTellLocked({
     <div className={cn("crew-locked", className)} data-crew-locked={lock.ownership}>
       <LockIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
       <p className="crew-locked-words">{crewLockWords(lock.ownership)}</p>
-      <CrewPress tone="quiet" label={CREW_LOCK_ACTION} onPress={() => onSignIn(lock)} />
+      <CrewPress variant="secondary" label={CREW_LOCK_ACTION} onPress={() => onSignIn(lock)} />
     </div>
   );
 }

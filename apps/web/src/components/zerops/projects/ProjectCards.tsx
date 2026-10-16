@@ -9,6 +9,7 @@
  * Structural like the list it replaced: a Mate's row, the project's menu, the release's door and
  * a place's panel are the page's slots (`ZeropsProjectsFlowProps`).
  */
+import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import {
   ArrowUpRightIcon,
   ChevronLeftIcon,
@@ -53,6 +54,7 @@ import {
 } from "./projectCard.logic";
 import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
+import { Button } from "~/components/ui/button";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
@@ -225,8 +227,15 @@ function SetUpPanel({
         type="button"
       >
         <PlusIcon aria-hidden="true" className="size-3.5" />
-        {`Set up ${placeLabel(line).toLowerCase()}`}
+        {line.kind === "production"
+          ? environmentDoorLabel("production", placeLabel(line))
+          : `Set up ${placeLabel(line).toLowerCase()}`}
       </button>
+      {onSetUp === "busy" ? (
+        <p className="text-muted-foreground text-xs" role="status">
+          {PUT_LIVE_AFTER_CREATION}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -355,7 +364,7 @@ function CardComingMate<T>({
   return (
     <div aria-busy="true" className="ov-mate" data-zerops-surface="mate-coming" role="listitem">
       <span className="ov-mate-face">
-        <ComingMateFace coming={mate.coming} size="md" />
+        <ComingMateFace coming={mate.coming} size={24} />
       </span>
       <span className="ov-mate-text">
         <span className="ov-mate-l1">
@@ -416,7 +425,7 @@ function CardMates<T>({
           <span className="ov-fold-faces">
             {rest.slice(0, 3).map((mate) => (
               <Fragment key={props.getKey(mate.item)}>
-                {props.renderMateFace(mate.item, "sm")}
+                {props.renderMateFace(mate.item, 20)}
               </Fragment>
             ))}
           </span>
@@ -808,9 +817,9 @@ export function CardMateLiftActions({
             placeholder={label}
             value={text}
           />
-          <button className="ov-btn" data-main="true" disabled={busy} type="submit">
+          <Button disabled={busy} type="submit">
             Send
-          </button>
+          </Button>
         </form>
         {said}
       </>
@@ -819,23 +828,12 @@ export function CardMateLiftActions({
     case "plan":
       return (
         <>
-          <button
-            className="ov-btn"
-            data-main="true"
-            disabled={onApprove === undefined || busy}
-            onClick={onApprove}
-            type="button"
-          >
+          <Button disabled={onApprove === undefined || busy} onClick={onApprove}>
             Approve plan
-          </button>
-          <button
-            className="ov-btn"
-            disabled={busy}
-            onClick={() => setReplying(true)}
-            type="button"
-          >
+          </Button>
+          <Button disabled={busy} onClick={() => setReplying(true)} variant="secondary">
             Change it…
-          </button>
+          </Button>
           {said}
         </>
       );
@@ -843,47 +841,27 @@ export function CardMateLiftActions({
       return (
         <>
           {choices.map((choice) => (
-            <button
-              className="ov-btn"
-              data-main={choice.primary ? "true" : undefined}
+            <Button
               disabled={busy}
               key={choice.label}
               onClick={choice.onPick}
-              type="button"
+              variant={choice.primary ? "primary" : "secondary"}
             >
               {choice.label}
-            </button>
+            </Button>
           ))}
           {allowText ? (
-            <button
-              className="ov-btn"
-              disabled={busy}
-              onClick={() => setReplying(true)}
-              type="button"
-            >
+            <Button disabled={busy} onClick={() => setReplying(true)} variant="secondary">
               Answer…
-            </button>
+            </Button>
           ) : null}
           {said}
         </>
       );
     case "fix":
-      return (
-        <button className="ov-btn" data-main="true" onClick={onFix} type="button">
-          Ask {name} to fix it
-        </button>
-      );
+      return <Button onClick={onFix}>Ask {name} to fix it</Button>;
     case "review":
-      return (
-        <button
-          className="ov-btn"
-          data-main="true"
-          onClick={(event) => onReview(event.currentTarget)}
-          type="button"
-        >
-          Review change
-        </button>
-      );
+      return <Button onClick={(event) => onReview(event.currentTarget)}>Review change</Button>;
   }
 }
 

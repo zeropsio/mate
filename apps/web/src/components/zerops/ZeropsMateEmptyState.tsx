@@ -408,8 +408,8 @@ export function MateEmptyStateView({
             <div className="flex flex-col items-center gap-3" role="status">
               <p>The message to {mate.name} didn't go through.</p>
               <Button
-                variant="pill"
-                size="compact"
+                variant="primary"
+                size="md"
                 disabled={standUpFailure.retrying}
                 onClick={standUpFailure.retry}
               >
@@ -449,8 +449,9 @@ export type MateFaceSlot = ReactNode | ((face: ReactElement<MateFaceProps>) => R
 
 /**
  * Every opening state's one composition: the face centred on top, the headline, the line under it
- * and the slot under that. The complete block centres in the room above the measured footer;
- * each place hands over in place (`ArrivalSwap`) while its words cross-fade.
+ * and the slot under that. The block hangs from a fixed height in the room above the measured
+ * footer, so it only grows downward; each place hands over in place (`ArrivalSwap`) while its
+ * words cross-fade.
  */
 function ArrivalComposition({
   kind,
@@ -520,7 +521,7 @@ function ArrivalComposition({
           paces={pacing}
           restarting={restarting}
           shape={mate.shape}
-          size="lg"
+          size={64}
           state={state}
           style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
           tint={mate.tint}
@@ -537,8 +538,12 @@ function ArrivalComposition({
       data-zerops-surface="mate-empty-state"
       style={bottomInset === 0 ? undefined : { height: `calc(100% - ${bottomInset}px)` }}
     >
+      {/* The block hangs from a fixed height, a little above the room's centre — never centred on
+          its own height — so steps, a stop's reason or Details that arrive grow it downward and
+          the face and headline stay where they stand, through every state and the hand-over. */}
+      <div aria-hidden="true" className="h-[max(0px,calc(50%-12rem))] shrink-0" />
       <div
-        className="my-auto flex w-full max-w-2xl shrink-0 flex-col items-center"
+        className="flex w-full max-w-2xl shrink-0 flex-col items-center"
         data-mate-empty-lead
         role={status ? "status" : undefined}
       >

@@ -38,8 +38,8 @@ import {
 import { mateLoginAsAgentRow } from "@t3tools/client-runtime/zerops/logins";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
-import { SurfaceLoading } from "../SurfaceLoading";
-import { Button } from "~/components/ui/button";
+import { Loading } from "../ui/loading";
+import { Button, InlineButton } from "~/components/ui/button";
 import {
   Dialog,
   DialogHeader,
@@ -454,9 +454,9 @@ function OpenCard({
         </span>
         <span className="flex-1" />
         {onSwitch === null ? null : (
-          <button className="arrival-link" data-sign-in-switch onClick={onSwitch} type="button">
+          <InlineButton data-sign-in-switch onClick={onSwitch} tone="muted">
             {words.switchTo}
-          </button>
+          </InlineButton>
         )}
       </div>
       <div aria-live="polite" className="arrival-open-body">
@@ -479,7 +479,7 @@ function OpenCard({
               <Button
                 data-sign-in-replace-cancel
                 autoFocus
-                variant="outline"
+                variant="secondary"
                 onClick={onDismiss}
                 size="sm"
               >
@@ -505,15 +505,14 @@ function OpenCard({
         <span>{signInFoot(mateName)}</span>
         {attempt === undefined ||
         (steps.kind === "steps" && steps.second.kind === "terminal") ? null : (
-          <button
+          <InlineButton
+            tone="muted"
             aria-expanded={watching}
-            className="arrival-link"
             data-sign-in-watch
             onClick={() => setWatching((value) => !value)}
-            type="button"
           >
             {watching ? HIDE_WHATS_HAPPENING : SHOW_WHATS_HAPPENING}
-          </button>
+          </InlineButton>
         )}
       </div>
     </div>
@@ -559,7 +558,7 @@ function OpenCardSteps({
         <span className="arrival-open-step-words" role="alert">
           {steps.why}
         </span>
-        <Button disabled={disabled} onClick={onRetry} size="sm" variant="outline">
+        <Button disabled={disabled} onClick={onRetry} size="sm" variant="secondary">
           <RotateCcwIcon aria-hidden="true" />
           {words.tryAgain}
         </Button>
@@ -581,9 +580,12 @@ function OpenCardSteps({
           page.url === undefined ? (
             <span />
           ) : (
-            <a className="arrival-link" href={page.url} rel="noopener noreferrer" target="_blank">
+            <InlineButton
+              render={<a href={page.url} rel="noopener noreferrer" target="_blank" />}
+              tone="muted"
+            >
               {words.openAgain}
-            </a>
+            </InlineButton>
           )
         ) : (
           <Button
@@ -724,7 +726,7 @@ function TypeCodeStep({
               );
             }}
             size="sm"
-            variant="outline"
+            variant="secondary"
           >
             {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
             {copied ? words.copied : words.copy}
@@ -858,7 +860,7 @@ function SignInTerminal({
     <Suspense
       fallback={
         <div className="h-32">
-          <SurfaceLoading />
+          <Loading label="The sign-in" shape="room" />
         </div>
       }
     >
@@ -969,7 +971,7 @@ export function ZeropsAgentSignInDialogPopup({
           {title !== undefined
             ? `Sign in ${title}`
             : mateName === null
-              ? "Sign in a coding agent"
+              ? "Sign this Mate in"
               : `Sign ${mateName} in`}
         </DialogTitle>
       </DialogHeader>

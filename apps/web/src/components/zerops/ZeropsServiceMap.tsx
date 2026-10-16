@@ -21,6 +21,7 @@ import { ServiceBrowserLink, ServiceBrowserLinkIndicator } from "../ServiceBrows
  * — and the coding agents' card, the agents the Mate works through, grows out
  * of its bottom edge rather than standing on its own further down the panel.
  */
+import { Card } from "../ui/card";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon, ChevronDownIcon, DatabaseIcon } from "lucide-react";
 import { useContext, type ReactElement, type ReactNode } from "react";
@@ -48,8 +49,9 @@ import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "@t3tools/client-runtime/data";
 import { ZeropsDataLinkContext } from "./dataLink";
-import { FlatCard, LivenessLine, MateFace, MicroLabel, MintPanel, StatusDot } from "./primitives";
+import { LivenessLine, MateFace, MicroLabel, MintPanel, STATUS_BADGE_TONE } from "./primitives";
 import { sparklineGeometry } from "./sparkline";
+import { Badge } from "~/components/ui/badge";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
   error: "failed",
@@ -94,14 +96,16 @@ function ServiceStatus({
   label: string;
 }) {
   return (
-    <StatusDot
+    <Badge
       className="shrink-0"
+      dot
       data-zerops-service-tone={tone}
       data-zerops-service-transient={service.transient ? "true" : undefined}
-      label={label}
       pulse={service.transient}
-      tone={STATUS_TONE[tone]}
-    />
+      tone={STATUS_BADGE_TONE[STATUS_TONE[tone]]}
+    >
+      {label}
+    </Badge>
   );
 }
 
@@ -386,7 +390,7 @@ function RouteButton({ route }: { route: ZeropsServiceRoute }) {
         />
       }
       size="icon-sm"
-      variant="outline"
+      variant="secondary"
     >
       <ServiceBrowserLinkIndicator href={route.url} />
     </Button>
@@ -400,7 +404,7 @@ function RouteMenu({ routes }: { routes: ReadonlyArray<ZeropsRouteChoice> }) {
       <MenuTrigger
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
-        render={<Button data-zerops-service-route-menu size="sm" variant="outline" />}
+        render={<Button data-zerops-service-route-menu size="sm" variant="secondary" />}
       >
         Open
         <ChevronDownIcon aria-hidden="true" />
@@ -447,7 +451,7 @@ function DataButton({
       }}
       onPointerDown={(event) => event.stopPropagation()}
       size="icon-sm"
-      variant="outline"
+      variant="secondary"
     >
       <DatabaseIcon aria-hidden="true" />
     </Button>
@@ -665,7 +669,7 @@ function StageLine({
 function MateHome({ mate }: { mate: ZeropsMateOnMap }) {
   return (
     <div className="mt-2.5 flex min-w-0 max-w-full items-center gap-2" data-zerops-mate-home>
-      <MateFace shape={mate.shape} size="sm" state={mate.face} tint={mate.tint} />
+      <MateFace shape={mate.shape} size={20} state={mate.face} tint={mate.tint} />
       <span className="min-w-0 text-sm leading-snug">
         <span className="font-medium text-foreground">{mate.name}</span>
         <span className="text-muted-foreground"> lives here</span>
@@ -803,11 +807,7 @@ function ControlPlaneRow({
 function ServiceRow({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
   return (
     <li data-zerops-service-row="service">
-      <ServiceCard
-        render={<FlatCard className="px-3.5 py-2.5" />}
-        row={row}
-        usageRead={usageRead}
-      />
+      <ServiceCard render={<Card size="sm" variant="flat" />} row={row} usageRead={usageRead} />
     </li>
   );
 }
@@ -907,11 +907,11 @@ export function ZeropsServiceMap({
         <LivenessLine state="absent" />
       )}
       {view.runningTool === undefined ? null : (
-        <StatusDot
+        <Badge
+          dot
           data-zerops-running-tool={view.runningTool}
-          label={`${view.runningTool} running`}
-          tone="busy"
-        />
+          tone="info"
+        >{`${view.runningTool} running`}</Badge>
       )}
       {view.isEmpty ? (
         <p className="text-muted-foreground text-sm" data-zerops-map-empty>

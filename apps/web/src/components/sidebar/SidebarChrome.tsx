@@ -1,5 +1,6 @@
 import {
   ArrowLeftIcon,
+  Building2Icon,
   ChartNoAxesColumnIcon,
   GitPullRequestIcon,
   LayersIcon,
@@ -119,7 +120,8 @@ export interface SidebarCreateProject {
  * flows (`useAddMate`, `useAskNewProject`). New Mate asks in a project: where
  * there is one, at once; with several, it lists them. It holds only what the
  * viewer's role may make — no `onNewProject` where it may not create projects —
- * its name says what it holds, and with nothing to make it is not drawn.
+ * its name says what it holds, and with nothing to make it is not drawn. With New
+ * project alone it is no menu: it asks for one at once.
  */
 export function SidebarCreateButton({
   projects,
@@ -139,6 +141,28 @@ export function SidebarCreateButton({
         ? "New Mate"
         : "New Mate or project";
   if (only === undefined && onNewProject === undefined) return null;
+  // New project alone is made at once: a menu holding only what the button is named for is a
+  // second press that decides nothing.
+  if (only === undefined && onNewProject !== undefined)
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              aria-label={label}
+              className="menu-round-button"
+              data-zerops-create="project"
+              data-zerops-surface="sidebar-create"
+              onClick={onNewProject}
+              type="button"
+            />
+          }
+        >
+          <PlusIcon aria-hidden="true" className="size-4" />
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">{label}</TooltipPopup>
+      </Tooltip>
+    );
   return (
     <Menu>
       <Tooltip>
@@ -331,7 +355,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
         // listed above it, and folds the four destinations into its menu —
         // where each has a name rather than an unlabelled glyph.
         <SidebarMenuItem className="min-w-0 flex-1">
-          <SidebarZeropsAccountRow destinationIcon={sidebarAccountDestinationIcon} />
+          <SidebarZeropsAccountRow
+            chiefIcon={<Building2Icon />}
+            destinationIcon={sidebarAccountDestinationIcon}
+          />
         </SidebarMenuItem>
       )}
       <SidebarUpdatePill />

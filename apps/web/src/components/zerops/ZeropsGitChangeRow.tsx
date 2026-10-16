@@ -1,6 +1,7 @@
 import { changeKindTag, type GitOverviewChange } from "@t3tools/client-runtime/zerops";
 import { Button } from "../ui/button";
-import { StatusDot } from "./primitives";
+import { STATUS_BADGE_TONE } from "./primitives";
+import { Badge } from "~/components/ui/badge";
 
 /** The same projected change and review action in the overview and repository detail. */
 export function ZeropsGitChangeRow({
@@ -24,12 +25,14 @@ export function ZeropsGitChangeRow({
           <span>{line}</span>
           <span>{changeKindTag(pull)}</span>
           {status === undefined ? null : (
-            <StatusDot label={status.word} sentence tone={status.tone} />
+            <Badge dot tone={STATUS_BADGE_TONE[status.tone]}>
+              {status.word}
+            </Badge>
           )}
         </div>
       </div>
       <Button
-        variant="outline"
+        variant="secondary"
         size="sm"
         disabled={onOpen === undefined}
         aria-label={`Review ${project} / ${repo} #${pull.number}`}

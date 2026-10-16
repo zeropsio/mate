@@ -10,7 +10,7 @@ describe("an account with no project, by what its role may do", () => {
       reachesEveryProject: true,
       heading: "Start a project",
       offersNewProject: true,
-      says: "your team's HQ before it",
+      says: "Name a project and it is up in a few minutes.",
     },
     {
       who: "a Developer",
@@ -45,6 +45,21 @@ describe("an account with no project, by what its role may do", () => {
       expect(words.newProject).toBe(offersNewProject);
     },
   );
+
+  it.each([
+    {
+      who: "a Developer",
+      create: true,
+      role: "You're a Developer: you start projects and join the ones you're added to.",
+    },
+    {
+      who: "a Guest",
+      create: false,
+      role: "You're a Guest: you follow the projects you're added to.",
+    },
+  ])("$who with nothing shared is told their role in one sentence", ({ create, role }) => {
+    expect(firstRunWords({ create, reachesEveryProject: false }).body.startsWith(role)).toBe(true);
+  });
 
   it("never tells a member who may not create one to start a project", () => {
     for (const reachesEveryProject of [true, false]) {

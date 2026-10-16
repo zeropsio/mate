@@ -57,11 +57,11 @@ describe("resolveHqGate", () => {
   it("shows anybody else whom to ask, and nothing more", () => {
     expect(gate("BASIC_USER", NONE, "ready", { admins: [admin("Ada"), admin("Jan")] })).toEqual({
       kind: "ask",
-      line: "An admin sets up Mate for this organization. Ask Ada or Jan.",
+      line: "An admin sets up HQ for this organization. Ask Ada or Jan.",
     });
     expect(gate("READ_ONLY", NONE)).toEqual({
       kind: "ask",
-      line: "An admin sets up Mate for this organization. Ask an owner or admin of the organization.",
+      line: "An admin sets up HQ for this organization. Ask an owner or admin of the organization.",
     });
   });
 

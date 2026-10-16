@@ -209,7 +209,7 @@ export function ZeropsDataTable({
           <Button
             data-zerops-data-table-columns
             onClick={onToggleColumnsOpen}
-            size="xs"
+            size="sm"
             variant="ghost"
           >
             <Columns3Icon />
@@ -217,13 +217,13 @@ export function ZeropsDataTable({
           </Button>
         ) : null}
         {onAskAboutTable !== undefined ? (
-          <Button data-zerops-data-table-ask onClick={onAskAboutTable} size="xs" variant="ghost">
+          <Button data-zerops-data-table-ask onClick={onAskAboutTable} size="sm" variant="ghost">
             <MessageSquarePlusIcon />
             Ask about this table
           </Button>
         ) : null}
         {onCopyPageJson !== undefined ? (
-          <Button data-zerops-data-table-copy onClick={onCopyPageJson} size="xs" variant="ghost">
+          <Button data-zerops-data-table-copy onClick={onCopyPageJson} size="sm" variant="ghost">
             <CopyIcon />
             Copy as JSON
           </Button>
@@ -361,7 +361,7 @@ export function ZeropsDataTable({
               data-zerops-data-table-load-more
               disabled={loadMorePending}
               onClick={onLoadMore}
-              size="xs"
+              size="sm"
               variant="ghost"
             >
               Load more
@@ -373,7 +373,7 @@ export function ZeropsDataTable({
               <Button
                 data-zerops-data-table-request-count
                 onClick={onRequestCount}
-                size="xs"
+                size="sm"
                 variant="ghost"
               >
                 Count rows

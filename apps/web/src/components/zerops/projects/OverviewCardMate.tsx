@@ -304,13 +304,12 @@ export function OverviewCardMate({
       face={
         <>
           <MateFace
-            className="size-8"
             cues={face.cues}
             greets
             known={face.known}
             restarting={face.restarting}
             shape={shape}
-            size="md"
+            size={32}
             state={view.face}
             tint={tint}
           />

@@ -6,9 +6,7 @@
  * especially when stacked they look extremely stupid").
  */
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { ComponentProps, ReactNode } from "react";
-
-import { cn } from "~/lib/utils";
+import type { ReactNode } from "react";
 
 import { useKnownMate } from "~/zerops/useZeropsMates";
 
@@ -30,17 +28,8 @@ export function ComposerAskFace({ environmentId }: { readonly environmentId: Env
   return mate === undefined ? (
     <ComposerAskMark />
   ) : (
-    <MateFace shape={mate.shape} size="md" state="needs" tint={mate.tint} />
+    <MateFace shape={mate.shape} size={24} state="needs" tint={mate.tint} />
   );
-}
-
-/** The ask's one blue button: Review, Approve, Save to vault. */
-export function ComposerAskButton({
-  className,
-  type = "button",
-  ...props
-}: ComponentProps<"button">) {
-  return <button className={cn("composer-top-button", className)} type={type} {...props} />;
 }
 
 /** Who asks, by name: the Mate living here, else the agent. */

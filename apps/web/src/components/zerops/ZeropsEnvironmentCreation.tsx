@@ -1,12 +1,12 @@
 /**
- * The checklist a creation shows while it runs — and what it leaves behind
- * when it fails.
+ * A creation's progress row while it runs — and what it leaves behind when it
+ * fails.
  *
  * A real import took two minutes end to end (`verified.md`, 2026-09-05), so
- * this is a list of steps with the one in progress marked, not a spinner. On
- * failure it says which step, what the platform said, and — because a
- * half-built environment is a real project on the account — that the project
- * exists, so nobody creates it twice.
+ * this is the kit's progress row, its step words replaced in place, not a
+ * spinner. On failure it says which step, keeps what the platform said under
+ * Details, and — because a half-built environment is a real project on the
+ * account — that the project exists, so nobody creates it twice.
  */
 import {
   environmentCreationStepLabel,
@@ -17,7 +17,8 @@ import { CHECKING_WHAT_RUNS, DEPLOYMENT_SURFACE } from "@t3tools/client-runtime/
 import { knownPresentation } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { Button } from "../ui/button";
-import { ProcessSteps, type ProcessStep } from "./primitives";
+import { Progress } from "../ui/progress";
+import type { ProcessStep } from "./primitives";
 
 export interface ZeropsEnvironmentCreationProps {
   /** What is being created, e.g. "Beviro CRM - production". */
@@ -141,6 +142,9 @@ export function environmentCreationSteps(
   });
 }
 
+/** A first import as measured end to end (about two minutes): what the row promises. */
+export const ENVIRONMENT_CREATION_ESTIMATE_MS = 2 * 60_000;
+
 export function ZeropsEnvironmentCreation({
   name,
   progress,
@@ -150,33 +154,67 @@ export function ZeropsEnvironmentCreation({
   nowMs,
   deployed = false,
 }: ZeropsEnvironmentCreationProps) {
+  const steps = environmentCreationSteps(progress, nowMs);
+  const failedAt = steps.findIndex((step) => step.state === "failed");
+  const runningAt = steps.findIndex((step) => step.state === "running");
+  const queuedAt = steps.findIndex((step) => step.state === "queued");
+  const at =
+    failedAt !== -1
+      ? failedAt
+      : runningAt !== -1
+        ? runningAt
+        : queuedAt !== -1
+          ? queuedAt
+          : steps.length - 1;
+  const startedAtMs =
+    progress.find((entry) => entry.startedAtMs !== undefined)?.startedAtMs ?? null;
+  const endedAtMs =
+    progress.findLast((entry) => entry.finishedAtMs !== undefined)?.finishedAtMs ?? null;
+  const line =
+    outcome === undefined
+      ? null
+      : outcome.kind === "failed"
+        ? outcome.projectExists
+          ? "The project exists; the rest did not happen. Fix it from the Zerops dashboard or delete it and try again."
+          : "Nothing was created."
+        : outcome.kind === "handed-off"
+          ? "Its Mate is on its way — the wait continues below."
+          : null;
+  const failedStep = failedAt === -1 ? undefined : steps[failedAt];
   return (
     <section
       className="space-y-3 rounded-xl border border-border/55 bg-card/20 px-4 py-4"
       data-zerops-surface="environment-creation"
       data-zerops-creation-outcome={outcome?.kind ?? "running"}
     >
-      <div>
-        <h2 className="text-sm font-semibold text-foreground">{creationTitle(name, outcome)}</h2>
-        <p className="text-xs text-muted-foreground">
-          {outcome === undefined
-            ? "Each step is a platform call with your own token. A first import takes a couple of minutes."
-            : outcome.kind === "failed"
-              ? outcome.projectExists
-                ? "The project exists; the rest did not happen. Fix it from the Zerops dashboard or delete it and try again."
-                : "Nothing was created."
-              : outcome.kind === "handed-off"
-                ? "The agent's container is on its way — the wait continues below."
-                : upNote(tier, outcome.deployments, nowMs, deployed)}
-        </p>
-      </div>
-      <ProcessSteps
-        aria-label={`Creating ${name}`}
-        steps={environmentCreationSteps(progress, nowMs)}
+      <h2 className="text-sm font-semibold text-foreground">{creationTitle(name, outcome)}</h2>
+      <Progress
+        at={at}
+        endedAtMs={outcome === undefined || outcome.kind === "handed-off" ? null : endedAtMs}
+        estimateMs={ENVIRONMENT_CREATION_ESTIMATE_MS}
+        label={`Creating ${name}`}
+        nowMs={nowMs}
+        startedAtMs={startedAtMs}
+        steps={steps.map((step) => step.label)}
+        view={
+          outcome?.kind === "failed"
+            ? {
+                state: "failed",
+                cause:
+                  failedStep === undefined
+                    ? `${name} didn’t come up.`
+                    : `${failedStep.label} didn’t finish.`,
+                details: failedStep?.note ?? outcome.error,
+              }
+            : outcome?.kind === "done"
+              ? { state: "done", result: upNote(tier, outcome.deployments, nowMs, deployed) }
+              : undefined
+        }
       />
+      {line === null ? null : <p className="text-xs text-muted-foreground">{line}</p>}
       {outcome === undefined ? null : (
         <div className="flex justify-end">
-          <Button onClick={onDismiss} size="sm" variant="outline">
+          <Button onClick={onDismiss} size="sm" variant="secondary">
             {/* It stands on the projects page: closing it goes nowhere else. */}
             Dismiss
           </Button>

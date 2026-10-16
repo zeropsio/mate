@@ -4,6 +4,7 @@ import {
   type EnvironmentCreationStepProgress,
   type FlowPullRequest,
   type ZeropsGroupPendingMember,
+  type ZeropsOrganizationMember,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
@@ -14,6 +15,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   creationRecipe,
+  environmentSheetSubmit,
   faceName,
   hasCreationErrors,
   newMateDoor,
@@ -23,7 +25,9 @@ import {
   newMateRecipeChange,
   newMateSubmit,
   newMateWords,
+  PEOPLE_UNREADABLE,
   proposedEnvironmentName,
+  READING_PEOPLE,
   recipeChangeView,
   recipeOptions,
   validateBotName,
@@ -33,6 +37,7 @@ import {
   pressSteps,
   pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
+import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
 
 /** A tier as the group repo's `main` hands it over, already import-ready. */
 const TIER = {
@@ -50,7 +55,7 @@ describe("recipeOptions", () => {
       recipe: "present",
     });
     expect(options.map((option) => option.id)).toEqual(["tier", "none"]);
-    expect(options[0]?.label).toBe("The project's stage recipe");
+    expect(options[0]?.label).toBe("Same services as the project");
   });
 
   /**
@@ -66,7 +71,7 @@ describe("recipeOptions", () => {
       services: ["app", "db"],
       recipe: "present",
     });
-    expect(options[0]?.detail).toBe("app, db · imported without code; the first deploy fills them");
+    expect(options[0]?.detail).toBe("app, db · your code arrives with the first deploy");
   });
 
   it("explains a project with no recipe rather than showing a lone option", () => {
@@ -77,9 +82,7 @@ describe("recipeOptions", () => {
       recipe: "absent",
     });
     expect(options.map((option) => option.id)).toEqual(["none"]);
-    expect(options[0]?.detail).toBe(
-      "This project has no recipe on main yet. The agent sets the application up.",
-    );
+    expect(options[0]?.detail).toBe("This project has no setup files yet. Set it up later.");
   });
 
   // F9 (e2e, 2026-10-03): a recipe not read yet read as a missing one for a minute.
@@ -92,7 +95,7 @@ describe("recipeOptions", () => {
         services: [],
         recipe,
       });
-      expect(options[0]?.detail).toBe("The agent sets the application up.");
+      expect(options[0]?.detail).toBe("Set it up later.");
     },
   );
 
@@ -103,7 +106,7 @@ describe("recipeOptions", () => {
       services: [],
       recipe: "present",
     });
-    expect(options[0]?.detail).toBe("From the project's repository, on main.");
+    expect(options[0]?.detail).toBe("As the project's setup files describe them.");
   });
 });
 
@@ -222,7 +225,7 @@ describe("validateCreationForm", () => {
       { ...valid, withAgent: false, recipeId: "none" },
       { options, recipe: "present" },
     );
-    expect(errors.recipe).toContain("switch the agent on");
+    expect(errors.recipe).toContain("give it its own Mate");
   });
 
   it("refuses an option that is not on offer", () => {
@@ -244,19 +247,19 @@ describe("validateCreationForm, on an environment with no agent", () => {
     {
       recipe: "absent",
       withAgent: false,
-      says: "This project has no recipe on main yet. Merge one first, or switch the agent on.",
+      says: "This project has no setup files yet. Merge its setup change first, or give it its own Mate.",
     },
-    { recipe: "reading", withAgent: false, says: "Reading the project's recipe…" },
-    { recipe: "reading", withAgent: true, says: "Reading the project's recipe…" },
+    { recipe: "reading", withAgent: false, says: "Reading the project's setup files…" },
+    { recipe: "reading", withAgent: true, says: "Reading the project's setup files…" },
     {
       recipe: "unreadable",
       withAgent: false,
-      says: "The project's recipe can't be read right now.",
+      says: "The project's setup files can't be read right now.",
     },
     {
       recipe: "unreadable",
       withAgent: true,
-      says: "The project's recipe can't be read right now.",
+      says: "The project's setup files can't be read right now.",
     },
   ] as const)(
     "with the recipe $recipe, the agent $withAgent: $says",
@@ -283,7 +286,7 @@ describe("validateCreationForm, on an environment with no agent", () => {
         { name: "Acme - production", withAgent: false, recipeId: "none" },
         { options, recipe: "present" },
       ).recipe,
-    ).toBe("Take the project's recipe, or switch the agent on to have one set up.");
+    ).toBe("Start with the project's services, or give it its own Mate to set them up.");
   });
 });
 
@@ -533,7 +536,7 @@ describe("newMateWords — what the Mate's dialog says", () => {
       input: { groupName: "Acme Docs", botName: "Quinn", recipe: "reading", waitingOn: null },
       words: {
         button: "Add Quinn to Acme Docs",
-        line: "Reading the project's recipe…",
+        line: "Reading the project's setup files…",
       },
     },
     {
@@ -576,7 +579,7 @@ describe("newMateWords — what the Mate's dialog says", () => {
 describe("newMateDoor — whether the project takes another Mate, and why not", () => {
   const CLEO = { projectId: "cleo-project", name: "Cleo" };
   const JUNO = { projectId: "juno-project", name: "Juno" };
-  const UNREADABLE = "Beviro's recipe can't be read right now.";
+  const UNREADABLE = "Beviro's setup files can't be read right now.";
   it.each<{
     readonly case: string;
     readonly input: Partial<Parameters<typeof newMateDoor>[0]>;
@@ -613,7 +616,7 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       door: {
         kind: "closed",
         reason:
-          "Beviro's recipe is waiting in Cleo's change. New Mates start from it once it's merged.",
+          "Beviro's setup for new Mates is waiting in Cleo's change. New Mates can join once it's merged.",
         action: { kind: "change", label: "Review the change", number: 11 },
       },
     },
@@ -622,7 +625,8 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       input: { recipe: "absent", mates: [CLEO, JUNO], change: { number: 12, mate: undefined } },
       door: {
         kind: "closed",
-        reason: "Beviro's recipe is waiting in a change. New Mates start from it once it's merged.",
+        reason:
+          "Beviro's setup for new Mates is waiting in a change. New Mates can join once it's merged.",
         action: { kind: "change", label: "Review the change", number: 12 },
       },
     },
@@ -631,8 +635,7 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       input: { recipe: "absent" },
       door: {
         kind: "closed",
-        reason:
-          "Beviro has no recipe yet. Cleo writes it when it finishes setting Beviro up, and new Mates start from it.",
+        reason: "Cleo is still setting Beviro up. New Mates can join once it's done.",
         action: { kind: "mate", label: "Open Cleo", projectId: "cleo-project" },
       },
     },
@@ -642,7 +645,7 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       door: {
         kind: "closed",
         reason:
-          "Beviro has no recipe yet. Beviro's Mates write it when one of them finishes setting Beviro up.",
+          "Beviro's Mates are still setting it up. New Mates can join once one of them is done.",
         action: undefined,
       },
     },
@@ -679,7 +682,7 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       door: {
         kind: "closed",
         reason:
-          "Acme Docs' recipe is waiting in Otis' change. New Mates start from it once it's merged.",
+          "Acme Docs' setup for new Mates is waiting in Otis' change. New Mates can join once it's merged.",
         action: { kind: "change", label: "Review the change", number: 11 },
       },
     },
@@ -891,17 +894,32 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
     {
       case: "creating the project",
       states: ["running", "queued", "queued", "queued", "queued"],
-      want: ["Project:active", "Registered:waiting", "Container:waiting", "Closed off:waiting"],
+      want: [
+        "Project:active",
+        "Registered:waiting",
+        "Its computer:waiting",
+        "Private network ready:waiting",
+      ],
     },
     {
       case: "registering it, before its container",
       states: ["done", "running", "queued", "queued", "queued"],
-      want: ["Project:done", "Registered:active", "Container:waiting", "Closed off:waiting"],
+      want: [
+        "Project:done",
+        "Registered:active",
+        "Its computer:waiting",
+        "Private network ready:waiting",
+      ],
     },
     {
       case: "a container that would not come",
       states: ["done", "done", "failed", "queued", "queued"],
-      want: ["Project:done", "Registered:done", "Container:failed", "Closed off:waiting"],
+      want: [
+        "Project:done",
+        "Registered:done",
+        "Its computer:failed",
+        "Private network ready:waiting",
+      ],
     },
   ] as const)("draws $case", ({ states, want }) => {
     expect(drawn(at(states))).toEqual(want);
@@ -917,7 +935,11 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
     const progress = at(["done", "done", "done", "done", "running"]).filter(
       (entry) => entry.step.kind !== "register",
     );
-    expect(drawn(progress)).toEqual(["Project:done", "Container:done", "Closed off:done"]);
+    expect(drawn(progress)).toEqual([
+      "Project:done",
+      "Its computer:done",
+      "Private network ready:done",
+    ]);
   });
 
   it.each([
@@ -947,4 +969,140 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
       expect(pressThrough(at(states))).toBe(want);
     },
   );
+});
+
+describe("environmentSheetSubmit — what a stage's or a production's one sheet sends", () => {
+  const member = (id: string, roleCode: string): ZeropsOrganizationMember => ({
+    id: `cu-${id}`,
+    status: "ACTIVE",
+    roleCode,
+    user: { id: `u-${id}`, fullName: id },
+  });
+  const MEMBERS = [
+    member("me", "BASIC_USER"),
+    member("dev", "NO_ACCESS"),
+    member("guest", "NO_ACCESS"),
+    member("tok", "NO_ACCESS"),
+  ].map((entry) =>
+    entry.id === "cu-tok"
+      ? { ...entry, user: { id: "u-tok", email: "token-AbCdEfGhIjKl@zerops.io" } }
+      : entry,
+  );
+  const people = (
+    grants: DraftInput["app"]["grants"],
+    members: Partial<DraftInput["members"]> = {},
+  ) =>
+    draftPeople({
+      members: { known: true, status: "ready", refused: false, list: MEMBERS, ...members },
+      kind: "stage",
+      app: {
+        projects: [
+          { projectId: "prod", kind: "production" },
+          { projectId: "m-me", kind: "mate" },
+        ],
+        grants,
+        owners: { "m-me": "u-me" },
+      },
+      pictures: {},
+      creator: { membershipId: "cu-me", userId: "u-me" },
+      list: [],
+    });
+  const PROD_READ = {
+    prod: {
+      status: "ready" as const,
+      grants: [
+        { clientUserId: "cu-dev", roleCode: "ADMIN" },
+        { clientUserId: "cu-guest", roleCode: "READ_ONLY" },
+        { clientUserId: "cu-tok", roleCode: "ADMIN" },
+      ],
+    },
+  };
+  const options = recipeOptions({
+    roleLabel: "stage",
+    tier: TIER,
+    services: [],
+    recipe: "present",
+  });
+  const submit = (read: ReturnType<typeof people> | undefined) =>
+    environmentSheetSubmit({
+      name: "Tea Shop - stage",
+      withAgent: false,
+      options,
+      recipe: "present",
+      people: read,
+    });
+
+  it("a new stage keeps the people who could see the project", () => {
+    expect(submit(people(PROD_READ))).toEqual({
+      kind: "create",
+      choice: {
+        name: "Tea Shop - stage",
+        withAgent: false,
+        recipe: TIER,
+        userRoles: [
+          { clientUserId: "cu-dev", roleCode: "ADMIN" },
+          { clientUserId: "cu-guest", roleCode: "READ_ONLY" },
+        ],
+      },
+    });
+  });
+
+  it.each([
+    [
+      "with no setup merged and no Mate of its own, it waits for the setup change, saying so",
+      false,
+      {
+        kind: "held",
+        reason:
+          "This project has no setup files yet. Merge its setup change first, or give it its own Mate.",
+        action: "setup-change",
+      },
+    ],
+    [
+      "with no setup merged and a Mate of its own, it is made empty for the Mate to set up",
+      true,
+      {
+        kind: "create",
+        choice: { name: "Tea Shop - stage", withAgent: true, recipe: { kind: "none" } },
+      },
+    ],
+  ] as const)("runs the form's own checks: %s", (_case, withAgent, outcome) => {
+    expect(
+      environmentSheetSubmit({
+        name: "Tea Shop - stage",
+        withAgent,
+        options: recipeOptions({
+          roleLabel: "stage",
+          tier: undefined,
+          services: [],
+          recipe: "absent",
+        }),
+        recipe: "absent",
+        people: people(PROD_READ),
+      }),
+    ).toMatchObject(outcome);
+  });
+
+  it.each([
+    [
+      "the project's people are read",
+      { prod: { status: "loading" as const, grants: undefined } },
+      {},
+      READING_PEOPLE,
+    ],
+    [
+      "the organization's members are read",
+      PROD_READ,
+      { known: false, status: "loading" as const, list: [] },
+      READING_PEOPLE,
+    ],
+    [
+      "who can see the project could not be read",
+      { prod: { status: "failed" as const, grants: undefined } },
+      {},
+      PEOPLE_UNREADABLE,
+    ],
+  ])("holds its button while %s, saying why", (_case, grants, members, reason) => {
+    expect(submit(people(grants, members))).toEqual({ kind: "held", reason });
+  });
 });

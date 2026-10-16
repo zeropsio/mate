@@ -40,13 +40,13 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
   if (inline) {
     return (
       <Button
-        size="micro"
-        variant="ghost-muted"
+        size="sm"
+        variant="ghost"
         data-prompt-stash-badge="true"
         aria-label={`Stashed prompts: ${props.count}. Open stash.`}
         aria-expanded={props.menuOpen}
         className={cn(
-          "shrink-0 gap-1 px-1.5",
+          "shrink-0",
           (props.menuOpen || props.pulsing) &&
             "[--control-icon-color:currentColor] text-foreground",
         )}

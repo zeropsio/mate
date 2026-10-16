@@ -239,8 +239,8 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           <p>The page tried to open something else, so it was closed.</p>
           <Button
             type="button"
-            size="xs"
-            variant="outline"
+            size="sm"
+            variant="secondary"
             onClick={() => {
               setShowing((count) => count + 1);
               setLeft(false);
@@ -314,7 +314,7 @@ export function PublishedPage(props: {
         <span className="published-page-title">{page.title}</span>
         <Button
           type="button"
-          size="icon-xs"
+          size="icon-sm"
           variant="ghost"
           aria-label={`Open ${page.title} full size`}
           disabled={html === null}

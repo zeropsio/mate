@@ -3,29 +3,43 @@
  * account's own operation at Zerops with their token, as is an approved domain — added onto the
  * service's port and put in place, then followed in the project's addresses; a value is the vault
  * panel's write; a message goes into the other Mate's conversation — an ask of the Chief into the person's own
- * Chief's — the way every hand-over to a Mate goes (`useAskMate`). What the person decided is kept
+ * Chief's — the way every hand-over to a Mate goes (`useAskMate`); an approved access change is the
+ * account's own `set-project-access`, each person found among the organization's members, as an
+ * application's People write it. What the person decided is kept
  * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
  * Approve twice; an approval is carried out only once HQ kept it.
  */
 import { useTimelineRowReading } from "~/components/chat/timelineRowReads";
 import {
+  NOT_READ_PROJECTS,
   NOT_READ_VAULT,
   PROJECT_ROUTINGS_LISTING,
   addresses,
   vaultAtom,
   hqProjectPerson,
+  initialStream,
+  inventoryPlacementStatus,
+  organizationMembers,
+  organizationProjects,
+  projectsGrants,
+  accountReadsAtom,
+  shownHqProjectPeopleAtom,
   type HqProjectPeople,
+  type MembersRead,
   type PlaceAddresses,
+  type ProjectGrantsRead,
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { hqProjectsOf } from "@t3tools/client-runtime/zerops/hq";
 import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { sendOutcomeOf } from "~/hooks/useComposerSendRequests";
 import { newCommandId, newMessageId } from "~/lib/utils";
+import { useAccountHq } from "~/zerops/accountHq";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
@@ -48,12 +62,31 @@ import {
   proposalMessage,
   proposalRecipient,
   proposalStage,
+  accessAskLines,
+  accessProposalPlan,
   type ProposalDecision,
 } from "./proposal.logic";
 
 const UNKNOWN_PERSON = Atom.make<HqProjectPeople | undefined>(undefined);
 
 const UNREAD = Atom.make(NOT_READ_VAULT);
+
+const UNREAD_MEMBERS = Atom.make<MembersRead>({
+  fact: { kind: "unknown" },
+  coverage: "unknown",
+  stream: initialStream({ parent: null, mode: "sampled" }),
+  link: null,
+  members: [],
+  status: "loading",
+  settled: false,
+  refused: false,
+});
+
+const UNREAD_PROJECTS = Atom.make(NOT_READ_PROJECTS);
+
+const UNREAD_GRANTS = Atom.make<Readonly<Record<string, ProjectGrantsRead>>>({});
+
+const UNREAD_PLACEMENTS = Atom.make({ complete: false, live: false, reconnecting: false });
 
 const UNREAD_ADDRESSES = Atom.make<PlaceAddresses>({
   state: "reading",
@@ -156,6 +189,73 @@ function Proposal({
     PROJECT_ROUTINGS_LISTING,
     domainPlace !== null && place.readsProject ? domainPlace.projectId : null,
   );
+  // An access change's people are found among the organization's members while its card offers it.
+  const accessOrg =
+    home === undefined || proposal.kind !== "access.set" || stage !== "open"
+      ? null
+      : { orgId: home.orgId, clientId: home.orgId };
+  useDetailDemand("organizationMembers", undefined, accessOrg?.clientId ?? null);
+  const members = useProjection(organizationMembers, accessOrg, UNREAD_MEMBERS);
+  // The projects it may write — the organization's, never the Headquarters project — and whose
+  // each Mate is, which HQ says once its placements are read: before that, nobody's is no answer.
+  const roster = useProjection(organizationProjects, accessOrg?.orgId ?? null, UNREAD_PROJECTS);
+  const placements = useProjection(
+    inventoryPlacementStatus,
+    accessOrg?.orgId ?? null,
+    UNREAD_PLACEMENTS,
+  );
+  const { hq: officialHq } = useAccountHq(accessOrg?.clientId);
+  // What each person reaches on its projects today: each project's own row, held while it is read.
+  const accessProjectKey =
+    accessOrg === null || proposal.kind !== "access.set"
+      ? ""
+      : proposal.params.projects.map(({ id }) => id).join(",");
+  const demandDetail = useAtomValue(accountReadsAtom)?.demandDetail;
+  useEffect(() => {
+    if (demandDetail === undefined || accessProjectKey === "") return;
+    const releases = accessProjectKey
+      .split(",")
+      .map((ownerId) => demandDetail({ family: "project", listing: "project", ownerId }));
+    return () => {
+      for (const release of releases) release();
+    };
+  }, [demandDetail, accessProjectKey]);
+  const grants = useProjection(
+    projectsGrants,
+    accessOrg === null || accessProjectKey === ""
+      ? null
+      : { orgId: accessOrg.orgId, projectIds: accessProjectKey.split(",") },
+    UNREAD_GRANTS,
+  );
+  const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
+  const accessPlan = useMemo(
+    () =>
+      proposal.kind !== "access.set"
+        ? null
+        : accessProposalPlan({
+            proposal,
+            members: { known: members.fact.kind === "known", list: members.members },
+            owners: Object.fromEntries(
+              proposal.params.projects.map(({ id }) => {
+                const people = projectPeople[id];
+                return [
+                  id,
+                  !placements.complete
+                    ? undefined
+                    : people?.owned === true
+                      ? people.owner?.userId
+                      : null,
+                ];
+              }),
+            ),
+            projects: roster.complete
+              ? new Map(roster.projects.map(({ id, name }) => [id, name]))
+              : undefined,
+            hq: hqProjectsOf(officialHq),
+            grants,
+          }),
+    [grants, members, officialHq, placements.complete, projectPeople, proposal, roster],
+  );
   const askMate = useAskMate();
   const openMate = useOpenMate();
   const navigate = useNavigate();
@@ -177,7 +277,9 @@ function Proposal({
                 ? "Reading the project's addresses…"
                 : proposal.kind === "domain.add" && place.state === "failed"
                   ? `You can't see ${proposal.projectName ?? "this project"}'s addresses.`
-                  : undefined;
+                  : accessPlan?.kind === "held"
+                    ? accessPlan.words
+                    : undefined;
 
   const ended = useCallback(
     (outcome: VaultWriteOutcome) =>
@@ -279,6 +381,19 @@ function Proposal({
             }),
           );
           return;
+        case "access.set":
+          if (accessPlan?.kind !== "ready") {
+            ended({ ok: false, code: null, message: "Nobody to give access to." });
+            return;
+          }
+          ended(
+            await run({
+              kind: "set-project-access",
+              orgId: home.orgId,
+              changes: accessPlan.changes,
+            }),
+          );
+          return;
         case "chief.message":
           if (chief.kind !== "chief") {
             ended({ ok: false, code: null, message: "You have no Chief to ask." });
@@ -321,6 +436,13 @@ function Proposal({
         proposal.kind === "domain.add" && domainPlace !== null
           ? () => useAddressesSheet.getState().open(domainPlace)
           : undefined
+      }
+      access={
+        proposal.kind !== "access.set"
+          ? undefined
+          : accessPlan?.kind === "ready"
+            ? { lines: accessPlan.lines, dropped: accessPlan.dropped }
+            : { lines: accessAskLines(proposal), dropped: [] }
       }
       chiefTarget={proposal.kind === "chief.message" ? chief : undefined}
       readOnlyReason={readOnlyReason}

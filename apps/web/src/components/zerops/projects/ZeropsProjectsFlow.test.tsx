@@ -75,8 +75,8 @@ describe("first run", () => {
     const html = render({ onCreateProject: () => {} });
     expect(html).toContain('data-zerops-surface="first-run"');
     expect(html).toContain("Start a project");
-    expect(html).toContain('data-mate-face-size="lg"');
-    expect(html).toContain('data-zerops-primitive="pill"');
+    expect(html).toContain('data-mate-face-size="64"');
+    expect(html).toContain("New project</button>");
   });
 
   it("drops the invitation once the account has a project", () => {
@@ -94,7 +94,7 @@ describe("first run", () => {
     expect(html).toContain('data-zerops-surface="first-run"');
     expect(html).toContain("Nothing is shared with you yet");
     expect(html).not.toContain("Start a project");
-    expect(html).not.toContain('data-zerops-primitive="pill"');
+    expect(html).not.toContain("New project</button>");
   });
 
   it("tells a Developer given nothing yet that shared projects appear here, beside New project", () => {
@@ -105,7 +105,7 @@ describe("first run", () => {
     });
     expect(html).toContain("Start a project");
     expect(html).toContain("Projects your team gives you access to appear here");
-    expect(html).toContain('data-zerops-primitive="pill"');
+    expect(html).toContain("New project</button>");
   });
 });
 
@@ -157,7 +157,8 @@ it("cold HQ placement stays unknown on Projects until owner evidence arrives", (
     expect(words()).not.toContain("Not in a project");
     expect(words()).not.toContain("Other containers");
     act(() => vi.advanceTimersByTime(1_000));
-    expect(words()).toContain("Reading HQ placement…");
+    // The cards' shape stands in where they will be, never a guess at their placement.
+    expect(words()).toContain('"aria-busy":"true"');
     expect(words()).not.toContain("Not in a project");
     expect(words()).not.toContain("Other containers");
     // A later owner delivery replaces the unknown state with the actual placement.

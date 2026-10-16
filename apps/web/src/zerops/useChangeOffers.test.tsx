@@ -208,7 +208,7 @@ describe("useChangeOffers", () => {
     expect(offers?.merge).toBe(false);
     expect(offers?.close).toBe(false);
     expect(offers?.why.merge).toBe(
-      "You need at least Basic user access to one of this project's Zerops projects to do this.",
+      "You need more than Read access to one of this project's Zerops projects to do this.",
     );
   });
 
@@ -226,7 +226,7 @@ describe("useChangeOffers", () => {
     const gallery = offers("app-gallery");
     expect([gallery?.read, gallery?.merge, gallery?.readRefused]).toEqual([false, false, true]);
     expect(gallery?.why.read).toMatch(
-      /^You need at least Basic user access to one of this project's Zerops projects to see its changes\.$/u,
+      /^You need more than Read access to one of this project's Zerops projects to see its changes\.$/u,
     );
   });
 

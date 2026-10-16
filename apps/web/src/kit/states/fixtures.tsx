@@ -1,6 +1,6 @@
 /**
  * Fixture facts the state census renders its real components with: a Mate's birth at three
- * ages, an environment being created, the showcase scenes' operation cards. Static and local:
+ * ages, the showcase scenes' operation cards. Static and local:
  * nothing here reads an account, a project or a Mate.
  */
 import {
@@ -8,10 +8,6 @@ import {
   type BirthFacts,
   type BirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import type {
-  EnvironmentCreationStep,
-  EnvironmentCreationStepProgress,
-} from "@t3tools/client-runtime/zerops";
 import {
   deriveZeropsThreadModel,
   type ZeropsOperation,
@@ -34,8 +30,6 @@ export const WREN: ZeropsMateIdentity = {
   projectUrl: "https://app.zerops.io/project/kit",
   connected: false,
 };
-
-export const YOU = { initials: "AR", avatarUrl: null };
 
 /** How far into its birth a Mate is: just pressed, its container being built, or long overdue. */
 export type BirthAge = "start" | "midway" | "over-time";
@@ -121,45 +115,6 @@ export function failedBirthProgress(nowMs: number): BirthProgress {
     },
     nowMs,
   );
-}
-
-const CREATION_STEPS: ReadonlyArray<EnvironmentCreationStep> = [
-  { kind: "create-project", name: "Beviro CRM - production", tagList: [], location: undefined },
-  { kind: "import-recipe", role: "prod", yaml: "services: []" },
-  { kind: "await-ready", withAgent: false },
-];
-
-/** An environment being created, its import running for `runningSeconds`. */
-export function creationProgress(
-  nowMs: number,
-  runningSeconds: number,
-): ReadonlyArray<EnvironmentCreationStepProgress> {
-  const importStart = nowMs - runningSeconds * 1000;
-  return [
-    {
-      step: CREATION_STEPS[0]!,
-      state: "done",
-      startedAtMs: importStart - 4000,
-      finishedAtMs: importStart,
-    },
-    { step: CREATION_STEPS[1]!, state: "running", startedAtMs: importStart },
-    { step: CREATION_STEPS[2]!, state: "queued" },
-  ];
-}
-
-/** The creation stopped at its import, with what the platform said. */
-export function failedCreationProgress(): ReadonlyArray<EnvironmentCreationStepProgress> {
-  return [
-    { step: CREATION_STEPS[0]!, state: "done", startedAtMs: 0, finishedAtMs: 4000 },
-    {
-      step: CREATION_STEPS[1]!,
-      state: "failed",
-      startedAtMs: 4000,
-      finishedAtMs: 31_000,
-      error: "projectImportProjectIncluded",
-    },
-    { step: CREATION_STEPS[2]!, state: "queued" },
-  ];
 }
 
 /** Every operation card the showcase scenes hold, as a conversation derives them. */

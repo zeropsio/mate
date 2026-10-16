@@ -12,7 +12,7 @@ import {
 import { DownloadIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
-import { ComposerAsk, ComposerAskButton } from "./ComposerAsk";
+import { ComposerAsk } from "./ComposerAsk";
 
 export interface ComposerCloneActions {
   readonly cancel: () => void;
@@ -43,7 +43,11 @@ export function ComposerCloneAsk({
   if (clone.phase === "running") {
     return (
       <ComposerAsk
-        actions={<ComposerAskButton onClick={actions.cancel}>Cancel</ComposerAskButton>}
+        actions={
+          <Button onClick={actions.cancel} variant="secondary">
+            Cancel
+          </Button>
+        }
         detail={
           <p className="truncate">
             {name} · {projectCloneProgressSummary(clone)}
@@ -62,10 +66,10 @@ export function ComposerCloneAsk({
     <ComposerAsk
       actions={
         <>
-          <Button onClick={actions.remove} size="sm" variant="ghost-muted">
+          <Button onClick={actions.remove} size="sm" variant="ghost">
             Remove project
           </Button>
-          <ComposerAskButton onClick={actions.retry}>Retry</ComposerAskButton>
+          <Button onClick={actions.retry}>Retry</Button>
         </>
       }
       detail={

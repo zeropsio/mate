@@ -188,22 +188,22 @@ describe("environmentCreationStepLabel", () => {
     if (!plan.ok) throw new Error("expected a plan");
 
     expect(plan.steps.map(environmentCreationStepLabel)).toEqual([
-      "Creating the environment",
-      "Adding the managed services",
-      "Registering it in its project",
-      "Adding the agent container",
-      "Closing the project off",
-      "Waiting for the agent",
+      "Creating it",
+      "Adding its databases and storage",
+      "Adding it to HQ",
+      "Adding its Mate's computer",
+      "Making its network private",
+      "Waiting for its Mate",
     ]);
   });
 
   it.each([
     {
       step: { kind: "import-project", name: "x", tagList: [], yaml: "" },
-      label: "Creating the environment",
+      label: "Creating it",
     },
-    { step: { kind: "import-recipe", role: "prod", yaml: "" }, label: "Importing the application" },
-    { step: { kind: "register" }, label: "Registering it in its project" },
+    { step: { kind: "import-recipe", role: "prod", yaml: "" }, label: "Adding its services" },
+    { step: { kind: "register" }, label: "Adding it to HQ" },
   ] satisfies ReadonlyArray<{ step: EnvironmentCreationStep; label: string }>)(
     "labels $step.kind",
     ({ step, label }) => {
@@ -213,7 +213,7 @@ describe("environmentCreationStepLabel", () => {
 
   it("says what it is waiting for when there is no agent", () => {
     expect(environmentCreationStepLabel({ kind: "await-ready", withAgent: false })).toBe(
-      "Waiting for the services",
+      "Starting its services",
     );
   });
 });

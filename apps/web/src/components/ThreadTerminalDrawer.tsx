@@ -1519,7 +1519,7 @@ export default function ThreadTerminalDrawer({
         {resizeHandle}
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-muted-foreground">
           <p>No terminal sessions for this thread yet.</p>
-          <Button size="xs" variant="outline" onClick={onNewTerminalAction}>
+          <Button size="sm" variant="secondary" onClick={onNewTerminalAction}>
             {newTerminalActionLabel}
           </Button>
         </div>

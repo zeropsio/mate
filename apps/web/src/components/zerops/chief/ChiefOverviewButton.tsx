@@ -28,7 +28,7 @@ export function ChiefOverviewButton({
         else useRightPanelStore.getState().open(threadRef, "overview");
       }}
       size="sm"
-      variant="ghost-muted"
+      variant="ghost"
     >
       <LayersIcon className="size-3.5 shrink-0" />
       <span className="hidden text-line @3xl/header-actions:inline">Overview</span>

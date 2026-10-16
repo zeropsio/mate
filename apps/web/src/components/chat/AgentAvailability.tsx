@@ -110,7 +110,7 @@ export function UnavailableAgentControl({
             data-chat-provider-unavailable="true"
             size="sm"
             type="button"
-            variant="ghost-muted"
+            variant="ghost"
           />
         }
       >

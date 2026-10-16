@@ -12,14 +12,11 @@
 import { useLayoutEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { appBasePath } from "~/basePath";
-import { isElectron } from "~/env";
-import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 import { bootFrameSlot, showAppFrame } from "~/zerops/bootFrame";
 import { useWaitLine } from "~/zerops/useWaitLine";
-import { BOOT_WAIT_LINE_MS, bootWaitLine } from "~/zerops/waitLine.logic";
+import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { MateMark } from "../../MateMark";
 import { ZeropsMark } from "../../ZeropsMark";
@@ -53,13 +50,9 @@ export function ZeropsLandingShell({
         {onManualConnect === undefined ? null : (
           <p className="text-center text-xs text-muted-foreground">
             Not using Zerops?{" "}
-            <button
-              type="button"
-              className="underline underline-offset-2 hover:text-foreground"
-              onClick={onManualConnect}
-            >
+            <InlineButton tone="muted" onClick={onManualConnect}>
               Connect a backend manually
-            </button>
+            </InlineButton>
           </p>
         )}
       </div>
@@ -126,17 +119,12 @@ export function ZeropsFrameWait({
   );
 }
 
-/** The frame's line (`bootWaitLine`), shown past the boot's beat from the page's load. */
+/**
+ * The frame's line, shown past the boot's beat from the page's load: only a wait's own words (the
+ * sign-in's return); the boot itself says nothing, and the page stands in with its shape.
+ */
 function useFrameWaitLine(signedIn: boolean, own: string | undefined): string | null {
-  // A desktop window routes by its hash.
-  const pathname =
-    typeof window === "undefined"
-      ? ""
-      : isElectron
-        ? window.location.hash.replace(/^#/u, "").split("?")[0] || "/"
-        : window.location.pathname;
-  const routed = environmentIdFromAddress(pathname, appBasePath());
-  const text = !signedIn ? null : own !== undefined ? own : bootWaitLine(routed !== null);
+  const text = signedIn && own !== undefined ? own : null;
   const showing = useWaitLine(text, { delayMs: BOOT_WAIT_LINE_MS, from: "load" });
   return showing ? text : null;
 }
@@ -201,13 +189,9 @@ export function ZeropsHandoverActions({
             </>
           ) : null}
         </p>
-        <button
-          type="button"
-          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          onClick={nativeSignIn.onCancel}
-        >
+        <InlineButton tone="muted" onClick={nativeSignIn.onCancel}>
           Cancel
-        </button>
+        </InlineButton>
       </div>
     );
   }
@@ -220,13 +204,9 @@ export function ZeropsHandoverActions({
       </Button>
       <p className="text-center text-xs text-muted-foreground">
         No account yet?{" "}
-        <button
-          type="button"
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onCreateAccount}
-        >
+        <InlineButton tone="muted" onClick={onCreateAccount}>
           Create one on Zerops
-        </button>
+        </InlineButton>
       </p>
       <FormError message={nativeSignIn?.error ?? null} />
     </div>

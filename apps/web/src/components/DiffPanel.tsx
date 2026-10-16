@@ -599,7 +599,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
       <div className="flex min-w-0 flex-1 items-center gap-3 [-webkit-app-region:no-drag]">
         <DropdownMenu>
           <DropdownMenuTrigger
-            render={<Button size="xs" variant="secondary" />}
+            render={<Button size="sm" variant="secondary" />}
             className="max-w-full"
             aria-label={`Diff scope: ${selectedScopeLabel}`}
           >
@@ -686,7 +686,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
               }}
             >
               <ComboboxTrigger
-                render={<Button variant="ghost-muted" size="xs" />}
+                render={<Button variant="ghost" size="sm" />}
                 className="min-w-0 max-w-48"
                 aria-label={`Change comparison target. Currently ${selectedGitSource.baseRef}`}
               >
@@ -716,7 +716,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                       ? " Showing last-known refs."
                       : null}
                     {refPresentation.canRetry ? (
-                      <Button size="xs" variant="outline" onClick={refreshGitDiff}>
+                      <Button size="sm" variant="secondary" onClick={refreshGitDiff}>
                         Refresh diff
                       </Button>
                     ) : null}
@@ -798,7 +798,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
           />
         )}
         {selectedTurn && !selectedTurn.history && (
-          <Button size="xs" variant="outline" onClick={activeCheckpointDiff.refresh}>
+          <Button size="sm" variant="secondary" onClick={activeCheckpointDiff.refresh}>
             Retry diff
           </Button>
         )}
@@ -1064,7 +1064,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                         <TooltipTrigger
                           render={
                             <Button
-                              size="icon-micro"
+                              size="icon-sm"
                               variant="ghost"
                               className="-ms-0.5"
                               aria-label={collapsed ? `Expand ${filePath}` : `Collapse ${filePath}`}

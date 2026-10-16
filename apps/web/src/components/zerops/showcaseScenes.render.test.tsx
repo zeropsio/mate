@@ -15,17 +15,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { ZeropsOperationCard } from "./ZeropsOperationCard";
-import {
-  Chip,
-  FlatCard,
-  KeyChip,
-  LivenessLine,
-  MicroLabel,
-  MintPanel,
-  Pill,
-  ProcessSteps,
-  StatusDot,
-} from "./primitives";
+import { LivenessLine, MicroLabel, MintPanel, ProcessSteps, STATUS_BADGE_TONE } from "./primitives";
+import { Badge } from "../ui/badge";
 
 /** A lifecycle snapshot as the feed's live answer. */
 const liveLifecycle = (value: ZeropsLifecycle): Known<ZeropsLifecycle> => ({
@@ -121,8 +112,16 @@ it("renders the complete primitive probe from existing showcase facts", () => {
   const toneProbes = [...probesByTone.values()];
   const toneMarkup = toneProbes
     .flatMap(({ label, tone }) => [
-      renderToStaticMarkup(<StatusDot key={`dot-${tone}`} label={label} tone={tone} />),
-      renderToStaticMarkup(<Chip key={`chip-${tone}`} label={label} tone={tone} />),
+      renderToStaticMarkup(
+        <Badge dot key={`dot-${tone}`} tone={STATUS_BADGE_TONE[tone]}>
+          {label}
+        </Badge>,
+      ),
+      renderToStaticMarkup(
+        <Badge key={`chip-${tone}`} tone={STATUS_BADGE_TONE[tone]}>
+          {label}
+        </Badge>,
+      ),
     ])
     .join("\n");
   const processMarkup = scenes
@@ -155,32 +154,18 @@ it("renders the complete primitive probe from existing showcase facts", () => {
   const primitivesMarkup = scenes
     .flatMap((scene) => [
       renderToStaticMarkup(<MicroLabel>{scene.title}</MicroLabel>),
-      renderToStaticMarkup(<Pill label={scene.title} />),
-      renderToStaticMarkup(<FlatCard>{scene.title}</FlatCard>),
       renderToStaticMarkup(<MintPanel>{scene.title}</MintPanel>),
-      renderToStaticMarkup(<KeyChip>{scene.id}</KeyChip>),
     ])
     .join("\n");
   const markup = `${toneMarkup}\n${primitivesMarkup}\n${processMarkup}\n${livenessMarkup}`;
 
-  for (const primitive of [
-    "status-dot",
-    "micro-label",
-    "chip",
-    "pill",
-    "flat-card",
-    "mint-panel",
-    "process-steps",
-    "key-chip",
-    "liveness-line",
-  ]) {
+  for (const primitive of ["micro-label", "mint-panel", "process-steps", "liveness-line"]) {
     expect(markup).toContain(`data-zerops-primitive="${primitive}"`);
   }
   expect(toneProbes.map(({ tone }) => tone).sort()).toEqual(
     Object.keys(SERVICE_STATUS_TONES).sort(),
   );
   for (const { tone } of toneProbes) {
-    expect(markup).toContain(`data-zerops-status-tone="${tone}"`);
-    expect(markup).toContain(`data-zerops-chip-tone="${tone}"`);
+    expect(markup).toContain(`data-tone="${STATUS_BADGE_TONE[tone]}"`);
   }
 });

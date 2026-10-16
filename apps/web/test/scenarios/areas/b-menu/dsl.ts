@@ -311,7 +311,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
         await s.page.locator(`${form} ::-p-aria(Move)`).setTimeout(8_000).click();
         await s.page.waitForSelector(form, { hidden: true, timeout: 8_000 });
       }),
-    environmentSlots: (words: string, offered: ReadonlyArray<"Add stage" | "Add production">) =>
+    environmentSlots: (words: string, offered: ReadonlyArray<"Add stage" | "Put it live">) =>
       Effect.promise(async () => {
         try {
           await s.page.waitForFunction(
@@ -319,7 +319,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
               const main = document.querySelector("main");
               const buttons = [...(main?.querySelectorAll("button") ?? [])]
                 .map((button) => button.innerText.trim())
-                .filter((name) => name === "Add stage" || name === "Add production");
+                .filter((name) => name === "Add stage" || name === "Put it live");
               return (
                 main?.innerText.includes(words) === true &&
                 buttons.length === offered.length &&

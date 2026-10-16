@@ -90,7 +90,7 @@ function CommandSpecimens() {
   return (
     <SpecimenGrid>
       <Specimen label="<CommandDialog> · <CommandDialogPopup>">
-        <Button onClick={() => setOpen(true)} variant="outline">
+        <Button onClick={() => setOpen(true)} variant="secondary">
           Open the palette
         </Button>
         <CommandDialog onOpenChange={setOpen} open={open}>

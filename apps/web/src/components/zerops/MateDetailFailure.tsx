@@ -26,7 +26,7 @@ export function MateDetailFailure({
         headline: `${mate?.name || "The Mate"}'s project could not be read.`,
         sentence: message,
         below: (
-          <Button onClick={again} size="compact" variant="pill">
+          <Button onClick={again} size="md" variant="primary">
             Again
           </Button>
         ),

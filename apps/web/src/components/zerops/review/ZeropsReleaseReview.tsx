@@ -55,6 +55,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 
 import { Input } from "~/components/ui/input";
 
+import { putLiveAddress } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useFixMates } from "~/zerops/fixMates";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
@@ -96,6 +97,7 @@ import {
 import { answeredDeploys } from "../ZeropsDeployAnswer";
 import { jobInFlight } from "@t3tools/client-runtime/zerops/hq";
 import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
+import { Button } from "~/components/ui/button";
 
 type ReleaseTarget = Extract<ReviewTarget, { readonly kind: "release" | "rollback" }>;
 
@@ -593,6 +595,10 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
         ? "what production runs"
         : undefined;
   const ready = model.verdict.state === "release-ready";
+  const openLive =
+    model.primary === undefined && props.outcome.kind === "released" && props.git === undefined
+      ? putLiveAddress(props.production?.addresses ?? [])
+      : undefined;
   const now = productionNow({
     live,
     since: sinceWords(props.production?.at, props.now),
@@ -640,20 +646,37 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
         props.git !== undefined ? undefined : <span>{ready ? line : line.replace(/\.$/u, "")}</span>
       }
       onClose={props.onClose}
+      // Released, it ends on the live app: its address the way in, a domain of its own beside it.
+      secondary={
+        openLive !== undefined && props.onAddDomain !== undefined
+          ? { label: "Put it on your domain", enabled: true, onPress: props.onAddDomain }
+          : undefined
+      }
       primary={
         model.primary === undefined ||
         (model.primary.label === "Replace token" && props.onReplaceToken === undefined)
-          ? model.primary === undefined &&
-            props.outcome.kind === "released" &&
-            props.onAddDomain !== undefined
+          ? openLive !== undefined
             ? {
-                label: "Put it on your domain",
+                label: "Open",
+                text: `Open ${openLive.host}`,
                 enabled: true,
-                safe: false,
+                safe: true,
                 icon: "globe",
-                onPress: props.onAddDomain,
+                onPress: () => {
+                  window.open(openLive.url, "_blank", "noopener,noreferrer");
+                },
               }
-            : undefined
+            : model.primary === undefined &&
+                props.outcome.kind === "released" &&
+                props.onAddDomain !== undefined
+              ? {
+                  label: "Put it on your domain",
+                  enabled: true,
+                  safe: false,
+                  icon: "globe",
+                  onPress: props.onAddDomain,
+                }
+              : undefined
           : {
               ...model.primary,
               enabled: model.primary.enabled && checkedVersion?.error === undefined,
@@ -678,7 +701,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
                 <p className="rv-words">
                   {repo.repository} ·{" "}
                   {repo.included ? "Included" : `Left out: ${repo.reason ?? "Not ready"}`} ·{" "}
-                  {repo.sha?.slice(0, 7) ?? "No commit on main"}
+                  {repo.sha?.slice(0, 7) ?? "Nothing merged yet"}
                 </p>
                 {repo.remote == null ? null : (
                   <p className="rv-note">
@@ -713,7 +736,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           {props.git !== undefined || untold.length === 0 ? null : (
             <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>
           )}
-          {/* Which commit each service redeploys from, until HQ answers where it went. */}
+          {/* Which release each service gets, until HQ answers where it went. */}
           {props.git === undefined && answer === undefined
             ? props.where.map((entry) => (
                 <p className="rv-note" key={entry.service}>
@@ -762,14 +785,14 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
             </p>
             {version.suggestions.map((suggestion) => (
               <div className="rv-note rv-version-use" key={suggestion.source}>
-                <button
-                  className="rv-textbtn"
+                <Button
                   onClick={() => version.onChange(suggestion.tag.slice(1))}
-                  type="button"
+                  size="sm"
+                  variant="link"
                 >
                   Use {suggestion.tag}
-                </button>
-                <span>Declared on main in {suggestion.source}</span>
+                </Button>
+                <span>Set in the code, in {suggestion.source.split("/").at(-1)}</span>
               </div>
             ))}
           </div>

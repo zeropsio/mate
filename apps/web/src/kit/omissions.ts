@@ -82,7 +82,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
     source:
       "apps/web/src/components/zerops/RouteStandIn.tsx, apps/web/src/components/chat/ConversationPanelStandIn.tsx",
     reason:
-      "They read the composer's draft store and the right panel's store; their looks are the held room and SurfaceLoading, both shown.",
+      "They read the composer's draft store and the right panel's store; their look is the held room, shown.",
   },
   {
     name: "Waiting: native progress bar",
@@ -140,18 +140,6 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
     source: "apps/web/src/components/zerops/chief/ChiefOverviewButton.tsx",
     reason:
       "Home-made action: it opens the Chief's overview through the router and the right panel's store.",
-  },
-  {
-    name: "ReviewButton, OpenButton (menu-wait-button)",
-    source: "apps/web/src/components/zerops/SidebarWaiting.tsx",
-    reason:
-      "Home-made action: they open a review through useOpenReview, an operation on the data layer.",
-  },
-  {
-    name: "FixAction, RestartAction (run-result-action)",
-    source: "apps/web/src/components/chat",
-    reason:
-      "Home-made action: they ask a Mate to fix or restart through the Zerops session and account operations.",
   },
   {
     name: "Row-wide buttons (about 20 raw <button>)",

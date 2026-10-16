@@ -11,14 +11,8 @@ import { cn } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
 import { ElapsedSince } from "./ConversationRows";
-
-const TONE_DOT: Record<ServiceStatusToneId, string> = {
-  ok: "bg-status-ok",
-  busy: "bg-status-busy",
-  attention: "bg-status-attention",
-  failed: "bg-status-failed",
-  off: "bg-status-off",
-};
+import { Badge } from "~/components/ui/badge";
+import { STATUS_BADGE_TONE } from "~/components/zerops/primitives/statusBadgeTone";
 
 /** A mark's state in a word, for a row that shows only the mark. */
 const TONE_SAID: Record<ServiceStatusToneId, string> = {
@@ -29,9 +23,9 @@ const TONE_SAID: Record<ServiceStatusToneId, string> = {
   off: "Stopped",
 };
 
-/** A state's mark: its dot. */
+/** A state's mark: Badge's dot, named by its state's word. */
 export function ToneDot({ tone }: { readonly tone: ServiceStatusToneId }) {
-  return <span className={cn("size-1.5 rounded-full", TONE_DOT[tone])} />;
+  return <Badge aria-label={TONE_SAID[tone]} dot tone={STATUS_BADGE_TONE[tone]} />;
 }
 
 /** How long it ran: counting while it runs, its length once it ended. */
@@ -78,9 +72,7 @@ export function DetailRow({
         >
           {title}
         </span>
-        {word === undefined ? (
-          <span className="sr-only">{TONE_SAID[tone]}</span>
-        ) : long === "word" ? (
+        {word === undefined ? null : long === "word" ? (
           <Tooltip>
             <TooltipTrigger render={<span className="min-w-0 truncate text-muted-foreground" />}>
               {word}

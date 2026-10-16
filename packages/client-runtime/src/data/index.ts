@@ -328,6 +328,7 @@ export {
   platformViewer,
   projectRoleOffers,
   roleOffers,
+  teamOffers,
   type PlatformCapabilities,
   type PlatformCapabilitiesKey,
 } from "./projections/platformCapabilities.ts";

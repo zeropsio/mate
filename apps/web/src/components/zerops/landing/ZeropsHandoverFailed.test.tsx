@@ -22,6 +22,6 @@ describe("ZeropsHandoverFailed", () => {
 
   it("offers the retry as the one primary action and the way back as a line", () => {
     expect(markup.match(/<button/gu)).toHaveLength(2);
-    expect(markup.indexOf("Try again")).toBeLessThan(markup.indexOf("Back to Zerops Mate"));
+    expect(markup.indexOf("Try again")).toBeLessThan(markup.indexOf("Back to sign-in"));
   });
 });

@@ -1,9 +1,9 @@
 /**
  * A person's face, as the Zerops app draws one: HQ's picture of them, else the member record's
  * own (`smallAvatarUrl`, then `externalAvatarUrl`, then `largeAvatarUrl`), else Gravatar's for
- * their e-mail — their own picture there, or the generated pattern (`d=identicon`) Zerops shows
- * for everyone without one. Initials stand in only where none of these is known or a picture
- * fails to load.
+ * their e-mail — only a real picture there (`d=404`: Gravatar answers 404, never a generated
+ * pattern, for an address without one). Their initial on their own hue (`PersonAvatar`) stands
+ * in where none is known or a picture fails to load.
  */
 
 /** The member record's own pictures, as `GET /client/{id}/user/list` carries them. */
@@ -33,9 +33,9 @@ export function memberPicture(input: {
   );
 }
 
-/** Gravatar's picture for an address, its generated pattern where the address has none. */
+/** Gravatar's picture for an address; a 404 where the address has none, never a pattern. */
 export const gravatarUrl = (email: string, size = 160): string =>
-  `https://www.gravatar.com/avatar/${md5(email.trim().toLowerCase())}?s=${size}&d=identicon`;
+  `https://www.gravatar.com/avatar/${md5(email.trim().toLowerCase())}?s=${size}&d=404`;
 
 const S = [
   7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14,

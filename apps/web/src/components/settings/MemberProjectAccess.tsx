@@ -70,11 +70,11 @@ export function MemberProjectAccess({
           <Popover onOpenChange={setOpen} open={open}>
             <PopoverTrigger
               render={
-                <Button data-zerops-surface="set-custom-access" size="sm" variant="outline" />
+                <Button data-zerops-surface="set-custom-access" size="sm" variant="secondary" />
               }
             >
               <PlusIcon aria-hidden="true" />
-              Set custom accesses
+              Choose projects
             </PopoverTrigger>
             <PopoverPopup align="end" padding="none" width="lg">
               {open ? (
@@ -115,7 +115,7 @@ export function MemberProjectAccess({
                 <Menu>
                   <MenuTrigger
                     aria-label={`Change access to ${chip.label}`}
-                    render={<Button size="icon-xs" variant="ghost" />}
+                    render={<Button size="icon-sm" variant="ghost" />}
                   >
                     <MoreVerticalIcon aria-hidden="true" />
                   </MenuTrigger>

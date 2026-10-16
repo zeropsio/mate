@@ -18,7 +18,7 @@ export function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string 
         </a>
       }
       size="sm"
-      variant="ghost-muted"
+      variant="ghost"
     />
   );
 }

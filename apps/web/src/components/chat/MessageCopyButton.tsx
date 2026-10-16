@@ -39,13 +39,13 @@ const onCopyError = (ref: React.RefObject<HTMLButtonElement | null>, error: Erro
 
 export const MessageCopyButton = memo(function MessageCopyButton({
   text,
-  size = "xs",
-  variant = "outline",
+  size = "sm",
+  variant = "secondary",
   className,
 }: {
   text: string;
-  size?: "xs" | "icon-xs";
-  variant?: "outline" | "ghost";
+  size?: "sm" | "icon-sm";
+  variant?: "secondary" | "ghost";
   className?: string;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
@@ -66,7 +66,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({
             ref={ref}
             type="button"
             size={size}
-            variant={variant === "ghost" ? "ghost-muted" : variant}
+            variant={variant}
             className={className}
           />
         }

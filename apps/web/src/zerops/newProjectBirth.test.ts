@@ -789,8 +789,8 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Registered:active",
         "Created:waiting",
         "Vera registered:waiting",
-        "Container:waiting",
-        "Closed off:waiting",
+        "Its computer:waiting",
+        "Private network ready:waiting",
       ],
     },
     {
@@ -800,8 +800,8 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Registered:failed (No room in this account.)",
         "Created:waiting",
         "Vera registered:waiting",
-        "Container:waiting",
-        "Closed off:waiting",
+        "Its computer:waiting",
+        "Private network ready:waiting",
       ],
     },
     {
@@ -811,8 +811,8 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Registered:done",
         "Created:active",
         "Vera registered:waiting",
-        "Container:waiting",
-        "Closed off:waiting",
+        "Its computer:waiting",
+        "Private network ready:waiting",
       ],
     },
     {
@@ -822,8 +822,8 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Registered:done",
         "Created:done",
         "Vera registered:waiting",
-        "Container:waiting",
-        "Closed off:waiting",
+        "Its computer:waiting",
+        "Private network ready:waiting",
       ],
     },
     {
@@ -841,8 +841,8 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Registered:done",
         "Created:done",
         "Vera registered:waiting",
-        "Container:waiting",
-        "Closed off:active",
+        "Its computer:waiting",
+        "Private network ready:active",
       ],
     },
     {
@@ -856,8 +856,8 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Registered:done",
         "Created:done",
         "Vera registered:waiting",
-        "Container:waiting",
-        "Closed off:failed (close-off said no.)",
+        "Its computer:waiting",
+        "Private network ready:failed (close-off said no.)",
       ],
     },
     {
@@ -871,8 +871,8 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Registered:done",
         "Created:done",
         "Not registered:unfinished (Register said no.)",
-        "Container:waiting",
-        "Closed off:done",
+        "Its computer:waiting",
+        "Private network ready:done",
       ],
     },
     {
@@ -886,8 +886,8 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Registered:done",
         "Created:done",
         "Vera registered:done",
-        "Container:waiting",
-        "Closed off:done",
+        "Its computer:waiting",
+        "Private network ready:done",
       ],
     },
   ])("$case", ({ made, want }) => {
@@ -900,12 +900,17 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
     {
       case: "pressed, its plan not yet made",
       made: added(),
-      want: ["Created:active", "Ida registered:waiting", "Container:waiting", "Closed off:waiting"],
+      want: [
+        "Created:active",
+        "Ida registered:waiting",
+        "Its computer:waiting",
+        "Private network ready:waiting",
+      ],
     },
     {
       case: "where its registration is nobody's here to write",
       made: added({ adds: { appId: "app-acme", registers: false } }),
-      want: ["Created:active", "Container:waiting", "Closed off:waiting"],
+      want: ["Created:active", "Its computer:waiting", "Private network ready:waiting"],
     },
     {
       case: "creating its project",
@@ -918,7 +923,12 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
           ["register", "queued"],
         ),
       }),
-      want: ["Created:active", "Ida registered:waiting", "Container:waiting", "Closed off:waiting"],
+      want: [
+        "Created:active",
+        "Ida registered:waiting",
+        "Its computer:waiting",
+        "Private network ready:waiting",
+      ],
     },
     {
       case: "refused before the platform took it",
@@ -926,8 +936,8 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
       want: [
         "Created:failed (No room in this account.)",
         "Ida registered:waiting",
-        "Container:waiting",
-        "Closed off:waiting",
+        "Its computer:waiting",
+        "Private network ready:waiting",
       ],
     },
     {
@@ -943,7 +953,12 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
           ["register", "queued"],
         ),
       }),
-      want: ["Created:done", "Ida registered:waiting", "Container:active", "Closed off:waiting"],
+      want: [
+        "Created:done",
+        "Ida registered:waiting",
+        "Its computer:active",
+        "Private network ready:waiting",
+      ],
     },
     {
       case: "a container that stopped",
@@ -960,8 +975,8 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
       want: [
         "Created:done",
         "Ida registered:waiting",
-        "Container:failed (import-container said no.)",
-        "Closed off:waiting",
+        "Its computer:failed (import-container said no.)",
+        "Private network ready:waiting",
       ],
     },
     {
@@ -977,7 +992,12 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
           ["await-ready", "running"],
         ),
       }),
-      want: ["Created:done", "Ida registered:done", "Container:done", "Closed off:done"],
+      want: [
+        "Created:done",
+        "Ida registered:done",
+        "Its computer:done",
+        "Private network ready:done",
+      ],
     },
     {
       case: "a registration refused: Ida runs on, not registered, and why",
@@ -995,8 +1015,8 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
       want: [
         "Created:done",
         "Not registered:unfinished (Register said no.)",
-        "Container:done",
-        "Closed off:done",
+        "Its computer:done",
+        "Private network ready:done",
       ],
     },
   ])("$case", ({ made, want }) => {

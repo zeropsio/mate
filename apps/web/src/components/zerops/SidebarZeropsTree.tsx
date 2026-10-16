@@ -1,6 +1,7 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { showProjectParts } from "~/zerops/projectPartsShown";
+import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
@@ -129,6 +130,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type ReactElement,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -139,6 +141,7 @@ import { formatShortTimestamp, formatUpcomingTimestamp } from "~/timestampFormat
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { SidebarComingEnds } from "./SidebarComingEnds";
+import { Row } from "../ui/row";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateOwnerMark } from "./MateOwnerMark";
 import {
@@ -208,7 +211,8 @@ import {
   type ProjectReviewItem,
 } from "./SidebarProjectReview";
 import { SidebarSelectedBand, slideSelectedBandTo } from "./SidebarSelectedBand";
-import { KeyChip, MateFace } from "./primitives";
+import { Kbd } from "../ui/kbd";
+import { MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
 import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
 import {
@@ -493,6 +497,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * (`useAddMate`). Absent — a harness — the heading's + does nothing.
    */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
+  /** Opens the invitation with this project picked; absent for someone who may not invite. */
+  readonly onInvite?: ((groupId: string) => void) | undefined;
   /** Opens the form that sets a stage or a production up; absent, its item opens the projects page. */
   readonly onSetUp?: ((groupId: string, tier: GroupEnvironmentTier) => void) | undefined;
   /**
@@ -697,6 +703,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   candidates,
   onSelect,
   onAddMate,
+  onInvite,
   onSetUp,
   getComing,
   onOpenComing,
@@ -836,7 +843,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     projectRefs.set(id, made);
     return made;
   };
-  // Whether *Add stage* and *Add production* stand in a project's menu: HQ's offer of each.
+  // Whether *Add stage* and *Put it live* stand in a project's menu: HQ's offer of each.
   const environmentOffers = useEnvironmentOffers();
   const addMateOffer = useAddMateOffer();
   const treeRef = useRef<HTMLElement>(null);
@@ -2066,6 +2073,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                 .getState()
                 .open({ orgId: accountOrgId, projectId: place, groupId: group.groupId });
             },
+      onInvite:
+        onInvite === undefined
+          ? undefined
+          : () => {
+              onInvite(group.groupId);
+            },
       reorder: {
         canMoveUp: neighbours(group.groupId).indexOf(group.groupId) > 0,
         canMoveDown: neighbours(group.groupId).at(-1) !== group.groupId,
@@ -2074,7 +2087,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         },
       },
       setUp: missing.map((row) => ({
-        label: `Add ${row.name.toLocaleLowerCase()}`,
+        label: environmentDoorLabel(row.tier, row.name),
         act:
           onSetUp === undefined
             ? onBrowseProjects
@@ -2533,9 +2546,15 @@ function GroupRowWords<T extends RosterCandidate>({
   name,
   mates,
   lead,
+  mark,
+  render,
   asksMore,
   timestampFormat,
 }: {
+  /** Its Mates' faces together, on the row's mark. */
+  readonly mark: ReactNode;
+  /** The row's button, with its presses and keys. */
+  readonly render: ReactElement;
   readonly name: string;
   /** How many Mates it holds: said after its name to whoever cannot see the faces. */
   readonly mates: number;
@@ -2567,19 +2586,20 @@ function GroupRowWords<T extends RosterCandidate>({
         : `${state.name}: `;
   const asking = state.asksViewer || crewNeed !== undefined;
   return (
-    <span className="flex min-w-0 flex-col">
-      <span className="flex h-5.5 min-w-0 items-center gap-2">
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          <span
-            className="menu-name min-w-0 truncate font-medium"
-            data-zerops-surface="sidebar-project-name"
-          >
-            {name}
-            <span className="sr-only">{`, ${String(mates)} Mates`}</span>
-          </span>
-          <ProjectNameMarks />
+    <Row
+      lead={mark}
+      pressable="band"
+      render={render}
+      size="lg"
+      title={
+        <span data-zerops-surface="sidebar-project-name">
+          {name}
+          <span className="sr-only">{`, ${String(mates)} Mates`}</span>
         </span>
-        <span className="relative flex h-5.5 min-w-16 shrink-0 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:opacity-0">
+      }
+      badges={<ProjectNameMarks />}
+      meta={
+        <span className="relative flex h-5.5 min-w-16 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:opacity-0">
           <MateSlot
             at={lead.activity?.at}
             slot={state.view.slot}
@@ -2588,39 +2608,43 @@ function GroupRowWords<T extends RosterCandidate>({
             tint={lead.tint}
           />
         </span>
-      </span>
-      {state.second.kind === "none" && crewNeed === undefined ? null : (
-        <span className="menu-line2 flex min-w-0" data-zerops-surface="sidebar-project-line">
-          <span
-            className={cn(
-              "shrink-0 whitespace-pre text-sidebar-foreground",
-              !asking && "font-medium",
-            )}
-            data-zerops-surface="sidebar-project-lead"
-          >
-            {prefix}
+      }
+      line={
+        state.second.kind === "none" && crewNeed === undefined ? undefined : (
+          <span className="menu-line2 flex min-w-0" data-zerops-surface="sidebar-project-line">
+            <span
+              className={cn(
+                "shrink-0 whitespace-pre text-sidebar-foreground",
+                !asking && "font-medium",
+              )}
+              data-zerops-surface="sidebar-project-lead"
+            >
+              {prefix}
+            </span>
+            <span className="min-w-0 flex-1">
+              {crewNeed === undefined ? (
+                <MateSecondLine
+                  askChanged={state.askChanged}
+                  askLine={state.askLine}
+                  finishing={state.finishing}
+                  known={state.known}
+                  second={state.second}
+                  timestampFormat={timestampFormat}
+                  view={state.view}
+                />
+              ) : (
+                <span className="menu-line2 truncate text-sidebar-foreground">
+                  {crewNeed.words}
+                </span>
+              )}
+            </span>
+            {asksMore > 0 ? (
+              <span className="shrink-0 whitespace-pre text-muted-foreground">{` · ${String(asksMore)} more`}</span>
+            ) : null}
           </span>
-          <span className="min-w-0 flex-1">
-            {crewNeed === undefined ? (
-              <MateSecondLine
-                askChanged={state.askChanged}
-                askLine={state.askLine}
-                finishing={state.finishing}
-                known={state.known}
-                second={state.second}
-                timestampFormat={timestampFormat}
-                view={state.view}
-              />
-            ) : (
-              <span className="menu-line2 truncate text-sidebar-foreground">{crewNeed.words}</span>
-            )}
-          </span>
-          {asksMore > 0 ? (
-            <span className="shrink-0 whitespace-pre text-muted-foreground">{` · ${String(asksMore)} more`}</span>
-          ) : null}
-        </span>
-      )}
-    </span>
+        )
+      }
+    />
   );
 }
 
@@ -2754,77 +2778,72 @@ function ProjectGroupRow<T extends RosterCandidate>({
         }}
         ref={rowBox}
       >
-        <button
-          aria-current={current ? "true" : undefined}
-          aria-expanded={open}
-          className="menu-row w-full min-w-0 cursor-pointer text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
-          data-zerops-row=""
-          data-zerops-surface="sidebar-project"
-          onClick={() => {
-            if (drag.swallowClick()) return;
-            if (longPress.current.fired) {
-              longPress.current.fired = false;
-              return;
-            }
-            onPress();
-          }}
-          onKeyDown={(event) => {
-            const step = projectRowKey({
-              key: event.key,
-              modified: event.metaKey || event.ctrlKey || event.altKey,
-              kind: "group",
-              open,
-            });
-            if (step === "next" || step === "previous") {
-              event.preventDefault();
-              keys.move(event.currentTarget, step === "next" ? 1 : -1);
-              return;
-            }
-            if (step === "open" || step === "fold") {
-              event.preventDefault();
-              onToggle();
-              return;
-            }
-            if (step === "into") {
-              event.preventDefault();
-              onInto();
-              return;
-            }
-            if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-              event.preventDefault();
-              openMenu();
-            }
-          }}
-          type="button"
-        >
-          <span className="relative flex size-9 items-center justify-center">
-            <ProjectCluster faces={faces} more={more} />
-          </span>
-          {lead === undefined ? (
-            <span className="flex min-w-0 flex-col">
-              <span className="flex h-5.5 min-w-0 items-center gap-2">
-                <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                  <span
-                    className="menu-name min-w-0 truncate font-medium"
-                    data-zerops-surface="sidebar-project-name"
-                  >
-                    {name}
-                  </span>
-                  <ProjectNameMarks />
-                </span>
-                <span className="min-w-16 shrink-0" />
-              </span>
-              <span className="menu-line2 truncate text-muted-foreground">
-                {`${String(mates)} Mates coming up`}
-              </span>
-            </span>
+        {(() => {
+          const button = (
+            <button
+              aria-current={current ? "true" : undefined}
+              aria-expanded={open}
+              data-zerops-row=""
+              data-zerops-surface="sidebar-project"
+              onClick={() => {
+                if (drag.swallowClick()) return;
+                if (longPress.current.fired) {
+                  longPress.current.fired = false;
+                  return;
+                }
+                onPress();
+              }}
+              onKeyDown={(event) => {
+                const step = projectRowKey({
+                  key: event.key,
+                  modified: event.metaKey || event.ctrlKey || event.altKey,
+                  kind: "group",
+                  open,
+                });
+                if (step === "next" || step === "previous") {
+                  event.preventDefault();
+                  keys.move(event.currentTarget, step === "next" ? 1 : -1);
+                  return;
+                }
+                if (step === "open" || step === "fold") {
+                  event.preventDefault();
+                  onToggle();
+                  return;
+                }
+                if (step === "into") {
+                  event.preventDefault();
+                  onInto();
+                  return;
+                }
+                if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                  event.preventDefault();
+                  openMenu();
+                }
+              }}
+              type="button"
+            />
+          );
+          const cluster = <ProjectCluster faces={faces} more={more} />;
+          return lead === undefined ? (
+            <Row
+              line={`${String(mates)} Mates coming up`}
+              lead={cluster}
+              meta={<span className="min-w-16" />}
+              pressable="band"
+              render={button}
+              size="lg"
+              badges={<ProjectNameMarks />}
+              title={<span data-zerops-surface="sidebar-project-name">{name}</span>}
+            />
           ) : keyedReadings ? (
             <KeyedGroupRowWords
               asksMore={asksMore}
               key={lead.candidate.project.id}
               lead={lead}
+              mark={cluster}
               mates={mates}
               name={name}
+              render={button}
               timestampFormat={timestampFormat}
             />
           ) : (
@@ -2832,12 +2851,14 @@ function ProjectGroupRow<T extends RosterCandidate>({
               asksMore={asksMore}
               key={lead.candidate.project.id}
               lead={lead}
+              mark={cluster}
               mates={mates}
               name={name}
+              render={button}
               timestampFormat={timestampFormat}
             />
-          )}
-        </button>
+          );
+        })()}
         {hasTags ? (
           <span className="menu-row-tags" data-row-control="" ref={tagsBox}>
             {tags}
@@ -2913,49 +2934,42 @@ function ProjectBareRow({
         onPointerUp={drag.handlers.onPointerUp}
         ref={rowBox}
       >
-        <button
-          className="menu-row w-full min-w-0 cursor-pointer text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
-          data-zerops-row=""
-          data-zerops-surface="sidebar-project"
-          onClick={() => {
-            if (drag.swallowClick()) return;
-            onOpen();
-          }}
-          onKeyDown={(event) => {
-            const step = projectRowKey({
-              key: event.key,
-              modified: event.metaKey || event.ctrlKey || event.altKey,
-              kind: "bare",
-              open: false,
-            });
-            if (step === "next" || step === "previous") {
-              event.preventDefault();
-              keys.move(event.currentTarget, step === "next" ? 1 : -1);
-            }
-          }}
-          type="button"
-        >
-          <span className="relative flex size-9 items-center justify-center">
+        <Row
+          lead={
             <span aria-hidden="true" className="menu-project-mark">
               <BoxIcon className="size-4.5" />
             </span>
-          </span>
-          <span className="flex min-w-0 flex-col">
-            <span className="flex h-5.5 min-w-0 items-center gap-2">
-              <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                <span
-                  className="menu-name min-w-0 truncate font-medium"
-                  data-zerops-surface="sidebar-project-name"
-                >
-                  {name}
-                </span>
-                <ProjectNameMarks />
-              </span>
-              <span className="min-w-16 shrink-0" />
-            </span>
-            <span className="menu-line2 truncate text-muted-foreground">No Mate yet</span>
-          </span>
-        </button>
+          }
+          line="No Mate yet"
+          meta={<span className="min-w-16" />}
+          pressable="band"
+          render={
+            <button
+              data-zerops-row=""
+              data-zerops-surface="sidebar-project"
+              onClick={() => {
+                if (drag.swallowClick()) return;
+                onOpen();
+              }}
+              onKeyDown={(event) => {
+                const step = projectRowKey({
+                  key: event.key,
+                  modified: event.metaKey || event.ctrlKey || event.altKey,
+                  kind: "bare",
+                  open: false,
+                });
+                if (step === "next" || step === "previous") {
+                  event.preventDefault();
+                  keys.move(event.currentTarget, step === "next" ? 1 : -1);
+                }
+              }}
+              type="button"
+            />
+          }
+          size="lg"
+          badges={<ProjectNameMarks />}
+          title={<span data-zerops-surface="sidebar-project-name">{name}</span>}
+        />
         {hasTags ? (
           <span className="menu-row-tags" data-row-control="" ref={tagsBox}>
             {tags}
@@ -3822,12 +3836,15 @@ function MateRowView<T extends RosterCandidate>({
       }}
       ref={rowBox}
     >
-      <button
+      <Row
+        // The kit's row at the menu's size: the face, then the words. The face stands at the top,
+        // on the name's line, whatever number of lines follow it. It paints nothing of its own:
+        // its unit is lit, under the pointer or by the list's one band, which slides to it
+        // (`SidebarSelectedBand`).
+        pressable="band"
+        size="lg"
+        render={<button ref={rowButton} type="button" />}
         aria-current={active ? "true" : undefined}
-        // Two columns: the face's 40 px, then the words. The face stands at
-        // the top, on the name's line, whatever number of lines follow it.
-        // It paints nothing of its own: its unit is lit, under the pointer or
-        // by the list's one band, which slides to it (`SidebarSelectedBand`).
         aria-label={
           dot === undefined
             ? undefined
@@ -3836,10 +3853,7 @@ function MateRowView<T extends RosterCandidate>({
               }${crewWords === undefined ? "" : `, ${crewWords}`}`
         }
         aria-disabled={deleting || outsideHq || undefined}
-        className={cn(
-          "menu-row w-full min-w-0 cursor-pointer text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default",
-          kid && "menu-row-kid",
-        )}
+        data-kid={kid ? "" : undefined}
         data-zerops-row=""
         data-zerops-surface="sidebar-mate"
         // Resting on it, focusing or touching it warms its conversation, so
@@ -3901,70 +3915,67 @@ function MateRowView<T extends RosterCandidate>({
           useSidebarReveal.getState().setCursor(candidate.project.id);
           warmIntent.onFocus(event);
         }}
-        ref={rowButton}
-        type="button"
-      >
-        <span className="relative flex size-9 items-center justify-center">
-          {/* The Mate wears the card's face, and a colleague's Mate its
-              owner's picture on the face's corner, cut out of it, over a paler
-              face (the owner, 2026-09-30: a face before the name read as the
-              name's; "the not yours should have the avatar bigger"). Your own
-              carry nothing; nobody's shows the empty seat there. Nothing
-              rings it — the step it is on is its row's line. Under its
-              project's row it stands a size smaller. */}
-          <span
-            className={cn(
-              "relative flex",
-              badge !== null && "menu-face-cut",
-              notYours && "menu-face-pale",
-            )}
-          >
-            {/* Until its socket answers the face stands in idle or asleep, the
-                row's words as this browser remembered them: a Mate found
-                waiting then is not arriving at it. */}
-            <MateFace
-              className={kid ? "size-7" : "size-9"}
-              cues={face.cues}
-              greets
-              known={known}
-              restarting={face.restarting}
-              shape={shape}
-              size={kid ? "md" : "lg"}
-              state={view.face}
-              tint={tint}
-            />
-          </span>
-          {badge === null ? null : <MateOwnerMark seat={badge} />}
-        </span>
-        {/* The name 15/21 — 600 while a result is unseen, the unread dot before its time — its
-            crew after it, the time at its end; the one line under it, 14/20. No other dot: the
-            face carries the state. */}
-        <span className="flex min-w-0 flex-col">
-          <span className="flex h-5.5 min-w-0 items-center gap-2">
+        lead={
+          <span className="relative flex size-9 items-center justify-center">
+            {/* The Mate wears the card's face, and a colleague's Mate its
+                owner's picture on the face's corner, cut out of it, over a paler
+                face (the owner, 2026-09-30: a face before the name read as the
+                name's; "the not yours should have the avatar bigger"). Your own
+                carry nothing; nobody's shows the empty seat there. Nothing
+                rings it — the step it is on is its row's line. Under its
+                project's row it stands a size smaller. */}
             <span
-              className={cn("flex min-w-0 flex-1 items-center gap-1.5", renaming && "invisible")}
+              className={cn(
+                "relative flex",
+                badge !== null && "menu-face-cut",
+                notYours && "menu-face-pale",
+              )}
             >
-              <span
-                className={cn(
-                  "menu-name flex min-w-0",
-                  view.strongName ? "font-semibold" : "font-medium",
-                )}
-                data-zerops-surface="sidebar-mate-name"
-              >
-                {project === undefined || sameName(project, name) ? (
-                  <span className="min-w-0 truncate">{name}</span>
-                ) : (
-                  // The project's name holds; the Mate's gives way first. The space before the dot is
-                  // a fixed one: a flex item drops a leading space.
-                  <>
-                    <span className="menu-name-project">{project}</span>
-                    {/* What waits for production after the project's name, the Mate's changes
-                        after the Mate's (the owner, 2026-10-12). */}
-                    {kid ? null : <ProjectNameMarks />}
-                    <span className="menu-name-mate">{`\u00a0· ${name}`}</span>
-                  </>
-                )}
-              </span>
+              {/* Until its socket answers the face stands in idle or asleep, the
+                  row's words as this browser remembered them: a Mate found
+                  waiting then is not arriving at it. */}
+              <MateFace
+                className={kid ? "size-7" : "size-9"}
+                cues={face.cues}
+                greets
+                known={known}
+                restarting={face.restarting}
+                shape={shape}
+                size={kid ? 24 : 32}
+                state={view.face}
+                tint={tint}
+              />
+            </span>
+            {badge === null ? null : <MateOwnerMark seat={badge} />}
+          </span>
+        }
+        // The name 15/21 — 600 while a result is unseen — its marks after it, which give way
+        // before it does (`Row`'s badges), the time at its end; the one line under it, 14/22. No
+        // other dot: the face carries the state.
+        strong={view.strongName}
+        title={
+          <span
+            className={cn("menu-name flex min-w-0", renaming && "invisible")}
+            data-zerops-surface="sidebar-mate-name"
+          >
+            {project === undefined || sameName(project, name) ? (
+              <span className="min-w-0 truncate">{name}</span>
+            ) : (
+              // The project's name holds; the Mate's gives way first. The space before the dot is
+              // a fixed one: a flex item drops a leading space.
+              <>
+                <span className="menu-name-project">{project}</span>
+                {/* What waits for production after the project's name, the Mate's changes
+                  after the Mate's (the owner, 2026-10-12). */}
+                {kid ? null : <ProjectNameMarks />}
+                <span className="menu-name-mate">{`\u00a0· ${name}`}</span>
+              </>
+            )}
+          </span>
+        }
+        badges={
+          renaming ? undefined : (
+            <>
               {kid || (project !== undefined && !sameName(project, name)) ? null : (
                 <ProjectNameMarks />
               )}
@@ -3978,66 +3989,69 @@ function MateRowView<T extends RosterCandidate>({
                   role="img"
                 />
               ) : null}
-            </span>
-            {/* A slot that is always there: the time, which gives way to the
-                row's verbs on hover and focus without anything moving. A
-                project's row holds three verbs there, a Mate under one two. */}
+            </>
+          )
+        }
+        // A slot that is always there: the time, which gives way to the row's verbs on hover and
+        // focus without anything moving. A project's row holds three verbs there, a Mate under one
+        // two.
+        meta={
+          <span
+            className={cn(
+              "relative flex h-5.5 shrink-0 items-center justify-end",
+              project === undefined ? "min-w-11" : "min-w-16 pointer-coarse:opacity-0",
+              menuShown &&
+                "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
+              armed && "opacity-0",
+            )}
+          >
             <span
-              className={cn(
-                "relative flex h-5.5 shrink-0 items-center justify-end",
-                project === undefined ? "min-w-11" : "min-w-16 pointer-coarse:opacity-0",
-                menuShown &&
-                  "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
-                armed && "opacity-0",
-              )}
+              className={cn("flex items-center", numbers && number !== undefined && "opacity-0")}
             >
-              <span
-                className={cn("flex items-center", numbers && number !== undefined && "opacity-0")}
-              >
-                <MateSlot
-                  at={activity?.at}
-                  slot={view.slot}
-                  unseen={view.unseen}
-                  timestampFormat={timestampFormat}
-                  tint={tint}
-                />
-              </span>
-              {numbers && number !== undefined ? (
-                <KeyChip
-                  className="absolute end-0 top-0.5"
-                  data-zerops-surface="sidebar-mate-number"
-                >
-                  {String(number)}
-                </KeyChip>
-              ) : null}
+              <MateSlot
+                at={activity?.at}
+                slot={view.slot}
+                unseen={view.unseen}
+                timestampFormat={timestampFormat}
+                tint={tint}
+              />
             </span>
+            {numbers && number !== undefined ? (
+              <Kbd className="absolute end-0 top-0.5" data-zerops-surface="sidebar-mate-number">
+                {String(number)}
+              </Kbd>
+            ) : null}
           </span>
-          {/* One line under the name: the Mate's answer alone (the owner, 2026-10-12: "just go
-              with answer"), else what was asked of it while it has no words yet — or what its
-              crew needs of the viewer, where it asks them nothing itself. */}
-          {heldLines === 0 || crewLine !== undefined ? null : (
-            <span aria-hidden="true" className="menu-line2 h-5" />
-          )}
-          {crewLine === undefined ? (
-            <MateSecondLine
-              askChanged={askChanged}
-              askLine={askLine}
-              known={known}
-              second={second}
-              timestampFormat={timestampFormat}
-              view={view}
-              finishing={finishing}
-            />
-          ) : (
-            <span
-              className="menu-line2 truncate text-sidebar-foreground"
-              data-zerops-surface="sidebar-mate-crew-need"
-            >
-              {crewLine}
-            </span>
-          )}
-        </span>
-      </button>
+        }
+        line={
+          <>
+            {/* One line under the name: the Mate's answer alone (the owner, 2026-10-12: "just go
+                with answer"), else what was asked of it while it has no words yet — or what its
+                crew needs of the viewer, where it asks them nothing itself. */}
+            {heldLines === 0 || crewLine !== undefined ? null : (
+              <span aria-hidden="true" className="menu-line2 h-5" />
+            )}
+            {crewLine === undefined ? (
+              <MateSecondLine
+                askChanged={askChanged}
+                askLine={askLine}
+                known={known}
+                second={second}
+                timestampFormat={timestampFormat}
+                view={view}
+                finishing={finishing}
+              />
+            ) : (
+              <span
+                className="menu-line2 truncate text-sidebar-foreground"
+                data-zerops-surface="sidebar-mate-crew-need"
+              >
+                {crewLine}
+              </span>
+            )}
+          </>
+        }
+      />
       {tags === undefined ? null : (
         <span className="menu-row-tags" data-row-control="" ref={tagsBox}>
           {tags}
@@ -4692,48 +4706,46 @@ function ComingMateRow({
 }) {
   const tint = coming.face?.tint ?? "slate";
   const row = (
-    <button
+    <Row
       aria-current={active ? "true" : undefined}
-      className={cn(
-        "menu-row w-full min-w-0 cursor-pointer text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
-        kid && "menu-row-kid",
-      )}
+      data-kid={kid ? "" : undefined}
       data-zerops-mate-row={coming.projectId}
       data-zerops-row=""
       data-zerops-surface="sidebar-mate-coming"
+      lead={
+        <span className="relative flex size-9 items-center justify-center">
+          <span className="menu-face-cut menu-face-pale relative flex">
+            <MateFace
+              className={kid ? "size-7" : "size-9"}
+              shape={coming.face?.shape ?? mateShapeOf(undefined, tint)}
+              size={kid ? 24 : 32}
+              state={mateBirthFace(coming.failed === true)}
+              tint={tint}
+            />
+          </span>
+          {COMING_SEAT === null ? null : <MateOwnerMark seat={COMING_SEAT} />}
+        </span>
+      }
+      line={<MateComingLine line={pendingBornLine(coming)} />}
       onClick={() => {
         onOpen?.(coming.projectId);
       }}
-      type="button"
-    >
-      <span className="relative flex size-9 items-center justify-center">
-        <span className="menu-face-cut menu-face-pale relative flex">
-          <MateFace
-            className={kid ? "size-7" : "size-9"}
-            shape={coming.face?.shape ?? mateShapeOf(undefined, tint)}
-            size={kid ? "md" : "lg"}
-            state={mateBirthFace(coming.failed === true)}
-            tint={tint}
-          />
+      pressable="band"
+      render={<button type="button" />}
+      size="lg"
+      title={
+        <span className="menu-name flex min-w-0">
+          {project === undefined || sameName(project, name) ? (
+            <span className="min-w-0 truncate">{name}</span>
+          ) : (
+            <>
+              <span className="menu-name-project">{project}</span>
+              <span className="menu-name-mate">{`\u00a0· ${name}`}</span>
+            </>
+          )}
         </span>
-        {COMING_SEAT === null ? null : <MateOwnerMark seat={COMING_SEAT} />}
-      </span>
-      <span className="flex min-w-0 flex-col">
-        <span className="flex h-5.5 min-w-0 items-center gap-2">
-          <span className="menu-name flex min-w-0 font-medium">
-            {project === undefined || sameName(project, name) ? (
-              <span className="min-w-0 truncate">{name}</span>
-            ) : (
-              <>
-                <span className="menu-name-project">{project}</span>
-                <span className="menu-name-mate">{`\u00a0· ${name}`}</span>
-              </>
-            )}
-          </span>
-        </span>
-        <MateComingLine line={pendingBornLine(coming)} />
-      </span>
-    </button>
+      }
+    />
   );
   // A creation that stopped before Zerops took it: its ⋯ ends it, or starts it over.
   return (

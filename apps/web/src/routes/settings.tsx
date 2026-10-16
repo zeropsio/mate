@@ -17,7 +17,7 @@ function RestoreDefaultsButton({ onRestored }: { onRestored: () => void }) {
 
   return (
     <Button
-      size="xs"
+      size="sm"
       variant="ghost"
       disabled={changedSettingLabels.length === 0}
       onClick={() => void restoreDefaults()}

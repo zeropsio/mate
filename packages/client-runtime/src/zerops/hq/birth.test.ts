@@ -223,6 +223,24 @@ const ALL_WRITES = [
 ];
 
 describe("runHqBirth", () => {
+  it("records when HQ's setup began, in its journal too, so its clock reads true after a reload", async () => {
+    const zerops = fakeZerops();
+    const { record } = await birth(HQ_BIRTH_START, zerops, {
+      deps: zerops.deps({ at: 1_700_000_000_000 }),
+    });
+    expect(record.startedAt).toBe(1_700_000_000_000);
+    // The import's own first record carries it, so a tab that resumes from the journal keeps it.
+    const other = fakeZerops();
+    const journal = {
+      ...HQ_BIRTH_START,
+      step: "services",
+      importId: "b1",
+      startedAt: 1_700_000_000_000,
+    } as const;
+    const resumed = await birth(seeded(other, journal), other);
+    expect(resumed.record.startedAt).toBe(1_700_000_000_000);
+  });
+
   it("stands HQ up from nothing: import, services, access, Core, its domain, its mark", async () => {
     const zerops = fakeZerops();
     const { outcome, record } = await birth(HQ_BIRTH_START, zerops);
@@ -326,7 +344,7 @@ describe("runHqBirth", () => {
   it("keeps its birth's tag before the import is sent, and takes up the one project it names", async () => {
     const zerops = fakeZerops({ importAnswerLost: new ZeropsApiError("No answer.", "uncertain") });
     const { outcome, patches } = await birth(HQ_BIRTH_START, zerops);
-    expect(patches[0]).toEqual({ importId: "b1" });
+    expect(patches[0]).toEqual({ importId: "b1", startedAt: 0 });
     expect(outcome).toMatchObject({ ok: true, hq: { projectId: "hq1" } });
     expect(zerops.writes.filter((write) => write === "import")).toEqual(["import"]);
   });

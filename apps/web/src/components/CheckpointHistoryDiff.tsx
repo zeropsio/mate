@@ -166,8 +166,8 @@ function CheckpointRootDiff(
         </button>
         {expanded && notRecorded === null && (
           <Button
-            size="xs"
-            variant="outline"
+            size="sm"
+            variant="secondary"
             disabled={query.isPending && !query.error}
             onClick={query.refresh}
             aria-label={`Retry ${entry.root.label} diff`}
@@ -205,7 +205,7 @@ function CheckpointRootDiff(
               composerDraftTarget={props.composerDraftTarget}
               renderHeaderPrefix={(_file, key, collapsed) => (
                 <Button
-                  size="icon-micro"
+                  size="icon-sm"
                   variant="ghost"
                   aria-label={collapsed ? "Expand file" : "Collapse file"}
                   onClick={() =>

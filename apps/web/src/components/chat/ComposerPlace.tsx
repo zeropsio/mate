@@ -8,6 +8,7 @@
 import type { ThreadId } from "@t3tools/contracts";
 import { ArchiveRestoreIcon, HistoryIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { InlineButton } from "~/components/ui/button";
 
 export interface ComposerPlaceNotice {
   readonly id: string;
@@ -84,14 +85,13 @@ export function ComposerPlaceLine({ notice }: { readonly notice: ComposerPlaceNo
         </span>
         <span className="min-w-0 flex-1 truncate">{notice.words}</span>
         {action === undefined ? null : (
-          <button
-            className="shrink-0 cursor-pointer rounded-sm font-medium text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60 disabled:hover:no-underline"
+          <InlineButton
+            className="shrink-0"
             disabled={action.busy === true}
             onClick={action.onAction}
-            type="button"
           >
             {action.label}
-          </button>
+          </InlineButton>
         )}
       </div>
     </div>

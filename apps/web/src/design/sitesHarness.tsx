@@ -338,9 +338,8 @@ function Harness() {
           <Row
             face={
               <MateFace
-                className="size-7"
                 shape={fixture.input.mates[0]?.shape}
-                size="md"
+                size={24}
                 state="idle"
                 tint={fixture.input.mates[0]?.tint ?? "slate"}
               />

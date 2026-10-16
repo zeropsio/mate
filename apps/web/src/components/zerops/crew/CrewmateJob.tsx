@@ -210,7 +210,7 @@ function JobForm({
   return (
     <>
       <div className="mt-3 flex items-center gap-3" data-crew-job-head>
-        <MateFace className="size-10" size="lg" state="idle" tint={tint} />
+        <MateFace size={32} state="idle" tint={tint} />
         <span className="flex min-w-0 flex-col">
           <span className="truncate font-semibold text-base leading-6">
             {draft.displayName.trim() === ""
@@ -315,7 +315,7 @@ function JobForm({
                     role="radio"
                     type="button"
                   >
-                    <MateFace size="md" state="idle" tint={option} />
+                    <MateFace size={24} state="idle" tint={option} />
                   </button>
                 ))}
               </span>
@@ -472,9 +472,9 @@ function JobForm({
             disabled={!ready}
             label={!isApplied && crewApplied ? CREW_JOB_WORDS.add : CREW_VIEW_WORDS.save}
             onPress={() => void submit()}
-            size="view"
+            size="md"
           />
-          <CrewPress label={CREW_VIEW_WORDS.cancel} onPress={onClose} size="view" tone="muted" />
+          <CrewPress label={CREW_VIEW_WORDS.cancel} onPress={onClose} size="md" variant="ghost" />
           <span className="grow" />
           {isApplied && target.handle !== null ? (
             <CrewPress
@@ -483,8 +483,8 @@ function JobForm({
               onPress={() => {
                 if (target.handle !== null) onRemove(target.handle);
               }}
-              size="view"
-              tone="failed"
+              size="md"
+              variant="destructive"
             />
           ) : null}
         </span>

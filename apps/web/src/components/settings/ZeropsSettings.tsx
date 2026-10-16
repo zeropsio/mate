@@ -20,7 +20,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { Avatar } from "../zerops/primitives";
+import { PersonAvatar } from "../zerops/primitives";
 import { ZeropsHqCard } from "../zerops/ZeropsHqCard";
 import { zeropsAccountDisplay } from "../zerops/landing/ZeropsAccountControl.logic";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -84,7 +84,7 @@ export function ZeropsSettings() {
           status={
             account === null ? null : (
               <span className="flex items-center gap-2" data-zerops-account-line="true">
-                <Avatar initials={account.initials} src={account.avatarUrl} />
+                <PersonAvatar name={account.name} picture={account.avatarUrl} size={24} />
                 <span className="truncate text-foreground">{account.fullName ?? account.name}</span>
                 {account.email === null ? null : <span className="truncate">{account.email}</span>}
               </span>
@@ -92,13 +92,13 @@ export function ZeropsSettings() {
           }
           control={
             account === null ? (
-              <Button size="sm" variant="outline" render={<Link to="/zerops" />}>
+              <Button size="sm" variant="secondary" render={<Link to="/zerops" />}>
                 Open Zerops
               </Button>
             ) : (
               <Button
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 disabled={signingOut}
                 onClick={() => {
                   setSigningOut(true);
@@ -177,14 +177,14 @@ export function ZeropsSettings() {
               admin ? (
                 <div className="flex items-center gap-2">
                   {policy.retryRead ? (
-                    <Button size="sm" variant="outline" onClick={again}>
+                    <Button size="sm" variant="secondary" onClick={again}>
                       Retry read
                     </Button>
                   ) : null}
                   {policy.recoverable && policy.policy.kind === "known" ? (
                     <Button
                       size="sm"
-                      variant="outline"
+                      variant="secondary"
                       onClick={() => {
                         if (policy.policy.kind !== "known") return;
                         void operations.submit(
@@ -216,7 +216,7 @@ export function ZeropsSettings() {
                   )}
                 </div>
               ) : policy.retryRead ? (
-                <Button size="sm" variant="outline" onClick={again}>
+                <Button size="sm" variant="secondary" onClick={again}>
                   Retry read
                 </Button>
               ) : null
@@ -233,7 +233,7 @@ export function ZeropsSettings() {
                 disabled={cleanup === "running"}
                 onClick={cleanUp}
                 size="sm"
-                variant="outline"
+                variant="secondary"
               >
                 {signInTokensWords(cleanup)}
               </Button>

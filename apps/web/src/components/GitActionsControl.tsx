@@ -680,9 +680,8 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                             <TooltipTrigger
                               render={
                                 <Button
-                                  variant="outline"
-                                  size="xs"
-                                  className="h-5 rounded-[.25rem] px-1.5 text-[10px] text-warning-foreground"
+                                  variant="secondary"
+                                  size="sm"
                                   onClick={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
@@ -917,7 +916,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                       </span>
                     </div>
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="w-full"
                       onClick={() => {
@@ -947,7 +946,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
             ) : (
               <>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   disabled={publishRepositoryAction.isPending}
                   onClick={() => {
@@ -1253,7 +1252,7 @@ export default function GitActionsControl({
     if (!prUrl) {
       toastManager.add({
         type: "error",
-        title: "No open pull request found.",
+        title: "No open change found.",
         data: threadToastData,
       });
       return;
@@ -1263,7 +1262,7 @@ export default function GitActionsControl({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Unable to open pull request link",
+          title: "Unable to open the change's link",
           description: err instanceof Error ? err.message : "An error occurred.",
           ...(threadToastData !== undefined ? { data: threadToastData } : {}),
         }),
@@ -1768,7 +1767,7 @@ export default function GitActionsControl({
       ) : null}
       {gitStatusForActions?.refName === null && (
         <p className="px-2 py-1.5 text-xs text-warning">
-          Detached HEAD: create and check out a branch to enable push and pull request actions.
+          Detached HEAD: create and check out a branch to push and open changes.
         </p>
       )}
       {gitStatusForActions &&
@@ -1833,7 +1832,12 @@ export default function GitActionsControl({
           </>
         )
       ) : !isRepo ? (
-        <Button variant="outline" size="xs" disabled={initAction.isPending} onClick={initializeGit}>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={initAction.isPending}
+          onClick={initializeGit}
+        >
           <GitBranchPlusIcon className="size-3.5" aria-hidden />
           <span className="ml-0.5">
             {initAction.isPending ? "Initializing..." : "Initialize Git"}
@@ -1849,8 +1853,8 @@ export default function GitActionsControl({
                   <Button
                     aria-disabled="true"
                     className="cursor-not-allowed rounded-e-none border-e-0 ps-[8.5px] opacity-64 before:rounded-e-none"
-                    size="xs"
-                    variant="outline"
+                    size="sm"
+                    variant="secondary"
                   />
                 }
               >
@@ -1868,8 +1872,8 @@ export default function GitActionsControl({
             </Popover>
           ) : (
             <Button
-              variant="outline"
-              size="xs"
+              variant="secondary"
+              size="sm"
               className="ps-[8.5px]"
               disabled={isGitActionRunning || quickAction.disabled}
               onClick={runQuickAction}
@@ -1889,7 +1893,7 @@ export default function GitActionsControl({
             }}
           >
             <MenuTrigger
-              render={<Button aria-label="Git action options" size="icon-xs" variant="outline" />}
+              render={<Button aria-label="Git action options" size="icon-sm" variant="secondary" />}
               disabled={isGitActionRunning}
             >
               <ChevronDownIcon aria-hidden="true" className="size-4" />
@@ -1950,7 +1954,7 @@ export default function GitActionsControl({
                   {allFiles.length > 0 && (
                     <Button
                       variant="ghost"
-                      size="xs"
+                      size="sm"
                       onClick={() => setIsEditingFiles((prev) => !prev)}
                     >
                       {isEditingFiles ? "Done" : "Edit"}
@@ -2053,7 +2057,7 @@ export default function GitActionsControl({
           </DialogPanel>
           <DialogFooter variant="bare">
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => {
                 setIsCommitDialogOpen(false);
@@ -2065,7 +2069,7 @@ export default function GitActionsControl({
               Cancel
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               disabled={noneSelected}
               onClick={runDialogActionOnNewBranch}
@@ -2104,7 +2108,7 @@ export default function GitActionsControl({
           <DialogFooter variant="bare" className="sm:flex-wrap sm:items-center">
             <Button
               className="w-full sm:mr-auto sm:w-auto"
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => setPendingDefaultBranchAction(null)}
             >
@@ -2112,15 +2116,15 @@ export default function GitActionsControl({
             </Button>
             <Button
               className="w-full max-w-full sm:w-auto"
-              variant="outline"
-              size="sm-multiline"
+              variant="secondary"
+              size="md"
               onClick={continuePendingDefaultBranchAction}
             >
               {pendingDefaultBranchActionCopy?.continueLabel ?? "Continue"}
             </Button>
             <Button
               className="w-full max-w-full sm:w-auto"
-              size="sm-multiline"
+              size="md"
               onClick={checkoutFeatureBranchAndContinuePendingAction}
             >
               Check out feature branch & continue

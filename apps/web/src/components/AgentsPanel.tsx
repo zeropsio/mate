@@ -40,6 +40,7 @@ import {
 
 import { cn } from "~/lib/utils";
 import { MateMark } from "~/components/MateMark";
+import { MateFace } from "~/components/zerops/primitives";
 import { HelperCard, HelperClock, helperCostWords } from "~/components/chat/HelperCard";
 import { answeredHelperAsk, answerHelperAsk, useHelperFocus } from "~/components/chat/helperFocus";
 import {
@@ -318,8 +319,8 @@ function WorkflowScriptView({
           {scriptPath.split("/").at(-1)}
         </span>
         <Button
-          size="icon-micro"
-          variant="ghost-muted"
+          size="icon-sm"
+          variant="ghost"
           onClick={onClose}
           aria-label="Close script"
           className="ml-auto"
@@ -467,12 +468,7 @@ function ExpandedWorkflowSection({
         <span className="ml-auto font-mono normal-case text-muted-foreground/80">
           {settled}/{members.length} settled
         </span>
-        <Button
-          size="icon-micro"
-          variant="ghost-muted"
-          onClick={onCollapse}
-          aria-label="Collapse workflow"
-        >
+        <Button size="icon-sm" variant="ghost" onClick={onCollapse} aria-label="Collapse workflow">
           <ChevronDown aria-hidden className="size-3" />
         </Button>
       </div>
@@ -604,7 +600,11 @@ function MateRoot({
   ].filter((part): part is string => part !== null);
   return (
     <div className="helper-map-root">
-      <MateMark className="size-4 shrink-0" tint={mate?.tint} />
+      {mate === undefined ? (
+        <MateMark className="size-4 shrink-0" />
+      ) : (
+        <MateFace shape={mate.shape} size={16} state="idle" tint={mate.tint} />
+      )}
       <span className="font-medium text-foreground">{mate?.name ?? "The Mate"}</span>
       <span className="text-muted-foreground tabular-nums">{counts.join(" · ")}</span>
     </div>

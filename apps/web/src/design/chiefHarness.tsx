@@ -1,6 +1,7 @@
 /**
  * The Chief as the owner sees it (1786 wide, the left menu at 435, `?menu=` for another): the
- * menu's top row in the state `?top=` names — `none` (no Chief yet), `setting-up`, `stopped`,
+ * menu's top row in the state `?top=` names — `none` (no Chief yet: its place, the mark and
+ * what waits on you), `setting-up`, `stopped`,
  * `unfinished`, `rest`, `working`, `asks`, `sign-in` or `coming` — with what waits on you counted
  * beside the squares (`?waiting=0` for none), and the Chief page beside it in the state `?page=`
  * names: `offer`, `blocked`, `project`, `hq` or `variables` (that step running), `failed-project`,
@@ -30,7 +31,11 @@ import {
   type ChiefSetupStep,
 } from "~/components/zerops/chief/chiefSetup.logic";
 import type { ChiefPageView } from "~/components/zerops/chief/chiefTop.logic";
-import { ChiefSetupRowLine, SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
+import {
+  ChiefSetupRowLine,
+  SidebarChiefPlace,
+  SidebarChiefRow,
+} from "~/components/zerops/chief/SidebarChiefRow";
 import { MateFaceAsMark } from "~/components/zerops/primitives";
 import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
 import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
@@ -152,17 +157,27 @@ function Harness() {
         <SidebarChromeHeader
           isElectron={false}
           brand={
-            <SidebarChiefRow
-              current={current}
-              face={top.face}
-              line={top.line}
-              onOpen={() => setCurrent(true)}
-              waiting={
-                WAITING
-                  ? { items: ITEMS, verbs: { onOpenMate: () => {}, onAskToFix: () => {} } }
-                  : undefined
-              }
-            />
+            TOP === "none" ? (
+              <SidebarChiefPlace
+                waiting={
+                  WAITING
+                    ? { items: ITEMS, verbs: { onOpenMate: () => {}, onAskToFix: () => {} } }
+                    : undefined
+                }
+              />
+            ) : (
+              <SidebarChiefRow
+                current={current}
+                face={top.face}
+                line={top.line}
+                onOpen={() => setCurrent(true)}
+                waiting={
+                  WAITING
+                    ? { items: ITEMS, verbs: { onOpenMate: () => {}, onAskToFix: () => {} } }
+                    : undefined
+                }
+              />
+            )
           }
           actions={
             <>

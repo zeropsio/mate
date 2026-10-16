@@ -7,7 +7,12 @@
  * Its state is this tab's memory: it survives leaving the page, not a reload.
  */
 import { useRoleOffers } from "./usePlatformCapabilities";
-import { NOT_READ_VAULT, serviceVariableIds } from "@t3tools/client-runtime/data";
+import {
+  NOT_READ_VAULT,
+  serviceVariableIds,
+  shownProjectsAtom,
+} from "@t3tools/client-runtime/data";
+import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { generateZeropsGroupId } from "@t3tools/client-runtime/zerops";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
@@ -29,7 +34,7 @@ import { useVaultWriter } from "../components/zerops/vault/VaultPanelContainer";
 import { officialHq, useAccountHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
-import { chiefNames, chiefSetupEntry, chiefSetupLine } from "./chief";
+import { chiefNames, chiefOffered, chiefSetupEntry, chiefSetupLine, othersChiefs } from "./chief";
 import { takeChiefAccess } from "./chiefAccess";
 import { beginCreation, tryCreationAgain, useCreation } from "./creations";
 import { useMatePresses } from "./matePress";
@@ -38,15 +43,18 @@ import { useDetailDemand, useProjection, useProjectServices } from "./accountDat
 import { useHqOwnChief, useOwnChief } from "./ownChief";
 import { useOrgOffers } from "./useHqOffers";
 import { useRunNewProject } from "./useRunNewProject";
+import { useZeropsRegistry } from "./useZeropsRegistry";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 interface ChiefSetupState {
   /** The organization the setup runs in. */
   readonly orgId: string | null;
   readonly setup: ChiefSetup;
+  /** When this tab pressed *Set up Chief*: its progress row's clock; `null` when resumed. */
+  readonly startedAtMs: number | null;
 }
 
-const INITIAL: ChiefSetupState = { orgId: null, setup: CHIEF_SETUP_IDLE };
+const INITIAL: ChiefSetupState = { orgId: null, setup: CHIEF_SETUP_IDLE, startedAtMs: null };
 
 const useChiefSetupStore = create<ChiefSetupState>(() => INITIAL);
 
@@ -73,6 +81,7 @@ export function resumeChiefSetup(orgId: string, projectId: string): void {
   useChiefSetupStore.setState((state) => ({
     orgId,
     setup: chiefSetupAfter(state.setup, { type: "resume", projectId }),
+    startedAtMs: null,
   }));
 }
 
@@ -115,6 +124,18 @@ export function useChiefSetupEntry(): boolean {
   const { setup } = useChiefSetup();
   const offered = useRoleOffers().setUpChief;
   return offered && chiefSetupEntry(own, setup.phase);
+}
+
+/**
+ * Whether the account menu offers *Set up Chief* (`chiefOffered`): to a person who may set one up
+ * and has none, once the organization holds a second project.
+ */
+export function useChiefOffer(): boolean {
+  const entry = useChiefSetupEntry();
+  const { registry, loading } = useZeropsRegistry();
+  const roster = useAtomValue(shownProjectsAtom).projects;
+  const chiefs = useMemo(() => othersChiefs(roster, null), [roster]);
+  return chiefOffered({ entry, apps: loading ? undefined : registry.groups, chiefs });
 }
 
 /** Where setting up a Chief stands, as the menu's top row says it (`chiefSetupLine`). */
@@ -173,7 +194,7 @@ export function useChiefSetupRunner(): {
       agents: [],
       chief: true,
     };
-    useChiefSetupStore.setState({ orgId: activeOrganization.id });
+    useChiefSetupStore.setState({ orgId: activeOrganization.id, startedAtMs: Date.now() });
     dispatch({ type: "start", birthId: ask.birthId });
     beginCreation({ ask, hq: officialHq(accountHq), now: Date.now(), run: runNewProject });
   }, [accountHq, activeOrganization, runNewProject, user]);

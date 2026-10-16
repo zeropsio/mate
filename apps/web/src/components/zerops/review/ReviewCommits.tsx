@@ -13,6 +13,7 @@ import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
 import { commitFold } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
+import { Button } from "~/components/ui/button";
 
 /** How many rows hold the place of commits still being read. */
 const COMMITS_PENDING = 3;
@@ -91,9 +92,9 @@ function CommitRows({
         ))}
       </ol>
       {rest === undefined ? null : (
-        <button className="rv-textbtn rv-fold" onClick={onShowAll} type="button">
+        <Button className="mt-1 -ml-2" onClick={onShowAll} size="sm" variant="link">
           Show all {rest}
-        </button>
+        </Button>
       )}
     </>
   );

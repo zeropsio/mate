@@ -816,7 +816,7 @@ function AddYourDomain({
       type="button"
     >
       <PlusIcon aria-hidden="true" />
-      Add your domain
+      Put it on your domain
     </button>
   );
 }
@@ -864,18 +864,12 @@ function MateHead({
     <div className="zerops-sites-sectionhead">
       <div className="zerops-sites-mate" data-zerops-surface="sidebar-project-sites-mate">
         <span className="zerops-sites-face">
-          <MateFace
-            className="size-4"
-            shape={mate?.shape}
-            size="dot"
-            state="idle"
-            tint={mate?.tint ?? "slate"}
-          />
+          <MateFace shape={mate?.shape} size={16} state="idle" tint={mate?.tint ?? "slate"} />
           {mark === undefined ? null : (
             <span
               aria-hidden="true"
               className="zerops-sites-owner"
-              style={{ "--menu-owner-hue": mark.hue } as CSSProperties}
+              style={{ "--person-hue": mark.hue } as CSSProperties}
             >
               {mark.initial}
             </span>

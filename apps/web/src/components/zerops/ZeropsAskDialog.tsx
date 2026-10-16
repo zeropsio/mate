@@ -64,7 +64,7 @@ export function ZeropsAskConfirm({
       <DialogPanel className="space-y-0">
         <div className="my-2 flex min-w-0 items-start gap-3" data-zerops-surface="ask-confirm">
           {tint === undefined ? null : (
-            <MateFace shape={shape} size="md" state="idle" tint={tint} />
+            <MateFace shape={shape} size={24} state="idle" tint={tint} />
           )}
           {/* Quoted, not paraphrased: this is the text being authorised. */}
           <p className="min-w-0 flex-1 rounded-md bg-muted px-3 py-2 text-sm wrap-anywhere text-foreground">

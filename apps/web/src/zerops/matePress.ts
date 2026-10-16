@@ -712,13 +712,13 @@ const PRESS_STEP_NAMES: Readonly<Record<EnvironmentCreationStep["kind"], string>
   "import-project": "Creating the project",
   "import-managed": "Adding its services",
   "import-recipe": "Adding its services",
-  "import-container": "Adding its container",
-  "close-off": "Closing the project off",
-  register: "Registering it",
+  "import-container": "Adding its computer",
+  "close-off": "Making its network private",
+  register: "Adding it to HQ",
   "await-ready": "Waiting for it",
 };
 
-/** Where a press stopped and why, in one line: "Closing the project off stopped: …". */
+/** Where a press stopped and why, in one line: "Making its network private stopped: …". */
 export function pressFailureLine(press: MatePress | undefined): string | undefined {
   if (press?.state.kind !== "failed") return undefined;
   return `${PRESS_STEP_NAMES[press.state.step]} stopped: ${press.state.reason}`;

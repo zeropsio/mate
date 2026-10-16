@@ -23,7 +23,7 @@ export function CrewWaiting(props: {
     <div className="mx-4 mt-4 flex flex-col gap-2" data-crew-waiting>
       {props.members.map((member) => (
         <div className="flex min-h-8 items-center gap-2.5" key={member.handle}>
-          <MateFace size="sm" state="idle" tint={member.tint ?? "slate"} />
+          <MateFace size={20} state="idle" tint={member.tint ?? "slate"} />
           <span className="min-w-0 grow truncate text-sm text-muted-foreground">
             {crewWaitingWords(member.displayName)}
           </span>
@@ -36,7 +36,7 @@ export function CrewWaiting(props: {
             disabled={props.onRemove === null}
             label={CREW_WAITING_REMOVE}
             onPress={() => props.onRemove?.(member.handle)}
-            tone="muted"
+            variant="ghost"
           />
         </div>
       ))}

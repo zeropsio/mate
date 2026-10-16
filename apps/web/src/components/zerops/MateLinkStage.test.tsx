@@ -22,14 +22,6 @@ const who = vi.hoisted(() => ({ at: { kind: "unknown" } as { kind: string; mate?
 vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMate: () => who.at }));
 vi.mock("~/zerops/mateVoiceContext", () => ({ useMateVoice: () => ({ surface: "none" }) }));
 vi.mock("./RouteStandIn", () => ({ RouteStandIn: () => <textarea data-stand-in="" /> }));
-vi.mock("./WaitLine", () => ({
-  PageWaitLine: ({ text, below }: { text: string | null; below?: ReactNode }) => (
-    <p>
-      {text}
-      {below}
-    </p>
-  ),
-}));
 vi.mock("./ZeropsMateComingPage", () => ({
   MateComingFrame: (props: { header: ReactNode; composer?: ReactNode; children: ReactNode }) => (
     <main>

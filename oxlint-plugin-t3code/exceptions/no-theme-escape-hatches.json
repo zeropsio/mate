@@ -704,14 +704,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 [--media-height:min(86vh,calc(100vh-160px))] [--media-width:92vw] [-webkit-app-region:no-drag] sm:[--media-width:calc(92vw-96px)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ExpandedImageDialog awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
     "kind": "Literal",
     "fingerprint": "\"dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25\"",
@@ -2605,78 +2597,6 @@
     "fingerprint": "\"relative flex max-h-full min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding shadow-lg/5 transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
     "owner": "karel",
     "reason": "T3 chrome styling in autocomplete awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/badge.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-destructive text-white [button&,a&]:hover:bg-destructive/90\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in badge awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/badge.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-destructive/8 text-destructive-foreground dark:bg-destructive/16\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in badge awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/badge.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-info/8 text-info-foreground dark:bg-info/16\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in badge awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/badge.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-success/8 text-success-foreground dark:bg-success/16\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in badge awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/badge.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-warning/8 text-warning-foreground dark:bg-warning/16\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in badge awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/badge.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"border-input bg-background text-foreground dark:bg-input/32 [button&,a&]:hover:bg-accent/50 dark:[button&,a&]:hover:bg-input/48\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in badge awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/button.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"[--control-icon-color:var(--contrast-muted-foreground)] border-input bg-popover not-dark:bg-clip-padding text-foreground shadow-xs/5 not-disabled:not-active:not-data-pressed:before:shadow-[0_1px_--theme(--color-black/4%)] dark:bg-input/32 dark:not-disabled:before:shadow-[0_-1px_--theme(--color-white/2%)] dark:not-disabled:not-active:not-data-pressed:before:shadow-[0_-1px_--theme(--color-white/6%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-accent/50 dark:[:hover,[data-pressed]]:bg-input/64\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in button awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/button.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"border-input bg-popover not-dark:bg-clip-padding text-destructive-foreground shadow-xs/5 not-disabled:not-active:not-data-pressed:before:shadow-[0_1px_--theme(--color-black/4%)] dark:bg-input/32 dark:not-disabled:before:shadow-[0_-1px_--theme(--color-white/2%)] dark:not-disabled:not-active:not-data-pressed:before:shadow-[0_-1px_--theme(--color-white/6%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:border-destructive/32 [:hover,[data-pressed]]:bg-destructive/4\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in button awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/button.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] border-destructive bg-destructive text-white shadow-destructive/24 shadow-xs [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-destructive/90\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in button awaiting semantic roles",
     "expires": "F4"
   },
   {

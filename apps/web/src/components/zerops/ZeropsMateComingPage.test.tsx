@@ -1152,7 +1152,6 @@ describe("ComingBelow — a Mate half made", () => {
           progress: undefined,
           nowMs: undefined,
           mate: { name: "Quinn", project: "Acme" },
-          you: null,
           ...(onFinishSetup === undefined ? {} : { onFinishSetup }),
         }),
       );
@@ -1195,7 +1194,6 @@ describe("ComingBelow — a Mate half made", () => {
           progress: undefined,
           nowMs: undefined,
           mate: { name: "Quinn", project: "Acme" },
-          you: null,
           finishing,
           ...(permitted ? { onFinishSetup: finish } : {}),
         }),
@@ -1249,15 +1247,13 @@ describe("ComingBelow — a Mate half made", () => {
           },
           nowMs: START + 29_000 + 139 * 60_000 + 30_000,
           mate: { name: "Dan", project: undefined },
-          you: null,
         }),
       );
     });
     const said = JSON.stringify(rendered!.toJSON());
-    expect(said).toContain("Dan's workspace");
+    expect(said).toContain("Dan's workspace didn't finish.");
     expect(said).not.toContain("139:30");
     expect(said).not.toContain("about 2–3 min");
-    expect(said).toContain("Stopped");
   });
 });
 
@@ -1273,7 +1269,7 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
     total: 0,
     complete: false,
     press: [
-      { id: "closed-off", label: "Closed off", state: "done" },
+      { id: "closed-off", label: "Private network ready", state: "done" },
       {
         id: "registered",
         label: "Not registered",
@@ -1291,7 +1287,6 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
           progress,
           nowMs: 0,
           mate: { name: "Ida", project: "Acme" },
-          you: null,
           ...(onFinishSetup === undefined ? {} : { onFinishSetup }),
         }),
       );
@@ -1356,7 +1351,6 @@ describe("ComingBelow — a setup that can't be read", () => {
           progress,
           nowMs: 0,
           mate: { name: "Ida", project: "Acme" },
-          you: null,
           ...(onSetupAgain === undefined ? {} : { onSetupAgain }),
         }),
       );
@@ -1398,7 +1392,7 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
     complete: false,
     press: [
       { id: "created", label: "Created", state: "failed", why: REASON },
-      { id: "container", label: "Container", state: "waiting" },
+      { id: "container", label: "Its computer", state: "waiting" },
     ],
   } as const;
   const render = (coming: Parameters<typeof ComingBelow>[0]["coming"]) => {
@@ -1410,7 +1404,6 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
           progress,
           nowMs: 0,
           mate: { name: "Ida", project: "Acme" },
-          you: null,
           onTryAgain: () => undefined,
         }),
       );
@@ -1449,7 +1442,6 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
           progress,
           nowMs: 0,
           mate: { name: "Ida", project: "Acme" },
-          you: null,
           ends: {
             onDismiss: () => {
               dismissed += 1;
@@ -1497,7 +1489,6 @@ describe("ComingBelow — a project refused for want of credit", () => {
           progress,
           nowMs: 0,
           mate: { name: "Ida", project: "Acme" },
-          you: null,
           onTryAgain,
           addCredit: HQ_CREDIT,
         }),
@@ -1623,20 +1614,17 @@ describe("an added Mate's own view, after its hand-over", () => {
       runtimes: [{ hostname: "appdev", role: "dev" }],
     },
   };
-  /** Each row with its services and the steps this tab runs under it: `id[…]{…}`. */
-  const rows = () =>
-    tree?.root
-      .findAll((node) => node.props["data-arrival-step"] !== undefined)
-      .map((node) => {
-        const services = node
-          .findAll((inner) => inner.props["data-zerops-surface"] === "arrival-services")
-          .flatMap((list) => list.findAllByType("li"))
-          .map((service) => String(service.props["aria-label"]).split(":")[0]);
-        const substeps = node
-          .findAll((inner) => inner.props["data-arrival-substep"] !== undefined)
-          .map((inner) => String(inner.props["data-arrival-substep"]));
-        return `${String(node.props["data-arrival-step"])}[${services.join(",")}]{${substeps.join(",")}}`;
-      }) ?? [];
+  /** The arrival's one row: its words, and how it stands. */
+  const row = () => {
+    const rows = tree?.root.findAll((node) => node.props["data-slot"] === "progress") ?? [];
+    return rows.map((node) => ({
+      state: String(node.props["data-progress-state"]),
+      words: node
+        .findAll((inner) => inner.props["data-slot"] === "progress-words")
+        .flatMap((inner) => inner.children)
+        .join(""),
+    }));
+  };
 
   beforeEach(() => {
     app.birthProgress = true;
@@ -1667,7 +1655,7 @@ describe("an added Mate's own view, after its hand-over", () => {
     expect(said()).not.toContain("Not registered");
   });
 
-  it("draws its copy's and its workspace's lines and its steps from its press, and keeps its lines when the press ends", () => {
+  it("draws its arrival from its press as one row on the step it is on, and keeps it when the press ends", () => {
     beginPress({
       projectId: PROJECT,
       organizationId: "org-beviro",
@@ -1678,16 +1666,12 @@ describe("an added Mate's own view, after its hand-over", () => {
       runtimes: [{ hostname: "appdev", role: "dev" }],
     });
     openView();
-    const held = rows();
-    expect(held).toEqual([
-      "copy[db]{created,registered,container,closed-off}",
-      "workspace[appdev]{}",
-      "you[]{}",
-    ]);
-    // Closed off and registered: the press is over (`endPress`). Its lines stand, from the
-    // creation's ask; its steps went with the press that held them.
+    // One row, never a list: the step it is on, its words replaced in place.
+    expect(row()).toEqual([{ state: "running", words: "Quinn's copy of Beviro" }]);
+    expect(tree?.root.findAll((node) => node.props["data-arrival-step"] !== undefined)).toEqual([]);
+    // Closed off and registered: the press is over (`endPress`). The row stands where it was.
     act(() => forgetPress(PROJECT));
-    expect(rows()).toEqual(["copy[db]{}", "workspace[appdev]{}", "you[]{}"]);
+    expect(row()).toEqual([{ state: "running", words: "Quinn's copy of Beviro" }]);
   });
 });
 
@@ -1825,7 +1809,6 @@ it("keeps a Remove refusal available in Details without a setup process or actio
         progress: undefined,
         nowMs: undefined,
         mate: { name: "Quinn", project: undefined },
-        you: null,
         operationTrouble: {
           kind: "remove",
           details: "500: Internal Server Error",
@@ -1857,7 +1840,6 @@ it("keeps an original creation refusal collapsed even before a setup process exi
         },
         nowMs: 0,
         mate: { name: "Quinn", project: undefined },
-        you: null,
       }),
     );
   });
@@ -1897,7 +1879,7 @@ describe("failed setup recovery fixture", () => {
             steps: [
               {
                 id: "container",
-                label: "Container",
+                label: "Its computer",
                 state: "failed",
                 startedAt: process.started,
                 endedAt: process.finished,
@@ -1911,7 +1893,6 @@ describe("failed setup recovery fixture", () => {
           },
           nowMs: Date.parse(process.finished) + 3_600_000,
           mate: { name: "Nic", project: "nevim" },
-          you: null,
           onTryAgain: retry,
           onRemove: remove,
           setupFailureDetails: {
@@ -1991,7 +1972,6 @@ describe("a Mate with no deployment", () => {
             progress: undefined,
             nowMs: undefined,
             mate: { name: "Nic", project: "Acme" },
-            you: null,
             onRedeploy: redeploy,
             onTryAgain: vi.fn(),
             onRemove: vi.fn(),

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   DISCONNECTED_COMPOSER_PLACEHOLDER,
   resolveComposerPlaceholders,
+  CHIEF_COMPOSER_PLACEHOLDER,
   DEFAULT_CONNECTED_COMPOSER_PLACEHOLDER,
   ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER,
 } from "./composerPlaceholder";
@@ -49,4 +50,13 @@ describe("resolveComposerPlaceholders", () => {
       expect(resolveComposerPlaceholders({ whoLivesHere, zeropsAvailable })).toEqual(placeholders);
     },
   );
+});
+
+it("a Chief's conversation invites asks across the organization, never what to build", () => {
+  for (const zeropsAvailable of [false, true]) {
+    expect(
+      resolveComposerPlaceholders({ whoLivesHere: "mate", zeropsAvailable, chief: true }),
+    ).toEqual({ connected: CHIEF_COMPOSER_PLACEHOLDER, idle: CHIEF_COMPOSER_PLACEHOLDER });
+  }
+  expect(CHIEF_COMPOSER_PLACEHOLDER).toBe("Ask about anything across your projects…");
 });

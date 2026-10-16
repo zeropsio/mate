@@ -200,9 +200,9 @@ describe("ProposalCard", () => {
       chiefTarget: { kind: "none" },
       onSetUpChief: () => setUp.push("set up"),
     });
-    expect(buttons(container)).toEqual(["schema diff", "Set up your Chief", "Decline"]);
+    expect(buttons(container)).toEqual(["schema diff", "Set up Chief", "Decline"]);
     const offer = [...container.querySelectorAll("button")].find(
-      (button) => button.textContent === "Set up your Chief",
+      (button) => button.textContent === "Set up Chief",
     );
     await act(async () => offer?.click());
     expect(setUp).toEqual(["set up"]);

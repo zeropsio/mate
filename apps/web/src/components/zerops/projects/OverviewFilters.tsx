@@ -5,6 +5,9 @@
  */
 import { Link } from "@tanstack/react-router";
 
+import { Tab } from "../../ui/tab-strip";
+import { Button } from "../../ui/button";
+import { EmptyState } from "../../ui/empty";
 import { MateFace } from "../primitives";
 import type { OverviewShow } from "./projectsView.logic";
 
@@ -38,40 +41,45 @@ export function OverviewFilters({
         const words = (
           <>
             {filter.label}
-            {count === undefined || count === 0 ? null : (
-              <span className="ov-filter-count">{count}</span>
-            )}
+            {/* Its count even at none: the filter says what it holds before it is pressed. */}
+            {count === undefined ? null : <span className="ov-filter-count">{count}</span>}
           </>
         );
         if (onShow !== undefined) {
           return (
-            <button
+            <Tab
+              active={current}
               aria-pressed={current}
-              className="ov-filter"
-              data-current={current ? "" : undefined}
               data-show={filter.show ?? "all"}
               key={filter.label}
               onClick={() => onShow(filter.show)}
-              type="button"
+              render={<button type="button" />}
+              size="md"
+              tabId={filter.show ?? "all"}
             >
               {words}
-            </button>
+            </Tab>
           );
         }
         return (
           // Current only on its own address: by default an empty search is a part of every other,
           // and All read as current under each filter too.
-          <Link
-            activeOptions={{ exact: true }}
-            className="ov-filter"
-            data-current={current ? "" : undefined}
+          <Tab
+            active={current}
             data-show={filter.show ?? "all"}
             key={filter.label}
-            search={filter.show === undefined ? {} : { show: filter.show }}
-            to="/zerops"
+            render={
+              <Link
+                activeOptions={{ exact: true }}
+                search={filter.show === undefined ? {} : { show: filter.show }}
+                to="/zerops"
+              />
+            }
+            size="md"
+            tabId={filter.show ?? "all"}
           >
             {words}
-          </Link>
+          </Tab>
         );
       })}
     </nav>
@@ -86,26 +94,23 @@ export function OverviewFilterEmpty({
   readonly show: OverviewShow;
   readonly onShow?: ((show: OverviewShow | undefined) => void) | undefined;
 }) {
+  const back =
+    onShow === undefined ? (
+      <Button render={<Link search={{}} to="/zerops" />} size="sm" variant="link">
+        Show all projects
+      </Button>
+    ) : (
+      <Button onClick={() => onShow(undefined)} size="sm" variant="link">
+        Show all projects
+      </Button>
+    );
   return (
-    <div className="ov-filter-empty" data-zerops-surface="overview-filter-empty" role="status">
-      <MateFace className="size-10" size="md" state="idle" tint="slate" />
-      <p className="ov-filter-empty-title">
-        {show === "waiting" ? "Nothing waits on you" : "No Mate of yours yet"}
-      </p>
-      <p className="ov-filter-empty-line">
+    <div data-zerops-surface="overview-filter-empty" role="status">
+      <EmptyState action={back} mark={<MateFace size={32} state="idle" tint="slate" />}>
         {show === "waiting"
-          ? "A question from one of your Mates, a change to review or a release to make shows up here."
-          : "The projects where you have a Mate show up here."}
-      </p>
-      {onShow === undefined ? (
-        <Link className="ov-filter-empty-back" search={{}} to="/zerops">
-          Show all projects
-        </Link>
-      ) : (
-        <button className="ov-filter-empty-back" onClick={() => onShow(undefined)} type="button">
-          Show all projects
-        </button>
-      )}
+          ? "Nothing waits on you. A question from one of your Mates, a change to review or a release to make shows up here."
+          : "No Mate of yours yet. The projects where you have a Mate show up here."}
+      </EmptyState>
     </div>
   );
 }

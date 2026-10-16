@@ -230,12 +230,7 @@ export function ZeropsNewProjectForm({
                 },
               ]}
             />
-            {access === undefined ? null : (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm">Project access</span>
-                {access(setUserRoles)}
-              </div>
-            )}
+            {access === undefined ? null : access(setUserRoles)}
             {forecast}
           </div>
         </DialogPanel>

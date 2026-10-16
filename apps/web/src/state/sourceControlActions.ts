@@ -336,7 +336,7 @@ export function usePreparePullRequestThreadAction(scope: SourceControlActionScop
   );
   return useAction({
     kind: "preparePullRequestThread",
-    label: "Preparing pull request thread",
+    label: "Preparing the change's chat",
     scope,
     action,
   });

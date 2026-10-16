@@ -48,7 +48,7 @@ describe("ZeropsHqCardView — its state", () => {
     const html = card({ standing: { kind: "unknown" } });
     expect(html).toContain('data-zerops-surface="hq-card"');
     expect(html).toContain('data-hq-state="unknown"');
-    expect(html).not.toContain('data-zerops-primitive="status-dot"');
+    expect(html).not.toContain('data-dot=""');
   });
 
   it("is healthy, with its Core's day, its last backup, what HQ holds and its update on the line", () => {
@@ -62,7 +62,7 @@ describe("ZeropsHqCardView — its state", () => {
       online: 1,
     });
     expect(html).toContain('data-hq-state="healthy"');
-    expect(html).toContain('data-zerops-status-tone="ok"');
+    expect(html).toContain('data-tone="success"');
     expect(html).toContain("Running");
     expect(html).toContain(">Core 2026-10-03<");
     expect(html).toContain(">Last backup t42<");
@@ -127,7 +127,7 @@ describe("ZeropsHqCardView — its state", () => {
   ])("needs attention for %s, and says what in a line of its own", (_name, overrides, line) => {
     const html = card(overrides);
     expect(html).toContain('data-hq-state="degraded"');
-    expect(html).toContain('data-zerops-status-tone="attention"');
+    expect(html).toContain('data-tone="warning"');
     expect(html).toContain("Needs attention");
     expect(html).toContain(`data-hq-trouble="true">${line}</li>`);
   });
@@ -138,7 +138,7 @@ describe("ZeropsHqCardView — its state", () => {
       services: [{ id: "s1", name: "hq", status: "ACTION_FAILED" }],
     });
     expect(html).toContain('data-hq-state="down"');
-    expect(html).toContain('data-zerops-status-tone="failed"');
+    expect(html).toContain('data-tone="danger"');
     expect(html).toContain("Unavailable since t7");
     expect(html).toContain(`data-hq-trouble="true">hq isn't active in Zerops: Action failed.</li>`);
   });
@@ -146,7 +146,7 @@ describe("ZeropsHqCardView — its state", () => {
   it("is updating while an update runs, its dot stepping", () => {
     const html = card({ updating: true });
     expect(html).toContain('data-hq-state="updating"');
-    expect(html).toContain('data-zerops-status-tone="busy"');
+    expect(html).toContain('data-tone="info"');
 
     expect(html).toContain("Updating");
   });

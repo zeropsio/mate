@@ -25,8 +25,10 @@ import {
   MINT_PANEL,
   PROVIDER_ACCENT_SWATCHES,
   PROCESS_STEPS,
+  MOTION,
   RADII,
   type ServiceStatusTone,
+  SPACING_UNIT,
   SERVICE_STATUS_TONES,
   TYPE_SCALE,
   ZEROPS_MARK,
@@ -148,16 +150,11 @@ describe("Zerops brand tokens", () => {
   });
 
   it("pins the documented radius scale", () => {
-    expect(RADII).toEqual({
-      card: 10,
-      control: 8,
-      dialog: 16,
-      chip: 10,
-      infoChip: 8,
-      keyChip: 3,
-      composer: 22,
-      pill: 80,
-    });
+    // Three nested steps that run parallel: each outer edge is the inner one plus a 4 px gap.
+    expect(Object.keys(RADII)).toEqual(["control", "card", "sheet"]);
+    expect(RADII.card - RADII.control).toBe(SPACING_UNIT);
+    expect(RADII.sheet - RADII.card).toBe(SPACING_UNIT);
+    for (const radius of Object.values(RADII)) expect(radius % SPACING_UNIT).toBe(0);
   });
 
   it("pins the flat-card border and process-step geometry", () => {
@@ -173,20 +170,25 @@ describe("Zerops brand tokens", () => {
   });
 
   it("pins the documented type scale", () => {
-    expect(TYPE_SCALE).toEqual({
-      body: { fontSize: 14, fontWeight: 400 },
-      rowHostname: { fontSize: 14, fontWeight: 500, portOpacity: 0.6 },
-      cardTitle: { fontSize: 14, fontWeight: 500 },
-      projectName: { fontSize: 20, fontWeight: 500 },
-      description: { fontSize: 13, fontWeight: 400, lineHeight: 1.6, opacity: 0.7 },
-      microLabel: {
-        fontSize: 10,
-        fontWeight: 600,
-        letterSpacingEm: 0.06,
-        opacity: 0.45,
-      },
-      draftHero: { fontSize: 32, fontWeight: 400 },
-    });
+    // Five steps, each larger than the last, on line heights that sit on the 4 px grid.
+    expect(Object.keys(TYPE_SCALE)).toEqual(["caption", "body", "emphasis", "title", "display"]);
+    const steps = Object.values(TYPE_SCALE);
+    for (const [index, step] of steps.entries()) {
+      expect(step.lineHeight % SPACING_UNIT).toBe(0);
+      expect(step.lineHeight).toBeGreaterThan(step.fontSize);
+      if (index > 0) expect(step.fontSize).toBeGreaterThan(steps[index - 1]!.fontSize);
+    }
+  });
+
+  it("times motion in three durations with one ease-out and one paired ease-in-out", () => {
+    expect(Object.values(MOTION.duration)).toEqual(
+      Object.values(MOTION.duration).toSorted((a, b) => a - b),
+    );
+    for (const duration of Object.values(MOTION.duration)) {
+      expect(duration).toBeGreaterThanOrEqual(150);
+      expect(duration).toBeLessThanOrEqual(260);
+    }
+    expect(Object.keys(MOTION.easing)).toEqual(["out", "inOut"]);
   });
 });
 
