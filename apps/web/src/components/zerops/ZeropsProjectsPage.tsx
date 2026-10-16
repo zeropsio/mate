@@ -2619,6 +2619,7 @@ export function ZeropsProjectsContent({
         <OverviewFilters
           mine={flowGroups.filter((entry) => filterFacts.mine.has(entry.group.groupId)).length}
           onShow={onShow}
+          ownsMates={roleOffered.newProject}
           show={search.show}
           waiting={flowGroups.filter((entry) => filterFacts.waits.has(entry.group.groupId)).length}
         />

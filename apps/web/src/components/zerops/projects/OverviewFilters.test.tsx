@@ -21,7 +21,7 @@ async function filtersAt(path: string) {
     validateSearch: parseProjectsSearch,
     component: function Overview() {
       const { show } = overview.useSearch();
-      return <OverviewFilters mine={10} show={show} waiting={1} />;
+      return <OverviewFilters mine={10} ownsMates show={show} waiting={1} />;
     },
   });
   const router = createRouter({

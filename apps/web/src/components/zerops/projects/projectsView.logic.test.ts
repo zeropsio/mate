@@ -27,6 +27,7 @@ import {
   lastMergedCode,
   stopLine,
   nextStepAwaitsSomebody,
+  overviewFilterTabs,
   overviewKeeps,
   parseProjectsSearch,
   tiersAddable,
@@ -271,6 +272,44 @@ describe("parseProjectsSearch", () => {
       expect(parseProjectsSearch(raw)).toEqual(expected);
     },
   );
+});
+
+// Run 2: a Guest's overview offered "Waiting on you 0" in amber and "Mine 0", filters her role
+// can never fill, and every zero wore a count.
+describe("overviewFilterTabs", () => {
+  const tabs = (input: Parameters<typeof overviewFilterTabs>[0]) =>
+    overviewFilterTabs(input).map((tab) =>
+      tab.count === undefined ? tab.label : `${tab.label} ${String(tab.count)}`,
+    );
+  it.each([
+    {
+      title: "A filter counts what it holds, and says nothing at none",
+      input: { waiting: 1, mine: 0, ownsMates: true, show: undefined },
+      shown: ["All", "Waiting on you 1", "Mine"],
+    },
+    {
+      title: "A person who may have Mates is offered every filter, empty or not",
+      input: { waiting: 0, mine: 0, ownsMates: true, show: undefined },
+      shown: ["All", "Waiting on you", "Mine"],
+    },
+    {
+      title: "A role that never has a Mate of its own is offered no filter it can't fill",
+      input: { waiting: 0, mine: 0, ownsMates: false, show: undefined },
+      shown: [],
+    },
+    {
+      title: "A role without Mates of its own still gets Waiting on you while something waits",
+      input: { waiting: 2, mine: 0, ownsMates: false, show: undefined },
+      shown: ["All", "Waiting on you 2"],
+    },
+    {
+      title: "The filter an address opens stays offered, so the way back to All is there",
+      input: { waiting: 0, mine: 0, ownsMates: false, show: "mine" },
+      shown: ["All", "Mine"],
+    },
+  ] as const)("$title", ({ input, shown }) => {
+    expect(tabs(input)).toEqual(shown);
+  });
 });
 
 describe("overviewKeeps", () => {

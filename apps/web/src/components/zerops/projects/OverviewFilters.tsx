@@ -9,19 +9,13 @@ import { Tab } from "../../ui/tab-strip";
 import { Button } from "../../ui/button";
 import { EmptyState } from "../../ui/empty";
 import { MateFace } from "../primitives";
-import type { OverviewShow } from "./projectsView.logic";
-
-const FILTERS: ReadonlyArray<{ readonly show: OverviewShow | undefined; readonly label: string }> =
-  [
-    { show: undefined, label: "All" },
-    { show: "waiting", label: "Waiting on you" },
-    { show: "mine", label: "Mine" },
-  ];
+import { overviewFilterTabs, type OverviewShow } from "./projectsView.logic";
 
 export function OverviewFilters({
   show,
   waiting,
   mine,
+  ownsMates,
   onShow,
 }: {
   readonly show: OverviewShow | undefined;
@@ -29,20 +23,23 @@ export function OverviewFilters({
   readonly waiting: number;
   /** How many projects hold a Mate of the viewer's. */
   readonly mine: number;
+  /** The viewer's role may have Mates of its own (`roleOffers`' New project): Mine and Waiting on you can fill. */
+  readonly ownsMates: boolean;
   /** In a conversation's panel the filter stays where it is: no address to go to. */
   readonly onShow?: ((show: OverviewShow | undefined) => void) | undefined;
 }) {
+  const tabs = overviewFilterTabs({ waiting, mine, ownsMates, show });
+  if (tabs.length === 0) return null;
   return (
     <nav aria-label="Show projects" className="ov-filters" data-zerops-surface="overview-filters">
-      {FILTERS.map((filter) => {
+      {tabs.map((filter) => {
         const current = filter.show === show;
-        const count =
-          filter.show === "waiting" ? waiting : filter.show === "mine" ? mine : undefined;
         const words = (
           <>
             {filter.label}
-            {/* Its count even at none: the filter says what it holds before it is pressed. */}
-            {count === undefined ? null : <span className="ov-filter-count">{count}</span>}
+            {filter.count === undefined ? null : (
+              <span className="ov-filter-count">{filter.count}</span>
+            )}
           </>
         );
         if (onShow !== undefined) {
