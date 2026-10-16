@@ -48,6 +48,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
 import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsGitBlockCommits } from "./ZeropsGitBlockCommits";
+import { ZeropsGitCommitChanges, type OpenGitCommit } from "./ZeropsGitCommitChanges";
 import { ZeropsGitPanel } from "./ZeropsGitPanel";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 
@@ -275,6 +276,12 @@ function KnownGitTab({
   const [asking, setAsking] = useState<{ readonly ask: string; readonly what: string } | null>(
     null,
   );
+  /**
+   * The commit whose changes take the tab's place. The list stays mounted underneath, hidden, so
+   * Back returns to it as it was: its reads held, nothing to paint again.
+   */
+  const [openCommit, setOpenCommit] = useState<OpenGitCommit | null>(null);
+  const threadRef = props.threadRef;
   const sendAsk = useCallback(() => {
     const threadRef = props.threadRef;
     if (asking === null || threadRef === null) return;
@@ -340,7 +347,16 @@ function KnownGitTab({
               onState={onState}
             />
           ))}
+      {openCommit === null || environmentId === undefined || threadRef === null ? null : (
+        <ZeropsGitCommitChanges
+          commit={openCommit}
+          composerDraftTarget={threadRef}
+          environmentId={environmentId}
+          onBack={() => setOpenCommit(null)}
+        />
+      )}
       <ZeropsGitPanel
+        {...(openCommit === null ? {} : { className: "hidden" })}
         model={{ blocks }}
         renderBlockAction={renderBlockVerbs}
         renderBlockCommits={(block) => (
@@ -353,6 +369,11 @@ function KnownGitTab({
             }
             // Each repository has its own main, independent of the application's other merges.
             main={mergedMain(block.repository, props.changes?.merged)}
+            onOpenCommit={
+              threadRef === null
+                ? undefined
+                : (commit) => setOpenCommit({ repository: block.repository, ...commit })
+            }
             repository={block.repository}
           />
         )}
