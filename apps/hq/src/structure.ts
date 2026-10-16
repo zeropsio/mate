@@ -913,13 +913,10 @@ export const structureLayer = (options: {
             )(options.credential.value)
             .pipe(
               Effect.map((grants) => !grants.some((grant) => grant.projectId === row.project_id)),
-              // Zerops not answering, refusing HQ itself, or answering in a shape HQ cannot read
-              // says nothing about the key.
+              // Zerops not answering, or refusing HQ itself, says nothing about the key.
               Effect.catchTags({
                 ZeropsRefused: (error) => Effect.succeed(error.reason === "not_found"),
                 ZeropsUnavailable: () => Effect.succeed(false),
-                ZeropsUnexpectedAnswer: (error) =>
-                  Effect.as(Effect.logError("zerops answer unreadable", error), false),
               }),
               Effect.map((lost) => (lost ? [row.credential_hash] : [])),
             );

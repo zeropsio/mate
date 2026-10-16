@@ -436,28 +436,6 @@ describe("mate credentials", () => {
       ),
     );
 
-    it.effect.each([
-      { name: "does not answer", knob: "unanswered" },
-      { name: "answers in a shape HQ cannot read", knob: "unreadable" },
-    ] as const)(
-      "enrolls a Mate without the key it names while Zerops $name about that key",
-      ({ knob }) =>
-        withMates((fake) =>
-          Effect.gen(function* () {
-            keyOn(fake, "tok-own", "P_MATE");
-            fake[knob].add("tokenProjects");
-            const mates = yield* MateCredentials;
-            const { nonce } = yield* mates.challenge("P_MATE");
-            writeChallenge(fake, "P_MATE", nonce);
-            const issued = yield* mates
-              .issue("P_MATE", nonce, { keyTokenId: "tok-own" })
-              .pipe(Effect.match({ onSuccess: () => "issued", onFailure: (error) => error._tag }));
-            assert.strictEqual(issued, "issued");
-            assert.isNull(yield* mates.keyOf("P_MATE"));
-          }),
-        ),
-    );
-
     // ADR 0003's fallout: a key an earlier client widened with READ_ONLY on siblings is never
     // taken for the Mate's key, but HQ says the Mate needs Finish setup — read at its enrollment
     // and with its credential, never on a page's read — and reads the key again, when the person

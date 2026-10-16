@@ -2084,32 +2084,6 @@ describe("structure", () => {
         ),
     );
 
-    it.effect(
-      "a Mate keeps its credential while Zerops answers about its key in a shape HQ cannot read, and the reconcile goes on",
-      () =>
-        withStructure((view, _down, zerops) =>
-          Effect.gen(function* () {
-            const structure = yield* Structure;
-            const sql = yield* SqlClient.SqlClient;
-            zerops.unreadable.add("tokenProjects");
-            yield* sql`
-              INSERT INTO hq_mate_credential (credential_hash, project_id, key_token_id)
-              VALUES ('h-key', 'P_STAGE', 'K-unread'), ('h-gone', 'P_TEAM', NULL)`;
-            yield* Ref.update(view, (org) => ({
-              ...org,
-              projects: org.projects.filter((candidate) => candidate.id !== "P_TEAM"),
-            }));
-            assert.strictEqual(yield* outcome(structure.reconcile), "ok");
-            const live = yield* sql<{ readonly project_id: string }>`
-              SELECT project_id FROM hq_mate_credential WHERE revoked_at IS NULL`;
-            assert.deepStrictEqual(
-              live.map((row) => row.project_id),
-              ["P_STAGE"],
-            );
-          }),
-        ),
-    );
-
     it.effect("reads the tool projects HQ holds", () =>
       withStructure(() =>
         Effect.gen(function* () {

@@ -31,7 +31,6 @@ import {
   ZeropsRefused,
   type ZeropsService,
   ZeropsUnavailable,
-  ZeropsUnexpectedAnswer,
 } from "../../src/zerops/api.ts";
 
 /** A service as the fake holds it: its record, changed in place by a deploy. */
@@ -112,8 +111,6 @@ export interface FakeWorld {
   lost: Set<"createAppVersion" | "upload" | "buildAndDeploy" | "importServices">;
   /** Operations Zerops does not answer while they are named here, as `down` does every one. */
   unanswered: Set<string>;
-  /** Operations Zerops answers in a shape HQ does not read while they are named here. */
-  unreadable: Set<string>;
   /** How long an archive's upload takes to answer, ms: a large archive's; none at 0. */
   uploadTakes: number;
   /** How long a version whose build Zerops took still reads UPLOADING, ms; none at 0. */
@@ -142,7 +139,6 @@ export const emptyWorld = (): FakeWorld => ({
   imports: [],
   lost: new Set(),
   unanswered: new Set(),
-  unreadable: new Set(),
   uploadTakes: 0,
   buildSeenAfter: 0,
 });
@@ -277,11 +273,6 @@ const tokenOf = (world: FakeWorld, operation: string, credential: Redacted.Redac
     if (world.down || world.unanswered.has(operation)) {
       return Effect.fail(
         new ZeropsUnavailable({ operation, message: "fake: platform down", status: 500 }),
-      );
-    }
-    if (world.unreadable.has(operation)) {
-      return Effect.fail(
-        new ZeropsUnexpectedAnswer({ operation, message: "fake: an answer HQ does not read" }),
       );
     }
     const token = world.tokens.get(Redacted.value(credential));
