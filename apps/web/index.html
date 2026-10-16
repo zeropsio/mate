@@ -479,9 +479,10 @@
       /* The first frame, kept until the app draws into #root: the sign-in's
          centred mark, or — for a browser signed in last time — the app's own
          frame, the menu column as wide as the menu will stand, with its mark
-         where the menu draws it (SidebarChrome's 40 x 48 box at 17, centred in
-         its 65 px logo row) and a quiet page: nothing moves when the app takes
-         over. The app's waits draw their one line into #boot-shell-page
+         where the menu draws it (the Chief's place, `.menu-chief-place`: its
+         30 x 36 mark centred in a 36 px face column 10 px into the row, the row
+         its menu's inset in and as tall as a Mate's card, sidebarGeometry.css)
+         and a quiet page: nothing moves when the app takes over. The app's waits draw their one line into #boot-shell-page
          (bootFrame.ts). */
       #boot-shell {
         position: fixed;
@@ -603,8 +604,10 @@
 
         html[data-boot-frame="app"] #boot-shell-card {
           position: absolute;
-          top: 14.5px;
-          left: 22px;
+          top: calc(
+            var(--sidebar-content-inset) + 1px + (var(--sidebar-chief-row-height) - 36px) / 2
+          );
+          left: calc(var(--sidebar-content-inset) + 1px + 10px + 3px);
           display: block;
           width: 30px;
           height: 36px;
@@ -694,8 +697,6 @@
           data-zerops-surface="sidebar-environments-skeleton"
           aria-hidden="true"
         >
-          <div><span></span><span></span></div>
-          <div><span></span><span></span></div>
           <div><span></span><span></span></div>
         </div>
       </div>

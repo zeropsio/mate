@@ -2465,20 +2465,22 @@ export function SidebarHqStatus({
   );
 }
 
-/** Rows the menu does not know yet, standing in their room: a face and its line, three times. */
-function MenuSkeleton({ className }: { readonly className?: string | undefined }) {
+/**
+ * Rows the menu does not know yet, standing in the first row's room: a face and its line, once —
+ * how many there are is not known until they are read, and a row the menu paints is never taken
+ * back. The boot frame (index.html) paints the same row in the same place.
+ */
+export function MenuSkeleton({ className }: { readonly className?: string | undefined }) {
   return (
     <div
       aria-hidden="true"
       className={className}
       data-zerops-surface="sidebar-environments-skeleton"
     >
-      {["first", "second", "third"].map((row) => (
-        <div key={row}>
-          <span className="bg-sidebar-row-hover" />
-          <span className="bg-sidebar-row-hover" />
-        </div>
-      ))}
+      <div>
+        <span className="bg-sidebar-row-hover" />
+        <span className="bg-sidebar-row-hover" />
+      </div>
     </div>
   );
 }
