@@ -145,6 +145,21 @@ describe("CrewSetup", () => {
     expect(words).not.toMatch(/\b(Plans|Builds|Reviews) (Plans|Builds)/u);
   });
 
+  // Run 2: the row said a job one way and its editor another.
+  it("lists each crewmate's job as its editor holds it, every sentence of it", () => {
+    const twoSentences = crewFromProposal({
+      proposal: {
+        ...TEA_SHOP,
+        builders: [{ name: "Checkout", part: "Builds the checkout. Its code is src/checkout." }],
+      },
+      crew: "crew",
+      devHosts: ["appdev"],
+    });
+    expect(text(render(withGoal(twoSentences, "A tea shop.")))).toContain(
+      "Checkout Builds the checkout. Its code is src/checkout.",
+    );
+  });
+
   it("says which crewmate leads beside its name", () => {
     const planner = crewFromProposal({
       proposal: { ...TEA_SHOP, lead: { name: "Planner", part: TEA_SHOP.lead.part } },

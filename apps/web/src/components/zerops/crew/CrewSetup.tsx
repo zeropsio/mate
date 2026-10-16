@@ -25,7 +25,7 @@ import {
   CREW_SETUP_WORDS,
   crewAskMateWord,
   crewBrokenCopyWord,
-  crewJobSentence,
+  crewJobLine,
   crewLockWords,
   crewNamingTheMate,
   crewNoDevHostWord,
@@ -510,7 +510,8 @@ function SetupRow({
   const lane = applied ? (crewmate?.lane ?? null) : null;
   const readying = lane?.state === "creating" || lane?.state === "setting-up";
   const broken = lane === null ? null : crewBrokenCopyWord(lane, mateName);
-  const sentence = crewJobSentence(member.job.split("\n")[0] ?? "", member.displayName);
+  // The job as its editor's *Its job* holds it, every sentence: one text in both (run 2).
+  const sentence = crewJobLine(member.job.split("\n")[0] ?? "", member.displayName);
   const tag = crewRoleTag(member.kind, member.displayName, sentence);
   return (
     <button
