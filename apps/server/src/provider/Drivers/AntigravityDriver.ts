@@ -127,9 +127,13 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
           ),
         );
 
-      const makeRuntime = Effect.fn("AntigravityDriver.makeRuntime")(function* (
-        input: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner">,
-      ): Effect.fn.Return<
+      const makeRuntime = Effect.fn("AntigravityDriver.makeRuntime")(function* ({
+        profileDirectory: profileOverride,
+        ...input
+      }: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner"> & {
+        /** A profile of the text helper's own (no MCP servers, no hooks); default: the instance's. */
+        readonly profileDirectory?: string;
+      }): Effect.fn.Return<
         AcpSessionRuntime["Service"],
         AcpError | ProviderSetupError,
         Scope.Scope
@@ -155,7 +159,7 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
             ),
           );
         const profile = yield* prepareAntigravityProfile({
-          profileDirectory,
+          profileDirectory: profileOverride ?? profileDirectory,
           baseEnv: processEnvironment,
           auth,
           userHome,
@@ -375,11 +379,12 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
         profileDirectory,
         defaultModel,
         withProcess: authFlow.withProcess,
-        makeRuntime: (cwd) =>
+        makeRuntime: (cwd, profile) =>
           makeRuntime({
             cwd,
             clientInfo: { name: "t3-code-text", version: "0.0.0" },
             mcpServers: [],
+            ...(profile === undefined ? {} : { profileDirectory: profile }),
           }),
       });
 

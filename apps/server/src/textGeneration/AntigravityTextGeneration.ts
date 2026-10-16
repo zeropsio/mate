@@ -48,9 +48,13 @@ export interface AntigravityTextGenerationOptions {
   readonly profileDirectory: string;
   /** Model the provider default alias selects, when the account offers it. */
   readonly defaultModel?: Effect.Effect<string | undefined>;
-  /** Uses the instance's personal Google login, with no injected MCP servers or client tools. */
+  /**
+   * Uses the instance's personal Google login, with no injected MCP servers or client tools; in
+   * `profileDirectory` when given (a profile of the helper's own), else the instance's.
+   */
   readonly makeRuntime: (
     cwd: string,
+    profileDirectory?: string,
   ) => Effect.Effect<AntigravityTextRuntime, AcpError | ProviderSetupError, Scope.Scope>;
   /** Registers the whole helper so sign-out can stop it before clearing credentials. */
   readonly withProcess: <A, E, R>(
@@ -89,6 +93,34 @@ export const isAntigravityTextGenerationAvailable = Effect.fn(
   return true;
 });
 
+/** The profile's own configuration: hooks and MCP servers, never mirrored into an isolated one. */
+const PROFILE_CONFIG = "config";
+const NO_MCP_SERVERS = '{"mcpServers":{}}\n';
+
+/**
+ * A profile of the helper's own for a run that must change nothing whatever the instance's profile
+ * holds (a crew proposal): every entry of the instance's profile linked in — its sign-in, its
+ * settings and session store stay the instance's, nothing is copied — except its configuration,
+ * which is a fresh one with no MCP servers and no hooks. A Mate's profile names zcp's MCP server
+ * (`antigravityAuthSupport.ts` links `config/mcp_config.json` to the user's), so the helper could
+ * not run there tool-less. Gone with its scope; the links go, never what they point at.
+ */
+export const isolatedAntigravityProfile = Effect.fn("isolatedAntigravityProfile")(function* (
+  profileDirectory: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const isolated = yield* fs.makeTempDirectoryScoped({ prefix: "t3-antigravity-text-profile-" });
+  const entries = yield* fs.readDirectory(profileDirectory).pipe(Effect.orElseSucceed(() => []));
+  for (const entry of entries) {
+    if (entry === PROFILE_CONFIG) continue;
+    yield* fs.symlink(path.join(profileDirectory, entry), path.join(isolated, entry));
+  }
+  yield* fs.makeDirectory(path.join(isolated, PROFILE_CONFIG), { recursive: true });
+  yield* fs.writeFileString(path.join(isolated, PROFILE_CONFIG, "mcp_config.json"), NO_MCP_SERVERS);
+  return isolated;
+});
+
 /** Runs short-lived subscription helpers without giving them the user's workspace. */
 export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGeneration")(function* (
   options: AntigravityTextGenerationOptions,
@@ -106,12 +138,29 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
       readonly prompt: string;
       readonly outputSchema: S;
       readonly modelSelection: ModelSelection;
+      /** Runs in a profile of its own with no MCP servers or hooks (`isolatedAntigravityProfile`). */
+      readonly isolated?: boolean;
     }) {
       const { operation } = input;
       const scope = yield* Scope.make();
       yield* Effect.addFinalizer((exit) => Scope.close(scope, exit));
       const helper = Effect.gen(function* () {
-        if (!(yield* available)) {
+        const isolatedProfile =
+          input.isolated === true
+            ? yield* isolatedAntigravityProfile(options.profileDirectory).pipe(
+                Effect.provideService(FileSystem.FileSystem, fs),
+                Effect.provideService(Path.Path, path),
+                Effect.mapError(
+                  (cause) =>
+                    new TextGenerationError({
+                      operation,
+                      detail: "Could not prepare an Antigravity profile for text generation.",
+                      cause,
+                    }),
+                ),
+              )
+            : undefined;
+        if (isolatedProfile === undefined && !(yield* available)) {
           return yield* new TextGenerationError({
             operation,
             detail:
@@ -133,7 +182,7 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
         );
 
         const rawResult = yield* Effect.gen(function* () {
-          const runtime = yield* options.makeRuntime(cwd);
+          const runtime = yield* options.makeRuntime(cwd, isolatedProfile);
           yield* runtime.getEvents().pipe(
             Stream.runForEach((event) =>
               event._tag === "EventStreamBarrier"
@@ -388,10 +437,12 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
 
   const generateCrewProposal: TextGeneration.TextGeneration["Service"]["generateCrewProposal"] =
     Effect.fn("AntigravityTextGeneration.generateCrewProposal")(function* (input) {
+      // A Mate's profile names zcp's MCP server: a proposal runs in a profile with none.
       return yield* runAntigravityJson({
         operation: "generateCrewProposal",
         ...buildCrewProposalPrompt({ goal: input.goal }),
         modelSelection: input.modelSelection,
+        isolated: true,
       });
     });
 
