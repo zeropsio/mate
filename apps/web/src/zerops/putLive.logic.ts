@@ -180,6 +180,7 @@ export const SETUP_MISSING =
 export const SETUP_UNREADABLE = "The project's setup files can't be read right now.";
 
 const NOTHING_MERGED = "Nothing is merged to put live yet.";
+const MERGE_FIRST = "Merge a change first: what is merged goes live.";
 
 const PUT_LIVE_WHERE = {
   name: "Production",
@@ -231,7 +232,7 @@ export function putLiveSheet(input: {
     button: "Put it live",
     hold:
       first === undefined
-        ? NOTHING_MERGED
+        ? MERGE_FIRST
         : input.recipe === "present"
           ? undefined
           : input.recipe === "loading"

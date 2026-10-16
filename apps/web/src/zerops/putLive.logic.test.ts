@@ -252,7 +252,9 @@ describe("the Put it live sheet", () => {
     expect(many.what).toEqual({ title: "4 changes", lines: ["Search", "Browse", "Add"] });
     expect(many.hold).toBeUndefined();
     const none = putLiveSheet({ project: "Tea Shop", changes: [], recipe: "present" });
-    expect(none.hold).toBe("Nothing is merged to put live yet.");
+    expect(none.what).toEqual({ title: "Nothing is merged to put live yet.", lines: [] });
+    // The button's line says the way on, never the sheet's own line again.
+    expect(none.hold).toBe("Merge a change first: what is merged goes live.");
   });
 
   it("stands in for what goes live while what is merged is read, saying no reading words", () => {
