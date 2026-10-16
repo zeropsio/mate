@@ -2597,14 +2597,19 @@ function GroupRowWords<T extends RosterCandidate>({
       }
       badges={<ProjectNameMarks />}
       meta={
-        <span className="relative flex h-5.5 min-w-16 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:opacity-0">
-          <MateSlot
-            at={lead.activity?.at}
-            slot={state.view.slot}
-            unseen={state.view.unseen}
-            timestampFormat={timestampFormat}
-            tint={lead.tint}
-          />
+        <span
+          className="relative flex h-5.5 min-w-16 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:opacity-0"
+          data-menu-time-box=""
+        >
+          <span className="flex items-center" data-menu-time="">
+            <MateSlot
+              at={lead.activity?.at}
+              slot={state.view.slot}
+              unseen={state.view.unseen}
+              timestampFormat={timestampFormat}
+              tint={lead.tint}
+            />
+          </span>
         </span>
       }
       line={
@@ -3487,10 +3492,15 @@ function useMateRowState<T extends RosterCandidate>({
   };
 }
 
+/** The gap between a project's places' tag and the time after it. */
+const TAG_TIME_GAP_PX = 6;
+
 /**
- * The room the project's tags take at the start of a row's second line (`menu-row-tags`): the tags
- * stand beside the row's own button, never inside it, and that line's words begin after them by
- * the width they measure — before the first paint, and again whenever a tag comes, goes or changes its words.
+ * The room a project's places' tag takes at the end of its row's first line (`menu-row-tags`): the
+ * tag stands beside the row's own button, never inside it, just before the time (`data-menu-time`),
+ * by the widths the two measure — before the first paint, and again whenever the tag comes, goes
+ * or changes its words, or the time its width. The line under the name never moves for it (run 2:
+ * a busy stage's chip at that line's start pushed the Mate's words aside, and back).
  */
 function useTagsRoom(
   row: RefObject<HTMLElement | null>,
@@ -3504,24 +3514,38 @@ function useTagsRoom(
     if (!present || tagsElement === null) {
       rowElement.removeAttribute("data-tags");
       rowElement.style.removeProperty("--menu-tags-w");
+      rowElement.style.removeProperty("--menu-time-w");
       return;
     }
-    let placed = -1;
-    const place = () => {
-      const width = tagsElement.offsetWidth;
-      // Only a width that changed moves the name: a reading that changed nothing writes nothing,
+    const box: HTMLElement = rowElement;
+    const tag: HTMLElement = tagsElement;
+    let time: HTMLElement | null = null;
+    let placed = "";
+    function place() {
+      // The time is its row's words' own: read anew, so a time drawn again is the one measured.
+      const found = box.querySelector<HTMLElement>("[data-menu-time]");
+      if (found !== time) {
+        if (time !== null) observer?.unobserve(time);
+        time = found;
+        if (found !== null) observer?.observe(found);
+      }
+      const width = tag.offsetWidth;
+      const timeWidth =
+        found === null || found.offsetWidth === 0 ? 0 : found.offsetWidth + TAG_TIME_GAP_PX;
+      // Only a width that changed moves the tag: a reading that changed nothing writes nothing,
       // so the observer never answers its own write.
-      if (width === placed) return;
-      placed = width;
-      rowElement.toggleAttribute("data-tags", width > 0);
-      rowElement.style.setProperty("--menu-tags-w", `${String(width)}px`);
-    };
+      const reading = `${String(width)} ${String(timeWidth)}`;
+      if (reading === placed) return;
+      placed = reading;
+      box.toggleAttribute("data-tags", width > 0);
+      box.style.setProperty("--menu-tags-w", `${String(width)}px`);
+      box.style.setProperty("--menu-time-w", `${String(timeWidth)}px`);
+    }
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
     place();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(place);
-    observer.observe(tagsElement);
+    observer?.observe(tagsElement);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
     };
   }, [present, row, tags]);
 }
@@ -4008,9 +4032,11 @@ function MateRowView<T extends RosterCandidate>({
                 "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
               armed && "opacity-0",
             )}
+            data-menu-time-box=""
           >
             <span
               className={cn("flex items-center", numbers && number !== undefined && "opacity-0")}
+              data-menu-time=""
             >
               <MateSlot
                 at={activity?.at}

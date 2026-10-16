@@ -4439,5 +4439,120 @@ describe("owner-reported layout regressions", () => {
         );
       });
     });
+
+    describe("Decision: a place's tag stands beside the time; the Mate's words keep their place.", () => {
+      describe("B: a project's busy place on its menu row", () => {
+        /** The project's row: where its words start, where its time ends, and its tag and name. */
+        const rowReading = (page: Page) =>
+          page.evaluate(() => {
+            const box = [...document.querySelectorAll<HTMLElement>(".menu-row-box")].find((row) =>
+              row.querySelector('[data-slot="row-title"]')?.textContent?.includes("Shop"),
+            )!;
+            const line = box.querySelector<HTMLElement>('[data-slot="row-line"]')!;
+            // Where its first letter stands: a text's own box, never its line's padded one.
+            const texts = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+            let text = texts.nextNode();
+            while (text !== null && text.textContent?.trim() === "") text = texts.nextNode();
+            const words = document.createRange();
+            words.selectNodeContents(text!);
+            const first = words.getClientRects()[0]!;
+            const tagElement = box.querySelector('[data-zerops-surface="sidebar-project-env-tag"]');
+            const tag = tagElement?.getBoundingClientRect();
+            const title = box.querySelector('[data-slot="row-title"]')!.getBoundingClientRect();
+            const time = box
+              .querySelector('[data-zerops-surface="sidebar-mate-time"]')!
+              .getBoundingClientRect();
+            return {
+              words: first.left,
+              wordsTop: first.top,
+              time: { left: time.left, right: time.right },
+              title: { right: title.right, middle: title.top + title.height / 2 },
+              tag:
+                tag === undefined
+                  ? null
+                  : {
+                      says: tagElement!.getAttribute("aria-label"),
+                      left: tag.left,
+                      right: tag.right,
+                      middle: tag.top + tag.height / 2,
+                    },
+            };
+          });
+
+        /** A reading in words, for an assertion's message. */
+        const said = (reading: Awaited<ReturnType<typeof rowReading>>) =>
+          [
+            `words ${String(reading.words)},${String(reading.wordsTop)}`,
+            `time ${String(reading.time.left)}–${String(reading.time.right)}`,
+            `name ends ${String(reading.title.right)} mid ${String(reading.title.middle)}`,
+            reading.tag === null
+              ? "no tag"
+              : `tag "${String(reading.tag.says)}" ${String(reading.tag.left)}–${String(reading.tag.right)} mid ${String(reading.tag.middle)}`,
+          ].join(", ");
+
+        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+          // Run 2, S15: a stage being set up put a spinner chip before the Mate's quote on its
+          // project's row, which pushed the quote 30 px aside, and back when it went.
+          it.effect("a stage building moves neither the project row's words nor its time", () =>
+            Effect.gen(function* () {
+              const s = yield* menuScenario();
+              yield* s.given.project("Ada", { mate: true, app: "Shop" });
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.signedIn;
+              yield* s.menu.grouped("Ada", "Shop");
+              yield* s.colleague.reports("Ada", {
+                latestMessagePreview: {
+                  role: "assistant",
+                  text: "The basket now survives a reload.",
+                },
+              });
+              yield* Effect.promise(async () => {
+                await ownerMenu(s.page);
+                await s.page.waitForFunction(
+                  () =>
+                    [...document.querySelectorAll('[data-slot="row-line"]')].some((line) =>
+                      line.textContent?.includes("The basket now survives a reload."),
+                    ),
+                  { timeout: 15_000 },
+                );
+                await waitForStillFrames(s.page);
+              });
+              const calm = yield* Effect.promise(() => rowReading(s.page));
+              expect(calm.tag, "ASSERTION: a calm project's row shows no tag").toBeNull();
+              // A stage is added and comes up, then builds: its tag comes, then changes its words.
+              yield* s.stage("Shop-stage", "Shop");
+              yield* s.menu.chip("coming up", 15_000);
+              yield* Effect.promise(() => waitForStillFrames(s.page));
+              const coming = yield* Effect.promise(() => rowReading(s.page));
+              yield* s.colleague.builds("Shop-stage");
+              yield* s.menu.chip("\\b(?:building|deploying|releasing)\\b", 15_000);
+              yield* Effect.promise(() => waitForStillFrames(s.page));
+              const building = yield* Effect.promise(() => rowReading(s.page));
+              for (const busy of [coming, building]) {
+                const seen = `calm ${said(calm)}; busy ${said(busy)}`;
+                expect(
+                  Math.abs(busy.words - calm.words) + Math.abs(busy.wordsTop - calm.wordsTop),
+                  `ASSERTION: the words under the name keep their place: ${seen}`,
+                ).toBeLessThanOrEqual(0.5);
+                expect(
+                  Math.abs(busy.time.right - calm.time.right),
+                  `ASSERTION: the time keeps its place: ${seen}`,
+                ).toBeLessThanOrEqual(0.5);
+                const tag = busy.tag!;
+                expect(
+                  Math.abs(tag.middle - busy.title.middle),
+                  `ASSERTION: the tag stands on the name's line: ${seen}`,
+                ).toBeLessThanOrEqual(2);
+                expect(
+                  tag.left >= busy.title.right && tag.right <= busy.time.left,
+                  `ASSERTION: the tag stands between the name and the time, over neither: ${seen}`,
+                ).toBe(true);
+              }
+              yield* s.then.noExternalNetwork;
+            }),
+          );
+        });
+      });
+    });
   });
 });

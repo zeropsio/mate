@@ -4183,15 +4183,16 @@ code {
     color: var(--sidebar-muted-foreground);
   }
 
-  /* A project's tags — Review, Release, its places' — lead its row's second line at the words'
-     own edge, beside the row's own button and never in it: the row's verbs as blue words (S3), in
-     that line's 14/22, so none floats at the end of the name's line nor moves with its count (the
-     owner, 2026-10-12: "it's floating in space"). The line's words begin after them, by the width
-     they measure (`useTagsRoom`); the name's line keeps its whole width. */
+  /* A project's places' tag — there only while a place is not calm — stands at the end of the
+     name's line, just before the time, beside the row's own button and never in it (the owner,
+     2026-10-16: at the start of the second line a busy stage's chip pushed the Mate's words aside,
+     and back). The time keeps its place and the line under the name never moves; the name gives
+     way only where the two need its room (`useTagsRoom`). Under the pointer the row's verbs come
+     in before it, so it stays where it is, pressable, and the time stays with it. */
   .menu-row-tags {
     position: absolute;
-    top: 33px;
-    inset-inline-start: 58px;
+    top: 11px;
+    inset-inline-end: calc(10px + var(--menu-time-w, 0px));
     z-index: 1;
     display: flex;
     height: 22px;
@@ -4205,8 +4206,9 @@ code {
     pointer-events: auto;
   }
 
-  [data-tags] [data-slot="row"] .menu-line2:not(.menu-line2 .menu-line2) {
-    padding-inline-start: calc(var(--menu-tags-w, 0px) + 6px);
+  [data-tags] [data-slot="row-meta"] {
+    min-width: calc(var(--menu-time-w, 0px) + var(--menu-tags-w, 0px));
+    justify-content: flex-end;
   }
 
   .menu-row-tags .menu-tag {
@@ -5218,6 +5220,21 @@ code {
   transition:
     background-color 150ms var(--ease-out-strong),
     color 150ms var(--ease-out-strong);
+}
+
+/* A row whose places' tag stands before its time (`.menu-row-tags`): its verbs come in before the
+   tag under the pointer, never over it, and the time stays beside it. Unlayered, over the
+   utilities that swap the time for the verbs on a row without one. */
+[data-tags] [data-menu-time-box] {
+  opacity: 1;
+}
+
+[data-tags]
+  > :is(
+    [data-zerops-surface="sidebar-project-actions"],
+    [data-zerops-surface="sidebar-mate-actions"]
+  ) {
+  inset-inline-end: calc(10px + var(--menu-time-w, 0px) + var(--menu-tags-w, 0px) + 4px);
 }
 
 /* On a row already lit by its own hover, a verb's hover needs a ground of its own. */
