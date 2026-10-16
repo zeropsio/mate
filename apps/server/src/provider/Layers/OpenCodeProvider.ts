@@ -266,7 +266,8 @@ function flattenOpenCodeModels(input: OpenCodeInventory): ReadonlyArray<ServerPr
 
     for (const model of Object.values(provider.models)) {
       const name = nonEmptyTrimmed(model.name);
-      if (!name) {
+      // A model that cannot call tools cannot do an agent's work (an embedding model, say).
+      if (!name || model.capabilities?.toolcall === false) {
         continue;
       }
 
@@ -285,7 +286,12 @@ function flattenOpenCodeModels(input: OpenCodeInventory): ReadonlyArray<ServerPr
     }
   }
 
-  return models.toSorted((left, right) => left.name.localeCompare(right.name));
+  // One provider's models stay together, by name: the picker keeps this order.
+  return models.toSorted(
+    (left, right) =>
+      (left.subProvider ?? "").localeCompare(right.subProvider ?? "") ||
+      left.name.localeCompare(right.name),
+  );
 }
 
 function trimOptional(value: string | null | undefined): string | undefined {

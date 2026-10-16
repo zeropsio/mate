@@ -75,12 +75,14 @@ import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import { UsageProviderSettings } from "./UsageProviderSettings";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
+import { OpenCodeProviderKeys } from "./OpenCodeProviderKeys";
 import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
 import { Tab, TabStrip } from "../ui/tab-strip";
 import { searchableSetting } from "./settingsSearch";
 import {
   backgroundActivityOverrideSettings,
   buildProviderInstanceUpdatePatch,
+  defaultProviderInstanceConfig,
   durationToSeconds,
   normalizeIntervalSeconds,
   PROVIDER_HEALTH_INTERVAL_STEP_SECONDS,
@@ -665,23 +667,8 @@ export function EnvironmentProviderSettings({
     // instance or a legacy blob there is nothing to render for the slot.
     const legacyConfig = legacyProviders[providerSettings.provider];
     const defaultLegacyConfig = defaultLegacyProviders[providerSettings.provider];
-    // The envelope is the single enabled flag: keep the legacy in-config
-    // flag out of the synthesized blob, or an explicit `enabled: false`
-    // would keep winning over the envelope and the Switch could never
-    // turn a default-off provider on.
-    const synthesizedInstance = (): ProviderInstanceConfig | undefined => {
-      if (legacyConfig === undefined) {
-        return undefined;
-      }
-      const { enabled: legacyEnabled, ...legacyConfigRest } = legacyConfig;
-      return {
-        driver,
-        enabled: legacyEnabled,
-        config: legacyConfigRest,
-      } satisfies ProviderInstanceConfig;
-    };
     const effectiveInstance: ProviderInstanceConfig | undefined =
-      explicitInstance ?? synthesizedInstance();
+      explicitInstance ?? defaultProviderInstanceConfig(settings, driver);
     // Only the default slot depends on the legacy blob; custom instances for
     // the driver must still render even when the slot has nothing to show.
     if (effectiveInstance !== undefined) {
@@ -858,6 +845,8 @@ export function EnvironmentProviderSettings({
               readOnly={readOnly}
               onEnable={() => updateProviderInstance(row, { ...row.instance, enabled: true })}
             />
+          ) : mode === "editor" && row.driver === "opencode" && row.isDefault ? (
+            <OpenCodeProviderKeys environmentId={environmentId} readOnly={readOnly} />
           ) : null
         }
         onUpdate={(next) => {

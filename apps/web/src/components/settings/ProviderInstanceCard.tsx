@@ -58,6 +58,7 @@ import { ProviderModelsSection } from "./ProviderModelsSection";
 import { ProviderInstanceIcon, providerInstanceInitials } from "../chat/ProviderInstanceIcon";
 import { ProviderAccentColorPicker } from "./ProviderAccentColorPicker";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
+import { environmentKeptWithKeys, environmentShownBesideKeys } from "./openCodeKeys.logic";
 import {
   getProviderVersionAdvisoryPresentation,
   PROVIDER_STATUS_STYLES,
@@ -564,7 +565,10 @@ export function ProviderInstanceCard({
   };
 
   const updateEnvironment = (environment: ReadonlyArray<ProviderInstanceEnvironmentVariable>) => {
-    const cleaned = environment.filter((variable) => variable.name.trim().length > 0);
+    const cleaned = environmentKeptWithKeys(
+      instance,
+      environment.filter((variable) => variable.name.trim().length > 0),
+    );
     const { environment: _omit, ...rest } = instance;
     onUpdate(
       cleaned.length > 0
@@ -917,7 +921,7 @@ export function ProviderInstanceCard({
 
           <div>
             <ProviderEnvironmentSection
-              environment={instance.environment ?? []}
+              environment={environmentShownBesideKeys(instance)}
               onChange={updateEnvironment}
             />
           </div>

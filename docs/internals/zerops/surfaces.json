@@ -754,6 +754,7 @@
       "title": "Zerops agent authorization card",
       "components": [
         "apps/web/src/components/zerops/ZeropsAgentAuthCard.tsx",
+        "apps/web/src/components/zerops/OpenCodeAgentKeys.tsx",
         "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
         "apps/web/src/components/zerops/ZeropsAgentSignIn.logic.ts",
         "apps/web/src/components/zerops/ZeropsAgentPickerPanel.tsx",

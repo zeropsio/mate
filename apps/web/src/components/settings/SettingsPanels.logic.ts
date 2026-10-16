@@ -193,6 +193,26 @@ export function formatDiagnosticsDescription(input: {
   return `${mode}.`;
 }
 
+/**
+ * A driver's default slot made from its legacy settings, where no instance is
+ * configured for it. The envelope is the single enabled flag: the legacy
+ * in-config flag stays out of the blob, or an explicit `enabled: false` would
+ * keep winning over the envelope and a default-off driver could never be
+ * turned on. Undefined where a server's settings predate the driver.
+ */
+export function defaultProviderInstanceConfig(
+  settings: Pick<ServerSettings, "providers">,
+  driver: ProviderDriverKind,
+): ProviderInstanceConfig | undefined {
+  type LegacyProviderSettings = ServerSettings["providers"][keyof ServerSettings["providers"]];
+  const legacyConfig = (settings.providers as Record<string, LegacyProviderSettings | undefined>)[
+    driver
+  ];
+  if (legacyConfig === undefined) return undefined;
+  const { enabled, ...config } = legacyConfig;
+  return { driver, enabled, config };
+}
+
 export function buildProviderInstanceUpdatePatch(input: {
   readonly settings: Pick<ServerSettings, "providers" | "providerInstances">;
   readonly instanceId: ProviderInstanceId;

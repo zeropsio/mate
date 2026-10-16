@@ -433,6 +433,63 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
     }),
   );
 
+  it.effect(
+    "lists a connected provider's models together under its name, leaving out any that cannot call tools",
+    () =>
+      Effect.gen(function* () {
+        const toolModel = (id: string, name: string, toolcall: boolean) => ({
+          id,
+          name,
+          capabilities: { toolcall },
+        });
+        runtimeMock.state.inventory = {
+          providerList: {
+            connected: ["opencode", "nebius"],
+            all: [
+              {
+                id: "opencode",
+                name: "OpenCode Zen",
+                models: { "big-pickle": toolModel("big-pickle", "Big Pickle", true) },
+              },
+              {
+                id: "nebius",
+                name: "Nebius Token Factory",
+                models: {
+                  "moonshotai/Kimi-K3": toolModel("moonshotai/Kimi-K3", "Kimi K3", true),
+                  "Qwen/Qwen3-Embedding-8B": toolModel(
+                    "Qwen/Qwen3-Embedding-8B",
+                    "Qwen3-Embedding-8B",
+                    false,
+                  ),
+                  "zai-org/GLM-5.3": toolModel("zai-org/GLM-5.3", "GLM-5.3", true),
+                },
+              },
+              {
+                id: "acme",
+                name: "Acme Models",
+                models: { tiny: toolModel("tiny", "Acme Tiny", true) },
+              },
+            ],
+            default: {},
+          },
+          agents: [{ name: "build", hidden: false, mode: "primary" }],
+        };
+
+        const snapshot = yield* checkProvider(makeOpenCodeSettings());
+
+        NodeAssert.deepEqual(
+          snapshot.models
+            .filter((model) => !model.isCustom)
+            .map((model) => [model.subProvider, model.name, model.slug]),
+          [
+            ["Nebius Token Factory", "GLM-5.3", "nebius/zai-org/GLM-5.3"],
+            ["Nebius Token Factory", "Kimi K3", "nebius/moonshotai/Kimi-K3"],
+            ["OpenCode Zen", "Big Pickle", "opencode/big-pickle"],
+          ],
+        );
+      }),
+  );
+
   it.effect("includes OpenCode skills in the provider snapshot", () =>
     Effect.gen(function* () {
       runtimeMock.state.inventory = {

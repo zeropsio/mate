@@ -50,6 +50,7 @@ import { mateIdentityPose, zeropsMateAt } from "../../zerops/mateIdentities";
 import { useNowMs } from "../../zerops/useNowMs";
 import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
+import { OpenCodeAgentKeys } from "./OpenCodeAgentKeys";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentSignInDialog } from "./ZeropsAgentSignIn";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
@@ -167,6 +168,11 @@ export function ZeropsPanel({
       )
     ) : (
       <ZeropsAgentAuthCard
+        otherAgents={
+          threadRef === null ? undefined : (
+            <OpenCodeAgentKeys environmentId={threadRef.environmentId} />
+          )
+        }
         signInDemanded={agentSignInDemanded}
         conversationAgentId={conversationAgentId}
         onRecheck={(agentId, loginId) => {
