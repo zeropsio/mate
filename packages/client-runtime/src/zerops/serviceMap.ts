@@ -125,6 +125,8 @@ export interface ZeropsServiceRow {
   readonly tone: ZeropsServiceTone;
   /** The platform's status token as a word: `READY_TO_DEPLOY` reads as `Ready to deploy`. */
   readonly statusLabel: string;
+  /** Whether the card says `statusLabel` beside its dot (`serviceStatusNeedsWord`). */
+  readonly statusNeedsWord: boolean;
   /** `type` without its OS prefix: `ubuntu/nodejs@22` reads as `nodejs@22`. */
   readonly typeLabel: string;
   /**
@@ -159,6 +161,7 @@ export interface ZeropsServiceRow {
    * allocation and load, and without these it rendered like a service holding
    * nothing — the card's other one-line state.
    */
+  readonly stageStatusNeedsWord?: boolean;
   readonly stageMetrics?: ReadonlyArray<ZeropsServiceMetric>;
   readonly stageTrends?: ZeropsServiceTrends;
   readonly stagePortLabel?: string;
@@ -239,6 +242,18 @@ export function serviceStatusTone(service: ZeropsTopologyService): ZeropsService
     ? service.status.slice(SERVICE_STATUS_PREFIX.length)
     : service.status;
   return NOT_RUNNING_STATUSES.has(normalized) ? "muted" : "outline";
+}
+
+/**
+ * Whether a service's card says its state in words. A running service leaves it to its green
+ * dot (the word stays its accessible name); a stopped, failed, busy or unfamiliar one says it,
+ * since that state needs saying.
+ */
+export function serviceStatusNeedsWord(service: ZeropsTopologyService): boolean {
+  const normalized = service.status.startsWith(SERVICE_STATUS_PREFIX)
+    ? service.status.slice(SERVICE_STATUS_PREFIX.length)
+    : service.status;
+  return !(serviceStatusTone(service) === "outline" && normalized === "ACTIVE");
 }
 
 const withKey = <K extends string, V>(key: K, value: V | undefined): Partial<Record<K, V>> =>
@@ -585,6 +600,7 @@ export function buildZeropsServiceMap(
           service: entry,
           tone: serviceStatusTone(entry),
           statusLabel: zeropsStatusWord(entry.status),
+          statusNeedsWord: serviceStatusNeedsWord(entry),
           typeLabel: zeropsTypeLabel(entry.type),
           ...(isControlPlane ? {} : { typeShort: zeropsTypeShort(entry) }),
           title,
@@ -601,6 +617,7 @@ export function buildZeropsServiceMap(
                 stage,
                 stageTone: serviceStatusTone(stage),
                 stageStatusLabel: zeropsStatusWord(stage.status),
+                stageStatusNeedsWord: serviceStatusNeedsWord(stage),
                 stageMetrics: zeropsServiceMetrics(stage.usage, stage.scaling),
                 ...withKey("stageTrends", zeropsUsageTrends(stage.history)),
                 ...withKey("stagePortLabel", zeropsPortLabel(stage)),
