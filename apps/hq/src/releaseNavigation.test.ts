@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 import { HqReleaseTarget } from "@t3tools/shared/hqRelease";
-import { releaseNavigationOffer } from "./releaseNavigation.ts";
+import { HQ_FIRST_COMMIT } from "@t3tools/shared/hqChanges";
+import { rangeChanges, releaseNavigationOffer } from "./releaseNavigation.ts";
 
 const decodeAttachment = Schema.decodeUnknownSync(HqReleaseTarget);
 
@@ -79,4 +80,52 @@ it("Git navigation consumes the accepted attachment and the shared hand-over blo
       permission: { allow: false, reason: "not_releaser" },
     })?.gate,
   ).toEqual({ allow: false, reason: "not_releaser" });
+});
+
+// The onboarding run: the card and the menu said "2 changes ready to release" where the release's
+// own review listed one, because a first release's range from the root held HQ's empty first commit.
+describe("what a release's range counts", () => {
+  const commit = (sha: string, message: string, name = "Acme Builder") => ({
+    sha: sha.repeat(40),
+    message,
+    author: { name, email: "builder@example.invalid" },
+    parents: [],
+    committedAt: "2026-10-16T09:00:00Z",
+  });
+  it.each([
+    {
+      case: "every change the range lists",
+      items: [commit("b", "Add the tea list"), commit("c", "Search teas by name")],
+      total: 2,
+      changes: ["Add the tea list", "Search teas by name"],
+      unlisted: 0,
+    },
+    {
+      case: "a first release from the root: never HQ's empty first commit",
+      items: [
+        commit("b", "Add the tea list\n\nBody"),
+        commit("a", HQ_FIRST_COMMIT.subject, HQ_FIRST_COMMIT.authorName),
+      ],
+      total: 2,
+      changes: ["Add the tea list"],
+      unlisted: 0,
+    },
+    {
+      case: "a commit of someone else's with the same words",
+      items: [commit("a", HQ_FIRST_COMMIT.subject)],
+      total: 1,
+      changes: [HQ_FIRST_COMMIT.subject],
+      unlisted: 0,
+    },
+    {
+      case: "a range cut short: the ones it did not list",
+      items: [commit("b", "Add the tea list")],
+      total: 5,
+      changes: ["Add the tea list"],
+      unlisted: 4,
+    },
+  ])("counts $case", ({ items, total, changes, unlisted }) => {
+    const counted = rangeChanges({ items, total, truncated: total > items.length });
+    expect([[...counted.listed.values()], counted.unlisted]).toEqual([changes, unlisted]);
+  });
 });
