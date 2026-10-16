@@ -819,9 +819,10 @@ export function cardHeadLine(line: NowLine): NowLine {
     case "several":
     case "writing":
     case "condensing":
-      return { kind: "working" };
+    // Not started yet, it is at work from the send: a head that said "Starting its session" after
+    // Working went back a phase (run 2). The card under it says how the start goes.
     case "starting":
-      return line.on === "workspace" ? { kind: "working" } : line;
+      return { kind: "working" };
     default:
       return line;
   }

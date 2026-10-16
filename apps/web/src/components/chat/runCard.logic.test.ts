@@ -1698,10 +1698,12 @@ describe("cardHeadWords", () => {
       line: { kind: "after" },
       words: "Waiting for its helpers",
     },
+    // Run 2: the head read Working, then "Starting its session", then Working again — the card
+    // under it says how its start goes.
     {
       name: "before its session starts",
       line: { kind: "starting", on: "session" },
-      words: "Starting its session",
+      words: "Working",
     },
     // Recheck on 0.15.41: the head read "Saving a snapshot of the workspace" for a turn's first 4 s.
     {
