@@ -12,6 +12,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  CREW_FAILURE_SHOWN_MS,
   crewFailureCauseOf,
   type CrewFailureCause,
   type UseCrewCommand,
@@ -133,6 +134,28 @@ describe("CrewSetup's Start", () => {
 
     await act(async () => startPress().click());
     expect(sent).toEqual([{ _tag: "apply" }, { _tag: "apply" }]);
+    expect(foot()).not.toContain("didn't start");
+  });
+
+  it("a refused start's words stay, in plain words, until the goal is edited", async () => {
+    setUp();
+    await act(async () => startPress().click());
+    vi.useFakeTimers();
+    try {
+      act(() => vi.advanceTimersByTime(CREW_FAILURE_SHOWN_MS * 3));
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(foot()).toContain("The crew didn't start:");
+    // The engine's crew.yaml words are folded under Details, never the line itself.
+    expect(document.querySelector("[role=alert]")?.textContent).not.toContain("crew.yaml");
+
+    const goal = document.querySelector("textarea")!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    act(() => {
+      setValue.call(goal, "A shop front for Acme's teas, shipped weekly.");
+      goal.dispatchEvent(new Event("input", { bubbles: true }));
+    });
     expect(foot()).not.toContain("didn't start");
   });
 });

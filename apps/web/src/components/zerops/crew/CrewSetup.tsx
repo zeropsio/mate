@@ -108,7 +108,8 @@ export function CrewSetup(props: CrewSetupProps) {
   const proposal = useCrewProposal(props.environmentId);
   // The Mate proposed the rows, and nobody drafted others here since.
   const [asked, setAsked] = useState(false);
-  // Why the last *Start the crew* was refused; kept until it is pressed again.
+  // Why the last *Start the crew* was refused: kept until it is pressed again, the goal is
+  // edited, or the draft is dropped — never on a timer.
   const [startFailure, setStartFailure] = useState<CrewFailureCause | null>(null);
   const devHosts = props.devHosts.map((host) => host.host);
   const databaseHosts = props.devHosts.flatMap((host) =>
@@ -279,7 +280,11 @@ export function CrewSetup(props: CrewSetupProps) {
           disabled={props.applied}
           {...(drafted ? {} : { lines: 4 as const })}
           onBlur={() => void saveGoal()}
-          onChange={(event) => draft.setGoal(event.target.value)}
+          onChange={(event) => {
+            // An edit answers a refused start: its words go until Start is pressed again.
+            setStartFailure(null);
+            draft.setGoal(event.target.value);
+          }}
           placeholder={CREW_SETUP_WORDS.goalPlaceholder}
           value={goal}
         />
