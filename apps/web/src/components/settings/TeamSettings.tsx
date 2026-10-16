@@ -17,6 +17,7 @@ import { PersonAvatar } from "../zerops/primitives";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { forgetInvitationSent, invitationSentTo } from "./invitationSent";
 import {
+  arrivingRow,
   INVITED_LINE,
   reachWords,
   sentInvitation,
@@ -61,12 +62,12 @@ export function TeamList({
   const confirmed =
     sent === null ? null : sentInvitation(view.kind === "people" ? view.people : [], sent);
   const invite = useRef<HTMLElement | null>(null);
-  // The live region is drawn empty and filled after, so a screen reader hears the change.
-  const status = useRef<HTMLParagraphElement>(null);
-  const announce = confirmed?.announce ?? null;
-  useEffect(() => {
-    if (announce !== null && status.current !== null) status.current.textContent = announce;
-  }, [announce]);
+  // The new row grows in on its first insertion only (`arrivingRow`).
+  const [arrivalPlayed, setArrivalPlayed] = useState(false);
+  const arriving = arrivingRow({
+    arrivedKey: confirmed?.arrivedKey ?? null,
+    played: arrivalPlayed,
+  });
   // Focus goes back to Invite once, as soon as it is drawn: the team may still be reading.
   const inviteShown = view.kind === "people" && view.invite.length > 0;
   const focused = useRef(false);
@@ -75,6 +76,17 @@ export function TeamList({
     focused.current = true;
     invite.current.focus();
   }, [sent, inviteShown]);
+  // The live region stands empty from the page's first paint and is filled a tick later, once
+  // focus has moved, so a screen reader hears the change rather than a region born full.
+  const status = useRef<HTMLParagraphElement>(null);
+  const announce = confirmed?.announce ?? null;
+  useEffect(() => {
+    if (announce === null) return;
+    const tick = window.setTimeout(() => {
+      if (status.current !== null) status.current.textContent = announce;
+    }, 0);
+    return () => window.clearTimeout(tick);
+  }, [announce]);
   return (
     <SettingsSection
       count={view.kind === "people" ? view.count : undefined}
@@ -118,13 +130,11 @@ export function TeamList({
       title="Team"
     >
       <div className="tm-team px-3 sm:px-4">
+        <p className="sr-only" ref={status} role="status" />
         {confirmed === null ? null : (
-          <>
-            <p className="tm-sent" data-part="sent">
-              {confirmed.line}
-            </p>
-            <p className="sr-only" ref={status} role="status" />
-          </>
+          <p className="tm-sent" data-part="sent">
+            {confirmed.line}
+          </p>
         )}
         {view.kind === "reading" ? (
           <Loading count={4} label="Who is on the team" shape="rows" />
@@ -138,8 +148,15 @@ export function TeamList({
               {shown.map((person) => (
                 <li
                   className="grid"
-                  data-arrived={person.key === confirmed?.arrivedKey || undefined}
+                  data-arrived={person.key === arriving || undefined}
                   key={person.key}
+                  onAnimationEnd={
+                    person.key === arriving
+                      ? () => {
+                          setArrivalPlayed(true);
+                        }
+                      : undefined
+                  }
                 >
                   <PersonCard person={person} />
                 </li>

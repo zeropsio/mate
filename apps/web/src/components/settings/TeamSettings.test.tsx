@@ -178,6 +178,11 @@ describe("the organization's team", () => {
     expect(host.querySelector('[data-part="sent"]')?.textContent).toBe(
       "Invitation sent to iva@example.com. They'll show here as joined once they accept.",
     );
+    // The live region stands empty on the first paint, and is filled once focus has moved.
+    expect(host.querySelector('[role="status"]')?.textContent).toBe("");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(host.querySelector('[role="status"]')?.textContent).toBe(
       "Invitation sent to iva@example.com",
     );

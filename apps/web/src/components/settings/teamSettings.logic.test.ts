@@ -2,6 +2,7 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  arrivingRow,
   sentInvitation,
   shownTeam,
   teamSearchShown,
@@ -443,5 +444,30 @@ describe("an invitation just sent", () => {
       announce: "Invitation sent to Nova@Example.com",
       arrivedKey: arrived,
     });
+  });
+});
+
+describe("the new row's arrival plays once", () => {
+  it.each([
+    {
+      sentence: "The invitation's row grows in on its first insertion",
+      arrivedKey: "cu-nova",
+      played: false,
+      arriving: "cu-nova",
+    },
+    {
+      sentence: "Once it has played, a search that hides and re-shows the row places it",
+      arrivedKey: "cu-nova",
+      played: true,
+      arriving: null,
+    },
+    {
+      sentence: "Before Zerops lists the invitation, no row arrives",
+      arrivedKey: null,
+      played: false,
+      arriving: null,
+    },
+  ])("$sentence", ({ arrivedKey, played, arriving }) => {
+    expect(arrivingRow({ arrivedKey, played })).toBe(arriving);
   });
 });

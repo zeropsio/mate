@@ -339,3 +339,14 @@ export function sentInvitation(people: ReadonlyArray<TeamPerson>, address: strin
     arrivedKey: arrived?.key ?? null,
   };
 }
+
+/**
+ * The row that grows in now: the invitation's own, until its arrival has played once — a search
+ * that hides and re-shows it afterwards places it.
+ */
+export function arrivingRow(input: {
+  readonly arrivedKey: string | null;
+  readonly played: boolean;
+}): string | null {
+  return input.played ? null : input.arrivedKey;
+}
