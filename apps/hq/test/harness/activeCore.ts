@@ -32,6 +32,7 @@ export const activeCoreLayer = (url: string) => {
         nextCheck: Effect.never,
         lastOk: Effect.undefined,
         inherit: () => Effect.void,
+        allowedWith: () => Effect.succeed(true),
       }),
     ),
   );
