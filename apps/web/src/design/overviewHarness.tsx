@@ -627,6 +627,7 @@ function HarnessPage() {
               onStart={() => {}}
               orgId="harness"
               organizationName="Acme"
+              painted
               settled
               viewer={ARRIVAL}
             />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { arrivalWelcome, welcomeOwed, type ArrivalApp } from "./arrival.logic";
+import { arrivalWelcome, welcomeOwed, welcomeStep, type ArrivalApp } from "./arrival.logic";
 
 const SNAP: ArrivalApp = { groupId: "g-snap", name: "Snap", mine: false, addMate: true };
 const BEVIRO: ArrivalApp = { groupId: "g-beviro", name: "Beviro", mine: false, addMate: true };
@@ -99,5 +99,40 @@ describe("when the welcome is said", () => {
     },
   ])("$sentence", ({ welcomed, apps, owed }) => {
     expect(welcomeOwed({ welcomed, apps })).toBe(owed);
+  });
+});
+
+describe("the welcome paints with the overview or not at all on that visit", () => {
+  it.each([
+    {
+      sentence: "Read before the overview paints: decided under its wait, painted with it",
+      settled: true,
+      hasApps: true,
+      painted: false,
+      step: "decide",
+    },
+    {
+      sentence: "Still reading under the overview's wait: it waits too",
+      settled: false,
+      hasApps: true,
+      painted: false,
+      step: "wait",
+    },
+    {
+      sentence: "The overview painted first: quiet on this visit, still owed on the next",
+      settled: false,
+      hasApps: true,
+      painted: true,
+      step: "late",
+    },
+    {
+      sentence: "The overview painted with nothing shared yet: it waits for a project",
+      settled: true,
+      hasApps: false,
+      painted: true,
+      step: "wait",
+    },
+  ] as const)("$sentence", ({ settled, hasApps, painted, step }) => {
+    expect(welcomeStep({ settled, hasApps, painted })).toBe(step);
   });
 });

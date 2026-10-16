@@ -12,6 +12,7 @@ import { Card } from "../../ui/card";
 import {
   arrivalWelcome,
   welcomeOwed,
+  welcomeStep,
   type ArrivalApp,
   type ArrivalWelcome as Welcome,
 } from "./arrival.logic";
@@ -19,6 +20,8 @@ import {
 interface Decided {
   readonly orgId: string;
   readonly welcome: Welcome | null;
+  /** The page painted before the welcome could decide: quiet now, owed on the next visit. */
+  readonly late: boolean;
 }
 
 export function ArrivalWelcome({
@@ -27,6 +30,7 @@ export function ArrivalWelcome({
   viewer,
   apps,
   settled,
+  painted,
   onStart,
 }: {
   readonly orgId: string;
@@ -35,19 +39,26 @@ export function ArrivalWelcome({
   readonly apps: ReadonlyArray<ArrivalApp>;
   /** The projects, who started their Mates and what HQ offers are read: the welcome may decide. */
   readonly settled: boolean;
+  /** The overview shows now (`overviewPaints`); the welcome paints with it or not on this visit. */
+  readonly painted: boolean;
   readonly onStart: (groupId: string) => void;
 }) {
   const [decided, setDecided] = useState<Decided | null>(null);
   // Decided during render, so the line lands with the page and never pushes it down a frame later.
-  if (settled && apps.length > 0 && decided?.orgId !== orgId) {
-    const owed = welcomeOwed({ welcomed: wasWelcomed(orgId), apps });
-    setDecided({
-      orgId,
-      welcome: owed ? arrivalWelcome({ organizationName, viewer, apps }) : null,
-    });
+  if (decided?.orgId !== orgId) {
+    const step = welcomeStep({ settled, hasApps: apps.length > 0, painted });
+    if (step === "late") setDecided({ orgId, welcome: null, late: true });
+    if (step === "decide") {
+      const owed = welcomeOwed({ welcomed: wasWelcomed(orgId), apps });
+      setDecided({
+        orgId,
+        welcome: owed ? arrivalWelcome({ organizationName, viewer, apps }) : null,
+        late: false,
+      });
+    }
   }
   useEffect(() => {
-    if (decided !== null) markWelcomed(decided.orgId);
+    if (decided !== null && !decided.late) markWelcomed(decided.orgId);
   }, [decided]);
 
   const welcome = decided?.orgId === orgId ? decided.welcome : null;

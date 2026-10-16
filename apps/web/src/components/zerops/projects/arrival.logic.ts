@@ -42,6 +42,23 @@ export function welcomeOwed(input: {
   return !input.welcomed && input.apps.length > 0 && !input.apps.some(({ mine }) => mine);
 }
 
+/**
+ * Where the welcome stands on a render, until it has decided for this visit. It decides under the
+ * overview's one wait (`overviewPaints`), so it paints with the page; a page that painted before
+ * the welcome's reads settled stays as it painted, and the welcome is quiet on this visit — and
+ * still owed on the next, since nobody saw it. With nothing shared yet it waits for a project.
+ */
+export function welcomeStep(input: {
+  /** The projects, who started their Mates and what HQ offers are read. */
+  readonly settled: boolean;
+  readonly hasApps: boolean;
+  /** The overview shows now. */
+  readonly painted: boolean;
+}): "wait" | "decide" | "late" {
+  if (!input.settled) return input.painted ? "late" : "wait";
+  return input.hasApps ? "decide" : "wait";
+}
+
 export function arrivalWelcome(input: {
   readonly organizationName: string;
   readonly viewer: { readonly roleCode?: string | undefined; readonly canCreateProjects?: boolean };

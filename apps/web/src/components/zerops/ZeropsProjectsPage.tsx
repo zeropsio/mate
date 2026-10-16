@@ -784,10 +784,13 @@ export function ZeropsProjectsContent({
   search,
   onShow,
   project,
+  painted = true,
 }: {
   readonly search: ProjectsSearch;
   readonly onShow?: ((show: OverviewShow | undefined) => void) | undefined;
   readonly project?: ProjectPageSlot | undefined;
+  /** The page shows it now, past the overview's one wait (`overviewPaints`). */
+  readonly painted?: boolean;
 }) {
   const openMate = useOpenMate();
   const authGate = useRouteContext({
@@ -2523,6 +2526,7 @@ export function ZeropsProjectsContent({
           onStart={addMate}
           orgId={activeOrganization.id}
           organizationName={activeOrganization.name}
+          painted={painted}
           settled={arrivalSettled}
           viewer={activeOrganization}
         />
@@ -2797,7 +2801,11 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
         />
       ) : null}
       <div className={paints ? "contents" : "hidden"} inert={!paints}>
-        <ZeropsProjectsContent onShow={inPanel ? setPanelShow : undefined} search={search} />
+        <ZeropsProjectsContent
+          onShow={inPanel ? setPanelShow : undefined}
+          painted={paints}
+          search={search}
+        />
       </div>
     </ZeropsHostedFrame>
   );
