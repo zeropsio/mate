@@ -1139,10 +1139,9 @@ describe("revisioned HQ values", () => {
             everSignedIn: unknown;
           };
           assert.strictEqual(project.person.waitsOnViewer, runsWithoutSignIn && userId === "owner");
-          assert.strictEqual(
-            project.person.ownerUserId,
-            runsWithoutSignIn && userId === "owner" ? "owner" : null,
-          );
+          // Its maker owns it whether or not its agent waits on a sign-in; only a sign-in-free
+          // agent waits on them.
+          assert.strictEqual(project.person.ownerUserId, userId === "owner" ? "owner" : null);
           assert.deepStrictEqual(project.signedInNow, {});
           assert.deepStrictEqual(project.everSignedIn, {});
         }
