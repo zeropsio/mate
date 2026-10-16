@@ -79,5 +79,80 @@ describe("owner-reported layout regressions", () => {
         }),
       90_000,
     );
+
+    // The run, the owner's first release: 6 s after Release the card's History came and pushed
+    // what stood beside it, and the release's block went and pulled Project Mates 125 px up.
+    it.effect(
+      "a project's card holds still while its release goes out: nothing on it moves from the press until production runs it",
+      () =>
+        Effect.gen(function* () {
+          const f = yield* environmentFixtureWith({}, { stage: false });
+          const a = environmentActions(f);
+          yield* f.merge();
+          yield* f.s.given.signedIn;
+          const cardAt = `[data-zerops-surface="project-cards"] [data-zerops-group="${f.appId}"]`;
+          const page = f.s.page;
+          yield* Effect.promise(async () => {
+            await page.setViewport({ width: 1786, height: 1000 });
+            await page.goto(`${f.s.web.origin}/zerops`);
+            await page.waitForSelector(`${cardAt} [data-zerops-card-ready]`);
+            await resizeMenu(page, 435);
+          });
+          yield* Effect.promise(() => page.evaluate(recordHeldCard, cardAt));
+          yield* a.when.releaseFromReview;
+          yield* a.then.text("Putting v0.1.0 live", cardAt);
+          yield* a.when.finish("production");
+          yield* a.then.text("Running", `${cardAt} [data-zerops-place="production"]`);
+          const frames = yield* Effect.promise(() =>
+            page.evaluate(() => (window as unknown as { heldFrames: HeldFrame[] }).heldFrames),
+          );
+          // From before the press; its last frames are the result: production runs it.
+          const going = frames.filter((frame) => !frame.running);
+          const trace = frames.map((frame) => JSON.stringify(frame)).join("\n");
+          expect(going.length, `The card is watched while it releases:\n${trace}`).toBeGreaterThan(
+            0,
+          );
+          expect(
+            new Set(going.map((frame) => JSON.stringify([frame.mates, frame.buttons]))).size,
+            `Nothing on it moves while the release goes out:\n${trace}`,
+          ).toBe(1);
+        }),
+      90_000,
+    );
   });
 });
+
+/** What a releasing card showed, each time it changed: where its Mates and its buttons stand, from the card's corner. */
+interface HeldFrame {
+  readonly mates: number;
+  /** Production's buttons, each by its words and left edge. */
+  readonly buttons: string;
+  /** Production's line says it runs the release. */
+  readonly running: boolean;
+}
+
+function recordHeldCard(cardAt: string) {
+  const frames: HeldFrame[] = [];
+  (window as unknown as { heldFrames: HeldFrame[] }).heldFrames = frames;
+  const sample = () => {
+    const card = document.querySelector(cardAt);
+    const mates = card?.querySelector('[aria-label="Project Mates"]');
+    const production = card?.querySelector('[data-zerops-place="production"]');
+    if (card instanceof HTMLElement && mates instanceof HTMLElement) {
+      const { top, left } = card.getBoundingClientRect();
+      const frame: HeldFrame = {
+        mates: Math.round(mates.getBoundingClientRect().top - top),
+        buttons: [...(production?.querySelectorAll("button") ?? [])]
+          .map(
+            (button) =>
+              `${button.innerText}@${Math.round(button.getBoundingClientRect().left - left)}`,
+          )
+          .join(" "),
+        running: production?.textContent?.includes("Running") === true,
+      };
+      if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
+    }
+    requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+}
