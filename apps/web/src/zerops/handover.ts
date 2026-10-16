@@ -34,29 +34,6 @@ import {
 
 export const ZEROPS_HANDOVER_NONCE_KEY = "zerops-mate.handover-nonce.v1";
 
-/** What the person pressed, kept beside the nonce so a failed sign-up is retried as a sign-up. */
-export const ZEROPS_HANDOVER_INTENT_KEY = "zerops-mate.handover-intent.v1";
-
-function rememberIntent(intent: ZeropsHandoverIntent | undefined): void {
-  try {
-    if (intent === undefined) window.sessionStorage.removeItem(ZEROPS_HANDOVER_INTENT_KEY);
-    else window.sessionStorage.setItem(ZEROPS_HANDOVER_INTENT_KEY, intent);
-  } catch {
-    // Storage blocked: a retry starts as a sign-in, the way in for most people.
-  }
-}
-
-/** The intent of this tab's last hand-over, for its "Try again". */
-export function lastZeropsHandoverIntent(): ZeropsHandoverIntent | undefined {
-  try {
-    return window.sessionStorage.getItem(ZEROPS_HANDOVER_INTENT_KEY) === "register"
-      ? "register"
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** Remember the nonce across the round trip; `take` spends it. */
 export interface ZeropsHandoverNonceStore {
   readonly remember: (nonce: string) => void;
@@ -141,7 +118,6 @@ export function startZeropsHandover(
   if (!input.store) rememberSignInReturn();
   const store = input.store ?? sessionHandoverNonceStore;
   const nonce = mintZeropsHandoverNonce({ store });
-  rememberIntent(input.intent);
   const guiBaseUrl = input.guiBaseUrl ?? import.meta.env.VITE_ZEROPS_APP_URL;
   return buildZeropsAuthorizeUrl({
     nonce,
@@ -150,6 +126,17 @@ export function startZeropsHandover(
     ...(input.intent ? { intent: input.intent } : {}),
     ...(guiBaseUrl ? { guiBaseUrl } : {}),
   });
+}
+
+/**
+ * Try again after a failed hand-over: always a sign-in. The callback came back from Zerops, so a
+ * sign-up got as far as making the account, and a second sign-up would refuse its address;
+ * Zerops's sign-in offers to create an account to whoever has none.
+ */
+export function retryZeropsHandover(
+  input: Omit<Parameters<typeof startZeropsHandover>[0] & object, "intent"> = {},
+): string {
+  return startZeropsHandover(input);
 }
 
 /**
