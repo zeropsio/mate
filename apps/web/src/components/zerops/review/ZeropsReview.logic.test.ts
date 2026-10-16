@@ -674,9 +674,9 @@ describe("the sheet's footnote: what happens next", () => {
     [
       "a release ready to go",
       { state: "release-ready", live: "v2.3.1" },
-      "It takes about a minute. You can roll back to v2.3.1 from production's panel.",
+      "It takes a minute or two. You can roll back to v2.3.1 from production's panel.",
     ],
-    ["the first release", { state: "release-ready", live: undefined }, "It takes about a minute."],
+    ["the first release", { state: "release-ready", live: undefined }, "It takes a minute or two."],
     [
       "a release on its way: the review's own words",
       { state: "releasing", live: "v1" },

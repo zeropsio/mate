@@ -610,13 +610,13 @@ describe("releaseReview", () => {
     [
       "still comparing what goes out",
       { gate: { allowed: false, reason: RELEASE_CHECKING }, replaces: { kind: "first" } },
-      "It takes about a minute.",
+      "It takes a minute or two.",
       false,
     ],
     [
       "releasing",
       { outcome: { kind: "releasing" } },
-      "You can close this. The project's line in the menu follows the release.",
+      "You can close this. Production's line on the project's card follows it.",
       undefined,
     ],
     [
@@ -792,22 +792,22 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         title: "Rolling back to v0.1.55",
         why: "Preparing v0.1.58",
       },
-      "You can close this. The project's line in the menu follows the release.",
+      "You can close this. Production's line on the project's card follows it.",
     ],
     [
       // The tag existing is not production running it: HQ's deploy still decides.
       "tagged, on its way",
       {
         press: { kind: "done" },
-        outcome: { kind: "releasing", progress: "Putting v0.1.58 live · 0:40" },
+        outcome: { kind: "releasing", progress: "Putting v0.1.58 live · 40s" },
       },
       {
         state: "rolling-back",
         tone: "busy",
         title: "Rolling back to v0.1.55",
-        why: "Putting v0.1.58 live · 0:40",
+        why: "Putting v0.1.58 live · 40s",
       },
-      "You can close this. The project's line in the menu follows the release.",
+      "You can close this. Production's line on the project's card follows it.",
     ],
     [
       "rolled back once production runs it",

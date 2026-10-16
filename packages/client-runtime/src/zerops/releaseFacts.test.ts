@@ -822,3 +822,27 @@ describe("a release is released once its deploys have ended", () => {
     ).toBe(kind);
   });
 });
+
+// The run: "It takes about a minute", then a bare "1:00 … 1:34" under the same words; the menu
+// and the conversation count "42s", "7m 05s".
+describe("a release on its way says how long", () => {
+  it.each([
+    { name: "in the conversation's units", since: 40_000, progress: "Putting v0.1.0 live · 40s" },
+    { name: "minutes and seconds", since: 98_000, progress: "Putting v0.1.0 live · 1m 38s" },
+    {
+      name: "and that it takes longer than usual once past the minute or two it promised",
+      since: 130_000,
+      progress: "Putting v0.1.0 live · 2m 10s · taking longer than usual",
+    },
+  ])("$name", ({ since, progress }) => {
+    expect(
+      releaseOutcomeOf({
+        tagged: row("v0.1.0", undefined, { taggedAt: new Date(NOW - since).toISOString() }),
+        releasing: true,
+        pressing: false,
+        tag: "v0.1.0",
+        clockMs: NOW,
+      }),
+    ).toEqual({ kind: "releasing", progress });
+  });
+});

@@ -930,9 +930,14 @@ export interface ReleaseReviewModel extends ReviewModel {
   readonly ifWrong: string | undefined;
 }
 
-const RELEASE_FOLLOWS = "You can close this. The project's line in the menu follows the release.";
-/** What a release's foot says before the press: how long it takes. */
-export const RELEASE_TAKES = "It takes about a minute.";
+// Where a release goes on being said once its panel is closed: production's line on the card. The
+// menu's row shows no more than a busy mark (the run read "the project's line in the menu").
+const RELEASE_FOLLOWS = "You can close this. Production's line on the project's card follows it.";
+/** What a release's foot says before the press: how long it takes, as measured — the run's
+ *  first release went live in 98 s. */
+export const RELEASE_TAKES = "It takes a minute or two.";
+/** Past this, a release on its way says it takes longer than usual (`releaseOutcomeOf`). */
+export const RELEASE_ESTIMATE_MS = 2 * 60_000;
 
 function stageWhy(input: ReleaseReviewInput): string {
   const since =

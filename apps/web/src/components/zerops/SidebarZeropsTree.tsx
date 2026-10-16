@@ -90,6 +90,7 @@ import {
   type ZeropsGroupPendingMember,
   type ZeropsPlacedBirth,
   type ZeropsPublicRoute,
+  formatRunClock,
 } from "@t3tools/client-runtime/zerops";
 import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
@@ -220,7 +221,6 @@ import { useStopPress } from "~/zerops/conversationStop";
 import { withStopPress } from "~/zerops/conversationStop.logic";
 import {
   addressesPlace,
-  formatRunClock,
   projectHeadingMenu,
   sidebarMateKey,
   type HeadingMenuEntry,

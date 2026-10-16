@@ -10,7 +10,12 @@ import { GitDeliveryStatus } from "../GitDeliveryStatus";
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
-import { stageMarks, stageStandings, type ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import {
+  formatRunClock,
+  stageMarks,
+  stageStandings,
+  type ZeropsPublicRoute,
+} from "@t3tools/client-runtime/zerops";
 import { deployActivatedAt, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { useNavigate } from "@tanstack/react-router";
@@ -31,7 +36,6 @@ import { mateDecision } from "../mateDecision.logic";
 import { PersonAvatar } from "../primitives";
 import { SidebarMateAge } from "../SidebarMateAge";
 import type { MateRowSlot } from "../SidebarMateRow.logic";
-import { formatRunClock } from "../SidebarZeropsTree.logic";
 import {
   buildingOf,
   drawnChip,

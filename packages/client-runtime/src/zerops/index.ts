@@ -488,6 +488,7 @@ export {
   releaseStep,
   type ReleaseFacts,
 } from "./releaseFacts.ts";
+export { formatRunClock } from "./runClock.ts";
 export {
   changeReadout,
   type ChangeReadout,
