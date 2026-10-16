@@ -383,7 +383,7 @@ describe("finding someone on the team", () => {
     expect(teamSearchShown(people, query)).toBe(shown);
   });
 
-  it("A card's badge is the preset's name, else Zerops's role in words", () => {
+  it("A card's badge is the preset's name, else Custom role with the role's reach as its tooltip", () => {
     expect(
       people(
         teamPeople(
