@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   shownTeam,
+  teamSearchShown,
   teamGrantIds,
   teamPeople,
   type TeamInput,
@@ -366,6 +367,19 @@ describe("finding someone on the team", () => {
     { query: "nobody", found: [] },
   ])("The search finds by name or e-mail, any case: $query", ({ query, found }) => {
     expect(names(shownTeam(TEAM, query))).toEqual(found);
+  });
+
+  it.each([
+    { sentence: "A small team has no search", people: 5, query: "", shown: false },
+    { sentence: "A team of more than five has a search", people: 6, query: "", shown: true },
+    {
+      sentence: "The team's search stays while it filters, even as the team shrinks",
+      people: 3,
+      query: "ada",
+      shown: true,
+    },
+  ])("$sentence", ({ people, query, shown }) => {
+    expect(teamSearchShown(people, query)).toBe(shown);
   });
 
   it("A card's badge is the preset's name, else Zerops's role in words", () => {

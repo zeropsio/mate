@@ -18,6 +18,7 @@ import {
   INVITED_LINE,
   reachWords,
   shownTeam,
+  teamSearchShown,
   type TeamPerson,
   type TeamView,
 } from "./teamSettings.logic";
@@ -33,9 +34,6 @@ export function TeamSettings() {
     </SettingsPageContainer>
   );
 }
-
-/** More people than this, and the team page offers a search. */
-const SEARCH_FROM = 5;
 
 /** The team as drawn from what is known of it. */
 export function TeamList({
@@ -57,8 +55,7 @@ export function TeamList({
       headerAction={
         view.kind === "people" ? (
           <>
-            {/* A search only where there are enough people to look for one. */}
-            {view.people.length > SEARCH_FROM ? (
+            {teamSearchShown(view.people.length, query) ? (
               <div className="tm-team-search">
                 <InputGroup>
                   <InputGroupAddon>

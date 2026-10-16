@@ -278,6 +278,17 @@ export function teamPeople(input: TeamInput): TeamView {
   };
 }
 
+/** More people than this, and the team page offers a search. */
+const SEARCH_FROM = 5;
+
+/**
+ * Whether the team page shows its search: where there are enough people to look for one, and
+ * always while it filters, so the list is never narrowed by a field that is not there.
+ */
+export function teamSearchShown(people: number, query: string): boolean {
+  return people > SEARCH_FROM || query.trim() !== "";
+}
+
 /**
  * The people a search leaves — a name or an e-mail containing what was typed, any case — by name,
  * invitations not joined yet last, as legacy Zerops lists them. Zerops's member list dates nobody,
