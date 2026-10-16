@@ -127,7 +127,12 @@ export interface StreamState {
 export type StreamEvent =
   | { readonly kind: "demand"; readonly demanded: boolean }
   | { readonly kind: "handshake" }
-  | { readonly kind: "baseline-committed" }
+  /**
+   * `ages`: a source read once answered with a value that still changes without any write of
+   * ours (an invitation waiting on its invitee), so it is read again on the cadence until it
+   * answers settled.
+   */
+  | { readonly kind: "baseline-committed"; readonly ages?: boolean }
   /** `jitter` is a uniform draw in [0, 1] the caller supplies, so the function stays pure. */
   | { readonly kind: "fault"; readonly fault: StreamFault; readonly jitter: number }
   /** The retry the stream named came due. */
@@ -405,7 +410,7 @@ function step(state: StreamState, event: StreamEvent, now: number): StreamTransi
             repaired: false,
             fault: null,
             next:
-              state.mode === "sampled"
+              state.mode === "sampled" || (state.mode === "once" && event.ages === true)
                 ? { kind: "revalidate", at: now + STREAM_POLICY.sampledIntervalMs }
                 : state.mode === "once"
                   ? { kind: "await-input-change" }
