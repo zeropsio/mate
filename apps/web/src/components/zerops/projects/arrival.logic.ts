@@ -130,7 +130,9 @@ export function arrivalWelcome(input: {
   const action =
     start === undefined
       ? null
-      : { label: `Start your own Mate on ${start.name}`, groupId: start.groupId };
+      : // The words of the dialog it opens, and of the menu's way to it (run 2: "Start your own
+        // Mate" opened "Add a project Mate").
+        { label: `Add a project Mate to ${start.name}`, groupId: start.groupId };
   const on = projectsPhrase(input.apps);
   switch (teamRoleOf(input.viewer)) {
     // An Owner or an Admin runs the organization: a new browser is no arrival, so only HQ's record

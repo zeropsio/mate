@@ -23,7 +23,7 @@ describe("the first minute after an invitation", () => {
       apps: [SNAP],
       line: "Welcome to Acme. You're a Developer on Snap.",
       detail: null,
-      action: { label: "Start your own Mate on Snap", groupId: "g-snap" },
+      action: { label: "Add a project Mate to Snap", groupId: "g-snap" },
     },
     {
       sentence:
@@ -41,7 +41,7 @@ describe("the first minute after an invitation", () => {
       apps: [{ ...SNAP, addMate: false }, BEVIRO, SHOP],
       line: "Welcome to Acme. You're a Developer on Snap and 2 more projects.",
       detail: null,
-      action: { label: "Start your own Mate on Beviro", groupId: "g-beviro" },
+      action: { label: "Add a project Mate to Beviro", groupId: "g-beviro" },
     },
     {
       sentence: "A Developer whose projects take no Mate of theirs is offered none",
@@ -242,7 +242,7 @@ describe("a first visit, as HQ records it", () => {
     ).toEqual({
       line,
       detail,
-      action: { label: "Start your own Mate on Snap", groupId: "g-snap" },
+      action: { label: "Add a project Mate to Snap", groupId: "g-snap" },
     });
   });
 });
@@ -276,7 +276,7 @@ describe("the welcome never waits on an HQ that does not answer", () => {
 // Run 2 (2026-10-16): the welcome offered "Start your own Mate" while the project's first Mate was
 // still setting it up; the press opened a dialog that refused, and the button came back unchanged.
 describe("the welcome's way to start a Mate, while the project takes none yet", () => {
-  const action = { label: "Start your own Mate on Snap", groupId: "g-snap" };
+  const action = { label: "Add a project Mate to Snap", groupId: "g-snap" };
   it("says why in the button's place while the project takes no Mate, and offers it once it does", () => {
     const waiting = "Ada is still setting Snap up. New Mates can join once it's done.";
     expect(welcomeStart(action, () => waiting)).toEqual({ kind: "waits", line: waiting });
