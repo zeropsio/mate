@@ -35,11 +35,10 @@ import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
-import { progressClock } from "~/components/ui/progress.logic";
+import { formatElapsed } from "~/components/ui/progress.logic";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { MateDot } from "../MateDot";
 import { StopReadAgain } from "../StopReadAgain";
-import { ENVIRONMENT_CREATION_ESTIMATE_MS } from "../ZeropsEnvironmentCreation";
 import { heldLine } from "./emptyApps.logic";
 import { ProjectCardStandIn } from "./OverviewStandIn";
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
@@ -172,24 +171,16 @@ export function PlaceWords({ line }: { readonly line: PlaceLine }) {
   );
 }
 
-/** How long a place's wait has run and what it usually takes: it ticks here alone, never the card. */
+/** How long a place's wait has run: it ticks here alone, never the card. */
 function PlaceClock({ clock }: { readonly clock: NonNullable<PlaceLine["clock"]> }) {
   const nowMs = useSecondsNowMs(true);
-  const said = progressClock({
-    startedAtMs: clock.since,
-    nowMs,
-    endedAtMs: null,
-    estimateMs: clock.estimateMs,
-  });
-  return [said.elapsed, said.note].map((word) =>
-    word === null ? null : (
-      <Fragment key={word === said.elapsed ? "elapsed" : "note"}>
-        <span aria-hidden="true" className="ov-sep">
-          ·
-        </span>
-        <span className="tabular-nums">{word}</span>
-      </Fragment>
-    ),
+  return (
+    <>
+      <span aria-hidden="true" className="ov-sep">
+        ·
+      </span>
+      <span className="tabular-nums">{formatElapsed(nowMs - clock.since)}</span>
+    </>
   );
 }
 
@@ -285,8 +276,9 @@ const NEW_STAGE: PlaceLine = {
 };
 
 /**
- * A stage's line while it is being added: the step under way, and how long the adding has run
- * against what it usually takes — the words its own reading takes over once the adding ends.
+ * A stage's line while it is being added: the step under way, and how long the adding has run —
+ * the words its own reading takes over once the adding ends. A card's line has no room for what it
+ * usually takes.
  */
 function settingUpLine(line: PlaceLine, settingUp: StageSettingUp | undefined): PlaceLine {
   const since = settingUp?.startedAtMs ?? null;
@@ -295,7 +287,7 @@ function settingUpLine(line: PlaceLine, settingUp: StageSettingUp | undefined): 
     dot: "unknown",
     words: [settingUp?.step ?? "Setting up…"],
     trouble: false,
-    clock: since === null ? undefined : { since, estimateMs: ENVIRONMENT_CREATION_ESTIMATE_MS },
+    clock: since === null ? undefined : { since },
   };
 }
 
