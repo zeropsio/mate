@@ -545,6 +545,15 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
+/* The same tint as `dialog-backdrop`, the app behind left sharp. */
+@utility dialog-backdrop-plain {
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+
+  @variant dark {
+    background: color-mix(in srgb, var(--background) 64%, transparent);
+  }
+}
+
 /* Behind a picture or a video shown as large as the window lets it be: near black in both themes. */
 @utility dialog-media-backdrop {
   background: color-mix(in srgb, var(--color-black) 75%, transparent);
