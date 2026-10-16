@@ -5,7 +5,7 @@
  * through `useSetUpEnvironment`.
  */
 import { useAtomValue } from "@effect/atom-react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   buildZeropsGroupTree,
   readZeropsMembership,
@@ -16,7 +16,11 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useCallback, useContext, useMemo } from "react";
 
 import { hqDown, hqNavigationAtom } from "../state/zerops";
-import { environmentOffersOf, questionFactsOf } from "./addEnvironment.logic";
+import {
+  addsEnvironmentInPlace,
+  environmentOffersOf,
+  questionFactsOf,
+} from "./addEnvironment.logic";
 import { HeldInventoryContext } from "./inventoryContext";
 import { placedPressesIn, useMatePresses } from "./matePress";
 import { useCreations } from "./creations";
@@ -126,14 +130,19 @@ export function useEnvironmentQuestionFacts(
 export function useAddEnvironment(): (groupId: string, tier: HeldEnvironment["tier"]) => void {
   const ask = useSetUpEnvironment((state) => state.ask);
   const navigate = useNavigate();
+  const router = useRouter();
   return useCallback(
     (groupId, tier) => {
-      // Asked once the projects page stands: asked first, a project page's own embedded list would
-      // take the ask and open the form there, only to lose it as the navigation unmounts that page.
+      if (addsEnvironmentInPlace(router.state.location.pathname, groupId)) {
+        ask(groupId, tier);
+        return;
+      }
+      // Asked once the projects page stands: asked first, the page being left could take the ask
+      // and open the form there, only to lose it as the navigation unmounts that page.
       void navigate({ to: "/zerops" }).then(() => {
         ask(groupId, tier);
       });
     },
-    [ask, navigate],
+    [ask, navigate, router],
   );
 }

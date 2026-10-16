@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { environmentOffersOf, finishOffered, questionFactsOf } from "./addEnvironment.logic";
+import {
+  addsEnvironmentInPlace,
+  environmentOffersOf,
+  finishOffered,
+  questionFactsOf,
+} from "./addEnvironment.logic";
 
 // What the one question after a first merge is told: a button only for a tier the one rule
 // (`environmentAddable`) offers — HQ's offer, the recipe, nothing of it here yet — and a production
@@ -137,4 +142,18 @@ it("An old HQ still offers its Zerops doors and no Git target authority", () => 
       { current: true, unavailableSince: null },
     ),
   ).toEqual({ stage: true, production: true });
+});
+
+describe("where Add stage's sheet opens", () => {
+  it.each([
+    { from: "/group/g-snap/flow", groupId: "g-snap", inPlace: true },
+    { from: "/group/g-snap/flow", groupId: "g-tea", inPlace: false },
+    { from: "/zerops", groupId: "g-snap", inPlace: true },
+    { from: "/mate/p-alba", groupId: "g-snap", inPlace: false },
+  ])(
+    "over the page it was pressed on when that page holds the project's form: $from for $groupId",
+    ({ from, groupId, inPlace }) => {
+      expect(addsEnvironmentInPlace(from, groupId)).toBe(inPlace);
+    },
+  );
 });
