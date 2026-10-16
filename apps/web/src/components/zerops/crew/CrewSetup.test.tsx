@@ -145,6 +145,18 @@ describe("CrewSetup", () => {
     expect(words).not.toMatch(/\b(Plans|Builds|Reviews) (Plans|Builds)/u);
   });
 
+  // The onboarding run, 2026-10-16: when the Mate's roster landed, the goal's line went, its box
+  // jumped up 20 px and shrank from 164 to 120 px, and a three-line note pushed Start down.
+  it("keeps the goal and the footer's note as they were when a proposal lands", () => {
+    const goalBlock = (html: string) =>
+      /The goal<\/span>[\s\S]*?<\/textarea>/u.exec(html)?.[0] ?? "no goal block";
+    const before = render(withGoal(nobody, "A tea shop."));
+    const after = render(withGoal(proposed, "A tea shop."));
+    expect(goalBlock(before)).toContain("Every crewmate reads it.");
+    expect(goalBlock(after)).toBe(goalBlock(before));
+    expect(text(before)).toContain("Each builder works in its own copy of Nova's code");
+  });
+
   it("says once, in the footer, that each crewmate works in its own copy", () => {
     const words = text(render(withGoal(proposed, "A tea shop.")));
     expect(count(words, "own copy")).toBe(1);
