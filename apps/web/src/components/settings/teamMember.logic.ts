@@ -92,9 +92,9 @@ export function projectAccessIntro(input: {
   }
   const who =
     input.roleCode === "BASIC_USER"
-      ? "A basic user works on"
+      ? "They work on"
       : input.roleCode === "READ_ONLY"
-        ? "A read-only member sees"
+        ? "They see"
         : "Owners and admins reach";
   return input.viewerGives
     ? `${who} every project by their role. Set a different level on a project here.`
@@ -545,9 +545,9 @@ export function inviteReachLine(membership: OrgMembership, projects: number): st
     case "ADMIN":
       return "An admin reaches every project.";
     case "BASIC_USER":
-      return "A basic user works on every project by their role.";
+      return "They work on every project by their role.";
     case "READ_ONLY":
-      return "A read-only member sees every project by their role.";
+      return "They see every project by their role.";
     case "NO_ACCESS":
       if (membership.canCreateProjects)
         return projects === 0

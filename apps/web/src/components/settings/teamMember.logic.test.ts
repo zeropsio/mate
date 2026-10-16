@@ -1,4 +1,9 @@
-import { presetMembership, type OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
+import {
+  ORG_ROLE_CODES,
+  presetMembership,
+  type OrgMembership,
+} from "@t3tools/client-runtime/zerops/teamRoles";
+import { LEGACY_VOCABULARY_PATTERNS } from "@t3tools/shared/legacyVocabulary";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -444,6 +449,22 @@ describe("an invitation on one page", () => {
       if (role !== "owner") expect(PRESET_WORDS[role].description).not.toMatch(never);
     },
   );
+});
+
+describe("what a role reaches, in the glossary's words", () => {
+  const said = new Set(
+    ORG_ROLE_CODES.flatMap((roleCode) =>
+      [false, true].flatMap((createsProjects) => [
+        projectAccessIntro({ roleCode, createsProjects, viewerGives: true }),
+        projectAccessIntro({ roleCode, createsProjects, viewerGives: false }),
+        inviteReachLine(membership(roleCode, createsProjects), 0),
+        inviteReachLine(membership(roleCode, createsProjects), 2),
+      ]),
+    ),
+  );
+  it.each([...said])("never names a role by a retired word: %s", (line) => {
+    for (const { pattern } of LEGACY_VOCABULARY_PATTERNS) expect(line).not.toMatch(pattern);
+  });
 });
 
 describe("what an invitation's projects say a role reaches", () => {
