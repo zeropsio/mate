@@ -33,7 +33,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
-import { ChatAttachment } from "./orchestration.ts";
+import { ChatAttachment, ModelSelection } from "./orchestration.ts";
 import { ZeropsAgentId } from "./zerops.ts";
 import {
   CrewAppState,
@@ -1004,5 +1004,75 @@ export class CrewCommandError extends Schema.TaggedError<CrewCommandError>()("Cr
     return this.detail === null
       ? `Crew command refused (${this.reason})`
       : `Crew command refused (${this.reason}): ${this.detail}`;
+  }
+}
+
+/* ------------------------------------------------------------ a proposed crew */
+
+/** How many builders a proposed crew may have. */
+export const CREW_PROPOSAL_BUILDERS_MAX = 6;
+/** How long a goal a proposal reads: as long as a crew's brief may be. */
+export const CREW_PROPOSAL_GOAL_MAX = 16_000;
+/** How long a proposed crewmate's name may be: a row's name. */
+export const CREW_PROPOSAL_NAME_MAX = 40;
+/** How long a proposed crewmate's part may be: one line under its name. */
+export const CREW_PROPOSAL_PART_MAX = 240;
+
+/** One proposed crewmate: its name and the one line of its part. */
+export const CrewProposalSeat = Schema.Struct({
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(CREW_PROPOSAL_NAME_MAX)),
+  part: TrimmedNonEmptyString.check(
+    Schema.isMaxLength(CREW_PROPOSAL_PART_MAX),
+    Schema.makeFilter((part) => (/[\r\n]/u.test(part) ? "A part is one line" : undefined)),
+  ),
+});
+export type CrewProposalSeat = typeof CrewProposalSeat.Type;
+
+/**
+ * *Let Fen suggest a crew*: a roster proposed from the goal, for the person to
+ * edit before anything is saved — a lead and one builder or more, no two of
+ * one name. It is generated outside any conversation and touches no code.
+ */
+export const CrewProposal = Schema.Struct({
+  lead: CrewProposalSeat,
+  builders: Schema.Array(CrewProposalSeat).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(CREW_PROPOSAL_BUILDERS_MAX),
+  ),
+}).check(
+  Schema.makeFilter((proposal) => {
+    const names = [proposal.lead, ...proposal.builders].map((seat) => seat.name.toLowerCase());
+    return new Set(names).size === names.length ? undefined : "Two crewmates share a name";
+  }),
+);
+export type CrewProposal = typeof CrewProposal.Type;
+
+/** What a proposal is asked from: the goal as written, on the Mate's own model. */
+export const CrewProposalInput = Schema.Struct({
+  goal: TrimmedNonEmptyString.check(Schema.isMaxLength(CREW_PROPOSAL_GOAL_MAX)),
+  modelSelection: ModelSelection,
+});
+export type CrewProposalInput = typeof CrewProposalInput.Type;
+
+/**
+ * Why no crew was proposed: the Mate's agent may not run for this person, or
+ * cannot generate text (`refused`, admission's or the agent's words in
+ * `detail`); the agent failed or ran out of time (`failed`); or it answered
+ * something that is not a crew (`malformed`).
+ */
+export const CrewProposalFailure = Schema.Literals(["refused", "failed", "malformed"]);
+export type CrewProposalFailure = typeof CrewProposalFailure.Type;
+
+export class CrewProposalError extends Schema.TaggedError<CrewProposalError>()(
+  "CrewProposalError",
+  {
+    reason: CrewProposalFailure,
+    detail: Schema.NullOr(Schema.String),
+  },
+) {
+  override get message(): string {
+    return this.detail === null
+      ? `No crew proposed (${this.reason})`
+      : `No crew proposed (${this.reason}): ${this.detail}`;
   }
 }

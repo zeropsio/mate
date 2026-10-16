@@ -8,6 +8,10 @@ import {
   crewCommandReach,
   CrewFeedFrame,
   CrewFiles,
+  CREW_PROPOSAL_BUILDERS_MAX,
+  CrewProposal,
+  CrewProposalError,
+  CrewProposalInput,
   crewReachLogins,
   CrewSeam,
   CrewSnapshot,
@@ -608,6 +612,68 @@ describe("CrewCommandError", () => {
   it("refuses a reason outside the closed list", () => {
     expect(() =>
       decodeError({ _tag: "CrewCommandError", reason: "something-else", detail: null }),
+    ).toThrow();
+  });
+});
+
+describe("CrewProposal", () => {
+  const decodeProposal = Schema.decodeUnknownSync(CrewProposal);
+  const seat = (name: string, part = `${name} builds the storefront.`) => ({ name, part });
+
+  it("is a lead and builders, each with a name and the one line of its part", () => {
+    expect(
+      decodeProposal({
+        lead: seat("Lead", "Plans the shop and splits the work."),
+        builders: [seat("Cart"), seat("Checkout")],
+      }),
+    ).toEqual({
+      lead: { name: "Lead", part: "Plans the shop and splits the work." },
+      builders: [
+        { name: "Cart", part: "Cart builds the storefront." },
+        { name: "Checkout", part: "Checkout builds the storefront." },
+      ],
+    });
+  });
+
+  it.each([
+    ["no builder", { lead: seat("Lead"), builders: [] }],
+    [
+      "more builders than a crew takes",
+      {
+        lead: seat("Lead"),
+        builders: Array.from({ length: CREW_PROPOSAL_BUILDERS_MAX + 1 }, (_, index) =>
+          seat(`Builder ${index + 1}`),
+        ),
+      },
+    ],
+    ["a nameless crewmate", { lead: seat("Lead"), builders: [seat("  ")] }],
+    [
+      "a part over more than one line",
+      { lead: seat("Lead"), builders: [seat("Cart", "One.\nTwo.")] },
+    ],
+    ["two crewmates of one name", { lead: seat("Cart"), builders: [seat("cart")] }],
+    ["a name too long for a row", { lead: seat("Lead"), builders: [seat("x".repeat(41))] }],
+    ["no lead", { builders: [seat("Cart")] }],
+  ])("refuses a proposal with %s", (_name, proposal) => {
+    expect(() => decodeProposal(proposal)).toThrow();
+  });
+
+  it("is asked for from a goal, on the Mate's own model", () => {
+    const decodeInput = Schema.decodeUnknownSync(CrewProposalInput);
+    const modelSelection = { instanceId: "claude", model: "claude-sonnet-4-5" };
+    expect(decodeInput({ goal: "A tea shop that ships weekly.", modelSelection }).goal).toBe(
+      "A tea shop that ships weekly.",
+    );
+    expect(() => decodeInput({ goal: "   ", modelSelection })).toThrow();
+  });
+
+  it("fails for a closed list of reasons", () => {
+    const decodeProposalError = Schema.decodeUnknownSync(CrewProposalError);
+    expect(
+      decodeProposalError({ _tag: "CrewProposalError", reason: "malformed", detail: null }).reason,
+    ).toBe("malformed");
+    expect(() =>
+      decodeProposalError({ _tag: "CrewProposalError", reason: "something-else", detail: null }),
     ).toThrow();
   });
 });
