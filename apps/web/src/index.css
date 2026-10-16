@@ -7562,12 +7562,9 @@ a.ov-chip-who:focus-visible {
 }
 
 .tm-card {
-  display: grid;
-  justify-items: center;
-  align-content: start;
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  padding: 26px 16px 22px;
   border-radius: 16px;
   background: var(--ov-lift);
   text-align: center;
@@ -7576,15 +7573,44 @@ a.ov-chip-who:focus-visible {
     box-shadow 150ms var(--ease-out-strong);
 }
 
+/* The card's own page opens from all of it but its foot, whose press is its own. */
+.tm-card-body {
+  display: grid;
+  flex: 1;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 26px 16px 22px;
+  border-radius: inherit;
+  outline: none;
+}
+
 /* The resting card already carries a lift, so the pointer adds to it rather than replacing it. */
-.tm-card:hover {
+.tm-card:has(> a.tm-card-body:hover) {
   background: color-mix(in oklab, var(--foreground) 9%, var(--background));
   box-shadow: inset 0 0 0 1px var(--ov-rule);
 }
 
-.tm-card:focus-visible {
+.tm-card:has(> .tm-card-body:focus-visible) {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* An invitation's Send again, under what the card says, its trouble above it. */
+.tm-card-foot {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-top: -14px;
+  padding: 0 16px 18px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.tm-card-trouble {
+  color: var(--destructive);
+  text-wrap: pretty;
 }
 
 .tm-card[data-pending] .tm-card-face {

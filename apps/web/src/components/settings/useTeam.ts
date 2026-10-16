@@ -14,6 +14,7 @@ import {
   shownHqProjectPeopleAtom,
   shownProjectsAtom,
   type MembersRead,
+  type ResentInvitation,
   type SampledRead,
 } from "@t3tools/client-runtime/data";
 import { hqProjectsOf } from "@t3tools/client-runtime/zerops/hq";
@@ -183,6 +184,48 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
     [clientId, operations],
   );
 
+  /**
+   * Send again (`resend-invitation`): resolves once Zerops sent the invitation again, else with
+   * what to tell the person and — where the earlier one is withdrawn and no new one went — what to
+   * send again.
+   */
+  const resend = useCallback(
+    async (input: {
+      readonly clientUserId: string;
+      readonly names?: { readonly firstName: string; readonly lastName: string };
+      readonly invitation?: ResentInvitation;
+    }): Promise<
+      | { readonly sent: true }
+      | { readonly sent: false; readonly trouble: string; readonly invitation?: ResentInvitation }
+    > => {
+      if (operations === null || clientId === null)
+        return { sent: false, trouble: "Zerops isn't reachable from here." };
+      let handed: { readonly clientUserId: string | null; readonly unsent?: string } | undefined;
+      let invitation = input.invitation;
+      try {
+        await operations.run(
+          { kind: "resend-invitation", orgId: clientId, ...input },
+          {
+            orgId: clientId,
+            unobserved: "Check the organization's members in Zerops.",
+            accepted: (result) => {
+              handed = result;
+              if (result.clientUserId === null) invitation = result.invitation;
+            },
+          },
+        );
+        return { sent: true };
+      } catch (cause) {
+        const trouble =
+          handed?.unsent ?? (cause instanceof Error ? cause.message : "Zerops didn't send it.");
+        // Withdrawn and sent again after all: nothing is left to send.
+        if (handed !== undefined && handed.clientUserId !== null) return { sent: false, trouble };
+        return { sent: false, trouble, ...(invitation === undefined ? {} : { invitation }) };
+      }
+    },
+    [clientId, operations],
+  );
+
   return {
     view,
     grants,
@@ -194,5 +237,6 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
     writable: operations !== null && clientId !== null,
     write,
     check,
+    resend,
   };
 }

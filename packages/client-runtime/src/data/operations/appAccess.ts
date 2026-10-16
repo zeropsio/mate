@@ -127,6 +127,8 @@ declare module "../model.ts" {
     readonly "resend-invitation": {
       readonly clientUserId: string | null;
       readonly invitation: ResentInvitation;
+      /** Why no new invitation went, in the person's words, where Zerops refused it. */
+      readonly unsent?: string;
     };
     readonly "set-app-access": { readonly membershipEnded: boolean };
     /** How many people's lists were written. */

@@ -3,6 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   arrivingRow,
+  INVITED_LINE,
+  resendCards,
+  SENT_AGAIN_LINE,
   sentInvitation,
   shownTeam,
   teamSearchShown,
@@ -10,6 +13,7 @@ import {
   teamPeople,
   type TeamInput,
   type TeamPlace,
+  type TeamResend,
 } from "./teamSettings.logic";
 
 const member = (
@@ -474,5 +478,129 @@ describe("the new row's arrival plays once", () => {
     },
   ])("$sentence", ({ arrivedKeys, played, arriving }) => {
     expect(arrivingRow({ arrivedKeys, played })).toEqual(arriving);
+  });
+});
+
+describe("sending an invitation again", () => {
+  const owner = member("me", "Me", "OWNER");
+  const invited = (id = "nova") =>
+    member(id, "Nova", "NO_ACCESS", {
+      status: "WAITING_AUTHORIZATION",
+      user: { id: `u-${id}`, email: "nova@example.com" },
+    });
+  const team = (list: ReadonlyArray<ZeropsOrganizationMember>, roleCode = "OWNER") =>
+    people(teamPeople(input(list, { viewer: { roleCode, membershipId: "cu-me" } })));
+  const isNova = ({ email }: { readonly email: string | null }) => email === "nova@example.com";
+  const nova = team([owner, invited()]).find(isNova)!;
+  const INVITATION = {
+    email: "nova@example.com",
+    membership: {
+      roleCode: "NO_ACCESS" as const,
+      canCreateProjects: false,
+      canViewFinances: false,
+      canEditFinances: false,
+    },
+    grants: [{ projectId: "shop-prod", roleCode: "BASIC_USER" }],
+  };
+  const card = (
+    list: ReadonlyArray<ZeropsOrganizationMember>,
+    resend?: Omit<TeamResend, "person">,
+    roleCode?: string,
+  ) => {
+    const cards = resendCards(
+      team(list, roleCode),
+      resend === undefined ? {} : { "nova@example.com": { ...resend, person: nova } },
+    );
+    const { person, ...rest } = cards.find(({ person }) => isNova(person)) ?? {};
+    return person === undefined ? null : { key: person.key, ...rest };
+  };
+
+  it.each([
+    {
+      sentence: "An invitation offers Send again to whoever may change the team",
+      list: [owner, invited()],
+      resend: undefined,
+      shown: {
+        key: "cu-nova",
+        listed: true,
+        invited: INVITED_LINE,
+        offer: "send-again",
+        busy: false,
+        trouble: null,
+      },
+    },
+    {
+      sentence: "An invitation sent again says so on its card",
+      list: [owner, invited("nova-2")],
+      resend: { state: "sent" as const },
+      shown: {
+        key: "cu-nova-2",
+        listed: true,
+        invited: SENT_AGAIN_LINE,
+        offer: "send-again",
+        busy: false,
+        trouble: null,
+      },
+    },
+    {
+      sentence: "An invitation being sent again keeps its card while Zerops lists it no more",
+      list: [owner],
+      resend: { state: "sending" as const },
+      shown: {
+        key: "cu-nova",
+        listed: false,
+        invited: INVITED_LINE,
+        offer: null,
+        busy: true,
+        trouble: null,
+      },
+    },
+    {
+      sentence:
+        "A Send again whose new invitation Zerops didn't send keeps the card, says why and offers the invitation again",
+      list: [owner],
+      resend: { state: "failed" as const, trouble: "Not sent.", invitation: INVITATION },
+      shown: {
+        key: "cu-nova",
+        listed: false,
+        invited: null,
+        offer: "invite-again",
+        busy: false,
+        trouble: "Not sent.",
+      },
+    },
+    {
+      sentence: "A Send again Zerops refused leaves the invitation standing, said on its card",
+      list: [owner, invited()],
+      resend: { state: "failed" as const, trouble: "Refused." },
+      shown: {
+        key: "cu-nova",
+        listed: true,
+        invited: INVITED_LINE,
+        offer: "send-again",
+        busy: false,
+        trouble: "Refused.",
+      },
+    },
+    {
+      sentence: "A Send again that ended without sending anything leaves no card behind",
+      list: [owner],
+      resend: { state: "failed" as const, trouble: "Gone." },
+      shown: null,
+    },
+  ])("$sentence", ({ list, resend, shown }) => {
+    expect(card(list, resend)).toEqual(shown);
+  });
+
+  it("Someone who joined, or an invitation the viewer may not change, offers no Send again", () => {
+    const joined = resendCards(team([owner, member("nova", "Nova", "NO_ACCESS")]), {});
+    expect(joined.find(({ person }) => isNova(person))).toMatchObject({
+      invited: null,
+      offer: null,
+    });
+    expect(card([owner, invited()], undefined, "BASIC_USER")).toMatchObject({
+      invited: INVITED_LINE,
+      offer: null,
+    });
   });
 });

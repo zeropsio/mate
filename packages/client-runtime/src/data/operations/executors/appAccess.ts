@@ -299,19 +299,18 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
       }
       const sending = invitation;
       const places = sending.grants.map(({ projectId }) => projectId);
-      const notSent = (message: string) =>
-        Effect.as(
+      const notSent = (message: string) => {
+        const unsent = `Their earlier invitation is withdrawn, but Zerops didn't send the new one: ${message}`;
+        return Effect.as(
           Effect.promise(() => readBack(orgId, places)),
           receiptOf(
             requestId,
             orgId,
-            { clientUserId: null, invitation: sending },
-            {
-              kind: "failed",
-              evidence: `Their earlier invitation is withdrawn, but Zerops didn't send the new one: ${message}`,
-            },
+            { clientUserId: null, invitation: sending, unsent },
+            { kind: "failed", evidence: unsent },
           ),
         );
+      };
       const known = yield* Effect.result(
         Effect.mapError(
           verb(() => platform.validateOrganizationUser(orgId, sending.email)),

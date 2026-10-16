@@ -560,6 +560,8 @@ describe("sending an invitation again", () => {
             result: {
               clientUserId: null,
               invitation: { email: "known@example.com", grants: ON_SHOP },
+              unsent:
+                "Their earlier invitation is withdrawn, but Zerops didn't send the new one: Too many invitations.",
             },
           },
           outcome: {
