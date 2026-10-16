@@ -12350,8 +12350,8 @@ button.rv-relrow:hover .rv-relrow-go {
 .rv-where b {
   font-weight: 500;
 }
-.rv-where span {
-  font-family: var(--font-mono);
+/* Where each service stands, in the panel's words: no code type, and its deploy's door a link. */
+.rv-where > span {
   font-size: 13px;
   color: var(--muted-foreground);
 }
