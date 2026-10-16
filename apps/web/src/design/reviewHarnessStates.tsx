@@ -1067,7 +1067,7 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: (
       <Release
         press={{ kind: "done", deploys: DEPLOY_ANSWER }}
-        outcome={{ kind: "releasing", progress: "Production redeploys from v0.1.2 · 0:10" }}
+        outcome={{ kind: "releasing", progress: "Production redeploys from v0.1.2 · 10s" }}
         over={{
           name: "xyz",
           tag: "v0.1.2",
@@ -1150,6 +1150,11 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   { id: "release", label: "A release", node: <Release /> },
   {
+    id: "release-first",
+    label: "The first release: its version in words, Change behind it",
+    node: <Release over={{ replaces: { kind: "first" } }} />,
+  },
+  {
     id: "release-version",
     label: "The person's version, with the code's declaration",
     node: <Release initialVersion="1.0.0" />,
@@ -1164,7 +1169,7 @@ export const REVIEW_STATES: ReadonlyArray<{
     label: "Releasing",
     node: (
       <Release
-        outcome={{ kind: "releasing", progress: "Production redeploys from v0.1.57 · 1:12" }}
+        outcome={{ kind: "releasing", progress: "Production redeploys from v0.1.57 · 1m 12s" }}
         press={{ kind: "done" }}
       />
     ),
