@@ -52,6 +52,7 @@ import { renderCrewHome, parseBrief, type CrewDefinition } from "@t3tools/shared
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { RightPanelPage } from "~/components/RightPanelPage";
 import { RightPanelTabs } from "~/components/RightPanelTabs";
 import { CrewGoal } from "~/components/zerops/crew/CrewGoal";
 import { crewGoalMarkdown } from "~/components/zerops/crew/CrewGoal.logic";
@@ -861,7 +862,9 @@ function Harness() {
         terminalLabelsById={new Map()}
         widthStorageKey="mate:design-crew:panel-width"
       >
-        <Tab />
+        <RightPanelPage kind="crew" mate="Fen">
+          <Tab />
+        </RightPanelPage>
       </RightPanelTabs>
     </div>
   );

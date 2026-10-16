@@ -17,6 +17,11 @@ interface PageHeaderProps extends Omit<useRender.ComponentProps<"header">, "titl
   readonly line?: ReactNode;
   /** The page's own actions, at the end of the title's line. */
   readonly actions?: ReactNode;
+  /**
+   * `page` heads a whole page; `panel` heads a side-panel page: a smaller title, its line kept
+   * to one line, its own inset from the panel's edges.
+   */
+  readonly size?: "page" | "panel";
 }
 
 /**
@@ -32,11 +37,15 @@ function PageHeader({
   count,
   line,
   actions,
+  size = "page",
   ...props
 }: PageHeaderProps) {
+  const panel = size === "panel";
+  const Title = panel ? "h2" : "h1";
   const defaultProps = {
-    className: cn("flex min-w-0 items-start gap-3", className),
+    className: cn("flex min-w-0 items-start gap-3", panel && "shrink-0 px-4 pt-3", className),
     "data-slot": "page-header",
+    "data-size": size,
     children: (
       <>
         {lead === undefined || lead === null ? null : (
@@ -45,23 +54,34 @@ function PageHeader({
           </span>
         )}
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex min-h-8 min-w-0 items-center gap-2">
-            <h1 className="m-0 min-w-0 truncate font-semibold text-foreground text-xl leading-7">
+          <span className={cn("flex min-w-0 items-center gap-2", panel ? "min-h-7" : "min-h-8")}>
+            <Title
+              className={cn(
+                "m-0 min-w-0 truncate font-semibold text-foreground",
+                panel ? "text-emphasis" : "text-xl leading-7",
+              )}
+            >
               {title}
-            </h1>
+            </Title>
             {count === undefined || count === null ? null : (
               <span className="shrink-0 text-muted-foreground text-sm tabular-nums">{count}</span>
             )}
           </span>
           {line === undefined || line === null ? null : (
-            <span className="min-w-0 text-muted-foreground text-sm" data-slot="page-header-line">
+            <span
+              className={cn(
+                "min-w-0 text-muted-foreground",
+                panel ? "truncate text-body" : "text-sm",
+              )}
+              data-slot="page-header-line"
+            >
               {line}
             </span>
           )}
         </span>
         {actions === undefined || actions === null ? null : (
           <span
-            className="flex min-h-8 shrink-0 items-center gap-2"
+            className={cn("flex shrink-0 items-center gap-2", panel ? "min-h-7" : "min-h-8")}
             data-slot="page-header-actions"
           >
             {actions}

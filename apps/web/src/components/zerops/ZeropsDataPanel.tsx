@@ -67,7 +67,8 @@ import { useZeropsDataConsole } from "../../zerops/useZeropsFeeds";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-import { MicroLabel, STATUS_BADGE_TONE } from "./primitives";
+import { STATUS_BADGE_TONE } from "./primitives";
+import { RightPanelPageEdge } from "../RightPanelPage";
 import { ZeropsDataFilters } from "./ZeropsDataFilters";
 import { ZeropsDataQuery } from "./ZeropsDataQuery";
 import { ZeropsDataBlob } from "./ZeropsDataBlob";
@@ -262,7 +263,6 @@ export function ZeropsDataPanel({
             size="sm"
             variant="flat"
           >
-            <MicroLabel>Data</MicroLabel>
             <p className="text-muted-foreground text-xs">
               This Mate doesn't include the data console yet.
             </p>
@@ -761,18 +761,17 @@ export function ZeropsDataPanel({
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mx-auto w-full max-w-3xl">
           <Card data-zerops-data-panel="picker" size="sm" variant="flat">
+            <RightPanelPageEdge>
+              <Button
+                data-zerops-data-refresh
+                onClick={() => requestServices()}
+                size="sm"
+                variant="ghost"
+              >
+                Refresh
+              </Button>
+            </RightPanelPageEdge>
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <MicroLabel>Data</MicroLabel>
-                <Button
-                  data-zerops-data-refresh
-                  onClick={() => requestServices()}
-                  size="sm"
-                  variant="ghost"
-                >
-                  Refresh
-                </Button>
-              </div>
               {awaitingListing && standInRows.length > 0
                 ? serviceList(standInRows)
                 : (sessionLine ??

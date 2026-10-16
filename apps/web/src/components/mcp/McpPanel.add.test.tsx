@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
+import { RightPanelPage } from "../RightPanelPage";
 import { McpPanelBody, MCP_WORDS } from "./McpPanel";
 import { MCP_TAB_START } from "./McpServers.logic";
 import { CLAUDE, MCP_SERVERS_FIXTURE } from "./mcpServersFixture";
@@ -18,13 +19,14 @@ beforeEach(() => {
   root = createRoot(host);
   act(() =>
     root.render(
-      <McpPanelBody
-        act={async () => ({ ok: true })}
-        driver={CLAUDE}
-        mateName="Nova"
-        onRetry={() => undefined}
-        state={{ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE }}
-      />,
+      <RightPanelPage kind="mcp" mate="Nova">
+        <McpPanelBody
+          act={async () => ({ ok: true })}
+          driver={CLAUDE}
+          onRetry={() => undefined}
+          state={{ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE }}
+        />
+      </RightPanelPage>,
     ),
   );
 });
