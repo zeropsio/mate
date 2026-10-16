@@ -94,9 +94,11 @@ import {
 import { mateOpeningPhrase } from "~/zerops/mateComing";
 import {
   mateStageAwake,
+  zeropsMateAt,
   zeropsMateIdentityOf,
   type ZeropsMateIdentity,
 } from "~/zerops/mateIdentities";
+import { useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { takeMateConversation } from "~/zerops/mateOpening";
 import {
   ARRIVAL_PACE_MS,
@@ -171,6 +173,9 @@ import {
   type MateEmptyComing,
 } from "./ZeropsMateEmptyState";
 import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
+
+/** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
+export const HAND_OVER_NAME_WAIT_MS = 15_000;
 
 /** The coming page reads no server version: its *Finish setup* is all it takes of the menu. */
 const NO_VERSIONS: ReadonlyMap<string, string> = new Map();
@@ -408,6 +413,20 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // only the destination's placement readiness starts the wake and hand-off.
   const [handing, setHanding] = useState(false);
   if (up && !handing) setHanding(true);
+  // A Mate that came up here lands on a conversation that draws it only once the account's
+  // directory names it there (`zeropsMates`): until then its sign-in stands here, where it is drawn
+  // already — a stranger's empty conversation otherwise (run 2, 2026-10-16) — for a short wait at
+  // most. Any other Mate opens as soon as its conversation can.
+  const directory = useZeropsMateDirectory();
+  const namedThere =
+    environmentId !== null && zeropsMateAt(directory, environmentId).kind === "mate";
+  const [nameWaitOver, setNameWaitOver] = useState(false);
+  useEffect(() => {
+    if (!handing || !cameUp || namedThere) return;
+    const timer = setTimeout(() => setNameWaitOver(true), HAND_OVER_NAME_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [cameUp, handing, namedThere]);
+  const lands = !cameUp || namedThere || nameWaitOver;
   const handingOver = useMateHandOver((state) => state.handingOver);
   const liveActivity = useZeropsThreadActivity(threadRef);
   // The draft of the conversation it opens on, which the held room lays out at its height.
@@ -417,7 +436,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Until its conversation is read here: HQ's last word of it, as its menu row reads it.
   const toldActivity = useToldActivity(projectId);
   useEffect(() => {
-    if (!handing || environmentId === null || threadRef === null) return;
+    if (!handing || !lands || environmentId === null || threadRef === null) return;
     // Kept read from above every view while the route changes under it.
     if (cameUp) handingOver(threadRef);
     let current = true;
@@ -438,7 +457,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     return () => {
       current = false;
     };
-  }, [cameUp, environmentId, handing, handingOver, navigate, projectId, router, threadRef]);
+  }, [cameUp, environmentId, handing, handingOver, lands, navigate, projectId, router, threadRef]);
 
   // Its environment's conversations read, none of its own to hand over to (an older server):
   // opening it starts one, as its row would — once, telling what its door asked.
