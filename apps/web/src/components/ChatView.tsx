@@ -527,6 +527,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { useAssetUrls } from "../assets/assetUrls";
+import { appChunk } from "../lib/appChunks";
 
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -611,49 +612,69 @@ function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
 
   return [attachTransitionGroupRef, attachComposerAnchorRef, captureComposerRect] as const;
 }
-const AgentsPanel = lazy(() =>
-  import("./AgentsPanel").then((module) => ({ default: module.AgentsPanel })),
+const AgentsPanel = lazy(
+  appChunk(() => import("./AgentsPanel").then((module) => ({ default: module.AgentsPanel }))),
 );
-const ZeropsBrowserSurface = lazy(() =>
-  import("./zerops/ZeropsBrowserSurface").then((module) => ({
-    default: module.ZeropsBrowserSurface,
-  })),
+const ZeropsBrowserSurface = lazy(
+  appChunk(() =>
+    import("./zerops/ZeropsBrowserSurface").then((module) => ({
+      default: module.ZeropsBrowserSurface,
+    })),
+  ),
 );
-const ZeropsMacSurface = lazy(() =>
-  import("./zerops/ZeropsMacSurface").then((module) => ({
-    default: module.ZeropsMacSurface,
-  })),
+const ZeropsMacSurface = lazy(
+  appChunk(() =>
+    import("./zerops/ZeropsMacSurface").then((module) => ({
+      default: module.ZeropsMacSurface,
+    })),
+  ),
 );
-const ZeropsGitSurface = lazy(() =>
-  import("./zerops/ZeropsGitSurface").then((module) => ({ default: module.ZeropsGitSurface })),
+const ZeropsGitSurface = lazy(
+  appChunk(() =>
+    import("./zerops/ZeropsGitSurface").then((module) => ({ default: module.ZeropsGitSurface })),
+  ),
 );
-const ZeropsDataPanel = lazy(() =>
-  import("./zerops/ZeropsDataPanel").then((module) => ({ default: module.ZeropsDataPanel })),
+const ZeropsDataPanel = lazy(
+  appChunk(() =>
+    import("./zerops/ZeropsDataPanel").then((module) => ({ default: module.ZeropsDataPanel })),
+  ),
 );
-const ZeropsChangeDetailPage = lazy(() =>
-  import("./zerops/ZeropsGroupDetail").then((module) => ({
-    default: module.ZeropsChangeDetailPage,
-  })),
+const ZeropsChangeDetailPage = lazy(
+  appChunk(() =>
+    import("./zerops/ZeropsGroupDetail").then((module) => ({
+      default: module.ZeropsChangeDetailPage,
+    })),
+  ),
 );
-const CrewPanel = lazy(() =>
-  import("./zerops/crew/CrewPanel").then((module) => ({ default: module.CrewPanel })),
+const CrewPanel = lazy(
+  appChunk(() =>
+    import("./zerops/crew/CrewPanel").then((module) => ({ default: module.CrewPanel })),
+  ),
 );
-const ZeropsProjectsPage = lazy(() =>
-  import("./zerops/ZeropsProjectsPage").then((module) => ({ default: module.ZeropsProjectsPage })),
+const ZeropsProjectsPage = lazy(
+  appChunk(() =>
+    import("./zerops/ZeropsProjectsPage").then((module) => ({
+      default: module.ZeropsProjectsPage,
+    })),
+  ),
 );
-const McpPanel = lazy(() =>
-  import("./mcp/McpPanel").then((module) => ({ default: module.McpPanel })),
+const McpPanel = lazy(
+  appChunk(() => import("./mcp/McpPanel").then((module) => ({ default: module.McpPanel }))),
 );
-const ZeropsPanel = lazy(() =>
-  import("./zerops/ZeropsPanel").then((module) => ({ default: module.ZeropsPanel })),
+const ZeropsPanel = lazy(
+  appChunk(() =>
+    import("./zerops/ZeropsPanel").then((module) => ({ default: module.ZeropsPanel })),
+  ),
 );
-const VaultPanelContainer = lazy(() =>
-  import("./zerops/vault/VaultPanelContainer").then((module) => ({
-    default: module.VaultPanelContainer,
-  })),
+const VaultPanelContainer = lazy(
+  appChunk(() =>
+    import("./zerops/vault/VaultPanelContainer").then((module) => ({
+      default: module.VaultPanelContainer,
+    })),
+  ),
 );
-const DiffPanel = lazy(() => import("./DiffPanel"));
-const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
+const DiffPanel = lazy(appChunk(() => import("./DiffPanel")));
+const FilePreviewPanel = lazy(appChunk(() => import("./files/FilePreviewPanel")));
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
 type EnvironmentUnavailableState = {
   readonly environmentId: EnvironmentId;

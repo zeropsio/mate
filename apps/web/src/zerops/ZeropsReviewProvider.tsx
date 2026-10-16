@@ -22,6 +22,7 @@ import { XIcon } from "lucide-react";
 import { ZeropsReviewDialog } from "../components/zerops/review/ZeropsReviewDialog";
 import { Loading } from "../components/ui/loading";
 import { ReviewContext, reviewTargetKey, type OpenReview, type ReviewTarget } from "./review";
+import { appChunk } from "../lib/appChunks";
 
 /**
  * A review's code, fetched once the page is idle, so the first Review draws the review at once:
@@ -53,19 +54,25 @@ function preloadable<P extends object>(load: () => Promise<ComponentType<P>>) {
   };
 }
 
-const { preload: preloadChange, Preloaded: ZeropsChangeReview } = preloadable(() =>
-  import("../components/zerops/review/ZeropsChangeReview").then(
-    (module) => module.ZeropsChangeReview,
+const { preload: preloadChange, Preloaded: ZeropsChangeReview } = preloadable(
+  appChunk(() =>
+    import("../components/zerops/review/ZeropsChangeReview").then(
+      (module) => module.ZeropsChangeReview,
+    ),
   ),
 );
-const { preload: preloadCrewTask, Preloaded: ZeropsCrewTaskReview } = preloadable(() =>
-  import("../components/zerops/review/ZeropsCrewTaskReview").then(
-    (module) => module.ZeropsCrewTaskReview,
+const { preload: preloadCrewTask, Preloaded: ZeropsCrewTaskReview } = preloadable(
+  appChunk(() =>
+    import("../components/zerops/review/ZeropsCrewTaskReview").then(
+      (module) => module.ZeropsCrewTaskReview,
+    ),
   ),
 );
-const { preload: preloadRelease, Preloaded: ZeropsReleaseReview } = preloadable(() =>
-  import("../components/zerops/review/ZeropsReleaseReview").then(
-    (module) => module.ZeropsReleaseReview,
+const { preload: preloadRelease, Preloaded: ZeropsReleaseReview } = preloadable(
+  appChunk(() =>
+    import("../components/zerops/review/ZeropsReleaseReview").then(
+      (module) => module.ZeropsReleaseReview,
+    ),
   ),
 );
 
