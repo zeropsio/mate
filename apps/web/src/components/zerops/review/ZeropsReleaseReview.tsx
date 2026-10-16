@@ -34,6 +34,7 @@ import {
   releaseVersionField,
   releaseVersionSuggestions,
   reviewAge,
+  rollbackOnItsWay,
   rollbackReads,
   rollbackReview,
   RELEASE_CHECKING,
@@ -945,26 +946,38 @@ function RollbackData({
   );
   const suggestion = asked?.tag ?? flow.release.suggestion;
   const runs = asked === undefined ? flow.release.runs : asked.runs;
+  // A roll back to this release already on its way, pressed elsewhere — production's "Rolling back
+  // to v0.1.0" line opens this review on it: it follows that roll back to its end, held once seen.
+  const onItsWay = rollbackOnItsWay({
+    inFlight: flow.release.inFlight,
+    releases: flow.releases,
+    tag,
+  });
+  const [following, setFollowing] = useState<string | undefined>(undefined);
+  if (made === undefined && following === undefined && onItsWay !== undefined)
+    setFollowing(onItsWay);
+  const followed = made ?? following;
   const follows = releaseFollows({
     made,
-    held: undefined,
+    held: following === undefined ? undefined : { tag: following },
     press,
-    inFlight: undefined,
+    inFlight: onItsWay,
     stalled: flow.release.stalled,
     suggestion,
     releases: flow.releases,
   });
-  const tagged = made === undefined ? undefined : follows.tagged;
+  const tagged = followed === undefined ? undefined : follows.tagged;
   const done = press.kind === "done";
-  const clockMs = useSecondsNowMs(done && follows.ticking);
+  const tracking = done || following !== undefined;
+  const clockMs = useSecondsNowMs(tracking && follows.ticking);
   // Past the wait for it, or with a newer release above it, the roll back says how it ended.
   const outcome = releaseOutcomeOf({
     tagged,
-    releasing: done,
-    stalled: done && follows.stalled,
-    superseded: done ? follows.superseded : undefined,
+    releasing: tracking,
+    stalled: tracking && follows.stalled,
+    superseded: tracking ? follows.superseded : undefined,
     pressing: false,
-    tag: made ?? suggestion,
+    tag: followed ?? suggestion,
     clockMs,
   });
   // What production ran as it was offered, held from the press: once it lands, production runs
@@ -1018,7 +1031,7 @@ function RollbackData({
       // back now.
       permission={flow.release.permission}
       name={name}
-      nextTag={made ?? suggestion}
+      nextTag={followed ?? suggestion}
       now={now}
       onClose={onClose}
       onFix={(problem) => {

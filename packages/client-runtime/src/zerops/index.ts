@@ -488,6 +488,7 @@ export {
   releaseOutcomeOf,
   releaseStageMarks,
   releaseStep,
+  rollbackOnItsWay,
   type ReleaseFacts,
 } from "./releaseFacts.ts";
 export { formatRunClock } from "./runClock.ts";
