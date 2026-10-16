@@ -1237,7 +1237,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     const everyMate = entries.filter(({ item }) => hasMate(item));
     // Whose Mates the viewer asked to see (Mine / Everyone).
     const mateEntries = everyMate.filter(({ item }) => shown?.(item) ?? true);
-    // Its Mates being created, after the listed ones: the listing holds none of them yet.
+    // Its Mates being created — the viewer's own — after their listed ones: the listing holds none yet.
     const coming = group?.pending.filter((member) => member.kind === "mate") ?? [];
     const mateCount = mateEntries.length + coming.length;
     if (mateCount === 0 && (group === undefined || everyMate.length > 0)) return null;
@@ -2025,8 +2025,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               }}
               open={open}
             >
-              {ordered.map(({ item }) => mateRow(item, "kid"))}
+              {/* The viewer's Mates first, those they are making after their listed ones and
+                  before colleagues': a Mate made here is the viewer's from its press, so its row
+                  stands where its listed row will, and never leaps over the others. */}
+              {ordered.filter((entry) => entry.mine).map(({ item }) => mateRow(item, "kid"))}
               {coming.map((member) => comingRow(member, "kid"))}
+              {ordered.filter((entry) => !entry.mine).map(({ item }) => mateRow(item, "kid"))}
             </SidebarProjectFold>
           </RowMarks.Provider>
         ),

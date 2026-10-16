@@ -2845,6 +2845,40 @@ describe("a group of Mates folded to its row", () => {
     );
   });
 
+  // A Mate made here is the viewer's from its press: its row stands among theirs, before a
+  // colleague's, where its listed row will stand — never at the end, to leap up once it is listed.
+  it("puts a Mate the viewer is making after their own Mates and before a colleague's", () => {
+    const mounted = mount(
+      tree({
+        activeProjectId: "vera-dev",
+        getOwner: (item: ZeropsCandidate) =>
+          item.project.id === "crm-bo"
+            ? { name: "Ada Lovelace", initials: "AL", avatarUrl: null, isViewer: true }
+            : { name: "Jan Novák", initials: "JN", avatarUrl: null, isViewer: false },
+        births: [
+          {
+            projectId: "vera-dev",
+            startedAt: Date.now(),
+            placement: {
+              groupId: "aaa",
+              groupName: "Beviro CRM",
+              kind: "mate",
+              displayName: "Vera",
+            },
+          },
+        ],
+      }),
+    );
+    const units = mounted.root
+      .findAll(
+        (node) =>
+          typeof node.type === "string" && node.props["data-zerops-mate-unit"] !== undefined,
+      )
+      .map((node) => node.props["data-zerops-mate-unit"] as string)
+      .filter((unit) => !unit.startsWith("group:"));
+    expect(units).toEqual(["crm-bo", "vera-dev", "crm-dev"]);
+  });
+
   // Folding the group you are in leaves the conversation open; its row stands for it.
   it("wears the list's band on its row while folded around the open conversation", () => {
     const band = (mounted: ReactTestRenderer) =>
