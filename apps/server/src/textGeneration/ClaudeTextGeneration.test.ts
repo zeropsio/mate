@@ -429,6 +429,36 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGeneration", (it) => {
     ),
   );
 
+  it.effect("proposes a crew from the goal with no tools at all", () =>
+    withFakeClaudeEnv(
+      {
+        output: JSON.stringify({
+          structured_output: {
+            lead: { name: "Lead", part: "Plans the tea shop." },
+            builders: [{ name: "Checkout", part: "Builds the checkout." }],
+          },
+        }),
+        stdinMustContain: "A tea shop that ships weekly.",
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const generated = yield* textGeneration.generateCrewProposal({
+            cwd: process.cwd(),
+            goal: "A tea shop that ships weekly.",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("claudeAgent"),
+              model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
+            },
+          });
+
+          expect(generated).toEqual({
+            lead: { name: "Lead", part: "Plans the tea shop." },
+            builders: [{ name: "Checkout", part: "Builds the checkout." }],
+          });
+        }),
+    ),
+  );
+
   it.effect("runs Claude text generation with the configured CLAUDE_CONFIG_DIR", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;

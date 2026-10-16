@@ -325,3 +325,36 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
 
   return { prompt, outputSchema };
 }
+
+// ---------------------------------------------------------------------------
+// Crew proposal
+// ---------------------------------------------------------------------------
+
+export interface CrewProposalPromptInput {
+  goal: string;
+}
+
+/**
+ * *Let Fen suggest a crew*: a lead and builders for the goal, each named by the
+ * area it owns, its part one sentence. The answer is only a proposal: the
+ * person edits it before anything is saved, so the agent changes nothing.
+ */
+export function buildCrewProposalPrompt(input: CrewProposalPromptInput) {
+  const prompt = [
+    "You propose a small crew of coding agents for a software goal.",
+    "A crew is one lead, who plans the work and splits it, and builders, who each build one part of it in their own copy of the code.",
+    "",
+    "Rules:",
+    "- Propose one lead and between 1 and 6 builders; fewer is better when the goal is small.",
+    '- Name each crewmate by the area it owns, in one or two words (like "Checkout" or "Search"); never a person\'s name, and no two alike.',
+    '- Write each part as one plain sentence that starts with a verb and says what that crewmate is responsible for (like "Builds the checkout and its payment step.").',
+    "- Split the builders by area of the code, so no two change the same files.",
+    "- Do not use tools, read or write files, or run commands. Answer only with the JSON.",
+    "",
+    "Goal:",
+    limitSection(input.goal.trim(), 16_000),
+  ].join("\n");
+  const Seat = Schema.Struct({ name: Schema.String, part: Schema.String });
+  const outputSchema = Schema.Struct({ lead: Seat, builders: Schema.Array(Seat) });
+  return { prompt, outputSchema };
+}

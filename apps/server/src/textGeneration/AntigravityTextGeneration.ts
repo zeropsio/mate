@@ -27,6 +27,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildCrewProposalPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -385,10 +386,20 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
       };
     });
 
+  const generateCrewProposal: TextGeneration.TextGeneration["Service"]["generateCrewProposal"] =
+    Effect.fn("AntigravityTextGeneration.generateCrewProposal")(function* (input) {
+      return yield* runAntigravityJson({
+        operation: "generateCrewProposal",
+        ...buildCrewProposalPrompt({ goal: input.goal }),
+        modelSelection: input.modelSelection,
+      });
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateCrewProposal,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

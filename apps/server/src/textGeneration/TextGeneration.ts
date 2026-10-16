@@ -74,6 +74,20 @@ export interface ThreadTitleGenerationResult {
   needsRefinement?: boolean | undefined;
 }
 
+export interface CrewProposalGenerationInput {
+  /** A directory holding nothing of the project: a proposal reads only the goal. */
+  cwd: string;
+  goal: string;
+  /** What model and provider to use for generation. */
+  modelSelection: ModelSelection;
+}
+
+/** A crew as the agent answered it, before the crew's own rules judge it. */
+export interface CrewProposalGenerationResult {
+  lead: { readonly name: string; readonly part: string };
+  builders: ReadonlyArray<{ readonly name: string; readonly part: string }>;
+}
+
 /**
  * TextGeneration - Service tag for commit and change request text generation.
  */
@@ -105,6 +119,11 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+    /** Propose a crew — a lead and builders — for a goal, without tools. */
+    readonly generateCrewProposal: (
+      input: CrewProposalGenerationInput,
+    ) => Effect.Effect<CrewProposalGenerationResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -112,7 +131,8 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "generateCrewProposal";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -164,6 +184,10 @@ export const make = Effect.gen(function* () {
             return yield* textGeneration.generateThreadTitle({ ...input, linkedContext });
           }),
         ),
+      ),
+    generateCrewProposal: (input) =>
+      resolveInstance(registry, "generateCrewProposal", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.generateCrewProposal(input)),
       ),
   });
 });
