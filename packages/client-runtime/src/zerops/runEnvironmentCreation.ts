@@ -21,7 +21,8 @@
  *   ready.
  * - An environment **without one** has nothing to hand off to: no container,
  *   no health probe. So this waits for its services itself, on the account's
- *   services listing, until every one of them has settled.
+ *   services listing, until every one of them has settled — or the
+ *   platform's patience for them runs out, which stops the step as uncertain.
  *
  * The platform is a parameter (R1): this package may not reach for a client,
  * a clock or a timer, and the tests must not either.
@@ -52,11 +53,12 @@ export interface EnvironmentCreationPlatform {
    * with the reason a write did not go through.
    */
   readonly register: (projectId: string) => Promise<void>;
-  /** Reads the latest shared-model projection; this callback performs no platform request. */
   /**
    * Resolves with the project's services once every one of them has settled
-   * (`servicesSettled`), as the account's services listing holds them: read as they change, never
-   * on a clock. Rejects where that listing can no longer be followed.
+   * (`servicesSettled`), as the account's services listing holds them: read as they change,
+   * performing no platform request. Rejects where that listing can no longer be followed, and —
+   * uncertain (`isUncertainZeropsFailure`) — once the platform's patience for them ran out: the
+   * bound is the platform's, since this package holds no clock.
    */
   readonly untilServicesSettled: (
     projectId: string,
