@@ -56,6 +56,7 @@ import { ZeropsMateUpdateControl } from "./zerops/ZeropsMateUpdateControl";
 import { recallCheckoutIsRepo } from "./ChatView.logic";
 import {
   diffScope,
+  latestChangedTurnId,
   resolveCheckpointDiffAvailability,
   resolveDiffSelection,
 } from "./DiffPanel.logic";
@@ -243,7 +244,10 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
       shownSelection.kind === "turn" && selectedTurn
         ? { ...shownSelection, turnId: selectedTurn.turnId }
         : shownSelection,
-    latestTurnId: latestTurn?.turnId,
+    latestTurnId: latestChangedTurnId({
+      newest: latestTurn,
+      latestTurn: activeThread?.latestTurn,
+    }),
   });
   const selectedScopeLabel =
     scope === "unstaged"

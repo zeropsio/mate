@@ -1,9 +1,10 @@
 import type { VcsListRefsResult } from "@t3tools/contracts";
 import { collectionPresentation, type EnvironmentQueryView } from "../state/query";
 import { buildBaseRefChoices } from "../lib/baseRefChoices";
-import type { TurnId } from "@t3tools/contracts";
+import type { OrchestrationLatestTurn, TurnId } from "@t3tools/contracts";
 
 import type { DiffPanelSelection } from "../diffPanelStore";
+import type { TurnDiffSummary } from "../types";
 
 export interface CheckpointDiffAvailability {
   readonly enabled: boolean;
@@ -58,6 +59,20 @@ export function diffScope(input: {
     case "turn":
       return input.shown.turnId === input.latestTurnId ? "latest" : "turn";
   }
+}
+
+/**
+ * The turn the scope may call the latest: the newest turn that changed code, unless the
+ * conversation went on to a later turn that changed none — then that change goes by its number.
+ */
+export function latestChangedTurnId(input: {
+  readonly newest: Pick<TurnDiffSummary, "turnId" | "completedAt"> | undefined;
+  readonly latestTurn: Pick<OrchestrationLatestTurn, "requestedAt"> | null | undefined;
+}): TurnId | undefined {
+  if (input.newest === undefined) return undefined;
+  return input.latestTurn && input.latestTurn.requestedAt > input.newest.completedAt
+    ? undefined
+    : input.newest.turnId;
 }
 
 export function baseRefPresentation(
