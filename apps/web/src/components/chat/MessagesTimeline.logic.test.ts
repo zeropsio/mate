@@ -3104,6 +3104,24 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  // A run 2 follow-up: the stopped run's card read "stopped after 28s" and an amber line under it
+  // said "Stopped — nothing more will change." — one fact twice.
+  it.each([
+    { name: "the run it stopped says so on its card", ended: "interrupted" as const, shown: false },
+    { name: "only work the run left was stopped", ended: "completed" as const, shown: true },
+  ])("a Stop is said once, where it ended something: $name", ({ ended, shown }) => {
+    const list = deriveMessagesTimelineRows({
+      timelineEntries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Started.")],
+      latestTurn: { turnId: turn("t1"), state: ended, startedAt: at(0), completedAt: at(3) },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+      endNotice: { words: "Stopped — nothing more will change.", calm: true, stop: true },
+    });
+    expect(list.some((row) => row.id === "thread-error")).toBe(shown);
+  });
+
   // The owner's pick, S6 on the "Composer Strips" board (2026-10-12): what happened becomes a quiet
   // row in the conversation, not a strip over the composer.
   it.each([

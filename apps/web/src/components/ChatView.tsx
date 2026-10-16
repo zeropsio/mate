@@ -533,8 +533,11 @@ const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_CONVERSATION_NOTICES: ReadonlyArray<ConversationNotice> = [];
-/** A Stop pressed here ended everything: the conversation's last row says so, calmly. */
-const STOPPED_NOTICE = { words: STOPPED_WORDS, calm: true } as const;
+/**
+ * A Stop pressed here ended everything: the conversation's last row says so, calmly, unless the
+ * stopped run's card already does.
+ */
+const STOPPED_NOTICE = { words: STOPPED_WORDS, calm: true, stop: true } as const;
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
 function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
   const transitionGroupRef = useRef<HTMLDivElement | null>(null);

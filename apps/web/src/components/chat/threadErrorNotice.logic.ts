@@ -9,6 +9,8 @@ export interface ThreadEndNotice {
   readonly words: string;
   /** An expected refusal — a usage limit, a sign-in — said calmly, never as an alert. */
   readonly calm: boolean;
+  /** The person's Stop ended everything: said here only when the stopped run's card does not. */
+  readonly stop?: true;
 }
 
 export function threadErrorNotice(input: {
