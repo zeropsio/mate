@@ -36,6 +36,7 @@ import {
 } from "../../zerops/composerReviewDismissal";
 import { useOpenReview, type ReviewTarget } from "../../zerops/review";
 import { usePutLive, type PutLiveAsk } from "../../zerops/putLive";
+import { putLiveMergeGate, type PutLiveMergePull } from "../../zerops/putLive.logic";
 import { useZeropsMate } from "../../zerops/useZeropsMates";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -123,6 +124,7 @@ export function ZeropsNextStepStrip({
   strip,
   onReview,
   onPutLive,
+  putLiveHeld,
   onMore,
   onDismiss,
 }: {
@@ -134,6 +136,11 @@ export function ZeropsNextStepStrip({
    * blue button, and Review steps back to quiet words beside it (`putLive.logic.ts`).
    */
   readonly onPutLive?: (() => void) | undefined;
+  /**
+   * Why *Put it live* waits where it would be offered: the review's verdict on the change (a
+   * required check, HQ still judging it), said beside Review, the one button, where it moves on.
+   */
+  readonly putLiveHeld?: string | undefined;
   /** Opens the project's page, where every change waiting is listed. */
   readonly onMore?: ((groupId: string) => void) | undefined;
   /** Puts the strip away for this change, from the button that was pressed. */
@@ -197,13 +204,20 @@ export function ZeropsNextStepStrip({
         <p className="truncate text-muted-foreground text-line leading-4.5">{strip.detail}</p>
       </div>
       {onPutLive === undefined ? (
-        <Button
-          onClick={(event) => {
-            onReview(strip.target, event.currentTarget);
-          }}
-        >
-          Review
-        </Button>
+        <div className="flex min-w-0 items-center gap-3">
+          {putLiveHeld === undefined ? null : (
+            <p className="max-w-56 truncate text-muted-foreground text-line" role="status">
+              {putLiveHeld}
+            </p>
+          )}
+          <Button
+            onClick={(event) => {
+              onReview(strip.target, event.currentTarget);
+            }}
+          >
+            Review
+          </Button>
+        </div>
       ) : (
         <div className="flex items-center gap-2">
           <Button
@@ -316,6 +330,23 @@ export function useZeropsNextStepStrip(
           merged: false,
           description: pull.description,
         } satisfies PutLiveAsk["change"]);
+  // What the review's Merge would say of it now: Put it live merges only what it would.
+  const verdictPull =
+    pull === undefined || !single
+      ? undefined
+      : JSON.stringify({
+          number: pull.number,
+          headSha: pull.headSha,
+          pipeline: pull.pipeline,
+          kind: pull.kind,
+          baseBranch: pull.baseBranch,
+          mergeability: pull.mergeability,
+          merged: pull.merged,
+          mergedAt: pull.mergedAt,
+          state: pull.state,
+          behind: pull.behind,
+          ready: pull.ready,
+        } satisfies PutLiveMergePull);
   const held = pending.question || pending.approval;
   const environmentId = threadRef?.environmentId;
   // The composer is memoised: the strip keeps its identity while what it
@@ -324,7 +355,7 @@ export function useZeropsNextStepStrip(
   // re-renders the composer.
   const shown = strip === null ? null : JSON.stringify(strip);
   return useMemo(() => {
-    const top = (onPutLive?: () => void) =>
+    const top = (putLive?: PutLiveDoor) =>
       shown === null ? (
         // Its room is held for the viewer's own composer, which must not move when the change
         // comes; a colleague's read-along line holds none (HQ may never list that viewer the
@@ -337,7 +368,8 @@ export function useZeropsNextStepStrip(
           onMore={(groupId) => {
             void navigate({ to: "/group/$groupId/flow", params: { groupId } });
           }}
-          onPutLive={onPutLive}
+          onPutLive={putLive?.kind === "press" ? putLive.onPress : undefined}
+          putLiveHeld={putLive?.kind === "held" ? putLive.words : undefined}
           onDismiss={dismiss}
           onReview={(target, from) => {
             openReview(target, { from });
@@ -354,10 +386,25 @@ export function useZeropsNextStepStrip(
         groupId={groupId}
         held={held}
         top={top}
+        verdictPull={
+          verdictPull === undefined ? undefined : (JSON.parse(verdictPull) as PutLiveMergePull)
+        }
         yours={yours}
       />
     );
-  }, [change, dismiss, environmentId, groupId, held, navigate, openReview, reserved, shown, yours]);
+  }, [
+    change,
+    dismiss,
+    environmentId,
+    groupId,
+    held,
+    navigate,
+    openReview,
+    reserved,
+    shown,
+    verdictPull,
+    yours,
+  ]);
 }
 
 /**
@@ -369,6 +416,7 @@ function PutLiveComposerTop({
   groupId,
   environmentId,
   change,
+  verdictPull,
   held,
   yours,
   top,
@@ -376,9 +424,11 @@ function PutLiveComposerTop({
   readonly groupId: string;
   readonly environmentId: EnvironmentId;
   readonly change: PutLiveAsk["change"] | undefined;
+  /** The change as its review judges it, where the strip carries one. */
+  readonly verdictPull: PutLiveMergePull | undefined;
   readonly held: boolean;
   readonly yours: boolean;
-  readonly top: (onPutLive?: () => void) => ReactNode;
+  readonly top: (putLive?: PutLiveDoor) => ReactNode;
 }) {
   const offered = usePutLiveOffered(yours ? groupId : undefined);
   const ask = usePutLive((state) => state.ask);
@@ -386,11 +436,25 @@ function PutLiveComposerTop({
   const mate = known.kind === "mate" ? known.mate : undefined;
   const row = usePutLiveRow(groupId, { tint: mate?.tint ?? "slate", shape: mate?.shape });
   if (row !== null && !held) return row;
+  if (!offered || change === undefined) return top();
+  const gate = putLiveMergeGate({
+    pull: verdictPull,
+    mateName: mate?.name ?? "Its Mate",
+    now: Date.now(),
+  });
   return top(
-    offered && change !== undefined
-      ? () => {
-          ask({ groupId, change });
-        }
-      : undefined,
+    gate.kind === "held"
+      ? gate
+      : {
+          kind: "press",
+          onPress: () => {
+            ask({ groupId, change });
+          },
+        },
   );
 }
+
+/** *Put it live* on the strip: one press, or why it waits for the review. */
+type PutLiveDoor =
+  | { readonly kind: "press"; readonly onPress: () => void }
+  | { readonly kind: "held"; readonly words: string };

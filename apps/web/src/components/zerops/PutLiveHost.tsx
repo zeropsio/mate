@@ -19,7 +19,12 @@ import {
   type ZeropsProjectFlow,
 } from "~/zerops/projectFlows";
 import { usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
-import { putLiveNext, putLiveSheet, type PutLiveRun } from "~/zerops/putLive.logic";
+import {
+  putLiveMergeGate,
+  putLiveNext,
+  putLiveSheet,
+  type PutLiveRun,
+} from "~/zerops/putLive.logic";
 import { useOpenReview } from "~/zerops/review";
 import { useAddEnvironment, useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
@@ -135,6 +140,19 @@ function PutLiveSheetContainer({
       ? { ...read, what: { title: "Reading what is merged…", lines: [] }, hold: "Reading…" }
       : read;
   const seeCode = ask.change ?? (merged?.length === 1 ? merged[0] : undefined);
+  // A change still waiting is merged only where its review would merge it: else the sheet says
+  // the review's verdict, and See the code is the way on.
+  const gate = putLiveMergeGate({
+    pull:
+      ask.change === undefined || ask.change.merged
+        ? undefined
+        : flow?.pullRequests.find(
+            (pull) =>
+              pull.repository === ask.change?.repository && pull.number === ask.change.number,
+          ),
+    mateName: "Its Mate",
+    now: Date.now(),
+  });
   const change =
     ask.change === undefined
       ? undefined
@@ -150,9 +168,11 @@ function PutLiveSheetContainer({
       model={
         running !== undefined && running.phase !== "failed"
           ? { ...model, hold: "It's already on its way." }
-          : offers?.zerops?.production === false
-            ? { ...model, hold: "Production can be added here only as a Git branch." }
-            : model
+          : gate.kind === "held"
+            ? { ...model, hold: gate.words }
+            : offers?.zerops?.production === false
+              ? { ...model, hold: "Production can be added here only as a Git branch." }
+              : model
       }
       onSetUpYourself={
         offers?.production === true

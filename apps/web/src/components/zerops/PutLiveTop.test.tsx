@@ -105,6 +105,19 @@ describe("the change waiting, while the project has no production", () => {
     expect(primary).toEqual(["Put it live"]);
   });
 
+  it("says why Put it live waits for the review, with Review as its one button", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsNextStepStrip
+        onReview={() => {}}
+        putLiveHeld="Required checks running"
+        strip={STRIP}
+      />,
+    );
+    expect(markup).toContain("Required checks running");
+    expect(markup).toContain(">Review<");
+    expect(markup).not.toContain("Put it live");
+  });
+
   it("keeps Review as its one button once a production exists", () => {
     const markup = renderToStaticMarkup(<ZeropsNextStepStrip onReview={() => {}} strip={STRIP} />);
     expect(markup).not.toContain("Put it live");

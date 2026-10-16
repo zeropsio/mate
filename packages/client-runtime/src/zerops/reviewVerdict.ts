@@ -501,8 +501,13 @@ function changePipelineOf(pull: ChangeReviewInput["pull"]): NonNullable<ReviewMo
   };
 }
 
-/** The change's own verdict, before anything was pressed. */
-function changeVerdictOf(input: ChangeReviewInput): {
+/**
+ * The change's own verdict, before anything was pressed: whether it can merge now, and why not. Every
+ * door that merges a change asks it first — the review's Merge and *Put it live* alike.
+ */
+export function changeMergeVerdict(
+  input: Pick<ChangeReviewInput, "pull" | "mateName" | "conflict" | "commits" | "now">,
+): {
   readonly verdict: ReviewVerdict;
   readonly enabled: boolean;
 } {
@@ -747,7 +752,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   // Close without merging, quiet beside Merge where HQ's rule offers it — never while Merge runs.
   const secondary = input.offered?.close === true ? CLOSE_OFFER : undefined;
 
-  const verdictOf = changeVerdictOf(input);
+  const verdictOf = changeMergeVerdict(input);
   const { verdict } = verdictOf;
   if (verdict.state === "empty") {
     return {

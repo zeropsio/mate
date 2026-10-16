@@ -452,6 +452,7 @@ export {
   REVIEW_LABEL,
   REVIEW_RELEASE_LABEL,
   changeReview,
+  changeMergeVerdict,
   crewTaskReview,
   releaseReview,
   gitRemoteExpiry,
