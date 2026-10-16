@@ -8,6 +8,7 @@ import {
   crewServiceHint,
   crewWriterWithoutHost,
   crewEffortOptions,
+  crewJobFootLine,
   crewLoginLabel,
   crewLoginNote,
   crewLoginOptions,
@@ -420,5 +421,39 @@ describe("crewWaitingMembers", () => {
     { name: "the file not read yet", file: null, roster: [], waiting: [] },
   ])("$name", ({ file, roster, waiting }) => {
     expect(crewWaitingMembers(file, roster).map((each) => each.handle)).toEqual(waiting);
+  });
+});
+
+// Run 2: a draft crewmate's editor said "It picks up its new job with its next message, in a fresh
+// conversation. Its work stays." of a crewmate that had never run.
+describe("what a crewmate's Save does, under its job", () => {
+  it.each([
+    {
+      name: "a crewmate of a crew not started yet starts with it",
+      input: { applied: false, crewApplied: false, loginChanged: false },
+      line: "It starts with this job when you start the crew.",
+    },
+    {
+      name: "a draft crewmate's changed login changes nothing live",
+      input: { applied: false, crewApplied: false, loginChanged: true },
+      line: "It starts with this job when you start the crew.",
+    },
+    {
+      name: "a crewmate added to a running crew joins it now",
+      input: { applied: false, crewApplied: true, loginChanged: false },
+      line: "It joins the crew now, with this job.",
+    },
+    {
+      name: "a running crewmate picks it up with its next message",
+      input: { applied: true, crewApplied: true, loginChanged: false },
+      line: "It picks up its new job with its next message, in a fresh conversation. Its work stays.",
+    },
+    {
+      name: "a running crewmate on another login starts afresh now",
+      input: { applied: true, crewApplied: true, loginChanged: true },
+      line: "It starts a fresh conversation now.",
+    },
+  ])("$name", ({ input, line }) => {
+    expect(crewJobFootLine(input)).toBe(line);
   });
 });

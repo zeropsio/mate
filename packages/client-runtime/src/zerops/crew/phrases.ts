@@ -902,6 +902,10 @@ export const CREW_JOB_WORDS = {
   saveLine:
     "It picks up its new job with its next message, in a fresh conversation. Its work stays.",
   freshLine: "It starts a fresh conversation now.",
+  /** A crewmate of a crew not started yet: nothing of it runs. */
+  draftLine: "It starts with this job when you start the crew.",
+  /** A crewmate added to a running crew. */
+  joinLine: "It joins the crew now, with this job.",
   newTitle: "A new crewmate",
   newLeadTitle: "A lead",
   add: "Add to the crew",
