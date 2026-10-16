@@ -498,7 +498,6 @@ describe("decodeZeropsCard — browser", () => {
           { url: "https://kanbandev-26a7.prg1.zerops.app/api", method: "GET", status: 500 },
         ],
         durationMs: 2400,
-        forkRecoveryAttempted: false,
       }),
     ).toEqual({
       kind: "browser",
@@ -506,7 +505,6 @@ describe("decodeZeropsCard — browser", () => {
       consoleErrorCount: 1,
       pageErrorCount: 1,
       failedRequestCount: 1,
-      forkRecoveryAttempted: false,
       hasScreenshot: false,
       steps: [
         { label: "open https://kanbandev-26a7.prg1.zerops.app", success: true },
@@ -526,7 +524,6 @@ describe("decodeZeropsCard — browser", () => {
         url: "https://kanbandev-26a7.prg1.zerops.app",
         steps: [{ command: ["open", "https://kanbandev-26a7.prg1.zerops.app"], success: true }],
         screenshot: { width: 1280, height: 720 },
-        forkRecoveryAttempted: true,
         message: "Chrome wedged behind CDP (signal: Target closed). Full reset ran automatically.",
       }),
     ).toEqual({
@@ -535,7 +532,6 @@ describe("decodeZeropsCard — browser", () => {
       consoleErrorCount: 0,
       pageErrorCount: 0,
       failedRequestCount: 0,
-      forkRecoveryAttempted: true,
       hasScreenshot: true,
       message: "Chrome wedged behind CDP (signal: Target closed). Full reset ran automatically.",
       steps: [{ label: "open https://kanbandev-26a7.prg1.zerops.app", success: true }],

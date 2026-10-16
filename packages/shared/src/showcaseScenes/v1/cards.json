@@ -475,7 +475,7 @@
             },
             "zerops": {
               "toolName": "zerops_browser",
-              "resultText": "{\"url\":\"https://apidev-26a7-3000.prg1.zerops.app\",\"steps\":[{\"command\":[\"open\",\"https://apidev-26a7-3000.prg1.zerops.app\"],\"success\":true},{\"command\":[\"snapshot\",\"-i\",\"-c\"],\"success\":true},{\"command\":[\"screenshot\",\"/tmp/apidev.png\"],\"success\":true},{\"command\":[\"errors\"],\"success\":true},{\"command\":[\"console\"],\"success\":true},{\"command\":[\"network\",\"requests\"],\"success\":true},{\"command\":[\"close\"],\"success\":true}],\"errorsOutput\":[],\"consoleOutput\":[],\"networkOutput\":[],\"screenshot\":{\"width\":640,\"height\":400},\"durationMs\":1800,\"forkRecoveryAttempted\":false}",
+              "resultText": "{\"url\":\"https://apidev-26a7-3000.prg1.zerops.app\",\"steps\":[{\"command\":[\"open\",\"https://apidev-26a7-3000.prg1.zerops.app\"],\"success\":true},{\"command\":[\"snapshot\",\"-i\",\"-c\"],\"success\":true},{\"command\":[\"screenshot\",\"/tmp/apidev.png\"],\"success\":true},{\"command\":[\"errors\"],\"success\":true},{\"command\":[\"console\"],\"success\":true},{\"command\":[\"network\",\"requests\"],\"success\":true},{\"command\":[\"close\"],\"success\":true}],\"errorsOutput\":[],\"consoleOutput\":[],\"networkOutput\":[],\"screenshot\":{\"width\":640,\"height\":400},\"durationMs\":1800}",
               "images": [
                 {
                   "mimeType": "image/png",
