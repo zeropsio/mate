@@ -249,6 +249,15 @@ function containerDown(status: string | undefined): boolean {
  * being made at all: a Mate that is only asleep, stopped or restarting is not coming.
  */
 export function mateComing(input: MateComingInput): MateComing | undefined {
+  const coming = comingWords(input);
+  // The Mate this tab made counts on one clock, from its Create or Add, whatever step it is on —
+  // its row's "Coming up · 0:05" never drops its clock as the press's own record goes.
+  return coming?.kind === "coming" && input.created === true && input.madeAt !== undefined
+    ? { ...coming, since: input.madeAt }
+    : coming;
+}
+
+function comingWords(input: MateComingInput): MateComing | undefined {
   const { press, candidate } = input;
   if (candidate?.group === "connected" || input.link?.reachability?.kind === "ready")
     return undefined;

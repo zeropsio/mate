@@ -157,7 +157,19 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         madeAt: NOW - 40_000,
         nowMs: NOW,
       },
-      expected: { kind: "coming", line: COMING_UP_LINE },
+      expected: { kind: "coming", line: COMING_UP_LINE, since: NOW - 40_000 },
+    },
+    // Run 2 (2026-10-16): its row read "Coming up · 0:05", then plain "Coming up" at the hand-over.
+    {
+      case: "a Mate this tab made counts from its Add, its press under way or gone",
+      input: {
+        press: { ...HELD, startedAt: NOW - 30_000 },
+        candidate: undefined,
+        created: true,
+        madeAt: NOW - 35_000,
+        nowMs: NOW,
+      },
+      expected: { kind: "coming", line: COMING_UP_LINE, since: NOW - 35_000 },
     },
     // The close-off gate (restores 0.12.3's closeOffGate): a Mate held because HQ says its project
     // is not closed off is closing off until HQ says it is — never failed on a clock (2026-10-05).
