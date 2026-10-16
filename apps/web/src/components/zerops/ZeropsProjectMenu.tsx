@@ -11,7 +11,8 @@ import { EllipsisIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { Menu, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { MenuItemWithWhy } from "./MenuItemWithWhy";
 import { ZeropsRouteMenuItems } from "./ZeropsPublicRoutes";
 
 export interface ZeropsMenuAction {
@@ -82,15 +83,14 @@ export function ZeropsProjectMenu({
           "separator" in entry ? (
             <MenuSeparator key={entry.id} />
           ) : (
-            <MenuItem
+            <MenuItemWithWhy
               key={entry.id}
               disabled={entry.disabled === true}
+              label={entry.label}
               onClick={entry.onSelect}
-              title={entry.why}
               variant={entry.variant ?? "default"}
-            >
-              {entry.label}
-            </MenuItem>
+              why={entry.why}
+            />
           ),
         )}
       </MenuPopup>

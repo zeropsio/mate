@@ -122,6 +122,34 @@ function MenuItemLabel({ className, ...props }: React.ComponentProps<"span">) {
   );
 }
 
+/**
+ * An item's label with its description as a second line: why the item stands off, or what it
+ * does. The description is the item's accessible description (`descriptionId`, passed to the
+ * item's `aria-describedby`), so it is heard as well as seen — a disabled item takes no pointer.
+ */
+function MenuItemText({
+  label,
+  description,
+  descriptionId,
+}: {
+  label: React.ReactNode;
+  description: React.ReactNode;
+  descriptionId: string;
+}) {
+  return (
+    <span className="flex min-w-0 flex-col py-0.5" data-slot="menu-item-text">
+      <span className="min-w-0 truncate">{label}</span>
+      <span
+        className="text-muted-foreground text-xs leading-4"
+        data-slot="menu-item-description"
+        id={descriptionId}
+      >
+        {description}
+      </span>
+    </span>
+  );
+}
+
 function MenuCheckboxItem({
   className,
   children,
@@ -391,6 +419,7 @@ export {
   MenuGroup as DropdownMenuGroup,
   MenuItem,
   MenuItemLabel,
+  MenuItemText,
   MenuItem as DropdownMenuItem,
   MenuCheckboxItem,
   MenuCheckboxItem as DropdownMenuCheckboxItem,
