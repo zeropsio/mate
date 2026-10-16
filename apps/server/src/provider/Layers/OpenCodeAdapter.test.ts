@@ -3551,22 +3551,35 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
   );
 
   // A provider error says its error on its turn before the turn it fails —
-  // one record of the break — and a 429 is typed a usage limit, a pause.
+  // one record of the break — and a 429 is typed a usage limit, a pause;
+  // a provider signed in by key has no plan, so its 429 is that provider
+  // rate-limiting, in its own name.
   it.effect.each([
     {
       name: "a usage limit",
+      model: "opencode/kimi-k3",
       error: { name: "APIError", data: { message: "Rate limited", statusCode: 429 } },
       limit: true,
+      words: "Rate limited",
     },
     {
       name: "a server error",
+      model: "opencode/kimi-k3",
       error: { name: "APIError", data: { message: "Internal error", statusCode: 500 } },
       limit: false,
+      words: "Internal error",
     },
-  ])("says $name on its turn before failing it", ({ error, limit }) =>
+    {
+      name: "a key-signed provider rate-limiting",
+      model: "nebius/moonshotai/Kimi-K3",
+      error: { name: "APIError", data: { message: "Too Many Requests", statusCode: 429 } },
+      limit: false,
+      words: "Nebius Token Factory is rate-limiting requests. Send again in a moment.",
+    },
+  ])("says $name on its turn before failing it", ({ name, model, error, limit, words }) =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
-      const threadId = asThreadId(`thread-provider-error-${limit}`);
+      const threadId = asThreadId(`thread-provider-error-${name.replaceAll(" ", "-")}`);
       const sessionID = "http://127.0.0.1:9999/session";
       const failure = promiseWithResolvers<unknown>();
       runtimeMock.state.subscribedEvents = [failure.promise];
@@ -3578,10 +3591,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       const turn = yield* adapter.sendTurn({
         threadId,
         input: "Work",
-        modelSelection: createModelSelection(
-          ProviderInstanceId.make("opencode"),
-          "opencode/kimi-k3",
-        ),
+        modelSelection: createModelSelection(ProviderInstanceId.make("opencode"), model),
       });
       const endedFiber = yield* adapter.streamEvents.pipe(
         Stream.filter(
@@ -3611,6 +3621,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         said?.type === "runtime.error" ? said.payload.class : undefined,
         limit ? "usage_limit" : "provider_error",
       );
+      NodeAssert.equal(said?.type === "runtime.error" ? said.payload.message : undefined, words);
       NodeAssert.equal(
         completed?.type === "turn.completed" ? completed.payload.terminalReason : undefined,
         limit ? "usage_limit" : undefined,

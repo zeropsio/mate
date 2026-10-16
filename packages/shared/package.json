@@ -155,6 +155,10 @@
       "types": "./src/zeropsAgentAuth.ts",
       "import": "./src/zeropsAgentAuth.ts"
     },
+    "./openCodeKeyProviders": {
+      "types": "./src/openCodeKeyProviders.ts",
+      "import": "./src/openCodeKeyProviders.ts"
+    },
     "./git": {
       "types": "./src/git.ts",
       "import": "./src/git.ts"
