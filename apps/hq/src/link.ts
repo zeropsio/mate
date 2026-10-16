@@ -121,9 +121,12 @@ export const serveMateLink = (
        * last sent. An owner HQ cannot read yet is left unsaid rather than holding the state back.
        */
       const sendState = Effect.gen(function* () {
+        // An overview is reported only after the signers its logins name are recorded (below):
+        // read before the record, it names no owner whose signers the record lacks.
+        const overview = (yield* overviews.all).get(projectId)?.overview;
         const record = yield* structure.mateState(projectId);
         if (Option.isNone(record)) return;
-        const owner = yield* Effect.option(chiefs.ownerOf(projectId));
+        const owner = yield* Effect.option(chiefs.ownerOf(record.value, overview));
         const mate: MateState = {
           ...record.value,
           ...(Option.isSome(owner) ? { ownerUserId: owner.value } : {}),
