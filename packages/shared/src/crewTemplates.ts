@@ -3,8 +3,9 @@
  * lead and two builders* (the lead, two builders), the empty crew *Add
  * someone yourself* begins from, and the crew the Mate proposed from the goal
  * (*Let Fen suggest a crew*). Each is a definition that parses and
- * validates as it is, so the setup opens on a crew that could start; the
- * person names each crewmate and writes what it is responsible for there.
+ * validates as it is, so the setup opens on a crew that could start — a
+ * builder on a service with a database shares it — and the person names each
+ * crewmate and writes what it is responsible for there.
  *
  * A job is written to its crewmate, and its first sentence is what the Crew
  * tab's row says while the crewmate is on nothing: each opens with the line
@@ -15,7 +16,12 @@
 import type { CrewMemberKind, CrewProposal } from "@t3tools/contracts";
 
 import type { MateTintId } from "./brand.ts";
-import { parseBrief, type CrewDefinition, type CrewMemberSpec } from "./crewHome.ts";
+import {
+  parseBrief,
+  withSharedDatabase,
+  type CrewDefinition,
+  type CrewMemberSpec,
+} from "./crewHome.ts";
 
 export type CrewTemplateId = "lead-and-builders" | "empty";
 
@@ -24,6 +30,8 @@ export interface CrewTemplateInput {
   readonly crew: string;
   /** The Mate's dev services; builders take them in turn. */
   readonly devHosts: ReadonlyArray<string>;
+  /** Those of them known to reach a database: a builder there shares it (`withSharedDatabase`). */
+  readonly databaseHosts?: ReadonlyArray<string>;
   /** The Mate's own tint, which no crewmate takes. */
   readonly mateTint?: MateTintId;
 }
@@ -91,6 +99,8 @@ export interface CrewFromProposalInput {
   readonly crew: string;
   /** The Mate's dev services; builders take them in turn. */
   readonly devHosts: ReadonlyArray<string>;
+  /** Those of them known to reach a database: a builder there shares it (`withSharedDatabase`). */
+  readonly databaseHosts?: ReadonlyArray<string>;
   /** The Mate's own tint, which no crewmate takes. */
   readonly mateTint?: MateTintId;
 }
@@ -143,7 +153,7 @@ export const crewFromProposal = (input: CrewFromProposalInput): CrewDefinition =
 
 const crewOf = (
   seats: ReadonlyArray<Seat>,
-  input: Pick<CrewTemplateInput, "crew" | "devHosts" | "mateTint">,
+  input: Pick<CrewTemplateInput, "crew" | "devHosts" | "databaseHosts" | "mateTint">,
 ): CrewDefinition => {
   const tints = CREW_TINTS.filter((tint) => tint !== input.mateTint);
   let writers = 0;
@@ -166,10 +176,13 @@ const crewOf = (
       job: seat.job,
     };
   });
-  return {
-    crew: input.crew,
-    name: "Crew",
-    brief: parseBrief("New brief", CREW_BRIEF_TEMPLATE),
-    members,
-  };
+  return withSharedDatabase(
+    {
+      crew: input.crew,
+      name: "Crew",
+      brief: parseBrief("New brief", CREW_BRIEF_TEMPLATE),
+      members,
+    },
+    input.databaseHosts ?? [],
+  );
 };

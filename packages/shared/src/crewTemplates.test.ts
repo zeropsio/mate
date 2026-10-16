@@ -1,6 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { parseCrewHome, renderCrewHome, validateCrewTopology } from "./crewHome.ts";
+import {
+  parseCrewHome,
+  renderCrewHome,
+  validateCrewTopology,
+  withSharedDatabase,
+  type CrewDefinition,
+} from "./crewHome.ts";
 import { crewFromProposal, crewFromTemplate } from "./crewTemplates.ts";
 
 describe("crewFromTemplate", () => {
@@ -144,5 +150,93 @@ describe("crewFromProposal", () => {
       devHosts: [],
     });
     expect(definition.members.slice(1).map((member) => member.handle)).toEqual(handles);
+  });
+});
+
+describe("a crew set up on a service with a database", () => {
+  const proposal = {
+    lead: { name: "Planner", part: "Plans the Shop Front and splits the work." },
+    builders: [
+      { name: "Accounts", part: "Builds the accounts and their sign-in." },
+      { name: "Favourites", part: "Builds the favourites list." },
+    ],
+  };
+  const topology = { devHosts: ["appdev"], databaseHosts: ["appdev"] };
+  const sharing = (definition: CrewDefinition) =>
+    definition.members.map((member) => [member.handle, member.database]);
+
+  it("a crew set up from a proposal on a service with a database starts, its builders sharing that database", () => {
+    const definition = crewFromProposal({
+      proposal,
+      crew: "crew",
+      devHosts: ["appdev"],
+      databaseHosts: ["appdev"],
+    });
+    expect(sharing(definition)).toEqual([
+      ["planner", undefined],
+      ["accounts", "shared"],
+      ["favourites", "shared"],
+    ]);
+    expect(validateCrewTopology(definition, topology)).toEqual([]);
+    expect(parseCrewHome("crew", renderCrewHome(definition))).toEqual({ definition, issues: [] });
+  });
+
+  it("a crew set up as a lead and two builders on a service with a database starts, its builders sharing that database", () => {
+    const definition = crewFromTemplate({
+      template: "lead-and-builders",
+      crew: "crew",
+      devHosts: ["appdev"],
+      databaseHosts: ["appdev"],
+    });
+    expect(sharing(definition)).toEqual([
+      ["lead", undefined],
+      ["builder-1", "shared"],
+      ["builder-2", "shared"],
+    ]);
+    expect(validateCrewTopology(definition, topology)).toEqual([]);
+  });
+
+  it("a crew set up on a service without a database says nothing of one", () => {
+    const definition = crewFromProposal({
+      proposal,
+      crew: "crew",
+      devHosts: ["appdev", "webdev"],
+      databaseHosts: ["webdev"],
+    });
+    expect(sharing(definition)).toEqual([
+      ["planner", undefined],
+      ["accounts", undefined],
+      ["favourites", "shared"],
+    ]);
+  });
+
+  it("a builder added by hand on a service with a database shares it, and one with its own env keeps it", () => {
+    const base = crewFromTemplate({ template: "empty", crew: "crew", devHosts: ["appdev"] });
+    const builder = (handle: string, env: Record<string, string>) => ({
+      handle,
+      displayName: handle,
+      kind: "writer" as const,
+      readOnly: false,
+      host: "appdev",
+      restartAfterMerge: false,
+      afterLandRestart: false,
+      env,
+      migrations: [],
+      job: "Builds it.\n",
+    });
+    const definition = {
+      ...base,
+      members: [builder("tea-page", {}), builder("orders", { DATABASE_URL: "postgres://own" })],
+    };
+
+    const declared = withSharedDatabase(definition, ["appdev"]);
+    expect(sharing(declared)).toEqual([
+      ["tea-page", "shared"],
+      ["orders", undefined],
+    ]);
+    expect(validateCrewTopology(declared, topology)).toEqual([]);
+    // Nothing left to declare: the same crew, so nothing is written again.
+    expect(withSharedDatabase(declared, ["appdev"])).toBe(declared);
+    expect(withSharedDatabase(definition, [])).toBe(definition);
   });
 });
