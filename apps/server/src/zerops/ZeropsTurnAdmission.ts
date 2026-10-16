@@ -196,6 +196,17 @@ export class ZeropsTurnAdmission extends Context.Service<
       readonly instanceIds: ReadonlyArray<string>;
       readonly principal: TurnPrincipal;
     }) => Effect.Effect<void, OrchestrationDispatchCommandError>;
+    /**
+     * Fails with the refusal a run on `instanceId` would meet when the person
+     * `subject` asks its agent for one piece of text outside every
+     * conversation (a crew proposed from the goal): it spends the login as a
+     * run does, so it is judged as one — signed in, and by this person — yet
+     * it starts no run, so the engine's door (`admitRun`) stays the runs' own.
+     */
+    readonly admitGeneration: (input: {
+      readonly instanceId: string;
+      readonly subject: string;
+    }) => Effect.Effect<void, OrchestrationDispatchCommandError>;
   }
 >()("t3/zerops/ZeropsTurnAdmission") {}
 
@@ -404,6 +415,13 @@ export const make = Effect.gen(function* () {
     yield* refuseSomeoneElsesAgent(instanceId, principal);
   });
 
+  const admitGeneration: ZeropsTurnAdmission["Service"]["admitGeneration"] = Effect.fnUntraced(
+    function* ({ instanceId, subject }) {
+      if (!isZeropsEnvironment(config)) return;
+      yield* refuseSomeoneElsesAgent(instanceId, { kind: "session", subject });
+    },
+  );
+
   /**
    * Whose login `instanceId` is, judged as if it were signed in — a login
    * that holds a credential goes on to its token and its signer, exactly as a
@@ -456,7 +474,7 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  return ZeropsTurnAdmission.of({ admit, admitRun, admitOperator });
+  return ZeropsTurnAdmission.of({ admit, admitRun, admitOperator, admitGeneration });
 });
 
 export const layer = Layer.effect(ZeropsTurnAdmission, make);
