@@ -443,6 +443,31 @@ describe("shortcutLabelForCommand", () => {
       "Ctrl+D",
     );
   });
+  it.each([
+    { command: "terminal.new", desktop: "⌘N" },
+    { command: "terminal.close", desktop: "⌘W" },
+  ] as const)(
+    "never advertises in a browser a shortcut the browser keeps for itself: $command",
+    ({ command, desktop }) => {
+      const on = (isWeb: boolean) =>
+        shortcutLabelForCommand(DEFAULT_BINDINGS, command, {
+          platform: "MacIntel",
+          context: { terminalFocus: true, isWeb, isDesktop: !isWeb },
+        });
+      assert.isNull(on(true));
+      assert.strictEqual(on(false), desktop);
+    },
+  );
+
+  it("still advertises in a browser a terminal shortcut the page can take", () => {
+    assert.strictEqual(
+      shortcutLabelForCommand(DEFAULT_BINDINGS, "terminal.split", {
+        platform: "MacIntel",
+        context: { terminalFocus: true, isWeb: true, isDesktop: false },
+      }),
+      "⌘D",
+    );
+  });
 });
 
 describe("thread navigation helpers", () => {
