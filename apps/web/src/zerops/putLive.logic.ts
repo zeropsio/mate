@@ -79,6 +79,8 @@ export interface PutLiveRun {
   readonly failure?: PutLiveFailure | undefined;
   /** When the run went live. */
   readonly liveAt?: number | undefined;
+  /** When the step under way began: what the wait row's clock counts from. */
+  readonly stepAt?: number | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,6 +266,8 @@ export function startPutLive(input: {
   readonly groupId: string;
   readonly project: string;
   readonly change: PutLiveChange | undefined;
+  /** When it was pressed. */
+  readonly at?: number | undefined;
 }): PutLiveRun {
   return {
     orgId: input.orgId,
@@ -271,6 +275,7 @@ export function startPutLive(input: {
     project: input.project,
     change: input.change,
     phase: input.change !== undefined && !input.change.merged ? "merging" : "creating",
+    ...(input.at === undefined ? {} : { stepAt: input.at }),
   };
 }
 
@@ -300,7 +305,17 @@ export type PutLiveEvent =
     }
   | { readonly kind: "again"; readonly at?: number | undefined };
 
-export function putLiveStep(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
+/**
+ * Where an event moves a run; `now`, where given, starts the clock of a step it moves the run to.
+ */
+export function putLiveStep(run: PutLiveRun, event: PutLiveEvent, now?: number): PutLiveRun {
+  const next = moved(run, event);
+  return now === undefined || next === run || next.phase === run.phase
+    ? next
+    : { ...next, stepAt: now };
+}
+
+function moved(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
   switch (event.kind) {
     case "merged":
       return run.phase === "merging"
@@ -521,20 +536,26 @@ export function putLiveHoldsRelease(run: Pick<PutLiveRun, "phase"> | undefined):
 // The row in the conversation
 // ---------------------------------------------------------------------------
 
-/** The one wait row's words: its title, and the step under way, replaced in place. */
+/**
+ * The one wait row's words: its title, and the step under way, replaced in place — with, while it
+ * runs, when that step began, which its clock counts from.
+ */
 export function putLiveProgress(run: PutLiveRun): {
   readonly title: string;
   readonly step: string;
+  readonly since?: number;
 } {
   const title = `Putting ${run.project} live`;
+  const since = run.stepAt === undefined ? {} : { since: run.stepAt };
   switch (run.phase) {
     case "merging":
-      return { title, step: "Merging the change" };
+      return { title, step: "Merging the change", ...since };
     case "creating":
-      return { title, step: "Making production" };
+      return { title, step: "Making production", ...since };
     case "releasing":
       return {
         title,
+        ...since,
         step:
           run.tag === undefined
             ? "Releasing"

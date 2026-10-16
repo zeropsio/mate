@@ -15,7 +15,7 @@ import { XIcon } from "lucide-react";
 import { useMemo } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import { useNowMs } from "~/zerops/useNowMs";
+import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useCompactProjectFlows } from "~/zerops/projectFlows";
 import { usePutLive, usePutLiveRun } from "~/zerops/putLive";
@@ -36,17 +36,36 @@ import { FailureDetails } from "../ui/failure";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useProductionAddresses } from "./review/reviewReads";
 import { MateFace } from "./primitives";
+import { formatElapsed } from "../ui/progress.logic";
 import { Spinner } from "../ui/spinner";
 
 /**
  * The one wait row's step: the wait line's spinner and words, at the composer top's detail size so
- * the row keeps the strip's height — until the shared progress piece lands, here alone.
+ * the row keeps the strip's height — until the shared progress piece lands, here alone. Its clock
+ * says how long the step has run, so a long wait reads as one; it ticks here alone, never the row.
  */
-export function PutLiveProgress({ step }: { readonly step: string }) {
+export function PutLiveProgress({
+  step,
+  since,
+}: {
+  readonly step: string;
+  readonly since?: number | undefined;
+}) {
   return (
     <span aria-live="polite" className="flex items-center gap-1.5" role="status">
       <Spinner aria-hidden="true" role="presentation" size="xs" />
       <span className="truncate">{step}</span>
+      {since === undefined ? null : <PutLiveClock since={since} />}
+    </span>
+  );
+}
+
+function PutLiveClock({ since }: { readonly since: number }) {
+  const nowMs = useSecondsNowMs(true);
+  // Out of the live region: its words change once a step does, never once a second.
+  return (
+    <span aria-hidden="true" className="shrink-0 tabular-nums">
+      · {formatElapsed(nowMs - since)}
     </span>
   );
 }
@@ -158,7 +177,7 @@ export function PutLiveRow(props: PutLiveRowProps) {
   }
   return (
     <ComposerAsk
-      detail={<PutLiveProgress step={progress.step} />}
+      detail={<PutLiveProgress since={progress.since} step={progress.step} />}
       face={<MateFace shape={face.shape} size={24} state="working" tint={face.tint} />}
       kind="live-progress"
       label={progress.title}

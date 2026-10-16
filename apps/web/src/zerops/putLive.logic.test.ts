@@ -627,4 +627,37 @@ describe("while Put it live makes production", () => {
       expect(putLiveCreation(made as Parameters<typeof putLiveCreation>[0], 1)).toEqual(event);
     },
   );
+
+  it("counts how long the step under way has run, from that step's start", () => {
+    const pressed = startPutLive({
+      orgId: "o1",
+      groupId: "g1",
+      project: "Tea Shop",
+      change: change(),
+      at: 1_000,
+    });
+    expect(putLiveProgress(pressed)).toEqual({
+      title: "Putting Tea Shop live",
+      step: "Merging the change",
+      since: 1_000,
+    });
+    const making = putLiveStep(pressed, { kind: "merged" }, 4_000);
+    expect(putLiveProgress(making)).toMatchObject({ step: "Making production", since: 4_000 });
+    // Production's project taken is the same step going on: its clock keeps counting.
+    const known = putLiveStep(making, { kind: "accepted", productionId: "p-prod" }, 6_000);
+    expect(putLiveProgress(known).since).toBe(4_000);
+    const live = putLiveStep(
+      putLiveStep(
+        putLiveStep(known, { kind: "created", productionId: "p-prod" }, 7_000),
+        {
+          kind: "released",
+          tag: "v0.1.0",
+        },
+        8_000,
+      ),
+      { kind: "live", at: 9_000 },
+      9_000,
+    );
+    expect(putLiveProgress(live).since).toBeUndefined();
+  });
 });

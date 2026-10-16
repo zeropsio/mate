@@ -74,6 +74,18 @@ describe("Put it live in the conversation", () => {
     expect(markup).toContain("Released v0.1.0 · just now");
   });
 
+  it("shows how long Making production has run, so a long wait reads as one", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(100_000);
+    try {
+      const making = row({ phase: "creating", stepAt: 58_000 });
+      expect(making).toContain("Making production");
+      expect(making).toContain("0:42");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("offers the project beside Try again once production is made but its services never showed ready", () => {
     const props: PutLiveRowProps = {
       address: undefined,
