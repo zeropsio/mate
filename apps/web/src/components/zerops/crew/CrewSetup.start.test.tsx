@@ -18,14 +18,23 @@ import {
   type UseCrewCommand,
 } from "~/zerops/crew/useCrewCommand";
 
+import { hasCrewSetupDraft } from "~/zerops/crew/crewSetupDraft";
+
 import { CrewSetup } from "./CrewSetup";
 
+// The signed-in account's storage, in memory: what a closed page leaves behind.
+const stored = vi.hoisted(() => new Map<string, string>());
 vi.mock("~/zerops/accountLifetime", async (original) => ({
   ...(await original<typeof import("~/zerops/accountLifetime")>()),
   accountLocalStorage: {
-    getItem: () => null,
-    setItem: () => true,
-    removeItem: () => undefined,
+    getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      stored.set(key, value);
+      return true;
+    },
+    removeItem: (key: string) => {
+      stored.delete(key);
+    },
   },
 }));
 
@@ -33,6 +42,7 @@ vi.mock("~/zerops/accountLifetime", async (original) => ({
 
 let root: Root | undefined;
 afterEach(() => {
+  stored.clear();
   act(() => root?.unmount());
   root = undefined;
   document.body.innerHTML = "";
@@ -57,7 +67,10 @@ const REFUSAL = new CrewCommandError({
 });
 
 /** The setup over `crew`, whose Mate refuses the first Start as `REFUSAL`; every command sent. */
-function setUp(): Array<CrewCommand> {
+function setUp(
+  written: Array<unknown> = [],
+  onClose: () => void = () => undefined,
+): Array<CrewCommand> {
   const sent: Array<CrewCommand> = [];
   let failure: CrewFailureCause | null = null;
   const commands: UseCrewCommand = {
@@ -74,7 +87,10 @@ function setUp(): Array<CrewCommand> {
       return failure === null ? { _tag: "done" } : null;
     },
     readFiles: async () => null,
-    writeFiles: async () => true,
+    writeFiles: async (files) => {
+      written.push(files);
+      return true;
+    },
     pending: false,
     isPending: () => false,
     error: null,
@@ -96,7 +112,7 @@ function setUp(): Array<CrewCommand> {
         hosts={[]}
         mate={{ name: "Nova", tint: "amber" }}
         onAskPorts={() => undefined}
-        onClose={() => undefined}
+        onClose={onClose}
         onEditCrewmate={() => undefined}
         proposeWith={{
           kind: "ready",
@@ -157,5 +173,28 @@ describe("CrewSetup's Start", () => {
       goal.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(foot()).not.toContain("didn't start");
+  });
+
+  it("closing the Crew page keeps the crew draft for when it opens again", () => {
+    const written: Array<unknown> = [];
+    let closed = 0;
+    setUp(written, () => (closed += 1));
+    const goal = document.querySelector("textarea")!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    act(() => {
+      setValue.call(goal, "A shop front for Acme's teas and their tea club.");
+      goal.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const close = document.querySelector<HTMLButtonElement>('[aria-label="Close the setup"]');
+    if (close === null) throw new Error("no Close press");
+    act(() => close.click());
+    act(() => root?.unmount());
+    root = undefined;
+
+    expect(closed).toBe(1);
+    // Only Drop the draft empties the crew home; closing writes nothing over it.
+    expect(written).toEqual([]);
+    expect(hasCrewSetupDraft(EnvironmentId.make("environment-acme"))).toBe(true);
   });
 });

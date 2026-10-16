@@ -278,6 +278,7 @@ export function CrewSectionHost({
     if (crew === null) {
       return (
         <CrewSectionEmpty
+          draft={hasCrewSetupDraft(environmentId) || (home.definition?.members.length ?? 0) > 0}
           lock={access.crew}
           mate={{
             name: mateName,

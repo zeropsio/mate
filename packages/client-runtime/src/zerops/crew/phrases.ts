@@ -731,6 +731,12 @@ export const crewClosedWord = (title: string | null, mateName: string): string =
  */
 export const CREW_SET_UP_WORD = "Set up a crew";
 export const CREW_SET_UP_LINE = "Pick who's on it and what each is responsible for.";
+/** The empty Crew page's press while a setup draft is kept: it opens the draft as it was left. */
+export const CREW_SETUP_CONTINUE_WORD = "Continue the setup";
+
+/** Over *Continue the setup*: the draft waits; only *Drop the draft* throws it away. */
+export const crewDraftKeptLine = (mateName: string): string =>
+  `Your draft of ${crewPossessive(mateName)} crew is kept.`;
 
 export const crewGiveCrewTitle = (mateName: string): string => `Give ${mateName} a crew`;
 
