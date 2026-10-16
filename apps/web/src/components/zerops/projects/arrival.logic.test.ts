@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   arrivalWelcome,
   firstVisit,
+  signInSettled,
   welcomeOwed,
   welcomeStep,
   type ArrivalApp,
@@ -242,5 +243,31 @@ describe("a first visit, as HQ records it", () => {
       detail,
       action: { label: "Start your own Mate on Snap", groupId: "g-snap" },
     });
+  });
+});
+
+describe("the welcome never waits on an HQ that does not answer", () => {
+  it.each([
+    {
+      sentence: "With HQ's record of the organization read, the welcome may decide",
+      recordRead: true,
+      hqUnavailable: false,
+      settled: true,
+    },
+    {
+      sentence: "While HQ's record is on its way, the welcome waits for it",
+      recordRead: false,
+      hqUnavailable: false,
+      settled: false,
+    },
+    {
+      sentence:
+        "With HQ down or refusing as the overview paints, the welcome decides by this browser's memory",
+      recordRead: false,
+      hqUnavailable: true,
+      settled: true,
+    },
+  ])("$sentence", ({ recordRead, hqUnavailable, settled }) => {
+    expect(signInSettled({ recordRead, hqUnavailable })).toBe(settled);
   });
 });

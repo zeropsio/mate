@@ -58,6 +58,18 @@ export function firstVisit(signIn: ArrivalSignIn | undefined, nowMs: number): bo
   return Number.isFinite(at) && nowMs - at < FIRST_VISIT_MS;
 }
 
+/**
+ * Whether HQ's word on a first visit is in for the welcome to decide: its organization record read
+ * — or HQ down or refusing, when the browser's memory decides as for an older HQ, so the welcome is
+ * never lost waiting on HQ.
+ */
+export function signInSettled(input: {
+  readonly recordRead: boolean;
+  readonly hqUnavailable: boolean;
+}): boolean {
+  return input.recordRead || input.hqUnavailable;
+}
+
 /** Whether the welcome is said now: a first visit, to projects someone else started. */
 export function welcomeOwed(input: {
   readonly welcomed: boolean;

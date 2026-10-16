@@ -44,7 +44,7 @@ import { Spinner } from "../ui/spinner";
 import { shownHqPersonFactsAtom, shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
-import { hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
+import { hqDown, hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
 import {
   applyFirstBuildVerdict,
@@ -156,6 +156,7 @@ import { MateFace, STATUS_BADGE_TONE } from "./primitives";
 import { useOverviewSlots } from "./projects/overviewSlots";
 import { OverviewCardMate } from "./projects/OverviewCardMate";
 import { ArrivalWelcome } from "./projects/ArrivalWelcome";
+import { signInSettled } from "./projects/arrival.logic";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsHqCard } from "./ZeropsHqCard";
@@ -2071,7 +2072,10 @@ export function ZeropsProjectsContent({
   // organization's record: the welcome decides once that is read too.
   const hqOrganization = hqStructure.organization;
   const arrivalSettled =
-    hqOrganization !== null &&
+    signInSettled({
+      recordRead: hqOrganization !== null,
+      hqUnavailable: hqStructure.refusal !== null || hqDown(hqStructure),
+    }) &&
     candidates.every(
       (candidate) => !hasMate(candidate) || personFacts[candidate.project.id] !== undefined,
     ) &&
