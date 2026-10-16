@@ -135,6 +135,7 @@ import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import type { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import { crewLayerInert } from "./zerops/crew/crewLayer.ts";
+import * as CrewProposals from "./zerops/crew/CrewProposals.ts";
 import { makeEngineWorld, mate as imageConversation } from "./engine/testing/pump/engineWorld.ts";
 import { contentAssetsAt } from "./assets/ContentAssets.ts";
 import sharp from "sharp";
@@ -512,6 +513,7 @@ const buildAppUnderTest = (options?: {
     | ZeropsProjectSignersModule.ZeropsProjectSigners
     | ZeropsTurnAdmissionModule.ZeropsTurnAdmission
     | CrewEngine
+    | CrewProposals.CrewProposals
     | MateEngine,
     never,
     | ServerConfig.ServerConfig
@@ -1228,6 +1230,8 @@ const buildAppUnderTest = (options?: {
             // Crew mode off, as outside a Zerops project: the crew RPCs answer
             // `off` and refuse the rest.
             crewLayerInert,
+            // No crew is proposed here: no harness test asks for one.
+            Layer.mock(CrewProposals.CrewProposals)({}),
             // The Mate engine inert, whatever the switch says: its doors are V1's to close.
             options?.layers?.mateEngine
               ? Layer.succeed(MateEngine, options.layers.mateEngine)

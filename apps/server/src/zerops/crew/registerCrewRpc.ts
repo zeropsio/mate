@@ -1,6 +1,7 @@
 /**
  * Registers the crew RPCs (`subscribeZeropsCrew`, `zerops.crew.files.get`,
- * `zerops.crew.files.put`, `zerops.crew.command`, `zerops.crew.taskPage`), spread by `ws.ts` beside
+ * `zerops.crew.files.put`, `zerops.crew.command`, `zerops.crew.taskPage`, `zerops.crew.propose`),
+ * spread by `ws.ts` beside
  * `registerZeropsRpc`. Scopes stay in `auth/RpcAuthorization.ts`.
  *
  * Every handler answers from the `CrewEngine` the server was built with —
@@ -9,7 +10,9 @@
  * to the crew home run as the connecting session: its subject comes from the
  * authenticated session in `ws.ts`, never from RPC input; a press that runs or
  * changes the crew is judged as that person on the logins it reaches, and any
- * turn the command starts is admitted as them.
+ * turn the command starts is admitted as them. A proposed crew
+ * (`CrewProposals`) is no command: it spends the Mate's agent as that person,
+ * and changes nothing.
  */
 import { WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -18,13 +21,15 @@ import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 import type { RegisterZeropsRpcDeps } from "../registerZeropsRpc.ts";
 import type { CrewEngineService } from "./CrewEngine.ts";
+import type { CrewProposals } from "./CrewProposals.ts";
 
 type CrewRpcTag =
   | typeof WS_METHODS.subscribeZeropsCrew
   | typeof WS_METHODS.zeropsCrewFilesGet
   | typeof WS_METHODS.zeropsCrewFilesPut
   | typeof WS_METHODS.zeropsCrewCommand
-  | typeof WS_METHODS.zeropsCrewTaskPage;
+  | typeof WS_METHODS.zeropsCrewTaskPage
+  | typeof WS_METHODS.zeropsCrewPropose;
 
 type CrewRpc = Extract<RpcGroup.Rpcs<typeof WsRpcGroup>, { readonly _tag: CrewRpcTag }>;
 
@@ -35,9 +40,10 @@ type CrewRpcHandlers = {
 
 type RegisterCrewRpcDeps = Pick<RegisterZeropsRpcDeps, "admit" | "subject"> & {
   readonly crew: CrewEngineService;
+  readonly proposals: CrewProposals["Service"];
 };
 
-export const registerCrewRpc = ({ crew, subject, admit }: RegisterCrewRpcDeps) =>
+export const registerCrewRpc = ({ crew, proposals, subject, admit }: RegisterCrewRpcDeps) =>
   ({
     [WS_METHODS.subscribeZeropsCrew]: (_input) => crew.snapshot,
     [WS_METHODS.zeropsCrewFilesGet]: (_input) => crew.readFiles,
@@ -52,4 +58,6 @@ export const registerCrewRpc = ({ crew, subject, admit }: RegisterCrewRpcDeps) =
     // A board that holds every task (V1's) has nothing past it.
     [WS_METHODS.zeropsCrewTaskPage]: (input) =>
       crew.taskPage?.(input) ?? Effect.succeed({ tasks: [], next: null }),
+    [WS_METHODS.zeropsCrewPropose]: (input) =>
+      admit(WS_METHODS.zeropsCrewPropose, proposals.propose(input, subject)),
   }) satisfies CrewRpcHandlers;
