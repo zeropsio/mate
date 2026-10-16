@@ -5,7 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { isRecipeProposal } from "./projectFlow.ts";
 import { recipeReach, type RecipeReach } from "./recipeReach.ts";
-import { RELEASE_NOTHING_NEW_ON_MAIN, type ReleaseGate } from "./release.ts";
+import { RELEASE_CHECKING, RELEASE_NOTHING_NEW_ON_MAIN, type ReleaseGate } from "./release.ts";
 
 /** HQ's rule refusing the person the release, in its words (`releasePermission`). */
 const NOT_A_RELEASER = {
@@ -531,6 +531,11 @@ describe("releaseReview", () => {
       },
     ],
     [
+      "still comparing what goes out: no verdict before it is known",
+      { gate: { allowed: false, reason: RELEASE_CHECKING } },
+      { state: "release-blocked", tone: "busy", title: "Checking what goes out" },
+    ],
+    [
       "nothing new",
       { gate: { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN } },
       { state: "release-blocked", tone: "done", title: "Nothing to release" },
@@ -590,6 +595,22 @@ describe("releaseReview", () => {
       "blocked",
       { gate: NOT_A_RELEASER, permission: NOT_A_RELEASER },
       "Production keeps running v0.1.56.",
+      false,
+    ],
+    // The onboarding run: a first release's panel said production "keeps running what it runs"
+    // where it ran nothing.
+    [
+      "blocked, the first release",
+      { gate: NOT_A_RELEASER, permission: NOT_A_RELEASER, replaces: { kind: "first" } },
+      "Nothing is released yet.",
+      false,
+    ],
+    // The onboarding run: the panel opened on "Can't release now" and "0 changes" for 0.4 s while
+    // it compared what goes out; its foot then changed under the pointer.
+    [
+      "still comparing what goes out",
+      { gate: { allowed: false, reason: RELEASE_CHECKING }, replaces: { kind: "first" } },
+      "It takes about a minute.",
       false,
     ],
     [

@@ -37,6 +37,7 @@ import {
   reviewAge,
   rollbackReads,
   rollbackReview,
+  RELEASE_CHECKING,
   rollbackServices,
   shortCommit,
   stageRead,
@@ -555,9 +556,20 @@ export interface ReleaseReviewViewProps {
 export function ReleaseReviewView(props: ReleaseReviewViewProps) {
   const { rows, press, tag } = props;
   const versionId = useId();
-  const version = props.outcome.kind === "offered" ? props.version : undefined;
+  const answer = answeredDeploys(press);
+  // Pressed, its Version stays — not to be changed — until Where takes its place: the panel's foot
+  // does not jump up and back down under the pointer (the onboarding run: 110 px up, 76 px down).
+  const offered = props.outcome.kind === "offered";
+  const version =
+    offered || (props.outcome.kind === "releasing" && answer === undefined)
+      ? props.version
+      : undefined;
   const checkedVersion =
-    version === undefined ? undefined : releaseVersionField(version.value, version.tags);
+    version === undefined || !offered
+      ? undefined
+      : releaseVersionField(version.value, version.tags);
+  // What goes out is still compared: how many is not said until it is known.
+  const comparing = offered && !props.gate.allowed && props.gate.reason === RELEASE_CHECKING;
   const model = releaseReview({
     tag,
     git: props.git,
@@ -573,7 +585,6 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     productionMoved: props.productionMoved,
     now: props.now,
   });
-  const answer = answeredDeploys(press);
   const answered = new Set(answer?.jobs.map(({ service }) => service));
   const fix = model.verdict.fix;
   const refused = press.kind === "refused" ? press.reason : undefined;
@@ -606,7 +617,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     addresses: props.production?.addresses ?? [],
   });
   const line = releaseLine({
-    changes: rows.length,
+    changes: comparing ? undefined : rows.length,
     stage: props.hasStage ? props.stage?.name : undefined,
     since: sinceWords(props.stage?.at, props.now),
     onStage: props.hasStage
@@ -770,7 +781,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
                 aria-describedby={`${versionId}-help`}
                 aria-invalid={checkedVersion?.error !== undefined}
                 autoComplete="off"
-                disabled={press.kind === "running"}
+                disabled={press.kind === "running" || !offered}
                 font="mono"
                 id={versionId}
                 nativeInput
@@ -786,6 +797,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
             {version.suggestions.map((suggestion) => (
               <div className="rv-note rv-version-use" key={suggestion.source}>
                 <Button
+                  disabled={!offered}
                   onClick={() => version.onChange(suggestion.tag.slice(1))}
                   size="sm"
                   variant="link"

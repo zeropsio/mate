@@ -450,6 +450,7 @@ export {
 } from "./changeConversation.ts";
 export {
   REVIEW_LABEL,
+  RELEASE_TAKES,
   REVIEW_RELEASE_LABEL,
   changeReview,
   changeMergeVerdict,
