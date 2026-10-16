@@ -2683,16 +2683,14 @@ export function ZeropsProjectsContent({
                   requestEnvironment(group.groupId, "stage");
                 }
         }
-        addMate={({ group }) =>
-          addsOfferedFor(group)
-            ? {
-                onAdd: () => {
-                  requestEnvironment(group.groupId, "dev");
-                },
-                why: creationRunning ? PUT_LIVE_AFTER_CREATION : addMateWhy(group.groupId),
-              }
-            : undefined
-        }
+        // As the project's own page offers it: always there, standing off with why where HQ says
+        // one — never coming and going with what the platform says of its Mates.
+        addMate={({ group }) => ({
+          onAdd: () => {
+            requestEnvironment(group.groupId, "dev");
+          },
+          why: creationRunning ? PUT_LIVE_AFTER_CREATION : addMateWhy(group.groupId),
+        })}
         renderCardPeople={overview.renderCardPeople}
         renderReleaseVerb={({ group, flow }) => {
           const { production } = flow;
