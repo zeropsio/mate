@@ -375,6 +375,45 @@ describe("the pump's mapping", () => {
     assert.deepStrictEqual(toCore.step(asking("completed"), 0).signals, []);
   });
 
+  it("a call that stores values in a vault says which keys went to which vault as it closes", () => {
+    const toCore = makeToCore();
+    const storing = (status: string) =>
+      sig({
+        type: "item.upsert",
+        turn: H1,
+        item: "h1.i2",
+        body: {
+          kind: "tool",
+          toolKind: "mcp_tool_call",
+          title: "MCP tool call",
+          call: { name: "zerops_env", server: "zerops" },
+          facts: {
+            result: {
+              toolName: "zerops_env",
+              resultText: JSON.stringify({
+                process: { id: "p1", status: "FINISHED" },
+                stored: [{ key: "API_KEY", value: "***", sensitive: true }],
+                scope: "service",
+                serviceHostname: "api",
+              }),
+            },
+          },
+        },
+        status,
+      });
+    toCore.step(storing("running"), 0);
+    const closed = toCore.step(storing("completed"), 0).signals;
+    assert.deepStrictEqual(
+      closed.map((signal) => signal.kind),
+      ["item-closed", "vault-stored"],
+    );
+    assert.deepStrictEqual(closed[1], {
+      kind: "vault-stored",
+      keys: ["API_KEY"],
+      scope: { kind: "service", hostname: "api" },
+    });
+  });
+
   it.each([
     ["completed", "done"],
     ["failed", "failed"],
