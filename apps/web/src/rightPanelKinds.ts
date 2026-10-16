@@ -63,7 +63,7 @@ export interface RightPanelKindMeta {
   readonly launcher: {
     readonly label: string;
     readonly description: string;
-    /** The launcher's letter; `null` where no letter is obvious. */
+    /** The launcher's letter: the label's first, or `null` where another page holds that one. */
     readonly shortcut: string | null;
     readonly unavailableHint: string;
   } | null;
@@ -134,7 +134,7 @@ export const RIGHT_PANEL_KIND_META = {
     launcher: {
       label: "Helpers",
       description: "Follow this Mate's helpers and their work.",
-      shortcut: "A",
+      shortcut: "H",
       unavailableHint: "Available from a chat.",
     },
     availability: () => "available",
@@ -178,8 +178,8 @@ export const RIGHT_PANEL_KIND_META = {
     launcher: {
       label: "Data",
       description: "Browse databases and storage.",
-      // D/A/T are already Diff/Agents/Terminal; V stands in for "view".
-      shortcut: "V",
+      // D is Diff's, and a letter that does not start the name is never guessed.
+      shortcut: null,
       unavailableHint: "Available in a Zerops project.",
     },
     availability: (input) => input.zeropsPanel,
@@ -188,8 +188,7 @@ export const RIGHT_PANEL_KIND_META = {
     launcher: {
       label: "Vault",
       description: "Settings and secrets your apps use.",
-      // V is Data's; E stands in for the environment's variables.
-      shortcut: "E",
+      shortcut: "V",
       unavailableHint: "Available in a Zerops project.",
     },
     availability: (input) => input.zeropsPanel,

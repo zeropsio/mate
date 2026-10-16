@@ -142,3 +142,24 @@ describe("RightPanelTabs overflow", () => {
     },
   );
 });
+
+describe("the page menu", () => {
+  it("says under each page's name what it opens, and gives a page a key only where its name starts with it", async () => {
+    layOut(600);
+    render();
+    const add = host.querySelector<HTMLElement>('[aria-label="Add a page"]');
+    await act(async () => {
+      add?.click();
+    });
+    const items = Array.from(document.querySelectorAll("[data-slot='menu-item']"), (item) => ({
+      name: item.querySelector("[data-slot='menu-item-text'] > span")?.textContent ?? "",
+      opens: item.querySelector("[data-slot='menu-item-description']")?.textContent ?? "",
+      key: item.getAttribute("aria-keyshortcuts"),
+    }));
+    expect(items.map((item) => item.name)).toContain("Vault");
+    for (const item of items) {
+      expect(item.opens, item.name).not.toBe("");
+      if (item.key !== null) expect(item.name.startsWith(item.key), item.name).toBe(true);
+    }
+  });
+});
