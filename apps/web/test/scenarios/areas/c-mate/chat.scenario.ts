@@ -239,16 +239,12 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.then.text(title);
         const row = yield* Effect.promise(() =>
           s.page.evaluate((title) => {
-            const heading = [...document.querySelectorAll("h3")].find(
-              (heading) => heading.textContent === title,
+            const link = [...document.querySelectorAll('[data-slot="row-title"] a')].find(
+              (link) => link.textContent === title,
             );
-            const link = heading?.querySelector("a");
             return {
               href: link?.getAttribute("href") ?? null,
-              unarchive:
-                heading?.parentElement?.parentElement?.parentElement?.textContent?.includes(
-                  "Unarchive",
-                ),
+              unarchive: link?.closest('[data-slot="row"]')?.textContent?.includes("Unarchive"),
             };
           }, title),
         );
