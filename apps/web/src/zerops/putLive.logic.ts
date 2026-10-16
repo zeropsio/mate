@@ -122,13 +122,16 @@ export function environmentDoorLabel(tier: "stage" | "production", name: string)
 
 export interface PutLiveSheetModel {
   readonly title: string;
-  /** What goes live: the change's title and at most three plain lines of what it does. */
-  readonly what: { readonly title: string; readonly lines: ReadonlyArray<string> };
+  /**
+   * What goes live: the change's title and at most three plain lines of what it does; `undefined`
+   * while what is merged is read, the sheet standing in for it and its button waiting.
+   */
+  readonly what: { readonly title: string; readonly lines: ReadonlyArray<string> } | undefined;
   readonly where: { readonly name: string; readonly line: string };
   /** Stage, offered for later — never asked now. */
   readonly later: string;
   readonly button: string;
-  /** Why the button waits, where it does: the recipe being read, or none to make it from. */
+  /** Why the button waits, where it does: the setup files being read, or none to make it from. */
   readonly hold: string | undefined;
 }
 
@@ -172,41 +175,58 @@ function plain(text: string): string {
 
 export const PUT_LIVE_LATER = "Want somewhere to test first? Add a stage later from the project.";
 const RECIPE_READING = "Reading how the project runs…";
-const RECIPE_MISSING = "The project has no production recipe yet: ask the Mate to add one.";
-const RECIPE_UNREADABLE = "The project's recipe can't be read right now.";
+export const SETUP_MISSING =
+  "The project has no setup files for production yet: ask the Mate to add them.";
+export const SETUP_UNREADABLE = "The project's setup files can't be read right now.";
 
 const NOTHING_MERGED = "Nothing is merged to put live yet.";
 
+const PUT_LIVE_WHERE = {
+  name: "Production",
+  line: "Its own public address, ready in a few minutes.",
+};
+
 /**
  * The sheet, from what goes live: the change it was asked from — or, asked from the project, what
- * is merged, newest first: one change in its own words, several by their titles.
+ * is merged, newest first: one change in its own words, several by their titles. Painted once in
+ * its final shape: while what is merged is read, it stands in for it and says nothing it takes back.
  */
 export function putLiveSheet(input: {
   readonly project: string;
-  readonly changes: ReadonlyArray<{
-    readonly title: string;
-    readonly description?: string | undefined;
-  }>;
+  /** `undefined` while what is merged is read. */
+  readonly changes:
+    | ReadonlyArray<{
+        readonly title: string;
+        readonly description?: string | undefined;
+      }>
+    | undefined;
   /** The production recipe, as read (`useZeropsGroupRecipe`). */
   readonly recipe: "loading" | "present" | "absent" | "unreadable";
 }): PutLiveSheetModel {
-  const [first] = input.changes;
+  const { changes } = input;
+  if (changes === undefined)
+    return {
+      title: `Put ${input.project} live`,
+      what: undefined,
+      where: PUT_LIVE_WHERE,
+      later: PUT_LIVE_LATER,
+      button: "Put it live",
+      hold: undefined,
+    };
+  const [first] = changes;
   const what =
     first === undefined
       ? { title: NOTHING_MERGED, lines: [] }
-      : input.changes.length === 1
+      : changes.length === 1
         ? { title: first.title, lines: putLiveLines(first.description) }
         : {
-            title: `${input.changes.length} changes`,
-            lines: input.changes.slice(0, MAX_LINES).map((change) => change.title),
+            title: `${changes.length} changes`,
+            lines: changes.slice(0, MAX_LINES).map((change) => change.title),
           };
   return {
     title: `Put ${input.project} live`,
     what,
-    where: {
-      name: "Production",
-      line: "Its own public address, ready in a few minutes.",
-    },
+    where: PUT_LIVE_WHERE,
     later: PUT_LIVE_LATER,
     button: "Put it live",
     hold:
@@ -217,8 +237,8 @@ export function putLiveSheet(input: {
           : input.recipe === "loading"
             ? RECIPE_READING
             : input.recipe === "absent"
-              ? RECIPE_MISSING
-              : RECIPE_UNREADABLE,
+              ? SETUP_MISSING
+              : SETUP_UNREADABLE,
   };
 }
 

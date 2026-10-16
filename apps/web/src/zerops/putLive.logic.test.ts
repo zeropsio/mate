@@ -235,8 +235,8 @@ describe("the Put it live sheet", () => {
 
   it.each([
     ["loading", "Reading how the project runs…"],
-    ["absent", "The project has no production recipe yet: ask the Mate to add one."],
-    ["unreadable", "The project's recipe can't be read right now."],
+    ["absent", "The project has no setup files for production yet: ask the Mate to add them."],
+    ["unreadable", "The project's setup files can't be read right now."],
   ] as const)("holds its button while the production recipe is %s, saying why", (recipe, hold) => {
     expect(putLiveSheet({ project: "Tea Shop", changes: [{ title: "x" }], recipe }).hold).toBe(
       hold,
@@ -253,6 +253,13 @@ describe("the Put it live sheet", () => {
     expect(many.hold).toBeUndefined();
     const none = putLiveSheet({ project: "Tea Shop", changes: [], recipe: "present" });
     expect(none.hold).toBe("Nothing is merged to put live yet.");
+  });
+
+  it("stands in for what goes live while what is merged is read, saying no reading words", () => {
+    const sheet = putLiveSheet({ project: "Tea Shop", changes: undefined, recipe: "present" });
+    expect(sheet.what).toBeUndefined();
+    expect(sheet.hold).toBeUndefined();
+    expect(sheet.title).toBe("Put Tea Shop live");
   });
 
   it("takes plain sentences where a description has no list, and skips pictures and code", () => {

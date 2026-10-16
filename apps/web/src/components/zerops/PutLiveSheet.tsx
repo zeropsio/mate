@@ -55,13 +55,22 @@ export function PutLiveSheet({
         <div className="flex flex-col gap-6">
           <section aria-label="What goes live" className="flex flex-col gap-1">
             <h3 className="text-muted-foreground text-xs">What goes live</h3>
-            <p className="font-medium text-foreground text-sm">{model.what.title}</p>
-            {model.what.lines.length === 0 ? null : (
-              <ul className="flex flex-col gap-0.5 text-muted-foreground text-sm">
-                {model.what.lines.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
+            {model.what === undefined ? (
+              // What is merged, still read: its title's box held, no words it takes back.
+              <p aria-hidden="true" className="flex h-5 items-center">
+                <span className="h-3.5 w-48 rounded-sm bg-muted" />
+              </p>
+            ) : (
+              <>
+                <p className="font-medium text-foreground text-sm">{model.what.title}</p>
+                {model.what.lines.length === 0 ? null : (
+                  <ul className="flex flex-col gap-0.5 text-muted-foreground text-sm">
+                    {model.what.lines.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
             {onSeeCode === undefined ? null : (
               <Button className={QUIET_WAY_OUT} onClick={onSeeCode} size="sm" variant="link">
@@ -88,7 +97,12 @@ export function PutLiveSheet({
             {model.hold}
           </p>
         )}
-        <Button disabled={model.hold !== undefined} onClick={onPutLive} ref={press}>
+        <Button
+          aria-busy={model.what === undefined || undefined}
+          disabled={model.hold !== undefined || model.what === undefined}
+          onClick={onPutLive}
+          ref={press}
+        >
           {model.button}
         </Button>
       </DialogFooter>

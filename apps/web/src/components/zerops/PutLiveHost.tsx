@@ -25,6 +25,8 @@ import {
   putLiveNext,
   putLiveSettle,
   putLiveSheet,
+  SETUP_MISSING,
+  SETUP_UNREADABLE,
   type PutLiveEvent,
   type PutLiveRun,
 } from "~/zerops/putLive.logic";
@@ -137,12 +139,11 @@ function PutLiveSheetContainer({
             .toSorted((left, right) => (right.mergedAt ?? "").localeCompare(left.mergedAt ?? "")),
     [flow],
   );
-  const changes = ask.change === undefined ? (merged ?? []) : [ask.change];
-  const read = putLiveSheet({ project, changes, recipe: recipe.state });
-  const model =
-    ask.change === undefined && merged === undefined
-      ? { ...read, what: { title: "Reading what is merged…", lines: [] }, hold: "Reading…" }
-      : read;
+  const model = putLiveSheet({
+    project,
+    changes: ask.change === undefined ? merged : [ask.change],
+    recipe: recipe.state,
+  });
   const seeCode = ask.change ?? (merged?.length === 1 ? merged[0] : undefined);
   // A change still waiting is merged only where its review would merge it: else the sheet says
   // the review's verdict, and See the code is the way on.
@@ -292,11 +293,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
         return;
       }
       if (recipe.tier === undefined) {
-        fail(
-          recipe.state === "absent"
-            ? "The project has no production recipe yet: ask the Mate to add one."
-            : "The project's recipe can't be read right now.",
-        );
+        fail(recipe.state === "absent" ? SETUP_MISSING : SETUP_UNREADABLE);
         return;
       }
       const { group, environments } = entry;
