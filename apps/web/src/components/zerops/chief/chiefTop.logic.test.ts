@@ -10,6 +10,7 @@ import {
   chiefTopShown,
   type ChiefPageView,
 } from "./chiefTop.logic";
+import { chiefSetupLine, type OwnChief } from "~/zerops/chief";
 
 const mate = (state: MateRowState, second: MateRowSecond) => ({ state, second });
 
@@ -190,6 +191,21 @@ describe("chiefNameParts", () => {
 });
 
 describe("chiefTopShown", () => {
+  it("the Chief's row stays from setup until HQ reports it", () => {
+    const steps: ReadonlyArray<[OwnChief, "running" | "done" | "idle"]> = [
+      [null, "running"],
+      [null, "done"],
+      [undefined, "done"],
+      ["chief-project", "done"],
+      ["chief-project", "idle"],
+    ];
+    expect(
+      steps.map(([own, setup]) =>
+        chiefTopShown({ own, setup: chiefSetupLine({ own, mayCreate: true, setup }) }),
+      ),
+    ).toEqual(steps.map(() => true));
+  });
+
   it.each<[string, Parameters<typeof chiefTopShown>[0], boolean]>([
     ["the menu holds no Chief row before one exists", { own: null, setup: "offer" }, false],
     [

@@ -121,7 +121,8 @@ export function chiefNames(person: ChiefPerson | null): {
 
 /**
  * Where setting up a Chief stands, for the menu's top row (`chiefRowLine`): an offer to a person with
- * none who may make its project, the setup while it runs or once it stopped, else nothing.
+ * none who may make its project, the setup while it runs or once it stopped — and, set up, still
+ * running until HQ reports the Chief, so its row never leaves and comes back — else nothing.
  */
 export function chiefSetupLine(input: {
   readonly own: OwnChief;
@@ -131,6 +132,7 @@ export function chiefSetupLine(input: {
 }): "offer" | "running" | "stopped" | null {
   if (input.setup === "running") return "running";
   if (input.setup === "failed") return "stopped";
-  if (input.setup === "done" || input.own !== null || !input.mayCreate) return null;
+  if (input.setup === "done") return typeof input.own === "string" ? null : "running";
+  if (input.own !== null || !input.mayCreate) return null;
   return "offer";
 }
