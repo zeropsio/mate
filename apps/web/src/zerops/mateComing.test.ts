@@ -822,6 +822,7 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
     readonly page: MateComingPage | undefined;
     readonly cameUp: boolean;
     readonly failuresSinceConnect?: number;
+    readonly addressDue?: boolean;
     readonly expected: ReturnType<typeof mateArrivalShown>;
   }>([
     {
@@ -978,6 +979,21 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       cameUp: true,
       expected: undefined,
     },
+    // Run 2 (2026-10-16): "has no public address… Open in Zerops" flashed for 0.3 s during
+    // "Almost there." — one read before its address was known to be on its way.
+    {
+      case: "made here, its container up before its address is known to come: opening",
+      page: reaching({ kind: "no-address", reason: "no-subdomain" }),
+      cameUp: true,
+      addressDue: true,
+      expected: OPENING,
+    },
+    {
+      case: "made elsewhere, its container up with no address: its link's words",
+      page: reaching({ kind: "no-address", reason: "no-subdomain" }),
+      cameUp: true,
+      expected: undefined,
+    },
     {
       case: "reaching, an update required",
       page: reaching({ kind: "update-required", actual: "0.1.0", minimum: "0.2.0" }),
@@ -991,8 +1007,8 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       expected: undefined,
     },
     { case: "nothing known yet", page: undefined, cameUp: true, expected: undefined },
-  ])("$case", ({ page, cameUp, failuresSinceConnect = 0, expected }) => {
-    expect(mateArrivalShown({ page, cameUp, failuresSinceConnect })).toEqual(expected);
+  ])("$case", ({ page, cameUp, failuresSinceConnect = 0, addressDue, expected }) => {
+    expect(mateArrivalShown({ page, cameUp, failuresSinceConnect, addressDue })).toEqual(expected);
   });
 
   // Live, 2026-10-05: a new Mate's arrival keeps its board while zcp's init runs, and through its

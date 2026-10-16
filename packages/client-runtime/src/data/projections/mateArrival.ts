@@ -188,6 +188,12 @@ function youngAt(at: string | undefined, nowMs: number | undefined, graceMs: num
  */
 export const CONTAINER_CATCH_UP_MS = 3 * 60_000;
 
+/**
+ * How long after this tab pressed a Mate the address its press asked for may still be unknown: its
+ * setup's two to four minutes, and as long again.
+ */
+export const ADDRESS_CATCH_UP_MS = 6 * 60_000;
+
 /** This tab made it within the listing's catch-up: a container not listed yet is on its way. */
 const containerCatchingUp = (input: Pick<MateComingInput, "madeAt" | "nowMs">): boolean =>
   input.madeAt !== undefined &&
@@ -610,12 +616,28 @@ export function mateArrivalShown(input: {
   readonly cameUp: boolean;
   /** Its link's failures since it last connected (`MateLink.failuresSinceConnect`). */
   readonly failuresSinceConnect: number;
+  /**
+   * This tab made it, within {@link ADDRESS_CATCH_UP_MS} of its press: the address its press asked
+   * for is on its way.
+   */
+  readonly addressDue?: boolean | undefined;
 }): MateComing | undefined {
   const { page } = input;
   if (page?.kind === "coming") return page.coming;
   if (!input.cameUp) return undefined;
   if (page?.kind === "up") return ARRIVAL_OPENING;
   if (page?.kind === "reaching" && arrivalHoldsThrough(page.reachability, input)) {
+    return ARRIVAL_OPENING;
+  }
+  // Made here, its container up before a read knew its address was on its way: the address its
+  // press asked for is coming (run 2, 2026-10-16: "has no public address" for one read, at
+  // +186 s). Past its catch-up, a Mate with no address says so in its own words.
+  if (
+    page?.kind === "reaching" &&
+    input.addressDue === true &&
+    page.reachability?.kind === "no-address" &&
+    page.reachability.reason === "no-subdomain"
+  ) {
     return ARRIVAL_OPENING;
   }
   return undefined;
@@ -773,6 +795,11 @@ export function mateArrival(
     page,
     cameUp: input.cameUp === true,
     failuresSinceConnect: input.link?.failuresSinceConnect ?? 0,
+    addressDue:
+      input.created === true &&
+      input.madeAt !== undefined &&
+      input.nowMs !== undefined &&
+      input.nowMs - input.madeAt < ADDRESS_CATCH_UP_MS,
   });
   const handover =
     input.conversation === undefined
