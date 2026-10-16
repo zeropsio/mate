@@ -30,6 +30,7 @@ import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { isSlashCommand } from "@t3tools/shared/userAsk";
 
 import { pullRequestBlocked } from "./gitTab.ts";
+import { productionProjectOf, type EnvironmentPlace } from "./groupRows.ts";
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
 import { movedCount, type Moved } from "./releaseCompare.ts";
 
@@ -350,6 +351,36 @@ export interface ProductionLive {
   readonly taggedAt: string;
   /** Where production answers, once known. */
   readonly address: string | undefined;
+}
+
+/**
+ * The release production runs and the Zerops project it runs in, as an application's flow says
+ * them: what a Mate is told (`productionTurnNotes`) once the project's address is read. None
+ * before a release runs there.
+ *
+ * Pure: no network, no clock, no platform globals (rule R1).
+ */
+export function productionRelease(
+  flow:
+    | {
+        readonly releases: ReadonlyArray<{
+          readonly tag: string;
+          readonly taggedAt: string;
+          readonly standing: string | undefined;
+        }>;
+        readonly environments: ReadonlyArray<EnvironmentPlace>;
+      }
+    | undefined,
+):
+  | { readonly tag: string; readonly taggedAt: string; readonly projectId: string | undefined }
+  | undefined {
+  const live = flow?.releases.find((release) => release.standing === "live");
+  if (flow === undefined || live === undefined) return undefined;
+  return {
+    tag: live.tag,
+    taggedAt: live.taggedAt,
+    projectId: productionProjectOf(flow.environments),
+  };
 }
 
 /**

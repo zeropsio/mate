@@ -83,6 +83,6 @@ export function mainStageOf(
   return flow.environmentInputs.find(
     (entry) =>
       entry.tier === "stage" &&
-      flow.environments.find((row) => row.projectId === entry.projectId)?.source === "main",
+      flow.environments.find((row) => row.id === entry.id)?.source === "main",
   );
 }
