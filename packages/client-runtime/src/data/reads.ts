@@ -29,6 +29,7 @@ import type { ProjectValue } from "./families/project.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
 import { creditForecast } from "./projections/creditForecast.ts";
+import { balanceScope } from "./families/organizationBalance.ts";
 import { creditScope } from "./families/organizationCredit.ts";
 import { vault } from "./projections/vault.ts";
 import type { VaultView } from "./projections/vaultModel.ts";
@@ -129,24 +130,38 @@ export const creditReadGenerationAtom = Atom.family((orgId: string) =>
   }).pipe(Atom.withLabel(`data:credit-read-generation:${orgId}`)),
 );
 
+/**
+ * The organization's balance read as far as it went: its generation, which a create dialog holds
+ * at its opening (`creditForecast`'s `balanceOpenedAt`); `0` without the mounted account's
+ * organization.
+ */
+export const balanceReadGenerationAtom = Atom.family((orgId: string) =>
+  Atom.make((get): number => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId !== orgId) return 0;
+    return get(account.data.stream(balanceScope(orgId))).generation;
+  }).pipe(Atom.withLabel(`data:balance-read-generation:${orgId}`)),
+);
+
 const creditForecastFamily = Atom.family((key: string) =>
   Atom.make((get): boolean => {
-    const at = key.indexOf(":");
-    const openedAt = Number(key.slice(0, at));
-    const orgId = key.slice(at + 1);
+    const [credit = "", balance = "", ...org] = key.split(":");
+    const openedAt = Number(credit);
+    const balanceOpenedAt = Number(balance);
+    const orgId = org.join(":");
     const account = get(accountReadsAtom);
     if (account === null || account.orgId !== orgId) return false;
-    return get(account.data.project(creditForecast, { orgId, openedAt }));
+    return get(account.data.project(creditForecast, { orgId, openedAt, balanceOpenedAt }));
   }).pipe(Atom.withLabel(`data:credit-forecast:${key}`)),
 );
 
 /**
  * Whether a new project in the organization the mounted account observes waits for credit, as
- * read since a dialog opened at `openedAt` (`creditForecast`); `false` without one, or for another
- * organization.
+ * read since a dialog opened at `openedAt` (its credit read) and `balanceOpenedAt` (its balance
+ * read) (`creditForecast`); `false` without one, or for another organization.
  */
-export const creditForecastAtom = (orgId: string, openedAt: number) =>
-  creditForecastFamily(`${String(openedAt)}:${orgId}`);
+export const creditForecastAtom = (orgId: string, openedAt: number, balanceOpenedAt: number) =>
+  creditForecastFamily(`${String(openedAt)}:${String(balanceOpenedAt)}:${orgId}`);
 
 export const NOT_READ_USAGE: ProjectUsage = {
   read: false,
