@@ -3230,7 +3230,9 @@ code {
 
 /* A person's disc (`PersonAvatar`, and the seat on a Mate's face): their picture, or their letter
    on their own hue (`personMark`), lighter at the top left; lighter on a light ground and deeper on
-   a dark one. A hairline keeps a pale picture off the ground. */
+   a dark one. The letter is their hue's dark ink on the light tints and white on the deep ones, at
+   least 4.5:1 against either end of the gradient on every hue. A hairline keeps a pale picture off
+   the ground. */
 @layer components {
   .person-avatar {
     position: relative;
@@ -3242,7 +3244,7 @@ code {
     border-radius: 9999px;
     font-weight: 600;
     line-height: 1;
-    color: var(--color-white);
+    color: oklch(var(--person-ink-l) var(--person-ink-c) var(--person-hue));
     background: linear-gradient(
       140deg,
       oklch(calc(var(--person-l) + 0.06) var(--person-c) var(--person-hue)),
@@ -4851,10 +4853,14 @@ code {
 :root {
   --person-l: 0.74;
   --person-c: 0.07;
+  --person-ink-l: 0.2;
+  --person-ink-c: 0.06;
 }
 
 :root.dark {
-  --person-l: 0.55;
+  --person-l: 0.49;
+  --person-ink-l: 1;
+  --person-ink-c: 0;
 }
 
 /* ==== end of the menu's rows ==== */
@@ -5479,7 +5485,7 @@ code {
   border-radius: 9999px;
   background: oklch(var(--person-l) var(--person-c) var(--person-hue));
   box-shadow: 0 0 0 1.5px var(--card);
-  color: var(--color-white);
+  color: oklch(var(--person-ink-l) var(--person-ink-c) var(--person-hue));
   font-size: 7px;
   font-weight: 700;
   line-height: 1;
