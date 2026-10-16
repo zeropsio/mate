@@ -345,13 +345,21 @@ export const mateCredentialsLayer = (options: {
               return yield* new MateRefused({ code: "not_this_projects_mate" });
             }
             // A key id its Mate names is kept only where it names the Mate's own key; the
-            // enrollment goes on without it otherwise, and Zerops not answering keeps none. A key
-            // an earlier client widened is said (`keyWider`), and never kept.
+            // enrollment goes on without it otherwise, and Zerops not answering — or answering in a
+            // shape HQ cannot read — keeps none. A key an earlier client widened is said
+            // (`keyWider`), and never kept.
             const reach =
               keyTokenId === undefined
                 ? ("none" as const)
                 : yield* keyReach(projectId, keyTokenId).pipe(
-                    Effect.catchTags({ ZeropsUnavailable: () => Effect.succeed("none" as const) }),
+                    Effect.catchTags({
+                      ZeropsUnavailable: () => Effect.succeed("none" as const),
+                      ZeropsUnexpectedAnswer: (error) =>
+                        Effect.as(
+                          Effect.logError("zerops answer unreadable", error),
+                          "none" as const,
+                        ),
+                    }),
                   );
             const namedKey = reach === "own" ? keyTokenId : undefined;
             let keyWiderMoved = false;
