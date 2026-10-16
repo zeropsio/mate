@@ -1140,7 +1140,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
 describe("ComingBelow — a Mate half made", () => {
   const HALF_MADE = {
     kind: "failed",
-    line: "Its setup stopped before its container. Finish setup completes it.",
+    line: "Its setup stopped before its workspace. Finish setup completes it.",
     verb: "finish-setup",
   } as const;
   const render = (onFinishSetup: (() => void) | undefined) => {

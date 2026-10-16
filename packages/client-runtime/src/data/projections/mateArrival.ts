@@ -137,6 +137,8 @@ export interface MateComingInput {
    * link that has not answered since (`MateLink.answered`) makes it a Mate still on its way.
    */
   readonly created?: boolean | undefined;
+  /** When this tab made it, wall ms: the press its creation began with. */
+  readonly madeAt?: number | undefined;
   /**
    * Its link's wait is one an arrival holds through (`arrivalHoldsThrough`); `undefined` where
    * the caller does not read its link.
@@ -180,12 +182,24 @@ function youngAt(at: string | undefined, nowMs: number | undefined, graceMs: num
   return nowMs === undefined || Number.isNaN(ms) || nowMs - ms < graceMs;
 }
 
+/**
+ * How long after this tab pressed a Mate its listing may still lack the container its press went
+ * through with: the press's own half minute, then the listing's catch-up (`LISTING_CATCH_UP_MS`).
+ */
+export const CONTAINER_CATCH_UP_MS = 3 * 60_000;
+
+/** This tab made it within the listing's catch-up: a container not listed yet is on its way. */
+const containerCatchingUp = (input: Pick<MateComingInput, "madeAt" | "nowMs">): boolean =>
+  input.madeAt !== undefined &&
+  input.nowMs !== undefined &&
+  input.nowMs - input.madeAt < CONTAINER_CATCH_UP_MS;
+
 /** A Mate whose press stopped before its container: half-made, and *Finish setup* completes it. */
-export const HALF_MADE_LINE = "Its setup stopped before its container. Finish setup completes it.";
+export const HALF_MADE_LINE = "Its setup stopped before its workspace. Finish setup completes it.";
 
 /** The same Mate, for a viewer who may not finish it: who can. */
 export const HALF_MADE_OWNER_LINE =
-  "Its setup stopped before its container; an owner or admin can finish it.";
+  "Its setup stopped before its workspace; an owner or admin can finish it.";
 
 /**
  * A Mate held because HQ says its project is not closed off (`closeOffHold` `open`), until HQ says
@@ -315,8 +329,12 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
   if (press === undefined && candidate?.missingContainer === true) {
     // A press in another browser that HQ still holds is importing it; one whose hold ran out — its
     // tab closed — or whose import failed stopped before its container, and nothing will bring it.
-    // While HQ has said nothing of presses, neither is said.
-    if (input.pressElsewhere === "pressing") return { kind: "coming", line: COMING_UP_LINE };
+    // While HQ has said nothing of presses, neither is said. This tab's own press, through and
+    // gone, left its container on its way while the listing catches up: one that stopped would
+    // still be held here.
+    if (input.pressElsewhere === "pressing" || (created && containerCatchingUp(input))) {
+      return { kind: "coming", line: COMING_UP_LINE };
+    }
     if (input.pressElsewhere === "stopped") {
       return { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
     }

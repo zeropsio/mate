@@ -379,6 +379,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     setUpFailed: pressFailure(press),
     nowMs: Date.now(),
     created: made !== undefined,
+    madeAt: made?.startedAt,
     listingLacksIt,
     link,
     setupFailure: failedProcess,

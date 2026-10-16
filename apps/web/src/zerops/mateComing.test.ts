@@ -30,6 +30,7 @@ import {
   mateConnectKey,
   type MateComingInput,
   HALF_MADE_LINE,
+  COMING_UP_LINE,
   HALF_MADE_OWNER_LINE,
   AWAITING_HQ_LINE,
   CHECKING_SETUP_LINE,
@@ -143,6 +144,20 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         nowMs: NOW,
       },
       expected: { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" },
+    },
+    // Run 2 (2026-10-16): a healthy start flashed "could not be added" once its press was through
+    // and gone, before its container was listed.
+    {
+      case: "a Mate this tab made, its press through, its container not listed yet: coming up",
+      input: {
+        press: undefined,
+        candidate: { group: "unavailable", missingContainer: true },
+        pressElsewhere: "stopped",
+        created: true,
+        madeAt: NOW - 40_000,
+        nowMs: NOW,
+      },
+      expected: { kind: "coming", line: COMING_UP_LINE },
     },
     // The close-off gate (restores 0.12.3's closeOffGate): a Mate held because HQ says its project
     // is not closed off is closing off until HQ says it is — never failed on a clock (2026-10-05).

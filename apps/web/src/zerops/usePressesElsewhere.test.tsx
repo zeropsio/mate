@@ -56,6 +56,7 @@ const mount = (presses: Readonly<Record<string, HqPressValue>> | null) => {
       createElement(RegistryContext.Provider, { value: registry }, createElement(Probe)),
     );
   });
+  return registry;
 };
 
 beforeEach(() => {
@@ -94,6 +95,19 @@ describe("usePressesElsewhere", () => {
     });
     expect(processes.asked).toEqual(["p-una"]);
     expect(said("p-una")).toBe("stopped");
+  });
+
+  // Run 2 (2026-10-16): a press that went through leaves no record at HQ; its Mate read as half
+  // made until its container was listed.
+  it("never reads a press HQ let go of as stopped: one that went through leaves no record", () => {
+    const registry = mount({
+      "p-una": { kind: "mate", heldForMs: 30_000, until: "2026-10-05T10:00:30.000Z" },
+    });
+    expect(said("p-una")).toBe("pressing");
+    act(() => {
+      mountHqNavigation(registry, "org-1", { structure: { ungrouped: [], apps: [] }, presses: {} });
+    });
+    expect(said("p-una")).toBe("unknown");
   });
 
   it("says nothing either way while HQ has said nothing of presses", () => {
