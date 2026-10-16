@@ -530,6 +530,10 @@ const misfit = (
  */
 const sessionClosed = (b: StepBuilder, sessionId: SessionId, reason: SessionCloseReason): void => {
   b.emit({ _tag: "SessionClosed", sessionId, reason });
+  // Its agent is gone: the turn it would have opened on its finished work never comes.
+  if (b.state.wakes[turnDueWakeId(b)] !== undefined) {
+    b.emit({ _tag: "WakeCancelled", wakeId: turnDueWakeId(b), reason: "its session closed" });
+  }
   for (const item of Object.values(b.state.items)) {
     if (item.body.kind !== "work" || WORK_ENDED.has(item.body.status)) continue;
     b.emit({
@@ -1160,13 +1164,15 @@ const sleepingTurn = (
 
 /**
  * A Stop with no turn running stops what the Mate still does: the helpers and background work
- * living on in the session its turn ended in. Nothing stops one piece of an agent's background
- * work across drivers, so the session closes (V1's Claude Stop is the same hard boundary); its
- * work ends as stopped, and the next message resumes the conversation on a new session.
+ * living on in the session its turn ended in, and the turn its agent would open on its own to take
+ * a finished helper's result. Nothing stops one piece of an agent's background work across
+ * drivers, so the session closes (V1's Claude Stop is the same hard boundary); its work ends as
+ * stopped, and the next message resumes the conversation on a new session.
  */
 const stopWork = (b: StepBuilder): void => {
   const session = b.state.session;
-  if (session === null || !workLives(b.state)) throw new Rejected("run-not-running");
+  const awaited = b.state.wakes[turnDueWakeId(b)] !== undefined;
+  if (session === null || !(workLives(b.state) || awaited)) throw new Rejected("run-not-running");
   if (b.state.closing !== null) {
     throw new Rejected(
       b.state.closing.reason === "stop" ? "stop-already-asked" : "run-not-running",
@@ -1209,6 +1215,18 @@ const stop = (b: StepBuilder, target: RunId | undefined): void => {
     providerTurnId: run.providerTurnId,
   });
   b.emit({ _tag: "RunStopAsked", runId: run.id, by: b.envelope.principal, effectId: effect });
+  // One Stop stops what the turn started too: its helpers and shells live in its session, which
+  // closes with the Stop — beside the interrupt, never behind it — unless the driver's own Stop
+  // closes it (Claude: a close racing its interrupt could kill a first turn it never saved).
+  const session = b.state.session;
+  if (
+    workLives(b.state) &&
+    session !== null &&
+    session.id === run.sessionId &&
+    session.capabilities.stopClosesSession !== true
+  ) {
+    closeSession(b, "stop");
+  }
 };
 
 const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): void => {

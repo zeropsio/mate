@@ -2204,3 +2204,61 @@ describe("Claude's helpers and background work, as the engine records them", () 
       ),
   );
 });
+
+// S21-02: the person stopped a Mate whose helper went on changing their app; the turn ended, the
+// helper did not, and a second Stop later read as a restart.
+describe("one Stop stops the turn and everything it started", () => {
+  it.effect.each(
+    Array.from(DRIVERS, (driver) => ({
+      title: `a stop ends the turn and the helpers it started, and nothing restarts (${driver})`,
+      driver,
+    })),
+  )("$title", ({ driver }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        yield* send(w, "change the shop's checkout");
+        yield* w.agent((agent, thread) => agent.startWork(thread));
+        const result = yield* stop(w);
+        assert.strictEqual(result._tag, "Accepted");
+        yield* w.settle;
+        assert.deepStrictEqual((yield* ending(w, 1)).slice(0, 2), ["ended", "stopped"]);
+        assert.deepStrictEqual(
+          (yield* w.items(r(1)))
+            .filter((item) => item.kind === "work")
+            .map((item) => item.body.status),
+          ["stopped"],
+        );
+        const view = yield* w.within(readConversationView(mate));
+        assert.deepStrictEqual(view === undefined ? undefined : rowStateOf(view), {
+          kind: "idle",
+        });
+        // Nothing came up again on its own: one session start, no run after the stopped one.
+        assert.strictEqual(w.provider.calls.filter((call) => call.startsWith("start ")).length, 1);
+        yield* w.advance(0);
+        assert.isUndefined(yield* w.run(r(2)));
+        // The Mate takes the next message at once.
+        yield* send(w, "carry on");
+        assert.strictEqual((yield* w.run(r(2)))?.state, "running");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a Stop the agent has not answered yet reads as stopping on the Mate's row", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent", { scripted: { interruptHangs: true } });
+        yield* send(w, "change the shop's checkout");
+        const row = Effect.map(w.within(readConversationView(mate)), (view) =>
+          view === undefined ? undefined : rowStateOf(view),
+        );
+        assert.notProperty(yield* row, "stopping");
+        yield* stop(w);
+        yield* w.settle;
+        assert.deepInclude(yield* row, { kind: "working", stopping: true });
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});

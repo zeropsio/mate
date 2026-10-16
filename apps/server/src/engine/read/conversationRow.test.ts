@@ -255,6 +255,32 @@ describe("the menu row", () => {
       { lastEnded: ended(1, { kind: "stopped", by: ana }) },
       { kind: "idle" },
     ],
+    [
+      "a person's Stop is ending the run on: working, and saying it is stopping",
+      { activeRun: run(1), stopping: true },
+      { kind: "working", since: 120, waitsOnHelpers: false, stopping: true },
+    ],
+    [
+      "a person's Stop is ending the helpers its turn left: working on helpers, and saying it is stopping",
+      {
+        lastEnded: ended(1, { kind: "stopped", by: ana }),
+        background: "working",
+        work: [helperWork],
+        stopping: true,
+      },
+      {
+        kind: "working",
+        since: 500,
+        waitsOnHelpers: true,
+        stopping: true,
+        work: { items: [helperWork], count: 1, helpers: 1 },
+      },
+    ],
+    [
+      "a Stop that has nothing left to end: idle, never stopping",
+      { lastEnded: ended(1, { kind: "stopped", by: ana }), stopping: true },
+      { kind: "idle" },
+    ],
   ])("%s", (_title, patch, state) => {
     expect(conversationRowOf(view(patch), revision).state).toEqual(state);
   });

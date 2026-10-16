@@ -117,6 +117,8 @@ export interface ConversationView {
    * continuation): the run is about to start, armed in the same commit that ended what came before.
    */
   readonly runDue?: true;
+  /** A person's Stop is in force: the run on, or the session its work lives in, is being ended. */
+  readonly stopping?: true;
 }
 
 const decode = <S extends Schema.Top>(schema: S) =>
@@ -313,6 +315,10 @@ export const readConversationView = (conversationId: ConversationId) =>
         (wake) => !NO_RUN_WAKES.has(wake.kind) && wake.dueAt <= head.updated_at,
       )
         ? { runDue: true as const }
+        : {}),
+      ...(state.closing?.reason === "stop" ||
+      (activeRun !== null && state.runs[activeRun.id]?.stopAsked != null)
+        ? { stopping: true as const }
         : {}),
     };
     return view;
