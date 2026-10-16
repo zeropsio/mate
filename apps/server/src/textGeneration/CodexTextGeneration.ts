@@ -176,7 +176,11 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     imagePaths?: ReadonlyArray<string>;
     cleanupPaths?: ReadonlyArray<string>;
     modelSelection: ModelSelection;
-    /** Starts with no MCP servers, whatever the user's config names (zcp's among them). */
+    /**
+     * Starts with no MCP servers, whatever the user's config names (zcp's among them): the user's
+     * config.toml is not read, and with it the trusted projects whose own config could add one. An
+     * empty `mcp_servers` override does not do it: Codex merges tables, so every named server stays.
+     */
     withoutMcp?: boolean;
   }): Effect.fn.Return<S["Type"], TextGenerationError, S["DecodingServices"]> {
     const schemaJson = yield* encodeJsonForOperation(
@@ -209,7 +213,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
           "--skip-git-repo-check",
           "-s",
           "read-only",
-          ...(withoutMcp ? ["--config", "mcp_servers={}"] : []),
+          ...(withoutMcp ? ["--ignore-user-config"] : []),
           "--model",
           model,
           "--config",

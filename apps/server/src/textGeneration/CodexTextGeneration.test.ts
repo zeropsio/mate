@@ -268,7 +268,7 @@ it.layer(CodexTextGenerationTestLayer)("CodexTextGeneration", (it) => {
           lead: { name: "Lead", part: "Plans it." },
           builders: [{ name: "Checkout", part: "Builds it." }],
         }),
-        requireArg: "-s read-only --config mcp_servers={}",
+        requireArg: "-s read-only --ignore-user-config",
       },
       (textGeneration) =>
         Effect.gen(function* () {
