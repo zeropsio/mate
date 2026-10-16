@@ -20,6 +20,7 @@ import {
 } from "~/zerops/projectFlows";
 import { putLiveRunsIn, usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
 import {
+  putLiveCreation,
   putLiveDeadline,
   putLiveMergeGate,
   putLiveNext,
@@ -313,16 +314,14 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
           recipe: recipe.tier,
           ...(people.userRoles.length === 0 ? {} : { userRoles: people.userRoles }),
         },
+        // Production counts from the moment its project exists, while its services are awaited.
+        onProjectAccepted: (productionId: string) => {
+          step(groupId, { kind: "accepted", productionId });
+        },
       } as const;
       send(
         () => create(request),
-        (made) => {
-          if (made.kind === "refused") return failed(made.reason ?? "Production couldn't be made.");
-          const { outcome } = made;
-          return outcome.ok
-            ? { kind: "created", productionId: outcome.projectId, at: Date.now() }
-            : failed(outcome.error, outcome.projectId !== undefined || outcome.uncertain === true);
-        },
+        (made) => putLiveCreation(made, Date.now()),
         // What a creation that never answered made is read from the project, never made twice.
         "project",
       );

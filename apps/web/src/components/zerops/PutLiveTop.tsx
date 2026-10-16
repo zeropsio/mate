@@ -120,6 +120,11 @@ export function PutLiveRow(props: PutLiveRowProps) {
       <ComposerAsk
         actions={
           <>
+            {run.failure?.alsoProject === true ? (
+              <Button onClick={props.onOpenProject} size="sm" variant="link">
+                {FAILURE_ACTION.project}
+              </Button>
+            ) : null}
             <Button
               onClick={
                 action === "again"

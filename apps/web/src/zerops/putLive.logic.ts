@@ -20,6 +20,7 @@ import {
   changeMergeVerdict,
   RELEASE_NOTHING_NEW_ON_MAIN,
   type ChangeReviewInput,
+  type EnvironmentCreationOutcome,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 
@@ -44,6 +45,11 @@ export interface PutLiveFailure {
    * the project, where a production half made is finished.
    */
   readonly action: "again" | "see-code" | "project";
+  /**
+   * The project, offered beside *Try again*: production is made, and its services can be looked
+   * at there while the run goes on from it.
+   */
+  readonly alsoProject?: true | undefined;
   /** The source's own words, folded under Details. */
   readonly detail?: string | undefined;
 }
@@ -58,8 +64,13 @@ export interface PutLiveRun {
   readonly phase: PutLivePhase;
   /** The step a failure stopped at: what *Try again* runs. */
   readonly failedAt?: Exclude<PutLivePhase, "live" | "failed"> | undefined;
-  /** The Zerops project production runs in, once made. */
+  /** The Zerops project production runs in, from the moment the platform took it. */
   readonly productionId?: string | undefined;
+  /**
+   * Production's project exists and its creation still goes on — its services awaited, by a wait
+   * of its own that is bounded: the run releases only once that creation ended.
+   */
+  readonly making?: true | undefined;
   /** The release it made — or, `adopted`, the one someone else had on its way, which it waits for. */
   readonly tag?: string | undefined;
   readonly adopted?: boolean | undefined;
@@ -266,6 +277,9 @@ export function startPutLive(input: {
 /** What a run's step came to; each moves it on, or stops it with the cause. */
 export type PutLiveEvent =
   | { readonly kind: "merged" }
+  /** The platform took production's project: the run knows it from here, while its creation goes on. */
+  | { readonly kind: "accepted"; readonly productionId: string }
+  /** Production's creation ended, its services settled: its patience for the release counts from `at`. */
   | { readonly kind: "created"; readonly productionId: string; readonly at?: number | undefined }
   | {
       readonly kind: "released";
@@ -281,6 +295,7 @@ export type PutLiveEvent =
       readonly halfMade?: boolean | undefined;
       /** The way on, where the step knows it better than its phase does. */
       readonly action?: PutLiveFailure["action"] | undefined;
+      readonly alsoProject?: true | undefined;
       readonly detail?: string | undefined;
     }
   | { readonly kind: "again"; readonly at?: number | undefined };
@@ -295,9 +310,13 @@ export function putLiveStep(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
             change: run.change === undefined ? undefined : { ...run.change, merged: true },
           }
         : run;
+    case "accepted":
+      return run.phase === "creating" && run.productionId === undefined
+        ? { ...run, productionId: event.productionId, making: true }
+        : run;
     case "created":
       return run.phase === "creating"
-        ? { ...run, productionId: event.productionId, since: event.at }
+        ? { ...run, productionId: event.productionId, since: event.at, making: undefined }
         : run;
     case "released":
       return run.phase === "creating"
@@ -317,6 +336,7 @@ export function putLiveStep(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
             ...run,
             phase: "failed",
             failedAt: run.phase,
+            making: undefined,
             failure: {
               words: event.words,
               // A change HQ would not merge is read, not merged again blindly.
@@ -327,6 +347,7 @@ export function putLiveStep(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
                   : event.halfMade === true
                     ? "project"
                     : "again"),
+              ...(event.alsoProject === true ? { alsoProject: true } : {}),
               ...(event.detail === undefined ? {} : { detail: event.detail }),
             },
           };
@@ -370,6 +391,31 @@ export async function putLiveSettle<T>(
   }
 }
 
+/** How production's creation ended, as `useEnvironmentCreation` says it. */
+export type PutLiveCreationRun =
+  | { readonly kind: "refused"; readonly reason: string | null }
+  | { readonly kind: "ran"; readonly outcome: EnvironmentCreationOutcome };
+
+/**
+ * What production's creation came to, for the run: made, its patience counting from `at`; stopped
+ * while its services were awaited — production made and registered — a stop *Try again* goes on
+ * from to its release, the project offered beside it; stopped where a production may be half
+ * made, its project the way on, never a second one made from here.
+ */
+export function putLiveCreation(made: PutLiveCreationRun, at: number): PutLiveEvent {
+  if (made.kind === "refused")
+    return { kind: "failed", words: made.reason ?? "Production couldn't be made." };
+  const { outcome } = made;
+  if (outcome.ok) return { kind: "created", productionId: outcome.projectId, at };
+  if (outcome.failedStep.kind === "await-ready" && outcome.projectId !== undefined)
+    return { kind: "failed", words: outcome.error, action: "again", alsoProject: true };
+  return {
+    kind: "failed",
+    words: outcome.error,
+    halfMade: outcome.projectId !== undefined || outcome.uncertain === true,
+  };
+}
+
 /** What the project's flow says now, as far as a run needs it. */
 export interface PutLiveFacts {
   /** The production HQ holds now, by its Zerops project; `undefined` while it holds none. */
@@ -407,15 +453,23 @@ const UNUSABLE_TOKEN = /^A repository has no usable token\b/u;
 const IN_FLIGHT = /^Releasing (.+)…$/u;
 const OFFER_UNKNOWN = "Release offer is unknown.";
 
-/** When a run waiting for its release stops waiting; `undefined` where nothing counts down. */
+/**
+ * When a run waiting for its release stops waiting; `undefined` where nothing counts down here —
+ * while production is still made, its creation's own bounded wait for its services counts down.
+ */
 export function putLiveDeadline(run: PutLiveRun): number | undefined {
-  return run.phase === "creating" && run.productionId !== undefined && run.since !== undefined
+  return run.phase === "creating" &&
+    run.productionId !== undefined &&
+    run.making !== true &&
+    run.since !== undefined
     ? run.since + PUT_LIVE_PATIENCE
     : undefined;
 }
 
 export function putLiveNext(run: PutLiveRun, facts: PutLiveFacts, now?: number): PutLiveNext {
   if (run.phase === "creating") {
+    // Production's services are still awaited: nothing is released to them before they are up.
+    if (run.making === true) return { kind: "wait" };
     // The production this run made, once HQ holds it — never another that came up meanwhile — and
     // only what waiting will not change stops it (`creationHandoff`).
     const hasProduction = run.productionId !== undefined && facts.production === run.productionId;

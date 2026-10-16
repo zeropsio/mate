@@ -58,6 +58,8 @@ export interface EnvironmentCreationRequest {
   /** The steps it will take, once planned. */
   readonly onPlanned?: (steps: ReadonlyArray<EnvironmentCreationStep>) => void;
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
+  /** The platform took the environment's project: it exists from here, while the rest goes on. */
+  readonly onProjectAccepted?: (projectId: string) => void;
   /**
    * The creation an Add a Mate runs this press for (`creationRunId`): its birth intent and the
    * write that makes its project are recorded under ids named from it, where its view reads them
@@ -355,6 +357,7 @@ export function useEnvironmentCreation(): (
         // the group catches up with it.
         onProjectAccepted: async (projectId) => {
           if (!isCurrent()) return;
+          request.onProjectAccepted?.(projectId);
           beginPress({
             projectId,
             organizationId: organization.id,
