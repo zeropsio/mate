@@ -1,11 +1,21 @@
 /**
  * The create dialogs' forecast of the credit wall: Zerops makes a new organization's first project
- * free and refuses any after it until its first top-up. Before Create, the dialog says so where the
- * organization's record and its projects say it, with HQ to add credit — and nothing while either
- * is unread or failed.
+ * free and refuses any after it while the organization is unverified and holds no credit, promo
+ * credit included. Before Create, the dialog says so where the organization's record, its balance
+ * and its projects say it, with HQ to add credit — and nothing while any is unread or failed.
  */
 import { RegistryContext } from "@effect/atom-react";
-import { accountReadsAtom, creditScope, type AccountStore } from "@t3tools/client-runtime/data";
+import {
+  accountReadsAtom,
+  balanceScope,
+  creditScope,
+  type AccountStore,
+} from "@t3tools/client-runtime/data";
+
+type AccountRow = Extract<
+  Parameters<AccountStore["dispatch"]>[0],
+  { kind: "baseline-commit" }
+>["rows"][number];
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { AtomRegistry } from "effect/reactivity";
 import { act } from "react";
@@ -21,6 +31,7 @@ vi.mock("~/zerops/usePlatformCapabilities", () => ({
 
 const ORG = "org-acme";
 const SCOPE = creditScope(ORG);
+const BALANCE = balanceScope(ORG);
 
 let registry = AtomRegistry.make();
 let store: AccountStore;
@@ -48,33 +59,30 @@ function account(projects: ReadonlyArray<string>) {
   });
 }
 
-const stream = (event: object) =>
-  store.dispatch({ kind: "stream", key: SCOPE, now: 0, event } as Parameters<
-    AccountStore["dispatch"]
-  >[0]);
+const stream = (event: object, key = SCOPE) =>
+  store.dispatch({ kind: "stream", key, now: 0, event } as Parameters<AccountStore["dispatch"]>[0]);
 
-/** The organization's record read: whether a top-up verified it. */
-function creditRead(verified: boolean) {
-  stream({ kind: "demand", demanded: true });
-  stream({ kind: "attempt" });
-  stream({ kind: "handshake" });
-  store.dispatch({ kind: "baseline-begin", scope: SCOPE, generation: 1 });
+/** One read of the organization's own `scope` answering `family`'s `value`. */
+function read(scope: typeof SCOPE, row: Pick<AccountRow, "family" | "value">) {
+  stream({ kind: "demand", demanded: true }, scope);
+  stream({ kind: "attempt" }, scope);
+  stream({ kind: "handshake" }, scope);
+  store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
   store.dispatch({
     kind: "baseline-commit",
-    scope: SCOPE,
+    scope,
     generation: 1,
     via: "zerops-read",
     members: [ORG],
-    rows: [
-      {
-        family: "organizationCredit",
-        id: ORG,
-        value: { verified },
-        revision: { kind: "zerops", version: null },
-      },
-    ],
+    rows: [{ ...row, id: ORG, revision: { kind: "zerops", version: null } } as AccountRow],
   });
-  stream({ kind: "baseline-committed" });
+  stream({ kind: "baseline-committed" }, scope);
+}
+
+/** The organization's record read, whether a top-up verified it, beside its balance: none. */
+function creditRead(verified: boolean, promoCredit = 0) {
+  read(SCOPE, { family: "organizationCredit", value: { verified } });
+  read(BALANCE, { family: "organizationBalance", value: { credit: 0, promoCredit } });
 }
 
 function show() {
@@ -156,6 +164,13 @@ describe("the create dialog's word on credit", () => {
     expect(tree?.toJSON()).toBeNull();
   });
 
+  it("says nothing about credit to an unverified organization holding promo credit", () => {
+    account(["hq"]);
+    show();
+    act(() => creditRead(false, 25));
+    expect(tree?.toJSON()).toBeNull();
+  });
+
   it("says nothing about credit for an organization a top-up verified", () => {
     account(["hq"]);
     creditRead(true);
@@ -173,7 +188,7 @@ describe("the create dialog's word on credit", () => {
   it("reads the organization's credit while the dialog is open, and lets it go when it closes", () => {
     account(["hq"]);
     show();
-    expect(held).toEqual([`organizationCredit:${ORG}`]);
+    expect(held).toEqual([`organizationCredit:${ORG}`, `organizationBalance:${ORG}`]);
     act(() => tree?.unmount());
     tree = undefined;
     expect(held).toEqual([]);
