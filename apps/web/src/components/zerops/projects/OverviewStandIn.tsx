@@ -24,6 +24,26 @@ function TitleRow() {
   );
 }
 
+/** One project card's box, its words grey; `page` is the card a project's own page draws. */
+export function ProjectCardStandIn({ page = false }: { readonly page?: boolean }) {
+  return (
+    <div className="ov-card gap-3" data-page={page ? "" : undefined}>
+      <div className="flex items-center gap-2.5 px-1">
+        <Skeleton className="size-8 shrink-0" shape="pill" />
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <Skeleton className="h-3.5 w-2/5" />
+          <Skeleton className="h-3 w-3/5" />
+        </div>
+      </div>
+      <div className="flex flex-col gap-2.5 px-1 pt-2 pb-2">
+        <Skeleton className="h-3 w-4/5" />
+        <Skeleton className="h-3 w-3/5" />
+        <Skeleton className="h-3 w-2/3" />
+      </div>
+    </div>
+  );
+}
+
 /** The cards' rail, as `ProjectCards` lays it out: the same row and card boxes, their words grey. */
 export function OverviewCardsStandIn({ count = STAND_IN_CARDS }: { readonly count?: number }) {
   return (
@@ -31,20 +51,7 @@ export function OverviewCardsStandIn({ count = STAND_IN_CARDS }: { readonly coun
       <div className="ov-rail">
         <div className="ov-row" data-overview-stand-in-cards="">
           {Array.from({ length: count }, (_, index) => (
-            <div className="ov-card gap-3" key={index}>
-              <div className="flex items-center gap-2.5 px-1">
-                <Skeleton className="size-8 shrink-0" shape="pill" />
-                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                  <Skeleton className="h-3.5 w-2/5" />
-                  <Skeleton className="h-3 w-3/5" />
-                </div>
-              </div>
-              <div className="flex flex-col gap-2.5 px-1 pt-2 pb-2">
-                <Skeleton className="h-3 w-4/5" />
-                <Skeleton className="h-3 w-3/5" />
-                <Skeleton className="h-3 w-2/3" />
-              </div>
-            </div>
+            <ProjectCardStandIn key={index} />
           ))}
         </div>
       </div>

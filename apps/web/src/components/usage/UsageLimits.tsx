@@ -55,6 +55,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PersonAvatar } from "../zerops/primitives";
 import { Loading } from "../ui/loading";
+import { Skeleton } from "../ui/skeleton";
 import { WaitLine } from "../zerops/WaitLine";
 import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
@@ -212,6 +213,34 @@ export function LimitWindows({
           </Fragment>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * One account while the limits are read, in `AccountLimits`' own boxes — its heading's line and two
+ * windows' rows — so the account paints where its stand-in stood.
+ */
+function AccountLimitsStandIn() {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex h-5 items-center gap-2">
+        <Skeleton className="size-5 shrink-0" shape="pill" />
+        <Skeleton className="h-3 w-40" />
+      </div>
+      <div className="grid grid-cols-[11rem_minmax(0,1fr)_7rem] gap-x-4 gap-y-1">
+        {[0, 1].map((row) => (
+          <Fragment key={row}>
+            <span className="flex h-6 items-center">
+              <Skeleton className="h-3 w-full" />
+            </span>
+            <span className="flex h-6 items-center">
+              <Skeleton className="h-3 w-full" shape="pill" />
+            </span>
+            <span />
+          </Fragment>
+        ))}
+      </div>
     </div>
   );
 }
@@ -589,7 +618,11 @@ export function UsageLimitsSection({
     }));
 
   if (state === "wait") {
-    return <Loading count={1} label={READING_LIMITS_LINE} shape="cards" />;
+    return (
+      <Loading label={READING_LIMITS_LINE}>
+        <AccountLimitsStandIn />
+      </Loading>
+    );
   }
   if (state === "unavailable" || (state === "none" && unavailableNames.length > 0)) {
     return (

@@ -145,10 +145,11 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ProjectAccess, ProjectPeople } from "./projects/ProjectPeople";
+import { ProjectCardStandIn } from "./projects/OverviewStandIn";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
-import { MicroLabel, STATUS_BADGE_TONE, VerdictPanel } from "./primitives";
+import { MicroLabel, STATUS_BADGE_TONE, VerdictPanel, VerdictPanelWaiting } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
 import { deployAnswerSaid, type DeployAnswerJob } from "@t3tools/client-runtime/zerops/hq";
@@ -484,17 +485,28 @@ function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
   const deployments = useStopDeploymentsShown();
   const runtimeStops = useRuntimeStops(groupId);
   const navigate = useNavigate();
+  // The project's page in its own boxes: its card's place, and its column, where the environments
+  // already read stand as the page's own Environments will.
   return (
-    <>
-      <ZeropsRuntimeStops
-        stops={runtimeStops}
-        deployments={deployments}
-        onOpen={(projectId) => {
-          void navigate({ to: "/group/$groupId/$projectId", params: { groupId, projectId } });
-        }}
+    <div className="ov-page">
+      <UnreadDetail
+        groupId={groupId}
+        standIn={
+          <Loading label="This project">
+            <ProjectCardStandIn page />
+          </Loading>
+        }
       />
-      <UnreadDetail groupId={groupId} />
-    </>
+      <div className="ov-page-aside">
+        <ZeropsRuntimeStops
+          stops={runtimeStops}
+          deployments={deployments}
+          onOpen={(projectId) => {
+            void navigate({ to: "/group/$groupId/$projectId", params: { groupId, projectId } });
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -941,12 +953,8 @@ function ZeropsUnresolvedStopDetailPage({
   const deployments = useStopDeploymentsShown(stops.map((stop) => stop.projectId));
   return (
     <DetailShell crumbs={crumbs} title={stops[0]?.name}>
+      {note !== null ? <Note>{note}</Note> : <StopVerdictStandIn />}
       <ZeropsRuntimeStops stops={stops} deployments={deployments} />
-      {note !== null ? (
-        <Note>{note}</Note>
-      ) : (
-        <Loading count={2} label="This project" shape="cards" />
-      )}
     </DetailShell>
   );
 }
@@ -1063,8 +1071,8 @@ function ZeropsProjectStopDetailPage({
   if (flow === undefined || stop === undefined) {
     return (
       <DetailShell crumbs={crumbs} title={runtimeStops?.[0]?.name}>
+        <UnreadDetail groupId={groupId} standIn={<StopVerdictStandIn />} />
         <ZeropsRuntimeStops stops={runtimeStops} deployments={deployments} />
-        <UnreadDetail groupId={groupId} />
       </DetailShell>
     );
   }
@@ -2188,11 +2196,17 @@ export interface Crumb {
 }
 
 /**
- * A detail page whose flow is not read yet: a stand-in shaped like its cards while the app reads
- * it, and its own words where nothing will (`unreadFlowWords`) — HQ is unavailable, a project not here any more or not
- * the viewer's in Zerops, or reads that failed.
+ * A detail page whose flow is not read yet: `standIn`, in the box of what the page opens with, while
+ * the app reads it, and its own words where nothing will (`unreadFlowWords`) — HQ is unavailable,
+ * a project not here any more or not the viewer's in Zerops, or reads that failed.
  */
-function UnreadDetail({ groupId }: { readonly groupId: string }) {
+function UnreadDetail({
+  groupId,
+  standIn,
+}: {
+  readonly groupId: string;
+  readonly standIn: React.ReactNode;
+}) {
   const flows = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const orgRole = useAccountDataOptional()?.viewer?.roleCode;
   const words = unreadFlowWords({
@@ -2202,7 +2216,16 @@ function UnreadDetail({ groupId }: { readonly groupId: string }) {
     orgRole,
   });
   if (words !== null) return <Note>{words}</Note>;
-  return <Loading count={2} label="This project" shape="cards" />;
+  return standIn;
+}
+
+/** An environment's page opens with its verdict: its panel's box stands in while it is read. */
+function StopVerdictStandIn() {
+  return (
+    <Loading label="This environment">
+      <VerdictPanelWaiting />
+    </Loading>
+  );
 }
 
 function DetailShell({
