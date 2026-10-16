@@ -23,6 +23,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -30,12 +31,14 @@ import {
 
 import type { GroupFlowPreview } from "@t3tools/client-runtime/zerops";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
+import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
+import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useNowMs } from "~/zerops/useNowMs";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { MateDot } from "../MateDot";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
+import { ProjectCardStandIn } from "./OverviewStandIn";
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
 import {
   cardChangeRows,
@@ -161,17 +164,46 @@ export function PlaceWords({ line }: { readonly line: PlaceLine }) {
   );
 }
 
+/** How long a card waits for its detail before it paints what it has: HQ may not answer. */
+const DETAIL_PATIENCE_MS = 3_000;
+
 /**
  * Holds the project's detail — its releases, its merged changes — while its card is on screen or
  * one card's width from it: what production's release brought and where each merged change went
  * are read for the cards a person can see, never for the whole organization at once.
+ *
+ * `answered` once HQ said the detail, or why not, or past its patience: until then the card stands
+ * in, so it paints once, whole (the onboarding run's card said "No changes yet" and grew 106 px a
+ * frame later). Outside an account there is no detail to wait for.
  */
 function useDetailWhileSeen(groupId: string) {
-  const ref = useRef<HTMLElement>(null);
+  // The element the card stands as — its stand-in, then itself: watched whichever it is.
+  const [element, ref] = useState<HTMLElement | null>(null);
   const [seen, setSeen] = useState(false);
+  const [waitedOut, setWaitedOut] = useState(false);
+  const [painted, setPainted] = useState(false);
+  const orgId = useAccountOrgId();
+  const appIds = useMemo(() => [groupId], [groupId]);
+  const read = useHqAppDetails(appIds)[groupId];
+  const answered =
+    painted ||
+    orgId === null ||
+    waitedOut ||
+    read?.read === "read" ||
+    (read?.failure ?? null) !== null;
+  // Painted once, a card stays painted: letting its detail go off screen takes nothing back.
+  if (answered && !painted) setPainted(true);
   useEffect(() => {
-    const element = ref.current;
-    if (element === null || typeof IntersectionObserver === "undefined") return;
+    if (answered || !seen) return;
+    const timer = setTimeout(() => setWaitedOut(true), DETAIL_PATIENCE_MS);
+    return () => clearTimeout(timer);
+  }, [answered, seen]);
+  useEffect(() => {
+    if (element === null) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setSeen(true);
+      return;
+    }
     const observer = new IntersectionObserver(
       ([record]) => {
         setSeen(record?.isIntersecting === true);
@@ -182,9 +214,9 @@ function useDetailWhileSeen(groupId: string) {
     return () => {
       observer.disconnect();
     };
-  }, []);
+  }, [element]);
   useHqAppDetailHold(seen ? [groupId] : NO_GROUPS);
-  return ref;
+  return { ref, answered };
 }
 
 const NO_GROUPS: ReadonlyArray<string> = [];
@@ -509,7 +541,7 @@ function ProjectCard<T>({
 }) {
   const nowMs = useNowMs();
   const { group, flow } = entry;
-  const seen = useDetailWhileSeen(group.groupId);
+  const detail = useDetailWhileSeen(group.groupId);
   const quiet = [entry.line, heldLine(flow.mates.length, entry.contents)].find(
     (line) => line !== undefined,
   );
@@ -531,6 +563,15 @@ function ProjectCard<T>({
     settled: !entry.awaiting && !entry.changesAwaiting,
     changesUnknown: entry.changesUnknown,
   });
+  if (!detail.answered)
+    return (
+      <ProjectCardStandIn
+        id={page === undefined ? cardId(group.groupId) : undefined}
+        label={group.name}
+        page={page !== undefined}
+        ref={detail.ref}
+      />
+    );
   return (
     <article
       aria-label={group.name}
@@ -539,7 +580,7 @@ function ProjectCard<T>({
       data-page={page === undefined ? undefined : "true"}
       data-zerops-group={group.groupId}
       id={page === undefined ? cardId(group.groupId) : undefined}
-      ref={seen}
+      ref={detail.ref}
       role={page === undefined ? "listitem" : undefined}
     >
       <header className="ov-card-head">

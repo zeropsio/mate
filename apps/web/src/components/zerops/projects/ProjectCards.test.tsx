@@ -5,6 +5,10 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 
 const detail = vi.hoisted(() => ({
+  /** The account's organization; none outside an account, where no detail is waited for. */
+  org: null as string | null,
+  /** What HQ said of each application's detail, by its id. */
+  reads: {} as Record<string, { read: "unread" | "reading" | "read"; failure: null }>,
   held: new Set<string>(),
   demand: vi.fn(({ ownerId }: { ownerId: string }) => {
     detail.held.add(ownerId);
@@ -12,6 +16,8 @@ const detail = vi.hoisted(() => ({
   }),
 }));
 vi.mock("~/zerops/ZeropsAccountData", () => ({
+  useAccountOrgId: () => detail.org,
+  useProjection: () => detail.reads,
   useAccountDataOptional: () => ({ demandDetail: detail.demand }),
 }));
 vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0 }));
@@ -52,8 +58,45 @@ class VisibleCard {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  detail.org = null;
+  detail.reads = {};
   detail.held.clear();
   detail.demand.mockClear();
+});
+
+// The onboarding run: a card's first frame said "No changes yet" and had no History; 40 ms later
+// its changes came and every section below moved down.
+it("paints a card once, whole: it stands in until HQ said its detail, never an empty list it takes back", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("IntersectionObserver", VisibleCard);
+  detail.org = "org";
+  const groups = [entry([item("Ada", placed("shop", "Shop"))])];
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const render = () =>
+    root.render(
+      <ProjectCards
+        focusGroup={undefined}
+        groups={groups}
+        props={{ ...FLOW_PROPS, groups, renderChanges: () => <p>No changes yet</p> }}
+      />,
+    );
+  try {
+    await act(async () => render());
+    expect(container.querySelector('[data-zerops-group="shop"]')).toBeNull();
+    expect(container.textContent).not.toContain("No changes yet");
+    expect(container.querySelector('[aria-label="Shop"][aria-busy="true"]')).not.toBeNull();
+    // Standing in, it holds the detail it waits for.
+    expect([...detail.held]).toEqual(["shop"]);
+    detail.reads = { shop: { read: "read", failure: null } };
+    await act(async () => render());
+    expect(container.querySelector('[data-zerops-group="shop"]')).not.toBeNull();
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
 });
 
 it("an unrelated Mate attention update leaves the other Projects row unchanged", async () => {

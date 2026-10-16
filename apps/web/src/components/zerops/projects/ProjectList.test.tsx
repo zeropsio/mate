@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 const detailHolds = vi.hoisted(() => new Map<string, number>());
 vi.mock("~/zerops/ZeropsAccountData", () => ({
+  // Outside an account: a card has no detail to wait for, and paints at once.
+  useAccountOrgId: () => null,
+  useProjection: () => ({}),
   useAccountDataOptional: () => ({
     demandDetail: ({ ownerId }: { readonly ownerId: string }) => {
       detailHolds.set(ownerId, (detailHolds.get(ownerId) ?? 0) + 1);
