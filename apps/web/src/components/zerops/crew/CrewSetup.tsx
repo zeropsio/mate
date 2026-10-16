@@ -31,6 +31,7 @@ import {
   crewNoDevHostWord,
   crewPortsOfferWords,
   crewProposingWord,
+  crewRoleTag,
   crewSetUpFooter,
   crewSetUpTitle,
   crewStartFailedWords,
@@ -509,6 +510,8 @@ function SetupRow({
   const lane = applied ? (crewmate?.lane ?? null) : null;
   const readying = lane?.state === "creating" || lane?.state === "setting-up";
   const broken = lane === null ? null : crewBrokenCopyWord(lane, mateName);
+  const sentence = crewJobSentence(member.job.split("\n")[0] ?? "", member.displayName);
+  const tag = crewRoleTag(member.kind, member.displayName, sentence);
   return (
     <button
       className="crew-row text-start"
@@ -519,10 +522,13 @@ function SetupRow({
     >
       <MateFace size={24} state={readying ? "working" : "idle"} tint={member.tint ?? "slate"} />
       <span className="flex min-w-0 flex-col">
-        <span className="truncate font-medium text-sm leading-5">{member.displayName}</span>
-        <span className="mt-0.5 text-line leading-4.5 text-muted-foreground">
-          {crewJobSentence(member.job.split("\n")[0] ?? "", member.displayName)}
+        <span className="truncate font-medium text-sm leading-5">
+          {member.displayName}
+          {tag === null ? null : (
+            <span className="font-normal text-muted-foreground">{` · ${tag}`}</span>
+          )}
         </span>
+        <span className="mt-0.5 text-line leading-4.5 text-muted-foreground">{sentence}</span>
         {readying ? (
           <span className="text-line leading-4.5 text-muted-foreground">{CREW_COPY_READYING}</span>
         ) : null}

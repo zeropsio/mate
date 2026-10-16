@@ -847,6 +847,21 @@ export const CREW_KIND_WORDS = {
   reader: "Reviews",
 } as const;
 
+/**
+ * What a roster row says beside a crewmate's name: *Lead* for the lead not named so, and what a
+ * builder or reviewer does where its job's sentence doesn't open with it — said once (run 2: the
+ * roster said nobody was the lead).
+ */
+export function crewRoleTag(
+  kind: keyof typeof CREW_KIND_WORDS,
+  name: string,
+  jobSentence: string,
+): string | null {
+  if (kind === "lead") return name.trim().toLowerCase() === "lead" ? null : "Lead";
+  const word = CREW_KIND_WORDS[kind];
+  return jobSentence.trimStart().startsWith(word) ? null : word;
+}
+
 /** A dev service without crew ports: the setup's offer, and its press. */
 export const crewPortsOfferWords = (mateName: string): string =>
   `To try each builder's work at its own address, ${mateName} can give each one`;

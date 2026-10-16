@@ -145,6 +145,17 @@ describe("CrewSetup", () => {
     expect(words).not.toMatch(/\b(Plans|Builds|Reviews) (Plans|Builds)/u);
   });
 
+  it("says which crewmate leads beside its name", () => {
+    const planner = crewFromProposal({
+      proposal: { ...TEA_SHOP, lead: { name: "Planner", part: TEA_SHOP.lead.part } },
+      crew: "crew",
+      devHosts: ["appdev"],
+    });
+    const words = text(render(withGoal(planner, "A tea shop.")));
+    expect(words).toContain("Planner · Lead Plans the tea shop and splits the work.");
+    expect(words).toContain("Checkout Builds the checkout and its payment step.");
+  });
+
   // The onboarding run, 2026-10-16: when the Mate's roster landed, the goal's line went, its box
   // jumped up 20 px and shrank from 164 to 120 px, and a three-line note pushed Start down.
   it("keeps the goal and the footer's note as they were when a proposal lands", () => {

@@ -70,6 +70,7 @@ import {
   crewRowVerbLine,
   crewRunsOnWord,
   crewServedWord,
+  crewRoleTag,
   crewSetUpFooter,
   crewStoppedWords,
   crewSuggestedLine,
@@ -526,6 +527,52 @@ describe("the setup's and the job's words", () => {
       "Each builder works in its own copy of Fen's code; nothing reaches Fen's code until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.",
     );
   });
+
+  // Run 2: the roster said nobody was the lead; a job that opens with what its crewmate does is
+  // never tagged with it again.
+  it.each([
+    {
+      name: "the lead, named for its part",
+      kind: "lead",
+      who: "Planner",
+      job: "Plans the work.",
+      tag: "Lead",
+    },
+    { name: "the lead, named Lead", kind: "lead", who: "Lead", job: "Plans the work.", tag: null },
+    {
+      name: "a builder whose job says it builds",
+      kind: "writer",
+      who: "Checkout",
+      job: "Builds the checkout.",
+      tag: null,
+    },
+    {
+      name: "a builder whose job doesn't say so",
+      kind: "writer",
+      who: "Checkout",
+      job: "The checkout and its payment step.",
+      tag: "Builds",
+    },
+    {
+      name: "a reviewer whose job doesn't say so",
+      kind: "reader",
+      who: "Taster",
+      job: "Checks every change to the catalog.",
+      tag: "Reviews",
+    },
+    {
+      name: "a reviewer whose job says it reviews",
+      kind: "reader",
+      who: "Taster",
+      job: "Reviews every change.",
+      tag: null,
+    },
+  ] as const)(
+    "tags a roster row with what its crewmate does where its job doesn't: $name",
+    ({ kind, who, job, tag }) => {
+      expect(crewRoleTag(kind, who, job)).toBe(tag);
+    },
+  );
 
   it("says the rows came from the Mate only when they did", () => {
     expect(crewSuggestedLine("Fen", true)).toBe(
