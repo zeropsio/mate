@@ -3307,6 +3307,13 @@ function useMateRowState<T extends RosterCandidate>({
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming));
   // A Stop pressed in this tab reads as stopping at once, before the Mate's row says so.
   const stopPress = useStopPress(activity?.threadKey);
+  // Its face's watch (`mateFace`, below), and its update restarting it, which its line says.
+  const watch = useMateFaceWatch({
+    environmentId: candidate.environmentId ?? null,
+    projectId: candidate.project.id,
+    arriving: mateArrivingUntil(candidate) !== undefined,
+    connected: candidate.group === "connected",
+  });
   const read = mateRowReading({
     name,
     connected: up,
@@ -3317,6 +3324,7 @@ function useMateRowState<T extends RosterCandidate>({
     reviewWaits,
     mine: hqPeople?.waitsOnViewer === true,
     pose,
+    updating: watch.updating,
   });
   const view = deleting
     ? mateDeletingView(read)
@@ -3385,12 +3393,6 @@ function useMateRowState<T extends RosterCandidate>({
   });
   // Its face — the one its chat's top bar wears (`mateFace`): the state its reading wears, the
   // events it greets, its restart.
-  const watch = useMateFaceWatch({
-    environmentId: candidate.environmentId ?? null,
-    projectId: candidate.project.id,
-    arriving: mateArrivingUntil(candidate) !== undefined,
-    connected: candidate.group === "connected",
-  });
   const face = mateFace({
     connected: up,
     activity,
