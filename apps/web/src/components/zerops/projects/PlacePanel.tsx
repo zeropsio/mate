@@ -23,7 +23,7 @@ import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useAccountOrgId, useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 
-import { PlaceDot, PlaceWords } from "./ProjectCards";
+import { PlaceDot, PlaceWords, ServicesHeld } from "./ProjectCards";
 import { panelAddresses, placeLabel, type PlaceLine } from "./projectCard.logic";
 import { Button } from "~/components/ui/button";
 
@@ -162,7 +162,13 @@ export function PlacePanel({
         <PlaceDot dot={line.dot} />
         <PlaceWords line={line} />
       </p>
-      {model.services.length === 0 ? null : (
+      {model.services.length === 0 ? (
+        // A stage always has services: their line is held while they are read, so it does not
+        // grow the card when they come (the run's new stage pushed the card 24 px a minute in).
+        line.kind === "stage" ? (
+          <ServicesHeld />
+        ) : null
+      ) : (
         <p className="ov-panel-services">
           {model.services.map((service) => (
             <span className="ov-service" data-state={service.state} key={service.hostname}>
