@@ -26,7 +26,7 @@ vi.mock("~/zerops/crew/useCrewCommand", () => ({
     isPending: () => false,
     error: null,
     errorAt: () => null,
-    lastRefusal: () => null,
+    lastFailure: () => null,
     clearError: () => undefined,
   }),
 }));

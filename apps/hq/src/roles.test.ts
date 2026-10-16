@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 
 import { emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
+import { can } from "./permissions.ts";
 import {
   type OrgView,
   ROLES_UNANSWERED,
@@ -390,6 +391,42 @@ describe("a write's view of the org", () => {
       yield* Effect.flip(write("app_not_found"));
       assert.deepStrictEqual(seen.splice(0), ["recent"]);
     }),
+  );
+
+  // 2026-10-16: a hold on a production project Mate made a second before was refused over the
+  // recent view, which did not list it yet; the refusal is asked again over a read begun after it.
+  it.effect(
+    "the organization's owner may hold a project created after HQ last read its projects",
+    () =>
+      Effect.gen(function* () {
+        const { world, roles: build } = made();
+        const roles = yield* build;
+        yield* roles.recent;
+        world.projects.push(project("P-acme-production"));
+        yield* TestClock.adjust("1 second");
+        const hold = (projectId: string) =>
+          confirmingRefusal(
+            Effect.flatMap(roles.forWrite, (facts) => {
+              const decision = can(
+                { kind: "person", userId: "owner" },
+                "hold_press",
+                { projectId },
+                facts,
+              );
+              return decision.allow
+                ? Effect.void
+                : Effect.fail(new Refused({ reason: decision.reason }));
+            }),
+          );
+
+        yield* hold("P-acme-production");
+        // A project Zerops does not have is refused still, over that fresh read.
+        const refused = yield* Effect.flip(hold("P-acme-unknown"));
+        assert.strictEqual(
+          "reason" in refused ? refused.reason : refused._tag,
+          "not_project_reader",
+        );
+      }),
   );
 
   it.effect(

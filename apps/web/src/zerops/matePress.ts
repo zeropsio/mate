@@ -1057,6 +1057,9 @@ async function pressRun(
         if (processId !== undefined) await input.hold?.imported(processId);
       },
       onProgress: (progress) => {
+        // Registered, a stage's or a production's press is over at HQ, which ended its hold.
+        if (progress.some(({ step, state }) => step.kind === "register" && state === "done"))
+          input.hold?.registered();
         // Each step that moves renews the press's hold, whatever its timers are let do.
         input.hold?.renew();
         if (accepted !== undefined && input.isCurrent()) {

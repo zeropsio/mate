@@ -85,6 +85,20 @@ describe("CrewSectionEmpty — no crew yet", () => {
     );
   });
 
+  it("says a kept draft waits, and continues it in place of Set up a crew", () => {
+    const html = renderToStaticMarkup(
+      <CrewSectionEmpty
+        draft
+        lock={null}
+        mate={{ name: "Fen", tint: "amber" }}
+        onSetUp={noop}
+        onSignIn={noop}
+      />,
+    );
+    expect(textOf(html)).toContain("Your draft of Fen's crew is kept. Continue the setup");
+    expect(html).not.toContain(">Set up a crew</button>");
+  });
+
   it("says why, with the one way out, in place of Set up a crew for a viewer who may not run it", () => {
     const html = renderToStaticMarkup(
       <CrewSectionEmpty

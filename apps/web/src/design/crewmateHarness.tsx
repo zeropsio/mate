@@ -369,7 +369,7 @@ const FILES: UseCrewCommand = {
   isPending: () => false,
   error: null,
   errorAt: () => null,
-  lastRefusal: () => null,
+  lastFailure: () => null,
   clearError: () => undefined,
 };
 

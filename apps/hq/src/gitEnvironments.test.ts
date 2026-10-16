@@ -99,6 +99,7 @@ const fixture = Effect.gen(function* () {
     view: Effect.map(view, (v) => ({ ...v, freshness: "cached" as const })),
     forWrite: view,
     recent: Effect.map(view, (v) => ({ ...v, freshness: "cached" as const })),
+    readSince: () => Effect.die("HQ's door is outside this fixture"),
     exists: () => Effect.succeed(true),
     answeredAt: Effect.undefined,
     views: Stream.never,

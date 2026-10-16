@@ -731,6 +731,12 @@ export const crewClosedWord = (title: string | null, mateName: string): string =
  */
 export const CREW_SET_UP_WORD = "Set up a crew";
 export const CREW_SET_UP_LINE = "Pick who's on it and what each is responsible for.";
+/** The empty Crew page's press while a setup draft is kept: it opens the draft as it was left. */
+export const CREW_SETUP_CONTINUE_WORD = "Continue the setup";
+
+/** Over *Continue the setup*: the draft waits; only *Drop the draft* throws it away. */
+export const crewDraftKeptLine = (mateName: string): string =>
+  `Your draft of ${crewPossessive(mateName)} crew is kept.`;
 
 export const crewGiveCrewTitle = (mateName: string): string => `Give ${mateName} a crew`;
 
@@ -773,11 +779,24 @@ export const crewSuggestedLine = (mateName: string, suggested: boolean): string 
 export const crewSuggestLine = (mateName: string): string =>
   `${mateName} reads the goal and proposes who does what. You can change anyone.`;
 
-/** The setup's footer — the one place it says where the crewmates work: their own copies. */
-export function crewSetUpFooter(mateName: string, hosts: ReadonlyArray<string>): string {
+/**
+ * The setup's footer — the one place it says where the crewmates work: their own copies, and,
+ * where builders share their service's database (`sharedDatabases`), that they do.
+ */
+export function crewSetUpFooter(
+  mateName: string,
+  hosts: ReadonlyArray<string>,
+  sharedDatabases: ReadonlyArray<string> = [],
+): string {
   const where = hosts.length === 0 ? "" : ` on ${hosts.join(" and ")}`;
   const code = `${crewPossessive(mateName)} code`;
-  return `Each builder works in its own copy of ${code}${where}; nothing reaches ${code} until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.`;
+  const database =
+    sharedDatabases.length === 0
+      ? ""
+      : sharedDatabases.length === 1
+        ? ` The builders share ${crewPossessive(sharedDatabases[0]!)} database.`
+        : ` The builders share the databases of ${sharedDatabases.join(" and ")}.`;
+  return `Each builder works in its own copy of ${code}${where}; nothing reaches ${code} until you review it.${database} Getting the copies ready takes a minute or two; each row shows how it's going.`;
 }
 
 /**
@@ -946,7 +965,7 @@ const REFUSALS: Readonly<Record<CrewRefusalReason, string>> = {
   "handle-taken": "That name is taken",
   "no-free-disk": "The service has no free disk for another copy of the code",
   "database-undeclared":
-    "A crewmate on a service with a database needs `env:` or `database: shared`",
+    "A builder works on a service with a database and doesn't say whether it shares it",
   "no-mention": "Pick who it's for, or add a lead to split the work",
   "unknown-crewmate": "There is no such crewmate on the crew",
   "unknown-task": "That piece of work is gone",
@@ -975,6 +994,17 @@ export function crewRefusalSentence(reason: CrewRefusalReason, detail: string | 
   if (said === "") return `${REFUSALS[reason]}.`;
   if (reason === "invalid-definition") return `${REFUSALS[reason]}: ${sentence(said)}`;
   return sentence(said);
+}
+
+/**
+ * *Start the crew* refused, beside the press: the reason's own words (the engine's detail goes
+ * under Details); with no reason of the engine's, just that it didn't start. Pressing it again
+ * is the fix.
+ */
+export function crewStartFailedWords(reason: CrewRefusalReason | null): string {
+  if (reason === null) return "The crew didn't start.";
+  const words = REFUSALS[reason];
+  return `The crew didn't start: ${words.charAt(0).toLowerCase()}${words.slice(1)}.`;
 }
 
 /* ------------------------------------------------------------ drafts for the Mate */

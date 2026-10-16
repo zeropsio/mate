@@ -5,7 +5,9 @@
  * spends nothing of HQ's own credential, and then on the person it names, twenty a minute
  * (`rateLimit.ts`). Only then does HQ check its org and members, as read at
  * most 30 s ago (`roles.ts`'s `recent`): a reload's door after another waits on Zerops only once,
- * and one whose read fails is unavailable — never admitted by an older view. HQ deletes nothing:
+ * and one whose read fails is unavailable — never admitted by an older view. Someone that view
+ * does not list as an active member is refused only once a read begun after their door was asked
+ * does not either (`readSince`): a person who has just joined is let in at once. HQ deletes nothing:
  * the client deletes its throwaway; the token's id goes with the caller so that it opens one
  * session only (`sessions.ts`).
  *
@@ -17,6 +19,7 @@
  * @module door
  */
 import { type DoorVerdict, checkDoorToken, checkDoorTokenShape } from "@t3tools/shared/zeropsDoor";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -26,9 +29,9 @@ import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 
 import { DoorRateLimit, PERSON_LIMIT, TooManyRequests } from "./rateLimit.ts";
-import { Roles } from "./roles.ts";
+import { type OrgView, Roles } from "./roles.ts";
 import type { Principal } from "./sessions.ts";
-import { ZeropsApi, ZeropsUnavailable } from "./zerops/api.ts";
+import { ZeropsApi, type ZeropsError, ZeropsUnavailable } from "./zerops/api.ts";
 
 /** The presented credential is no throwaway for this HQ; `rule` is for the log only. */
 export class DoorRefused extends Schema.TaggedError<DoorRefused>()("DoorRefused", {
@@ -90,18 +93,30 @@ export const doorLayer = (options: {
             if (!(yield* limits.take(`person ${token.createdByUser ?? "none"}`, PERSON_LIMIT))) {
               return yield* new TooManyRequests();
             }
-            // HQ's own reads failing is HQ's trouble, never the caller's verdict. The read outlives
+            // HQ's own reads failing is HQ's trouble, never the caller's verdict. A read outlives
             // a door that gives up on it: what it reads is the next door's.
-            const reading = yield* Effect.forkIn(roles.recent, scope);
-            const view = yield* Fiber.join(reading).pipe(
-              Effect.catchTags({
-                ZeropsRefused: () =>
-                  Effect.fail(
-                    new ZeropsUnavailable({ operation: "door", message: "own credential" }),
-                  ),
-              }),
-            );
-            const verdict = checkDoorToken({ ...facts, orgId: view.orgId, members: view.members });
+            const decideOver = (reading: Effect.Effect<OrgView, ZeropsError>) =>
+              Effect.forkIn(reading, scope).pipe(
+                Effect.flatMap(Fiber.join),
+                Effect.catchTags({
+                  ZeropsRefused: () =>
+                    Effect.fail(
+                      new ZeropsUnavailable({ operation: "door", message: "own credential" }),
+                    ),
+                }),
+                Effect.map((view) => ({
+                  view,
+                  verdict: checkDoorToken({ ...facts, orgId: view.orgId, members: view.members }),
+                })),
+              );
+            const asked = yield* Clock.currentTimeMillis;
+            const recent = yield* decideOver(roles.recent);
+            // A person who has just joined is in Zerops before HQ's view: someone it does not list
+            // is refused only over a read begun after they asked — `recent`'s own, when it read.
+            const { view, verdict } =
+              recent.verdict.kind === "refused" && recent.verdict.rule === "not_member"
+                ? yield* decideOver(roles.readSince(asked))
+                : recent;
             if (verdict.kind !== "admitted") return yield* failWith(verdict);
             return { userId: verdict.userId, orgId: view.orgId, doorTokenId: token.id };
           }).pipe(

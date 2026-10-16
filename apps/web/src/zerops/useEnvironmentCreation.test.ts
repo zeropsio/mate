@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { ProjectServices } from "@t3tools/client-runtime/data";
+import { isUncertainZeropsFailure } from "@t3tools/client-runtime/zerops/errors";
 import { Atom, AtomRegistry } from "effect/reactivity";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   addedMateBirth,
   environmentProjectName,
+  SERVICES_SETTLE_PATIENCE_MS,
   untilServicesSettled,
 } from "./useEnvironmentCreation";
 
@@ -142,6 +144,30 @@ describe("untilServicesSettled — an environment's services, waited on as the a
     await expect(untilServicesSettled(registry, listed)).rejects.toThrow(
       "Zerops refused to say how the environment's services stand.",
     );
+  });
+
+  it("never waits on the services beyond its patience: it stops, unsure whether they came up", async () => {
+    vi.useFakeTimers();
+    try {
+      const registry = AtomRegistry.make();
+      const listed = Atom.make(listing({ services: [service("app", "CREATING")] }));
+      const waiting = untilServicesSettled(registry, listed).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      await vi.advanceTimersByTimeAsync(SERVICES_SETTLE_PATIENCE_MS - 1);
+      registry.set(listed, listing({ services: [] }));
+      await vi.advanceTimersByTimeAsync(1);
+      const stopped = await waiting;
+      expect(stopped).toBeInstanceOf(Error);
+      expect((stopped as Error).message).toBe(
+        "Zerops hasn't shown the new services ready after 10 minutes.",
+      );
+      // The services may well be up: nothing that made them is asked again.
+      expect(isUncertainZeropsFailure(stopped)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stops where the account it waits in closes", async () => {

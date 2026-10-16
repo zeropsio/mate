@@ -60,6 +60,7 @@ import {
   crewPossessive,
   crewReadyWords,
   crewRefusalSentence,
+  crewStartFailedWords,
   crewKeepGoingLine,
   crewResumeBudgetHint,
   crewResumeTimeHint,
@@ -622,6 +623,19 @@ describe("crewRefusalSentence", () => {
   });
 });
 
+describe("crewStartFailedWords", () => {
+  it.each([
+    [
+      "database-undeclared",
+      "The crew didn't start: a builder works on a service with a database and doesn't say whether it shares it.",
+    ],
+    ["io", "The crew didn't start: the crew's setup could not be read or saved."],
+    [null, "The crew didn't start."],
+  ] as const)("says a start refused for %s in plain words", (reason, words) => {
+    expect(crewStartFailedWords(reason)).toBe(words);
+  });
+});
+
 describe("the drafts a crew surface hands the Mate", () => {
   it("asks for a local commit of the edits the crew's work waits on", () => {
     expect(crewCommitEditAsk(["src/ui/hud.ts"])).toBe(
@@ -692,6 +706,17 @@ describe("the drafts a crew surface hands the Mate", () => {
       crewSetUpFooter("Fen", []),
     ].filter((words) => words.includes("own copy"));
     expect(said).toEqual([crewSetUpFooter("Fen", [])]);
+  });
+
+  it("says the builders share a database only where they do", () => {
+    expect(crewSetUpFooter("Fen", ["appdev"], ["appdev"])).toContain(
+      "until you review it. The builders share appdev's database. Getting",
+    );
+    expect(crewSetUpFooter("Fen", ["appdev", "apidev"], ["appdev", "apidev"])).toContain(
+      "The builders share the databases of appdev and apidev.",
+    );
+    expect(crewSetUpFooter("Fen", ["appdev"], [])).not.toContain("database");
+    expect(crewSetUpFooter("Fen", ["appdev"])).not.toContain("database");
   });
 });
 

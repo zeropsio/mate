@@ -25,6 +25,8 @@
  * `recent` is the view at most 30 s old, read now past that, and never the last good one: what
  * HQ's door admits by, so a reload's door after another waits on Zerops only once (t11,
  * 2026-10-03: doors re-entered behind a fresh read of the organization's slow member list hung 55 s and 77 s).
+ * Someone it does not list is refused only over a read begun after their door was asked
+ * (`readSince`): a person who has just joined is in Zerops before HQ's view (2026-10-16).
  *
  * A view's age counts from when Zerops answered it: a read slower than 30 s — one a door gave up
  * on at its budget — lands fresh enough for the door asked again. A write's fresh read is only one
@@ -89,6 +91,12 @@ export class Roles extends Context.Service<
     readonly forWrite: Effect.Effect<OrgView<WriteFreshness>, ZeropsError>;
     /** The org's view at most 30 s old, read now past that — never the last good one served. */
     readonly recent: Effect.Effect<OrgView<"cached">, ZeropsError>;
+    /**
+     * The org's view from a read begun no earlier than `asked` (wall ms): the last one where it
+     * began since, read now otherwise — never the last good one served. What HQ's door confirms a
+     * refusal of someone its view does not list over; the doors waiting on one read take it.
+     */
+    readonly readSince: (asked: number) => Effect.Effect<OrgView<"fresh">, ZeropsError>;
     /**
      * Whether Zerops still has a project, read by its id: a `not_found` refusal is gone, any other
      * failure no answer.
@@ -282,6 +290,13 @@ export const rolesLayer = (options: {
       const recent = Effect.flatMap(Clock.currentTimeMillis, recentAt).pipe(
         Effect.map((read): OrgView<"cached"> => ({ ...read, freshness: "cached" })),
       );
+      const readSince = (asked: number) =>
+        Semaphore.withPermits(
+          permit,
+          1,
+        )(readUnderPermit(begunAfter(asked), asked)).pipe(
+          Effect.map((read): OrgView<"fresh"> => ({ ...read, freshness: "fresh" })),
+        );
       /** The last good view, while Zerops answered it within five minutes. */
       const lastGood = Effect.gen(function* () {
         const good = yield* SubscriptionRef.get(cached);
@@ -377,6 +392,6 @@ export const rolesLayer = (options: {
         Stream.map((seen): OrgSeen => ({ view: seen.view, answered: seen.answered })),
       );
       const answeredAt = Effect.map(SubscriptionRef.get(cached), (good) => good?.answered);
-      return Roles.of({ view, forWrite, recent, exists, answeredAt, views });
+      return Roles.of({ view, forWrite, recent, readSince, exists, answeredAt, views });
     }),
   );

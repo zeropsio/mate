@@ -10,6 +10,7 @@ import {
   PUT_LIVE_NO_ANSWER,
   PUT_LIVE_PATIENCE,
   putLiveAddress,
+  putLiveCreation,
   putLiveHoldsRelease,
   putLiveLines,
   putLiveMergeGate,
@@ -501,5 +502,162 @@ describe("after production is made, the release it waits for", () => {
     const adopted = putLiveStep(made, { kind: "released", tag: "v0.1.0", adopted: true });
     expect(adopted.phase).toBe("releasing");
     expect(putLiveProgress(adopted).step).toBe("Waiting for v0.1.0, already on its way");
+  });
+});
+
+describe("while Put it live makes production", () => {
+  const SLOW = "Zerops hasn't shown the new services ready after 10 minutes.";
+  const accepted = putLiveStep(start({ merged: true }), {
+    kind: "accepted",
+    productionId: "p-prod",
+  });
+  const offered = facts({ production: "p-prod", gate: { allowed: true } });
+
+  it("production made by Put it live counts from the moment the project exists", () => {
+    expect(accepted).toMatchObject({ phase: "creating", productionId: "p-prod" });
+    // Its services are still awaited: nothing is released to them yet, and the creation's own
+    // bounded wait is what counts down.
+    expect(putLiveNext(accepted, offered, PUT_LIVE_PATIENCE * 10)).toEqual({ kind: "wait" });
+    expect(putLiveDeadline(accepted)).toBeUndefined();
+
+    const made = putLiveStep(
+      accepted,
+      putLiveCreation(
+        {
+          kind: "ran",
+          outcome: {
+            ok: true,
+            projectId: "p-prod",
+            serviceName: undefined,
+            awaitingAgent: false,
+            deployments: [],
+          },
+        },
+        7_000,
+      ),
+    );
+    expect(made).toMatchObject({ phase: "creating", productionId: "p-prod", since: 7_000 });
+    expect(putLiveDeadline(made)).toBe(7_000 + PUT_LIVE_PATIENCE);
+    expect(putLiveNext(made, offered, 7_000)).toEqual({ kind: "release" });
+  });
+
+  it("Put it live never waits on production's services beyond its patience: it offers Retry and the project", () => {
+    const event = putLiveCreation(
+      {
+        kind: "ran",
+        outcome: {
+          ok: false,
+          projectId: "p-prod",
+          failedStep: { kind: "await-ready", withAgent: false },
+          error: SLOW,
+          uncertain: true,
+        },
+      },
+      9_000,
+    );
+    const stopped = putLiveStep(accepted, event);
+    expect(stopped.phase).toBe("failed");
+    expect(stopped.failure).toEqual({ words: SLOW, action: "again", alsoProject: true });
+    expect(putLiveProgress(stopped)).toEqual({ title: "Tea Shop isn't live yet", step: SLOW });
+
+    // Try again goes on from the production it made, to its release: never a second production.
+    const again = putLiveStep(stopped, { kind: "again", at: 10_000 });
+    expect(again).toMatchObject({ phase: "creating", productionId: "p-prod", since: 10_000 });
+    expect(putLiveNext(again, offered, 10_000)).toEqual({ kind: "release" });
+  });
+
+  it.each([
+    [
+      "refused before anything was made",
+      { kind: "refused", reason: "Zerops needs more credit." },
+      { kind: "failed", words: "Zerops needs more credit." },
+    ],
+    [
+      "refused without a reason",
+      { kind: "refused", reason: null },
+      { kind: "failed", words: "Production couldn't be made." },
+    ],
+    [
+      "stopped at its registration, the project made",
+      {
+        kind: "ran",
+        outcome: {
+          ok: false,
+          projectId: "p-prod",
+          failedStep: { kind: "register" },
+          error: "HQ refused it.",
+        },
+      },
+      { kind: "failed", words: "HQ refused it.", halfMade: true },
+    ],
+    [
+      "unsure whether the project was made",
+      {
+        kind: "ran",
+        outcome: {
+          ok: false,
+          projectId: undefined,
+          failedStep: { kind: "create-project", name: "Tea Shop", tagList: [] },
+          error: "Zerops did not confirm the project was created.",
+          uncertain: true,
+        },
+      },
+      {
+        kind: "failed",
+        words: "Zerops did not confirm the project was created.",
+        halfMade: true,
+      },
+    ],
+    [
+      "stopped before any project",
+      {
+        kind: "ran",
+        outcome: {
+          ok: false,
+          projectId: undefined,
+          failedStep: { kind: "create-project", name: "Tea Shop", tagList: [] },
+          error: "Name taken.",
+        },
+      },
+      { kind: "failed", words: "Name taken.", halfMade: false },
+    ],
+  ] as const)(
+    "says what production's creation came to, never making a production twice (%s)",
+    (_case, made, event) => {
+      expect(putLiveCreation(made as Parameters<typeof putLiveCreation>[0], 1)).toEqual(event);
+    },
+  );
+
+  it("counts how long the step under way has run, from that step's start", () => {
+    const pressed = startPutLive({
+      orgId: "o1",
+      groupId: "g1",
+      project: "Tea Shop",
+      change: change(),
+      at: 1_000,
+    });
+    expect(putLiveProgress(pressed)).toEqual({
+      title: "Putting Tea Shop live",
+      step: "Merging the change",
+      since: 1_000,
+    });
+    const making = putLiveStep(pressed, { kind: "merged" }, 4_000);
+    expect(putLiveProgress(making)).toMatchObject({ step: "Making production", since: 4_000 });
+    // Production's project taken is the same step going on: its clock keeps counting.
+    const known = putLiveStep(making, { kind: "accepted", productionId: "p-prod" }, 6_000);
+    expect(putLiveProgress(known).since).toBe(4_000);
+    const live = putLiveStep(
+      putLiveStep(
+        putLiveStep(known, { kind: "created", productionId: "p-prod" }, 7_000),
+        {
+          kind: "released",
+          tag: "v0.1.0",
+        },
+        8_000,
+      ),
+      { kind: "live", at: 9_000 },
+      9_000,
+    );
+    expect(putLiveProgress(live).since).toBeUndefined();
   });
 });
