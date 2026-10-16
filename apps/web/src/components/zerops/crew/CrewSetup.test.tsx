@@ -144,7 +144,7 @@ describe("CrewSetup", () => {
     const words = text(render(withGoal(proposed, "A tea shop.")));
     expect(count(words, "own copy")).toBe(1);
     expect(words).toContain(
-      "Each works in its own copy of Nova's code on appdev; nothing reaches Nova's code until you review it.",
+      "Each builder works in its own copy of Nova's code on appdev; nothing reaches Nova's code until you review it.",
     );
   });
 });

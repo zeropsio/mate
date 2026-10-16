@@ -777,7 +777,7 @@ export const crewSuggestLine = (mateName: string): string =>
 export function crewSetUpFooter(mateName: string, hosts: ReadonlyArray<string>): string {
   const where = hosts.length === 0 ? "" : ` on ${hosts.join(" and ")}`;
   const code = `${crewPossessive(mateName)} code`;
-  return `Each works in its own copy of ${code}${where}; nothing reaches ${code} until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.`;
+  return `Each builder works in its own copy of ${code}${where}; nothing reaches ${code} until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.`;
 }
 
 /**
@@ -816,6 +816,8 @@ export function crewProposalFailedWords(
   switch (reason) {
     case "refused":
       return detail ?? `${mateName} can't propose a crew here.`;
+    case "signed-out":
+      return `${mateName}'s agent needs signing in again.`;
     case "failed":
       return `${mateName} couldn't propose a crew this time.`;
     case "malformed":

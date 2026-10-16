@@ -521,7 +521,7 @@ describe("a row's words", () => {
 describe("the setup's and the job's words", () => {
   it("says where the builders' copies go", () => {
     expect(crewSetUpFooter("Fen", ["appdev"])).toBe(
-      "Each works in its own copy of Fen's code on appdev; nothing reaches Fen's code until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.",
+      "Each builder works in its own copy of Fen's code on appdev; nothing reaches Fen's code until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.",
     );
   });
 
@@ -656,6 +656,7 @@ describe("the drafts a crew surface hands the Mate", () => {
       [
         ["refused", "Claude's sign-in has expired."],
         ["refused", null],
+        ["signed-out", null],
         ["failed", null],
         ["malformed", null],
       ].map(([reason, detail]) =>
@@ -664,6 +665,7 @@ describe("the drafts a crew surface hands the Mate", () => {
     ).toEqual([
       "Claude's sign-in has expired.",
       "Fen can't propose a crew here.",
+      "Fen's agent needs signing in again.",
       "Fen couldn't propose a crew this time.",
       "Fen answered with something that isn't a crew.",
     ]);
