@@ -122,10 +122,15 @@ const STATE_LABEL = {
   failed: "Failed",
 } as const;
 
+/** What a tier's steps call it: a stage and production by name, a Mate's as "it". */
+const STEP_SUBJECT = { stage: "the stage", production: "production", mate: undefined } as const;
+
 export function environmentCreationSteps(
   progress: ReadonlyArray<EnvironmentCreationStepProgress>,
   nowMs: number,
+  tier?: ZeropsEnvironmentCreationProps["tier"],
 ): ReadonlyArray<ProcessStep> {
+  const subject = tier === undefined ? undefined : STEP_SUBJECT[tier];
   return progress.map((entry, index) => {
     const durationMs =
       entry.startedAtMs === undefined
@@ -133,7 +138,7 @@ export function environmentCreationSteps(
         : (entry.finishedAtMs ?? nowMs) - entry.startedAtMs;
     return {
       id: `${index}:${entry.step.kind}`,
-      label: environmentCreationStepLabel(entry.step),
+      label: environmentCreationStepLabel(entry.step, { subject }),
       state: entry.state,
       stateLabel: STATE_LABEL[entry.state],
       ...(entry.error === undefined ? {} : { note: entry.error }),
@@ -154,7 +159,7 @@ export function ZeropsEnvironmentCreation({
   nowMs,
   deployed = false,
 }: ZeropsEnvironmentCreationProps) {
-  const steps = environmentCreationSteps(progress, nowMs);
+  const steps = environmentCreationSteps(progress, nowMs, tier);
   const failedAt = steps.findIndex((step) => step.state === "failed");
   const runningAt = steps.findIndex((step) => step.state === "running");
   const queuedAt = steps.findIndex((step) => step.state === "queued");

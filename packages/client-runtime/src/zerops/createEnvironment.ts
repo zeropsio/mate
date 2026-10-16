@@ -348,23 +348,34 @@ function readTier(
 /**
  * A short, human label per step — the progress checklist the two-minute wait
  * needs. Kept beside the plan so a new step cannot be added without one.
+ *
+ * `subject` names what is made — "the stage", "production" — so its steps say
+ * it, and its taking in by HQ is said as its project's (the run's stage read
+ * "Creating it", "Adding it to HQ").
  */
-export function environmentCreationStepLabel(step: EnvironmentCreationStep): string {
+export function environmentCreationStepLabel(
+  step: EnvironmentCreationStep,
+  { subject }: { readonly subject?: string | undefined } = {},
+): string {
   switch (step.kind) {
     case "create-project":
     case "import-project":
-      return "Creating it";
+      return subject === undefined ? "Creating it" : `Creating ${subject}`;
     case "import-container":
       return "Adding its Mate's computer";
     case "close-off":
       return "Making its network private";
     case "register":
-      return "Adding it to HQ";
+      return subject === undefined ? "Adding it to HQ" : `Adding ${subject} to your project`;
     case "import-recipe":
       return "Adding its services";
     case "import-managed":
       return "Adding its databases and storage";
     case "await-ready":
-      return step.withAgent ? "Waiting for its Mate" : "Starting its services";
+      return step.withAgent
+        ? "Waiting for its Mate"
+        : subject === undefined
+          ? "Starting its services"
+          : `Starting ${subject}'s services`;
   }
 }
