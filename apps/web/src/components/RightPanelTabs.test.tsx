@@ -72,9 +72,9 @@ function renderLauncher(
 
 describe("RightPanelTabs launcher", () => {
   it("publishes the real shortcut order for available kinds", () => {
-    expect(renderLauncher()).toContain('data-surface-launcher-keys="TFDAZBVGCME"');
+    expect(renderLauncher()).toContain('data-surface-launcher-keys="BDZACFGVETM"');
     expect(renderLauncher({ ...ALL_AVAILABLE, zerops: "unknown" })).toContain(
-      'data-surface-launcher-keys="TFDABVGCME"',
+      'data-surface-launcher-keys="BDACFGVETM"',
     );
   });
 
@@ -82,14 +82,14 @@ describe("RightPanelTabs launcher", () => {
     const html = renderLauncher();
     expect(html).toContain("Watch and use the app on the paired Mac.");
     expect(html.indexOf(">Mac<")).toBeGreaterThan(html.indexOf(">Browser<"));
-    expect(html.indexOf(">Mac<")).toBeLessThan(html.indexOf(">Data<"));
-    expect(html).toContain('data-surface-launcher-keys="TFDAZBVGCME"');
+    expect(html.indexOf(">Mac<")).toBeLessThan(html.indexOf(">Diff<"));
+    expect(html).toContain('data-surface-launcher-keys="BDZACFGVETM"');
   });
 
   it("draws a crew card only while the crew kind is not hidden", () => {
     expect(renderLauncher()).toContain("Set up a crew and follow its tasks.");
     const hidden = renderLauncher({ ...ALL_AVAILABLE, crew: "hidden" });
-    expect(hidden).toContain('data-surface-launcher-keys="TFDAZBVGME"');
+    expect(hidden).toContain('data-surface-launcher-keys="BDZAFGVETM"');
     expect(hidden).not.toContain(">Crew<");
   });
 
@@ -121,8 +121,9 @@ describe("RightPanelTabs launcher", () => {
 describe("surface shortcuts", () => {
   it("matches real available surface shortcuts case-insensitively", () => {
     const actions = launcherActions({ ...ALL_AVAILABLE, diff: "unavailable" });
-    expect(surfaceShortcutActionForKey(actions, shortcutEvent("t"))).toBe(actions[0]);
-    expect(surfaceShortcutActionForKey(actions, shortcutEvent("T"))).toBe(actions[0]);
+    const terminal = actions.find((action) => action.kind === "terminal");
+    expect(surfaceShortcutActionForKey(actions, shortcutEvent("t"))).toBe(terminal);
+    expect(surfaceShortcutActionForKey(actions, shortcutEvent("T"))).toBe(terminal);
     expect(surfaceShortcutActionForKey(actions, shortcutEvent("d"))).toBeNull();
   });
 

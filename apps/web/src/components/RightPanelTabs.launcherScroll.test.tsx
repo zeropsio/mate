@@ -80,9 +80,9 @@ function press(key: string) {
 
 describe("RightPanelTabs launcher scrolling", () => {
   it.each([
-    { keys: ["ArrowDown"], lit: "Terminal" },
-    { keys: ["ArrowDown", "ArrowDown"], lit: "Files" },
-    { keys: ["ArrowUp"], lit: "Vault" },
+    { keys: ["ArrowDown"], lit: "Browser" },
+    { keys: ["ArrowDown", "ArrowDown"], lit: "Mac" },
+    { keys: ["ArrowUp"], lit: "MCP" },
   ])("brings the card $keys lights ($lit) into view", ({ keys, lit }) => {
     for (const key of keys) press(key);
     expect(scrolled.at(-1)).toMatch(new RegExp(`^${lit}`));
