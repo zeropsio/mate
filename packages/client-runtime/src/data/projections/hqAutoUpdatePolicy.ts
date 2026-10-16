@@ -91,7 +91,7 @@ export const autoUpdatePolicySettings: Projection<
         stream.phase === "live" &&
         !pending,
       words: upgradeRequired
-        ? "Update HQ Core to manage automatic Mate updates."
+        ? "Update HQ to manage automatic Mate updates."
         : pending
           ? progress?.stage === "uncertain" || progress?.stage === "unresolved"
             ? `${available && stream.phase === "live" ? "Current policy" : "Last known policy"}: ${policy.kind !== "known" ? "unknown" : policy.enabled ? "On" : "Off"}; change unconfirmed`
