@@ -111,6 +111,12 @@ describe("mateUpdateQuestion", () => {
   ])("asks about $mateName by name", ({ mateName, expected }) => {
     expect(mateUpdateQuestion(mateName, "0.11.49")).toBe(expected);
   });
+
+  it("a version not known says the newest version, never one an older check knew", () => {
+    expect(mateUpdateQuestion("Nova", null).split("\n")[0]).toBe(
+      "Update Nova to the newest version?",
+    );
+  });
 });
 
 describe("automatic update line", () => {

@@ -117,16 +117,23 @@ export function mateUpdateStatusBeside(
 }
 
 /**
+ * The version an update goes to where no check could name it: the update installs the newest
+ * there is, so a version an older check knew would be a version it may not install.
+ */
+export const NEWEST_MATE_VERSION = "the newest version";
+
+/**
  * What the app's confirm dialog asks before an update: the Mate and the
  * version, and what the update does with its work, said before the click.
  * The update waits until the Mate's work is done, up to the drain's deadline,
  * and past it does not happen (`drainMateUpdate`); it never stops the work.
- * The line ending in "?" is the dialog's title.
+ * The line ending in "?" is the dialog's title. `latest` is the version a
+ * check just found; null where none could say (`NEWEST_MATE_VERSION`).
  */
-export function mateUpdateQuestion(mateName: string | undefined, latest: string): string {
+export function mateUpdateQuestion(mateName: string | undefined, latest: string | null): string {
   const who = mateName ?? "It";
   return [
-    `Update ${mateName ?? "this Mate"} to ${latest}?`,
+    `Update ${mateName ?? "this Mate"} to ${latest ?? NEWEST_MATE_VERSION}?`,
     `${who} finishes the work it's doing first, its helpers' too, then restarts on the new version, which takes about a minute. Its conversations stay. If that work isn't done within ${MATE_UPDATE_DRAIN_MINUTES} minutes, ${mateName ?? "it"} doesn't update and keeps working.`,
   ].join("\n");
 }

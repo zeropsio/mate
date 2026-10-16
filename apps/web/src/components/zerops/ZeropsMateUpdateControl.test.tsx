@@ -183,6 +183,12 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
         capabilities: { mateUpdate: true, mateUpdateCheck: true },
         update: { installed: "0.8.0", latest: "0.8.1", available: true, checkedAt: "now" },
       };
+      verbs.check.mockResolvedValue({
+        installed: "0.8.0",
+        latest: "0.8.1",
+        available: true,
+        checkedAt: "later",
+      });
       verbs.confirm.mockResolvedValue(answer);
       menuAction("update").onSelect();
       await vi.waitFor(() => expect(verbs.confirm).toHaveBeenCalledTimes(1));
@@ -191,6 +197,67 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       expect(verbs.update.mock.calls.map(([to]) => to)).toEqual(updates);
     },
   );
+
+  // The run 2 follow-up: Wren's dialog asked "Update Wren to 0.15.145?" and installed 0.15.146 —
+  // the version the last hourly check knew, while the update installs the newest one there is.
+  it("Update asks about the version a check finds now, never the one the last check knew", async () => {
+    environmentState.environment = {
+      serverVersion: "0.8.0",
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
+      update: { installed: "0.8.0", latest: "0.8.1", available: true, checkedAt: "an hour ago" },
+    };
+    verbs.check.mockResolvedValue({
+      installed: "0.8.0",
+      latest: "0.8.2",
+      available: true,
+      checkedAt: "now",
+    });
+    verbs.confirm.mockResolvedValue(true);
+    menuAction("update").onSelect();
+    await vi.waitFor(() => expect(verbs.confirm).toHaveBeenCalledTimes(1));
+    expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to 0\.8\.2\?\n/);
+    await Promise.resolve();
+    expect(verbs.update.mock.calls.map(([to]) => to)).toEqual(["0.8.2"]);
+  });
+
+  it.each([
+    { case: "a server that cannot check", check: false, found: undefined },
+    { case: "a check that could not answer", check: true, found: undefined },
+  ])(
+    "where the version is not known ($case), Update asks about the newest version",
+    async ({ check, found }) => {
+      environmentState.environment = {
+        serverVersion: "0.8.0",
+        capabilities: { mateUpdate: true, mateUpdateCheck: check },
+        update: { installed: "0.8.0", latest: "0.8.1", available: true, checkedAt: "an hour ago" },
+      };
+      verbs.check.mockResolvedValue(found);
+      verbs.confirm.mockResolvedValue(true);
+      menuAction("update").onSelect();
+      await vi.waitFor(() => expect(verbs.confirm).toHaveBeenCalledTimes(1));
+      expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to the newest version\?\n/);
+    },
+  );
+
+  it("a check that finds nothing newer asks nothing: the Mate is up to date", async () => {
+    environmentState.environment = {
+      serverVersion: "0.8.0",
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
+      update: { installed: "0.8.0", latest: "0.8.1", available: true, checkedAt: "an hour ago" },
+    };
+    verbs.check.mockResolvedValue({
+      installed: "0.8.1",
+      latest: "0.8.1",
+      available: false,
+      checkedAt: "now",
+    });
+    menuAction("update").onSelect();
+    await vi.waitFor(() => expect(verbs.check).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(verbs.confirm).not.toHaveBeenCalled();
+    expect(verbs.update).not.toHaveBeenCalled();
+  });
 
   it.each([
     {
