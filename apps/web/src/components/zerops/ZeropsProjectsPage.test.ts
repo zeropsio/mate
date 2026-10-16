@@ -452,6 +452,15 @@ describe("hasNoZeropsProject", () => {
     expect(hasNoZeropsProject({ listing: listing(candidates) })).toBe(expected);
   });
 
+  it("an organization holding only its HQ has no project yet: HQ is never a project to start in", () => {
+    const hq = candidate([]);
+    const hqProjectId = (hq as { project: { id: string } }).project.id;
+    expect(hasNoZeropsProject({ listing: listing([hq]), hqProjectId })).toBe(true);
+    expect(hasNoZeropsProject({ listing: listing([hq, candidate([], "aaa")]), hqProjectId })).toBe(
+      false,
+    );
+  });
+
   it.each<{ readonly name: string; readonly listing: Known<ReadonlyArray<ZeropsCandidate>> }>([
     { name: "unread", listing: { state: "unread", waitingFor: null } },
     { name: "being read", listing: { state: "reading", sinceMs: 10, attempt: 1 } },
@@ -702,6 +711,17 @@ describe("a group's one line about itself", () => {
     [
       { placeholder: false, unfinished: "stage", finishing: "stage", halfMade: "stage" },
       "Finishing stage…",
+    ],
+    // The onboarding run: at the press "isn't finished" stood under the name for 0.7 s.
+    [
+      {
+        placeholder: false,
+        unfinished: undefined,
+        finishing: undefined,
+        halfMade: "stage",
+        creating: "stage",
+      },
+      undefined,
     ],
   ] as const)("reads %j as %j — never the platform's own words", (input, expected) => {
     expect(projectsGroupLine(input)).toBe(expected);

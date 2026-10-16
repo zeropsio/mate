@@ -81,6 +81,7 @@ import { ArrivalSwap } from "./ArrivalSwap";
 import { ArrivalRuntimesLine } from "./ZeropsArrivalSteps";
 import { MateFace, type MateFaceProps } from "./primitives";
 import { ZeropsAgentSignIn } from "./ZeropsAgentSignIn";
+import { signInBeingFinished } from "./ZeropsAgentSignIn.logic";
 
 export function ZeropsMateEmptyState({
   environmentId,
@@ -164,7 +165,11 @@ export function useMateEmptyState({
   const serverConfigs = useServerConfigs();
   const providers =
     environmentId === null ? undefined : serverConfigs.get(environmentId)?.providers;
-  const signInRequired = agentAuth !== null && zeropsAgentSignInRequired(agentAuth, providers);
+  // A sign-in just accepted holds the sign-in on screen until its agent is ready
+  // (`signInBeingFinished`): the question then comes with a composer that runs.
+  const signInRequired =
+    agentAuth !== null &&
+    (zeropsAgentSignInRequired(agentAuth, providers) || signInBeingFinished(agentAuth.agents));
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   // The stand-up goes into the Mate's main conversation, the one opening it lands on.
   const threads = useThreadShells();

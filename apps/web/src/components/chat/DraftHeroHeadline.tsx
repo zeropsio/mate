@@ -36,7 +36,11 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateMark } from "../MateMark";
 import { MateFace } from "../zerops/primitives";
 import { mateFaceFor } from "~/zerops/agentActivity";
-import { draftHeroNoProject, draftHeroProjectName } from "./DraftHeroHeadline.logic";
+import {
+  draftHeroHeadlineKind,
+  draftHeroNoProject,
+  draftHeroProjectName,
+} from "./DraftHeroHeadline.logic";
 
 interface DraftHeroHeadlineProps {
   readonly activeProjectRef: ScopedProjectRef | null;
@@ -133,6 +137,11 @@ export function DraftHeroHeadline({
   const activeProjectDisplayName = activeProjectTitle ?? activeProjectGroup?.displayName ?? null;
   const projectName = draftHeroProjectName({ mateProject: mate?.project, activeProjectTitle });
   const hasResolvedProject = projectName !== null;
+  const kind = draftHeroHeadlineKind({
+    hasResolvedProject,
+    inEnvironment: activeProjectRef !== null,
+    canChooseProject: projectPickerEntries.length > 0,
+  });
   const selectorLabel = mate?.project ?? activeProjectDisplayName;
   const canChooseProject = projectPickerEntries.length > 0;
   const shouldShowProjectMenu = canChooseProject;
@@ -218,19 +227,22 @@ export function DraftHeroHeadline({
   const projectSelectorText = shouldShowProjectMenu
     ? (selectorLabel ?? "Choose a project")
     : (projectName ?? (noProject.offersNewProject ? "Add a project" : "No project yet"));
-  const headingLabel = hasResolvedProject
-    ? chiefAsks !== undefined
-      ? chiefAsks
-      : whoLivesHere?.kind === "unknown"
-        ? projectSelectorText
-        : mate === undefined
-          ? `What should we build in ${projectSelectorText}?`
-          : mate.project === undefined
-            ? `What should ${mate.name} do?`
-            : `What should ${mate.name} do on ${projectSelectorText}?`
-    : canChooseProject
-      ? `${projectSelectorText} to start`
-      : noProject.words;
+  const headingLabel =
+    kind === "reading"
+      ? undefined
+      : hasResolvedProject
+        ? chiefAsks !== undefined
+          ? chiefAsks
+          : whoLivesHere?.kind === "unknown"
+            ? projectSelectorText
+            : mate === undefined
+              ? `What should we build in ${projectSelectorText}?`
+              : mate.project === undefined
+                ? `What should ${mate.name} do?`
+                : `What should ${mate.name} do on ${projectSelectorText}?`
+        : canChooseProject
+          ? `${projectSelectorText} to start`
+          : noProject.words;
 
   return (
     <div className="flex flex-col items-center gap-5">
@@ -247,9 +259,13 @@ export function DraftHeroHeadline({
       )}
       <h1
         aria-label={headingLabel}
+        // Its project still read: the line stands empty in its place, never "no project".
+        aria-hidden={kind === "reading" ? true : undefined}
         className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl"
       >
-        {hasResolvedProject ? (
+        {kind === "reading" ? (
+          "\u00a0"
+        ) : hasResolvedProject ? (
           chiefAsks !== undefined ? (
             chiefAsks
           ) : whoLivesHere?.kind === "unknown" ? (

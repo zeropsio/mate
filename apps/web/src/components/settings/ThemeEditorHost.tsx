@@ -12,9 +12,12 @@ import { XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Loading } from "../ui/loading";
 import { useThemeEditorStore } from "./themeEditorStore";
+import { appChunk } from "~/lib/appChunks";
 
-const ThemeEditorPanel = lazy(() =>
-  import("./ThemeEditorPanel").then((module) => ({ default: module.ThemeEditorPanel })),
+const ThemeEditorPanel = lazy(
+  appChunk(() =>
+    import("./ThemeEditorPanel").then((module) => ({ default: module.ThemeEditorPanel })),
+  ),
 );
 
 function useThemeDefinition(id: string | null | undefined) {

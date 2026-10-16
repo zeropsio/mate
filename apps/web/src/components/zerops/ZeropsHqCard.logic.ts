@@ -306,6 +306,8 @@ function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardVi
         tone: "failed",
         word: `Unavailable since ${input.time(standing.since)}`,
       };
+    case "refused":
+      return { kind: "down", tone: "failed", word: "Refused your sign-in" };
     case "unchecked":
       return { kind: "degraded", tone: "attention", word: "Can't check Zerops right now" };
     case "healthy":

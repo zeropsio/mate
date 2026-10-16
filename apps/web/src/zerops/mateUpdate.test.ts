@@ -114,6 +114,28 @@ describe("mateUpdateQuestion", () => {
 });
 
 describe("automatic update line", () => {
+  // The onboarding run, 2026-10-16: the Zerops page read "Updated to 0.15.133" beside an Update
+  // button, the owner unsure whether one waited.
+  it("a Mate updated automatically and already behind a newer version says the newer one waits, never Updated beside Update", () => {
+    expect(
+      mateUpdateLine(
+        {
+          installed: "0.15.133",
+          latest: "0.15.134",
+          available: true,
+          checkedAt: "now",
+          automatic: {
+            protocol: 1,
+            rollbackCompatible: true,
+            phase: "updated",
+            runningVersion: "0.15.133",
+          },
+        },
+        "0.15.133",
+      ),
+    ).toEqual({ text: "Server 0.15.133 · 0.15.134 available", tone: "attention" });
+  });
+
   it.each([
     ["draining", "Update ready; waiting for your work to finish"],
     ["switching", "Updating — your conversations are safe"],

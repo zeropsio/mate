@@ -8,7 +8,7 @@ import { useCreations } from "~/zerops/creations";
 import type { NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import type { NewProjectChoice } from "./ZeropsNewProjectForm";
-import { ZeropsNewProjectHost } from "./ZeropsNewProjectHost";
+import { NEW_PROJECT_OPEN_WAIT_MS, ZeropsNewProjectHost } from "./ZeropsNewProjectHost";
 
 const ORGANIZATION = {
   id: "org-acme",
@@ -23,10 +23,15 @@ const app = vi.hoisted(() => ({
   navigate: vi.fn(async (_to: unknown) => undefined),
   // Never answers: what comes after the press is the creation's, not the dialog's.
   pending: vi.fn(() => new Promise(() => undefined)),
-  dialog: undefined as { readonly onCreate: (choice: NewProjectChoice) => void } | undefined,
+  dialog: undefined as
+    | { readonly onCreate: (choice: NewProjectChoice) => void; readonly open?: boolean }
+    | undefined,
 }));
 
-vi.mock("@tanstack/react-router", () => ({ useNavigate: () => app.navigate }));
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => app.navigate,
+  useRouter: () => ({ routesById: {}, loadRouteChunk: () => undefined }),
+}));
 vi.mock("~/zerops/useHqOffers", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/zerops/useHqOffers")>()),
   useOrgOffers: () => () =>
@@ -162,5 +167,24 @@ describe("New project's Create", () => {
       to: "/mate/new/$birthId",
       params: { birthId: births[0]?.birthId },
     });
+  });
+});
+
+// Run 2 (2026-10-16): the dialog painted without its credit line and grew 60 px a frame later.
+describe("New project opening", () => {
+  it("stays shut while what it says is still out, for a short wait at most", () => {
+    act(() => tree?.unmount());
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        tree = create(h(ZeropsNewProjectHost));
+      });
+      // Nothing answers here: its credit and its places stay unread.
+      expect(app.dialog?.open).toBe(false);
+      act(() => vi.advanceTimersByTime(NEW_PROJECT_OPEN_WAIT_MS));
+      expect(app.dialog?.open).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

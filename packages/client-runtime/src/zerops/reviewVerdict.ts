@@ -33,6 +33,7 @@ import type { RecipeTier } from "./recipeTier.ts";
 import type { MovedCommits } from "./releaseCompare.ts";
 import {
   GIT_PREFLIGHT_PENDING,
+  RELEASE_CHECKING,
   releaseNothingReason,
   type ReleaseGate,
   type GitReleaseReviewFacts,
@@ -677,12 +678,11 @@ function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined 
   if (options.length === 0) return undefined;
   // What runs it, as it is: the Mate's preview runs its own copy for trying it out, never the
   // stage (a first run asked "Where should it run?" beside "Your shop front is online").
-  const base = input.pull.baseBranch;
-  const preview = `${input.mateName}'s preview is only for trying it out.`;
+  // Its title already says where the code went: the question says only what runs it.
   return {
     text: input.downstream.stage
-      ? `Your code is on ${base} and the stage picks it up. No production runs it yet; ${preview}`
-      : `Your code is on ${base}. No stage or production runs it yet; ${preview}`,
+      ? `The stage picks it up; ${input.mateName}'s preview is only for trying it out.`
+      : `Only ${input.mateName}'s preview runs it, for trying it out.`,
     options,
     dismiss: "Not now",
   };
@@ -717,7 +717,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
         ? `${count(waiting, "change now waits", "changes now wait")} for production`
         : input.downstream.stage
           ? "the stage picks it up"
-          : `it's on ${base}`;
+          : undefined;
     const live = input.waiting?.live;
     const consequence = recipe
       ? recipeSentence(input.recipe)
@@ -728,13 +728,14 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
             : `Production still serves ${live} until you release.`))
         : input.downstream.stage
           ? `The stage picks it up from ${base}.`
-          : `It's on ${base} now.`;
+          : // Its title says where it went; nothing more follows from it.
+            "";
     return {
       verdict: {
         state: "merged",
         tone: "done",
         title: `Merged into ${base}`,
-        why: `${age} · ${next}`,
+        why: next === undefined ? age : `${age} · ${next}`,
         fix: undefined,
       },
       consequence,
@@ -913,6 +914,8 @@ export interface ReleaseReviewModel extends ReviewModel {
 }
 
 const RELEASE_FOLLOWS = "You can close this. The project's line in the menu follows the release.";
+/** What a release's foot says before the press: how long it takes. */
+export const RELEASE_TAKES = "It takes about a minute.";
 
 function stageWhy(input: ReleaseReviewInput): string {
   const since =
@@ -1071,9 +1074,11 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
   const { tag, outcome } = input;
   const ran = input.replaces.kind === "release" ? input.replaces.tag : undefined;
   const keeps =
-    ran === undefined
-      ? "Production keeps running what it runs."
-      : `Production keeps running ${ran}.`;
+    ran !== undefined
+      ? `Production keeps running ${ran}.`
+      : input.replaces.kind === "first"
+        ? "Nothing is released yet."
+        : "Production keeps running what it runs.";
   switch (outcome.kind) {
     case "releasing":
       return {
@@ -1157,6 +1162,21 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
     enabled: input.gate.allowed,
     safe: false,
   };
+  // Still comparing what goes out: nothing is said of it, nor refused, until it is known (the
+  // onboarding run opened on "Can't release now" and "0 changes" for 0.4 s), and the foot says
+  // what a ready one says.
+  if (!input.gate.allowed && input.gate.reason === RELEASE_CHECKING)
+    return {
+      verdict: {
+        state: "release-blocked",
+        tone: "busy",
+        title: "Checking what goes out",
+        why: "Comparing in HQ",
+        fix: undefined,
+      },
+      consequence: RELEASE_TAKES,
+      primary,
+    };
   if (!input.gate.allowed) {
     const reason = input.gate.reason;
     const nothing = releaseNothingReason(input.gate) !== undefined;

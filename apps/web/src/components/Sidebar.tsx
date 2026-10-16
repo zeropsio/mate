@@ -181,7 +181,8 @@ import {
 } from "./sidebar/SidebarChrome";
 import { newMateView, useAddMate } from "../zerops/newMate";
 import { useAddMateOffer } from "../zerops/useHqOffers";
-import { useOpenPutLive } from "../zerops/putLive";
+import { useOpenPutLive, usePutLive } from "../zerops/putLive";
+import { putLiveHoldsRelease } from "../zerops/putLive.logic";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
 import { useRoleOffers, useTeamOffers } from "../zerops/usePlatformCapabilities";
@@ -1323,6 +1324,14 @@ export default function Sidebar() {
   // run — drawn under the project as a timeline. What a release would put live
   // is no part of the menu: it is compared where a release is shown.
   const zeropsProjectFlows = useProjectFlows("every").flows;
+  // Production being made by Put it live is released by it: no row or header asks for a release
+  // meanwhile (the onboarding run's "Release 2" beside "Making production").
+  const putLiveRuns = usePutLive((state) => state.runs);
+  const releaseOfferedIn = useCallback(
+    (groupId: string, allowed: boolean) =>
+      allowed && !putLiveHoldsRelease(putLiveRuns.get(groupId)),
+    [putLiveRuns],
+  );
   const zeropsSidebarFlow = useCallback(
     (groupId: string): SidebarProjectFlow | undefined => {
       const flow = zeropsProjectFlows.get(groupId);
@@ -1335,7 +1344,7 @@ export default function Sidebar() {
         // never sees a group's own merged code, so it read `main` as empty.
         merged: flow.merged,
         environments: new Map(flow.environments.map((entry) => [entry.id, entry])),
-        releaseOffered: flow.release.gate.allowed,
+        releaseOffered: releaseOfferedIn(groupId, flow.release.gate.allowed),
         // What a release would put in front of people: the count the
         // chips' menus say waits for production.
         releaseContents: flow.release.contents,
@@ -1358,7 +1367,7 @@ export default function Sidebar() {
         releaseInFlight: flow.release.inFlight,
       };
     },
-    [zeropsProjectFlows],
+    [releaseOfferedIn, zeropsProjectFlows],
   );
   const router = useRouter();
   const { isMobile, setOpen, setOpenMobile } = useSidebar();
@@ -1828,11 +1837,11 @@ export default function Sidebar() {
     () =>
       zeropsMenuProjects.flatMap((project) => {
         const release = zeropsProjectFlows.get(project.id)?.release;
-        return release?.gate.allowed === true
+        return release !== undefined && releaseOfferedIn(project.id, release.gate.allowed)
           ? [{ groupId: project.id, name: project.name, ahead: release.summary?.total }]
           : [];
       }),
-    [zeropsMenuProjects, zeropsProjectFlows],
+    [releaseOfferedIn, zeropsMenuProjects, zeropsProjectFlows],
   );
 
   // What each Mate is doing, off its attention — the one derivation the

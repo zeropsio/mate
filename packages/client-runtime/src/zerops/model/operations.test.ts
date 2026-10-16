@@ -269,6 +269,28 @@ describe("reduceZeropsOperations — pending states", () => {
   });
 });
 
+// A run 2 follow-up: a first-time person read "appdev, db Provision 6s" and "Close 53s" — zcp's
+// step names, which say nothing to them.
+describe("reduceZeropsOperations — a bootstrap's steps", () => {
+  it("are said in words a person knows, never zcp's step names", () => {
+    const { operations } = reduceFrom([
+      {
+        id: "b1",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_workflow",
+        input: { action: "start", workflow: "bootstrap", route: "classic" },
+        status: "completed",
+        resultText: planResult({ sessionId: "sessShop" }),
+      },
+    ]);
+    expect(operations[0]!.steps.map((step) => step.label)).toEqual([
+      "Plan the services",
+      "Create the services",
+      "Finish the setup",
+    ]);
+  });
+});
+
 // ---- kind error ----
 
 describe("reduceZeropsOperations — kind error", () => {

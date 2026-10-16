@@ -175,6 +175,23 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly setUpProduction?:
     | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
     | undefined;
+  /**
+   * Adds a stage to a project that has none, where HQ offers it to this person: its card offers it
+   * where the stage would stand (the onboarding run's owner searched 21 s for it in the card's
+   * ··· menu). `"busy"` while another environment is being set up.
+   */
+  readonly setUpStage?:
+    | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
+    | undefined;
+  /**
+   * *Add a Mate* at the foot of a card's Mates, where the person may add one — and why it stands
+   * off where that is known before the press.
+   */
+  readonly addMate?:
+    | ((
+        entry: ProjectsFlowGroup<T>,
+      ) => { readonly onAdd: () => void; readonly why: string | null } | undefined)
+    | undefined;
   /** The people on a project, beside its name, where more than one. */
   readonly renderCardPeople?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** One project's own page in place of the overview (`ProjectPageSlot`). */

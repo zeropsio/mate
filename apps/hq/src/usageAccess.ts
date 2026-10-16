@@ -40,9 +40,13 @@ export const usageOwner = (input: {
     ? (input.facts.members.find(
         (member) => member.kind === "person" && member.clientUserId === owner.clientUserId,
       )?.userId ?? null)
-    : (input.everSignedIn["claude-code"] ??
+    : // Zerops makes a project's creator its OWNER only below Admin; an Admin's or Owner's Mate is
+      // still theirs from the moment they add it, the same for every role, until somebody signs
+      // its agent in.
+      (input.everSignedIn["claude-code"] ??
         input.everSignedIn.codex ??
-        (input.runsWithoutSignIn ? (input.madeBy ?? input.standupRequestedBy) : null));
+        input.madeBy ??
+        input.standupRequestedBy);
 };
 
 /** One owner derivation for navigation and a Mate's Chief authority. */

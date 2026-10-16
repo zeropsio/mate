@@ -64,7 +64,7 @@ describe("ZeropsHqCardView — its state", () => {
     expect(html).toContain('data-hq-state="healthy"');
     expect(html).toContain('data-tone="success"');
     expect(html).toContain("Running");
-    expect(html).toContain(">Core 2026-10-03<");
+    expect(html).toContain(">Version of 2026-10-03<");
     expect(html).toContain(">Last backup t42<");
     expect(html).toContain("1 project · 1 Mate · 1 online");
     expect(html).toContain('data-test-update="true"');
@@ -191,7 +191,7 @@ describe("ZeropsHqCardView — opened", () => {
       true,
     );
     expect(html).toContain('aria-expanded="true"');
-    expect(html).toContain("Core 2026-10-03 08:05 UTC · ba9876543210");
+    expect(html).toContain("2026-10-03 08:05 UTC · ba9876543210");
     expect(html.split("Last backup t42")).toHaveLength(2);
     expect(html).toContain("hq · Active");
     expect(html).toContain("db · Active");
@@ -211,7 +211,7 @@ describe("ZeropsHqCardView — opened", () => {
       },
       true,
     );
-    expect(html).toContain("HQ is being updated to Core 2026-10-04 10:00 UTC · 0123456789ab.");
+    expect(html).toContain("HQ is updating to the version from 2026-10-04 10:00 UTC.");
   });
 
   it("holds nothing more while closed", () => {

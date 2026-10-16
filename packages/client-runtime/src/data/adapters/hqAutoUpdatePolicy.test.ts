@@ -98,7 +98,7 @@ it.effect("an existing HQ without policy streaming gives an actionable upgrade s
     ).toMatchObject({
       editable: false,
       policy: { kind: "unknown" },
-      words: "Update HQ Core to manage automatic Mate updates.",
+      words: "Update HQ to manage automatic Mate updates.",
     });
     yield* Fiber.interrupt(fiber);
   }),

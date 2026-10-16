@@ -3508,7 +3508,16 @@ export function deriveMessagesTimelineRows(input: {
       state: afterTurnWork,
     });
   }
-  if (input.endNotice != null) {
+  // A Stop that ended the last run is its card's to say ("stopped after 28s"); the line says it only
+  // when what was stopped is work that run left behind.
+  const lastTurn = structure.turns.at(-1);
+  const cardSaysStopped =
+    lastTurn !== undefined &&
+    (lastTurn.brokeOff !== null ||
+      (lastTurn.interrupted &&
+        !lastTurn.byMessage &&
+        lastTurn.interruption?.continuation !== "manual"));
+  if (input.endNotice != null && !(input.endNotice.stop === true && cardSaysStopped)) {
     const at = rows.at(-1)?.createdAt ?? "";
     rows.push({
       kind: "error",

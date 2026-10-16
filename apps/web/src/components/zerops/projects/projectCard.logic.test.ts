@@ -21,13 +21,16 @@ import {
   cardSecondWords,
   cardPeople,
   cardReady,
+  cardReleasing,
   foldMates,
   foldWords,
   mateChangeForReview,
   panelAddresses,
   placeLines,
+  putLiveHasChange,
   readyLine,
   readyTitle,
+  releasingTitle,
   rollBackTarget,
   siteOf,
   sinceWords,
@@ -426,6 +429,22 @@ describe("a release ready to go", () => {
     expect(ready === undefined ? undefined : readyLine(ready, onStage)).toBe(line);
   });
 
+  // The onboarding run: "Merged. Nothing is released yet." under "2 changes ready to release",
+  // beside production's "Not released yet" — the title says they are merged, production the rest.
+  it("says nothing more where no stage runs them and production runs no release yet", () => {
+    const ready = cardReady({
+      production: {
+        kind: "ready-to-release",
+        stop: stop({ state: "empty", version: undefined }),
+        line: "",
+        candidate: { tag: "v0.1.0", waiting: 1 },
+      },
+      stages: [],
+      main: { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false },
+    });
+    expect(ready === undefined ? null : readyLine(ready, undefined)).toBeUndefined();
+  });
+
   it("names the stage main feeds, the one whose deploys say whether it runs them, never another", () => {
     const ready = cardReady({
       production: {
@@ -460,6 +479,56 @@ describe("a release ready to go", () => {
       }),
     ).toBeUndefined();
   });
+});
+
+// The onboarding run: pressing Release took the release's block away and the card jumped 125 px,
+// and its end put it back for a beat.
+describe("a release on its way", () => {
+  const main = { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false };
+  it.each([
+    {
+      case: "stands where the ready one stood, putting it live",
+      production: { kind: "releasing", stop: stop(), line: "", tag: "v2.4.0" },
+      title: "Putting v2.4.0 live",
+    },
+    { case: "is absent while none is on its way", production: LIVE, title: undefined },
+  ] as const)("$case", ({ production, title }) => {
+    const tag = cardReleasing({ production, stages: [], main });
+    expect(tag === undefined ? undefined : releasingTitle(tag)).toBe(title);
+  });
+});
+
+// The onboarding run: production offered "Put it live" while the Mate was still creating its
+// services and nothing was there to put live.
+describe("Put it live on a card", () => {
+  const main = (hasCode: boolean | undefined) => ({
+    head: undefined,
+    hasCode,
+    notLive: 0,
+    notLiveAtLeast: false,
+  });
+  const open = (kind: "code" | "recipe") => ({
+    pull: pull({ kind, number: 3, title: "Add the tea list" }),
+    blocked: null,
+    state: undefined,
+    review: true,
+  });
+  it.each([
+    { case: "nothing merged and no change open", hasCode: undefined, open: [], offered: false },
+    {
+      case: "only the Mate's setup files open",
+      hasCode: undefined,
+      open: [open("recipe")],
+      offered: false,
+    },
+    { case: "a change of the app open", hasCode: undefined, open: [open("code")], offered: true },
+    { case: "the app's code merged", hasCode: true, open: [], offered: true },
+  ])(
+    "is offered only once there is a change to put live: $case",
+    ({ hasCode, open: pulls, offered }) => {
+      expect(putLiveHasChange({ main: main(hasCode), pullRequests: pulls })).toBe(offered);
+    },
+  );
 });
 
 function view(over: Partial<MateRowView>): Pick<MateRowView, "state" | "ask" | "reply"> {
@@ -830,6 +899,15 @@ describe("a card's latest changes", () => {
       stage: undefined,
       rows: [["Change 6", false, "Not released yet"]],
     },
+    // The onboarding run: production, the release and the change each said "Not released yet".
+    {
+      case: "merged where production runs no release yet: merged, production's line says the rest",
+      open: [],
+      merged: [merged(6, "2026-10-09T09:00:00Z")],
+      stage: undefined,
+      noReleases: true,
+      rows: [["Change 6", false, "Merged"]],
+    },
     {
       case: "merged where nothing is released anywhere: merged",
       open: [],
@@ -922,7 +1000,7 @@ describe("a card's latest changes", () => {
         }),
       ],
       stage: stageOn(6),
-      rows: [["Mate: the group's import files", false, "Setup files, not app code"]],
+      rows: [["Mate: the group's import files", false, "Setup files, not part of a release"]],
     },
     {
       case: "any other change to the setup repository: setup files too, as the release notes leave it out",
@@ -938,15 +1016,18 @@ describe("a card's latest changes", () => {
         }),
       ],
       stage: stageOn(6),
-      rows: [["Raise the stage's memory", false, "Setup files, not app code"]],
+      rows: [["Raise the stage's memory", false, "Setup files, not part of a release"]],
     },
-  ])("says $case", ({ open, merged: landed, stage, production = true, rows }) => {
+  ])("says $case", ({ open, merged: landed, stage, production = true, noReleases, rows }) => {
     expect(
-      cardChanges({ open, merged: landed, releases, stage, production, limit: 5 }).map((change) => [
-        change.pull.title,
-        change.open,
-        change.words,
-      ]),
+      cardChanges({
+        open,
+        merged: landed,
+        releases: noReleases === true ? [] : releases,
+        stage,
+        production,
+        limit: 5,
+      }).map((change) => [change.pull.title, change.open, change.words]),
     ).toEqual(rows);
   });
 });

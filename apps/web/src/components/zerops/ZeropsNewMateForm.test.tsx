@@ -4,6 +4,7 @@
  * in it. A project whose Mates have not written its recipe yet takes no other: the dialog says
  * why, in the form's place, and offers the one thing to do about it.
  */
+import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
 import { MATE_SHAPE_IDS, MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import { act, useEffect, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -194,7 +195,7 @@ describe("the New Mate dialog", () => {
         ["You sign Otto in with your Claude or ChatGPT subscription", ""],
         ["Otto sets up development, deploying Acme Docs' code", "up to 15 min"],
       ],
-      note: "You can leave meanwhile.",
+      note: KEEP_TAB_OPEN_LINE,
     });
     type(tree, "Ada");
     expect(next(tree).steps[0]).toEqual(["Ada comes up", "about 2–4 min"]);
@@ -384,7 +385,7 @@ describe("the New Mate dialog", () => {
         ["You sign Otto in with your Claude or ChatGPT subscription", ""],
         ["You tell Otto what to build", ""],
       ],
-      note: "You can leave while Otto comes up.",
+      note: KEEP_TAB_OPEN_LINE,
     });
   });
 

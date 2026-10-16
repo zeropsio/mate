@@ -27,7 +27,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
-import { hqUpdateWords } from "./ZeropsHqUpdate.logic";
+import { hqUpdateTriggerLabel, hqUpdateWords, versionLabel } from "./ZeropsHqUpdate.logic";
 
 /** Where HQ's Core stands, as the account's facts of its project say it now. */
 export type HqUpdateRead =
@@ -42,12 +42,15 @@ export type HqUpdateOutcome =
 
 export function ZeropsHqUpdatePanel({
   answering,
+  carried,
   read,
   run,
   onBusy,
 }: {
   /** The Core HQ's health names; `undefined` while unread. */
   readonly answering: string | undefined;
+  /** The Core this app carries: the one an update deploys. */
+  readonly carried: string;
   /** Where HQ stands, as Zerops's facts say it now. */
   readonly read: HqUpdateRead;
   /** Deploys the carried Core, to the end its build says. */
@@ -55,6 +58,8 @@ export function ZeropsHqUpdatePanel({
   readonly onBusy?: (busy: boolean) => void;
 }) {
   const [running, setRunning] = useState(false);
+  /** When the update pressed here started: its clock counts from there. */
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const pending = useRef(false);
   const [stopped, setStopped] = useState<string | null>(null);
   /** The Core an update pressed here deployed: Zerops may offer it again for a few seconds. */
@@ -64,6 +69,7 @@ export function ZeropsHqUpdatePanel({
     if (pending.current) return;
     pending.current = true;
     setRunning(true);
+    setStartedAt(Date.now());
     setStopped(null);
     onBusy?.(true);
     const outcome = await run();
@@ -76,6 +82,14 @@ export function ZeropsHqUpdatePanel({
     onBusy?.(false);
   };
 
+  // HQ answering with the new Core is the update's end for the person: Zerops closes its build a
+  // while later (18 s in the onboarding run, 2026-10-16), and the row already says it is current.
+  const answered = running && answering === carried;
+  useEffect(() => {
+    if (answered) onBusy?.(false);
+  }, [answered, onBusy]);
+  const elapsed = useElapsed(running && !answered ? startedAt : null);
+
   const shown = read;
   const state: HqUpdateState | null =
     shown.kind !== "read"
@@ -85,13 +99,15 @@ export function ZeropsHqUpdatePanel({
         ? { kind: "current", running: ran }
         : shown.state;
   const words = state === null ? null : hqUpdateWords(state, answering);
-  const line = running
-    ? "Updating HQ… It keeps serving until the new Core answers."
-    : shown.kind === "reading"
-      ? "Reading HQ from Zerops…"
-      : shown.kind === "unread"
-        ? `Couldn't read HQ from Zerops: ${shown.reason}`
-        : words!.line;
+  const line = answered
+    ? `HQ now runs ${versionLabel(carried)}.`
+    : running
+      ? `Updating HQ… ${elapsed}. It keeps serving until the new version answers, and the update keeps going if you hide this.`
+      : shown.kind === "reading"
+        ? "Reading HQ from Zerops…"
+        : shown.kind === "unread"
+          ? `Couldn't read HQ from Zerops: ${shown.reason}`
+          : words!.line;
   const action = words?.action ?? null;
 
   return (
@@ -99,8 +115,8 @@ export function ZeropsHqUpdatePanel({
       <DialogHeader>
         <DialogTitle>Update HQ</DialogTitle>
         <DialogDescription>
-          HQ moves to the Core this app carries. It keeps serving while the new Core starts, and
-          stays on the Core it runs if the new one does not start.
+          Your team and its Mates keep working while HQ updates; it usually takes a minute or two.
+          If the new version does not start, HQ stays as it is.
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
@@ -114,8 +130,10 @@ export function ZeropsHqUpdatePanel({
         </div>
       </DialogPanel>
       <DialogFooter>
-        <DialogClose render={<Button variant="ghost" />}>Close</DialogClose>
-        {action === null ? null : (
+        <DialogClose render={<Button variant="ghost" />}>
+          {running && !answered ? "Hide" : "Close"}
+        </DialogClose>
+        {action === null || answered ? null : (
           <Button data-hq-update-action disabled={running} onClick={() => void update()}>
             {action}
           </Button>
@@ -184,18 +202,40 @@ export function ZeropsHqUpdate({
   }, [carried, orgId, projectId, runOperation, running, serviceId]);
   return (
     <>
-      <Button onClick={() => setOpen(true)} size="sm" variant="link">
-        {trigger}
+      <Button
+        onClick={() => setOpen(true)}
+        size="sm"
+        variant={trigger === "Up to date" && !busy ? "link" : "secondary"}
+      >
+        {hqUpdateTriggerLabel(trigger, busy)}
       </Button>
       <Dialog onOpenChange={setOpen} open={open}>
         <DialogPopup className="max-w-md" keepMounted={busy}>
           {open || busy ? (
-            <ZeropsHqUpdatePanel answering={answering} onBusy={busyNow} read={read} run={run} />
+            <ZeropsHqUpdatePanel
+              answering={answering}
+              carried={carried}
+              onBusy={busyNow}
+              read={read}
+              run={run}
+            />
           ) : null}
         </DialogPopup>
       </Dialog>
     </>
   );
+}
+
+/** How long an update has run since `start`, "0:42", counted each second; "0:00" without one. */
+function useElapsed(start: number | null): string {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (start === null) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [start]);
+  const seconds = start === null ? 0 : Math.max(0, Math.floor((now - start) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 /** What an update says where its build can no longer be followed to its end. */

@@ -100,6 +100,7 @@ import { RouteStandIn } from "../components/zerops/RouteStandIn";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { RouteGateView } from "./-routeGate";
 import { useHqGate } from "../zerops/hqGate";
+import { HQ_BORN_HERE, useHqBornHere } from "../zerops/useHqBornHere";
 import { staleChunkRecovery } from "../lib/staleChunk";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
@@ -189,6 +190,9 @@ function SignedInRootRouteView() {
   );
   const gate = selectRouteGate(gateInputs.target);
   const { gate: hqGate } = useHqGate(pathname);
+  // HQ's setup this page watched finish stays on screen until the menu has read the new HQ: the
+  // product takes over in one piece, never through a blank page while the new HQ starts answering.
+  const hqBornHere = useHqBornHere();
   // The link's one voice (`mateVoice`): the banner over a mounted conversation, the stage where
   // none can show yet; the Mate by its own name, never its container's host.
   const routeEnvironment =
@@ -291,6 +295,8 @@ function SignedInRootRouteView() {
               {/* The organization's gate (ADR 0001): no product without its HQ. */}
               {hqGate.kind !== "open" ? (
                 <ZeropsHqGate gate={hqGate} />
+              ) : hqBornHere ? (
+                <ZeropsHqGate gate={HQ_BORN_HERE} />
               ) : (
                 <RouteGateView
                   gate={gate}

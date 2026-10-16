@@ -163,10 +163,35 @@ describe("ZeropsAgentAuthCard", () => {
       />,
     );
     expect(html).not.toContain("Sign in inside this Zerops Control Plane");
-    expect(html).toContain("Claude Code is signed in");
+    expect(html).toContain('data-agent-state="authorized"');
     expect(html.match(/data-zerops-agent-auth-row=/g)).toHaveLength(1);
     expect(html).toContain("Codex isn’t signed in");
     expect(html).toContain("Sign in to Codex");
+  });
+
+  // The onboarding run, 2026-10-16: one sign-in read three times — "Claude Code is signed in.",
+  // "● Authorized" and "Signed in by you." — over a clock that said nothing.
+  it("says a signed-in agent's sign-in once in its row, with no clock while its check holds", () => {
+    const feed = snapshot([
+      agent({
+        agentId: "claude-code",
+        state: "authorized",
+        credPresent: true,
+        providerAuth: "authenticated",
+        verification: { status: "authenticated", checkedAt: 1 },
+      }),
+    ]);
+    const html = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={feed}
+        conversationAgentId="claude-code"
+        signInDemanded={demanded(feed, "claudeAgent")}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+    expect(html).not.toContain("is signed in.");
+    expect(html).not.toContain("Last checked");
   });
 
   it("While the conversation's agent needs a sign-in, the card asks for it and lists every agent", () => {

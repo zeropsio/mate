@@ -1373,6 +1373,36 @@ describe("a sampled detail", () => {
     }),
   );
 
+  it.effect(
+    "reads a member list again on the cadence while somebody is invited, until they have joined",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const invited = { ...member("m2"), status: "WAITING_TO_ACCEPT" };
+        const list = { current: [member("m1"), invited] as ReadonlyArray<unknown> };
+        const fixture = fixtureWire(sampledAnswers(list));
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail(MEMBERS);
+        yield* settle;
+        expect(readsOf(fixture, MEMBERS_PATH)).toBe(1);
+        yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs);
+        yield* settle;
+        expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
+        list.current = [member("m1"), { ...invited, status: "ACTIVE" }];
+        yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs);
+        yield* settle;
+        expect(readsOf(fixture, MEMBERS_PATH)).toBe(3);
+        expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
+          kind: "value",
+          value: list.current,
+        });
+        yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs * 10);
+        yield* settle;
+        expect(readsOf(fixture, MEMBERS_PATH)).toBe(3);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
   it.effect("reads a service's agents by a search of their own keys, never its variables", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

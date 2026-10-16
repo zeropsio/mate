@@ -75,6 +75,21 @@ describe("liveStepWords", () => {
       words: { words: "Thinking" },
     },
     {
+      // A run 2 follow-up: the now line read "Bash: ssh appdev '…'".
+      name: "a command that says nothing of itself is its code, never its tool's name before it",
+      step: calls(
+        call({
+          id: "call-ssh",
+          activityKind: "tool.updated",
+          itemType: "command_execution",
+          title: "Command run",
+          detail: "Bash: ssh shopdev 'cd /var/www && ls'",
+          toolName: "Bash",
+        }),
+      ),
+      words: { words: "ssh shopdev 'cd /var/www && ls'" },
+    },
+    {
       name: "a read names its file",
       step: calls(
         call({

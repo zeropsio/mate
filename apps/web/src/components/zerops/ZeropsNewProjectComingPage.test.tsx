@@ -10,6 +10,7 @@ import { ZeropsNewProjectComingPage } from "./ZeropsNewProjectComingPage";
 
 const app = vi.hoisted(() => ({
   navigate: vi.fn(async (_to: unknown) => undefined),
+  router: { preloadRoute: vi.fn(async (_to: unknown) => undefined) },
 }));
 
 /** The creations this tab holds, as their operations say them, and what each verb did. */
@@ -53,6 +54,7 @@ vi.mock("~/zerops/creations", async () => {
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => app.navigate,
+  useRouter: () => app.router,
   Link: ({ children }: { readonly children?: ReactNode }) => h("a", null, children),
 }));
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
@@ -141,6 +143,12 @@ function hold(birth: NewProjectBirth | undefined) {
   });
 }
 
+/** Held, and the view's hand-over through: its destination loads before the route changes. */
+async function holdAndSettle(birth: NewProjectBirth | undefined) {
+  hold(birth);
+  await act(async () => undefined);
+}
+
 function openView(birthId = "b-acme") {
   act(() => {
     tree = create(h(ZeropsNewProjectComingPage, { birthId }));
@@ -178,6 +186,7 @@ const button = (label: string) =>
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   app.navigate.mockClear();
+  app.router.preloadRoute.mockReset().mockResolvedValue(undefined);
   for (const verb of Object.values(verbs)) verb.mockClear();
   hold(undefined);
 });
@@ -201,7 +210,7 @@ describe("a New project's first Mate, before its project exists", () => {
     expect(app.navigate).not.toHaveBeenCalled();
   });
 
-  it("hands the route to its Mate's own view the moment the platform takes its project, in place of this one", () => {
+  it("hands the route to its Mate's own view the moment the platform takes its project, in place of this one", async () => {
     hold({
       ...ACME,
       appId: "app-acme",
@@ -209,13 +218,30 @@ describe("a New project's first Mate, before its project exists", () => {
     });
     openView();
     expect(app.navigate).not.toHaveBeenCalled();
-    hold({ ...ACME, step: "created", projectId: "p-vera" });
+    await holdAndSettle({ ...ACME, step: "created", projectId: "p-vera" });
     expect(app.navigate).toHaveBeenCalledTimes(1);
     expect(app.navigate).toHaveBeenCalledWith({
       to: "/mate/$projectId",
       params: { projectId: "p-vera" },
       replace: true,
     });
+  });
+
+  // Run 2 (2026-10-16): the page went blank at the hand-over while the Mate's own view loaded.
+  it("stays on screen until its Mate's own view can paint in its place", async () => {
+    let ready!: () => void;
+    app.router.preloadRoute.mockReturnValueOnce(
+      new Promise<undefined>((resolve) => {
+        ready = () => resolve(undefined);
+      }),
+    );
+    hold({ ...ACME, appId: "app-acme", step: "create" });
+    openView();
+    await holdAndSettle({ ...ACME, step: "created", projectId: "p-vera" });
+    expect(app.navigate).not.toHaveBeenCalled();
+    expect(kind()).toBe("coming");
+    await act(async () => ready());
+    expect(app.navigate).toHaveBeenCalledTimes(1);
   });
 
   it("says why a step stopped, and Try again resumes it", () => {
@@ -232,11 +258,11 @@ describe("a New project's first Mate, before its project exists", () => {
     expect(verbs.tryAgain).toHaveBeenCalledWith(stopped);
   });
 
-  it("an uncertain creation goes on with its one new project, never a duplicate", () => {
+  it("an uncertain creation goes on with its one new project, never a duplicate", async () => {
     hold({ ...ACME, step: "create", failed: { reason: "The answer was lost.", uncertain: true } });
     openView();
     expect(app.navigate).not.toHaveBeenCalled();
-    hold({ ...ACME, step: "created", projectId: "p-vera" });
+    await holdAndSettle({ ...ACME, step: "created", projectId: "p-vera" });
     expect(app.navigate).toHaveBeenCalledTimes(1);
     expect(app.navigate).toHaveBeenCalledWith({
       to: "/mate/$projectId",

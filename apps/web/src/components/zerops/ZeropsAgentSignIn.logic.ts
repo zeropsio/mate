@@ -117,11 +117,32 @@ export function signInAgents(
   usual: ZeropsAgentId | null,
 ): ReadonlyArray<ZeropsAgentAuth> {
   const needing = agents.filter(
-    (agent) => agentAuthAction(agent) === "sign-in" || loginRunning(agent.login),
+    (agent) =>
+      agentAuthAction(agent) === "sign-in" || loginRunning(agent.login) || acceptedNotReady(agent),
   );
   const offered = needing.length > 0 ? needing : agents;
   return [...offered].sort(
     (left, right) => Number(right.agentId === usual) - Number(left.agentId === usual),
+  );
+}
+
+/**
+ * A sign-in just accepted (its login succeeded) whose agent is not ready yet: Zerops is checking or
+ * registering it. Its card stays, signed in, until it is: it never leaves the other agent offered
+ * alone, as if the sign-in had failed.
+ */
+function acceptedNotReady(agent: ZeropsAgentAuth): boolean {
+  return agent.login?.phase === "succeeded" && agentAuthAction(agent) === "registering";
+}
+
+/**
+ * Whether the sign-in is still being finished: an agent's sign-in was accepted and none is ready
+ * yet. The empty conversation keeps the sign-in on screen meanwhile, the accepted card signed in,
+ * and only then asks what to do: never the question over a composer still asking for a sign-in.
+ */
+export function signInBeingFinished(agents: ReadonlyArray<ZeropsAgentAuth>): boolean {
+  return (
+    agents.some(acceptedNotReady) && !agents.some((agent) => agentAuthAction(agent) === "none")
   );
 }
 

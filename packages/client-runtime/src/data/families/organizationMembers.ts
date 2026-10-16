@@ -2,12 +2,15 @@
  * An organization's members (`GET /client/{id}/user/list`): names, roles and pictures — metadata,
  * never a credential. No stream carries them, so the list is read once while a screen needs it —
  * its official HQ's anchor, and a person a surface names whom HQ does not — and again only after
- * our own write or the person's Try again.
+ * our own write or the person's Try again. While somebody is invited it is read again on the
+ * cadence: they join on Zerops, and nothing tells us.
  *
  * @module data/families/organizationMembers
  */
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+
+import { ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsOrganizationMember } from "../../zerops/api.ts";
 import type { ScopeKey } from "../model.ts";
@@ -47,8 +50,12 @@ export const organizationMembersFamily: FamilySpec<"organizationMembers"> = {
           ) as OrganizationMembersValue,
       }),
     // Names and pictures: read once a session, and again only after our own write or the person's
-    // Try again — never polled.
+    // Try again — never polled while nobody is invited.
     freshMs: null,
+    agesWhile: (members) =>
+      members.some(
+        (member) => member.status !== undefined && member.status !== ZEROPS_ACTIVE_MEMBER_STATUS,
+      ),
   },
 };
 

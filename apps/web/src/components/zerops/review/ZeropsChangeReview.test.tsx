@@ -357,7 +357,7 @@ describe("ChangeReviewView: a change after its merge", () => {
   ])("%s says what it did, and offers no release", (_case, files, why, consequence) => {
     const html = render(recipe, files);
     const text = textOf(html);
-    expect(text).toContain(`Merged into main ${why}`);
+    expect(text).toContain(`Merged into main · ${why}`);
     expect(text).toContain(consequence);
     expect(html).not.toContain("data-review-primary");
     expect(text).not.toContain("Review release");
@@ -926,7 +926,7 @@ describe("the one question after the first merge", () => {
 
   it("asks where the code should run, with an equal button for each tier and a Not now", () => {
     const text = textOf(render(FIRST, [changed("a.ts")], asking));
-    expect(text).toContain("Your code is on main. No stage or production runs it yet");
+    expect(text).toContain("Only Wren's preview runs it, for trying it out.");
     expect(text).toContain("Add stage");
     expect(text).toContain("Put it live");
     expect(text).toContain("Not now");
@@ -942,7 +942,28 @@ describe("the one question after the first merge", () => {
       { ...asking, addable: { stage: false, production: false } },
     ],
   ])("is not asked when %s", (_name, pull, over) => {
-    expect(textOf(render(pull, [changed("a.ts")], over))).not.toContain("runs it yet");
+    expect(textOf(render(pull, [changed("a.ts")], over))).not.toContain("preview runs it");
+  });
+
+  // A run 2 follow-up: Merge's press put words under the title's line, then the question above the
+  // description: the body under the person's eye dropped 24 px, then 98 px.
+  it("asks it in the foot, in the buttons' place, so nothing above moves", () => {
+    const html = render(FIRST, [changed("a.ts")], asking);
+    const foot = textOf(footOf(html));
+    for (const words of ["Only Wren's preview runs it", "Add stage", "Put it live", "Not now"]) {
+      expect(foot).toContain(words);
+    }
+    expect(textOf(html).split("Only Wren's preview runs it")).toHaveLength(2);
+  });
+
+  it.each([
+    ["merging", { press: { kind: "running" } as const }, merged({ merged: false, state: "open" })],
+    ["merged", asking, FIRST],
+  ])("says it is %s on the title's line, with nothing coming in under it", (_case, over, pull) => {
+    const document = new Window().document;
+    document.body.innerHTML = render(pull, [changed("a.ts")], { ...over, environments: [] });
+    const header = document.querySelector("header");
+    expect(header?.querySelectorAll("p, div")).toHaveLength(1);
   });
 });
 

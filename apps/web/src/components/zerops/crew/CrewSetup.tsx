@@ -268,17 +268,17 @@ export function CrewSetup(props: CrewSetupProps) {
       </div>
       <p className="mt-0.5 text-line leading-4.5 text-muted-foreground">{CREW_SETUP_WORDS.line}</p>
 
+      {/* The goal reads the same before and after a roster lands: data arriving never moves what
+          the person just wrote (the onboarding run, 2026-10-16). */}
       <span className="mt-6 font-medium text-sm leading-5">{CREW_SETUP_WORDS.goal}</span>
-      {drafted ? null : (
-        <span className="mt-0.5 text-line leading-4.5 text-muted-foreground">
-          {CREW_SETUP_WORDS.goalLine}
-        </span>
-      )}
+      <span className="mt-0.5 text-line leading-4.5 text-muted-foreground">
+        {CREW_SETUP_WORDS.goalLine}
+      </span>
       <div className="mt-2">
         <CrewTextArea
           aria-label={CREW_SETUP_WORDS.goal}
           disabled={props.applied}
-          {...(drafted ? {} : { lines: 4 as const })}
+          lines={4}
           onBlur={() => void saveGoal()}
           onChange={(event) => {
             // An edit answers a refused start: its words go until Start is pressed again.
@@ -423,11 +423,11 @@ export function CrewSetup(props: CrewSetupProps) {
             {commands.error}
           </p>
         )}
-        {drafted ? (
-          <span className="text-line leading-4.5 text-muted-foreground">
-            {crewSetUpFooter(mate.name, writerHosts(false), writerHosts(true))}
-          </span>
-        ) : null}
+        {/* Said from the start, under a Start still waiting too: a roster landing fills who's
+            on it and adds no note above Start. */}
+        <span className="text-line leading-4.5 text-muted-foreground">
+          {crewSetUpFooter(mate.name, writerHosts(false), writerHosts(true))}
+        </span>
         {startFailure === null ? null : (
           <div className="flex flex-col gap-1" data-crew-start-failure>
             <p className="text-line leading-4.5 text-status-failed-text" role="alert">

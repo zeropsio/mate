@@ -299,7 +299,7 @@ describe("withMateProjectRole — handing a Mate over", () => {
 describe("a ready agent's person from HQ", () => {
   it.each([
     ["ready: its maker", true, {}, "u-maker"],
-    ["not ready: no signer", false, {}, undefined],
+    ["not ready, nobody signed in: its maker, whatever their role", false, {}, "u-maker"],
     ["signed in: the signer first", true, { codex: "u-signer" }, "u-signer"],
   ] as const)("%s", (_case, ready, signers, person) => {
     const placement = placedWith(signers);

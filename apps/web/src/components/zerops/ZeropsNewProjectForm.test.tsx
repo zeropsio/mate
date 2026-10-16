@@ -290,14 +290,28 @@ describe("ZeropsNewProjectForm — the project and its first Mate", () => {
     expect(line(tree).children).toEqual(["Checking which names are taken…"]);
   });
 
+  // Run 2 (2026-10-16): a Create greyed out with no reason read as blocked by the credit line.
   it("creates nothing without the project's name", () => {
     const onCreate = vi.fn();
     const tree = mount(projectForm({ onCreate }));
-    expect(createButton(tree).props.disabled).toBe(true);
+    expect(createButton(tree).props.disabled).toBe(false);
     press(tree);
     expect(onCreate).not.toHaveBeenCalled();
+    expect(line(tree).children).toEqual(["Name your project."]);
+    expect(field(tree, PROJECT_FIELD).props["aria-invalid"]).toBe(true);
     type(tree, PROJECT_FIELD, "Acme CRM");
-    expect(createButton(tree).props.disabled).toBe(false);
+    expect(field(tree, PROJECT_FIELD).props["aria-invalid"]).toBeUndefined();
+    press(tree);
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
+  // Run 2 (2026-10-16): the unpressed Create spun for 17 minutes while the dialog read again.
+  it("never spins Create before it is pressed, whatever the dialog still reads", () => {
+    const busy = (tree: ReactTestRenderer) =>
+      createButton(tree).props["aria-busy"] === true ||
+      createButton(tree).findAll((node) => node.props["aria-label"] === "Loading").length > 0;
+    expect(busy(mount(projectForm({ loading: true })))).toBe(false);
+    expect(busy(mount(projectForm({ creating: true })))).toBe(true);
   });
 
   it("makes one project of one press: once pressed, Create waits for the Mate's view", () => {

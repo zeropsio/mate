@@ -105,6 +105,31 @@ describe("a Mate on its card", () => {
     expect(markup).toContain("Nothing asked yet");
   });
 
+  // One state, one word (run 2): a container's own line said "Almost there." on the card while
+  // the menu said "Coming up" for the same Mate on the same screen.
+  it("says a Mate coming up in its menu row's words, whatever its container says", () => {
+    linked.value = false;
+    const markup = renderToStaticMarkup(
+      <OverviewCardMate
+        candidate={ada("provisioning")}
+        change={undefined}
+        coming={{ kind: "coming", line: "Coming up. A few minutes." }}
+        containerActions={null}
+        containerLine={<span>Almost there.</span>}
+        conversationsRead
+        flow={undefined}
+        groupId="shop"
+        name="Ada"
+        onOpen={undefined}
+        outsideHq={false}
+        shape={undefined}
+        tint="sky"
+      />,
+    );
+    expect(markup).toContain("Coming up");
+    expect(markup).not.toContain("Almost there.");
+  });
+
   // A card says of its Mate what its menu row says: the corner of its face, its change, the place
   // its time stands in — so the two never disagree (live run, 2026-10-11).
   const card = (change: ReturnType<typeof pull> | undefined) =>

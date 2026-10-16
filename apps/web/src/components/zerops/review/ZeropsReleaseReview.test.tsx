@@ -3,6 +3,7 @@
  * on a service cannot be told — that it cannot, beside what does go out. A roll back's says what
  * leaves production and what comes back.
  */
+import { RELEASE_CHECKING } from "@t3tools/client-runtime/zerops";
 import { HQ_WRITE_UNCERTAIN } from "@t3tools/client-runtime/zerops/hq";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { Window } from "happy-dom";
@@ -99,6 +100,53 @@ describe("ReleaseReviewView", () => {
     expect(markup).toContain("app is deploying.");
     expect(markup).toContain("Can&#x27;t tell what web runs.");
     expect(markup).not.toContain("Can&#x27;t tell what app runs.");
+  });
+
+  // The onboarding run: at the press the Version block went and the foot rose 110 px under the
+  // pointer, then Where came and it dropped 76 px.
+  it("keeps its Version, not to be changed, from the press until Where takes its place", () => {
+    const version = {
+      value: "0.1.57",
+      onChange: () => {},
+      tags: ["v0.1.56"],
+      suggestions: [],
+      nextPatch: "v0.1.57",
+    };
+    const sections = (markup: string) => {
+      const page = new Window().document;
+      page.body.innerHTML = markup;
+      return {
+        titles: [...page.querySelectorAll("h3")].map((title) => title.textContent),
+        locked: page.querySelector('input[aria-label="Version"]')?.hasAttribute("disabled"),
+      };
+    };
+    expect(
+      sections(
+        render({ version, outcome: { kind: "releasing" }, press: { kind: "running" } as const }),
+      ),
+    ).toMatchObject({ titles: expect.arrayContaining(["Version"]), locked: true });
+    const answered = sections(
+      render({
+        version,
+        outcome: { kind: "releasing" },
+        press: { kind: "done", deploys: DEPLOYS },
+      }),
+    );
+    expect(answered.titles).toContain("Where");
+    expect(answered.titles).not.toContain("Version");
+  });
+
+  // The onboarding run: the panel opened on "0 changes, the first release · Can't release now"
+  // for 0.4 s while it compared what goes out.
+  it("says no count and no refusal while it compares what goes out", () => {
+    const markup = render({
+      gate: { allowed: false, reason: RELEASE_CHECKING },
+      replaces: { kind: "first" },
+    });
+    expect(markup).toContain("The first release");
+    expect(markup).toContain("Checking what goes out");
+    expect(markup).not.toContain("0 changes");
+    expect(markup).not.toContain("Can&#x27;t release now");
   });
 
   // F22: a release whose answer was lost, and HQ holds none of it when asked again.

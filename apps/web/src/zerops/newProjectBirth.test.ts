@@ -8,7 +8,7 @@ import type { EnvironmentCreationStepProgress } from "@t3tools/client-runtime/ze
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { HQ_UNFOLLOWED } from "./accountOperations";
-import { arrivalSteps } from "./mateArrival";
+import { arrivalSteps, pressRuns } from "./mateArrival";
 import { PRESS_MAY_HAVE_LANDED } from "./matePress";
 import {
   creationEnds,
@@ -19,6 +19,8 @@ import {
   creationRuntimes,
   creationSubsteps,
   CREDIT_REFUSED_LINE,
+  madePressSteps,
+  setupClockSince,
   recipeManaged,
   recipeRuntimes,
   newProjectComing,
@@ -1021,6 +1023,35 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
     },
   ])("$case", ({ made, want }) => {
     expect(drawnSubsteps(made)).toEqual(want);
+  });
+});
+
+// Run 2 (2026-10-16): across the hand-over from the creation's view to the Mate's, the page said
+// "Keep this tab open", then "Usually two to four minutes.", then "Keep this tab open" again, and
+// its clock went 0:03, 0:00, 0:04, 0:01.
+describe("an added Mate's view across its press, in the tab that made it", () => {
+  const taken = added({ step: "created", projectId: "p-ida" });
+  const running = pressed(["create-project", "done"], ["import-container", "running"]);
+
+  it("says the tab is needed from the creation's view on, until its press went, and never again", () => {
+    const registration = registrationOf(null);
+    const asks = (press: { progress: typeof running } | undefined, pressSeen: boolean) =>
+      pressRuns(madePressSteps({ made: taken, press, pressSeen, registration }));
+    // Landed before its press is seen here: as the creation's view said it.
+    expect(asks(undefined, false)).toBe(true);
+    expect(asks({ progress: running }, true)).toBe(true);
+    // Through: its record went.
+    expect(asks(undefined, true)).toBe(false);
+  });
+
+  it("counts its one clock from the Add, before its press, during it and after its record went", () => {
+    const press = { startedAt: PRESSED_AT + 30_000, pressedAt: PRESSED_AT };
+    expect(setupClockSince(taken, undefined)).toBe(PRESSED_AT);
+    expect(setupClockSince(taken, press)).toBe(PRESSED_AT);
+    expect(setupClockSince(undefined, press)).toBe(PRESSED_AT);
+    expect(setupClockSince(undefined, { startedAt: PRESSED_AT + 30_000 })).toBe(
+      PRESSED_AT + 30_000,
+    );
   });
 });
 

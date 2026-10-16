@@ -5,12 +5,13 @@
  * The reload's whole path stands in with it (the router, the chat's layout, the door, HQ's member
  * read), so a reload paints this once and then the cards in the same places.
  */
+import { useState } from "react";
+
+import { rememberedOverviewCards } from "~/zerops/overviewCardCount";
+
 import { Loading } from "../../ui/loading";
 import { Skeleton } from "../../ui/skeleton";
 import { ZeropsHostedFrame } from "../landing/ZeropsHostedFrame";
-
-/** As many cards as a first screen holds at the reference width. */
-const STAND_IN_CARDS = 3;
 
 /** The title row, as `ZeropsProjectsHeader` stands it: its height is its buttons'. */
 function TitleRow() {
@@ -24,10 +25,31 @@ function TitleRow() {
   );
 }
 
-/** One project card's box, its words grey; `page` is the card a project's own page draws. */
-export function ProjectCardStandIn({ page = false }: { readonly page?: boolean }) {
+/**
+ * One project card's box, its words grey; `page` is the card a project's own page draws. A card
+ * waiting for its detail stands in with it under the card's own name (`label`, `ref`, `id`).
+ */
+export function ProjectCardStandIn({
+  page = false,
+  label,
+  id,
+  ref,
+}: {
+  readonly page?: boolean;
+  readonly label?: string | undefined;
+  readonly id?: string | undefined;
+  readonly ref?: ((element: HTMLElement | null) => void) | undefined;
+}) {
   return (
-    <div className="ov-card gap-3" data-page={page ? "" : undefined}>
+    <div
+      aria-busy={label === undefined ? undefined : "true"}
+      aria-label={label}
+      className="ov-card gap-3"
+      data-page={page ? "" : undefined}
+      id={id}
+      ref={ref}
+      role={label === undefined || page ? undefined : "listitem"}
+    >
       <div className="flex items-center gap-2.5 px-1">
         <Skeleton className="size-8 shrink-0" shape="pill" />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -44,13 +66,19 @@ export function ProjectCardStandIn({ page = false }: { readonly page?: boolean }
   );
 }
 
-/** The cards' rail, as `ProjectCards` lays it out: the same row and card boxes, their words grey. */
-export function OverviewCardsStandIn({ count = STAND_IN_CARDS }: { readonly count?: number }) {
+/**
+ * The cards' rail, as `ProjectCards` lays it out: the same row and card boxes, their words grey —
+ * as many as this browser's overview drew last.
+ */
+export function OverviewCardsStandIn({ count }: { readonly count?: number }) {
+  // As many as this browser's overview drew last (`rememberedOverviewCards`), read once.
+  const [remembered] = useState(rememberedOverviewCards);
+  const cards = count ?? remembered;
   return (
     <Loading label="Your projects">
       <div className="ov-rail">
         <div className="ov-row" data-overview-stand-in-cards="">
-          {Array.from({ length: count }, (_, index) => (
+          {Array.from({ length: cards }, (_, index) => (
             <ProjectCardStandIn key={index} />
           ))}
         </div>

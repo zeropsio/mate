@@ -300,7 +300,7 @@ export function HarnessPressPage({ birthId }: { readonly birthId: string }) {
         coming={{
           kind: coming.kind,
           pressed: true,
-          sentence: comingSentenceOf({ coming, progress, nowMs }),
+          sentence: comingSentenceOf({ coming, progress }),
           below: (
             <ComingBelow
               coming={coming}
@@ -409,7 +409,7 @@ function HarnessMatePage({
         coming={{
           kind: coming.kind,
           pressed: true,
-          sentence: comingSentenceOf({ coming, progress, nowMs }),
+          sentence: comingSentenceOf({ coming, progress }),
           below: (
             <ComingBelow
               coming={coming}

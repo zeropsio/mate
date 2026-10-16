@@ -369,8 +369,8 @@ describe("ZeropsDataPanel", () => {
       const tree = render();
       const unsupported = findByAttribute(tree, "data-zerops-surface");
       expect(unsupported).toBeNull();
-      const starting = findComponent<{ children: string }>(tree, Badge);
-      expect(starting?.props.children).toBe("Starting");
+      const starting = findByAttribute(tree, "data-zerops-data-starting");
+      expect(starting?.props.children).toBe("Opening this project's data…");
     });
   });
 
@@ -378,8 +378,9 @@ describe("ZeropsDataPanel", () => {
     feedState.session = undefined;
     commandSpy.mockImplementation(() => new Promise(() => {}));
     const tree = render();
-    const starting = findComponent<{ children: string }>(tree, Badge);
-    expect(starting?.props.children).toBe("Starting");
+    // Never a state word: the console opening is not the database starting.
+    const starting = findByAttribute(tree, "data-zerops-data-starting");
+    expect(starting?.props.children).toBe("Opening this project's data…");
   });
 
   it("issues the listing as a refresh while idle — that first call is what starts the console, and refresh sees services created since it started", async () => {
@@ -474,8 +475,9 @@ describe("ZeropsDataPanel", () => {
   it("shows a starting line while starting", () => {
     feedState.session = { status: "starting", allowWrites: false };
     const tree = render();
-    const starting = findComponent<{ children: string }>(tree, Badge);
-    expect(starting?.props.children).toBe("Starting");
+    // Never a state word: the console opening is not the database starting.
+    const starting = findByAttribute(tree, "data-zerops-data-starting");
+    expect(starting?.props.children).toBe("Opening this project's data…");
   });
 
   it("shows the fixed unavailable line plus the reason carried by the event", () => {
@@ -565,8 +567,8 @@ describe("ZeropsDataPanel", () => {
       feedState.topology = {
         view: {
           services: [
-            { hostname: "db2", status: "ACTIVE", transient: false },
-            { hostname: "db1", status: "ACTIVE", transient: false },
+            { hostname: "db2", status: "ACTIVE", transient: false, type: "postgresql@18" },
+            { hostname: "db1", status: "ACTIVE", transient: false, type: "postgresql@18" },
           ],
         },
       };
@@ -585,9 +587,43 @@ describe("ZeropsDataPanel", () => {
       expect((statusDots[0]!.props as { children: string }).children).toBe("Active");
     });
 
+    // The onboarding run, 2026-10-16: one database read "PostgreSQL 18" on the Zerops page and
+    // "tabular" here.
+    it.each([
+      { matched: true, says: "PostgreSQL 18" },
+      { matched: false, says: "Database" },
+    ])(
+      "names a service's type as the Zerops page does, never the console's family (matched: $matched)",
+      async ({ matched, says }) => {
+        feedState.topology = {
+          view: matched
+            ? {
+                services: [
+                  {
+                    hostname: "db1",
+                    status: "ACTIVE",
+                    transient: false,
+                    type: "postgresql@18",
+                    typeName: "PostgreSQL",
+                  },
+                ],
+              }
+            : undefined,
+        };
+        const tree = await picker([SERVICE_SUPPORTED]);
+        const row = textOf(findByAttribute(tree, "data-zerops-data-service"));
+        expect(row).toContain(says);
+        expect(row).not.toContain("tabular");
+      },
+    );
+
     it("puts a console service with no topology match last, without a status dot", async () => {
       feedState.topology = {
-        view: { services: [{ hostname: "db1", status: "ACTIVE", transient: false }] },
+        view: {
+          services: [
+            { hostname: "db1", status: "ACTIVE", transient: false, type: "postgresql@18" },
+          ],
+        },
       };
       const orphan: ZeropsDataConsoleService = { ...SERVICE_SUPPORTED, hostname: "orphan" };
       const tree = await picker([orphan, SERVICE_SUPPORTED]);

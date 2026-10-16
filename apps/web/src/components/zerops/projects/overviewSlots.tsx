@@ -31,7 +31,7 @@ import { mateDecision } from "../mateDecision.logic";
 import { PersonAvatar } from "../primitives";
 import { SidebarMateAge } from "../SidebarMateAge";
 import type { MateRowSlot } from "../SidebarMateRow.logic";
-import { formatWorkingTime } from "../SidebarZeropsTree.logic";
+import { formatRunClock } from "../SidebarZeropsTree.logic";
 import {
   buildingOf,
   drawnChip,
@@ -265,8 +265,10 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       line,
       version: stop?.version?.label,
       note,
+      // What the release brought is the card's Changes, under its tag: an overview card says it
+      // once (the onboarding run listed it twice); the project's own page names it in full.
       brought:
-        line.kind === "production" && !line.trouble
+        line.kind === "production" && !line.trouble && input.onPage === true
           ? broughtBy(read?.merged ?? [], releases).map((pull) => ({
               key: `${pull.repository}#${String(pull.number)}`,
               title: `#${String(pull.number)} ${pull.title}`,
@@ -430,7 +432,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
 /** A working Mate's clock, a step a second (R6). */
 function CardClock({ since }: { readonly since: string }) {
   const nowMs = useSecondsNowMs(true);
-  return <>{formatWorkingTime(nowMs - Date.parse(since))}</>;
+  return <>{formatRunClock(nowMs - Date.parse(since))}</>;
 }
 
 /**

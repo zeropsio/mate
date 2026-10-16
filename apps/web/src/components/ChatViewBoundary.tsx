@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import type ChatViewComponent from "./ChatView";
+import { appChunk } from "../lib/appChunks";
 import { Loading } from "./ui/loading";
 
 type ChatViewProps = ComponentProps<typeof ChatViewComponent>;
@@ -14,8 +15,9 @@ type ChatViewProps = ComponentProps<typeof ChatViewComponent>;
 // Both routes load the one module: a visible draft has already loaded its conversation.
 let loaded: ComponentType<ChatViewProps> | null = null;
 let loading: Promise<ComponentType<ChatViewProps>> | null = null;
-const loadChatView = () =>
-  (loading ??= import("./ChatView").then((module) => (loaded = module.default)));
+const loadChatView = appChunk(
+  () => (loading ??= import("./ChatView").then((module) => (loaded = module.default))),
+);
 
 /**
  * Starts fetching the conversation's code now (a reload on a conversation's address, at boot), so

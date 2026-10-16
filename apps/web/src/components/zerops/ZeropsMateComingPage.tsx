@@ -94,11 +94,14 @@ import {
 import { mateOpeningPhrase } from "~/zerops/mateComing";
 import {
   mateStageAwake,
+  zeropsMateAt,
   zeropsMateIdentityOf,
   type ZeropsMateIdentity,
 } from "~/zerops/mateIdentities";
+import { useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { takeMateConversation } from "~/zerops/mateOpening";
 import {
+  ARRIVAL_PACE_MS,
   arrivalRow,
   arrivalSteps,
   onSetupClock,
@@ -111,8 +114,9 @@ import { dismissCreation, useCreations } from "~/zerops/creations";
 import { useMateHandOver } from "~/zerops/newMate";
 import {
   comingPlanned,
-  creationSubsteps,
+  madePressSteps,
   registrationSubstep,
+  setupClockSince,
   madeOf,
   newProjectProgress,
 } from "~/zerops/newProjectBirth";
@@ -136,7 +140,6 @@ import {
   finishSetupView,
   forgetPress,
   pressFailure,
-  pressSince,
   useMatePress,
 } from "~/zerops/matePress";
 import { useDeleteProject } from "~/zerops/deleteProject";
@@ -170,6 +173,9 @@ import {
   type MateEmptyComing,
 } from "./ZeropsMateEmptyState";
 import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
+
+/** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
+export const HAND_OVER_NAME_WAIT_MS = 15_000;
 
 /** The coming page reads no server version: its *Finish setup* is all it takes of the menu. */
 const NO_VERSIONS: ReadonlyMap<string, string> = new Map();
@@ -379,6 +385,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     setUpFailed: pressFailure(press),
     nowMs: Date.now(),
     created: made !== undefined,
+    madeAt: made?.startedAt,
     listingLacksIt,
     link,
     setupFailure: failedProcess,
@@ -406,6 +413,20 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // only the destination's placement readiness starts the wake and hand-off.
   const [handing, setHanding] = useState(false);
   if (up && !handing) setHanding(true);
+  // A Mate that came up here lands on a conversation that draws it only once the account's
+  // directory names it there (`zeropsMates`): until then its sign-in stands here, where it is drawn
+  // already — a stranger's empty conversation otherwise (run 2, 2026-10-16) — for a short wait at
+  // most. Any other Mate opens as soon as its conversation can.
+  const directory = useZeropsMateDirectory();
+  const namedThere =
+    environmentId !== null && zeropsMateAt(directory, environmentId).kind === "mate";
+  const [nameWaitOver, setNameWaitOver] = useState(false);
+  useEffect(() => {
+    if (!handing || !cameUp || namedThere) return;
+    const timer = setTimeout(() => setNameWaitOver(true), HAND_OVER_NAME_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [cameUp, handing, namedThere]);
+  const lands = !cameUp || namedThere || nameWaitOver;
   const handingOver = useMateHandOver((state) => state.handingOver);
   const liveActivity = useZeropsThreadActivity(threadRef);
   // The draft of the conversation it opens on, which the held room lays out at its height.
@@ -415,7 +436,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Until its conversation is read here: HQ's last word of it, as its menu row reads it.
   const toldActivity = useToldActivity(projectId);
   useEffect(() => {
-    if (!handing || environmentId === null || threadRef === null) return;
+    if (!handing || !lands || environmentId === null || threadRef === null) return;
     // Kept read from above every view while the route changes under it.
     if (cameUp) handingOver(threadRef);
     let current = true;
@@ -436,7 +457,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     return () => {
       current = false;
     };
-  }, [cameUp, environmentId, handing, handingOver, navigate, projectId, router, threadRef]);
+  }, [cameUp, environmentId, handing, handingOver, lands, navigate, projectId, router, threadRef]);
 
   // Its environment's conversations read, none of its own to hand over to (an older server):
   // opening it starts one, as its row would — once, telling what its door asked.
@@ -549,7 +570,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
   // Made here, the steps this tab runs stay under the project's row until the hand-over.
-  // Its running step and its sentence count on its row's clock: from the first press.
+  // Its running step and its sentence count on its row's clock: from the first press — the
+  // creation's, which this tab holds from Create or Add until it connects, so the clock reads the
+  // same across the hand-over and once the press's own record is gone (run 2, 2026-10-16: 0:05,
+  // then 0:00 at the hand-over; 0:34, 0:39, then 0:35 as the press ended).
+  const setupSince = setupClockSince(made, press);
+  // The steps this tab runs, as the creation's view drew them until its press is seen here, and
+  // never again once it went: through, its record goes, and the tab is free for good.
+  const [pressSeen, setPressSeen] = useState(false);
+  if (press !== undefined && !pressSeen) setPressSeen(true);
+  const pressSteps = madePressSteps({ made, press, pressSeen, registration });
   const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
@@ -558,7 +588,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             made === undefined || made.adds !== undefined
               ? progress.progress
               : newProjectProgress(made, progress.progress, progress.nowMs),
-            press === undefined ? undefined : pressSince(press),
+            setupSince,
           ),
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
@@ -566,9 +596,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           // A registration's receipt stands after any originating press is gone.
           ...(press === undefined && registration.state === "unfinished"
             ? { press: [registrationSubstep(mate.name, registration)] }
-            : made === undefined || press === undefined
+            : pressSteps === undefined
               ? {}
-              : { press: creationSubsteps(made, press.progress ?? null, registration) }),
+              : { press: pressSteps }),
           ...(empty.agentReady ? { agentReady: true } : {}),
         };
 
@@ -719,7 +749,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const arrivalWords = mateArrivalNotice({
     coming: shown,
     progress: lineProgress,
-    nowMs: progress?.nowMs,
     failureReason: failedReason?.text,
     details: failedReason?.details,
     attemptId: failedProcess?.id,
@@ -1142,6 +1171,9 @@ export function ComingBelow({
           identity={attemptId ?? ""}
           label={`${mate.name} coming up`}
           nowMs={nowMs}
+          // Its steps say little of how far it has got — its workspace is most of the wait — so
+          // time paces the bar; the sentence over it says the estimate.
+          paceMs={ARRIVAL_PACE_MS}
           startedAtMs={row.startedAtMs}
           steps={row.steps}
           view={
@@ -1253,7 +1285,6 @@ export function ComingBelow({
   const copy = mateArrivalNotice({
     coming,
     progress,
-    nowMs,
     refusal: operationTrouble,
     attemptId,
     details: setupFailureDetails?.details,

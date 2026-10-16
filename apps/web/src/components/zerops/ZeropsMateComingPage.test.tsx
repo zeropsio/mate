@@ -28,7 +28,7 @@ import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { beginPress, forgetPress } from "~/zerops/matePress";
 import { CREDIT_REFUSED_LINE, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
-import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
+import { ComingBelow, HAND_OVER_NAME_WAIT_MS, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 import { appAtomRegistry, AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 
@@ -139,7 +139,10 @@ const app = vi.hoisted(() => ({
     attempt: 0,
     state: "waiting",
   } as import("@t3tools/client-runtime/data").MateRegistration,
+  /** Who the account's directory names in each environment (`zeropsMates`). */
+  directory: new Map() as Map<unknown, unknown>,
 }));
+vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMateDirectory: () => app.directory }));
 vi.mock("~/zerops/useHqOffers", () => ({
   useMateOffers: () => () => ({
     held: true,
@@ -461,6 +464,8 @@ beforeEach(() => {
   app.wholeForPerson = false;
   app.detailFailure = null;
   app.admissionRefusal = null;
+  // The directory names Quinn where it lives.
+  app.directory = new Map([[ENV_QUINN, { name: "Quinn", projectId: PROJECT }]]);
 });
 afterEach(async () => {
   const { useComposerDraftStore } = await import("~/composerDraftStore");
@@ -1133,6 +1138,49 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     await act(async () => undefined);
     expect(app.navigate).toHaveBeenCalledOnce();
   });
+
+  // Run 2 (2026-10-16): an added Mate landed on a bare conversation titled with its raw project
+  // name, its sign-in a footer dropdown, while the account did not name it there yet.
+  it("keeps a Mate that came up here until its conversation names it, a short wait at most", async () => {
+    app.directory = new Map();
+    app.listing = listingOf([coming]);
+    openView();
+    app.listing = listingOf([QUINN]);
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    };
+    app.threads = [MAIN];
+    act(() => tree?.update(comingView(PROJECT)));
+    await act(async () => undefined);
+    expect(app.navigate).not.toHaveBeenCalled();
+    // Named there: it opens.
+    app.directory = new Map([[ENV_QUINN, { name: "Quinn", projectId: PROJECT }]]);
+    act(() => tree?.update(comingView(PROJECT)));
+    await act(async () => undefined);
+    expect(app.navigate).toHaveBeenCalledOnce();
+
+    // Never named: it opens once the wait is over.
+    act(() => tree?.unmount());
+    app.navigate.mockClear();
+    app.directory = new Map();
+    app.listing = listingOf([coming]);
+    app.link = { key: undefined, environmentId: undefined, reachability: null };
+    openView();
+    app.listing = listingOf([QUINN]);
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    };
+    act(() => tree?.update(comingView(PROJECT)));
+    await act(async () => vi.advanceTimersByTime(HAND_OVER_NAME_WAIT_MS - 1));
+    expect(app.navigate).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(1));
+    await act(async () => undefined);
+    expect(app.navigate).toHaveBeenCalledOnce();
+  });
 });
 
 // A Mate whose press stopped before its container (live, 2026-10-01: its view sat on "Opening
@@ -1140,7 +1188,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
 describe("ComingBelow — a Mate half made", () => {
   const HALF_MADE = {
     kind: "failed",
-    line: "Its setup stopped before its container. Finish setup completes it.",
+    line: "Its setup stopped before its workspace. Finish setup completes it.",
     verb: "finish-setup",
   } as const;
   const render = (onFinishSetup: (() => void) | undefined) => {
@@ -1550,7 +1598,6 @@ describe("comingSentenceOf — the sentence over a stop", () => {
         coming: { kind: "failed", line: reason, verb: "try-again" },
         failureReason: reason,
         progress: progressOf([sub("setup", "failed", "CommandExec: init command failed.")]),
-        nowMs: 0,
       }),
     ).toBe(reason);
   });
@@ -1585,7 +1632,7 @@ describe("comingSentenceOf — the sentence over a stop", () => {
       want: CREDIT_REFUSED_LINE,
     },
   ] as const)("$case", ({ coming, press, want }) => {
-    expect(comingSentenceOf({ coming, progress: progressOf(press), nowMs: 0 })).toBe(want);
+    expect(comingSentenceOf({ coming, progress: progressOf(press) })).toBe(want);
   });
 });
 

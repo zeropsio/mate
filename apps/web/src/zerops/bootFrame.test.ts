@@ -163,7 +163,7 @@ describe("the boot frame", () => {
   });
 
   // The app keeps the menu's width under the signed-in account's own key: read anywhere else, the
-  // first frame drew 304 px and the menu jumped to the person's width as the app took over.
+  // first frame drew the default width and the menu jumped to the person's width as the app took over.
   it("draws the menu column at the width its person left it, under their account's own key", () => {
     const storage: Record<string, string> = {
       [BOOT_FRAME_STORAGE_KEY]: "app",
@@ -202,7 +202,7 @@ describe("the boot frame", () => {
         innerWidth: 1786,
         storageThrows: true,
       }),
-    ).toEqual({ mode: "app", menuWidth: "304px" });
+    ).toEqual({ mode: "app", menuWidth: "368px" });
   });
 
   it.each([

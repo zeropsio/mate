@@ -220,7 +220,7 @@ import { useStopPress } from "~/zerops/conversationStop";
 import { withStopPress } from "~/zerops/conversationStop.logic";
 import {
   addressesPlace,
-  formatWorkingTime,
+  formatRunClock,
   projectHeadingMenu,
   sidebarMateKey,
   type HeadingMenuEntry,
@@ -321,6 +321,7 @@ import {
   groupFlowInputOf,
   groupMemberFactsOf,
   tiersAddable,
+  withoutOfficialHq,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
@@ -752,9 +753,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       : structureView.structure.apps.filter(
           (app) => (getFlow?.(app.id)?.pullRequests.length ?? 0) > 0,
         );
+  // HQ's own project is never a project to set a Mate up in: an organization holding only HQ has
+  // no project yet, and its one way on is New project, not "Set up Mate".
   const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
     ? undefined
-    : mateEnvironmentsEmptyReason(candidates);
+    : mateEnvironmentsEmptyReason(withoutOfficialHq(candidates, accountHq.hq));
   const hqMates = useAtomValue(menuHqPresenceAtom);
   // Which projects a build or deploy runs on now, as Zerops says: the headings' indicator.
   const building = useBuildsUnderWay(
@@ -1234,7 +1237,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     const everyMate = entries.filter(({ item }) => hasMate(item));
     // Whose Mates the viewer asked to see (Mine / Everyone).
     const mateEntries = everyMate.filter(({ item }) => shown?.(item) ?? true);
-    // Its Mates being created, after the listed ones: the listing holds none of them yet.
+    // Its Mates being created — the viewer's own — after their listed ones: the listing holds none yet.
     const coming = group?.pending.filter((member) => member.kind === "mate") ?? [];
     const mateCount = mateEntries.length + coming.length;
     if (mateCount === 0 && (group === undefined || everyMate.length > 0)) return null;
@@ -2022,8 +2025,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               }}
               open={open}
             >
-              {ordered.map(({ item }) => mateRow(item, "kid"))}
+              {/* The viewer's Mates first, those they are making after their listed ones and
+                  before colleagues': a Mate made here is the viewer's from its press, so its row
+                  stands where its listed row will, and never leaps over the others. */}
+              {ordered.filter((entry) => entry.mine).map(({ item }) => mateRow(item, "kid"))}
               {coming.map((member) => comingRow(member, "kid"))}
+              {ordered.filter((entry) => !entry.mine).map(({ item }) => mateRow(item, "kid"))}
             </SidebarProjectFold>
           </RowMarks.Provider>
         ),
@@ -2465,20 +2472,22 @@ export function SidebarHqStatus({
   );
 }
 
-/** Rows the menu does not know yet, standing in their room: a face and its line, three times. */
-function MenuSkeleton({ className }: { readonly className?: string | undefined }) {
+/**
+ * Rows the menu does not know yet, standing in the first row's room: a face and its line, once —
+ * how many there are is not known until they are read, and a row the menu paints is never taken
+ * back. The boot frame (index.html) paints the same row in the same place.
+ */
+export function MenuSkeleton({ className }: { readonly className?: string | undefined }) {
   return (
     <div
       aria-hidden="true"
       className={className}
       data-zerops-surface="sidebar-environments-skeleton"
     >
-      {["first", "second", "third"].map((row) => (
-        <div key={row}>
-          <span className="bg-sidebar-row-hover" />
-          <span className="bg-sidebar-row-hover" />
-        </div>
-      ))}
+      <div>
+        <span className="bg-sidebar-row-hover" />
+        <span className="bg-sidebar-row-hover" />
+      </div>
     </div>
   );
 }
@@ -4435,7 +4444,7 @@ function MateWorkingTime({
       data-zerops-surface="sidebar-mate-time"
     >
       <span aria-hidden="true" className="menu-clock-mark" />
-      {formatWorkingTime(nowMs - Date.parse(since))}
+      {formatRunClock(nowMs - Date.parse(since))}
     </span>
   );
 }

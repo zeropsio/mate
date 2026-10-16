@@ -17,7 +17,7 @@ import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -84,7 +84,12 @@ export interface ZeropsNewProjectFormProps {
   readonly access?: ProjectAccessSlot | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
+  /** The project's name field, where its dialog puts the focus as it opens. */
+  readonly nameField?: RefObject<HTMLInputElement | null>;
 }
+
+/** What a Create pressed with no project name says, at the name. */
+export const NAME_YOUR_PROJECT = "Name your project.";
 
 const PROJECT_FIELD = "zerops-new-project";
 const MATE_FIELD = "zerops-new-project-mate";
@@ -106,7 +111,10 @@ export function ZeropsNewProjectForm({
   onCreate,
   access,
   forecast,
+  nameField: givenNameField,
 }: ZeropsNewProjectFormProps) {
+  const ownNameField = useRef<HTMLInputElement>(null);
+  const nameField = givenNameField ?? ownNameField;
   const [name, setName] = useState("");
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
   const [botName, setBotName] = useState(defaultBotName);
@@ -132,7 +140,9 @@ export function ZeropsNewProjectForm({
     tierLoading: false,
   });
   const refused = pressed && submit.kind === "refuse" ? submit.error : undefined;
-  const failed = refused ?? locationError ?? undefined;
+  // Create stays on with no project name: its press asks for one, at the name.
+  const unnamed = pressed && name.trim().length === 0;
+  const failed = (unnamed ? NAME_YOUR_PROJECT : undefined) ?? refused ?? locationError ?? undefined;
   const line =
     failed ??
     newMateWords({
@@ -150,7 +160,11 @@ export function ZeropsNewProjectForm({
   const press = () => {
     if (creating || closed !== undefined) return;
     setPressed(true);
-    if (submit.kind !== "create" || name.trim().length === 0) return;
+    if (name.trim().length === 0) {
+      nameField.current?.focus();
+      return;
+    }
+    if (submit.kind !== "create") return;
     onCreate({
       name: name.trim(),
       botName: botName.replace(/\s+/g, " ").trim(),
@@ -178,13 +192,16 @@ export function ZeropsNewProjectForm({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={PROJECT_FIELD}>Project name</Label>
               <Input
+                aria-describedby={unnamed ? LINE : undefined}
+                aria-invalid={unnamed || undefined}
                 autoComplete="off"
                 id={PROJECT_FIELD}
                 onChange={(event) => {
                   setName(event.target.value);
                 }}
-                placeholder="Acme CRM"
+                placeholder="e.g. Acme CRM"
                 readOnly={creating}
+                ref={nameField}
                 spellCheck={false}
                 value={name}
               />
@@ -277,12 +294,13 @@ export function ZeropsNewProjectForm({
             <Button disabled={creating} onClick={onCancel} type="button" variant="ghost">
               Cancel
             </Button>
+            {/* It spins only once pressed: a read the dialog makes again on its own never says
+                something is happening that the person did not ask for. */}
             <Button
-              aria-busy={creating || loading || undefined}
+              aria-busy={creating || undefined}
               data-zerops-new-project="create"
               disabled={
                 creating ||
-                name.trim().length === 0 ||
                 loading ||
                 locationError !== null ||
                 (locations.length > 0 && !locationId) ||
@@ -290,7 +308,7 @@ export function ZeropsNewProjectForm({
               }
               type="submit"
             >
-              {creating || loading ? <Spinner size="md" /> : null}
+              {creating ? <Spinner size="md" /> : null}
               {newProjectButton({ projectName: name, botName })}
             </Button>
           </>
@@ -307,18 +325,28 @@ export function ZeropsNewProjectForm({
 /** The form in its dialog, New Mate's size: what the host opens, and what the harness draws. */
 export function ZeropsNewProjectDialog({
   onOpenChange,
+  open = true,
   ...form
 }: ZeropsNewProjectFormProps & {
   readonly onOpenChange: (open: boolean) => void;
+  /** Held shut until what it says is read, so it opens whole (`ZeropsNewProjectHost`). */
+  readonly open?: boolean;
 }) {
   // Create closes it onto the first Mate's page, which takes the focus: never back to what opened
   // it, where a second Enter would open it again over that page.
   const created = useRef(false);
+  // It opens on the project's name, ready to type.
+  const nameField = useRef<HTMLInputElement>(null);
   return (
-    <Dialog onOpenChange={onOpenChange} open>
-      <DialogPopup className="max-w-lg" finalFocus={() => !created.current}>
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogPopup
+        className="max-w-lg"
+        finalFocus={() => !created.current}
+        initialFocus={nameField}
+      >
         <ZeropsNewProjectForm
           {...form}
+          nameField={nameField}
           onCreate={(choice) => {
             created.current = true;
             form.onCreate(choice);

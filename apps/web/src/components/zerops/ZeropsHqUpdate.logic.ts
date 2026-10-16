@@ -9,22 +9,35 @@ import type { HqStanding } from "~/zerops/accountHq";
 
 const IDENTITY = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})\d{2}Z\.([0-9a-f]{12})$/u;
 
-/** A Core as a person reads it: its commit's time and its digest, or the name Zerops gives it. */
+/**
+ * HQ's build as its details name it: its commit's time and its digest, or the name Zerops gives
+ * it. People read "version" everywhere else; the digest is only for the details (the onboarding
+ * run, 2026-10-16: "Core", "this app carries" and hashes told an owner nothing).
+ */
 export function coreLabel(build: string): string {
-  if (build === "") return "an unnamed Core";
+  if (build === "") return "unnamed";
   const match = IDENTITY.exec(build);
-  if (match === null) return `Core ${build}`;
+  if (match === null) return build;
   const [, year, month, day, hour, minute, digest] = match;
-  return `Core ${year}-${month}-${day} ${hour}:${minute} UTC · ${digest}`;
+  return `${year}-${month}-${day} ${hour}:${minute} UTC · ${digest}`;
 }
 
-/** A Core in a few words, for a line with others: its commit's day, or the name Zerops gives it. */
+/** HQ's build in a sentence: "the version from 2026-10-04 10:00 UTC", no digest. */
+export function versionLabel(build: string): string {
+  if (build === "") return "an unnamed version";
+  const match = IDENTITY.exec(build);
+  if (match === null) return `version ${build}`;
+  const [, year, month, day, hour, minute] = match;
+  return `the version from ${year}-${month}-${day} ${hour}:${minute} UTC`;
+}
+
+/** HQ's build in a few words, for a line with others: its commit's day, or its name. */
 export function coreDayLabel(build: string): string | null {
   if (build === "") return null;
   const match = IDENTITY.exec(build);
-  if (match === null) return `Core ${build}`;
+  if (match === null) return `Version ${build}`;
   const [, year, month, day] = match;
-  return `Core ${year}-${month}-${day}`;
+  return `Version of ${year}-${month}-${day}`;
 }
 
 export interface HqUpdateWords {
@@ -40,28 +53,28 @@ export function hqUpdateWords(state: HqUpdateState, answering: string | undefine
   switch (state.kind) {
     case "available":
       return {
-        line: `HQ runs ${coreLabel(state.running)}. This app carries ${coreLabel(state.carried)}.`,
+        line: `HQ runs ${versionLabel(state.running)}; this update brings ${versionLabel(state.carried)}.`,
         action: "Update HQ",
       };
     case "updating":
       return {
         line:
           state.target === undefined
-            ? "HQ is being updated."
-            : `HQ is being updated to ${coreLabel(state.target)}.`,
+            ? "HQ is updating."
+            : `HQ is updating to ${versionLabel(state.target)}.`,
         action: null,
       };
     case "failed":
       return {
-        line: `HQ's last update failed: ${state.reason.replace(/\.$/u, "")}. HQ still runs ${coreLabel(state.running)}.`,
+        line: `HQ's last update failed: ${state.reason.replace(/\.$/u, "")}. HQ still runs ${versionLabel(state.running)}.`,
         action: "Update again",
       };
     case "current":
       return {
         line:
           answering === undefined || !hqUpdateOffered(answering, state.running)
-            ? `HQ runs ${coreLabel(state.running)}. It is up to date.`
-            : `HQ's update to ${coreLabel(state.running)} finished. Waiting for HQ to answer with it.`,
+            ? `HQ runs ${versionLabel(state.running)}. It is up to date.`
+            : `HQ's update to ${versionLabel(state.running)} finished. Waiting for HQ to answer with it.`,
         action: null,
       };
   }
@@ -98,6 +111,19 @@ export function hqUpdateTrigger(input: {
     default:
       return null;
   }
+}
+
+/**
+ * What HQ's row offers: the update while one is waiting, then, while one pressed here runs, the way
+ * back to its progress, so the row never says "Up to date" beside a dialog still updating (the
+ * onboarding run, 2026-10-16: 18 s apart).
+ */
+export function hqUpdateTriggerLabel(
+  trigger: "Update available" | "Up to date" | "Update HQ",
+  busy: boolean,
+): "Update HQ" | "Up to date" | "Show progress" {
+  if (busy) return "Show progress";
+  return trigger === "Up to date" ? "Up to date" : "Update HQ";
 }
 
 /** What the update control is mounted with: its trigger, and the two Cores it weighs. */

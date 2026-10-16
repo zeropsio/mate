@@ -4,7 +4,8 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { createLiveStepPacer, sameLiveStep, type ShownLiveSteps } from "./liveStep";
+import { BETWEEN_STEPS, createLiveStepPacer, sameLiveStep, type ShownLiveSteps } from "./liveStep";
+import { underWay } from "./mateActivity";
 import {
   mateActivityAtom,
   matesActivityAtom,
@@ -61,16 +62,25 @@ export function usePacedLiveSteps<K>(
   useEffect(() => () => pacer.dispose(), [pacer]);
   // Before paint: a step allowed now never shows its predecessor for a frame.
   useLayoutEffect(() => {
-    pacer.update(new Map([...activity].map(([key, entry]) => [key, entry.liveStep] as const)));
+    pacer.update(
+      new Map(
+        [...activity].map(
+          ([key, entry]) =>
+            [key, entry.liveStep ?? (underWay(entry.kind) ? BETWEEN_STEPS : undefined)] as const,
+        ),
+      ),
+    );
   }, [pacer, activity]);
   return useMemo(() => {
     let held: Map<K, ZeropsAgentActivity> | null = null;
     for (const [key, entry] of activity) {
       const step = shown.get(key)?.step;
+      // Between two steps of its turn the row holds the last one, never what was asked.
+      const between = entry.liveStep === undefined && underWay(entry.kind);
       if (
-        entry.liveStep === undefined ||
         step === undefined ||
-        sameLiveStep(step, entry.liveStep)
+        (entry.liveStep === undefined && !between) ||
+        (entry.liveStep !== undefined && sameLiveStep(step, entry.liveStep))
       ) {
         continue;
       }

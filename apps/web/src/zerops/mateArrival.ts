@@ -98,8 +98,6 @@ export function arrivalHeadline(mate: Named, kind: ArrivalKind): string {
 
 /** What the view knows beyond the Mate for its sentence. */
 export interface ArrivalSentenceContext {
-  /** Coming up: how long it has taken so far, wall ms; undefined while unknown. */
-  readonly elapsedMs?: number | undefined;
   /** Coming up past its cap, on the verdict that says so (`comingSentence`). */
   readonly late?: boolean | undefined;
   /** A colleague's view: the name of who added it, where it is known. */
@@ -114,16 +112,15 @@ export interface ArrivalSentenceContext {
 }
 
 /**
- * How long is left while it comes up, from how long it has taken — honest to the measured births
- * (+160 s for a wizard birth, 2026-09-22; +202 s for an Add, 2026-10-15), never a count down past
- * them — and late only on the verdict that says so (`late`): the container machine's, once a read
- * since its cap finds it not up, or its first build's past its grace. The clock alone never does.
+ * How long it usually takes while it comes up — honest to the measured births (+160 s for a wizard
+ * birth, 2026-09-22; +202 s for an Add, 2026-10-15) — and late only on the verdict that says so
+ * (`late`): the container machine's, once a read since its cap finds it not up, or its first
+ * build's past its grace. The clock alone never changes it: "Almost there." is said only once it is
+ * up and its conversation is being read (`ALMOST_THERE_LINE`, run 2, 2026-10-16: "Almost there."
+ * at 2:00 by the clock, 76 s before it came).
  */
-export function comingSentence(elapsedMs: number | undefined, late = false): string {
-  if (late) return TAKING_LONGER_LINE;
-  // What comes after is the steps' last row, with what the person signs it in with.
-  if (elapsedMs === undefined || elapsedMs < 120_000) return "Usually two to four minutes.";
-  return "Almost there.";
+export function comingSentence(late = false): string {
+  return late ? TAKING_LONGER_LINE : "Usually two to four minutes.";
 }
 
 /** The one sentence under the headline; empty where the headline says it all. */
@@ -135,7 +132,7 @@ export function arrivalSentence(
   const name = mate.name;
   switch (kind) {
     case "coming":
-      return context.why ?? comingSentence(context.elapsedMs, context.late);
+      return context.why ?? comingSentence(context.late);
     case "coming-failed":
       return context.why ?? "";
     case "sign-in":
@@ -265,9 +262,11 @@ export function pressNote(press: ReadonlyArray<ArrivalSubstep> | undefined): {
   };
 }
 
-/** What the page says while the steps this tab runs are under way: the one thing that stops them. */
-export const KEEP_TAB_OPEN_LINE =
-  "Keep this tab open for about half a minute: after that it needs nobody.";
+/**
+ * What the page says while the steps this tab runs are under way — the one thing that stops them —
+ * in the words the dialog that pressed it said before (`whatHappensNext`).
+ */
+export const KEEP_TAB_OPEN_LINE = "Keep this tab open for half a minute, then you can leave.";
 
 /**
  * Whether the steps this tab runs are still under way: none stopped, one not through. Only then
@@ -317,6 +316,9 @@ const WORKSPACE_ABOUT = "about 2–3 min";
 
 /** How long its setup takes from the press, as its Add promised it (`whatHappensNext`). */
 const SETUP_ABOUT = "about 2–4 min";
+
+/** What paces its arrival's bar: the middle of its setup's 2–4 minutes (`Progress`'s `paceMs`). */
+export const ARRIVAL_PACE_MS = 3 * 60_000;
 
 /**
  * Its progress on its setup's one clock (board D1, 2026-09-30; the owner, 2026-10-15): from the

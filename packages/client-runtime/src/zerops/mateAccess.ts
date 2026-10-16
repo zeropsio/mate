@@ -272,14 +272,13 @@ export function mateSignedInOnce(project: Pick<MateAccessProject, "hq">): boolea
   );
 }
 
-/** The current or last signer, else a ready agent's maker, as HQ names them. */
+/** The current or last signer, else its maker, as HQ names them. */
 function matePerson(project: Pick<MateAccessProject, "hq">) {
   const { signedIn, signer } = mateOwnerSigner(project);
   const mate = project.hq?.mate;
   const runsWithoutSignIn = mate?.runsWithoutSignIn === true;
-  const person =
-    signer ??
-    (runsWithoutSignIn ? (mate?.madeBy ?? mate?.standupRequestedBy ?? undefined) : undefined);
+  // The maker until somebody signs its agent in, whatever their role (`usageOwner`).
+  const person = signer ?? mate?.madeBy ?? mate?.standupRequestedBy ?? undefined;
   return { signedIn, signer, person, runsWithoutSignIn };
 }
 

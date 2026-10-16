@@ -218,9 +218,7 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     expect(text(tree)).toContain("db · Active");
     expect(text(tree)).not.toContain("core · Active");
     expect(text(tree)).toContain("Running");
-    expect(text(tree)).toContain(
-      "HQ is being updated to Core 2026-10-04 10:00 UTC · 0123456789ab.",
-    );
+    expect(text(tree)).toContain("HQ is updating to the version from 2026-10-04 10:00 UTC.");
 
     await press(tree);
     expect(held).toEqual([]);

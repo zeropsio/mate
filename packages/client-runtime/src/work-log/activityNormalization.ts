@@ -152,6 +152,15 @@ export function formatCommandValue(value: unknown): string | null {
   return parts.map((part) => formatCommandArrayPart(part)).join(" ");
 }
 
+/**
+ * A command's detail without its tool's name before it: Claude's detail reads `Bash: ssh …`, and
+ * the command is what follows (a now line read "Bash: ssh appdev '…'").
+ */
+function withoutToolName(value: string | null, toolName: string | null): string | null {
+  if (value === null || toolName === null || !value.startsWith(`${toolName}: `)) return value;
+  return value.slice(toolName.length + 2).trim() || null;
+}
+
 export function extractToolCommand(payload: Record<string, unknown> | null): {
   command: string | null;
   rawCommand: string | null;
@@ -167,7 +176,9 @@ export function extractToolCommand(payload: Record<string, unknown> | null): {
     itemInput?.command,
     itemResult?.command,
     data?.command,
-    itemType === "command_execution" && detail ? stripTrailingExitCode(detail).output : null,
+    itemType === "command_execution" && detail
+      ? withoutToolName(stripTrailingExitCode(detail).output, asTrimmedString(data?.toolName))
+      : null,
   ];
 
   for (const candidate of candidates) {

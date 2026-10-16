@@ -112,10 +112,10 @@ describe("first run", () => {
 it("does not declare a first run before HQ placement is read", () => {
   const html = render({
     onCreateProject: () => {},
-    placementNotice: "Placement not read — HQ is unavailable",
+    placementNotice: "Projects not loaded yet — trying again",
   });
   expect(html).not.toContain("Start a project");
-  expect(html).toContain("Placement not read — HQ is unavailable");
+  expect(html).toContain("Projects not loaded yet — trying again");
 });
 
 // A reload paints nothing it takes back: placement on its way says nothing for the beat it takes,
@@ -123,11 +123,11 @@ it("does not declare a first run before HQ placement is read", () => {
 it("says nothing while HQ placement is only on its way", () => {
   const html = render({
     onCreateProject: () => {},
-    placementNotice: "Reading HQ placement…",
+    placementNotice: "Loading your projects…",
     placementReading: true,
     hqCard: <p data-zerops-surface="hq-card">HQ</p>,
   });
-  expect(html).not.toContain("Reading HQ placement…");
+  expect(html).not.toContain("Loading your projects…");
   expect(html).not.toContain("Start a project");
   expect(html).not.toContain('data-zerops-surface="hq-card"');
 });
@@ -137,9 +137,9 @@ it("says nothing while HQ placement is only on its way", () => {
 it("says why it is empty though containers no project holds stand behind it", () => {
   const html = render({
     ungrouped: [{ item: item("loose"), action: "open" }],
-    placementNotice: "Placement not read — HQ is unavailable",
+    placementNotice: "Projects not loaded yet — trying again",
   });
-  expect(html).toContain("Placement not read — HQ is unavailable");
+  expect(html).toContain("Projects not loaded yet — trying again");
   expect(html).not.toContain('data-zerops-surface="other-containers"');
 });
 
@@ -149,7 +149,7 @@ it("cold HQ placement stays unknown on Projects until owner evidence arrives", (
   const unknown = {
     ...FLOW_PROPS,
     placementReading: true,
-    placementNotice: "Reading HQ placement…",
+    placementNotice: "Loading your projects…",
   };
   const tree = mount(<ZeropsProjectsFlow {...unknown} />);
   const words = () => JSON.stringify(tree.toJSON());
@@ -164,7 +164,7 @@ it("cold HQ placement stays unknown on Projects until owner evidence arrives", (
     // A later owner delivery replaces the unknown state with the actual placement.
     act(() => tree.update(<ZeropsProjectsFlow {...FLOW_PROPS} groups={[MERGING]} />));
     expect(words()).toContain("sm-fixture");
-    expect(words()).not.toContain("Reading HQ placement…");
+    expect(words()).not.toContain("Loading your projects…");
   } finally {
     act(() => tree.unmount());
     vi.useRealTimers();
