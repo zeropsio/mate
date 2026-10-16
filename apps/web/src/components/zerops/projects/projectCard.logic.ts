@@ -38,7 +38,7 @@ import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
 /** At most this many Mates stand on a card; past it the quiet ones fold. */
 export const CARD_MATES_SHOWN = 4;
 
-/** A place's dot: grey running, amber failed, red down, blue releasing, hollow when none. */
+/** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
 export type PlaceDot = "running" | "failed" | "down" | "releasing" | "none" | "unknown";
 
 /** One line at a card's foot: a place the code runs, by its name, in plain words, and its door. */

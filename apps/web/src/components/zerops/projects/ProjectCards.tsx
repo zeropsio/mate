@@ -144,7 +144,7 @@ function CardRow({
   );
 }
 
-/** A place's dot: grey running, amber failed, red down, blue releasing, hollow when none. */
+/** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
 export function PlaceDot({ dot }: { readonly dot: PlaceLine["dot"] }) {
   return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
 }

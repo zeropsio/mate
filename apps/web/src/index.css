@@ -8211,6 +8211,11 @@ label.tm-advanced-row:not([data-disabled]) {
   background: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
 }
 
+/* Running wears its services' green: a grey beside green service dots read as stopped. */
+.ov-dot[data-dot="running"] {
+  background: var(--zerops-status-ok);
+}
+
 .ov-dot[data-dot="failed"] {
   background: var(--zerops-status-attention);
 }
