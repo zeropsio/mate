@@ -726,6 +726,11 @@ function HarnessPage() {
               );
             }}
             renderReleaseVerb={() => <Button>Review release</Button>}
+            setUpStage={() => () => acted.push("add-stage")}
+            addMate={(entry) => ({
+              onAdd: () => acted.push(`add-mate:${entry.group.groupId}`),
+              why: null,
+            })}
             ungrouped={[]}
           />
         </div>
