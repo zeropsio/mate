@@ -86,11 +86,11 @@ export function bootstrapDecodedPlanTargetHostnames(
 }
 
 /**
- * zcp's bootstrap steps in words a person knows: its step names ("Provision", "Close") read as a
- * developer console (a run 2 follow-up). A step it adds later is said by its name.
+ * zcp's bootstrap steps in words a person knows: its step names ("Discover", "Provision", "Close")
+ * read as a developer console (a run 2 follow-up). A step it adds later is said by its name.
  */
 const BOOTSTRAP_STEP_WORDS: Readonly<Record<string, string>> = {
-  discover: "Plan the services",
+  discover: "Look at the project",
   provision: "Create the services",
   close: "Finish the setup",
 };
