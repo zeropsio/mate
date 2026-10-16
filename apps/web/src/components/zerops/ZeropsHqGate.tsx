@@ -144,17 +144,24 @@ function HqBirth({
     );
   }
   const at = HQ_BIRTH_STEPS.indexOf(birth.step === "done" ? "ready" : birth.step);
+  // Finished, it stays while Mate reaches the new HQ (`watchHqBirth`): the title says it is ready,
+  // once, and the line what is happening now.
+  const title =
+    birth.step === "done"
+      ? `HQ is ready for ${organizationName}`
+      : `Setting up HQ for ${organizationName}`;
   return (
-    <StatusPage data-zerops-surface="hq-gate" title={`Setting up HQ for ${organizationName}`}>
+    <StatusPage data-zerops-surface="hq-gate" title={title}>
       <p className="m-0">
-        HQ goes into a project named Headquarters in Zerops. It takes about 5 minutes. Keep this tab
-        open while it runs; if it closes, any admin can continue it from where it stopped.
+        {birth.step === "done"
+          ? "Connecting to your new HQ…"
+          : "HQ goes into a project named Headquarters in Zerops. It takes about 5 minutes. Keep this tab open while it runs; if it closes, any admin can continue it from where it stopped."}
       </p>
       <Progress
         at={at}
         className="mt-3 w-full text-left"
         estimateMs={HQ_BIRTH_ESTIMATE_MS}
-        label={`Setting up HQ for ${organizationName}`}
+        label={title}
         startedAtMs={birth.startedAt ?? null}
         steps={HQ_BIRTH_STEPS.map((step) => HQ_BIRTH_DOING[step])}
         view={
@@ -169,7 +176,7 @@ function HqBirth({
                 ),
               }
             : birth.step === "done"
-              ? { state: "done", result: `HQ is ready for ${organizationName}` }
+              ? { state: "done", result: "Every step is done" }
               : undefined
         }
       />

@@ -82,6 +82,27 @@ describe("usage source access and current-owner grouping", () => {
     // A project Zerops still shows keeps its override over the retired record.
     assert.isFalse(mayReadUsage(facts, "carol", "P", true));
   });
+  it.each([
+    { agent: "an agent that waits on a sign-in", runsWithoutSignIn: false },
+    { agent: "a sign-in-free agent", runsWithoutSignIn: true },
+  ])(
+    "a Mate Zerops names no OWNER of is its maker's until somebody signs it in, on $agent",
+    ({ runsWithoutSignIn }) => {
+      const input = {
+        facts: {
+          ...facts,
+          projects: facts.projects.map((project) => ({ ...project, userRoles: [] })),
+        },
+        projectId: "P",
+        everSignedIn: {},
+        runsWithoutSignIn,
+        madeBy: "carol",
+        standupRequestedBy: null,
+      };
+      assert.strictEqual(usageOwner(input), "carol");
+      assert.strictEqual(usageOwner({ ...input, everSignedIn: { codex: "bob" } }), "bob");
+    },
+  );
   it("an explicit OWNER resolves canonically and cannot fall through to login history", () => {
     const input = {
       facts,

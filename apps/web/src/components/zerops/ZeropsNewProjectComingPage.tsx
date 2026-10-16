@@ -14,7 +14,7 @@ import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
  * way to the projects: nothing here hands the person to another screen on its own.
  */
 import { birthCopyServices } from "@t3tools/client-runtime/zerops/birthProgress";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef } from "react";
 
 import { hqCreditUrl } from "~/zerops/hqCredit";
@@ -50,13 +50,24 @@ const NOBODY = {
 
 export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: string }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const birth = useCreation(birthId);
 
-  // The platform took its Mate's project: that Mate's view takes the route, in place of this one.
+  // The platform took its Mate's project: that Mate's view takes the route, in place of this one —
+  // once it can paint, so the page never goes blank between the two.
   const handOver = useMemo(() => newProjectHandOver(birth), [birth]);
   useEffect(() => {
-    if (handOver !== null) void navigate(handOver);
-  }, [handOver, navigate]);
+    if (handOver === null) return;
+    let current = true;
+    // A preload that fails still hands over: the route then loads as any other.
+    const go = () => {
+      if (current) void navigate(handOver);
+    };
+    void router.preloadRoute(handOver).then(go, go);
+    return () => {
+      current = false;
+    };
+  }, [handOver, navigate, router]);
 
   // Let go of here or from its row (*Dismiss*, *Start over*): its view goes with it, to the
   // projects, never standing on a creation nobody holds.
@@ -123,7 +134,7 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
       : {
           kind: coming.kind,
           pressed: true,
-          sentence: comingSentenceOf({ coming, progress, nowMs }),
+          sentence: comingSentenceOf({ coming, progress }),
           below: (
             <ComingBelow
               coming={coming}

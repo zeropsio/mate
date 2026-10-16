@@ -12,6 +12,7 @@ import {
   type GroupFlowAddress,
   linksChange,
   type Moved,
+  RELEASE_TAKES,
   type ReviewPrimary,
   type ReviewState,
   type ReviewVerdict,
@@ -626,7 +627,7 @@ export function releaseFoot(input: {
   if (input.state !== "release-ready") return input.consequence;
   const back =
     input.live === undefined ? "" : ` You can roll back to ${input.live} from production's panel.`;
-  return `It takes about a minute.${back}`;
+  return `${RELEASE_TAKES}${back}`;
 }
 
 function changesWords(n: number): string {
@@ -639,7 +640,8 @@ function changesWords(n: number): string {
  * "tested on stage" of a stage nobody had opened).
  */
 export function releaseLine(input: {
-  readonly changes: number;
+  /** How many go out; `undefined` while that is still compared, which is then not said. */
+  readonly changes: number | undefined;
   /** The stage that follows `main`, by name. */
   readonly stage: string | undefined;
   /** When the stage last took what it runs (`sinceWords`). */
@@ -647,6 +649,8 @@ export function releaseLine(input: {
   readonly onStage: { readonly total: number; readonly running: number } | undefined;
   readonly live: string | undefined;
 }): string {
+  if (input.changes === undefined)
+    return input.live === undefined ? "The first release." : `Since ${input.live}.`;
   const changes = changesWords(input.changes);
   const onStage = input.onStage;
   if (input.stage !== undefined && onStage !== undefined && onStage.total > 0) {

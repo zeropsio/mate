@@ -699,6 +699,23 @@ describe("the release sheet's lines", () => {
       { changes: 2, stage: undefined, since: undefined, onStage: undefined },
       "2 changes, the first release.",
     ],
+    // The onboarding run: "0 changes" for 0.4 s, then "1 change".
+    [
+      "no count while what goes out is still compared",
+      { changes: undefined, stage: "stage", since: undefined, onStage: undefined },
+      "The first release.",
+    ],
+    [
+      "no count while compared, after a release",
+      {
+        changes: undefined,
+        stage: undefined,
+        since: undefined,
+        onStage: undefined,
+        live: "v0.1.4",
+      },
+      "Since v0.1.4.",
+    ],
   ] as const)("says %s", (_case, input, words) => {
     expect(releaseLine({ live: undefined, ...input })).toBe(words);
   });

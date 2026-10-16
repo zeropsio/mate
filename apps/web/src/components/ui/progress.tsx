@@ -61,6 +61,7 @@ function Progress({
   startedAtMs = null,
   endedAtMs = null,
   estimateMs = null,
+  paceMs = null,
   nowMs,
   identity = "",
   className,
@@ -77,6 +78,12 @@ function Progress({
   readonly endedAtMs?: number | null;
   /** The measured usual duration of the whole operation. */
   readonly estimateMs?: number | null;
+  /**
+   * How long it usually takes, where its steps say little of how far it has got: the bar is paced
+   * by time instead (`progressFraction`), and the row says no estimate of its own — its caller
+   * says it once, in its own place.
+   */
+  readonly paceMs?: number | null;
   /** The caller's clock, when it has one; else the row keeps its own, once a second. */
   readonly nowMs?: number | undefined;
   /** The operation's identity: a new one starts its bar afresh. */
@@ -104,6 +111,7 @@ function Progress({
       count: steps.length,
       elapsedMs: startedAtMs === null ? null : (ended ?? now) - startedAtMs,
       estimateMs,
+      paceMs,
       state,
     }),
     identity,

@@ -137,3 +137,39 @@ describe("D: change review, comments and merge", () => {
     );
   });
 });
+
+describe("owner-reported layout regressions", () => {
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // A run 2 follow-up: Merge's press put words under the title's line and the body under the
+    // person's eye dropped 24 px, then the question after a first merge came in above it.
+    it.effect("merge leaves the review's body where the person's eye is", () =>
+      Effect.gen(function* () {
+        const { s, r, area } = yield* setup;
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* s.given.signedIn;
+        yield* r.open;
+        yield* r.mergeEnabled;
+        const bodyTop = Effect.promise(() =>
+          s.page.evaluate(
+            () =>
+              [...document.querySelectorAll<HTMLElement>(".rv-body")]
+                .find((body) => body.getBoundingClientRect().height > 0)
+                ?.getBoundingClientRect().top ?? null,
+          ),
+        );
+        const before = yield* bodyTop;
+        area.merge.hold();
+        yield* r.merge;
+        yield* Effect.promise(() => area.merge.received());
+        yield* r.text("Merging into main");
+        const merging = yield* bodyTop;
+        area.merge.resume();
+        yield* r.text("Merged into main");
+        const merged = yield* bodyTop;
+        expect(before).not.toBeNull();
+        // Within half a pixel: the dialog's entrance may still settle its last fraction.
+        for (const top of [merging, merged]) expect(Math.abs(top! - before!)).toBeLessThan(0.5);
+      }),
+    );
+  });
+});

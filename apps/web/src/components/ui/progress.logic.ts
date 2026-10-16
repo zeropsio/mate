@@ -55,9 +55,15 @@ export function progressClock(input: {
 
 export type ProgressState = "running" | "done" | "failed";
 
+/** How far a bar paced by time gets: toward this share of the track, never all of it. */
+const PACED_REACH = 0.9;
+
 /**
  * How far the bar reaches, 0..1: the steps behind it, plus time's share of the step it is on —
  * never past that step's end, so the bar waits at the step's edge rather than running ahead.
+ * A wait whose steps say nothing of how far it has got is paced by time instead (`paceMs`): the bar
+ * eases toward nine tenths over about that long and slows from there, never standing still and
+ * never full before its end.
  */
 export function progressFraction(input: {
   /** The step it is on, from 0. */
@@ -65,9 +71,16 @@ export function progressFraction(input: {
   readonly count: number;
   readonly elapsedMs: number | null;
   readonly estimateMs: number | null;
+  /** How long it usually takes, where time and not its steps paces the bar. */
+  readonly paceMs?: number | null | undefined;
   readonly state: ProgressState;
 }): number {
   if (input.state === "done") return 1;
+  // With no start to pace from — a wait on the person, whose clock does not run — its steps say.
+  if (input.paceMs != null && input.paceMs > 0 && input.elapsedMs !== null) {
+    const elapsed = Math.max(0, input.elapsedMs);
+    return PACED_REACH * (1 - Math.exp(-elapsed / (input.paceMs / 2)));
+  }
   const count = Math.max(1, input.count);
   const at = Math.min(Math.max(0, input.at), count - 1);
   const floor = at / count;

@@ -54,6 +54,7 @@ import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsProjectLink } from "../zerops/ZeropsProjectLink";
 import { useProjectReviewOf, useProjectSitesOf } from "~/zerops/projectPartsShown";
 import { ProjectReviewTags } from "../zerops/SidebarProjectReview";
+import { headerReviewItems } from "../zerops/SidebarProjectReview.logic";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { MateFaceAsMark } from "../zerops/primitives";
 import { ChatHeaderLinks } from "./ChatHeaderLinks";
@@ -277,8 +278,7 @@ export const ChatHeader = memo(function ChatHeader({
   // What waits on a review in its project, the same Review its row's tag opened (the owner,
   // 2026-10-12: "add it somewhere to the app bar in detail which would trigger the same pop").
   const headerReview = useProjectReviewOf(mate?.chief === true ? undefined : mate?.projectId);
-  const headerChanges =
-    headerReview?.items.filter((item) => item.mateProjectId === mate?.projectId) ?? [];
+  const headerChanges = headerReviewItems(headerReview?.items ?? [], mate?.projectId);
   const lead = headerLead(whoLivesHere.kind, { chief: mate?.chief });
   const showOpenInPicker = shouldShowOpenInPicker({
     activeProjectName,

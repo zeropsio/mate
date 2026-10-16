@@ -19,10 +19,19 @@ describe("pressElsewhere", () => {
     readonly case: string;
     readonly presses: HqPresses | null;
     readonly importStatus?: string;
+    readonly ended?: boolean;
     readonly said: ReturnType<typeof pressElsewhere>;
   }>([
     { case: "HQ said nothing of presses yet: unknown", presses: null, said: "unknown" },
     { case: "no press holds it: stopped", presses: {}, said: "stopped" },
+    // Run 2 (2026-10-16): a press that went through leaves no record at HQ, and its Mate read as
+    // half made until its container was listed. One that stops keeps its record.
+    {
+      case: "its press went through, HQ let its hold go: never said stopped",
+      presses: {},
+      ended: true,
+      said: "unknown",
+    },
     { case: "a slow press, its hold renewed: pressing", presses: held(30_000), said: "pressing" },
     { case: "its tab closed, its hold ran out: stopped", presses: held(0), said: "stopped" },
     {
@@ -42,8 +51,10 @@ describe("pressElsewhere", () => {
       presses: held(30_000, "imp-1"),
       said: "pressing",
     },
-  ])("$case", ({ presses, importStatus, said }) => {
-    expect(pressElsewhere({ presses, projectId: "p1", nowMs: NOW, importStatus })).toBe(said);
+  ])("$case", ({ presses, importStatus, ended, said }) => {
+    expect(pressElsewhere({ presses, projectId: "p1", nowMs: NOW, importStatus, ended })).toBe(
+      said,
+    );
   });
 
   it("says when the soonest hold still running runs out", () => {

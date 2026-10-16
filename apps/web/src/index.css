@@ -2814,6 +2814,15 @@ code {
   transition-duration: 0ms;
 }
 
+/* The conversation its own draft just became: the draft's frame showed its rows, so they show
+   again in place at once — eased in, they would read as the message thrown away and resent. */
+[data-timeline-from-draft]
+  .timeline-legend-list
+  .legend-list-content-container
+  > div[style*="opacity"] {
+  transition-duration: 0ms;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .timeline-legend-list .legend-list-content-container > div[style*="opacity"] {
     transition: none;
@@ -3653,14 +3662,23 @@ code {
 
   /* Between a project's name and its Mate's: room on both sides, the dot after it. It gives way
      before either name does, a whole mark at a time (the marks after a name are the row's badges,
-     which do the same). */
+     which do the same): a mark that no longer fits wraps under the line, out of sight, never cut —
+     the empty first item keeps even the first mark from holding the line alone. Its shrink dwarfs
+     the names' so it gives all its room before the Mate's name loses a letter. */
   .menu-name .menu-marks {
-    flex: 0 100000 auto;
+    flex: 0 1000000000 auto;
     flex-wrap: wrap;
     min-width: 0;
     height: 18px;
     overflow: hidden;
     margin-inline: 7px 1px;
+  }
+
+  .menu-name .menu-marks::before {
+    content: "";
+    width: 0;
+    height: 100%;
+    margin-inline-end: -6px;
   }
 
   /* Each on a chip of its own colour, so it stands apart from the name before it. */

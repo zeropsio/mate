@@ -124,6 +124,14 @@ const decodeUpdates = Schema.decodeUnknownOption(UpdateData);
 const decodeList = Schema.decodeUnknownOption(ListAnswer);
 const decodeIdentified = Schema.decodeUnknownOption(Identified);
 
+/** Whether a sampled value still changes without our write (`agesWhile`). */
+function agesNow(
+  sampled: { readonly agesWhile?: ((value: never) => boolean) | undefined },
+  value: unknown,
+): boolean {
+  return sampled.agesWhile?.(value as never) === true;
+}
+
 /** Each row its family decodes; a damaged row is refused alone, its neighbours admitted. */
 function rowsOf(family: Family, raw: ReadonlyArray<unknown>): ReadonlyArray<Row> {
   const spec = familySpec(family);
@@ -584,12 +592,15 @@ export function zeropsNavigationLink(options: {
           const readAt = sampledAt.get(scope);
           const now = yield* Clock.currentTimeMillis;
           // A sampled value read within its freshness is the answer to a new demand: nothing is
-          // read, and its next revalidation comes on the cadence.
+          // read, and its next revalidation comes on the cadence. A value that still ages is
+          // never fresh.
+          const held = store.state().facts.get(factKey(spec.family, ownerId));
           if (
             sampled !== undefined &&
             readAt !== undefined &&
             (sampled.freshMs === null || now - readAt < sampled.freshMs) &&
-            store.state().facts.has(factKey(spec.family, ownerId))
+            held !== undefined &&
+            !(held.content.kind === "value" && agesNow(sampled, held.content.value))
           )
             return yield* signal(scope, { kind: "baseline-committed" });
           store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
@@ -728,7 +739,10 @@ export function zeropsNavigationLink(options: {
               rows: [row],
             });
             sampledAt.set(scope, yield* Clock.currentTimeMillis);
-            return yield* signal(scope, { kind: "baseline-committed" });
+            return yield* signal(scope, {
+              kind: "baseline-committed",
+              ages: agesNow(sampled, value),
+            });
           }
           const items = detail?.zerops.items(answer.body);
           if (items === undefined) return yield* malformed;

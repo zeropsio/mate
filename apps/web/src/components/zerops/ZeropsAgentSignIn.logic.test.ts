@@ -9,6 +9,7 @@ import {
   currentAttempt,
   openAgentOf,
   signInAgents,
+  signInBeingFinished,
   signInPhrase,
   SIGN_IN_FAILED_LINE,
   usualAgentOf,
@@ -101,6 +102,34 @@ describe("signInAgents", () => {
     {
       name: "every agent someone else's: all, to sign in with the person's own account",
       agents: [signedIn("claude-code"), signedIn("codex")],
+      usual: null,
+      offered: ["claude-code", "codex"],
+    },
+    {
+      name: "one whose sign-in was just accepted stays, signed in, while it is checked: the other is never offered alone",
+      agents: [
+        {
+          ...agent("claude-code"),
+          login: login("succeeded"),
+          verification: { status: "checking" },
+        } as ZeropsAgentAuth,
+        agent("codex"),
+      ],
+      usual: null,
+      offered: ["claude-code", "codex"],
+    },
+    {
+      name: "one whose sign-in was just accepted stays, signed in, while Zerops registers it",
+      agents: [
+        {
+          ...agent("claude-code"),
+          credPresent: true,
+          providerAuth: "authenticated",
+          state: "local-only",
+          login: login("succeeded"),
+        } as ZeropsAgentAuth,
+        agent("codex"),
+      ],
       usual: null,
       offered: ["claude-code", "codex"],
     },
@@ -303,5 +332,55 @@ describe("replacedSignInLine: whose sign-in a login replaces, said before the pr
     expect(
       replacedSignInLine({ agentId: "codex", authorizedBy, viewerSubject: "u-bo", nameOf }),
     ).toBe(line);
+  });
+});
+
+describe("signInBeingFinished", () => {
+  it.each([
+    {
+      name: "a sign-in just accepted, being registered with Zerops, is still the sign-in's to finish",
+      agents: [
+        {
+          ...agent("claude-code"),
+          credPresent: true,
+          providerAuth: "authenticated",
+          state: "local-only",
+          login: login("succeeded"),
+        } as ZeropsAgentAuth,
+        agent("codex"),
+      ],
+      finishing: true,
+    },
+    {
+      name: "a sign-in just accepted, being checked, is still the sign-in's to finish",
+      agents: [
+        {
+          ...agent("claude-code"),
+          login: login("succeeded"),
+          verification: { status: "checking" },
+        } as ZeropsAgentAuth,
+      ],
+      finishing: true,
+    },
+    {
+      name: "a registered agent finished it",
+      agents: [{ ...signedIn("claude-code"), login: login("succeeded") }, agent("codex")],
+      finishing: false,
+    },
+    {
+      name: "an agent registering with no sign-in of this page's is not one",
+      agents: [
+        {
+          ...agent("claude-code"),
+          credPresent: true,
+          providerAuth: "authenticated",
+          state: "local-only",
+        } as ZeropsAgentAuth,
+      ],
+      finishing: false,
+    },
+    { name: "nobody signing in is not one", agents: [agent("claude-code")], finishing: false },
+  ])("$name", ({ agents, finishing }) => {
+    expect(signInBeingFinished(agents)).toBe(finishing);
   });
 });

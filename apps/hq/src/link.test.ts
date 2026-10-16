@@ -123,8 +123,10 @@ describe("a Mate's link", () => {
       () =>
         Effect.gen(function* () {
           const { link, fake, firstState } = yield* linked;
-          assert.isNull(
+          // Its maker's from the moment they added it, before anybody signs its agent in.
+          assert.strictEqual(
             (firstState["mate"] as { readonly ownerUserId?: string | null }).ownerUserId,
+            "owner",
           );
           const ownerNamed = (userId: string | null) =>
             link.takeWhere(
@@ -141,10 +143,10 @@ describe("a Mate's link", () => {
               userRoles: [{ clientUserId, roleCode: "OWNER" }],
             };
           };
-          ownedBy("C-owner");
-          yield* ownerNamed("owner");
           ownedBy("C-dev");
           yield* ownerNamed("dev");
+          ownedBy("C-owner");
+          yield* ownerNamed("owner");
         }),
     );
 

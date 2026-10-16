@@ -2,6 +2,7 @@ import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
+import { placementNotice } from "./projects/placementNotice.logic";
 import { overviewPaints, tiersAddable } from "./projects/projectsView.logic";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
 import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
@@ -77,8 +78,12 @@ import { heldCandidates, listsNoProject } from "@t3tools/client-runtime/zerops/p
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
-import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
-import { useOpenPutLive } from "~/zerops/putLive";
+import {
+  environmentDoorLabel,
+  PUT_LIVE_AFTER_CREATION,
+  putLiveHoldsRelease,
+} from "~/zerops/putLive.logic";
+import { useOpenPutLive, usePutLive } from "~/zerops/putLive";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
@@ -154,6 +159,7 @@ import { invalidateZerops } from "~/zerops/accountInvalidations";
 
 import { MateFace, STATUS_BADGE_TONE } from "./primitives";
 import { useOverviewSlots } from "./projects/overviewSlots";
+import { putLiveHasChange } from "./projects/projectCard.logic";
 import { OverviewCardMate } from "./projects/OverviewCardMate";
 import { ArrivalWelcome } from "./projects/ArrivalWelcome";
 import { signInSettled } from "./projects/arrival.logic";
@@ -246,6 +252,8 @@ import { Badge } from "~/components/ui/badge";
 
 /** One creation in flight, or just finished, on this screen. */
 interface EnvironmentCreationView {
+  /** The project it is created in. */
+  readonly groupId: string;
   readonly name: string;
   /** What was asked for, so the closing line knows where a first deploy comes from. */
   readonly tier: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["tier"]>;
@@ -378,12 +386,17 @@ export function hasNoZeropsProject(input: {
    * invitation in that gap is the flash the roster then takes back.
    */
   readonly creationPending?: boolean;
+  /** The organization's official HQ's project (`withoutOfficialHq`), where the anchor names it. */
+  readonly hqProjectId?: string | undefined;
 }): boolean {
   if (input.creationPending === true) return false;
-  // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`).
+  // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`). Nor is HQ's
+  // own project: an organization holding only HQ has nothing of its own to start in yet.
   return listsNoProject(
     input.listing,
-    (candidate) => readZeropsToolKind(candidate.project) === undefined,
+    (candidate) =>
+      readZeropsToolKind(candidate.project) === undefined &&
+      candidate.project.id !== input.hqProjectId,
   );
 }
 
@@ -521,11 +534,17 @@ export function projectsGroupLine(input: {
   readonly finishing: GroupEnvironmentTier | undefined;
   /** Its environment whose setup is not finished. */
   readonly halfMade: GroupEnvironmentTier | undefined;
+  /**
+   * Its environment this page is setting up now: not finished because it is under way, which its
+   * place on the card says (the onboarding run flashed "isn't finished" for 0.7 s at the press).
+   */
+  readonly creating?: GroupEnvironmentTier | undefined;
 }): string | undefined {
   if (input.placeholder) return "Couldn't read this project's name";
   if (input.finishing !== undefined) return `Finishing ${input.finishing}…`;
   if (input.unfinished !== undefined) return `Couldn't finish setting up ${input.unfinished}`;
-  if (input.halfMade !== undefined) return `Setting up ${input.halfMade} isn't finished`;
+  if (input.halfMade !== undefined && input.halfMade !== input.creating)
+    return `Setting up ${input.halfMade} isn't finished`;
   return undefined;
 }
 
@@ -974,7 +993,12 @@ export function ZeropsProjectsContent({
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
-  const noProjectYet = hasNoZeropsProject({ listing, creationPending: activeBirths });
+  const accountHq = useAccountHq(activeOrganization?.id);
+  const noProjectYet = hasNoZeropsProject({
+    listing,
+    creationPending: activeBirths,
+    hqProjectId: accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined,
+  });
   // What the viewer's role makes and reaches here: an empty first screen says it (`firstRunWords`).
   const capabilities = usePlatformCapabilities(null);
   const roleOffered = roleOffers(capabilities);
@@ -1000,7 +1024,6 @@ export function ZeropsProjectsContent({
   };
 
   // The organization's HQ, where the registry lives: its project is no project of the page's.
-  const accountHq = useAccountHq(activeOrganization?.id);
   // What says a project is its person's own, for Set up Mate on it (`plainEvidenceOf`): HQ's
   // records of every kind, its presses, its anchor, and what this tab is making. None while HQ's
   // structure is not known, so nothing is plain then.
@@ -1753,6 +1776,7 @@ export function ZeropsProjectsContent({
   const addMate = useAddMate();
   // Production is put live in one step, over this page (`PutLiveHost`).
   const openPutLive = useOpenPutLive();
+  const putLiveRuns = usePutLive((state) => state.runs);
   const requestEnvironment = useCallback(
     (groupId: string, role: ZeropsEnvironmentRole) => {
       if (role === "dev") {
@@ -1785,7 +1809,7 @@ export function ZeropsProjectsContent({
       const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
       // Under way from the click: every add verb is off (`creationRunning`)
       // before the group's agents are read, so none is pressed twice.
-      setCreation({ name: choice.name, tier: tier ?? "mate", progress: [] });
+      setCreation({ groupId, name: choice.name, tier: tier ?? "mate", progress: [] });
       const run = await runCreation({
         group: entry.group,
         environments: entry.environments.flatMap(({ item }) =>
@@ -1956,10 +1980,17 @@ export function ZeropsProjectsContent({
             unfinished: finishing.unfinished.get(group.groupId),
             finishing: finishing.finishing.get(group.groupId),
             halfMade: halfMade.find((entry) => entry.groupId === group.groupId)?.tier,
+            creating:
+              creation !== null &&
+              creation.outcome === undefined &&
+              creation.groupId === group.groupId &&
+              creation.tier !== "mate"
+                ? creation.tier
+                : undefined,
           }),
         ]),
       ),
-    [groupTree.groups, finishing.unfinished, finishing.finishing, halfMade],
+    [groupTree.groups, finishing.unfinished, finishing.finishing, halfMade, creation],
   );
   // The cards' places as the menu's chips read them, their panels, and the people on each.
   const overview = useOverviewSlots<ZeropsCandidatePresentation>({
@@ -2009,7 +2040,9 @@ export function ZeropsProjectsContent({
     () =>
       flowGroups.flatMap((entry) => {
         const release = projectFlow.flows.get(entry.group.groupId)?.release;
-        return release?.gate.allowed === true
+        // Put it live releases the production it makes: no release waits on the viewer meanwhile.
+        return release?.gate.allowed === true &&
+          !putLiveHoldsRelease(putLiveRuns.get(entry.group.groupId))
           ? [
               {
                 groupId: entry.group.groupId,
@@ -2019,7 +2052,7 @@ export function ZeropsProjectsContent({
             ]
           : [];
       }),
-    [flowGroups, projectFlow.flows],
+    [flowGroups, projectFlow.flows, putLiveRuns],
   );
   const waiting = useSidebarWaiting({
     candidates,
@@ -2574,6 +2607,7 @@ export function ZeropsProjectsContent({
           apps={arrivalApps}
           signIn={hqOrganization?.viewer}
           onStart={addMate}
+          gateOf={addMateWhy}
           orgId={activeOrganization.id}
           organizationName={activeOrganization.name}
           painted={painted}
@@ -2628,8 +2662,11 @@ export function ZeropsProjectsContent({
         cardPlaces={overview.cardPlaces}
         renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
-        setUpProduction={({ group }) =>
-          !addableTiers(group).includes("production") || groupIsEmpty(group)
+        setUpProduction={({ group, flow }) =>
+          !addableTiers(group).includes("production") ||
+          groupIsEmpty(group) ||
+          // Nothing to put live yet: production says so, and the press comes with a change.
+          !putLiveHasChange(flow)
             ? undefined
             : creationRunning
               ? "busy"
@@ -2637,6 +2674,23 @@ export function ZeropsProjectsContent({
                   openPutLive(group.groupId);
                 }
         }
+        setUpStage={({ group }) =>
+          !addableTiers(group).includes("stage") || groupIsEmpty(group)
+            ? undefined
+            : creationRunning
+              ? "busy"
+              : () => {
+                  requestEnvironment(group.groupId, "stage");
+                }
+        }
+        // As the project's own page offers it: always there, standing off with why where HQ says
+        // one — never coming and going with what the platform says of its Mates.
+        addMate={({ group }) => ({
+          onAdd: () => {
+            requestEnvironment(group.groupId, "dev");
+          },
+          why: creationRunning ? PUT_LIVE_AFTER_CREATION : addMateWhy(group.groupId),
+        })}
         renderCardPeople={overview.renderCardPeople}
         renderReleaseVerb={({ group, flow }) => {
           const { production } = flow;
@@ -2644,22 +2698,22 @@ export function ZeropsProjectsContent({
             production.kind === "ready-to-release" || production.kind === "deploy-failed"
               ? production.candidate
               : undefined;
-          if (candidate === undefined) return null;
-          return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} />;
+          // A release on its way keeps its door, which opens its progress.
+          if (candidate === undefined && production.kind !== "releasing") return null;
+          // Production being made by Put it live is released by it: nothing asks for a release.
+          if (putLiveHoldsRelease(putLiveRuns.get(group.groupId))) return null;
+          return (
+            <ZeropsReleaseVerb
+              groupId={group.groupId}
+              label={REVIEW_RELEASE_LABEL}
+              offered={candidate !== undefined}
+            />
+          );
         }}
-        placementNotice={
-          placementStatus.complete && placementStatus.unavailableReason === undefined
-            ? undefined
-            : placementStatus.unavailableReason === "expired-session"
-              ? "Placement not read — sign in again"
-              : placementStatus.unavailableReason === "forbidden"
-                ? "Placement unavailable — access denied"
-                : placementStatus.unavailableReason === "refused"
-                  ? "Placement unavailable — HQ refused this read"
-                  : hqStructure.capped || placementStatus.reconnecting
-                    ? "Placement not read — HQ is unavailable"
-                    : "Reading HQ placement…"
-        }
+        placementNotice={placementNotice(
+          placementStatus,
+          hqStructure.capped || placementStatus.reconnecting,
+        )}
         placementReading={
           !placementStatus.complete &&
           placementStatus.unavailableReason === undefined &&
@@ -2848,11 +2902,13 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
   // over nothing frames emptiness as a failed list.
   const presses = useMatePresses();
   const made = useCreations();
+  const accountHq = useAccountHq(activeOrganization?.id);
   const firstRun = hasNoZeropsProject({
     listing,
     creationPending: [...presses, ...made].some(
       (birth) => birth.organizationId === activeOrganization?.id,
     ),
+    hqProjectId: accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined,
   });
 
   return (

@@ -318,6 +318,34 @@ it.each([
   },
 );
 
+// The onboarding run, 2026-10-16: beside a merged change, Diff said "No changes yet — Each turn's
+// changes to the code show here once the agent makes some" under four view toggles.
+it("a Mate's Diff with no recorded changes never says the agent changed nothing yet, and offers no views of nothing", async () => {
+  input.repo = false;
+  input.turns = {
+    turnDiffSummaries: [],
+    inferredCheckpointTurnCountByTurnId: {},
+    runChangesRead: "read",
+  };
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(() =>
+      root.render(
+        <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
+      ),
+    );
+    expect(container.textContent).toContain("No code changes recorded here");
+    expect(container.textContent).not.toContain("yet");
+    expect(container.querySelector('[aria-label="Hide whitespace changes"]')).toBeNull();
+  } finally {
+    await act(() => root.unmount());
+    container.remove();
+    input.repo = true;
+  }
+});
+
 it("a Mate whose server predates run changes says it shows them after its update, never that it couldn't read them", async () => {
   input.repo = false;
   input.turns = {

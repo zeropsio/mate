@@ -63,6 +63,8 @@ import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { beginCreation } from "~/zerops/creations";
 import { newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
 import { useRunNewProject } from "~/zerops/useRunNewProject";
+import { useCreditForecastRead } from "~/zerops/useCreditForecast";
+import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
 import { useHqOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -76,7 +78,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
-import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
+import { CreditForecastLine } from "./ZeropsCreditForecast";
 import { ZeropsNewProjectDialog, type NewProjectChoice } from "./ZeropsNewProjectForm";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 
@@ -91,6 +93,9 @@ export function zeropsNewProjectScopeStepVisible(input: {
 }): boolean {
   return input.organizationStatus !== "selected" || !input.activeOrganization;
 }
+
+/** How long New project waits for its reads before it opens with whatever is still out. */
+export const NEW_PROJECT_OPEN_WAIT_MS = 600;
 
 /** Mounted once, above every view: the dialog while New project is asked for. */
 const NO_RECOMMENDATION = Atom.make<string | null>(null);
@@ -118,6 +123,7 @@ function NewProjectDialog() {
   const { activeOrganization, organizationStatus, organizations, selectOrganization } =
     useZeropsSession();
   const navigate = useNavigate();
+  usePreloadMateViews();
   // The account's Mates: the names a new one may not take, and the tints its face walks past.
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
@@ -177,7 +183,20 @@ function NewProjectDialog() {
       ? locationChoice.id
       : (recommendation ?? locations[0]?.id ?? null);
   const locationStatus = !activeOrganization || !canCreate ? "ready" : offered.status;
+  // Create waits for the first answer only: the reads made again while it is open keep the places
+  // they had, and say nothing on the button.
+  const locationsLoading = locationStatus === "loading" && offered.fact.kind !== "known";
   const locationError = offered.status === "failed" ? "Couldn't load the locations." : null;
+  // The credit forecast is read from the dialog's opening, and the dialog opens once it and the
+  // places have answered — whole, never growing a line a frame later — or once its short wait is
+  // over, whatever is still out.
+  const credit = useCreditForecastRead(canCreate ? (activeOrganization?.id ?? null) : null);
+  const [waited, setWaited] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setWaited(true), NEW_PROJECT_OPEN_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  const opens = waited || !canCreate || (credit.settled && !locationsLoading);
 
   const onOpenChange = (open: boolean) => {
     if (!open) dismiss();
@@ -241,7 +260,9 @@ function NewProjectDialog() {
       access={(onChange) => (
         <ProjectAccessDraft groupId={null} kind="mate" label="Project access" onChange={onChange} />
       )}
-      forecast={<ZeropsCreditForecast organizationId={activeOrganization.id} />}
+      forecast={
+        credit.forecast ? <CreditForecastLine organizationId={activeOrganization.id} /> : null
+      }
       closed={
         addProject.offered
           ? undefined
@@ -252,7 +273,7 @@ function NewProjectDialog() {
       defaultTintFor={(botName) => newMateTint(candidates, botName)}
       locationError={locationError}
       locationId={locationId}
-      loading={locationStatus === "loading"}
+      loading={locationsLoading}
       locations={locations}
       onCancel={dismiss}
       onCreate={createProject}
@@ -260,6 +281,7 @@ function NewProjectDialog() {
         setLocationChoice({ key: locationKey, id });
       }}
       onOpenChange={onOpenChange}
+      open={opens}
 
       proposeAnotherName={(current) =>
         generateBotName([...taken.names, current], (bytes) => crypto.getRandomValues(bytes))

@@ -270,6 +270,23 @@ describe("who lives in each environment, derived", () => {
     expect(whoLivesAt(appAtomRegistry, FEN)).toBe("unknown");
   });
 
+  // Run 2 (2026-10-16): an added Mate, up and its sign-in waiting, landed on a bare conversation
+  // titled with its raw project name: HQ named it, but its own word of its environment had not
+  // reached HQ yet.
+  it("a Mate HQ names knows its conversation by the server that says it lives in its project", () => {
+    openAccount("user-a");
+    const store = publishAccount(appAtomRegistry, false);
+    seedHqNavigation(store, organization.organizationId, {
+      structure: {
+        apps: [],
+        ungrouped: [{ projectId: PROJECT.id, name: PROJECT.name, mate: { face: "sky:seal" } }],
+      },
+    });
+    expect(whoLivesAt(appAtomRegistry, FEN)).toBe("mate");
+    // A server in a project HQ names no Mate in stays unknown.
+    expect(whoLivesAt(appAtomRegistry, ELSEWHERE)).toBe("unknown");
+  });
+
   it("a new sign-in never sees the previous account's names or Mates", () => {
     openAccount("user-a");
     publishAccount(appAtomRegistry);

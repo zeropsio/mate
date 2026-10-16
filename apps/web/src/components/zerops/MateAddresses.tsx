@@ -30,7 +30,11 @@ export function openMateAddress(
   useRightPanelStore.getState().openService(threadRef, address.service, address.url);
 }
 
-/** The address's name, what it is, and — where there is room — where it answers. */
+/**
+ * What the address is, then its service's name, and — where there is room — where it answers: a
+ * row leads with "Preview" or "Stage", so a preview's `appstage` and the stage's `app` never read
+ * as two spellings of one place.
+ */
 export function MateAddressLabel({
   address,
   showHost = false,
@@ -42,9 +46,9 @@ export function MateAddressLabel({
   return (
     <span className="flex min-w-0 flex-1 flex-col">
       <span className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate text-foreground">{address.service}</span>
+        <span className="shrink-0 text-foreground">{role ?? address.name}</span>
         {role === undefined ? null : (
-          <span className="shrink-0 text-muted-foreground text-xs">{role}</span>
+          <span className="truncate text-muted-foreground text-xs">{address.name}</span>
         )}
       </span>
       {showHost ? (

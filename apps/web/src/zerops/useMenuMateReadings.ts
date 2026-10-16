@@ -178,6 +178,7 @@ export function useMateComingOf(
         // else may change then.
         nowMs: Math.max(Date.now(), wokeAt),
         created: madeOf(creations, candidate.project.id) !== undefined,
+        madeAt: madeOf(creations, candidate.project.id)?.startedAt,
         processes: processFacts[candidate.project.id]?.processes,
         link: mateLink(candidate),
         firstBuild: firstBuilds.get(candidate.key),

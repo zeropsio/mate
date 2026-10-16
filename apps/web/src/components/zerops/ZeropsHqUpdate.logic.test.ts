@@ -5,6 +5,7 @@ import {
   coreLabel,
   hqUpdateMount,
   hqUpdateTrigger,
+  hqUpdateTriggerLabel,
   hqUpdateWords,
   type HqUpdateMount,
 } from "./ZeropsHqUpdate.logic";
@@ -14,10 +15,10 @@ const OLDER = "20261003T080500Z.ba9876543210";
 
 describe("coreLabel", () => {
   it.each([
-    { build: CARRIED, label: "Core 2026-10-04 10:00 UTC · 0123456789ab" },
-    { build: "b6e65699e0.20261003T120000", label: "Core b6e65699e0.20261003T120000" },
-    { build: "hq-core", label: "Core hq-core" },
-    { build: "", label: "an unnamed Core" },
+    { build: CARRIED, label: "2026-10-04 10:00 UTC · 0123456789ab" },
+    { build: "b6e65699e0.20261003T120000", label: "b6e65699e0.20261003T120000" },
+    { build: "hq-core", label: "hq-core" },
+    { build: "", label: "unnamed" },
   ])("$build", ({ build, label }) => {
     expect(coreLabel(build)).toBe(label);
   });
@@ -29,7 +30,7 @@ describe("hqUpdateWords", () => {
       name: "an update on offer",
       state: { kind: "available", running: OLDER, carried: CARRIED } as const,
       words: {
-        line: "HQ runs Core 2026-10-03 08:05 UTC · ba9876543210. This app carries Core 2026-10-04 10:00 UTC · 0123456789ab.",
+        line: "HQ runs the version from 2026-10-03 08:05 UTC; this update brings the version from 2026-10-04 10:00 UTC.",
         action: "Update HQ",
       },
     },
@@ -37,14 +38,14 @@ describe("hqUpdateWords", () => {
       name: "an update under way",
       state: { kind: "updating", target: CARRIED } as const,
       words: {
-        line: "HQ is being updated to Core 2026-10-04 10:00 UTC · 0123456789ab.",
+        line: "HQ is updating to the version from 2026-10-04 10:00 UTC.",
         action: null,
       },
     },
     {
       name: "a build under way that names no Core",
       state: { kind: "updating", target: undefined } as const,
-      words: { line: "HQ is being updated.", action: null },
+      words: { line: "HQ is updating.", action: null },
     },
     {
       name: "a failed update",
@@ -55,7 +56,7 @@ describe("hqUpdateWords", () => {
         reason: "readiness check failed",
       } as const,
       words: {
-        line: "HQ's last update failed: readiness check failed. HQ still runs Core 2026-10-03 08:05 UTC · ba9876543210.",
+        line: "HQ's last update failed: readiness check failed. HQ still runs the version from 2026-10-03 08:05 UTC.",
         action: "Update again",
       },
     },
@@ -67,17 +68,17 @@ describe("hqUpdateWords", () => {
     {
       name: "HQ answering with the Core it runs",
       answering: CARRIED,
-      line: "HQ runs Core 2026-10-04 10:00 UTC · 0123456789ab. It is up to date.",
+      line: "HQ runs the version from 2026-10-04 10:00 UTC. It is up to date.",
     },
     {
       name: "HQ's health not read",
       answering: undefined,
-      line: "HQ runs Core 2026-10-04 10:00 UTC · 0123456789ab. It is up to date.",
+      line: "HQ runs the version from 2026-10-04 10:00 UTC. It is up to date.",
     },
     {
       name: "a finished deploy HQ does not answer with yet",
       answering: OLDER,
-      line: "HQ's update to Core 2026-10-04 10:00 UTC · 0123456789ab finished. Waiting for HQ to answer with it.",
+      line: "HQ's update to the version from 2026-10-04 10:00 UTC finished. Waiting for HQ to answer with it.",
     },
   ])("nothing to offer: $name", ({ answering, line }) => {
     expect(hqUpdateWords({ kind: "current", running: CARRIED }, answering)).toEqual({
@@ -250,4 +251,23 @@ describe("hqUpdateMount — the update control, mounted through HQ's own switch"
   ])("%s", (_, input, expected) => {
     expect(hqUpdateMount(input)).toEqual(expected);
   });
+});
+
+describe("hqUpdateTriggerLabel", () => {
+  it.each([
+    ["an update waiting", "Update available", false, "Update HQ"],
+    ["HQ current", "Up to date", false, "Up to date"],
+    ["an update pressed here running", "Update available", true, "Show progress"],
+    [
+      "HQ answering with the new version while Zerops still builds",
+      "Up to date",
+      true,
+      "Show progress",
+    ],
+  ] as const)(
+    "HQ's row offers the update, then the way back to its progress, never Up to date beside a running update: %s",
+    (_case, trigger, busy, label) => {
+      expect(hqUpdateTriggerLabel(trigger, busy)).toBe(label);
+    },
+  );
 });

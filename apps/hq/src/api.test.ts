@@ -2238,7 +2238,8 @@ describe("HQ API", () => {
             appId: null,
             appName: null,
             changes: [],
-            ownerUserId: null,
+            // Its maker's from the moment they added it, before anybody signs its agent in.
+            ownerUserId: "owner",
           };
           assert.deepStrictEqual((yield* link.next("state")).mate, {
             ...state,

@@ -184,7 +184,6 @@ it.each([
       mateArrivalNotice({
         coming: { kind: "failed", line: "Setup stopped.", verb: "try-again" },
         progress: undefined,
-        nowMs: 0,
         attemptId: "failed",
         refusal: {
           kind: "retry",

@@ -113,8 +113,8 @@ const HQ_STANDING_UNKNOWN: HqStanding = { kind: "unknown" };
 export const hqStandingAtom = Atom.make((get): HqStanding => {
   const navigation = get(shownHqNavigationAtom);
   const since = get(hqDownSinceAtom);
-  if (since !== null || navigation.refusal !== null)
-    return { kind: "unavailable", since: since ?? Date.now() };
+  if (navigation.refusal !== null) return { kind: "refused" };
+  if (since !== null) return { kind: "unavailable", since };
   const organization = navigation.organization;
   const status = get(shownHqStatusAtom);
   if (!navigation.live || organization === null || status === null) return HQ_STANDING_UNKNOWN;

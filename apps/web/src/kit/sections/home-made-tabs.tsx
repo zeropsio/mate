@@ -30,10 +30,20 @@ const SURFACES: RightPanelSurface[] = [
   { id: "data", kind: "data" },
 ];
 
+/** At the reference viewport's panel width: picking a page opens it, or goes to it when open. */
 function SidePanelStrip() {
+  const [surfaces, setSurfaces] = useState<RightPanelSurface[]>(SURFACES);
   const [active, setActive] = useState("vault");
+  const open = (kind: string) => {
+    setSurfaces((current) =>
+      current.some((surface) => surface.id === kind)
+        ? current
+        : [...current, { id: kind, kind } as RightPanelSurface],
+    );
+    setActive(kind);
+  };
   return (
-    <div className="flex h-56 w-[40rem] overflow-hidden border border-border bg-background">
+    <div className="flex h-56 w-[33.75rem] overflow-hidden border border-border bg-background">
       <RightPanelTabs
         activeSurfaceId={active}
         availability={resolveRightPanelAvailability({
@@ -45,18 +55,21 @@ function SidePanelStrip() {
         })}
         defaultWidth={640}
         liveAgentCount={0}
-        maximized={false}
+        layoutControls={<span className="w-20 shrink-0" />}
+        maximized
         mode="inline"
         onActivate={(surface) => setActive(surface.id)}
-        onAdd={noop}
+        onAdd={(kind) => open(kind)}
         onAddTerminal={noop}
         onCloseAllSurfaces={noop}
         onCloseOtherSurfaces={noop}
-        onCloseSurface={noop}
+        onCloseSurface={(surface) =>
+          setSurfaces((current) => current.filter((entry) => entry.id !== surface.id))
+        }
         onCloseSurfacesToRight={noop}
         onCopyFilePath={noop}
         pendingSurfaceIds={new Set()}
-        surfaces={SURFACES}
+        surfaces={surfaces}
         terminalLabelsById={new Map()}
       >
         <p className="m-0 p-4 text-muted-foreground text-sm">The open tab's panel.</p>
@@ -166,7 +179,7 @@ function ManyTabs() {
 
 function Chosen() {
   return (
-    <SpecimenBlock title="Chosen · TabStrip and Tab: filled while open; the cut-off tabs in an N more menu; the action never scrolls away">
+    <SpecimenBlock title="Chosen · TabStrip and Tab: filled while open; past its room the others fold to icons, the cut-off tabs in an N more menu; the action never scrolls away">
       <SpecimenGrid>
         <Specimen label={'<TabStrip action items> of <Tab size="sm"> (a panel\'s pages)'}>
           <ManyTabs />

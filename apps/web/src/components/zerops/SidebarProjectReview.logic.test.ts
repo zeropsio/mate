@@ -11,6 +11,7 @@ import {
   reviewPopoverTitle,
   reviewMarkOf,
   reviewTagLabel,
+  headerReviewItems,
   type ProjectReviewItem,
 } from "./SidebarProjectReview.logic";
 
@@ -192,6 +193,26 @@ describe("the menu's mark of a project's changes", () => {
     },
   ])("$name", ({ items, mark }) => {
     expect(reviewMarkOf(items, "Orbit")).toEqual(mark);
+  });
+});
+
+// A run 2 follow-up: the header's Review work came while the Mate still worked, went, and came
+// back twelve seconds before its answer.
+describe("what the conversation's header asks to review", () => {
+  it.each([
+    { name: "its Mate's change that asks", items: [item("1")], shown: ["appdev#1"] },
+    {
+      name: "nothing while its Mate still works on it",
+      items: [item("1", { inProgress: true })],
+      shown: [],
+    },
+    {
+      name: "nothing of another Mate's",
+      items: [item("1", { mateProjectId: "mate-nova" })],
+      shown: [],
+    },
+  ])("$name", ({ items, shown }) => {
+    expect(headerReviewItems(items, "mate-vira").map((one) => one.key)).toEqual(shown);
   });
 });
 

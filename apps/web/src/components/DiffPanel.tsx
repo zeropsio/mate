@@ -788,128 +788,131 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
           </div>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
-        {codeViewFiles.length > 0 && (
-          <DiffStatLabel
-            additions={diffLineStat.additions}
-            deletions={diffLineStat.deletions}
-            className="mr-1 text-2xs"
-            layout="inline"
-          />
-        )}
-        {selectedTurn && !selectedTurn.history && (
-          <Button size="sm" variant="secondary" onClick={activeCheckpointDiff.refresh}>
-            Retry diff
-          </Button>
-        )}
-        {canRefreshGitDiff && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={branchDiffPreview.isPending ? "Refreshing diff" : "Refresh diff"}
-                  onClick={refreshGitDiff}
-                />
-              }
-            >
-              <RefreshCwIcon
-                className={cn("size-3.5", branchDiffPreview.isPending && "animate-spin")}
-              />
-            </TooltipTrigger>
-            <TooltipPopup side="top">
-              {branchDiffPreview.isPending ? "Refreshing diff…" : "Refresh diff"}
-            </TooltipPopup>
-          </Tooltip>
-        )}
-        {codeViewFiles.length > 0 && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={allDiffFilesCollapsed ? "Expand all files" : "Collapse all files"}
-                  onClick={toggleDiffFileCollapse}
-                />
-              }
-            >
-              {allDiffFilesCollapsed ? (
-                <ChevronsUpDownIcon className="size-3.5" />
-              ) : (
-                <ChevronsDownUpIcon className="size-3.5" />
-              )}
-            </TooltipTrigger>
-            <TooltipPopup side="top">
-              {allDiffFilesCollapsed ? "Expand all files" : "Collapse all files"}
-            </TooltipPopup>
-          </Tooltip>
-        )}
-        <ToggleGroup
-          aria-label="Diff layout"
-          className="shrink-0"
-          variant="segmented"
-          value={[diffRenderMode]}
-          onValueChange={(value) => {
-            const next = value[0];
-            if (next === "stacked" || next === "split") {
-              setDiffRenderMode(next);
-            }
-          }}
-        >
-          <Toggle aria-label="Stacked diff view" value="stacked">
-            <Rows3Icon className="size-3.5" />
-          </Toggle>
-          <Toggle aria-label="Split diff view" value="split">
-            <Columns2Icon className="size-3.5" />
-          </Toggle>
-        </ToggleGroup>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Toggle
-                aria-label={wordWrap ? "Disable diff line wrapping" : "Enable diff line wrapping"}
-                variant="ghost"
-                size="sm"
-                pressed={wordWrap}
-                onPressedChange={(pressed) => {
-                  setWordWrap(Boolean(pressed));
-                }}
-              />
-            }
-          >
-            <TextWrapIcon className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipPopup side="top">
-            {wordWrap ? "Disable line wrapping" : "Enable line wrapping"}
-          </TooltipPopup>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Toggle
-                aria-label={
-                  diffIgnoreWhitespace ? "Show whitespace changes" : "Hide whitespace changes"
+      {/* Views of a diff, while there is one to show. */}
+      {shownSelection.kind === "no-turns" ? null : (
+        <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
+          {codeViewFiles.length > 0 && (
+            <DiffStatLabel
+              additions={diffLineStat.additions}
+              deletions={diffLineStat.deletions}
+              className="mr-1 text-2xs"
+              layout="inline"
+            />
+          )}
+          {selectedTurn && !selectedTurn.history && (
+            <Button size="sm" variant="secondary" onClick={activeCheckpointDiff.refresh}>
+              Retry diff
+            </Button>
+          )}
+          {canRefreshGitDiff && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={branchDiffPreview.isPending ? "Refreshing diff" : "Refresh diff"}
+                    onClick={refreshGitDiff}
+                  />
                 }
-                variant="ghost"
-                size="sm"
-                pressed={diffIgnoreWhitespace}
-                onPressedChange={(pressed) => {
-                  setDiffIgnoreWhitespace(Boolean(pressed));
-                }}
-              />
-            }
+              >
+                <RefreshCwIcon
+                  className={cn("size-3.5", branchDiffPreview.isPending && "animate-spin")}
+                />
+              </TooltipTrigger>
+              <TooltipPopup side="top">
+                {branchDiffPreview.isPending ? "Refreshing diff…" : "Refresh diff"}
+              </TooltipPopup>
+            </Tooltip>
+          )}
+          {codeViewFiles.length > 0 && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={allDiffFilesCollapsed ? "Expand all files" : "Collapse all files"}
+                    onClick={toggleDiffFileCollapse}
+                  />
+                }
+              >
+                {allDiffFilesCollapsed ? (
+                  <ChevronsUpDownIcon className="size-3.5" />
+                ) : (
+                  <ChevronsDownUpIcon className="size-3.5" />
+                )}
+              </TooltipTrigger>
+              <TooltipPopup side="top">
+                {allDiffFilesCollapsed ? "Expand all files" : "Collapse all files"}
+              </TooltipPopup>
+            </Tooltip>
+          )}
+          <ToggleGroup
+            aria-label="Diff layout"
+            className="shrink-0"
+            variant="segmented"
+            value={[diffRenderMode]}
+            onValueChange={(value) => {
+              const next = value[0];
+              if (next === "stacked" || next === "split") {
+                setDiffRenderMode(next);
+              }
+            }}
           >
-            <PilcrowIcon className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipPopup side="top">
-            {diffIgnoreWhitespace ? "Show whitespace changes" : "Hide whitespace changes"}
-          </TooltipPopup>
-        </Tooltip>
-      </div>
+            <Toggle aria-label="Stacked diff view" value="stacked">
+              <Rows3Icon className="size-3.5" />
+            </Toggle>
+            <Toggle aria-label="Split diff view" value="split">
+              <Columns2Icon className="size-3.5" />
+            </Toggle>
+          </ToggleGroup>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  aria-label={wordWrap ? "Disable diff line wrapping" : "Enable diff line wrapping"}
+                  variant="ghost"
+                  size="sm"
+                  pressed={wordWrap}
+                  onPressedChange={(pressed) => {
+                    setWordWrap(Boolean(pressed));
+                  }}
+                />
+              }
+            >
+              <TextWrapIcon className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipPopup side="top">
+              {wordWrap ? "Disable line wrapping" : "Enable line wrapping"}
+            </TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  aria-label={
+                    diffIgnoreWhitespace ? "Show whitespace changes" : "Hide whitespace changes"
+                  }
+                  variant="ghost"
+                  size="sm"
+                  pressed={diffIgnoreWhitespace}
+                  onPressedChange={(pressed) => {
+                    setDiffIgnoreWhitespace(Boolean(pressed));
+                  }}
+                />
+              }
+            >
+              <PilcrowIcon className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipPopup side="top">
+              {diffIgnoreWhitespace ? "Show whitespace changes" : "Hide whitespace changes"}
+            </TooltipPopup>
+          </Tooltip>
+        </div>
+      )}
     </>
   );
 
@@ -956,8 +959,13 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
         </div>
       ) : shownSelection.kind === "no-turns" ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-1 px-6 text-center text-xs text-muted-foreground">
-          <p className="text-foreground">No changes yet</p>
-          <p>Each turn's changes to the code show here once the agent makes some.</p>
+          {/* Never "yet": a Mate's code can change without a turn here recording it (the
+              onboarding run, 2026-10-16: beside a merged change). */}
+          <p className="text-foreground">No code changes recorded here</p>
+          <p>
+            Diff shows the code each turn of this conversation changes. Merged changes are on the
+            Git page.
+          </p>
         </div>
       ) : checkpointDiffAvailability.showNotRepository ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">

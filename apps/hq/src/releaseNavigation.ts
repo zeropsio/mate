@@ -1,6 +1,7 @@
 /** Compact release candidates, shared across people; no app-detail reads or catalogs on the wire. */
 import type { HqDecision } from "@t3tools/shared/hqOffers";
-import type { HqGit } from "@t3tools/hq-git";
+import type { Bounded, CommitSummary, HqGit } from "@t3tools/hq-git";
+import { HQ_FIRST_COMMIT } from "@t3tools/shared/hqChanges";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { nextPatch } from "@t3tools/shared/hqRelease";
@@ -24,6 +25,26 @@ export interface ReleaseNavigationSource {
   readonly forApp: (appId: string) => ReleaseCandidate | null;
 }
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
+/** HQ's empty first commit of a repository it made (`HQ_FIRST_COMMIT`): no change of anybody's. */
+const hqFirst = (commit: CommitSummary): boolean =>
+  commit.author.name === HQ_FIRST_COMMIT.authorName &&
+  commit.message.split("\n")[0] === HQ_FIRST_COMMIT.subject;
+
+/**
+ * The changes a release's range moves, as the release's own review counts them
+ * (`movedCommits`): each listed commit by its subject, and how many more it did not list — never
+ * HQ's empty first commit, which a first release's range from the root holds.
+ */
+export function rangeChanges(read: Bounded<CommitSummary> & { readonly total: number }): {
+  readonly listed: ReadonlyMap<string, string>;
+  readonly unlisted: number;
+} {
+  const listed = new Map<string, string>();
+  for (const commit of read.items)
+    if (!hqFirst(commit)) listed.set(commit.sha, commit.message.split("\n")[0] ?? "");
+  return { listed, unlisted: Math.max(0, read.total - read.items.length) };
+}
 
 /** The same production declarations and recorded main heads the release write validates. */
 export function makeReleaseNavigationReader<E>(
@@ -146,9 +167,9 @@ export function makeReleaseNavigationReader<E>(
           const read = yield* source.range({ appId, id: range.repo }, range.base, range.head, {
             limit: 100,
           });
-          for (const commit of read.items)
-            commits.set(commit.sha, commit.message.split("\n")[0] ?? "");
-          unlisted += Math.max(0, read.total - read.items.length);
+          const counted = rangeChanges(read);
+          for (const [sha, subject] of counted.listed) commits.set(sha, subject);
+          unlisted += counted.unlisted;
           atLeast ||= read.truncated && read.total >= 10000;
         }
       }

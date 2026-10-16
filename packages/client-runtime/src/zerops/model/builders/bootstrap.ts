@@ -86,6 +86,16 @@ export function bootstrapDecodedPlanTargetHostnames(
 }
 
 /**
+ * zcp's bootstrap steps in words a person knows: its step names ("Provision", "Close") read as a
+ * developer console (a run 2 follow-up). A step it adds later is said by its name.
+ */
+const BOOTSTRAP_STEP_WORDS: Readonly<Record<string, string>> = {
+  discover: "Plan the services",
+  provision: "Create the services",
+  close: "Finish the setup",
+};
+
+/**
  * The latest member whose result still carries `current.priorContext.plan.targets`.
  *
  * The plan is fixed once `discover` completes, but the session's own LATEST
@@ -243,7 +253,7 @@ export function buildBootstrapFields(
     plan === undefined
       ? []
       : plan.card.steps.map((step, index) => {
-          const label = sentenceCase(step.name);
+          const label = BOOTSTRAP_STEP_WORDS[step.name] ?? sentenceCase(step.name);
           if (pendingStep === step.name) {
             return buildStep(step.name, label, "in_progress");
           }

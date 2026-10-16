@@ -49,7 +49,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./RightPanelShell";
-import { Tab, TabStrip } from "./ui/tab-strip";
+import { Tab, TabStrip, useTabStripCompact } from "./ui/tab-strip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 
 interface RightPanelTabsProps {
@@ -481,6 +481,70 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
   }
 }
 
+/**
+ * A page's tab: its icon, which turns into its close button under the pointer, and its name. Folded
+ * (`useTabStripCompact`), a tab other than the open one is its icon alone, which opens it, its name
+ * in a tooltip; it closes from its menu or a middle click.
+ */
+function SurfaceTabFace(props: {
+  readonly icon: ReactNode;
+  readonly title: string;
+  readonly active: boolean;
+  readonly pending: boolean;
+  readonly onActivate: () => void;
+  readonly onClose: () => void;
+}) {
+  const compact = useTabStripCompact() && !props.active;
+  const pendingDot = props.pending ? (
+    <span
+      className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
+      aria-hidden
+    />
+  ) : null;
+  if (compact) {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              aria-label={props.title}
+              className="relative flex size-4 cursor-pointer items-center justify-center"
+              onClick={props.onActivate}
+              type="button"
+            />
+          }
+        >
+          {props.icon}
+          {pendingDot}
+        </TooltipTrigger>
+        <TooltipPopup>{props.title}</TooltipPopup>
+      </Tooltip>
+    );
+  }
+  return (
+    <>
+      <PanelTabCloseButton label={`Close ${props.title}`} onClick={props.onClose}>
+        {props.icon}
+        {pendingDot}
+      </PanelTabCloseButton>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              className="cursor-pointer flex min-w-0 items-center"
+              onClick={props.onActivate}
+            />
+          }
+        >
+          <span className="truncate">{props.title}</span>
+        </TooltipTrigger>
+        <TooltipPopup>{props.title}</TooltipPopup>
+      </Tooltip>
+    </>
+  );
+}
+
 export function RightPanelTabs(props: RightPanelTabsProps) {
   const ownsDesktopTitleBar = isElectron && props.mode === "inline";
   const { resolvedTheme } = useTheme();
@@ -695,32 +759,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                 onMouseDown={handleTabMouseDown}
                 tabId={surface.id}
               >
-                <PanelTabCloseButton
-                  label={`Close ${title}`}
-                  onClick={() => props.onCloseSurface(surface)}
-                >
-                  <SurfaceIcon surface={surface} theme={resolvedTheme} />
-                  {pending ? (
-                    <span
-                      className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-                      aria-hidden
-                    />
-                  ) : null}
-                </PanelTabCloseButton>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        className="cursor-pointer flex min-w-0 items-center"
-                        onClick={() => props.onActivate(surface)}
-                      >
-                        <span className="truncate">{title}</span>
-                      </button>
-                    }
-                  />
-                  <TooltipPopup>{title}</TooltipPopup>
-                </Tooltip>
+                <SurfaceTabFace
+                  active={active}
+                  icon={<SurfaceIcon surface={surface} theme={resolvedTheme} />}
+                  onActivate={() => props.onActivate(surface)}
+                  onClose={() => props.onCloseSurface(surface)}
+                  pending={pending}
+                  title={title}
+                />
               </Tab>
             );
           })}

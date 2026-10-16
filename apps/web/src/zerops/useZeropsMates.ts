@@ -30,6 +30,24 @@ import {
   type ZeropsMateIdentity,
 } from "./mateIdentities";
 
+/**
+ * The one environment whose server says it serves a Zerops project — the connected one where
+ * several do; none where that does not settle it.
+ */
+export function environmentServing(
+  environments: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly zeropsProjectId?: string | null | undefined;
+    readonly connection: { readonly phase: string };
+  }>,
+  projectId: string,
+): EnvironmentId | undefined {
+  const serving = environments.filter((environment) => environment.zeropsProjectId === projectId);
+  if (serving.length === 1) return serving[0]!.environmentId;
+  const connected = serving.filter((environment) => environment.connection.phase === "connected");
+  return connected.length === 1 ? connected[0]!.environmentId : undefined;
+}
+
 export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   const environments = get(zeropsEnvironmentsAtom);
   // Platform rows supply only the body, never the name, face, project or environment identity.
@@ -49,7 +67,14 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   const memory = readMateMemory();
   const remembered = rememberMates(memory, named, listRead);
   if (remembered !== memory) writeMateMemory(remembered);
-  for (const mate of seededIdentities(named, remembered, listRead)) {
+  for (const seeded of seededIdentities(named, remembered, listRead)) {
+    // HQ names the Mate; its environment is the one its overview relays. Until that reaches HQ —
+    // a Mate just up, its sign-in waiting — it is the one whose own server says it lives in the
+    // Mate's project (run 2, 2026-10-16: an added Mate landed on a bare conversation meanwhile).
+    const mate =
+      seeded.environmentId === undefined
+        ? { ...seeded, environmentId: environmentServing(environments, seeded.projectId) }
+        : seeded;
     if (
       mate.environmentId !== undefined &&
       (mate.projectId === ownId || isListedMateProject(directory, { id: mate.projectId }))

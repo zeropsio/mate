@@ -99,9 +99,39 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (remotes?: Remotes["Servi
   let environmentState: HqNavigationJob["state"] = "building";
   let environmentReads = 0;
   let environmentsEnabled = false;
+  /** Production's release on its way, and whether it ended; none where production has none. */
+  let productionRelease: { readonly tag: string; readonly ended: boolean } | undefined;
+  /** How many changes HQ's release navigation counts for app A; none where it offers nothing. */
+  let releaseTotal: number | undefined;
   const environmentSnapshot = (): StructureSource["environmentSource"] => {
+    const production =
+      productionRelease === undefined
+        ? []
+        : [
+            {
+              id: "Q",
+              target: { kind: "zerops" as const, projectId: "Q" },
+              tier: "production" as const,
+              name: "production",
+              sources: [],
+              order: 2,
+              keyHeld: true,
+              keyInvalid: false,
+              jobs: [],
+              release: {
+                id: null,
+                tag: productionRelease.tag,
+                planned: true,
+                ended: productionRelease.ended,
+                endedAt: productionRelease.ended ? "2026-10-06T00:02:00.000Z" : null,
+                leftOut: [],
+              },
+              birth: { ended: true },
+            },
+          ];
     const environments = environmentsEnabled
       ? [
+          ...production,
           {
             id: "P",
             target: { kind: "zerops" as const, projectId: "P" },
@@ -151,7 +181,7 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (remotes?: Remotes["Servi
     return {
       slotsForApp: () => ({
         stageProjectIds: environmentsEnabled ? ["P"] : [],
-        productionProjectId: null,
+        productionProjectId: environmentsEnabled && productionRelease !== undefined ? "Q" : null,
       }),
       fingerprints: new Map(environmentsEnabled ? [["A", json(environments)]] : []),
       forApp: (
@@ -286,7 +316,10 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (remotes?: Remotes["Servi
                   merge_change: { allow: false, reason: "forbidden" },
                   close_change: { allow: false, reason: "forbidden" },
                   redeploy: { allow: false, reason: "forbidden" },
-                  release: { allow: false, reason: "forbidden" },
+                  release:
+                    userId === "owner" && releaseTotal !== undefined
+                      ? { allow: true }
+                      : { allow: false, reason: "forbidden" },
                 },
                 environments: environmentSnapshot().forApp(userId, "A", org, {
                   allow: (userId === "owner" || granted) && !revoked,
@@ -426,7 +459,19 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (remotes?: Remotes["Servi
       listComments: () => Effect.succeed([]),
     } as unknown as Changes["Service"]),
     Layer.succeed(Releases, {
-      navigation: Effect.succeed({ fingerprints: new Map(), forApp: () => null }),
+      navigation: Effect.sync(() => {
+        const total = releaseTotal;
+        if (total === undefined) return { fingerprints: new Map(), forApp: () => null };
+        const candidate = {
+          head: "a".repeat(40),
+          suggestion: "v0.1.0",
+          summary: { subjects: [], total, more: total, atLeast: false },
+        };
+        return {
+          fingerprints: new Map([["A", String(total)]]),
+          forApp: (appId: string) => (appId === "A" ? candidate : null),
+        };
+      }),
       changes: Stream.empty,
       list: () =>
         Effect.sync(() => {
@@ -540,6 +585,18 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (remotes?: Remotes["Servi
         PubSub.publish(deployChanged, 1),
       ),
     deployChanged: PubSub.publish(deployChanged, 1),
+    releasing: (tag: string, total: number) => {
+      productionRelease = { tag, ended: false };
+      releaseTotal = total;
+    },
+    releaseLanded: Effect.andThen(
+      Effect.sync(() => {
+        if (productionRelease !== undefined)
+          productionRelease = { ...productionRelease, ended: true };
+        releaseTotal = 0;
+      }),
+      PubSub.publish(deployChanged, 1),
+    ),
     recoverSource: () => {
       sourceRefused = false;
       recentRefused = false;
@@ -1139,10 +1196,9 @@ describe("revisioned HQ values", () => {
             everSignedIn: unknown;
           };
           assert.strictEqual(project.person.waitsOnViewer, runsWithoutSignIn && userId === "owner");
-          assert.strictEqual(
-            project.person.ownerUserId,
-            runsWithoutSignIn && userId === "owner" ? "owner" : null,
-          );
+          // Its maker owns it whether or not its agent waits on a sign-in; only a sign-in-free
+          // agent waits on them.
+          assert.strictEqual(project.person.ownerUserId, userId === "owner" ? "owner" : null);
           assert.deepStrictEqual(project.signedInNow, {});
           assert.deepStrictEqual(project.everSignedIn, {});
         }
@@ -1647,6 +1703,44 @@ describe("revisioned HQ values", () => {
           assert.strictEqual(yield* Queue.size(owner.queue), 0);
         }),
       ),
+  );
+
+  // The onboarding run: as the release landed, the card and the menu said "2 changes ready to
+  // release · Review release" again for a beat, the release's end read before what it put live.
+  it.effect("a release that lands is never offered again on its way out", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.enableEnvironments();
+        f.releasing("v0.1.0", 1);
+        const owner = yield* f.connect("owner");
+        yield* owner.subscribe([{ scope: nav }]);
+        resetOf(yield* owner.take);
+        yield* owner.take;
+        const offers: Array<unknown> = [];
+        yield* f.releaseLanded;
+        // Every app value until production runs what is merged, as HQ sends them.
+        for (;;) {
+          const moved = resetOf(yield* owner.take);
+          const app = moved.values.find((value) => value.key === "app:A")?.value as
+            | {
+                releaseOffer: {
+                  gate: { allow: boolean; reason?: string };
+                  inFlight: string | null;
+                };
+              }
+            | undefined;
+          if (app === undefined) continue;
+          offers.push(app.releaseOffer.gate);
+          if (app.releaseOffer.inFlight === null) break;
+        }
+        assert.notDeepInclude(offers, { allow: true });
+        assert.deepStrictEqual(offers.at(-1), {
+          allow: false,
+          reason: "Production already runs what is merged.",
+        });
+      }),
+    ),
   );
 
   it.effect("a new session behind a failing old read still re-evaluates", () =>

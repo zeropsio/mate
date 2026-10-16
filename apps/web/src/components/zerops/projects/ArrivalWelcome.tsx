@@ -15,6 +15,7 @@ import {
   arrivalWelcome,
   firstVisit,
   welcomeOwed,
+  welcomeStart,
   welcomeStep,
   type ArrivalApp,
   type ArrivalSignIn,
@@ -36,6 +37,7 @@ export function ArrivalWelcome({
   settled,
   painted,
   onStart,
+  gateOf,
   signIn,
 }: {
   readonly orgId: string;
@@ -47,6 +49,8 @@ export function ArrivalWelcome({
   /** The overview shows now (`overviewPaints`); the welcome paints with it or not on this visit. */
   readonly painted: boolean;
   readonly onStart: (groupId: string) => void;
+  /** Why the project takes no Mate yet, where it takes none (`newMateGate`); `null` while it does. */
+  readonly gateOf: (groupId: string) => string | null;
   /** The person's first sign-in as HQ records it; absent where HQ does not say. */
   readonly signIn?: ArrivalSignIn | undefined;
 }) {
@@ -73,7 +77,8 @@ export function ArrivalWelcome({
 
   const welcome = decided?.orgId === orgId ? decided.welcome : null;
   if (welcome === null) return null;
-  const { action } = welcome;
+  // Read on every paint: the project takes a Mate once its first Mate is done setting it up.
+  const start = welcomeStart(welcome.action, gateOf);
   return (
     <Card variant="flat">
       <div
@@ -86,9 +91,13 @@ export function ArrivalWelcome({
             <p className="text-sm text-muted-foreground">{welcome.detail}</p>
           )}
         </div>
-        {action === null ? null : (
-          <Button onClick={() => onStart(action.groupId)} size="sm">
-            {action.label}
+        {start === null ? null : start.kind === "waits" ? (
+          <p className="text-sm text-muted-foreground" data-welcome-start="waits">
+            {start.line}
+          </p>
+        ) : (
+          <Button onClick={() => onStart(start.groupId)} size="sm">
+            {start.label}
           </Button>
         )}
       </div>

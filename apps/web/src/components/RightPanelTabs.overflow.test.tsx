@@ -42,7 +42,7 @@ function layOut(stripWidth: number) {
     const tabId = element.dataset.tabId;
     const at = tabId === undefined ? -1 : SURFACES.findIndex((surface) => surface.id === tabId);
     const left = at < 0 ? 0 : at * 100;
-    const width = at < 0 ? stripWidth : 100;
+    const width = element.dataset.slot === "tab-strip-action" ? 24 : at < 0 ? stripWidth : 100;
     return {
       left,
       right: left + width,
@@ -120,4 +120,25 @@ describe("RightPanelTabs overflow", () => {
       label,
     );
   });
+
+  it.each([
+    { stripWidth: 250, folded: true },
+    { stripWidth: 600, folded: false },
+  ])(
+    "folds the tabs other than the open one to their icons once every name no longer fits ($stripWidth px: $folded)",
+    ({ stripWidth, folded }) => {
+      layOut(stripWidth);
+      render();
+      const closes = Array.from(host.querySelectorAll("[aria-label^='Close ']"), (button) =>
+        button.getAttribute("aria-label"),
+      );
+      // A folded tab is its icon alone, which opens it: its name is its label, not a close.
+      expect(closes).toEqual(
+        folded
+          ? ["Close Browser"]
+          : ["Close Diff", "Close Files", "Close Helpers", "Close Zerops", "Close Browser"],
+      );
+      expect(host.querySelector("button[aria-label='Diff']") !== null).toBe(folded);
+    },
+  );
 });

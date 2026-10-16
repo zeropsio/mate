@@ -42,6 +42,7 @@ import type {
   ZeropsTopologyService,
 } from "@t3tools/client-runtime/zerops/topology";
 import { Button } from "~/components/ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Skeleton } from "~/components/ui/skeleton";
@@ -375,25 +376,34 @@ function ResourcesRow({
  * the link's: it must not toggle the card's pop underneath.
  */
 function RouteButton({ route }: { route: ZeropsServiceRoute }) {
+  // An icon says what it opens only in words: the tooltip names the address (the onboarding run,
+  // 2026-10-16: an unlabeled button on every card).
   return (
-    <Button
-      aria-label={route.host}
-      data-zerops-service-route-button
-      onClick={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
-      render={
-        <ServiceBrowserLink
-          showIndicator={false}
-          href={route.url}
-          rel="noreferrer"
-          target="_blank"
-        />
-      }
-      size="icon-sm"
-      variant="secondary"
-    >
-      <ServiceBrowserLinkIndicator href={route.url} />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-label={route.host}
+            data-zerops-service-route-button
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+            render={
+              <ServiceBrowserLink
+                showIndicator={false}
+                href={route.url}
+                rel="noreferrer"
+                target="_blank"
+              />
+            }
+            size="icon-sm"
+            variant="secondary"
+          />
+        }
+      >
+        <ServiceBrowserLinkIndicator href={route.url} />
+      </TooltipTrigger>
+      <TooltipPopup>{`Open ${route.host}`}</TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -442,19 +452,26 @@ function DataButton({
   onOpen: (hostname: string) => void;
 }) {
   return (
-    <Button
-      aria-label={`Browse data of ${hostname}`}
-      data-zerops-service-data-button
-      onClick={(event) => {
-        event.stopPropagation();
-        onOpen(hostname);
-      }}
-      onPointerDown={(event) => event.stopPropagation()}
-      size="icon-sm"
-      variant="secondary"
-    >
-      <DatabaseIcon aria-hidden="true" />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-label={`Browse data of ${hostname}`}
+            data-zerops-service-data-button
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpen(hostname);
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            size="icon-sm"
+            variant="secondary"
+          />
+        }
+      >
+        <DatabaseIcon aria-hidden="true" />
+      </TooltipTrigger>
+      <TooltipPopup>{`Browse ${hostname}'s data`}</TooltipPopup>
+    </Tooltip>
   );
 }
 

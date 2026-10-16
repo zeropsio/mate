@@ -25,3 +25,39 @@ export function hqBirthView(held: HqBirthProgress | null): HqBirthView | undefin
   if (held.failed === null) return { kind: "running", step: held.record.step, ...began };
   return { kind: "failed", step: held.failed.step, reason: held.failed.reason, ...began };
 }
+
+/**
+ * Where this page stands with its organization's HQ setup: one it watched run (`running`) and
+ * finish (`born`) keeps the finished setup on screen until the menu has read the new HQ
+ * (`released`); a setup finished before the page loaded is never held (`unseen`).
+ */
+export type HqBirthWatch = "unseen" | "running" | "born" | "released";
+
+export function watchHqBirth(
+  watch: HqBirthWatch,
+  input: {
+    readonly birth: HqBirthView | undefined;
+    /** The menu's sources answered for the organization (`useMenuRows`). */
+    readonly menuSettled: boolean;
+  },
+): HqBirthWatch {
+  const { birth } = input;
+  const running = birth?.kind === "running" && birth.step !== "done";
+  const done = birth?.kind === "running" && birth.step === "done";
+  switch (watch) {
+    case "unseen":
+      return running ? "running" : "unseen";
+    case "running":
+      return done
+        ? input.menuSettled
+          ? "released"
+          : "born"
+        : birth === undefined
+          ? "unseen"
+          : "running";
+    case "born":
+      return input.menuSettled ? "released" : "born";
+    case "released":
+      return "released";
+  }
+}

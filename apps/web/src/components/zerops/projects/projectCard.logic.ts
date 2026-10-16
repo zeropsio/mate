@@ -347,6 +347,29 @@ export function cardReady(flow: Pick<GroupFlow, "production" | "stages" | "main"
   } satisfies CardReady;
 }
 
+/**
+ * The release on its way, by its tag, where the ready one stood: its block stays, so pressing
+ * Release moves nothing on the card (the onboarding run's card jumped 125 px at the press).
+ */
+export function cardReleasing(flow: Pick<GroupFlow, "production" | "stages" | "main">) {
+  return flow.production.kind === "releasing" ? flow.production.tag : undefined;
+}
+
+/** "Putting v2.4.0 live" — the glossary's words for a release under way. */
+export function releasingTitle(tag: string): string {
+  return `Putting ${tag} live`;
+}
+
+/**
+ * Whether there is something for *Put it live* to put live: the app's code merged, or a change of
+ * it open that its one press merges. A Mate's setup files are no app.
+ */
+export function putLiveHasChange(flow: Pick<GroupFlow, "main" | "pullRequests">): boolean {
+  return (
+    flow.main.hasCode === true || flow.pullRequests.some((entry) => entry.pull.kind === "code")
+  );
+}
+
 /** "3 changes ready to release", "1 change ready to release". */
 export function readyTitle(ready: CardReady): string {
   const count = `${ready.atLeast ? "At least " : ""}${String(ready.count)}`;
@@ -361,20 +384,22 @@ export function readyLine(
   ready: CardReady,
   /** The stage runs every change the release carries; `undefined` while that is unread. */
   onStage: boolean | undefined,
-): string {
+): string | undefined {
   const where =
     ready.stage === undefined || onStage === undefined
       ? "Merged."
       : onStage
         ? `On ${ready.stage}.`
         : `Not on ${ready.stage} yet.`;
+  // Nothing released is production's own line ("Not released yet"), and merged is the title's:
+  // with no stage there is nothing more to say (a stage's line keeps its place while it is read).
+  if (!ready.failed && ready.from === undefined)
+    return ready.stage === undefined ? undefined : where;
   const runs = ready.failed
     ? ready.from === undefined
       ? "Production's last release failed."
       : `Production's last release failed; it still runs ${ready.from}.`
-    : ready.from === undefined
-      ? "Nothing is released yet."
-      : `Production runs ${ready.from}.`;
+    : `Production runs ${ready.from}.`;
   return `${where} ${runs}`;
 }
 
@@ -657,7 +682,7 @@ export interface CardChange {
   readonly open: boolean;
   /**
    * "Ready to merge", what stops it; "In v1.0.4", "On stage", "Deploying to stage…", "Not released
-   * yet", "Merged"; "Setup files, not app code" for a Mate's recipe proposal.
+   * yet", "Merged"; "Setup files, not part of a release" for a Mate's recipe proposal.
    */
   readonly words: string;
   /** Its words' tone: the change state's for an open one; quiet for a merged one. */
@@ -707,10 +732,12 @@ function holds(
  * A card's latest changes (the owner, 2026-10-11: "quick history of latest PRs"): the open ones
  * first, each with what stops it, then the merged ones, each with where it went — in the oldest
  * release made after it landed, else on stage where the stage runs it, deploying to it where it is
- * being deployed there, else not released yet where the project has a production, else merged —
- * newest first, `limit` at most. A Mate's recipe proposal is its setup files, which go to no place
- * (the onboarding run read them "On stage" beside the reviewed change). Merged ones are known only
- * while the project's detail is read.
+ * being deployed there, else not released yet where production runs a release, else merged —
+ * newest first, `limit` at most. While production runs no release at all its own line says so,
+ * once (the onboarding run said "Not released yet" on production, the release and the change). A
+ * Mate's recipe proposal is its setup files, which go to no place and no release (the onboarding
+ * run read them "On stage" beside the reviewed change). Merged ones are known only while the
+ * project's detail is read.
  */
 export function cardChanges(input: {
   readonly open: ReadonlyArray<FlowPullRequest>;
@@ -752,14 +779,14 @@ export function cardChanges(input: {
         // Every change to the setup repository, as `broughtBy` leaves them out of a release.
         words:
           pull.kind === "recipe"
-            ? "Setup files, not app code"
+            ? "Setup files, not part of a release"
             : took !== undefined
               ? `In ${took.tag}`
               : on(stage?.runs)
                 ? "On stage"
                 : on(stage?.deploying)
                   ? "Deploying to stage…"
-                  : input.production
+                  : input.production && input.releases.length > 0
                     ? "Not released yet"
                     : "Merged",
         tone: "off",

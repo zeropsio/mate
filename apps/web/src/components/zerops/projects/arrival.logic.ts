@@ -98,6 +98,22 @@ export function welcomeStep(input: {
   return input.hasApps ? "decide" : "wait";
 }
 
+/**
+ * The welcome's one thing to do, as it stands now: its Start while the project takes a Mate, else
+ * why it takes none yet in the button's place (`newMateGate`'s words), until it does.
+ */
+export function welcomeStart(
+  action: ArrivalWelcome["action"],
+  gateOf: (groupId: string) => string | null,
+):
+  | ({ readonly kind: "start" } & NonNullable<ArrivalWelcome["action"]>)
+  | { readonly kind: "waits"; readonly line: string }
+  | null {
+  if (action === null) return null;
+  const gate = gateOf(action.groupId);
+  return gate === null ? { kind: "start", ...action } : { kind: "waits", line: gate };
+}
+
 export function arrivalWelcome(input: {
   readonly organizationName: string;
   readonly viewer: { readonly roleCode?: string | undefined; readonly canCreateProjects?: boolean };
@@ -140,7 +156,9 @@ export function arrivalWelcome(input: {
     case "guest":
       return {
         line: `${welcome} You're a Guest on ${on}.`,
-        detail: "You can follow the work and open the app.",
+        // A Mate's live work is for whoever its door opens for (HQ's `observe_mate`); a read-only
+        // role reads the changes and the app, so that is what it is promised.
+        detail: "You can see the changes and open the app.",
         action: null,
       };
     case null:
@@ -148,7 +166,7 @@ export function arrivalWelcome(input: {
         ? { line: `${welcome} You work on every project.`, detail: null, action }
         : {
             line: `${welcome} You see every project.`,
-            detail: "You can follow the work and open the app.",
+            detail: "You can see the changes and open the app.",
             action: null,
           };
   }

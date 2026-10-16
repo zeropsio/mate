@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
+
 import { newMateNext, newProjectNext, type WhatHappensNext } from "./whatHappensNext.logic";
 
 /** The steps as rows: the words, then the time where one is said. */
@@ -7,8 +9,10 @@ const rows = (next: WhatHappensNext) => next.steps.map((step) => [step.words, st
 
 // Board D1 (2026-09-30): both dialogs end with what happens after the press, with honest times.
 // A Mate added to a project with code is up in about 2–4 minutes and signed in by its person,
-// then sets up development, deploying the project's code, in up to 15 minutes; they can leave
-// meanwhile. The project's first Mate, with nothing to deploy yet, is told what to build.
+// then sets up development, deploying the project's code, in up to 15 minutes. They can leave once
+// the press's own half minute in this tab is over, as the page it lands on says too (run 2,
+// 2026-10-16: the dialog said "You can leave", the page "Keep this tab open"). The project's
+// first Mate, with nothing to deploy yet, is told what to build.
 describe("newMateNext — what happens once a Mate is added", () => {
   it.each([
     {
@@ -19,7 +23,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
         ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
         ["Wren sets up development, deploying Beviro's code", "up to 15 min"],
       ],
-      note: "You can leave meanwhile.",
+      note: KEEP_TAB_OPEN_LINE,
     },
     {
       case: "its code still being read: as with code, the likelier",
@@ -29,7 +33,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
         ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
         ["Wren sets up development, deploying Beviro's code", "up to 15 min"],
       ],
-      note: "You can leave meanwhile.",
+      note: KEEP_TAB_OPEN_LINE,
     },
     {
       case: "a name ending in s takes the bare apostrophe",
@@ -39,7 +43,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
         ["You sign Quinn in with your Claude or ChatGPT subscription", undefined],
         ["Quinn sets up development, deploying Acme Docs' code", "up to 15 min"],
       ],
-      note: "You can leave meanwhile.",
+      note: KEEP_TAB_OPEN_LINE,
     },
     {
       case: "the project's first Mate, nothing to deploy: told what to build",
@@ -49,7 +53,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
         ["You sign Wren in with your Claude or ChatGPT subscription", undefined],
         ["You tell Wren what to build", undefined],
       ],
-      note: "You can leave while Wren comes up.",
+      note: KEEP_TAB_OPEN_LINE,
     },
     {
       case: "a name cleared: the Mate, until it has one",
@@ -59,7 +63,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
         ["You sign the Mate in with your Claude or ChatGPT subscription", undefined],
         ["The Mate sets up development, deploying Beviro's code", "up to 15 min"],
       ],
-      note: "You can leave meanwhile.",
+      note: KEEP_TAB_OPEN_LINE,
     },
     {
       case: "a name typed with stray spaces reads as the Mate will be called",
@@ -69,7 +73,7 @@ describe("newMateNext — what happens once a Mate is added", () => {
         ["You sign Mira Lin in with your Claude or ChatGPT subscription", undefined],
         ["You tell Mira Lin what to build", undefined],
       ],
-      note: "You can leave while Mira Lin comes up.",
+      note: KEEP_TAB_OPEN_LINE,
     },
   ] as const)("$case", ({ input, steps, note }) => {
     const next = newMateNext(input);
@@ -103,7 +107,7 @@ describe("newProjectNext — what happens once a project is created", () => {
   ] as const)("$case", ({ input, steps }) => {
     const next = newProjectNext(input);
     expect(rows(next)).toEqual(steps);
-    expect(next.note).toBe("You can leave while they come up.");
+    expect(next.note).toBe(KEEP_TAB_OPEN_LINE);
   });
 });
 

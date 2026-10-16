@@ -807,6 +807,22 @@ describe("SidebarZeropsTree", () => {
     for (const text of hides) expect(html).not.toContain(text);
   });
 
+  it("says nothing at all when the organization holds only its HQ: HQ is no project to set a Mate up in", () => {
+    const official = vi.spyOn(accountHq, "useAccountHq").mockReturnValue({
+      status: "ready",
+      hq: { kind: "official", projectId: "unplaced", address: "https://hq.invalid" },
+      admins: [],
+      reread: () => {},
+    });
+    try {
+      const html = render([candidate("unplaced", {}, "ready", false)]);
+      expect(html).not.toContain("sidebar-environments-empty");
+      expect(html).not.toContain("Set up Mate");
+    } finally {
+      official.mockRestore();
+    }
+  });
+
   it("marks the active Mate", () => {
     const html = render([CRM_DEV, LOOSE], { activeProjectId: "loose" });
     expect(html).toContain('aria-current="true"');
@@ -2829,6 +2845,40 @@ describe("a group of Mates folded to its row", () => {
     );
   });
 
+  // A Mate made here is the viewer's from its press: its row stands among theirs, before a
+  // colleague's, where its listed row will stand — never at the end, to leap up once it is listed.
+  it("puts a Mate the viewer is making after their own Mates and before a colleague's", () => {
+    const mounted = mount(
+      tree({
+        activeProjectId: "vera-dev",
+        getOwner: (item: ZeropsCandidate) =>
+          item.project.id === "crm-bo"
+            ? { name: "Ada Lovelace", initials: "AL", avatarUrl: null, isViewer: true }
+            : { name: "Jan Novák", initials: "JN", avatarUrl: null, isViewer: false },
+        births: [
+          {
+            projectId: "vera-dev",
+            startedAt: Date.now(),
+            placement: {
+              groupId: "aaa",
+              groupName: "Beviro CRM",
+              kind: "mate",
+              displayName: "Vera",
+            },
+          },
+        ],
+      }),
+    );
+    const units = mounted.root
+      .findAll(
+        (node) =>
+          typeof node.type === "string" && node.props["data-zerops-mate-unit"] !== undefined,
+      )
+      .map((node) => node.props["data-zerops-mate-unit"] as string)
+      .filter((unit) => !unit.startsWith("group:"));
+    expect(units).toEqual(["crm-bo", "vera-dev", "crm-dev"]);
+  });
+
   // Folding the group you are in leaves the conversation open; its row stands for it.
   it("wears the list's band on its row while folded around the open conversation", () => {
     const band = (mounted: ReactTestRenderer) =>
@@ -3158,7 +3208,7 @@ describe("a Mate's row says more without words", () => {
   // counts up in ink where the age was.
   it("counts up how long it has been working, where its age was", () => {
     const time = slot(row(working()));
-    expect(time).toContain("3:12");
+    expect(time).toContain("3m 12s");
     expect(slot(row(live()))).toContain(">2h<");
   });
 
@@ -3167,7 +3217,7 @@ describe("a Mate's row says more without words", () => {
   // beside a working face (the approved menu; the 2026-09-28 audit's gap).
   it("counts up work left running in the background, as it counts a run", () => {
     const time = slot(row(working({ kind: "monitoring" })));
-    expect(time).toContain("3:12");
+    expect(time).toContain("3m 12s");
   });
 
   it.each([

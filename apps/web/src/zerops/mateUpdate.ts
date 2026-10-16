@@ -34,7 +34,8 @@ export function mateUpdateLine(
         ? "Update ready; waiting for your work to finish"
         : automatic.phase === "switching" || automatic.phase === "verifying"
           ? "Updating — your conversations are safe"
-          : automatic.phase === "updated"
+          : // "Updated" only while nothing newer waits: beside an Update it said none did.
+            automatic.phase === "updated" && !update.available
             ? `Updated to ${automatic.runningVersion}`
             : automatic.phase === "postponed"
               ? `Update postponed; Mate is running ${automatic.runningVersion}`

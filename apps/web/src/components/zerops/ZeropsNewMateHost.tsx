@@ -29,6 +29,7 @@ import {
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -158,6 +159,7 @@ function NewMateDialog({
   const dismiss = useNewMateDialog((state) => state.dismiss);
   const operations = useAccountOperations();
   const navigate = useNavigate();
+  usePreloadMateViews();
 
   const addOffer = useAddMateOffer()(groupId);
   const { words } = useHqOffers();

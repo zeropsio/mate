@@ -7,10 +7,10 @@ import {
 } from "./threadSidebarWidth";
 
 describe("resolveInitialThreadSidebarWidth", () => {
-  // 304 px by default: at 256 both of a row's lines cut at about 25
+  // 368 px by default; at 256 both of a row's lines cut at about 25
   // characters (M13, D7). A width the person stored stays theirs.
   it.each([
-    { name: "nothing stored: the default", stored: null, viewport: 1786, width: 304 },
+    { name: "nothing stored: the default", stored: null, viewport: 1786, width: 368 },
     { name: "the owner's stored 435 stays", stored: 435, viewport: 1786, width: 435 },
     { name: "a stored 256 stays", stored: 256, viewport: 1786, width: 256 },
     {

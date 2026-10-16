@@ -10,21 +10,25 @@
  */
 import type { CrewStatus } from "@t3tools/contracts";
 
+/**
+ * In the order a person reaches for them after a reply (the onboarding run, 2026-10-16): the app,
+ * what changed and where it runs come before the developer's tools. The launcher lists them so.
+ */
 export const RIGHT_PANEL_KINDS = [
-  "terminal",
-  "files",
-  "file",
-  "diff",
-  "agents",
-  "zerops",
+  "overview",
   "browser",
   "mac",
-  "data",
-  "git",
+  "diff",
+  "zerops",
+  "agents",
   "crew",
-  "mcp",
+  "files",
+  "file",
+  "git",
+  "data",
   "vault",
-  "overview",
+  "terminal",
+  "mcp",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -70,63 +74,15 @@ const projectAvailability = (input: RightPanelAvailabilityInput): RightPanelAvai
   input.projectOpen ? "available" : "unavailable";
 
 export const RIGHT_PANEL_KIND_META = {
-  terminal: {
+  // The organization's cards, a Chief's alone: its header's Overview opens them too.
+  overview: {
     launcher: {
-      label: "Terminal",
-      description: "Start a shell in this workspace.",
-      shortcut: "T",
-      unavailableHint: "Available when a project is open.",
+      label: "Overview",
+      description: "Your organization's projects, side by side.",
+      shortcut: "O",
+      unavailableHint: "Available in your Chief's conversation.",
     },
-    availability: projectAvailability,
-  },
-  files: {
-    launcher: {
-      label: "Files",
-      description: "Browse and read workspace files.",
-      shortcut: "F",
-      unavailableHint: "Available when a project is open.",
-    },
-    availability: projectAvailability,
-  },
-  file: {
-    launcher: null,
-    availability: projectAvailability,
-  },
-  diff: {
-    launcher: {
-      label: "Diff",
-      description: "Review what this Mate changed.",
-      shortcut: "D",
-      unavailableHint: "Available for Git repositories.",
-    },
-    // A Mate's workspace is no repository of its own, but each turn keeps a
-    // diff of the services' checkouts below it (`resolveDiffSelection`).
-    availability: (input) =>
-      !input.serverThread
-        ? "unavailable"
-        : input.gitRepo === true || input.zeropsPanel === "available"
-          ? "available"
-          : input.gitRepo === null || input.zeropsPanel === "unknown"
-            ? "unknown"
-            : "unavailable",
-  },
-  agents: {
-    launcher: {
-      label: "Helpers",
-      description: "Follow this Mate's helpers and their work.",
-      shortcut: "A",
-      unavailableHint: "Available from a chat.",
-    },
-    availability: () => "available",
-  },
-  zerops: {
-    launcher: {
-      label: "Zerops",
-      description: "See the project's services.",
-      shortcut: "Z",
-      unavailableHint: "Available in a Zerops project.",
-    },
-    availability: (input) => input.zeropsPanel,
+    availability: (input) => (input.chief === true ? "available" : "hidden"),
   },
   browser: {
     launcher: {
@@ -147,24 +103,41 @@ export const RIGHT_PANEL_KIND_META = {
     },
     availability: (input) => input.zeropsPanel,
   },
-  data: {
+  diff: {
     launcher: {
-      label: "Data",
-      description: "Browse databases and storage.",
-      // D/A/T are already Diff/Agents/Terminal; V stands in for "view".
-      shortcut: "V",
+      label: "Diff",
+      description: "Review what this Mate changed.",
+      shortcut: "D",
+      unavailableHint: "Available for Git repositories.",
+    },
+    // A Mate's workspace is no repository of its own, but each turn keeps a
+    // diff of the services' checkouts below it (`resolveDiffSelection`).
+    availability: (input) =>
+      !input.serverThread
+        ? "unavailable"
+        : input.gitRepo === true || input.zeropsPanel === "available"
+          ? "available"
+          : input.gitRepo === null || input.zeropsPanel === "unknown"
+            ? "unknown"
+            : "unavailable",
+  },
+  zerops: {
+    launcher: {
+      label: "Zerops",
+      description: "See the project's services.",
+      shortcut: "Z",
       unavailableHint: "Available in a Zerops project.",
     },
     availability: (input) => input.zeropsPanel,
   },
-  git: {
+  agents: {
     launcher: {
-      label: "Git",
-      description: "Follow branches and where they go.",
-      shortcut: "G",
-      unavailableHint: "Available in a Zerops project.",
+      label: "Helpers",
+      description: "Follow this Mate's helpers and their work.",
+      shortcut: "A",
+      unavailableHint: "Available from a chat.",
     },
-    availability: (input) => input.zeropsPanel,
+    availability: () => "available",
   },
   crew: {
     launcher: {
@@ -179,15 +152,37 @@ export const RIGHT_PANEL_KIND_META = {
         ? "available"
         : "hidden",
   },
-  mcp: {
+  files: {
     launcher: {
-      label: "MCP",
-      description: "Add and check this Mate's tools.",
-      shortcut: "M",
-      unavailableHint: "Available from a conversation.",
+      label: "Files",
+      description: "Browse and read workspace files.",
+      shortcut: "F",
+      unavailableHint: "Available when a project is open.",
     },
-    // Every Mate's agents take MCP servers; the tab asks the Mate, not Zerops.
-    availability: () => "available",
+    availability: projectAvailability,
+  },
+  file: {
+    launcher: null,
+    availability: projectAvailability,
+  },
+  git: {
+    launcher: {
+      label: "Git",
+      description: "Follow branches and where they go.",
+      shortcut: "G",
+      unavailableHint: "Available in a Zerops project.",
+    },
+    availability: (input) => input.zeropsPanel,
+  },
+  data: {
+    launcher: {
+      label: "Data",
+      description: "Browse databases and storage.",
+      // D/A/T are already Diff/Agents/Terminal; V stands in for "view".
+      shortcut: "V",
+      unavailableHint: "Available in a Zerops project.",
+    },
+    availability: (input) => input.zeropsPanel,
   },
   vault: {
     launcher: {
@@ -199,15 +194,24 @@ export const RIGHT_PANEL_KIND_META = {
     },
     availability: (input) => input.zeropsPanel,
   },
-  // The organization's cards, a Chief's alone: its header's Overview opens them too.
-  overview: {
+  terminal: {
     launcher: {
-      label: "Overview",
-      description: "Your organization's projects, side by side.",
-      shortcut: "O",
-      unavailableHint: "Available in your Chief's conversation.",
+      label: "Terminal",
+      description: "Start a shell in this workspace.",
+      shortcut: "T",
+      unavailableHint: "Available when a project is open.",
     },
-    availability: (input) => (input.chief === true ? "available" : "hidden"),
+    availability: projectAvailability,
+  },
+  mcp: {
+    launcher: {
+      label: "MCP",
+      description: "Add and check this Mate's tools.",
+      shortcut: "M",
+      unavailableHint: "Available from a conversation.",
+    },
+    // Every Mate's agents take MCP servers; the tab asks the Mate, not Zerops.
+    availability: () => "available",
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 

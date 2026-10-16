@@ -57,6 +57,7 @@ import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProjec
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
+import { appChunk } from "~/lib/appChunks";
 
 import { ArrivalSpinner } from "./ZeropsArrivalSteps";
 import {
@@ -79,10 +80,12 @@ import {
   type AgentSignInSteps,
 } from "./ZeropsAgentSignIn.logic";
 
-const TerminalViewport = lazy(() =>
-  import("~/components/ThreadTerminalDrawer").then((module) => ({
-    default: module.TerminalViewport,
-  })),
+const TerminalViewport = lazy(
+  appChunk(() =>
+    import("~/components/ThreadTerminalDrawer").then((module) => ({
+      default: module.TerminalViewport,
+    })),
+  ),
 );
 
 const EASE_OUT_STRONG = "cubic-bezier(0.23, 1, 0.32, 1)";

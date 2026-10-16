@@ -26,3 +26,20 @@ export function draftHeroNoProject(mayCreateProject: boolean): {
     ? { words: "Add a project to start", offersNewProject: true }
     : { words: "No project to start in yet", offersNewProject: false };
 }
+
+/**
+ * What a new conversation's headline asks: what to do in its project, once that is known; in a
+ * Mate's environment whose project is still read, nothing yet — it has a project, and saying there
+ * is none (or offering to pick one) would be taken back the moment it is read; elsewhere, to pick
+ * one of the projects there are, or that there is none.
+ */
+export function draftHeroHeadlineKind(input: {
+  readonly hasResolvedProject: boolean;
+  /** The draft belongs to an environment (`activeProjectRef`). */
+  readonly inEnvironment: boolean;
+  readonly canChooseProject: boolean;
+}): "question" | "reading" | "choose" | "no-project" {
+  if (input.hasResolvedProject) return "question";
+  if (input.inEnvironment) return "reading";
+  return input.canChooseProject ? "choose" : "no-project";
+}

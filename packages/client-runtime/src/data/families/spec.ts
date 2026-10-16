@@ -154,6 +154,11 @@ export interface SampledSource<Value> {
    * time never ages it — read once, and again only on our write or the person's again; no cadence.
    */
   readonly freshMs: number | null;
+  /**
+   * A value read once that still changes without any write of ours while this holds: it is read
+   * again on the sampled cadence while demanded, until an answer no longer holds it.
+   */
+  readonly agesWhile?: (value: Value) => boolean;
 }
 
 /** An index the reducer keeps for the family: under which key a fact counts now, if any. */

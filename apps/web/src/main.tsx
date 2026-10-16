@@ -13,6 +13,7 @@ import {
 import { AppRoot } from "./AppRoot";
 import { keepBootFrame } from "./zerops/bootFrame";
 import { staleChunkRecovery } from "./lib/staleChunk";
+import { warmAppChunksAfterSettling } from "./lib/appChunks";
 import { pressesInFlight } from "./zerops/matePress";
 import { captureZeropsHqSignIn } from "./zerops/hqSignIn";
 import { appBasePath } from "./basePath";
@@ -48,6 +49,17 @@ if (isElectron) {
 window.addEventListener("vite:preloadError", (event) => {
   staleChunkRecovery.recover(event.payload);
 });
+
+// The app's surfaces load once the page settles: a later deploy never strands a click
+// (`appChunks.ts`). A desktop window's bundle is its own files, never replaced under it; the
+// design kit is a maintainer's page.
+if (!isElectron) {
+  warmAppChunksAfterSettling(
+    Object.values(router.routesById)
+      .filter((route) => route.id !== "/kit")
+      .map((route) => () => router.loadRouteChunk(route) ?? Promise.resolve()),
+  );
+}
 
 // A Mate's setup runs in the tab that pressed it and stops with the page: leaving asks first. Not
 // in Electron, where a prevented unload keeps the window from closing without asking.

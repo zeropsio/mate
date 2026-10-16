@@ -41,6 +41,12 @@ describe("hqCardView — the headline", () => {
       { standing: { kind: "unavailable", since: 7 } },
       { kind: "down", tone: "failed", word: "Unavailable since t7" },
     ],
+    // A refusal is HQ answering this person, not an outage anybody else shares.
+    [
+      "HQ refusing this person's sign-in",
+      { standing: { kind: "refused" } },
+      { kind: "down", tone: "failed", word: "Refused your sign-in" },
+    ],
     // Serving inside HQ's grace: no outage, but not all is well either.
     [
       "HQ serving while it cannot check Zerops",
@@ -280,7 +286,7 @@ describe("hqCardView — the Core HQ runs and its last backup", () => {
           parts: { quarantined: [], backup: { state: "ok", takenAt: 42 } },
         },
       },
-      { core: "Core 2026-10-03 08:05 UTC · ba9876543210", backup: "Last backup t42" },
+      { core: "2026-10-03 08:05 UTC · ba9876543210", backup: "Last backup t42" },
     ],
     [
       "an admin's, before HQ's first backup",
@@ -291,7 +297,7 @@ describe("hqCardView — the Core HQ runs and its last backup", () => {
           parts: { quarantined: [], backup: { state: "pending" } },
         },
       },
-      { core: "Core 2026-10-03 08:05 UTC · ba9876543210", backup: "No backup yet" },
+      { core: "2026-10-03 08:05 UTC · ba9876543210", backup: "No backup yet" },
     ],
     // A failed or switched-off backup is a trouble line's to say.
     [
@@ -303,7 +309,7 @@ describe("hqCardView — the Core HQ runs and its last backup", () => {
           parts: { quarantined: [], backup: { state: "failed", reason: "store" } },
         },
       },
-      { core: "Core 2026-10-03 08:05 UTC · ba9876543210", backup: null },
+      { core: "2026-10-03 08:05 UTC · ba9876543210", backup: null },
     ],
     [
       "an admin's, HQ not answering",
@@ -326,14 +332,14 @@ describe("hqCardView — HQ's builds, as the opened card read them", () => {
       "an update under way",
       { update: { kind: "read", state: { kind: "updating", target: CARRIED } } },
       {
-        coreNote: "HQ is being updated to Core 2026-10-04 10:00 UTC · 0123456789ab.",
+        coreNote: "HQ is updating to the version from 2026-10-04 10:00 UTC.",
         troubles: [],
       },
     ],
     [
       "this tab's own update, before anything is read",
       { updating: true },
-      { coreNote: "HQ is being updated.", troubles: [] },
+      { coreNote: "HQ is updating.", troubles: [] },
     ],
     // No hidden retry: the read failed, and says so.
     [
@@ -360,7 +366,7 @@ describe("hqCardView — HQ's builds, as the opened card read them", () => {
       {
         coreNote: null,
         troubles: [
-          "HQ's last update failed: Readiness check failed. HQ still runs Core 2026-10-03 08:05 UTC · ba9876543210.",
+          "HQ's last update failed: Readiness check failed. HQ still runs the version from 2026-10-03 08:05 UTC.",
         ],
       },
     ],
@@ -385,11 +391,11 @@ describe("hqCardView — the Core on the header line, the day it was committed",
   const runs = (build: string) =>
     ({ standing: { kind: "healthy", build, parts: { quarantined: [] } } }) as Partial<HqCardInput>;
   it.each<[string, Partial<HqCardInput>, string | null]>([
-    ["an admin's", {}, "Core 2026-10-03"],
+    ["an admin's", {}, "Version of 2026-10-03"],
     [
       "an admin's, a legacy stamp",
       runs("b6e65699e0.20261003T120000"),
-      "Core b6e65699e0.20261003T120000",
+      "Version b6e65699e0.20261003T120000",
     ],
     ["an admin's, a Core HQ names no build of", runs(""), null],
     ["an admin's, HQ not answering", { standing: { kind: "unavailable", since: 7 } }, null],
