@@ -105,7 +105,12 @@ export class ZeropsRefused extends Schema.TaggedError<ZeropsRefused>()("ZeropsRe
 
 export class ZeropsUnavailable extends Schema.TaggedError<ZeropsUnavailable>()(
   "ZeropsUnavailable",
-  { operation: Schema.String, message: Schema.String },
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    /** The status Zerops answered with, as no verdict (a 5xx, 429); none when no answer came. */
+    status: Schema.optional(Schema.Number),
+  },
 ) {}
 
 /** Zerops answered, in a shape HQ does not read: HQ's defect, which no retry outlives. */
