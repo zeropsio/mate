@@ -181,7 +181,11 @@ it.layer(NodeHttpClient.layerNodeHttp, { excludeTestServices: true })((it) => {
       });
       expect(Array.from(fake.world.appVersions.get(id)!.archive!)).toEqual([0, 127, 255]);
       expect((yield* api.service("runtime")(credential)).activeVersionId).toBe(id);
-      expect(yield* observation.activeVersion(id)(credential)).toEqual({ id, name: "release-1" });
+      expect(yield* observation.activeVersion(id)(credential)).toEqual({
+        id,
+        activatedAt: fake.rows("app-version").find((row) => row.id === id)!.activationDate,
+      });
+      expect((yield* observation.activeVersion(id)(credential)).activatedAt).not.toBeNull();
       expect(yield* observation.logs("P_MATE", "runtime", 10)(credential)).toEqual([]);
       const imported = yield* deploy.importServices(
         "P_MATE",

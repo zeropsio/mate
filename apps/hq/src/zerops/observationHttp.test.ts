@@ -85,3 +85,49 @@ describe("HQ's bounded log transport", () => {
     }),
   );
 });
+
+// `GET /app-version/{id}` as Zerops answers it (zerops-go `output.GetAppVersion`; read live
+// 2026-10-16): no `name` — a deploy's name lives in its service's user data, never here.
+const servingVersion = {
+  id: "AV-SERVING",
+  clientId: "CLIENT-1",
+  projectId: "P1",
+  serviceStackId: "S1",
+  build: null,
+  source: "CLI",
+  sequence: 7,
+  status: "ACTIVE",
+  userDataList: [],
+  created: "2026-10-16T08:41:02.000Z",
+  lastUpdate: "2026-10-16T08:43:15.000Z",
+  githubIntegration: null,
+  gitlabIntegration: null,
+  createdByUser: null,
+  activationDate: "2026-10-16T08:43:10.000Z",
+  publicGitSource: null,
+};
+
+describe("HQ's read of a service's active version", () => {
+  const answering = (body: unknown) =>
+    Effect.gen(function* () {
+      const platform = yield* serve((req, res) => {
+        assert.strictEqual(req.url, "/app-version/AV-SERVING");
+        res.end(JSON.stringify(body));
+      });
+      const api = yield* makeZeropsObservationHttp(platform.url).pipe(
+        Effect.provide(yield* Layer.build(NodeHttpClient.layerNodeHttp)),
+      );
+      return yield* api
+        .activeVersion("AV-SERVING")(Redacted.make("deploy-key"))
+        .pipe(Effect.match({ onFailure: (error) => error._tag, onSuccess: (read) => read }));
+    });
+
+  it.live("a Mate reads the active version of a service whose Zerops app version has no name", () =>
+    Effect.gen(function* () {
+      assert.deepStrictEqual(yield* answering(servingVersion), {
+        id: "AV-SERVING",
+        activatedAt: "2026-10-16T08:43:10.000Z",
+      });
+    }),
+  );
+});

@@ -586,7 +586,7 @@ export const makeZeropsObservationHttp = (
           "activeVersion",
           credential,
           HttpClientRequest.get(`${baseUrl}/app-version/${encodeURIComponent(id)}`),
-          Schema.Struct({ id: Schema.String, name: Schema.String }),
-        ).pipe(Effect.map(({ value }) => value)),
+          Schema.Struct({ id: Schema.String, activationDate: Schema.NullOr(Schema.String) }),
+        ).pipe(Effect.map(({ value }) => ({ id: value.id, activatedAt: value.activationDate }))),
     };
   });

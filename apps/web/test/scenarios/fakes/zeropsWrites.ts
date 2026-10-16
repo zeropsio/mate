@@ -102,6 +102,7 @@ export class ZeropsWrites {
       this.platform.put("app-version", {
         ...this.row("app-version", version.id)!,
         status: version.status,
+        ...(version.status === "ACTIVE" ? { activationDate: this.at() } : {}),
       });
     }
     for (const serviceId of job.services) {
@@ -150,7 +151,10 @@ export class ZeropsWrites {
     if (versionRead && request.method === "GET") {
       for (const [id, job] of this.jobs) if (job.version === versionRead[1]) this.advance(id);
       const row = this.row("app-version", versionRead[1]!);
-      return row ? { body: row } : this.platform.error(400, "appVersionNotFound");
+      // The REST read names no version (zerops-go `output.GetAppVersion`); a process's embedded
+      // one does.
+      const { name: _unnamed, ...answered } = row ?? {};
+      return row ? { body: answered } : this.platform.error(400, "appVersionNotFound");
     }
     const userData = path.match(/^\/service-stack\/([^/]+)\/user-data$/u);
     const deleteUserData =
@@ -224,6 +228,7 @@ export class ZeropsWrites {
         // (`m0/vers-probe`).
         source: "CLI",
         created: this.at(),
+        activationDate: null,
       });
       return { body: { id } };
     }
