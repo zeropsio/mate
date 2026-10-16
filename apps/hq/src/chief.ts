@@ -50,13 +50,13 @@ import {
 } from "./chiefProxy.ts";
 import { ChiefRefused, confirmingChiefRefusal } from "./chiefRefused.ts";
 import { CHIEF_TAG, chiefOfPerson, readsChiefProject } from "./chiefOwnership.ts";
-import { Structure } from "./structure.ts";
+import { type MateRecordState, Structure } from "./structure.ts";
 import { lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
 import { CHIEF_LIMIT, DOOR_LIMIT, DoorRateLimit, TooManyRequests } from "./rateLimit.ts";
 import { Roles } from "./roles.ts";
-import { MateOverviews } from "./mateOverviews.ts";
+import { type MateOverviewEntry, MateOverviews } from "./mateOverviews.ts";
 import { mateOwner, recordedMateOwner } from "./usageAccess.ts";
 import {
   ZeropsApi,
@@ -120,8 +120,12 @@ export class Chiefs extends Context.Service<
     /**
      * The person HQ records as the Mate's owner (`recordedMateOwner`) over HQ's last good view of
      * its org, or none: what the Mate's own link names, so its server refuses everyone else's acts.
+     * Its signers are those of `mate`, the record the link sends beside it, as `overview` reports.
      */
-    readonly ownerOf: (projectId: string) => Effect.Effect<string | null, SqlError | ZeropsError>;
+    readonly ownerOf: (
+      mate: MateRecordState,
+      overview: MateOverviewEntry["overview"] | undefined,
+    ) => Effect.Effect<string | null, SqlError | ZeropsError>;
     /** Binds an offer to its authenticated source Mate and current Chief. Sends nothing. */
     readonly propose: (
       projectId: string,
@@ -281,25 +285,26 @@ export const chiefsLayer = (options: {
           );
         });
 
-      const ownerOf = (projectId: string) =>
+      const ownerOf = (
+        mate: MateRecordState,
+        overview: MateOverviewEntry["overview"] | undefined,
+      ) =>
         Effect.gen(function* () {
           const facts = yield* roles.view;
-          const [mate] = yield* sql<{
-            readonly signers: Readonly<Record<string, string>>;
+          const [row] = yield* sql<{
             readonly madeBy: string | null;
-            readonly standupRequestedBy: string | null;
             readonly chiefOf: string | null;
-          }>`SELECT m.signers, m.made_by AS "madeBy", m.standup_requested_by AS "standupRequestedBy",
+          }>`SELECT m.made_by AS "madeBy",
             (SELECT c.user_id FROM hq_chief c WHERE c.org_id = ${facts.orgId}
               AND c.project_id = m.project_id AND c.revoked_at IS NULL LIMIT 1) AS "chiefOf"
-          FROM hq_mate m WHERE m.project_id = ${projectId}`;
-          if (mate === undefined) return null;
+          FROM hq_mate m WHERE m.project_id = ${mate.projectId}`;
+          if (row === undefined) return null;
           return recordedMateOwner({
-            chiefOf: mate.chiefOf ?? undefined,
+            chiefOf: row.chiefOf ?? undefined,
             facts,
-            projectId,
-            mate,
-            overview: (yield* overviews.all).get(projectId)?.overview,
+            projectId: mate.projectId,
+            mate: { ...mate, madeBy: row.madeBy },
+            overview,
           });
         });
 
