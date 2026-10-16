@@ -83,6 +83,24 @@ describe("ReleaseReviewView", () => {
     );
   });
 
+  // The run: released, "Close" stood alone on a line of its own under Open and the domain, beside
+  // the panel's ×: a third way out where the panel's last word is the live app.
+  it("ends a release with its way into the live app and no Close beside it: the panel's × closes it", () => {
+    const markup = render({
+      outcome: { kind: "released", at: undefined },
+      production: {
+        at: undefined,
+        parts: [],
+        addresses: [{ service: "app", url: "https://app-abcd-3000.prg1.zerops.app" }],
+      },
+      onAddDomain: () => {},
+    });
+    const page = new Window().document;
+    page.body.innerHTML = markup;
+    const words = [...page.querySelectorAll(".rv-btns button")].map((button) => button.textContent);
+    expect(words).not.toContain("Close");
+  });
+
   it("says what production runs on a service cannot be told, under what goes out", () => {
     const markup = render({ untold: ["web"] });
     expect(markup).toContain("What goes out");

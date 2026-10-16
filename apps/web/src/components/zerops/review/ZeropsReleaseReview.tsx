@@ -637,8 +637,17 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
               live: props.replaces.kind === "release" ? props.replaces.tag : undefined,
             }))
       }
+      // Released onto the live app, its foot is the way in: the panel's × closes it, no Close
+      // wraps onto a line of its own beside it.
       dismiss={
-        props.git !== undefined ? "Cancel" : model.primary === undefined ? "Close" : "Cancel"
+        props.git !== undefined
+          ? "Cancel"
+          : model.primary !== undefined
+            ? "Cancel"
+            : props.outcome.kind === "released" &&
+                (openLive !== undefined || props.onAddDomain !== undefined)
+              ? undefined
+              : "Close"
       }
       fix={
         fix === undefined || props.fixer === undefined
