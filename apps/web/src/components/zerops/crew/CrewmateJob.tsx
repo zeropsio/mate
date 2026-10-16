@@ -30,6 +30,7 @@ import type { MateTintId } from "@t3tools/shared/brand";
 import {
   CREW_HOME_FILE,
   crewJobFile,
+  withSharedDatabase,
   type CrewDefinition,
   type CrewDefinitionIssue,
 } from "@t3tools/shared/crewHome";
@@ -192,10 +193,12 @@ function JobForm({
       before?.handle ??
       crewHandleFor(draft.displayName, new Set(definition.members.map((member) => member.handle)));
     const spec = crewmateSpecOf({ ...draft, handle }, lead, before);
-    const saved = await save(withMember(definition, target.handle, spec), [
-      CREW_HOME_FILE,
-      crewJobFile(spec.handle),
-    ]);
+    // A builder on a service with a database shares it, as the setup writes one.
+    const databaseHosts = devHosts.flatMap((host) => (host.database === true ? [host.host] : []));
+    const saved = await save(
+      withSharedDatabase(withMember(definition, target.handle, spec), databaseHosts),
+      [CREW_HOME_FILE, crewJobFile(spec.handle)],
+    );
     if (!saved) return;
     const command = crewmateSaveCommand({
       handle: spec.handle,

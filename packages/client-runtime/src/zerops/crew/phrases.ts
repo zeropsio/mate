@@ -773,11 +773,24 @@ export const crewSuggestedLine = (mateName: string, suggested: boolean): string 
 export const crewSuggestLine = (mateName: string): string =>
   `${mateName} reads the goal and proposes who does what. You can change anyone.`;
 
-/** The setup's footer — the one place it says where the crewmates work: their own copies. */
-export function crewSetUpFooter(mateName: string, hosts: ReadonlyArray<string>): string {
+/**
+ * The setup's footer — the one place it says where the crewmates work: their own copies, and,
+ * where builders share their service's database (`sharedDatabases`), that they do.
+ */
+export function crewSetUpFooter(
+  mateName: string,
+  hosts: ReadonlyArray<string>,
+  sharedDatabases: ReadonlyArray<string> = [],
+): string {
   const where = hosts.length === 0 ? "" : ` on ${hosts.join(" and ")}`;
   const code = `${crewPossessive(mateName)} code`;
-  return `Each builder works in its own copy of ${code}${where}; nothing reaches ${code} until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.`;
+  const database =
+    sharedDatabases.length === 0
+      ? ""
+      : sharedDatabases.length === 1
+        ? ` The builders share ${crewPossessive(sharedDatabases[0]!)} database.`
+        : ` The builders share the databases of ${sharedDatabases.join(" and ")}.`;
+  return `Each builder works in its own copy of ${code}${where}; nothing reaches ${code} until you review it.${database} Getting the copies ready takes a minute or two; each row shows how it's going.`;
 }
 
 /**

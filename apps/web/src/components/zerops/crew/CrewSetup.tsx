@@ -36,12 +36,13 @@ import {
   crewSuggestWord,
   crewSuggestedLine,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewHost, Crewmate, EnvironmentId } from "@t3tools/contracts";
+import type { CrewDevHost, CrewHost, Crewmate, EnvironmentId } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   CREW_BRIEF_FILE,
   CREW_HOME_FILE,
   renderCrewHome,
+  withSharedDatabase,
   type CrewDefinition,
   type CrewMemberSpec,
 } from "@t3tools/shared/crewHome";
@@ -78,8 +79,8 @@ export interface CrewSetupProps {
   readonly crewmates: ReadonlyArray<Crewmate>;
   /** The standing crew's dev services, for the offer of an address per builder. */
   readonly hosts: ReadonlyArray<CrewHost>;
-  /** Where a builder's copy can live. */
-  readonly devHosts: ReadonlyArray<string>;
+  /** Where a builder's copy can live, and whether each reaches a database (a builder there shares it). */
+  readonly devHosts: ReadonlyArray<CrewDevHost>;
   readonly mate: {
     readonly name: string;
     readonly tint: MateTintId | undefined;
@@ -104,6 +105,10 @@ export function CrewSetup(props: CrewSetupProps) {
   const proposal = useCrewProposal(props.environmentId);
   // The Mate proposed the rows, and nobody drafted others here since.
   const [asked, setAsked] = useState(false);
+  const devHosts = props.devHosts.map((host) => host.host);
+  const databaseHosts = props.devHosts.flatMap((host) =>
+    host.database === true ? [host.host] : [],
+  );
   const goal = draft.goal ?? (definition === null ? "" : crewGoalFields(definition.brief).body);
   /**
    * Who is on the crew, as its home reads: nobody while there is no crew home
@@ -149,12 +154,11 @@ export function CrewSetup(props: CrewSetupProps) {
     );
 
   const mateTint = mate.tint === undefined ? {} : { mateTint: mate.tint };
+  const hostsOf = { devHosts, databaseHosts };
 
   const startFrom = async (template: CrewTemplateId, then?: () => void) => {
     setAsked(false);
-    const next = withGoal(
-      crewFromTemplate({ template, crew: "crew", devHosts: props.devHosts, ...mateTint }),
-    );
+    const next = withGoal(crewFromTemplate({ template, crew: "crew", ...hostsOf, ...mateTint }));
     if (await saveAll(next)) then?.();
   };
 
@@ -166,7 +170,7 @@ export function CrewSetup(props: CrewSetupProps) {
     });
     if (proposed === null) return;
     const next = withGoal(
-      crewFromProposal({ proposal: proposed, crew: "crew", devHosts: props.devHosts, ...mateTint }),
+      crewFromProposal({ proposal: proposed, crew: "crew", ...hostsOf, ...mateTint }),
     );
     if (await saveAll(next)) setAsked(true);
   };
@@ -176,14 +180,15 @@ export function CrewSetup(props: CrewSetupProps) {
     await home.save(withGoal(definition), [CREW_HOME_FILE, CREW_BRIEF_FILE]);
   };
 
+  /**
+   * Saves the goal as written and each builder on a service with a database sharing it (one
+   * added by hand, or whose service was read since), then applies.
+   */
   const start = async () => {
     if (definition === null) return;
-    if (
-      draft.goal !== null &&
-      !(await home.save(withGoal(definition), [CREW_HOME_FILE, CREW_BRIEF_FILE]))
-    ) {
-      return;
-    }
+    const declared = withSharedDatabase(definition, databaseHosts);
+    const next = draft.goal === null ? declared : withGoal(declared);
+    if (next !== definition && !(await home.save(next, [CREW_HOME_FILE, CREW_BRIEF_FILE]))) return;
     if ((await commands.send({ _tag: "apply" })) !== null) draft.clear();
   };
 
@@ -194,20 +199,23 @@ export function CrewSetup(props: CrewSetupProps) {
     draft.clear();
     // The crew home holds the picks and the goal as last saved: it goes back to nobody, no goal.
     if (definition !== null) {
-      await saveAll(
-        crewFromTemplate({
-          template: "empty",
-          crew: "crew",
-          devHosts: props.devHosts,
-          ...mateTint,
-        }),
-      );
+      await saveAll(crewFromTemplate({ template: "empty", crew: "crew", ...hostsOf, ...mateTint }));
     }
   };
 
   const startLock = members === null ? null : (props.startLock?.(members) ?? null);
   const writers = members === null ? [] : members.filter((member) => member.kind === "writer");
   const noDevHost = writers.length > 0 && props.devHosts.length === 0;
+  const writerHosts = (shared: boolean) => [
+    ...new Set(
+      writers.flatMap((member) =>
+        member.host === undefined ||
+        (shared && (member.database !== "shared" || !databaseHosts.includes(member.host)))
+          ? []
+          : [member.host],
+      ),
+    ),
+  ];
   const portless = props.applied
     ? props.hosts.filter(
         (host) =>
@@ -401,11 +409,7 @@ export function CrewSetup(props: CrewSetupProps) {
         )}
         {drafted ? (
           <span className="text-line leading-4.5 text-muted-foreground">
-            {crewSetUpFooter(mate.name, [
-              ...new Set(
-                writers.flatMap((member) => (member.host === undefined ? [] : [member.host])),
-              ),
-            ])}
+            {crewSetUpFooter(mate.name, writerHosts(false), writerHosts(true))}
           </span>
         ) : null}
         <span className="flex items-center gap-1.5">

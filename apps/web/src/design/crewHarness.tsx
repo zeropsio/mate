@@ -781,7 +781,7 @@ function Tab() {
             applied={false}
             commands={FILES}
             crewmates={[]}
-            devHosts={["appdev"]}
+            devHosts={[{ host: "appdev", database: false }]}
             hosts={[]}
             environmentId={ENVIRONMENT}
             mate={FEN}

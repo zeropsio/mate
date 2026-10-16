@@ -231,7 +231,7 @@ export function CrewSectionHost({
           applied={applied}
           commands={editorCommands}
           crewmates={snapshot.crewmates}
-          devHosts={crewDevHosts(snapshot).map((host) => host.host)}
+          devHosts={crewDevHosts(snapshot)}
           hosts={snapshot.hosts}
           environmentId={environmentId}
           mate={{ name: mateName, tint: mate?.tint, shape: mate?.shape }}

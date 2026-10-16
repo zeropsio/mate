@@ -54,14 +54,15 @@ const homeOf = (definition: CrewDefinition | null): UseCrewCommand => ({
   clearError: () => undefined,
 });
 
+const TEA_SHOP = {
+  lead: { name: "Lead", part: "Plans the tea shop and splits the work." },
+  builders: [
+    { name: "Checkout", part: "Builds the checkout and its payment step." },
+    { name: "Catalog", part: "Builds the tea catalog and its search." },
+  ],
+};
 const proposed = crewFromProposal({
-  proposal: {
-    lead: { name: "Lead", part: "Plans the tea shop and splits the work." },
-    builders: [
-      { name: "Checkout", part: "Builds the checkout and its payment step." },
-      { name: "Catalog", part: "Builds the tea catalog and its search." },
-    ],
-  },
+  proposal: TEA_SHOP,
   crew: "crew",
   devHosts: ["appdev"],
 });
@@ -71,13 +72,17 @@ const withGoal = (definition: CrewDefinition, goal: string): CrewDefinition => (
   brief: parseBrief("Tea Shop", `${goal}\n`),
 });
 
-const render = (definition: CrewDefinition | null, proposeWith: CrewProposeWith = READY): string =>
+const render = (
+  definition: CrewDefinition | null,
+  proposeWith: CrewProposeWith = READY,
+  database: boolean | null = false,
+): string =>
   renderToStaticMarkup(
     <CrewSetup
       applied={false}
       commands={homeOf(definition)}
       crewmates={[]}
-      devHosts={["appdev"]}
+      devHosts={[{ host: "appdev", database }]}
       environmentId={ENVIRONMENT}
       hosts={[]}
       mate={NOVA}
@@ -146,5 +151,20 @@ describe("CrewSetup", () => {
     expect(words).toContain(
       "Each builder works in its own copy of Nova's code on appdev; nothing reaches Nova's code until you review it.",
     );
+  });
+
+  it("says the builders share their service's database only when a builder's service reaches one", () => {
+    const sharing = crewFromProposal({
+      proposal: TEA_SHOP,
+      crew: "crew",
+      devHosts: ["appdev"],
+      databaseHosts: ["appdev"],
+    });
+    expect(text(render(withGoal(sharing, "A tea shop."), READY, true))).toContain(
+      "until you review it. The builders share appdev's database.",
+    );
+    expect(text(render(withGoal(proposed, "A tea shop."), READY, false))).not.toContain("database");
+    // Not known yet: never said, and never "no".
+    expect(text(render(withGoal(sharing, "A tea shop."), READY, null))).not.toContain("database");
   });
 });
