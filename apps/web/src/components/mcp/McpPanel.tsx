@@ -62,8 +62,10 @@ export const MCP_WORDS = {
   name: "Name",
   command: "Command",
   url2: "URL",
-  commandPlaceholder: "npx -y @modelcontextprotocol/server-github",
-  urlPlaceholder: "https://mcp.example.com/mcp",
+  // Examples, said as examples: a grey value in a field reads as one already filled in.
+  namePlaceholder: "e.g. github",
+  commandPlaceholder: "e.g. npx -y @modelcontextprotocol/server-github",
+  urlPlaceholder: "e.g. https://mcp.example.com/mcp",
   env: "Environment",
   envHint: "KEY=value, one a line",
   headers: "Headers",
@@ -462,7 +464,7 @@ function McpAddServer(props: {
   const filled = form.name.trim() !== "" && (command ? form.commandLine : form.url).trim() !== "";
   if (!open)
     return (
-      <div className="mt-3" data-mcp-add>
+      <div className="mt-3 -ms-2" data-mcp-add>
         <Button onClick={() => setOpen(true)} size="sm" variant="ghost">
           <PlusIcon aria-hidden="true" />
           {MCP_WORDS.addTitle}
@@ -483,9 +485,11 @@ function McpAddServer(props: {
         <Input
           autoCapitalize="off"
           autoComplete="off"
+          // Opened by its button: the name is the next thing typed.
+          autoFocus
           nativeInput
           onChange={(event) => edit({ name: event.target.value }, "name")}
-          placeholder="github"
+          placeholder={MCP_WORDS.namePlaceholder}
           size="sm"
           spellCheck={false}
           value={form.name}
