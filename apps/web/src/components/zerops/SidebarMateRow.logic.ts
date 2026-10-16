@@ -1,7 +1,11 @@
 import { personMark } from "./primitives/person.logic";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import { lastKnownMateWords, mateUnreachableWords } from "../../zerops/lastKnownMate.logic";
+import {
+  lastKnownMateWords,
+  mateAwaySettling,
+  mateUnreachableWords,
+} from "../../zerops/lastKnownMate.logic";
 import { mateStatus } from "../../zerops/mateStatus.logic";
 import { mateFailureWords, usageLimitWords } from "../../zerops/noticeWords";
 /**
@@ -597,6 +601,8 @@ export function mateRowReading(input: {
   /** Its container is connected right now. */
   readonly connected: boolean;
   readonly offlineSince?: string | undefined;
+  /** Now, for how long it has been away (`useMateAwayNow`); absent, it is said at once. */
+  readonly nowMs?: number | undefined;
   readonly timestampFormat?: TimestampFormat | undefined;
   readonly activity: ZeropsAgentActivity | undefined;
   /** Its own change waits on the person's review (`mateNextStep`): it needs them. */
@@ -606,7 +612,11 @@ export function mateRowReading(input: {
   /** Where it is in its life (`mateFaceFor`): waking while it comes up and arrives. */
   readonly pose?: MatePoseFacts | undefined;
 }): MateRowView {
-  const { activity } = input;
+  // Away for less than its grace — an update's restart, a blink — its row says no outage yet: its
+  // last words, at rest, without "isn't answering" or what was last known.
+  const settling =
+    input.offlineSince !== undefined && mateAwaySettling(input.offlineSince, input.nowMs);
+  const activity = settling ? withoutLastKnown(input.activity) : input.activity;
   return mateRowView(
     activity,
     mateFaceOf({
@@ -617,9 +627,17 @@ export function mateRowReading(input: {
       pose: input.pose,
     }),
     input.name,
-    input.offlineSince,
+    settling ? undefined : input.offlineSince,
     input.timestampFormat,
   );
+}
+
+function withoutLastKnown(
+  activity: ZeropsAgentActivity | undefined,
+): ZeropsAgentActivity | undefined {
+  if (activity?.lastKnown === undefined) return activity;
+  const { lastKnown: _lastKnown, ...rest } = activity;
+  return rest;
 }
 
 /**

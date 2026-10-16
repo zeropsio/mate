@@ -1,4 +1,4 @@
-import { lastKnownMateWords } from "./lastKnownMate.logic";
+import { lastKnownMateWords, MATE_AWAY_GRACE_MS } from "./lastKnownMate.logic";
 import { attentionActivity } from "./mateActivity";
 import { useProjectsActivityRead } from "./activity/useProjectActivity";
 /**
@@ -23,7 +23,7 @@ import {
   mateAttentionAtom,
   shownAttentionProjectsAtom,
 } from "@t3tools/client-runtime/data";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { environmentsWithSnapshotAtom } from "../state/shell";
 import { hqMainChatsAtom } from "../state/zerops";
@@ -262,4 +262,16 @@ export function useMateOfflineSince(
       ? read.presence.since
       : undefined
     : new Date(lostAt).toISOString();
+}
+
+/**
+ * Now, for how long a Mate has been away (`mateAwaySettling`): it moves when its grace runs out,
+ * so a row that waited out a restart says it isn't answering on time, and only then.
+ */
+export function useMateAwayNow(offlineSince: string | undefined): number {
+  const graceEnds =
+    offlineSince === undefined ? Number.NaN : Date.parse(offlineSince) + MATE_AWAY_GRACE_MS;
+  const wokeAt = useWakeAt(Number.isFinite(graceEnds) ? [graceEnds] : []);
+  const [mountedAt] = useState(() => Date.now());
+  return Math.max(wokeAt, mountedAt);
 }

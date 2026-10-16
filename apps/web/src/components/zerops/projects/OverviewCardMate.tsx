@@ -33,7 +33,11 @@ import { mateFace } from "~/zerops/mateFace.logic";
 import { useOpenReview } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
-import { useMateLinkedInHq, useMateOfflineSince } from "~/zerops/useMenuMateReadings";
+import {
+  useMateAwayNow,
+  useMateLinkedInHq,
+  useMateOfflineSince,
+} from "~/zerops/useMenuMateReadings";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
@@ -104,6 +108,7 @@ export function OverviewCardMate({
   // Up as its menu row reads it (`mateAwake`): its container runs, or HQ holds its link open.
   const up = candidateContainerRuns(candidate) || linkedInHq;
   const offlineSince = useMateOfflineSince(projectId, candidate.key);
+  const awayNowMs = useMateAwayNow(offlineSince);
   const nowMs = useNowMs();
   const deleting = mateDeleting(candidate.project, useDeletingMates());
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : "up");
@@ -128,6 +133,7 @@ export function OverviewCardMate({
     name,
     connected: up,
     offlineSince,
+    nowMs: awayNowMs,
     timestampFormat,
     activity,
     reviewWaits,

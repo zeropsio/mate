@@ -159,6 +159,7 @@ import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryCon
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import {
+  useMateAwayNow,
   useMateOfflineSince,
   useMateLinkedInHq,
   useMatesLinkedInHq,
@@ -3301,6 +3302,7 @@ function useMateRowState<T extends RosterCandidate>({
   const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
   const offlineSince = useMateOfflineSince(candidate.project.id, candidate.key);
+  const awayNowMs = useMateAwayNow(offlineSince);
   // Waking while it comes up and arrives (`mateFaceFor`).
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming));
   // A Stop pressed in this tab reads as stopping at once, before the Mate's row says so.
@@ -3309,6 +3311,7 @@ function useMateRowState<T extends RosterCandidate>({
     name,
     connected: up,
     offlineSince,
+    nowMs: awayNowMs,
     timestampFormat,
     activity: withStopPress(activity, stopPress),
     reviewWaits,
