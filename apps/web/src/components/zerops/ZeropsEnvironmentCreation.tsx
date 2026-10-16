@@ -103,6 +103,18 @@ export function undeployedNote(
   }
 }
 
+/**
+ * Whether a set-up card has said all it had to: it set the place up, and the place runs at its
+ * address — its own line on the card says that, so the card goes by itself. A failure stays.
+ */
+export function creationSettled(input: {
+  readonly outcome: "done" | "failed" | "handed-off" | undefined;
+  readonly runs: boolean;
+  readonly addressed: boolean;
+}): boolean {
+  return input.outcome === "done" && input.runs && input.addressed;
+}
+
 /** Creating it while it runs, then what became of it: up, or not. */
 function creationTitle(name: string, outcome: ZeropsEnvironmentCreationProps["outcome"]): string {
   switch (outcome?.kind) {

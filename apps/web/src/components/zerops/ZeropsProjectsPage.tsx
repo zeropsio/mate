@@ -178,7 +178,7 @@ import {
   useMatesLinkedInHq,
 } from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
-import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
+import { creationSettled, ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import { Failure } from "../ui/failure";
 import {
   ZeropsEnvironmentCreationDialog,
@@ -266,6 +266,30 @@ interface EnvironmentCreationView {
  * Whether the project a finished creation made runs or builds something now, as the platform says
  * it: its done card then leaves what runs there to the place's own line.
  */
+/** The set-up card's place runs at its address: its line on the card says the rest. */
+function creationRunsAtAddress(
+  creation: EnvironmentCreationView,
+  deployments: ReadonlyMap<string, Shown<Deployment>>,
+  groups: ReadonlyArray<{
+    readonly environments: ReadonlyArray<{
+      readonly item?:
+        | { readonly project: { readonly id: string }; readonly routes?: ReadonlyArray<unknown> }
+        | undefined;
+    }>;
+  }>,
+): boolean {
+  const projectId = creation.outcome?.kind === "done" ? creation.outcome.projectId : undefined;
+  if (projectId === undefined) return false;
+  const item = groups
+    .flatMap((group) => group.environments)
+    .find((environment) => environment.item?.project.id === projectId)?.item;
+  return creationSettled({
+    outcome: creation.outcome?.kind,
+    runs: deployRuns(deployments.get(projectId)),
+    addressed: (item?.routes?.length ?? 0) > 0,
+  });
+}
+
 function creationDeployed(
   creation: EnvironmentCreationView,
   deployments: ReadonlyMap<string, Shown<Deployment>>,
@@ -2850,7 +2874,8 @@ export function ZeropsProjectsContent({
           )}
         </WithDraftPeople>
       )}
-      {creation === null ? null : (
+      {creation === null ||
+      creationRunsAtAddress(creation, deployments, groupTree.groups) ? null : (
         <ZeropsEnvironmentCreation
           name={creation.name}
           nowMs={creationNowMs}
