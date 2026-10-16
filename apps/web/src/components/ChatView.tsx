@@ -8765,7 +8765,8 @@ function ConversationView(props: ChatViewProps) {
                                   ? "Sending feedback"
                                   : threadDetailLoading
                                     ? "Messages loading"
-                                    : cloneSendBlockReason(cloneShown)
+                                    : // Out of reach, the send says why in the Mate's own words.
+                                      (mateAwayWords ?? cloneSendBlockReason(cloneShown))
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                               isPreparingWorktree={isPreparingWorktree}
