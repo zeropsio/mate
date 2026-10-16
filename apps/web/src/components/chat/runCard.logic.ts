@@ -35,6 +35,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { formatTimeRange, spokenUpcomingTimestamp } from "../../timestampFormat";
 import type { ChatMessage } from "../../types";
 import type { StepKind, WorkStep } from "./workSteps.logic";
+import { STOPPING_WORDS } from "../../zerops/conversationStop.logic";
 
 /** Meaningful streamed text changes structure; its bytes remain a leaf read. */
 export function messageHasText(
@@ -426,6 +427,8 @@ export type NowLine =
   | { readonly kind: "away"; readonly words: string }
   /** A usage limit cut it and it waits in its card for the reset: whose limit (`pausedHeadWords`). */
   | { readonly kind: "paused"; readonly provider: string | null }
+  /** A person's Stop is ending it, and what it started: said from the press on. */
+  | { readonly kind: "stopping" }
   /** Over: who, what it did and for how long, and what the effort came to. */
   | { readonly kind: "worked"; readonly words: string; readonly effort: string | null };
 
@@ -474,11 +477,14 @@ export function nowLineOf(input: {
   readonly speaker: string;
   /** What a finished run's effort came to (`runEffortWords`). */
   readonly effort: string | null;
+  /** A person's Stop is in force (`conversationStop`). */
+  readonly stopping?: boolean;
 }): NowLine {
   const { status, now } = input;
   if (!status.live) {
     return { kind: "worked", words: workedWords(input.speaker, status), effort: input.effort };
   }
+  if (input.stopping === true) return { kind: "stopping" };
   if (status.paused !== undefined)
     return { kind: "paused", provider: status.paused.provider ?? null };
   if (status.away !== undefined) return { kind: "away", words: status.away };
@@ -781,6 +787,8 @@ export function nowLineWords(line: NowLine): string {
       return line.words;
     case "paused":
       return limitVerb(line.provider);
+    case "stopping":
+      return STOPPING_WORDS;
     case "worked":
       return line.words;
   }

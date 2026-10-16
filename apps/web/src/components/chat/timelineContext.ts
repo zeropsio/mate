@@ -118,6 +118,8 @@ export interface TimelineRowSharedState {
 export interface TimelineRowActivityState {
   isWorking: boolean;
   isCompacting: boolean;
+  /** A person's Stop is in force (`conversationStop`): the live card and the work after it say so. */
+  isStopping?: boolean;
   isRevertingCheckpoint: boolean;
   latestTurnId: TurnId | null;
   /** Current plan step label for the working row, when the turn has a plan. */

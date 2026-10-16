@@ -413,6 +413,8 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
   backgroundWork?: { readonly stopping: boolean; readonly onStop: () => void } | null;
+  /** A person's Stop is in force (`conversationStop`): the Stop says so. */
+  stopping?: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -451,6 +453,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         hasSendableContent={props.hasSendableContent}
         preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
         backgroundWork={props.backgroundWork ?? null}
+        stopping={props.stopping ?? false}
         onPreviousPendingQuestion={props.onPreviousPendingQuestion}
         onInterrupt={props.onInterrupt}
         onImplementPlanInNewThread={props.onImplementPlanInNewThread}
@@ -657,6 +660,8 @@ export interface ChatComposerProps {
   onSend: (e?: { preventDefault: () => void }, intent?: ComposerSubmissionIntent) => void;
   /** Work the turn started that runs on after it, which the composer offers to stop. */
   backgroundWork: { readonly stopping: boolean; readonly onStop: () => void } | null;
+  /** A person's Stop is in force (`conversationStop`): the Stop says so. */
+  stopping?: boolean;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
   onRespondToApproval: (
@@ -762,6 +767,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onSend,
     onInterrupt,
     backgroundWork,
+    stopping,
     onImplementPlanInNewThread,
     onRespondToApproval,
     onSelectActivePendingUserInputOption,
@@ -4112,6 +4118,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       pendingAction={pendingPrimaryAction}
                       isRunning={phase === "running"}
                       backgroundWork={phase === "running" ? null : backgroundWork}
+                      stopping={stopping ?? false}
                       showPlanFollowUpPrompt={
                         pendingUserInputs.length === 0 && showPlanFollowUpPrompt
                       }

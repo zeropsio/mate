@@ -23,10 +23,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { projectNameInApp, readZeropsMembership } from "@t3tools/client-runtime/zerops";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
@@ -38,12 +34,11 @@ import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
 import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
 import { toastManager } from "~/components/ui/toast";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import { threadEnvironment } from "~/state/threads";
 import { hqMatesAtom } from "~/state/zerops";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useUiStateStore } from "~/uiStateStore";
 
-import { useMateCommand } from "./accountEnvironments";
+import { useStopConversation } from "./conversationStop";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { useMateActions } from "./useMateActions";
 import { useDrawnProjectAccess } from "./useVisibleProjectAccess";
@@ -218,7 +213,7 @@ export function useSidebarMateMenus(input: {
   const { muted, toggle } = useMutedMates();
   const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
-  const interrupt = useMateCommand(threadEnvironment.interruptTurn, { reportFailure: false });
+  const stopConversation = useStopConversation();
   const router = useRouter();
   const hq = useAtomValue(hqMatesAtom);
   const [shareTold] = useState(() => createSharer<Readonly<Record<string, MenuTold>>>());
@@ -264,7 +259,7 @@ export function useSidebarMateMenus(input: {
           changeFace,
           copyToClipboard,
           drawnOf,
-          interrupt,
+          stopConversation,
           markThreadUnread,
           markThreadVisited,
           muted,
@@ -313,17 +308,21 @@ export function useSidebarMateMenus(input: {
                   },
             rename: renameInPlace(candidate),
             changeFace: changeFace(candidate),
+            // The one Stop every control sends: the turn and everything it started.
             stop:
               stop === undefined
                 ? undefined
                 : () => {
-                    void interrupt(stop).then((result) => {
-                      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-                        const error = squashAtomCommandFailure(result);
+                    void stopConversation({
+                      environmentId: stop.environmentId,
+                      threadId: stop.input.threadId,
+                      turnId: activity?.turnId ?? null,
+                    }).then((answer) => {
+                      if (answer.kind === "refused") {
                         toastManager.add({
                           type: "error",
                           title: `Could not stop ${name}`,
-                          ...(error instanceof Error ? { description: error.message } : {}),
+                          description: answer.reason,
                         });
                       }
                     });
@@ -340,7 +339,7 @@ export function useSidebarMateMenus(input: {
       completedAt,
       copyToClipboard,
       drawnOf,
-      interrupt,
+      stopConversation,
       markThreadUnread,
       markThreadVisited,
       muted,

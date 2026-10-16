@@ -3191,6 +3191,7 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
     case "several":
       return <span className="run-now-verb">{severalCallsWords(line.calls)}</span>;
     case "waiting":
+    case "stopping":
       return <span className="run-now-verb">{nowLineWords(line)}</span>;
     // Out of reach: what the notice says, held, never a sign of work going on.
     case "away":
@@ -3315,7 +3316,7 @@ function NowLine({
 }) {
   const now = useEngineLiveNow(recordedNow);
   const ctx = use(TimelineRowCtx);
-  const { isCompacting } = use(TimelineRowActivityCtx);
+  const { isCompacting, isStopping } = use(TimelineRowActivityCtx);
   const effort = useRunEffortWords(outcome);
   const baseLine = nowLineOf({
     status,
@@ -3324,6 +3325,7 @@ function NowLine({
     compacting: isCompacting,
     speaker: ctx.speaker.name,
     effort,
+    stopping: isStopping === true,
   });
   const latest =
     !status.live && status.interruption !== undefined
@@ -3808,7 +3810,7 @@ function LiveSlot({
 }) {
   const now = useEngineLiveNow(recordedNow);
   const ctx = use(TimelineRowCtx);
-  const { isCompacting } = use(TimelineRowActivityCtx);
+  const { isCompacting, isStopping } = use(TimelineRowActivityCtx);
   // What the face and a screen reader say stands its dwell, as the slot's
   // items do: a call of 180 ms between two thoughts never flips them.
   const doing = nowLineOf({
@@ -3818,6 +3820,7 @@ function LiveSlot({
     compacting: isCompacting,
     speaker: ctx.speaker.name,
     effort: null,
+    stopping: isStopping === true,
   });
   const latest = useCalmLine(doing, nowLineWords(doing), !status.live);
   // "Thinking", "Writing": what the empty slot says stands its dwell too. A wait is the head's to

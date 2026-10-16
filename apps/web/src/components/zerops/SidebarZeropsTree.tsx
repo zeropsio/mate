@@ -216,6 +216,8 @@ import { Kbd } from "../ui/kbd";
 import { MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
 import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
+import { useStopPress } from "~/zerops/conversationStop";
+import { withStopPress } from "~/zerops/conversationStop.logic";
 import {
   addressesPlace,
   formatWorkingTime,
@@ -3313,12 +3315,14 @@ function useMateRowState<T extends RosterCandidate>({
   const offlineSince = useMateOfflineSince(candidate.project.id, candidate.key);
   // Waking while it comes up and arrives (`mateFaceFor`).
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming));
+  // A Stop pressed in this tab reads as stopping at once, before the Mate's row says so.
+  const stopPress = useStopPress(activity?.threadKey);
   const read = mateRowReading({
     name,
     connected: up,
     offlineSince,
     timestampFormat,
-    activity,
+    activity: withStopPress(activity, stopPress),
     reviewWaits,
     mine: hqPeople?.waitsOnViewer === true,
     pose,
