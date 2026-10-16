@@ -118,11 +118,13 @@ describe("F: creation through the hosted client", () => {
           yield* Effect.promise(() =>
             s.page.goto(`${s.web.origin}/group/${s.drivers.appIds.get("Shop")}/flow`),
           );
-          // Production starts at Put it live; a Git branch production is set up from its own form.
+          // Production starts at the project menu's Put it live; a Git branch production is set up
+          // from its own form. The page's Put it live button would survive and take the focus back.
           yield* Effect.promise(async () => {
-            const add = await s.page.waitForSelector("::-p-aria(Put it live)");
-            await add!.evaluate((element) => (element as HTMLElement).focus());
+            const more = await s.page.waitForSelector('main button[aria-label="More for Shop"]');
+            await more!.evaluate((element) => (element as HTMLElement).focus());
             await s.page.keyboard.press("Enter");
+            await s.page.locator('[role="menuitem"]::-p-text(Put it live)').click();
           });
           yield* c.text("Put Shop live");
           yield* c.click("Set up production yourself…");
