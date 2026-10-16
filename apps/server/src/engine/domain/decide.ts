@@ -2260,6 +2260,29 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       resumeIfAnswered(b, request.runId);
       return;
     }
+    case "vault-stored": {
+      // The agent stored a value it asked the person for (given in the chat, say): the ask is
+      // answered saved and the person has nothing left to give. The agent knows already: no word
+      // reaches it.
+      for (const request of Object.values(b.state.requests)) {
+        const vault = request.vault;
+        if (vault === undefined || !signal.keys.includes(vault.key)) continue;
+        const { scope } = vault;
+        const sameVault =
+          scope.kind === "shared"
+            ? signal.scope.kind === "shared"
+            : signal.scope.kind === "service" && signal.scope.hostname === scope.hostname;
+        if (!sameVault) continue;
+        b.emit({
+          _tag: "RequestAnswered",
+          runId: request.runId,
+          requestId: request.id,
+          by: b.envelope.principal,
+          summary: `Saved to ${vaultPlace(vault)}`,
+        });
+      }
+      return;
+    }
     case "turn-ended": {
       const run = runOfTurn(b.state, signal.turn);
       if (run === undefined || !isLive(run)) return;

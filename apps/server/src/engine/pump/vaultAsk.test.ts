@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { ItemBody } from "@t3tools/contracts";
 
-import { vaultAskOfCall } from "./vaultAsk.ts";
+import { vaultAskOfCall, vaultStoredOfCall } from "./vaultAsk.ts";
 
 const call = (
   resultText: string | undefined,
@@ -119,5 +119,65 @@ describe("a zcp call that asks the person for a value", () => {
     ["a note", { kind: "note", text: "hi", streaming: false, answer: false } as ItemBody],
   ])("%s: no ask", (_name, body) => {
     expect(vaultAskOfCall(body)).toBeNull();
+  });
+});
+
+const stored = (fields: Record<string, unknown>) =>
+  JSON.stringify({ process: { id: "p1", status: "FINISHED" }, ...fields });
+
+describe("a zcp call that stores values in a vault", () => {
+  it.each([
+    [
+      "stored in Shared",
+      call(stored({ stored: [{ key: "STRIPE_SECRET_KEY", value: "***" }], scope: "shared" })),
+      { keys: ["STRIPE_SECRET_KEY"], scope: { kind: "shared" } },
+    ],
+    [
+      "stored in a service's own vault",
+      call(
+        stored({
+          stored: [
+            { key: "SMTP_USER", value: "mail" },
+            { key: "SMTP_PASSWORD", value: "***", replaced: true },
+          ],
+          scope: "service",
+          serviceHostname: "api",
+        }),
+      ),
+      { keys: ["SMTP_USER", "SMTP_PASSWORD"], scope: { kind: "service", hostname: "api" } },
+    ],
+  ])("%s: the keys and the vault they went to", (_name, body, values) => {
+    expect(vaultStoredOfCall(body)).toEqual(values);
+  });
+
+  it.each([
+    [
+      "an answer that does not name its vault (a zcp before it did)",
+      call(stored({ stored: [{ key: "API_KEY", value: "***" }] })),
+    ],
+    [
+      "a service's vault without its service",
+      call(stored({ stored: [{ key: "API_KEY", value: "***" }], scope: "service" })),
+    ],
+    ["an ask of the person", call(requested({ key: "API_KEY", scope: "shared", sensitive: true }))],
+    [
+      "a call that failed",
+      call(stored({ stored: [{ key: "API_KEY", value: "***" }], scope: "shared" }), {
+        state: "failed",
+      }),
+    ],
+    [
+      "another tool",
+      call(undefined, {
+        result: {
+          toolName: "zerops_deploy",
+          resultText: stored({ stored: [{ key: "API_KEY" }], scope: "shared" }),
+        },
+      }),
+    ],
+    ["nothing stored", call(stored({ stored: [], scope: "shared" }))],
+    ["a key no vault takes", call(stored({ stored: [{ key: "API_KEY=sk" }], scope: "shared" }))],
+  ])("%s: nothing stored", (_name, body) => {
+    expect(vaultStoredOfCall(body)).toBeNull();
   });
 });

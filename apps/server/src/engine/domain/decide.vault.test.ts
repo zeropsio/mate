@@ -182,6 +182,55 @@ describe("decide: a value the agent asks the person for", () => {
   });
 });
 
+describe("decide: a value the agent stores itself", () => {
+  const stored = (
+    keys: ReadonlyArray<string>,
+    scope: (typeof stripe)["scope"] = { kind: "shared" },
+  ) => signal({ kind: "vault-stored", keys, scope });
+  const apiOwn: typeof stripe = { ...stripe, scope: { kind: "service", hostname: "api" } };
+
+  it.each([
+    ["Shared", stripe, stored(["STRIPE_SECRET_KEY"]), "Saved to Shared/STRIPE_SECRET_KEY"],
+    [
+      "a service's own vault",
+      apiOwn,
+      stored(["SUPPORT_EMAIL", "STRIPE_SECRET_KEY"], { kind: "service", hostname: "api" }),
+      "Saved to api/STRIPE_SECRET_KEY",
+    ],
+  ])(
+    "the agent storing a key it asked the person for in %s answers the ask saved, and tells the agent nothing",
+    (_name, ask, storing, summary) => {
+      const { state, log } = play([...running, asked(ask), turnEnded(1), storing]);
+      expect(of(log, "RequestAnswered")).toMatchObject([
+        { requestId: requestId(r(1), 1), summary },
+      ]);
+      expect(of(log, "RequestClosed")).toEqual([]);
+      expect(state.requests).toEqual({});
+      expect(of(log, "WakeArmed").filter((wake) => wake.kind === "vault-answer")).toEqual([]);
+      expect(of(log, "RunQueued").map((queued) => queued.runId)).toEqual([r(1)]);
+    },
+  );
+
+  it.each([
+    ["another key", stripe, stored(["STRIPE_PUBLIC_KEY"])],
+    [
+      "the key in a service's vault, asked for Shared",
+      stripe,
+      stored(["STRIPE_SECRET_KEY"], { kind: "service", hostname: "api" }),
+    ],
+    ["the key in Shared, asked for a service's vault", apiOwn, stored(["STRIPE_SECRET_KEY"])],
+    [
+      "the key in another service's vault",
+      apiOwn,
+      stored(["STRIPE_SECRET_KEY"], { kind: "service", hostname: "web" }),
+    ],
+  ])("the person's ask stays open when the agent stores %s", (_name, ask, storing) => {
+    const { state, log } = play([...running, asked(ask), turnEnded(1), storing]);
+    expect(of(log, "RequestAnswered")).toEqual([]);
+    expect(state.requests[requestId(r(1), 1)]).toMatchObject({ kind: "vault", answerable: true });
+  });
+});
+
 describe("the agent's word on a value it asked for", () => {
   it.each([
     [

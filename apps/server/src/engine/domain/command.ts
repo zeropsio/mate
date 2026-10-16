@@ -107,6 +107,12 @@ export type ProviderSignal =
       readonly state: Exclude<RequestState, "open">;
     }
   | {
+      /** The agent stored values in a vault itself: an ask for one of them is answered. */
+      readonly kind: "vault-stored";
+      readonly keys: ReadonlyArray<string>;
+      readonly scope: Extract<RequestAsk, { readonly kind: "vault" }>["scope"];
+    }
+  | {
       readonly kind: "turn-ended";
       readonly turn: TurnHandle;
       readonly outcome: TurnOutcome;
