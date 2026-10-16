@@ -192,7 +192,8 @@ export function CrewSetup(props: CrewSetupProps) {
     proposal.cancel();
     setAsked(false);
     draft.clear();
-    if (drafted) {
+    // The crew home holds the picks and the goal as last saved: it goes back to nobody, no goal.
+    if (definition !== null) {
       await saveAll(
         crewFromTemplate({
           template: "empty",
