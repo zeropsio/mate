@@ -344,7 +344,7 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
   }, [clientId, clientUserId, team.writable, write]);
 
   return (
-    <SettingsPageContainer>
+    <SettingsPageContainer width="wide">
       {view.kind === "reading" ? (
         <Loading label="Who is on the team" shape="page" />
       ) : view.kind === "unreadable" ? (

@@ -43,9 +43,9 @@ export function TeamRoleEditor({
   const current = advanced.roles.find(({ roleCode }) => roleCode === value.roleCode);
   return (
     <div className="tm-role" data-zerops-surface="team-role">
-      <span className="tm-label" id={`${id}-preset`}>
+      <h2 className="tm-block-title" id={`${id}-preset`}>
         Role
-      </span>
+      </h2>
       <div aria-labelledby={`${id}-preset`} className="tm-role-cards" role="radiogroup">
         {cards.map((card) => (
           <button

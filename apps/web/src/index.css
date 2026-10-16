@@ -7698,12 +7698,14 @@ a.ov-chip-who:focus-visible {
   text-align: center;
 }
 
+/* A person's page and the invitation start where the team's own column does, so going in and
+   back never moves the content sideways. */
 .tm-page {
   display: grid;
   gap: 44px;
   width: 100%;
   max-width: 560px;
-  margin: 0 auto;
+  padding-inline: 12px;
 }
 
 .tm-section {
@@ -7767,12 +7769,6 @@ a.ov-chip-who:focus-visible {
 
 .tm-actions > [role="alert"] {
   margin-inline-end: auto;
-}
-
-.tm-label {
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 18px;
 }
 
 .tm-role {

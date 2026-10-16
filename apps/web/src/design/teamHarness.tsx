@@ -175,18 +175,12 @@ function Page() {
 }
 
 function HarnessPage() {
-  const narrow = params.get("page") === "member" || params.get("page") === "invite";
   return (
     <div className="flex h-dvh bg-background text-foreground">
       <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }} />
       <main className="min-w-0 flex-1 overflow-y-auto">
-        <div
-          className={
-            narrow
-              ? "mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 pt-10 pb-12"
-              : "mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-10 pb-12"
-          }
-        >
+        {/* The team, a person and the invitation share one column, as the app's pages do. */}
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-10 pb-12">
           <Page />
         </div>
       </main>

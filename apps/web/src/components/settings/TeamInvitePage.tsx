@@ -293,9 +293,9 @@ export function TeamInviteView({
             </ul>
             {offered.levels.length > 1 ? (
               <div className="tm-role">
-                <span className="tm-label" id={`${id}-level`}>
+                <h2 className="tm-block-title" id={`${id}-level`}>
                   Access
-                </span>
+                </h2>
                 <div aria-labelledby={`${id}-level`} className="tm-role-cards" role="radiogroup">
                   {offered.levels.map((option) => (
                     <button
@@ -350,7 +350,7 @@ export function TeamInvitePage() {
   };
   const mayInvite = team.view.kind === "people" && team.view.invite.length > 0;
   return (
-    <SettingsPageContainer>
+    <SettingsPageContainer width="wide">
       {team.view.kind === "people" && !mayInvite ? (
         <p className="tm-empty">Only an organization owner or admin can invite.</p>
       ) : (
