@@ -959,7 +959,7 @@ const REFUSALS: Readonly<Record<CrewRefusalReason, string>> = {
   "handle-taken": "That name is taken",
   "no-free-disk": "The service has no free disk for another copy of the code",
   "database-undeclared":
-    "A crewmate on a service with a database needs `env:` or `database: shared`",
+    "A builder works on a service with a database and doesn't say whether it shares it",
   "no-mention": "Pick who it's for, or add a lead to split the work",
   "unknown-crewmate": "There is no such crewmate on the crew",
   "unknown-task": "That piece of work is gone",
@@ -988,6 +988,17 @@ export function crewRefusalSentence(reason: CrewRefusalReason, detail: string | 
   if (said === "") return `${REFUSALS[reason]}.`;
   if (reason === "invalid-definition") return `${REFUSALS[reason]}: ${sentence(said)}`;
   return sentence(said);
+}
+
+/**
+ * *Start the crew* refused, beside the press: the reason's own words (the engine's detail goes
+ * under Details); with no reason of the engine's, just that it didn't start. Pressing it again
+ * is the fix.
+ */
+export function crewStartFailedWords(reason: CrewRefusalReason | null): string {
+  if (reason === null) return "The crew didn't start.";
+  const words = REFUSALS[reason];
+  return `The crew didn't start: ${words.charAt(0).toLowerCase()}${words.slice(1)}.`;
 }
 
 /* ------------------------------------------------------------ drafts for the Mate */

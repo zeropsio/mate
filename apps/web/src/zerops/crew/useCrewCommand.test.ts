@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   CREW_FAILURE_SHOWN_MS,
   crewFailureAt,
+  crewFailureCauseOf,
   crewFailureSentence,
   crewRefusalOf,
 } from "./useCrewCommand";
@@ -47,6 +48,37 @@ describe("crewRefusalOf", () => {
       "unlanded-commits",
     );
     expect(crewRefusalOf(new Error("socket closed"))).toBeNull();
+  });
+});
+
+describe("crewFailureCauseOf", () => {
+  it.each<{ readonly name: string; readonly cause: unknown; readonly expected: unknown }>([
+    {
+      name: "a refusal keeps the engine's reason and its own words",
+      cause: new CrewCommandError({
+        reason: "database-undeclared",
+        detail: "crew.yaml: orders works on appdev, which reaches a database.",
+      }),
+      expected: {
+        reason: "database-undeclared",
+        detail: "crew.yaml: orders works on appdev, which reaches a database.",
+      },
+    },
+    {
+      name: "an authorization refusal keeps its words, with no reason of the engine's",
+      cause: new EnvironmentAuthorizationError({
+        message: "Signing in again is needed.",
+        requiredScope: "orchestration:operate",
+      }),
+      expected: { reason: null, detail: "Signing in again is needed." },
+    },
+    {
+      name: "anything else has neither",
+      cause: new Error("socket closed"),
+      expected: { reason: null, detail: null },
+    },
+  ])("$name", ({ cause, expected }) => {
+    expect(crewFailureCauseOf(cause)).toEqual(expected);
   });
 });
 

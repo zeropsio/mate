@@ -50,7 +50,7 @@ const homeOf = (definition: CrewDefinition | null): UseCrewCommand => ({
   isPending: () => false,
   error: null,
   errorAt: () => null,
-  lastRefusal: () => null,
+  lastFailure: () => null,
   clearError: () => undefined,
 });
 

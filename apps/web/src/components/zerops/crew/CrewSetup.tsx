@@ -27,11 +27,13 @@ import {
   crewBrokenCopyWord,
   crewJobSentence,
   crewLockWords,
+  crewNamingTheMate,
   crewNoDevHostWord,
   crewPortsOfferWords,
   crewProposingWord,
   crewSetUpFooter,
   crewSetUpTitle,
+  crewStartFailedWords,
   crewSuggestLine,
   crewSuggestWord,
   crewSuggestedLine,
@@ -56,9 +58,10 @@ import { useEffect, useState } from "react";
 
 import { withBrief } from "../../../zerops/crew/crewHome";
 import { useCrewSetupDraft } from "../../../zerops/crew/crewSetupDraft";
-import type { UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
+import type { CrewFailureCause, UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome } from "../../../zerops/crew/useCrewHome";
 import { useCrewProposal } from "../../../zerops/crew/useCrewProposal";
+import { FailureDetails } from "../../ui/failure";
 import { MateFace } from "../primitives";
 import { crewGoalFields, crewGoalMarkdown, crewGoalTitleOf } from "./CrewGoal.logic";
 import { CrewPress, CrewTextButton } from "./CrewParts";
@@ -105,6 +108,8 @@ export function CrewSetup(props: CrewSetupProps) {
   const proposal = useCrewProposal(props.environmentId);
   // The Mate proposed the rows, and nobody drafted others here since.
   const [asked, setAsked] = useState(false);
+  // Why the last *Start the crew* was refused; kept until it is pressed again.
+  const [startFailure, setStartFailure] = useState<CrewFailureCause | null>(null);
   const devHosts = props.devHosts.map((host) => host.host);
   const databaseHosts = props.devHosts.flatMap((host) =>
     host.database === true ? [host.host] : [],
@@ -182,20 +187,26 @@ export function CrewSetup(props: CrewSetupProps) {
 
   /**
    * Saves the goal as written and each builder on a service with a database sharing it (one
-   * added by hand, or whose service was read since), then applies.
+   * added by hand, or whose service was read since), then applies. A refusal stays beside the
+   * press until it is pressed again.
    */
   const start = async () => {
     if (definition === null) return;
+    setStartFailure(null);
     const declared = withSharedDatabase(definition, databaseHosts);
     const next = draft.goal === null ? declared : withGoal(declared);
-    if (next !== definition && !(await home.save(next, [CREW_HOME_FILE, CREW_BRIEF_FILE]))) return;
-    if ((await commands.send({ _tag: "apply" })) !== null) draft.clear();
+    const started =
+      (next === definition || (await home.save(next, [CREW_HOME_FILE, CREW_BRIEF_FILE]))) &&
+      (await commands.send({ _tag: "apply" })) !== null;
+    if (started) draft.clear();
+    else setStartFailure(commands.lastFailure() ?? { reason: null, detail: null });
   };
 
   /** Drops the draft: the goal kept here, and whoever was picked. */
   const drop = async () => {
     proposal.cancel();
     setAsked(false);
+    setStartFailure(null);
     draft.clear();
     // The crew home holds the picks and the goal as last saved: it goes back to nobody, no goal.
     if (definition !== null) {
@@ -402,7 +413,7 @@ export function CrewSetup(props: CrewSetupProps) {
 
       <CrewViewFoot>
         <CrewIssues issues={home.issues.filter((issue) => issue.code !== "file-missing")} />
-        {commands.error === null ? null : (
+        {startFailure !== null || commands.error === null ? null : (
           <p className="text-line leading-4.5 text-status-failed-text" role="alert">
             {commands.error}
           </p>
@@ -412,6 +423,16 @@ export function CrewSetup(props: CrewSetupProps) {
             {crewSetUpFooter(mate.name, writerHosts(false), writerHosts(true))}
           </span>
         ) : null}
+        {startFailure === null ? null : (
+          <div className="flex flex-col gap-1" data-crew-start-failure>
+            <p className="text-line leading-4.5 text-status-failed-text" role="alert">
+              {crewNamingTheMate(crewStartFailedWords(startFailure.reason), mate.name)}
+            </p>
+            {startFailure.detail === null || startFailure.detail.trim() === "" ? null : (
+              <FailureDetails>{startFailure.detail}</FailureDetails>
+            )}
+          </div>
+        )}
         <span className="flex items-center gap-1.5">
           <CrewPress
             disabled={startPress.disabled}

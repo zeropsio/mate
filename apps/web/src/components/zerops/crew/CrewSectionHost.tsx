@@ -184,7 +184,7 @@ export function CrewSectionHost({
         setView(null);
         return;
       }
-      if (commands.lastRefusal() !== "unlanded-commits") return;
+      if (commands.lastFailure()?.reason !== "unlanded-commits") return;
       const drop = await requestConfirmDialog(crewRemoveUnlandedConfirm(name, mateName), {
         variant: "destructive",
       });

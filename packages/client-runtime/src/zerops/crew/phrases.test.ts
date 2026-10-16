@@ -60,6 +60,7 @@ import {
   crewPossessive,
   crewReadyWords,
   crewRefusalSentence,
+  crewStartFailedWords,
   crewKeepGoingLine,
   crewResumeBudgetHint,
   crewResumeTimeHint,
@@ -619,6 +620,19 @@ describe("crewRefusalSentence", () => {
     for (const reason of CrewRefusalReason.literals) {
       expect(crewRefusalSentence(reason, null), reason).toMatch(/^[A-Z].*\.$/);
     }
+  });
+});
+
+describe("crewStartFailedWords", () => {
+  it.each([
+    [
+      "database-undeclared",
+      "The crew didn't start: a builder works on a service with a database and doesn't say whether it shares it.",
+    ],
+    ["io", "The crew didn't start: the crew's setup could not be read or saved."],
+    [null, "The crew didn't start."],
+  ] as const)("says a start refused for %s in plain words", (reason, words) => {
+    expect(crewStartFailedWords(reason)).toBe(words);
   });
 });
 
