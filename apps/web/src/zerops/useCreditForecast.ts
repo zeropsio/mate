@@ -13,6 +13,14 @@ import { useDetailDemand } from "./accountData";
 const NO_FORECAST = Atom.make(false);
 const NO_READ = Atom.make(0);
 
+/** The credit forecast as a dialog holds it: what it says, and whether its reads have answered. */
+export interface CreditForecastRead {
+  /** A new project here waits for credit (`creditForecast`). */
+  readonly forecast: boolean;
+  /** Both reads made since the dialog opened have come back: the forecast says all it will. */
+  readonly settled: boolean;
+}
+
 /**
  * Whether a new project in the organization waits for credit (`creditForecast`): its record and its
  * balance are read while the dialog asking it is open, and nothing is forecast until both reads
@@ -20,6 +28,11 @@ const NO_READ = Atom.make(0);
  * overtaken.
  */
 export function useCreditForecast(organizationId: string | null): boolean {
+  return useCreditForecastRead(organizationId).forecast;
+}
+
+/** The forecast and whether it has settled, for a dialog that opens once it has (`settled`). */
+export function useCreditForecastRead(organizationId: string | null): CreditForecastRead {
   useDetailDemand("organizationCredit", undefined, organizationId);
   useDetailDemand("organizationBalance", undefined, organizationId);
   const creditRead = useAtomValue(
@@ -32,9 +45,16 @@ export function useCreditForecast(organizationId: string | null): boolean {
   if (opened.organizationId !== organizationId) {
     setOpened({ organizationId, creditRead, balanceRead });
   }
-  return useAtomValue(
+  const forecast = useAtomValue(
     organizationId === null
       ? NO_FORECAST
       : creditForecastAtom(organizationId, opened.creditRead, opened.balanceRead),
   );
+  return {
+    forecast,
+    settled:
+      organizationId === null ||
+      forecast ||
+      (creditRead > opened.creditRead && balanceRead > opened.balanceRead),
+  };
 }
