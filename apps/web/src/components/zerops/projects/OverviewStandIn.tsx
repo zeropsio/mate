@@ -5,7 +5,7 @@
  * The reload's whole path stands in with it (the router, the chat's layout, the door, HQ's member
  * read), so a reload paints this once and then the cards in the same places.
  */
-import { useState, type Ref } from "react";
+import { useState } from "react";
 
 import { rememberedOverviewCards } from "~/zerops/overviewCardCount";
 
@@ -38,10 +38,10 @@ export function ProjectCardStandIn({
   readonly page?: boolean;
   readonly label?: string | undefined;
   readonly id?: string | undefined;
-  readonly ref?: Ref<HTMLElement> | undefined;
+  readonly ref?: ((element: HTMLElement | null) => void) | undefined;
 }) {
   return (
-    <article
+    <div
       aria-busy={label === undefined ? undefined : "true"}
       aria-label={label}
       className="ov-card gap-3"
@@ -62,7 +62,7 @@ export function ProjectCardStandIn({
         <Skeleton className="h-3 w-3/5" />
         <Skeleton className="h-3 w-2/3" />
       </div>
-    </article>
+    </div>
   );
 }
 
