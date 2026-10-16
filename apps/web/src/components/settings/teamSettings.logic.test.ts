@@ -393,12 +393,23 @@ describe("finding someone on the team", () => {
             member("b", "B", "BASIC_USER"),
           ]),
         ),
-      ).map(({ name, badge }) => [name, badge]),
+      ).map(({ name, badge, badgeHint }) => [name, badge, badgeHint]),
     ).toEqual([
-      ["A", "Owner"],
-      ["B", "Basic user"],
-      ["D", "Developer"],
-      ["G", "Guest"],
+      ["A", "Owner", null],
+      ["B", "Custom role", "Works on every project"],
+      ["D", "Developer", null],
+      ["G", "Guest", null],
+    ]);
+  });
+
+  it("A role none of Mate's four names is a custom role, what it reaches said on hover", () => {
+    expect(
+      people(
+        teamPeople(input([member("b", "B", "BASIC_USER"), member("r", "R", "READ_ONLY")])),
+      ).map(({ name, badge, badgeHint }) => [name, badge, badgeHint]),
+    ).toEqual([
+      ["B", "Custom role", "Works on every project"],
+      ["R", "Custom role", "Sees every project"],
     ]);
   });
 });

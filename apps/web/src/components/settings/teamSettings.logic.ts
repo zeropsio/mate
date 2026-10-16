@@ -92,8 +92,10 @@ export interface TeamPerson {
   readonly userId: string | undefined;
   readonly name: string;
   readonly email: string | null;
-  /** Their role as a card's badge: a preset's name, else Zerops's role in words. */
+  /** Their role as a card's badge: a preset's name, else "Custom role". */
   readonly badge: string;
+  /** A custom role's reach in words, said on hover; null for one of Mate's four. */
+  readonly badgeHint: string | null;
   /** Their membership whole, as the person page edits it. */
   readonly membership: OrgMembership;
   readonly initials: string;
@@ -137,6 +139,9 @@ export const ROLE_CODE_WORDS = {
   READ_ONLY: "Read only",
   NO_ACCESS: "No access",
 } as const;
+
+/** A Zerops role none of Mate's four presets names, as a card's badge says it. */
+export const CUSTOM_ROLE = "Custom role";
 
 /** An invitation not joined yet, as its row says it. */
 export const INVITED_LINE = "Invited · waiting for them to join";
@@ -235,8 +240,8 @@ export function teamPeople(input: TeamInput): TeamView {
       userId,
       name,
       email: member.user?.email?.trim() || null,
-      badge:
-        preset === null ? ROLE_CODE_WORDS[asOrgRole(member.roleCode)] : TEAM_ROLE_WORDS[preset],
+      badge: preset === null ? CUSTOM_ROLE : TEAM_ROLE_WORDS[preset],
+      badgeHint: preset === null ? role : null,
       membership: membershipOf(member),
       initials: zeropsInitials(name),
       avatarUrl: memberPicture({

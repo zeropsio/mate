@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PersonAvatar } from "../zerops/primitives";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import {
@@ -134,9 +135,22 @@ function PersonCard({ person }: { readonly person: TeamPerson }) {
         {person.name}
       </span>
       <span className="tm-card-badges">
-        <span className="tm-badge" data-part="role">
-          {person.badge}
-        </span>
+        {person.badgeHint === null ? (
+          <span className="tm-badge" data-part="role">
+            {person.badge}
+          </span>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="tm-badge" data-part="role">
+                  {person.badge}
+                </span>
+              }
+            />
+            <TooltipPopup>{person.badgeHint}</TooltipPopup>
+          </Tooltip>
+        )}
         {person.you ? (
           <span className="tm-badge" data-part="you" data-tone="muted">
             You
