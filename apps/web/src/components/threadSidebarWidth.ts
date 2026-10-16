@@ -1,6 +1,6 @@
 export const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
-/** 304 px: at 256 both of a Mate row's lines cut at about 25 characters (M13, D7). */
-const THREAD_SIDEBAR_DEFAULT_WIDTH = 19 * 16;
+/** 368 px until the person drags it: wide enough for a Mate row's two lines at the reference size. */
+const THREAD_SIDEBAR_DEFAULT_WIDTH = 23 * 16;
 export const THREAD_SIDEBAR_MIN_WIDTH = 13 * 16;
 export const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
 

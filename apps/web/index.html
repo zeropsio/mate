@@ -677,7 +677,7 @@
         }
         const minimum = 13 * 16;
         const maximum = Math.max(minimum, Math.floor(window.innerWidth) - 40 * 16);
-        const preferred = stored === null ? 19 * 16 : Math.max(minimum, stored);
+        const preferred = stored === null ? 23 * 16 : Math.max(minimum, stored);
         root.style.setProperty("--boot-menu-width", `${Math.min(preferred, maximum)}px`);
         // A menu its person left closed is the rail (`sidebar_state`, the cookie its toggle
         // writes), as the app opens it: its 88 px column and its mark, nothing else.
