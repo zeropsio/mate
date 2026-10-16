@@ -60,11 +60,26 @@ describe("the first minute after an invitation", () => {
     });
   });
 
-  it.each([
-    { role: "an Owner", viewer: { roleCode: "OWNER" } },
-    { role: "an Admin", viewer: { roleCode: "ADMIN" } },
-  ])("$role runs the organization and is never welcomed to it", ({ viewer }) => {
-    expect(arrivalWelcome({ organizationName: "Acme", viewer, apps: [SNAP, BEVIRO] })).toBeNull();
+  it.each([{ roleCode: "OWNER" }, { roleCode: "ADMIN" }])(
+    "Where an older HQ keeps no first sign-in, an Owner or an Admin is not welcomed: a new browser is no arrival",
+    (viewer) => {
+      expect(
+        arrivalWelcome({
+          organizationName: "Acme",
+          viewer,
+          apps: [SNAP, BEVIRO],
+          firstVisit: null,
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it("Whoever set up the organization's HQ is never welcomed to it", () => {
+    const first = firstVisit(
+      { firstSignedInAt: "2026-10-16T11:00:00Z", founder: true },
+      Date.parse("2026-10-16T11:05:00Z"),
+    );
+    expect(welcomeOwed({ welcomed: false, apps: [SNAP], firstVisit: first })).toBe(false);
   });
 
   it("an organization whose name ends in a period is welcomed with one period", () => {
