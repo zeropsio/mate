@@ -34,6 +34,17 @@ const row = (run: Partial<PutLiveRun>, over: Partial<PutLiveRowProps> = {}) =>
   );
 
 describe("Put it live in the conversation", () => {
+  it("says a step that never answered in plain words, with its source's words under Details", () => {
+    const markup = row({
+      phase: "failed",
+      failedAt: "merging",
+      failure: { words: "No answer came back.", action: "again", detail: "socket hang up" },
+    });
+    expect(markup).toContain("No answer came back.");
+    expect(markup).toContain("Details");
+    expect(markup).toContain(">Try again<");
+  });
+
   it("shows the run as one wait row whose step words replace each other in place", () => {
     const making = row({ phase: "creating" });
     expect(making).toContain('data-composer-top="live-progress"');

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   PUT_LIVE_LATER,
+  PUT_LIVE_NO_ANSWER,
   putLiveAddress,
   putLiveHoldsRelease,
   putLiveLines,
@@ -11,6 +12,7 @@ import {
   putLiveOffered,
   putLiveProgress,
   putLiveReleased,
+  putLiveSettle,
   putLiveSheet,
   putLiveStep,
   startPutLive,
@@ -355,4 +357,47 @@ describe("Put it live merges what the review would merge", () => {
       expect(putLiveMergeGate({ pull: read, mateName: "Nova", now: 0 })).toEqual(gate);
     },
   );
+});
+
+describe("a write that never answers", () => {
+  it.each([
+    ["merging", start(), "again"],
+    ["creating", start({ merged: true }), "project"],
+  ] as const)(
+    "a write that rejects while %s ends the run in its failed state, with the way on",
+    async (_phase, run, action) => {
+      const event = await putLiveSettle(
+        () => Promise.reject(new Error("socket hang up")),
+        () => ({ kind: "merged" }),
+        action,
+      );
+      const failed = putLiveStep(run, event);
+      expect(failed.phase).toBe("failed");
+      expect(failed.failure?.action).toBe(action);
+      expect(failed.failure?.words).toBe(PUT_LIVE_NO_ANSWER);
+      expect(failed.failure?.detail).toBe("socket hang up");
+    },
+  );
+
+  it("tries a merge that rejected again from the same step", async () => {
+    const failed = putLiveStep(
+      start(),
+      await putLiveSettle(
+        () => Promise.reject(new Error("socket hang up")),
+        () => ({ kind: "merged" }),
+        "again",
+      ),
+    );
+    expect(putLiveStep(failed, { kind: "again" }).phase).toBe("merging");
+  });
+
+  it("hands on what an answered write came to", async () => {
+    expect(
+      await putLiveSettle(
+        () => Promise.resolve({ ok: true }),
+        () => ({ kind: "merged" }),
+        "again",
+      ),
+    ).toEqual({ kind: "merged" });
+  });
 });

@@ -32,6 +32,7 @@ import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 
 import { ComposerAsk } from "../chat/ComposerAsk";
 import { Button } from "../ui/button";
+import { FailureDetails } from "../ui/failure";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useProductionAddresses } from "./review/reviewReads";
 import { MateFace } from "./primitives";
@@ -133,7 +134,16 @@ export function PutLiveRow(props: PutLiveRowProps) {
             <DismissButton onDismiss={props.onDismiss} />
           </>
         }
-        detail={progress.step}
+        detail={
+          run.failure?.detail === undefined ? (
+            progress.step
+          ) : (
+            <>
+              {progress.step}
+              <FailureDetails>{run.failure.detail}</FailureDetails>
+            </>
+          )
+        }
         face={<MateFace shape={face.shape} size={24} state="needs" tint={face.tint} />}
         kind="live-failed"
         label={progress.title}

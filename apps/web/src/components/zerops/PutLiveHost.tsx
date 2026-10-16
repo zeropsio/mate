@@ -22,7 +22,9 @@ import { usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
 import {
   putLiveMergeGate,
   putLiveNext,
+  putLiveSettle,
   putLiveSheet,
+  type PutLiveEvent,
   type PutLiveRun,
 } from "~/zerops/putLive.logic";
 import { useOpenReview } from "~/zerops/review";
@@ -243,12 +245,32 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     const { groupId } = run;
     const fail = (words: string, halfMade?: boolean) =>
       step(groupId, { kind: "failed", words, halfMade });
+    // Every write ends the step it was sent for: its answer moves the run on, and one that never
+    // came stops it with the way on — the step is sent afresh from there, never held as sent.
+    const send = <T,>(
+      write: () => Promise<T>,
+      settle: (answer: T) => PutLiveEvent,
+      thrown: "again" | "project",
+    ) => {
+      sent.current = key;
+      void putLiveSettle(write, settle, thrown).then((event) => {
+        if (event.kind === "failed" && sent.current === key) sent.current = null;
+        step(groupId, event);
+      });
+    };
+    const failed = (words: string, halfMade?: boolean): PutLiveEvent => ({
+      kind: "failed",
+      words,
+      halfMade,
+    });
 
     if (run.phase === "merging" && run.change !== undefined) {
-      sent.current = key;
-      void verbs
-        .merge(groupId, run.change, run.change.head)
-        .then((outcome) => (outcome.ok ? step(groupId, { kind: "merged" }) : fail(outcome.reason)));
+      const { change } = run;
+      send(
+        () => verbs.merge(groupId, change, change.head),
+        (outcome) => (outcome.ok ? { kind: "merged" } : failed(outcome.reason)),
+        "again",
+      );
       return;
     }
 
@@ -269,7 +291,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
         return;
       }
       const { group, environments } = entry;
-      void create({
+      const request = {
         group,
         environments: environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
         role: "prod",
@@ -285,15 +307,19 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
           recipe: recipe.tier,
           ...(people.userRoles.length === 0 ? {} : { userRoles: people.userRoles }),
         },
-      }).then((made) => {
-        if (made.kind === "refused") {
-          fail(made.reason ?? "Production couldn't be made.");
-          return;
-        }
-        const { outcome } = made;
-        if (outcome.ok) step(groupId, { kind: "created", productionId: outcome.projectId });
-        else fail(outcome.error, outcome.projectId !== undefined || outcome.uncertain === true);
-      });
+      } as const;
+      send(
+        () => create(request),
+        (made) => {
+          if (made.kind === "refused") return failed(made.reason ?? "Production couldn't be made.");
+          const { outcome } = made;
+          return outcome.ok
+            ? { kind: "created", productionId: outcome.projectId }
+            : failed(outcome.error, outcome.projectId !== undefined || outcome.uncertain === true);
+        },
+        // What a creation that never answered made is read from the project, never made twice.
+        "project",
+      );
       return;
     }
 
@@ -309,11 +335,14 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
       step(groupId, { kind: "live", at: Date.now() });
       return;
     }
-    void verbs.release(flow).then((outcome) => {
-      if (outcome.ok)
-        step(groupId, { kind: "released", tag: outcome.tag ?? flow.release.suggestion });
-      else fail(outcome.reason);
-    });
+    send(
+      () => verbs.release(flow),
+      (outcome) =>
+        outcome.ok
+          ? { kind: "released", tag: outcome.tag ?? flow.release.suggestion }
+          : failed(outcome.reason),
+      "again",
+    );
   }, [create, entry, flow, key, people, recipe, run, step, verbs]);
 
   return null;

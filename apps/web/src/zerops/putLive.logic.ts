@@ -15,6 +15,7 @@
  * surfaces read. The writes are the host's (`PutLiveHost`).
  */
 import { creationHandoff } from "@t3tools/client-runtime/data";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   changeMergeVerdict,
   type ChangeReviewInput,
@@ -42,6 +43,8 @@ export interface PutLiveFailure {
    * the project, where a production half made is finished.
    */
   readonly action: "again" | "see-code" | "project";
+  /** The source's own words, folded under Details. */
+  readonly detail?: string | undefined;
 }
 
 export interface PutLiveRun {
@@ -240,6 +243,9 @@ export type PutLiveEvent =
       readonly words: string;
       /** A production half made is finished from its project, never made twice from here. */
       readonly halfMade?: boolean | undefined;
+      /** The way on, where the step knows it better than its phase does. */
+      readonly action?: PutLiveFailure["action"] | undefined;
+      readonly detail?: string | undefined;
     }
   | { readonly kind: "again" };
 
@@ -270,11 +276,13 @@ export function putLiveStep(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
               words: event.words,
               // A change HQ would not merge is read, not merged again blindly.
               action:
-                run.phase === "merging"
+                event.action ??
+                (run.phase === "merging"
                   ? "see-code"
                   : event.halfMade === true
                     ? "project"
-                    : "again",
+                    : "again"),
+              ...(event.detail === undefined ? {} : { detail: event.detail }),
             },
           };
     case "again":
@@ -283,6 +291,31 @@ export function putLiveStep(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
       return run.failedAt === "releasing"
         ? { ...run, phase: "creating", tag: undefined, failedAt: undefined, failure: undefined }
         : { ...run, phase: run.failedAt, failedAt: undefined, failure: undefined };
+  }
+}
+
+export const PUT_LIVE_NO_ANSWER = "No answer came back.";
+
+/**
+ * A step's write, as the run takes it: what its answer came to — or, where the write threw and no
+ * answer came, a failure with the source's words folded and the way on its caller knows: *Try
+ * again* for a merge or a release, which nothing took; the project for a production, which may be
+ * half made and is never made twice from here. A run never stays on a step whose write is gone.
+ */
+export async function putLiveSettle<T>(
+  write: () => Promise<T>,
+  settle: (answer: T) => PutLiveEvent,
+  thrown: PutLiveFailure["action"],
+): Promise<PutLiveEvent> {
+  try {
+    return settle(await write());
+  } catch (cause) {
+    return {
+      kind: "failed",
+      words: PUT_LIVE_NO_ANSWER,
+      action: thrown,
+      detail: zeropsErrorMessage(cause),
+    };
   }
 }
 
