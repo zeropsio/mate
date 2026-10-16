@@ -9,8 +9,9 @@ const report = (line: string) => process.stdout.write(`${line}\n`);
 
 const names = ["Ada", "Bea", "Cara", "Dora"];
 // One registration pair per organization-wide family (project, service, process, app version,
-// public routing): a fixed count that never grows with the projects or Mates shown.
-const REGISTRATIONS = 10;
+// public HTTP routing, public port routing): a fixed count that never grows with the projects or
+// Mates shown.
+const REGISTRATIONS = 12;
 
 describe("H: hosted client budgets", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
