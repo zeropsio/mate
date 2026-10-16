@@ -75,9 +75,12 @@ const answerOf = (read: RecipeTierResponse | undefined, tier: RecipeTier): Answe
 
 /**
  * Where a held application detail leaves the recipe's `tier`: the same four answers the hook gives,
- * for a surface that reads the details others hold and holds none (`useNewMateGates`).
+ * for a surface that reads the details others hold and holds none (`useNewMateGates`). Only a live
+ * read answers: one paused or catching up may predate a merge elsewhere, so it is `loading` — a
+ * gate built on it stands aside, and the dialog reads fresh.
  */
 export function heldRecipeState(read: HqAppDetailRead, tier: RecipeTier): GroupRecipe["state"] {
+  if (!read.live || read.reconnecting) return "loading";
   if (read.failure !== null) return "unreadable";
   const said = read.recipes[tier];
   if (said === undefined && read.read !== "read") return "loading";
