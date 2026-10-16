@@ -1247,7 +1247,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               : signal.kind === "environment"
                 ? Effect.andThen(
                     invalidate("detail"),
-                    Effect.andThen(refreshEnvironments, refreshReleases),
+                    // What production runs before a release's end: read the other way round, a
+                    // landed release offered what it just put live again for a beat.
+                    Effect.andThen(refreshReleases, refreshEnvironments),
                   )
                 : signal.kind === "detail"
                   ? Effect.andThen(
