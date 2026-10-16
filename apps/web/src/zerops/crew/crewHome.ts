@@ -16,7 +16,10 @@ export interface CrewmateDraft {
   readonly displayName: string;
   readonly handle: string;
   readonly tint: MateTintId | undefined;
+  /** The job's first line: what the crewmate's row says (`crewJobSentence`). */
   readonly job: string;
+  /** The job past its first line: what the crewmate is told, under More. */
+  readonly howItWorks: string;
   readonly login: string;
   /** `null`: the login's default. */
   readonly model: string | null;
@@ -36,6 +39,7 @@ export const emptyCrewmateDraft = (lead: boolean): CrewmateDraft => ({
   handle: lead ? "lead" : "",
   tint: undefined,
   job: "",
+  howItWorks: "",
   login: DEFAULT_LOGIN,
   model: null,
   effort: null,
@@ -48,11 +52,19 @@ export const emptyCrewmateDraft = (lead: boolean): CrewmateDraft => ({
   afterLandRestart: false,
 });
 
+/** A job as its first line and the rest, split where the line ends (`crewmateSpecOf` joins them). */
+const jobParts = (job: string): { readonly job: string; readonly howItWorks: string } => {
+  const end = job.indexOf("\n");
+  return end === -1
+    ? { job, howItWorks: "" }
+    : { job: job.slice(0, end), howItWorks: job.slice(end + 1) };
+};
+
 export const crewmateDraftOf = (member: CrewMemberSpec): CrewmateDraft => ({
   displayName: member.displayName,
   handle: member.handle,
   tint: member.tint,
-  job: member.job,
+  ...jobParts(member.job),
   login: member.login ?? DEFAULT_LOGIN,
   model: member.model ?? null,
   effort: member.effort ?? null,
@@ -98,7 +110,8 @@ export function crewmateSpecOf(
     migrations: writes ? (before?.migrations ?? []) : [],
     ...(before?.context === undefined ? {} : { context: before.context }),
     ...(before?.rotateAfter === undefined ? {} : { rotateAfter: before.rotateAfter }),
-    job: draft.job,
+    // One file again, its first line the job: a job file ends its line, as the templates' do.
+    job: draft.job === "" && draft.howItWorks === "" ? "" : `${draft.job}\n${draft.howItWorks}`,
   };
 }
 

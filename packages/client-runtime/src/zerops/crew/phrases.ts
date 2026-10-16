@@ -887,6 +887,9 @@ export const CREW_JOB_WORDS = {
   reviews: CREW_KIND_WORDS.reader,
   reviewsLine: "Reads and checks the others' work. Changes nothing.",
   more: "More",
+  /** The job past its first line: what the crewmate is told, which its row never says. */
+  howItWorks: "How it works",
+  howItWorksLine: "How it goes about its job. It reads this with its job.",
   name: "Its name",
   face: "Its face",
   runsOn: "Runs on",

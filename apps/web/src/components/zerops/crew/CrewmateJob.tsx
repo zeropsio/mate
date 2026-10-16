@@ -325,6 +325,15 @@ function JobForm({
               </span>
             </CrewViewField>
           )}
+          {/* What it is told past its job: one place for the job, the row's words (run 2). */}
+          <CrewViewField label={CREW_JOB_WORDS.howItWorks} line={CREW_JOB_WORDS.howItWorksLine}>
+            <CrewTextArea
+              aria-label={CREW_JOB_WORDS.howItWorks}
+              lines={4}
+              onChange={(event) => set("howItWorks", event.target.value)}
+              value={draft.howItWorks}
+            />
+          </CrewViewField>
           <CrewViewField label={CREW_JOB_WORDS.runsOn} line={loginNote}>
             <div className="flex flex-col gap-2">
               <Select
