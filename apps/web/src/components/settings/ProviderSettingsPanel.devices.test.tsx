@@ -34,13 +34,22 @@ const device = (environmentId: EnvironmentId, label: string, phase: string) => (
   connection: { phase, error: null, traceId: null },
 });
 
+const SERVER_ADDRESS = "node-id-1.runtime.zcp.zerops.local";
+
 vi.mock("../../state/environments", () => ({
   useEnvironments: () => ({
     isReady: true,
-    environments: [device(OPEN, "Fen", "connected"), device(PARKED, "Ida", "available")],
+    environments: [device(OPEN, SERVER_ADDRESS, "connected"), device(PARKED, "Ida", "available")],
   }),
   usePrimaryEnvironmentId: () => null,
 }));
+
+vi.mock("../../zerops/useZeropsMates", () => ({
+  useZeropsMateDirectory: () =>
+    new Map([[OPEN, { projectId: "tea-shop", name: "Fen", project: "Tea Shop" }]]),
+}));
+
+vi.mock("../../zerops/useOpenMate", () => ({ useOpenMate: () => () => undefined }));
 
 import { ProviderSettingsPanel } from "./ProviderSettingsPanel";
 
@@ -90,5 +99,20 @@ describe("ProviderSettingsPanel — devices", () => {
     expect(
       collect(tree, (element) => element.props.children === "Only Mates the app is connected to."),
     ).not.toHaveLength(0);
+  });
+
+  it("a Mate's tab shows its name and project, never its server's address", () => {
+    const tree = renderContent();
+
+    const group = collect(
+      tree,
+      (element) => element.props.role === "group" && element.props["aria-label"] === "Devices",
+    )[0];
+    const document = markupDom(renderToStaticMarkup(group!));
+    const names = Array.from(document.querySelectorAll("button[aria-pressed]")).map(
+      (button) => button.textContent,
+    );
+    expect(names.some((name) => name?.includes("Fen") && name.includes("Tea Shop"))).toBe(true);
+    expect(document.body.textContent).not.toContain(SERVER_ADDRESS);
   });
 });

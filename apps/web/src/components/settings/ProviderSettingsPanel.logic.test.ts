@@ -1,10 +1,14 @@
 import { AuthOrchestrationOperateScope, EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { ZeropsMateIdentity } from "../../zerops/mateIdentities";
+
 import {
   buildProviderEnvironmentOptions,
   classifyProviderEnvironmentAccess,
+  namedProviderEnvironment,
   providerEditorEmpty,
+  providersWithoutOpenMate,
   resolvePrimaryOperateAccess,
   resolveRemoteOperateAccess,
   resolveSelectedProviderEnvironmentId,
@@ -280,5 +284,65 @@ describe("providerEditorEmpty: no answer about providers before the device's are
     ["read, none configured", { providersRead: true, targetInstanceMissing: false }, "none"],
   ] as const)("%s", (_case, input, empty) => {
     expect(providerEditorEmpty(input)).toBe(empty);
+  });
+});
+
+describe("Providers names Mates, never their servers", () => {
+  const fen = {
+    projectId: "shop-front",
+    name: "Fen",
+    project: "Shop Front",
+    tint: "sky",
+    shape: "round",
+    projectUrl: "https://app.zerops.io/project/shop-front",
+    connected: true,
+  } as unknown as ZeropsMateIdentity;
+  const server = { environmentId: relayId, label: "node-id-1.runtime.zcp.zerops.local" };
+
+  it.each([
+    {
+      name: "a Mate's tab carries its name and project, never its server's address",
+      at: { kind: "mate", mate: fen } as const,
+      want: { label: "Fen", project: "Shop Front" },
+    },
+    {
+      name: "a device no Mate lives in keeps its own name",
+      at: { kind: "nobody" } as const,
+      want: { label: server.label, project: undefined },
+    },
+  ])("$name", ({ at, want }) => {
+    expect(namedProviderEnvironment(server, at)).toMatchObject(want);
+  });
+
+  const directory = new Map<EnvironmentId, ZeropsMateIdentity | null>([
+    [relayId, { ...fen, connected: false }],
+    [sshId, { ...fen, projectId: "tea-shop", name: "Ada", project: "Tea Shop", connected: false }],
+    [primaryId, null],
+  ]);
+
+  it.each([
+    {
+      name: "before the devices are read, Providers says it is finding the Mates",
+      input: { isReady: false, phases: [], directory },
+      want: { kind: "finding" },
+    },
+    {
+      name: "while the app connects to a Mate, Providers waits for it rather than asking to open one",
+      input: { isReady: true, phases: ["available", "connecting"] as const, directory },
+      want: { kind: "connecting" },
+    },
+    {
+      name: "with no Mate open, Providers lists the Mates it can open, by name",
+      input: { isReady: true, phases: ["available"] as const, directory },
+      want: {
+        kind: "open",
+        mates: [
+          { projectId: "tea-shop", name: "Ada", project: "Tea Shop" },
+          { projectId: "shop-front", name: "Fen", project: "Shop Front" },
+        ],
+      },
+    },
+  ])("$name", ({ input, want }) => {
+    expect(providersWithoutOpenMate(input)).toEqual(want);
   });
 });
