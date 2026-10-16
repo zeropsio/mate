@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { makeChunkWarmer } from "./appChunks";
+import { appChunk, makeChunkWarmer } from "./appChunks";
 
 /** A page whose idle slices the test runs by hand, and surfaces whose loads it records. */
 function page() {
@@ -79,5 +79,22 @@ describe("warming the app's surfaces", () => {
     p.warmer.warm();
     await p.settle();
     expect(p.loads).toEqual(["Crew", "Review"]);
+  });
+
+  // React.lazy keeps the first promise its factory returns: a failure while warming must never be
+  // that promise. The warmer calls the loader itself; the surface's own open calls it afresh.
+  it("a surface whose code failed to load while warming loads when the person opens it", async () => {
+    let calls = 0;
+    const open = appChunk(async () => {
+      calls += 1;
+      if (calls === 1) throw new TypeError("Failed to fetch dynamically imported module");
+      return { default: "Crew" };
+    });
+    const slices: Array<() => void> = [];
+    const warmer = makeChunkWarmer({ loaders: () => [open], idle: (then) => slices.push(then) });
+    warmer.warm();
+    slices.shift()!();
+    for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+    await expect(open()).resolves.toEqual({ default: "Crew" });
   });
 });
