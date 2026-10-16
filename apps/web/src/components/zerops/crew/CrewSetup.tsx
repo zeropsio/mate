@@ -217,7 +217,7 @@ export function CrewSetup(props: CrewSetupProps) {
     : [];
   const suggestPress = crewSuggestState({
     goal,
-    busy,
+    busy: busy || props.proposeWith.kind === "reading",
     unavailable: props.proposeWith.kind === "unavailable" ? props.proposeWith.words : null,
   });
   const startPress = crewStartState({

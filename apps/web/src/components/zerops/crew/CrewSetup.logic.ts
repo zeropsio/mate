@@ -16,6 +16,7 @@ import {
 import {
   CrewProposalError,
   EnvironmentAuthorizationError,
+  type ExecutionEnvironmentCapabilities,
   type ModelSelection,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -29,6 +30,8 @@ export interface CrewSetupPress {
 /** Where a proposal runs: the agent of the Mate's chat — or why it can't, for this viewer. */
 export type CrewProposeWith =
   | { readonly kind: "ready"; readonly modelSelection: ModelSelection }
+  /** The Mate's server is not read yet: whether it proposes at all is not known. */
+  | { readonly kind: "reading" }
   | { readonly kind: "unavailable"; readonly words: string };
 
 /**
@@ -36,11 +39,17 @@ export type CrewProposeWith =
  * where this viewer may run that chat (D6, the same lock as asking the Mate).
  */
 export function crewProposeWith(input: {
+  /** The Mate's server's capabilities; `undefined` while they are not read. */
+  readonly capabilities: Pick<ExecutionEnvironmentCapabilities, "crewProposals"> | undefined;
   /** The Mate's chat's model; `undefined` while it has none. */
   readonly modelSelection: ModelSelection | undefined;
   readonly lock: CrewLock | null;
   readonly mateName: string;
 }): CrewProposeWith {
+  if (input.capabilities === undefined) return { kind: "reading" };
+  // A server from before proposals is never asked: it would not know the call.
+  if (input.capabilities.crewProposals !== true)
+    return { kind: "unavailable", words: crewSuggestUnavailableWords(input.mateName, "update") };
   if (input.modelSelection === undefined)
     return { kind: "unavailable", words: crewSuggestUnavailableWords(input.mateName, "no-chat") };
   if (input.lock !== null)

@@ -671,13 +671,14 @@ describe("the drafts a crew surface hands the Mate", () => {
 
   it("says why the Mate can't be asked to suggest a crew", () => {
     expect(
-      (["someone-else", "unrecorded", "no-chat"] as const).map((lock) =>
+      (["someone-else", "unrecorded", "no-chat", "update"] as const).map((lock) =>
         crewSuggestUnavailableWords("Fen", lock),
       ),
     ).toEqual([
       "Fen's agent was signed in by another project member\u00a0— only they can ask it.",
       "Fen's agent sign-in was not recorded by Zerops Mate, so nobody can ask it.",
       "Fen has no conversation to propose from yet.",
+      "Update Fen to get a proposal.",
     ]);
   });
 

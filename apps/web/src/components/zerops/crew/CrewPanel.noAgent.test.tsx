@@ -53,7 +53,13 @@ vi.mock("~/zerops/useAskMate", () => ({
   useAskMate: () => () => undefined,
 }));
 vi.mock("~/state/entities", () => ({
-  useServerConfigs: () => new Map([["env-fen", { cwd: "/var/www", providers: feed.providers }]]),
+  useServerConfigs: () =>
+    new Map([
+      [
+        "env-fen",
+        { cwd: "/var/www", providers: feed.providers, environment: { capabilities: {} } },
+      ],
+    ]),
   useThreadShells: () => [],
 }));
 vi.mock("../ZeropsMateEmptyState", () => ({

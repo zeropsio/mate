@@ -783,13 +783,15 @@ export function crewSetUpFooter(mateName: string, hosts: ReadonlyArray<string>):
 /**
  * Why *Let Fen suggest a crew* waits for this viewer: the Mate's agent is
  * somebody else's sign-in, or nobody's on record (D6) — or the Mate has no
- * conversation whose agent could propose.
+ * conversation whose agent could propose, or its server is too old to.
  */
 export function crewSuggestUnavailableWords(
   mateName: string,
-  lock: "someone-else" | "unrecorded" | "no-chat",
+  lock: "someone-else" | "unrecorded" | "no-chat" | "update",
 ): string {
   switch (lock) {
+    case "update":
+      return `Update ${mateName} to get a proposal.`;
     case "someone-else":
       return `${mateName}'s agent was signed in by another project member\u00a0— only they can ask it.`;
     case "unrecorded":
