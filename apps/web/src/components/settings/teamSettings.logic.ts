@@ -117,7 +117,7 @@ export type TeamView =
   | {
       readonly kind: "people";
       readonly people: ReadonlyArray<TeamPerson>;
-      /** "12 people". */
+      /** "12 people", invitations apart: "2 people · 4 invited". */
       readonly count: string;
       /** The roles the viewer may invite someone as; none, and nobody is invited here. */
       readonly invite: ReadonlyArray<TeamRole>;
@@ -278,9 +278,17 @@ export function teamPeople(input: TeamInput): TeamView {
   return {
     kind: "people",
     people,
-    count: people.length === 1 ? "1 person" : `${people.length} people`,
+    count: teamCount(people),
     invite: input.viewer === undefined ? [] : invitableTeamRoles(input.viewer.roleCode),
   };
+}
+
+/** "3 people", and invitations not joined yet apart: "2 people · 4 invited". */
+function teamCount(people: ReadonlyArray<TeamPerson>): string {
+  const invited = people.filter(({ pending }) => pending).length;
+  const joined = people.length - invited;
+  const counted = joined === 1 ? "1 person" : `${joined} people`;
+  return invited === 0 ? counted : `${counted} · ${invited} invited`;
 }
 
 /** More people than this, and the team page offers a search. */

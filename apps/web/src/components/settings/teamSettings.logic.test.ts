@@ -245,7 +245,7 @@ describe("who is on the team", () => {
 
   it("The team is counted in people", () => {
     const view = teamPeople(input(TEAM));
-    expect(view.kind === "people" && view.count).toBe("6 people");
+    expect(view.kind === "people" && view.count).toBe("5 people · 1 invited");
     const one = teamPeople(input([member("me", "Me", "OWNER")]));
     expect(one.kind === "people" && one.count).toBe("1 person");
   });

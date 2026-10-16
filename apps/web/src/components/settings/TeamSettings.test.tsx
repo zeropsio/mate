@@ -125,7 +125,7 @@ function drawn(
 describe("the organization's team", () => {
   it("Everyone in the organization is a card, never a token: their name, role and e-mail", () => {
     const page = drawn();
-    expect(page.heading).toBe("Team4 people");
+    expect(page.heading).toBe("Team3 people · 1 invited");
     expect(page.cards.map(({ name, role, email }) => [name, role, email])).toEqual([
       ["Ada Owner", "Owner", "ada@example.com"],
       ["Al Admin", "Admin", "al@example.com"],
