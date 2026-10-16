@@ -698,7 +698,7 @@ const FILES: UseCrewCommand = {
   isPending: () => false,
   error: null,
   errorAt: () => null,
-  lastRefusal: () => null,
+  lastFailure: () => null,
   clearError: () => undefined,
 };
 
@@ -781,7 +781,7 @@ function Tab() {
             applied={false}
             commands={FILES}
             crewmates={[]}
-            devHosts={["appdev"]}
+            devHosts={[{ host: "appdev", database: false }]}
             hosts={[]}
             environmentId={ENVIRONMENT}
             mate={FEN}

@@ -153,6 +153,7 @@ const withStructure = <A, E, B = never>(
         ask("recent"),
         Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
       ),
+      readSince: () => Effect.die("HQ's door is outside this fixture"),
       exists: (projectId) =>
         Effect.flatMap(Ref.get(down), (isDown) =>
           isDown

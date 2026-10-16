@@ -27,21 +27,24 @@ import {
   crewBrokenCopyWord,
   crewJobSentence,
   crewLockWords,
+  crewNamingTheMate,
   crewNoDevHostWord,
   crewPortsOfferWords,
   crewProposingWord,
   crewSetUpFooter,
   crewSetUpTitle,
+  crewStartFailedWords,
   crewSuggestLine,
   crewSuggestWord,
   crewSuggestedLine,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewHost, Crewmate, EnvironmentId } from "@t3tools/contracts";
+import type { CrewDevHost, CrewHost, Crewmate, EnvironmentId } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   CREW_BRIEF_FILE,
   CREW_HOME_FILE,
   renderCrewHome,
+  withSharedDatabase,
   type CrewDefinition,
   type CrewMemberSpec,
 } from "@t3tools/shared/crewHome";
@@ -55,9 +58,10 @@ import { useEffect, useState } from "react";
 
 import { withBrief } from "../../../zerops/crew/crewHome";
 import { useCrewSetupDraft } from "../../../zerops/crew/crewSetupDraft";
-import type { UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
+import type { CrewFailureCause, UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome } from "../../../zerops/crew/useCrewHome";
 import { useCrewProposal } from "../../../zerops/crew/useCrewProposal";
+import { FailureDetails } from "../../ui/failure";
 import { MateFace } from "../primitives";
 import { crewGoalFields, crewGoalMarkdown, crewGoalTitleOf } from "./CrewGoal.logic";
 import { CrewPress, CrewTextButton } from "./CrewParts";
@@ -78,8 +82,8 @@ export interface CrewSetupProps {
   readonly crewmates: ReadonlyArray<Crewmate>;
   /** The standing crew's dev services, for the offer of an address per builder. */
   readonly hosts: ReadonlyArray<CrewHost>;
-  /** Where a builder's copy can live. */
-  readonly devHosts: ReadonlyArray<string>;
+  /** Where a builder's copy can live, and whether each reaches a database (a builder there shares it). */
+  readonly devHosts: ReadonlyArray<CrewDevHost>;
   readonly mate: {
     readonly name: string;
     readonly tint: MateTintId | undefined;
@@ -104,6 +108,13 @@ export function CrewSetup(props: CrewSetupProps) {
   const proposal = useCrewProposal(props.environmentId);
   // The Mate proposed the rows, and nobody drafted others here since.
   const [asked, setAsked] = useState(false);
+  // Why the last *Start the crew* was refused: kept until it is pressed again, the goal is
+  // edited, or the draft is dropped — never on a timer.
+  const [startFailure, setStartFailure] = useState<CrewFailureCause | null>(null);
+  const devHosts = props.devHosts.map((host) => host.host);
+  const databaseHosts = props.devHosts.flatMap((host) =>
+    host.database === true ? [host.host] : [],
+  );
   const goal = draft.goal ?? (definition === null ? "" : crewGoalFields(definition.brief).body);
   /**
    * Who is on the crew, as its home reads: nobody while there is no crew home
@@ -149,12 +160,11 @@ export function CrewSetup(props: CrewSetupProps) {
     );
 
   const mateTint = mate.tint === undefined ? {} : { mateTint: mate.tint };
+  const hostsOf = { devHosts, databaseHosts };
 
   const startFrom = async (template: CrewTemplateId, then?: () => void) => {
     setAsked(false);
-    const next = withGoal(
-      crewFromTemplate({ template, crew: "crew", devHosts: props.devHosts, ...mateTint }),
-    );
+    const next = withGoal(crewFromTemplate({ template, crew: "crew", ...hostsOf, ...mateTint }));
     if (await saveAll(next)) then?.();
   };
 
@@ -166,7 +176,7 @@ export function CrewSetup(props: CrewSetupProps) {
     });
     if (proposed === null) return;
     const next = withGoal(
-      crewFromProposal({ proposal: proposed, crew: "crew", devHosts: props.devHosts, ...mateTint }),
+      crewFromProposal({ proposal: proposed, crew: "crew", ...hostsOf, ...mateTint }),
     );
     if (await saveAll(next)) setAsked(true);
   };
@@ -176,38 +186,48 @@ export function CrewSetup(props: CrewSetupProps) {
     await home.save(withGoal(definition), [CREW_HOME_FILE, CREW_BRIEF_FILE]);
   };
 
+  /**
+   * Saves the goal as written and each builder on a service with a database sharing it (one
+   * added by hand, or whose service was read since), then applies. A refusal stays beside the
+   * press until it is pressed again.
+   */
   const start = async () => {
     if (definition === null) return;
-    if (
-      draft.goal !== null &&
-      !(await home.save(withGoal(definition), [CREW_HOME_FILE, CREW_BRIEF_FILE]))
-    ) {
-      return;
-    }
-    if ((await commands.send({ _tag: "apply" })) !== null) draft.clear();
+    setStartFailure(null);
+    const declared = withSharedDatabase(definition, databaseHosts);
+    const next = draft.goal === null ? declared : withGoal(declared);
+    const started =
+      (next === definition || (await home.save(next, [CREW_HOME_FILE, CREW_BRIEF_FILE]))) &&
+      (await commands.send({ _tag: "apply" })) !== null;
+    if (started) draft.clear();
+    else setStartFailure(commands.lastFailure() ?? { reason: null, detail: null });
   };
 
   /** Drops the draft: the goal kept here, and whoever was picked. */
   const drop = async () => {
     proposal.cancel();
     setAsked(false);
+    setStartFailure(null);
     draft.clear();
     // The crew home holds the picks and the goal as last saved: it goes back to nobody, no goal.
     if (definition !== null) {
-      await saveAll(
-        crewFromTemplate({
-          template: "empty",
-          crew: "crew",
-          devHosts: props.devHosts,
-          ...mateTint,
-        }),
-      );
+      await saveAll(crewFromTemplate({ template: "empty", crew: "crew", ...hostsOf, ...mateTint }));
     }
   };
 
   const startLock = members === null ? null : (props.startLock?.(members) ?? null);
   const writers = members === null ? [] : members.filter((member) => member.kind === "writer");
   const noDevHost = writers.length > 0 && props.devHosts.length === 0;
+  const writerHosts = (shared: boolean) => [
+    ...new Set(
+      writers.flatMap((member) =>
+        member.host === undefined ||
+        (shared && (member.database !== "shared" || !databaseHosts.includes(member.host)))
+          ? []
+          : [member.host],
+      ),
+    ),
+  ];
   const portless = props.applied
     ? props.hosts.filter(
         (host) =>
@@ -260,7 +280,11 @@ export function CrewSetup(props: CrewSetupProps) {
           disabled={props.applied}
           {...(drafted ? {} : { lines: 4 as const })}
           onBlur={() => void saveGoal()}
-          onChange={(event) => draft.setGoal(event.target.value)}
+          onChange={(event) => {
+            // An edit answers a refused start: its words go until Start is pressed again.
+            setStartFailure(null);
+            draft.setGoal(event.target.value);
+          }}
           placeholder={CREW_SETUP_WORDS.goalPlaceholder}
           value={goal}
         />
@@ -394,20 +418,26 @@ export function CrewSetup(props: CrewSetupProps) {
 
       <CrewViewFoot>
         <CrewIssues issues={home.issues.filter((issue) => issue.code !== "file-missing")} />
-        {commands.error === null ? null : (
+        {startFailure !== null || commands.error === null ? null : (
           <p className="text-line leading-4.5 text-status-failed-text" role="alert">
             {commands.error}
           </p>
         )}
         {drafted ? (
           <span className="text-line leading-4.5 text-muted-foreground">
-            {crewSetUpFooter(mate.name, [
-              ...new Set(
-                writers.flatMap((member) => (member.host === undefined ? [] : [member.host])),
-              ),
-            ])}
+            {crewSetUpFooter(mate.name, writerHosts(false), writerHosts(true))}
           </span>
         ) : null}
+        {startFailure === null ? null : (
+          <div className="flex flex-col gap-1" data-crew-start-failure>
+            <p className="text-line leading-4.5 text-status-failed-text" role="alert">
+              {crewNamingTheMate(crewStartFailedWords(startFailure.reason), mate.name)}
+            </p>
+            {startFailure.detail === null || startFailure.detail.trim() === "" ? null : (
+              <FailureDetails>{startFailure.detail}</FailureDetails>
+            )}
+          </div>
+        )}
         <span className="flex items-center gap-1.5">
           <CrewPress
             disabled={startPress.disabled}

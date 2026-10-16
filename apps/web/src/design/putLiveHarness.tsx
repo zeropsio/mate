@@ -43,9 +43,12 @@ const ADDRESS = {
 };
 
 const ROWS: ReadonlyArray<{ readonly name: string; readonly run: PutLiveRun }> = [
-  { name: "Merging", run: RUN },
-  { name: "Making production", run: { ...RUN, phase: "creating" } },
-  { name: "Releasing", run: { ...RUN, phase: "releasing", tag: "v0.1.0" } },
+  { name: "Merging", run: { ...RUN, stepAt: NOW - 4_000 } },
+  { name: "Making production", run: { ...RUN, phase: "creating", stepAt: NOW - 133_000 } },
+  {
+    name: "Releasing",
+    run: { ...RUN, phase: "releasing", tag: "v0.1.0", stepAt: NOW - 40_000 },
+  },
   { name: "Live", run: { ...RUN, phase: "live", tag: "v0.1.0", liveAt: NOW } },
   {
     name: "Stopped",
@@ -54,6 +57,20 @@ const ROWS: ReadonlyArray<{ readonly name: string; readonly run: PutLiveRun }> =
       phase: "failed",
       failedAt: "creating",
       failure: { words: "Zerops needs more credit to make production.", action: "again" },
+    },
+  },
+  {
+    name: "Services never showed ready",
+    run: {
+      ...RUN,
+      phase: "failed",
+      failedAt: "creating",
+      productionId: "p-prod",
+      failure: {
+        words: "Zerops hasn't shown the new services ready after 10 minutes.",
+        action: "again",
+        alsoProject: true,
+      },
     },
   },
 ];

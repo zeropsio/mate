@@ -19,6 +19,8 @@ import {
   CREW_LOCK_ACTION,
   CREW_SET_UP_LINE,
   CREW_SET_UP_WORD,
+  CREW_SETUP_CONTINUE_WORD,
+  crewDraftKeptLine,
   crewGiveCrewLine,
   crewGiveCrewTitle,
   crewLockWords,
@@ -53,10 +55,13 @@ import { CrewWaiting } from "./CrewWaiting";
 export function CrewSectionEmpty({
   mate,
   lock,
+  draft = false,
   onSetUp,
   onSignIn,
 }: {
   readonly mate: { readonly name: string; readonly tint: MateTintId; readonly shape?: MateShapeId };
+  /** A setup draft is kept: the press continues it, and says so. */
+  readonly draft?: boolean;
   /** Setting a crew up is not this viewer's: why, and the one way out, in the press's place. */
   readonly lock: CrewLock | null;
   readonly onSetUp: () => void;
@@ -77,8 +82,18 @@ export function CrewSectionEmpty({
         {crewGiveCrewLine(mate.name)}
       </p>
       {lock === null ? (
-        <div className="mt-5">
-          <CrewPress label={CREW_SET_UP_WORD} line={CREW_SET_UP_LINE} onPress={onSetUp} size="md" />
+        <div className="mt-5 flex flex-col items-center gap-3">
+          {draft ? (
+            <p className="text-line leading-4.5 text-muted-foreground" data-crew-draft-kept>
+              {crewDraftKeptLine(mate.name)}
+            </p>
+          ) : null}
+          <CrewPress
+            label={draft ? CREW_SETUP_CONTINUE_WORD : CREW_SET_UP_WORD}
+            line={draft ? null : CREW_SET_UP_LINE}
+            onPress={onSetUp}
+            size="md"
+          />
         </div>
       ) : (
         // Not the viewer's to set up: why, as the state's own line, and the one way out as its press.

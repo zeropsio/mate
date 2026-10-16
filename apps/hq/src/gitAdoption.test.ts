@@ -142,6 +142,7 @@ const fixture = (seed = false) =>
       forWrite: view,
       view: Effect.map(view, (v) => ({ ...v, freshness: "cached" as const })),
       recent: Effect.map(view, (v) => ({ ...v, freshness: "cached" as const })),
+      readSince: () => Effect.die("HQ's door is outside this fixture"),
       exists: () => Effect.succeed(true),
       answeredAt: Effect.succeed(0),
       views: Stream.empty,

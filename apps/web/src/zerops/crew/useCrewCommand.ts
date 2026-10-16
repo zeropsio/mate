@@ -50,6 +50,21 @@ export function crewRefusalOf(cause: unknown): CrewRefusalReason | null {
   return isCrewCommandError(cause) ? cause.reason : null;
 }
 
+/** A failed request as a surface keeps it: the engine's reason, and the source's own words. */
+export interface CrewFailureCause {
+  readonly reason: CrewRefusalReason | null;
+  readonly detail: string | null;
+}
+
+export function crewFailureCauseOf(cause: unknown): CrewFailureCause {
+  const detail = isCrewCommandError(cause)
+    ? cause.detail
+    : isEnvironmentAuthorizationError(cause)
+      ? cause.message
+      : null;
+  return { reason: crewRefusalOf(cause), detail };
+}
+
 /** How long a refused press says so. */
 export const CREW_FAILURE_SHOWN_MS = 10_000;
 
@@ -85,8 +100,11 @@ export interface UseCrewCommand {
   readonly error: string | null;
   /** The last failure's sentence at `origin` (`crewFailureAt`); `null` for an unplaced one's line. */
   readonly errorAt: (origin: string | null) => string | null;
-  /** The last request's refusal reason, read after its press settles (e.g. `unlanded-commits`). */
-  readonly lastRefusal: () => CrewRefusalReason | null;
+  /**
+   * The last request's failure, read after its press settles: its refusal reason (e.g.
+   * `unlanded-commits`) and the source's words; `null` when it did not fail.
+   */
+  readonly lastFailure: () => CrewFailureCause | null;
   readonly clearError: () => void;
 }
 
@@ -96,7 +114,7 @@ export function useCrewCommand(environmentId: EnvironmentId | null): UseCrewComm
   const files = useAtomValue(environmentId === null ? UNREAD_FILES : crewFilesAtom(environmentId));
   const [inFlight, setInFlight] = useState<ReadonlyMap<RequestKey, number>>(new Map());
   const [failure, setFailure] = useState<CrewFailure | null>(null);
-  const refusal = useRef<CrewRefusalReason | null>(null);
+  const lastCause = useRef<CrewFailureCause | null>(null);
   const runCommand = useAtomCommand(crewCommands.command, "zerops crew command");
   const runFilesGet = useAtomCommand(crewCommands.filesGet, "zerops crew files get");
   const runFilesPut = useAtomCommand(crewCommands.filesPut, "zerops crew files put");
@@ -116,14 +134,14 @@ export function useCrewCommand(environmentId: EnvironmentId | null): UseCrewComm
           return next;
         });
       setFailure(null);
-      refusal.current = null;
+      lastCause.current = null;
       count(1);
       const result = await run();
       count(-1);
       if (result._tag === "Success") return { ok: true, value: result.value };
       if (!isAtomCommandInterrupted(result)) {
         const cause = squashAtomCommandFailure(result);
-        refusal.current = crewRefusalOf(cause);
+        lastCause.current = crewFailureCauseOf(cause);
         setFailure({ sentence: crewFailureSentence(cause), origin });
       }
       return { ok: false };
@@ -186,7 +204,7 @@ export function useCrewCommand(environmentId: EnvironmentId | null): UseCrewComm
     isPending: (key) => inFlight.has(key),
     error: shownFailure?.sentence ?? null,
     errorAt: (origin) => crewFailureAt(shownFailure, origin),
-    lastRefusal: () => refusal.current,
+    lastFailure: () => lastCause.current,
     clearError: () => setFailure(null),
   };
 }

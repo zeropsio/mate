@@ -25,6 +25,7 @@ import {
   type RecipeRuntime,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
+  ZeropsApiError,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -57,6 +58,8 @@ export interface EnvironmentCreationRequest {
   /** The steps it will take, once planned. */
   readonly onPlanned?: (steps: ReadonlyArray<EnvironmentCreationStep>) => void;
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
+  /** The platform took the environment's project: it exists from here, while the rest goes on. */
+  readonly onProjectAccepted?: (projectId: string) => void;
   /**
    * The creation an Add a Mate runs this press for (`creationRunId`): its birth intent and the
    * write that makes its project are recorded under ids named from it, where its view reads them
@@ -165,23 +168,44 @@ const SERVICES_REFUSED = "Zerops refused to say how the environment's services s
 const ACCOUNT_CLOSED = "This account session has ended.";
 
 /**
+ * How long a creation waits for its new services to settle: the sheet promises an environment
+ * "ready in a few minutes", and an import of managed services takes a few; past this the listing
+ * is not catching up, and the wait stops rather than spin.
+ */
+export const SERVICES_SETTLE_PATIENCE_MS = 10 * 60_000;
+
+/**
  * Resolves with a project's services once every one has settled (`servicesSettled`), as the
- * account's services listing holds them — read as they change, never on a clock; rejects where
- * that listing is refused, and where the account it waits in closes.
+ * account's services listing holds them — read as they change, never polled; rejects where that
+ * listing is refused, where the account it waits in closes, and once `patienceMs` passed without
+ * a settle. That last stop is uncertain: the services may have come up where the listing never
+ * showed them, so nothing that made them is asked again.
  */
 export function untilServicesSettled(
   registry: AtomRegistry.AtomRegistry,
   /** The project's services as the account's store holds them (`projectServicesAtom`). */
   listed: Atom.Atom<ProjectServices>,
+  patienceMs: number = SERVICES_SETTLE_PATIENCE_MS,
 ): Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>> {
   return new Promise((resolve, reject) => {
     let ended = false;
     let cancel: (() => void) | undefined;
     const finish = () => {
       ended = true;
+      clearTimeout(timer);
       cancel?.();
       leave();
     };
+    const timer = setTimeout(() => {
+      if (ended) return;
+      reject(
+        new ZeropsApiError(
+          `Zerops hasn't shown the new services ready after ${Math.round(patienceMs / 60_000)} minutes.`,
+          "uncertain",
+        ),
+      );
+      finish();
+    }, patienceMs);
     const leave = onAccountLifetimeClose(() => {
       if (ended) return;
       reject(new Error(ACCOUNT_CLOSED));
@@ -333,6 +357,7 @@ export function useEnvironmentCreation(): (
         // the group catches up with it.
         onProjectAccepted: async (projectId) => {
           if (!isCurrent()) return;
+          request.onProjectAccepted?.(projectId);
           beginPress({
             projectId,
             organizationId: organization.id,

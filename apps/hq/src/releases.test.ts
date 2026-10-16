@@ -170,6 +170,7 @@ const withReleases = <A, E>(
               freshness: "recent" as const,
             })),
             recent: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
+            readSince: () => Effect.die("HQ's door is outside this fixture"),
             exists: () => Effect.succeed(true),
             answeredAt: Effect.succeed(undefined),
             views: Stream.never,

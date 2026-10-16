@@ -508,6 +508,40 @@ export interface CrewTopology {
   readonly databaseHosts: ReadonlyArray<string>;
 }
 
+/**
+ * A writer on a service with a database that says neither how it reaches its own (`env:`) nor
+ * that it shares the service's (`database: shared`): Apply refuses it.
+ */
+const undeclaredOnDatabase = (
+  member: CrewMemberSpec,
+  databaseHosts: ReadonlyArray<string>,
+): boolean =>
+  member.kind === "writer" &&
+  member.host !== undefined &&
+  databaseHosts.includes(member.host) &&
+  member.database !== "shared" &&
+  Object.keys(member.env).length === 0;
+
+/**
+ * The definition with each writer `validateCrewTopology` would refuse for its database sharing
+ * that service's database: what the setup writes for a builder, never a service of its own (an
+ * own env per builder adds services and costs). The same definition when nothing needs it.
+ */
+export const withSharedDatabase = (
+  definition: CrewDefinition,
+  databaseHosts: ReadonlyArray<string>,
+): CrewDefinition =>
+  definition.members.some((member) => undeclaredOnDatabase(member, databaseHosts))
+    ? {
+        ...definition,
+        members: definition.members.map((member) =>
+          undeclaredOnDatabase(member, databaseHosts)
+            ? { ...member, database: "shared" as const }
+            : member,
+        ),
+      }
+    : definition;
+
 /** The checks that need the project's services (PRD §5.1, CONCEPT §3.3 *The shared database*). */
 export const validateCrewTopology = (
   definition: CrewDefinition,
@@ -525,8 +559,7 @@ export const validateCrewTopology = (
         },
       ];
     }
-    const declared = member.database === "shared" || Object.keys(member.env).length > 0;
-    if (topology.databaseHosts.includes(member.host) && !declared) {
+    if (undeclaredOnDatabase(member, topology.databaseHosts)) {
       return [
         {
           code: "database-undeclared",
