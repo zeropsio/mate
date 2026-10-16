@@ -162,6 +162,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     imagePaths = [],
     cleanupPaths = [],
     modelSelection,
+    withoutMcp = false,
   }: {
     operation:
       | "generateCommitMessage"
@@ -175,6 +176,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     imagePaths?: ReadonlyArray<string>;
     cleanupPaths?: ReadonlyArray<string>;
     modelSelection: ModelSelection;
+    /** Starts with no MCP servers, whatever the user's config names (zcp's among them). */
+    withoutMcp?: boolean;
   }): Effect.fn.Return<S["Type"], TextGenerationError, S["DecodingServices"]> {
     const schemaJson = yield* encodeJsonForOperation(
       operation,
@@ -206,6 +209,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
           "--skip-git-repo-check",
           "-s",
           "read-only",
+          ...(withoutMcp ? ["--config", "mcp_servers={}"] : []),
           "--model",
           model,
           "--config",
@@ -425,12 +429,14 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
   const generateCrewProposal: TextGeneration.TextGeneration["Service"]["generateCrewProposal"] =
     Effect.fn("CodexTextGeneration.generateCrewProposal")(function* (input) {
       const { prompt, outputSchema } = buildCrewProposalPrompt({ goal: input.goal });
+      // A proposal changes nothing: the read-only sandbox, and no MCP tools at all.
       return yield* runCodexJson({
         operation: "generateCrewProposal",
         cwd: input.cwd,
         prompt,
         outputSchemaJson: outputSchema,
         modelSelection: input.modelSelection,
+        withoutMcp: true,
       });
     });
 

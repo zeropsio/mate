@@ -1,6 +1,8 @@
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import { ChildProcessSpawner } from "effect/process";
@@ -37,12 +39,41 @@ const GROK_TIMEOUT_MS = 180_000;
 
 const isTextGenerationError = Schema.is(TextGenerationError);
 
+/** Grok's user-scope configuration: its MCP servers, zcp's among them (`[mcp_servers.zerops]`). */
+const GROK_CONFIG = "config.toml";
+
+/**
+ * A home of the helper's own for a run that must change nothing (a crew proposal): `~/.grok`
+ * there links every entry of the user's — the sign-in stays theirs, nothing is copied — except
+ * `config.toml`, which is empty, so Grok starts with no MCP servers. Gone with its scope; the
+ * links go, never what they point at.
+ */
+export const isolatedGrokHome = Effect.fn("isolatedGrokHome")(function* (
+  userHome: string | undefined,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-grok-text-home-" });
+  const grok = path.join(home, ".grok");
+  yield* fs.makeDirectory(grok, { recursive: true });
+  if (userHome !== undefined) {
+    const own = path.join(userHome, ".grok");
+    for (const entry of yield* fs.readDirectory(own).pipe(Effect.orElseSucceed(() => []))) {
+      if (entry !== GROK_CONFIG) yield* fs.symlink(path.join(own, entry), path.join(grok, entry));
+    }
+  }
+  yield* fs.writeFileString(path.join(grok, GROK_CONFIG), "");
+  return home;
+});
+
 export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(function* (
   grokSettings: GrokSettings,
   environment: NodeJS.ProcessEnv = process.env,
 ) {
   const crypto = yield* Crypto.Crypto;
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const pathService = yield* Path.Path;
 
   const runGrokJson = <S extends Schema.Top>({
     operation,
@@ -50,6 +81,7 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
     prompt,
     outputSchemaJson,
     modelSelection,
+    isolated = false,
   }: {
     operation:
       | "generateCommitMessage"
@@ -61,17 +93,43 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
     prompt: string;
     outputSchemaJson: S;
     modelSelection: ModelSelection;
+    /**
+     * Changes nothing whatever the user's config holds: no MCP servers (`isolatedGrokHome`), and
+     * every edit or command asks permission, which is denied.
+     */
+    isolated?: boolean;
   }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
     Effect.gen(function* () {
       const resolvedModel = resolveGrokAcpBaseModelId(modelSelection.model);
       const outputRef = yield* Ref.make("");
+      const home = isolated
+        ? yield* isolatedGrokHome(environment.HOME).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, pathService),
+            Effect.mapError(
+              (cause) =>
+                new TextGenerationError({
+                  operation,
+                  detail: "Could not prepare a Grok home for text generation.",
+                  cause,
+                }),
+            ),
+          )
+        : undefined;
       const runtime = yield* makeGrokAcpRuntime({
         grokSettings,
-        environment,
+        environment: home === undefined ? environment : { ...environment, HOME: home },
         childProcessSpawner: commandSpawner,
         cwd,
         clientInfo: { name: "t3-code-git-text", version: "0.0.0" },
+        ...(isolated ? { runtimeMode: "approval-required" as const } : {}),
       }).pipe(Effect.provideService(Crypto.Crypto, crypto));
+      if (isolated) {
+        // Every permission is denied: nothing the helper asks to do happens.
+        yield* runtime.handleRequestPermission(() =>
+          Effect.succeed({ outcome: { outcome: "cancelled" as const } }),
+        );
+      }
 
       yield* runtime.handleSessionUpdate((notification) => {
         const update = notification.update;
@@ -274,6 +332,7 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
         prompt,
         outputSchemaJson: outputSchema,
         modelSelection: input.modelSelection,
+        isolated: true,
       });
     });
 

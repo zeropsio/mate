@@ -47,6 +47,7 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
     prompt,
     outputSchemaJson,
     modelSelection,
+    strictAsk = false,
   }: {
     operation:
       | "generateCommitMessage"
@@ -58,6 +59,8 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
     prompt: string;
     outputSchemaJson: S;
     modelSelection: ModelSelection;
+    /** Runs only in ask mode, failing where it cannot be set. */
+    strictAsk?: boolean;
   }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
     Effect.gen(function* () {
       const outputRef = yield* Ref.make("");
@@ -83,7 +86,20 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
 
       const promptResult = yield* Effect.gen(function* () {
         yield* runtime.start();
-        yield* Effect.ignore(runtime.setMode("ask"));
+        // Ask mode reads and answers; it edits nothing. A proposal must change nothing, so it
+        // never runs in another mode: where ask mode cannot be set, it fails instead.
+        if (strictAsk) {
+          yield* runtime.setMode("ask").pipe(
+            Effect.mapError(
+              (cause) =>
+                new TextGenerationError({
+                  operation,
+                  detail: "Cursor could not switch to ask mode for text generation.",
+                  cause,
+                }),
+            ),
+          );
+        } else yield* Effect.ignore(runtime.setMode("ask"));
         yield* applyCursorAcpModelSelection({
           runtime,
           model: modelSelection.model,
@@ -269,6 +285,7 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
         prompt,
         outputSchemaJson: outputSchema,
         modelSelection: input.modelSelection,
+        strictAsk: true,
       });
     });
 

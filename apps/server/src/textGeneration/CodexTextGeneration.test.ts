@@ -261,6 +261,27 @@ it.layer(CodexTextGenerationTestLayer)("CodexTextGeneration", (it) => {
     ),
   );
 
+  it.effect("proposes a crew in the read-only sandbox with no MCP servers", () =>
+    withFakeCodexEnv(
+      {
+        output: JSON.stringify({
+          lead: { name: "Lead", part: "Plans it." },
+          builders: [{ name: "Checkout", part: "Builds it." }],
+        }),
+        requireArg: "-s read-only --config mcp_servers={}",
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const generated = yield* textGeneration.generateCrewProposal({
+            cwd: process.cwd(),
+            goal: "A tea shop that ships weekly.",
+            modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+          });
+          expect(generated.builders).toEqual([{ name: "Checkout", part: "Builds it." }]);
+        }),
+    ),
+  );
+
   it.effect("uses T3CODE_CODEX_LAUNCH_ARGS for codex exec over settings", () =>
     withFakeCodexEnv(
       {
