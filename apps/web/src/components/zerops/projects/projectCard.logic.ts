@@ -603,7 +603,13 @@ export interface PanelAddresses {
   /** Several services serving: a door each, by its service, at its own domain where it has one. */
   readonly doors: ReadonlyArray<GroupFlowAddress>;
   readonly pending: ReadonlyArray<PanelPendingDomain>;
-  /** Production read with no domain of its own: the popover's "Put it on your domain" (`lacksOwnDomain`). */
+  /**
+   * The card's door into the addresses sheet: only once the place runs something and its addresses
+   * are read and it has one — before, there is nothing to put on a domain, and a door read early
+   * would change its words once they are (the run: "Manage addresses", then "Put it on your domain").
+   */
+  readonly door: boolean;
+  /** That door is production's "Put it on your domain": it has none of its own (`lacksOwnDomain`). */
   readonly offerDomain: boolean;
 }
 
@@ -619,6 +625,8 @@ export function panelAddresses(input: {
   readonly listed: ReadonlyArray<GroupFlowAddress>;
   /** The place's addresses as read; `undefined` outside an account. */
   readonly place: PlaceAddresses | undefined;
+  /** Something runs there: a release on production, a deploy on a stage. */
+  readonly runs: boolean;
 }): PanelAddresses {
   const { place } = input;
   if (place?.state !== "ready") {
@@ -628,6 +636,7 @@ export function panelAddresses(input: {
       head: host === undefined || first === undefined ? undefined : { host, url: first.url },
       doors: input.listed.length < 2 ? [] : input.listed,
       pending: [],
+      door: false,
       offerDomain: false,
     };
   }
@@ -646,6 +655,7 @@ export function panelAddresses(input: {
   const headUrl = own?.url ?? (doors.length === 1 ? doors[0]?.url : undefined);
   const host = siteOf(headUrl);
   const seen = new Set<string>();
+  const door = input.runs && routes.length > 0;
   return {
     head: host === undefined || headUrl === undefined ? undefined : { host, url: headUrl },
     doors: doors.length < 2 ? [] : doors,
@@ -655,7 +665,8 @@ export function panelAddresses(input: {
       const { word, tone } = domainFaceWords(domain.face);
       return [{ name: domain.domainName, word, tone: tone === "warn" ? "attention" : "muted" }];
     }),
-    offerDomain: input.kind === "production" && lacksOwnDomain(place),
+    door,
+    offerDomain: door && input.kind === "production" && lacksOwnDomain(place),
   };
 }
 

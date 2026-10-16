@@ -1214,7 +1214,7 @@ describe("a place's addresses on its panel", () => {
       doors: [],
     },
   ])("a place is headed by the address it answers at: $case", ({ place, head, doors }) => {
-    const said = panelAddresses({ kind: "production", listed, place });
+    const said = panelAddresses({ kind: "production", listed, place, runs: true });
     expect(said.head?.host).toBe(head);
     expect(said.doors).toEqual(doors);
   });
@@ -1233,6 +1233,7 @@ describe("a place's addresses on its panel", () => {
       const said = panelAddresses({
         kind: "stage",
         listed,
+        runs: true,
         place: place(
           [domain("shop.acme.com", "app", face), domain("acme.com", "app")],
           [subdomain("app")],
@@ -1243,7 +1244,12 @@ describe("a place's addresses on its panel", () => {
   );
 
   it("a place with only its default address and nothing pending says nothing more", () => {
-    const said = panelAddresses({ kind: "stage", listed, place: place([], [subdomain("app")]) });
+    const said = panelAddresses({
+      kind: "stage",
+      listed,
+      place: place([], [subdomain("app")]),
+      runs: true,
+    });
     expect(said.pending).toEqual([]);
     expect(said.offerDomain).toBe(false);
   });
@@ -1283,7 +1289,39 @@ describe("a place's addresses on its panel", () => {
   ] as const)(
     "offers a domain of its own as the globe's popover does: $case",
     ({ kind, place, offered }) => {
-      expect(panelAddresses({ kind, listed, place }).offerDomain).toBe(offered);
+      expect(panelAddresses({ kind, listed, place, runs: true }).offerDomain).toBe(offered);
+    },
+  );
+
+  // The run: production offered "Put it on your domain" while it said "Not released yet", and
+  // its door read "Manage addresses" a beat before it became "Put it on your domain".
+  it.each([
+    { case: "it does", place: place([], [subdomain("app")]), runs: true, door: true },
+    {
+      case: "nothing runs there yet",
+      place: place([], [subdomain("app")]),
+      runs: false,
+      door: false,
+    },
+    {
+      case: "it has no address",
+      place: place([], [subdomain("app", false)]),
+      runs: true,
+      door: false,
+    },
+    {
+      case: "its addresses are still read",
+      place: place([], [], "reading"),
+      runs: true,
+      door: false,
+    },
+    { case: "outside an account", place: undefined, runs: true, door: false },
+  ])(
+    "opens a door into the addresses sheet only once the place runs something at an address: $case",
+    ({ place, runs, door }) => {
+      const said = panelAddresses({ kind: "production", listed, place, runs });
+      expect(said.door).toBe(door);
+      if (!door) expect(said.offerDomain).toBe(false);
     },
   );
 });
