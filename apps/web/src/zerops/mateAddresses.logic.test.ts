@@ -246,9 +246,28 @@ describe("mateAddresses", () => {
         role: undefined,
         url: "https://app-1-3000.example.app/",
         host: "app-1-3000.example.app",
+        name: "app",
       },
     ]);
   });
+
+  // The onboarding run, 2026-10-16: "appstage · Preview" sat right above "app stage · Stage", two
+  // rows one space apart meaning different things. A row leads with what the address is; the name
+  // after it is the service's own, never one with the role glued on.
+  it.each([
+    { name: "the one stage's service", stages: 1, expected: "app" },
+    { name: "one of several stages", stages: 2, expected: "app · stage project" },
+  ])(
+    "names an environment's address by its service after its role: $name",
+    ({ stages, expected }) => {
+      const environments = [env("stage", [route("app", "https://app-2-80.example.app")])];
+      if (stages === 2)
+        environments.push(env("stage", [route("app", "https://app-3-80.example.app")], "other"));
+      const address = mateAddresses({ services: [], environments })[0];
+      expect(address?.role).toBe("stage");
+      expect(address?.name).toBe(expected);
+    },
+  );
 });
 
 describe("groupAddressEnvironments", () => {

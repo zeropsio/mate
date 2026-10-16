@@ -197,8 +197,13 @@ export function environmentForBranch(
   branch: string | null,
 ): string | undefined {
   if (branch === null || branch.length === 0) return undefined;
-  return declarations.find((entry) => entry.sources !== "release" && entry.sources.includes(branch))
-    ?.name;
+  const found = declarations.find(
+    (entry) => entry.sources !== "release" && entry.sources.includes(branch),
+  );
+  if (found === undefined) return undefined;
+  // "Stage", as the overview and the menu say it; its own name only tells several apart.
+  const alike = declarations.filter((entry) => entry.tier === found.tier).length;
+  return alike > 1 ? found.name : found.tier === "stage" ? "Stage" : "Production";
 }
 
 /**

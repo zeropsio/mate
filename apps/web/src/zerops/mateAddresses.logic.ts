@@ -40,6 +40,11 @@ export interface MateAddress {
   readonly url: string;
   /** The address without its scheme — what a row shows and what a person copies. */
   readonly host: string;
+  /**
+   * What a row names after the address's role: the service's own hostname (or a dev server's
+   * name), with its environment's name only where its role has several — never the role again.
+   */
+  readonly name: string;
 }
 
 type GroupRole = "stage" | "prod";
@@ -92,10 +97,10 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
 
   const addresses: Array<MateAddress> = [];
   const seenUrls = new Set<string>();
-  const add = (key: string, role: MateAddressRole | undefined, url: string) => {
+  const add = (key: string, role: MateAddressRole | undefined, url: string, name = key) => {
     if (!isServiceBrowserUrl(url) || seenUrls.has(url)) return;
     seenUrls.add(url);
-    addresses.push({ service: key, role, url, host: hostOf(url) });
+    addresses.push({ service: key, role, url, host: hostOf(url), name });
   };
 
   for (const service of own) {
@@ -131,7 +136,13 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
       }
       const role = ADDRESS_ROLE[groupRole];
       const suffix = ofRole.length === 1 ? role : environment.name;
-      for (const [service, url] of firstByService) add(`${service} ${suffix}`, role, url);
+      for (const [service, url] of firstByService)
+        add(
+          `${service} ${suffix}`,
+          role,
+          url,
+          ofRole.length === 1 ? service : `${service} · ${environment.name}`,
+        );
     }
   }
   // Two projects of one role and one name stay apart by the order the account lists them.

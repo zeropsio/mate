@@ -98,6 +98,16 @@ describe("which environment picks a branch up", () => {
     expect(environmentForBranch(DECLARATIONS, branch)).toBe(expected);
   });
 
+  // The onboarding run, 2026-10-16: Git said "<project>-stage runs it" where the overview and the
+  // menu said "Stage"; a name only tells several stages apart.
+  it("names a project's only stage Stage, as the overview and the menu do", () => {
+    const one: ReadonlyArray<GroupEnvironment> = [
+      { name: "tea-shop-stage", tier: "stage", project: "p1", sources: ["main"] },
+      { name: "production", tier: "production", project: "p3", sources: "release" },
+    ];
+    expect(environmentForBranch(one, "main")).toBe("Stage");
+  });
+
   it("never answers with the production, whose source is a release", () => {
     expect(environmentForBranch(DECLARATIONS, "release")).toBeUndefined();
   });
