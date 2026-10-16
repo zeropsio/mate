@@ -17,9 +17,12 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+
+import type { DraftPeople } from "./projects/accessDraft.logic";
 
 export interface RecipeOption {
   readonly id: string;
@@ -197,6 +200,52 @@ export function creationRecipeHold(recipe: CreationRecipe): string | undefined {
 
 export function hasCreationErrors(errors: CreationFormErrors): boolean {
   return errors.name !== undefined || errors.recipe !== undefined;
+}
+
+export const READING_PEOPLE = "Reading who can see the project…";
+export const PEOPLE_UNREADABLE = "Who can see the project can't be read right now.";
+
+/**
+ * What a stage's or a production's one sheet sends, or why its button waits. It asks nothing the
+ * project already says: its name, the project's setup, and the people who reach the project now, at
+ * their level there (`draftPeople`) — a Developer or a Guest on the project sees the new
+ * environment too.
+ */
+export function environmentSheetSubmit(input: {
+  readonly name: string;
+  readonly withAgent: boolean;
+  readonly options: ReadonlyArray<RecipeOption>;
+  readonly recipe: CreationRecipe;
+  /** The project's people as the access draft reads them; absent where the host sends none. */
+  readonly people: DraftPeople | undefined;
+}):
+  | { readonly kind: "held"; readonly reason: string }
+  | {
+      readonly kind: "create";
+      readonly choice: {
+        readonly name: string;
+        readonly withAgent: boolean;
+        readonly recipe: EnvironmentRecipeChoice;
+        readonly userRoles?: ReadonlyArray<ProjectGrant>;
+      };
+    } {
+  const held = creationRecipeHold(input.recipe);
+  if (held !== undefined) return { kind: "held", reason: held };
+  const option = input.options[0];
+  if (option === undefined) return { kind: "held", reason: "Choose what goes in the environment." };
+  const { people } = input;
+  if (people?.kind === "reading") return { kind: "held", reason: READING_PEOPLE };
+  if (people?.kind === "failed") return { kind: "held", reason: PEOPLE_UNREADABLE };
+  const userRoles = people?.kind === "ready" ? people.userRoles : [];
+  return {
+    kind: "create",
+    choice: {
+      name: input.name,
+      withAgent: input.withAgent,
+      recipe: option.choice,
+      ...(userRoles.length === 0 ? {} : { userRoles }),
+    },
+  };
 }
 
 /**

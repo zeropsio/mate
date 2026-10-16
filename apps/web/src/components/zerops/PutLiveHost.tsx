@@ -30,7 +30,11 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { Dialog } from "../ui/dialog";
 import { emptyApplications } from "./projects/emptyApps.logic";
 import { PutLiveSheet } from "./PutLiveSheet";
-import { proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { useDraftPeople } from "./projects/ProjectPeople";
+import {
+  PEOPLE_UNREADABLE,
+  proposedEnvironmentName,
+} from "./ZeropsEnvironmentCreationDialog.logic";
 
 export function PutLiveHost() {
   const { status } = useZeropsSession();
@@ -204,6 +208,8 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     tier: "production",
     enabled: run.phase === "creating" && run.productionId === undefined,
   });
+  // Production gets the project's people at their level there, as a stage added from it does.
+  const people = useDraftPeople(run.groupId, "production");
   const flow = useProjectFlows(
     useMemo(() => [run.groupId], [run.groupId]),
     { compare: true },
@@ -228,7 +234,12 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
 
     if (run.phase === "creating" && run.productionId === undefined) {
       if (entry === undefined || recipe.loading || recipe.state === "loading") return;
+      if (people.kind === "reading") return;
       sent.current = key;
+      if (people.kind === "failed") {
+        fail(PEOPLE_UNREADABLE);
+        return;
+      }
       if (recipe.tier === undefined) {
         fail(
           recipe.state === "absent"
@@ -252,6 +263,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
           }),
           withAgent: false,
           recipe: recipe.tier,
+          ...(people.userRoles.length === 0 ? {} : { userRoles: people.userRoles }),
         },
       }).then((made) => {
         if (made.kind === "refused") {
@@ -282,7 +294,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
         step(groupId, { kind: "released", tag: outcome.tag ?? flow.release.suggestion });
       else fail(outcome.reason);
     });
-  }, [create, entry, flow, key, recipe, run, step, verbs]);
+  }, [create, entry, flow, key, people, recipe, run, step, verbs]);
 
   return null;
 }

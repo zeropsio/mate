@@ -4,6 +4,7 @@ import {
   type EnvironmentCreationStepProgress,
   type FlowPullRequest,
   type ZeropsGroupPendingMember,
+  type ZeropsOrganizationMember,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
@@ -14,6 +15,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   creationRecipe,
+  environmentSheetSubmit,
   faceName,
   hasCreationErrors,
   newMateDoor,
@@ -23,7 +25,9 @@ import {
   newMateRecipeChange,
   newMateSubmit,
   newMateWords,
+  PEOPLE_UNREADABLE,
   proposedEnvironmentName,
+  READING_PEOPLE,
   recipeChangeView,
   recipeOptions,
   validateBotName,
@@ -33,6 +37,7 @@ import {
   pressSteps,
   pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
+import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
 
 /** A tier as the group repo's `main` hands it over, already import-ready. */
 const TIER = {
@@ -964,4 +969,104 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
       expect(pressThrough(at(states))).toBe(want);
     },
   );
+});
+
+describe("environmentSheetSubmit — what a stage's or a production's one sheet sends", () => {
+  const member = (id: string, roleCode: string): ZeropsOrganizationMember => ({
+    id: `cu-${id}`,
+    status: "ACTIVE",
+    roleCode,
+    user: { id: `u-${id}`, fullName: id },
+  });
+  const MEMBERS = [
+    member("me", "BASIC_USER"),
+    member("dev", "NO_ACCESS"),
+    member("guest", "NO_ACCESS"),
+    member("tok", "NO_ACCESS"),
+  ].map((entry) =>
+    entry.id === "cu-tok"
+      ? { ...entry, user: { id: "u-tok", email: "token-AbCdEfGhIjKl@zerops.io" } }
+      : entry,
+  );
+  const people = (
+    grants: DraftInput["app"]["grants"],
+    members: Partial<DraftInput["members"]> = {},
+  ) =>
+    draftPeople({
+      members: { known: true, status: "ready", refused: false, list: MEMBERS, ...members },
+      kind: "stage",
+      app: {
+        projects: [
+          { projectId: "prod", kind: "production" },
+          { projectId: "m-me", kind: "mate" },
+        ],
+        grants,
+        owners: { "m-me": "u-me" },
+      },
+      pictures: {},
+      creator: { membershipId: "cu-me", userId: "u-me" },
+      list: [],
+    });
+  const PROD_READ = {
+    prod: {
+      status: "ready" as const,
+      grants: [
+        { clientUserId: "cu-dev", roleCode: "ADMIN" },
+        { clientUserId: "cu-guest", roleCode: "READ_ONLY" },
+        { clientUserId: "cu-tok", roleCode: "ADMIN" },
+      ],
+    },
+  };
+  const options = recipeOptions({
+    roleLabel: "stage",
+    tier: TIER,
+    services: [],
+    recipe: "present",
+  });
+  const submit = (read: ReturnType<typeof people> | undefined) =>
+    environmentSheetSubmit({
+      name: "Tea Shop - stage",
+      withAgent: false,
+      options,
+      recipe: "present",
+      people: read,
+    });
+
+  it("a new stage keeps the people who could see the project", () => {
+    expect(submit(people(PROD_READ))).toEqual({
+      kind: "create",
+      choice: {
+        name: "Tea Shop - stage",
+        withAgent: false,
+        recipe: TIER,
+        userRoles: [
+          { clientUserId: "cu-dev", roleCode: "ADMIN" },
+          { clientUserId: "cu-guest", roleCode: "READ_ONLY" },
+        ],
+      },
+    });
+  });
+
+  it.each([
+    [
+      "the project's people are read",
+      { prod: { status: "loading" as const, grants: undefined } },
+      {},
+      READING_PEOPLE,
+    ],
+    [
+      "the organization's members are read",
+      PROD_READ,
+      { known: false, status: "loading" as const, list: [] },
+      READING_PEOPLE,
+    ],
+    [
+      "who can see the project could not be read",
+      { prod: { status: "failed" as const, grants: undefined } },
+      {},
+      PEOPLE_UNREADABLE,
+    ],
+  ])("holds its button while %s, saying why", (_case, grants, members, reason) => {
+    expect(submit(people(grants, members))).toEqual({ kind: "held", reason });
+  });
 });

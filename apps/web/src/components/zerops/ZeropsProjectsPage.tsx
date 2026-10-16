@@ -178,7 +178,7 @@ import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCrea
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { GitMirrorDialog } from "./GitMirrorDialog";
-import { ProjectAccessDraft, roleProjectKind } from "./projects/ProjectPeople";
+import { ProjectAccessDraft, roleProjectKind, WithDraftPeople } from "./projects/ProjectPeople";
 import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
@@ -2650,78 +2650,89 @@ export function ZeropsProjectsContent({
         />
       ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (
-        <ZeropsEnvironmentCreationDialog
-          access={(onChange) => (
-            <ProjectAccessDraft
-              groupId={creationRequest.groupId}
-              kind={roleProjectKind(creationRequest.role)}
-              label="Project access"
-              onChange={onChange}
+        <WithDraftPeople
+          groupId={creationRequest.groupId}
+          key={`${creationRequest.groupId}:${creationRequest.role}`}
+          kind={roleProjectKind(creationRequest.role)}
+        >
+          {(people) => (
+            <ZeropsEnvironmentCreationDialog
+              people={people}
+              access={(onChange) => (
+                <ProjectAccessDraft
+                  groupId={creationRequest.groupId}
+                  kind={roleProjectKind(creationRequest.role)}
+                  label="Project access"
+                  onChange={onChange}
+                />
+              )}
+              {...(activeOrganization == null
+                ? {}
+                : { forecast: <ZeropsCreditForecast organizationId={activeOrganization.id} /> })}
+              fallbackFocus={() =>
+                document
+                  .getElementById(`project-${creationRequest.groupId}`)
+                  ?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]') ?? null
+              }
+              git={
+                activeOrganization === null ||
+                activeOrganization === undefined ||
+                gitSetupHq === null
+                  ? undefined
+                  : {
+                      takenNames: gitSetupNames,
+                      repos: gitSetupDetail.live ? gitSetupDetail.repos : undefined,
+                      offered: {
+                        add: gitSetupAdd.kind === "allowed",
+                        connect: gitSetupOffered("connect_remote"),
+                        replace: gitSetupOffered("replace_remote_token"),
+                      },
+                      unavailableReason: hqOffers.words(gitSetupAdd),
+                      setup: gitEnvironmentSetup({
+                        orgId: activeOrganization.id,
+                        appId: creationRequest.groupId,
+                        hqProjectId: gitSetupHq,
+                        operations,
+                      }),
+                      onAdded: () => {
+                        setCreationRequest(null);
+                      },
+                    }
+              }
+              tier={groupRecipe.tier}
+              tierServices={groupRecipe.services}
+              recipe={creationRecipe(groupRecipe)}
+              recipeRereading={groupRecipe.rereading}
+              onRecipeRetry={groupRecipe.reread}
+              defaultName={proposedEnvironmentName({
+                groupName: requestedGroup.group.name,
+                roleLabel:
+                  environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
+                taken: requestedGroup.environments.flatMap(({ item }) =>
+                  item === undefined ? [] : [item.project.name],
+                ),
+              })}
+              defaultTintFor={(name) => newMateTint(candidates, name)}
+              defaultWithAgent={defaultAgentForRole(creationRequest.role)}
+              groupName={requestedGroup.group.name}
+              key={`${creationRequest.groupId}:${creationRequest.role}`}
+              onCancel={() => {
+                setCreationRequest(null);
+              }}
+              onCreate={(choice) => {
+                const { groupId, role } = creationRequest;
+                setCreationRequest(null);
+                void createEnvironment(groupId, role, choice);
+              }}
+              onOpenChange={(open) => {
+                if (!open) setCreationRequest(null);
+              }}
+              open
+              role={creationRequest.role}
+              takenBotNames={taken}
             />
           )}
-          {...(activeOrganization == null
-            ? {}
-            : { forecast: <ZeropsCreditForecast organizationId={activeOrganization.id} /> })}
-          fallbackFocus={() =>
-            document
-              .getElementById(`project-${creationRequest.groupId}`)
-              ?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]') ?? null
-          }
-          git={
-            activeOrganization === null || activeOrganization === undefined || gitSetupHq === null
-              ? undefined
-              : {
-                  takenNames: gitSetupNames,
-                  repos: gitSetupDetail.live ? gitSetupDetail.repos : undefined,
-                  offered: {
-                    add: gitSetupAdd.kind === "allowed",
-                    connect: gitSetupOffered("connect_remote"),
-                    replace: gitSetupOffered("replace_remote_token"),
-                  },
-                  unavailableReason: hqOffers.words(gitSetupAdd),
-                  setup: gitEnvironmentSetup({
-                    orgId: activeOrganization.id,
-                    appId: creationRequest.groupId,
-                    hqProjectId: gitSetupHq,
-                    operations,
-                  }),
-                  onAdded: () => {
-                    setCreationRequest(null);
-                  },
-                }
-          }
-          tier={groupRecipe.tier}
-          tierServices={groupRecipe.services}
-          recipe={creationRecipe(groupRecipe)}
-          recipeRereading={groupRecipe.rereading}
-          onRecipeRetry={groupRecipe.reread}
-          defaultName={proposedEnvironmentName({
-            groupName: requestedGroup.group.name,
-            roleLabel:
-              environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
-            taken: requestedGroup.environments.flatMap(({ item }) =>
-              item === undefined ? [] : [item.project.name],
-            ),
-          })}
-          defaultTintFor={(name) => newMateTint(candidates, name)}
-          defaultWithAgent={defaultAgentForRole(creationRequest.role)}
-          groupName={requestedGroup.group.name}
-          key={`${creationRequest.groupId}:${creationRequest.role}`}
-          onCancel={() => {
-            setCreationRequest(null);
-          }}
-          onCreate={(choice) => {
-            const { groupId, role } = creationRequest;
-            setCreationRequest(null);
-            void createEnvironment(groupId, role, choice);
-          }}
-          onOpenChange={(open) => {
-            if (!open) setCreationRequest(null);
-          }}
-          open
-          role={creationRequest.role}
-          takenBotNames={taken}
-        />
+        </WithDraftPeople>
       )}
       {creation === null ? null : (
         <ZeropsEnvironmentCreation

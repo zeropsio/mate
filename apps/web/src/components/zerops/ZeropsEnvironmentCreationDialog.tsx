@@ -38,6 +38,7 @@ import { cn } from "~/lib/utils";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 import {
   creationRecipeHold,
+  environmentSheetSubmit,
   hasCreationErrors,
   recipeOptions,
   validateCreationForm,
@@ -50,6 +51,7 @@ import {
 import { ProcessSteps, type ProcessStep } from "./primitives";
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
+import type { DraftPeople } from "./projects/accessDraft.logic";
 
 export interface EnvironmentCreationChoice {
   /** A Mate's own name, which its project's is built from; a stage's or a production's whole project name. */
@@ -100,6 +102,11 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
   /** Who will reach the new project, as people chips; absent, the form says nothing of access. */
   readonly access?: ProjectAccessSlot | undefined;
+  /**
+   * The project's people, which the one sheet gives the new environment at their level there
+   * without asking (`useDraftPeople`); absent, it sends none.
+   */
+  readonly people?: DraftPeople | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
   readonly git?:
@@ -213,8 +220,14 @@ function EnvironmentSheet(
   const { groupName, role, defaultName, tier, tierServices, recipe } = props;
   const what = environmentWord(role);
   const options = recipeOptions({ roleLabel: what, tier, services: tierServices, recipe });
-  const held = creationRecipeHold(recipe);
-  const option = options[0];
+  const submit = environmentSheetSubmit({
+    name: defaultName,
+    withAgent: props.defaultWithAgent,
+    options,
+    recipe,
+    people: props.people,
+  });
+  const held = submit.kind === "held" ? submit.reason : undefined;
   const gitOffered = props.git?.offered.add === true;
   return (
     <form
@@ -222,12 +235,7 @@ function EnvironmentSheet(
       data-zerops-surface="environment-destination-form"
       onSubmit={(event) => {
         event.preventDefault();
-        if (held !== undefined || option === undefined) return;
-        props.onCreate({
-          name: defaultName,
-          withAgent: props.defaultWithAgent,
-          recipe: option.choice,
-        });
+        if (submit.kind === "create") props.onCreate(submit.choice);
       }}
     >
       <DialogHeader>
@@ -280,7 +288,7 @@ function EnvironmentSheet(
             {held}
           </p>
         )}
-        <Button disabled={held !== undefined || option === undefined} type="submit">
+        <Button disabled={held !== undefined} type="submit">
           {role === "prod" ? "Set up production" : "Add stage"}
         </Button>
       </DialogFooter>
