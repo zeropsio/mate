@@ -443,6 +443,19 @@ function workedMs(status: RunStatus): number {
 }
 
 /**
+ * A live run's clock at `now`: the time its worked line will say (run 2: it read 0:31 at a Stop the
+ * card then said took 28s). Its engine's runs where it has them — before its run starts it stands
+ * at nothing, between runs where the last one ended — else the span since the send, less waits; it
+ * stands where a wait on the person or on its helpers began.
+ */
+export function runClockMs(status: RunStatus, now: number): number {
+  const at = status.waitingSince === null ? now : Date.parse(status.waitingSince);
+  if (status.ran === undefined) return at - Date.parse(status.startedAt) - status.waitedMs;
+  const { ms, since, personMs } = status.ran;
+  return ms + (since === null ? 0 : Math.max(0, at - since)) - personMs;
+}
+
+/**
  * A run that is over, in a line: "Nova worked 1m 20s", "Nova thought 12s",
  * "Nova stopped after 45s".
  */

@@ -31,6 +31,7 @@ import {
   reachesEarlier,
   recoveredFailures,
   runCardShows,
+  runClockMs,
   chooseLiveRunFold,
   liveRunFold,
   runFoldOf,
@@ -260,6 +261,37 @@ function status(overrides: Partial<RunStatus> = {}): RunStatus {
     ...overrides,
   };
 }
+
+describe("runClockMs", () => {
+  const now = Date.parse(at(40));
+  it.each<{ readonly name: string; readonly status: RunStatus; readonly ms: number }>([
+    {
+      name: "with no engine record, from the send less its waits",
+      status: status({ waitedMs: 5_000 }),
+      ms: 35_000,
+    },
+    {
+      name: "the runs before and the run on, less the person's answers",
+      status: status({ ran: { ms: 12_000, since: Date.parse(at(30)), personMs: 2_000 } }),
+      ms: 20_000,
+    },
+    {
+      name: "standing while it waits on the person",
+      status: status({
+        waitingSince: at(35),
+        ran: { ms: 0, since: Date.parse(at(30)), personMs: 0 },
+      }),
+      ms: 5_000,
+    },
+    {
+      name: "standing between its runs",
+      status: status({ ran: { ms: 9_000, since: null, personMs: 0 } }),
+      ms: 9_000,
+    },
+  ])("a live run's clock counts $name", ({ status: given, ms }) => {
+    expect(runClockMs(given, now)).toBe(ms);
+  });
+});
 
 function call(id: string, partial: Partial<WorkLogEntry>): WorkLogEntry {
   return {

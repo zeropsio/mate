@@ -521,6 +521,11 @@ export interface RunStatus {
   readonly waitedMs: number;
   /** Settled, the time it worked as its engine recorded its runs: never the span less waits. */
   readonly workedMs?: number;
+  /**
+   * Live, its runs as its engine records them, which its clock counts so it says what `workedMs`
+   * will: the time the runs over ran, the start of the one on, and the person's answers so far.
+   */
+  readonly ran?: { readonly ms: number; readonly since: number | null; readonly personMs: number };
   /** Live, when the wait still open began: the clock stands still until the person answers. */
   readonly waitingSince: string | null;
   /** The open wait is on its helpers, after its turn: never a wait on the person. */
@@ -1352,6 +1357,21 @@ function waitedOn(turn: ConversationTurn): {
  * jobs between the runs are not work (V1 already leaves a wait on helpers out, review of pass 42);
  * Milo's stress run read "worked 1m 34s" with 22 s queued and 24 s waiting on a job in it.
  */
+/** Live, an engine card's runs so far: the time the runs over ran, and the start of the one on. */
+function engineRanSoFar(runs: ReadonlyArray<RunRecord>): {
+  readonly ms: number;
+  readonly since: number | null;
+} {
+  let ms = 0;
+  let since: number | null = null;
+  for (const run of runs) {
+    if (run.startedAt === null) continue;
+    if (run.endedAt === null) since = run.startedAt;
+    else ms += Math.max(0, run.endedAt - run.startedAt);
+  }
+  return { ms, since };
+}
+
 function engineWorkedMs(runs: ReadonlyArray<RunRecord>, personMs: number): number | undefined {
   let ran = 0;
   for (const run of runs) {
@@ -3129,6 +3149,9 @@ export function deriveMessagesTimelineRows(input: {
         ? { waitingSince: waited.waitingSince ?? input.away.since, away: input.away.words }
         : {}),
       ...(engineWorked === undefined ? {} : { workedMs: engineWorked }),
+      ...(engineCard !== undefined && (turn.live || waiting)
+        ? { ran: { ...engineRanSoFar(engineCard.runs), personMs } }
+        : {}),
       // A question it asked is work too: a run that only asked read "thought". A card not held
       // whole worked when its summary counts a call: its notes alone are no work (it read
       // "worked" after a reload where it had "thought" live).
