@@ -36,11 +36,9 @@ export function FileBrowserPanelState(
   const state = resolveFileBrowserPanelState(props);
   if (state.kind === "ready") return props.children;
   if (state.kind === "loading") {
+    // Where the tree's first row paints, never centred: the tree takes its place, not the middle.
     return (
-      <div
-        role="status"
-        className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-muted-foreground"
-      >
+      <div role="status" className="min-h-0 flex-1 px-3 py-1.5 text-xs text-muted-foreground">
         Loading files…
       </div>
     );
