@@ -347,6 +347,29 @@ export function cardReady(flow: Pick<GroupFlow, "production" | "stages" | "main"
   } satisfies CardReady;
 }
 
+/**
+ * The release on its way, by its tag, where the ready one stood: its block stays, so pressing
+ * Release moves nothing on the card (the onboarding run's card jumped 125 px at the press).
+ */
+export function cardReleasing(flow: Pick<GroupFlow, "production" | "stages" | "main">) {
+  return flow.production.kind === "releasing" ? flow.production.tag : undefined;
+}
+
+/** "Putting v2.4.0 live" — the glossary's words for a release under way. */
+export function releasingTitle(tag: string): string {
+  return `Putting ${tag} live`;
+}
+
+/**
+ * Whether there is something for *Put it live* to put live: the app's code merged, or a change of
+ * it open that its one press merges. A Mate's setup files are no app.
+ */
+export function putLiveHasChange(flow: Pick<GroupFlow, "main" | "pullRequests">): boolean {
+  return (
+    flow.main.hasCode === true || flow.pullRequests.some((entry) => entry.pull.kind === "code")
+  );
+}
+
 /** "3 changes ready to release", "1 change ready to release". */
 export function readyTitle(ready: CardReady): string {
   const count = `${ready.atLeast ? "At least " : ""}${String(ready.count)}`;

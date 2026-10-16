@@ -368,6 +368,133 @@ describe("a card's release", () => {
   });
 });
 
+// The onboarding run: pressing Release took the release away and the card jumped 125 px.
+describe("a card's release on its way", () => {
+  const runs = {
+    ...PRODUCTION_STOP,
+    deployment: {
+      state: "known",
+      value: {
+        kind: "running",
+        activatedAt: null,
+        version: {
+          name: "v0.0.9",
+          commit: "055a7e8",
+          sha: undefined,
+          taggedBy: undefined,
+          label: "v0.0.9",
+        },
+      },
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    },
+  } as const;
+  const release = {
+    gate: { allowed: true } as const,
+    suggestion: "v0.1.0",
+    waiting: 1,
+    waitingAtLeast: false,
+    untold: [],
+  };
+  const ready = entry([WREN, PROD], {
+    merged: [pull({ number: 4, merged: true })],
+    stops: [runs],
+    release,
+  });
+  const goingOut = entry([WREN, PROD], {
+    merged: [pull({ number: 4, merged: true })],
+    stops: [runs],
+    release: {
+      ...release,
+      gate: { allowed: false, reason: "Releasing v0.1.0…" },
+      inFlight: "v0.1.0",
+    },
+  });
+  it("keeps the release's place while it goes out, its door opening its progress", () => {
+    const html = section(render({ groups: [goingOut] }), 'data-zerops-group="aaa"');
+    expect(html).toContain("Putting v0.1.0 live");
+    expect(html).toContain('data-test-release-verb="true"');
+  });
+  // The onboarding run: "Release" asked of the person while Put it live was making production.
+  it("offers no release where the page's door is withheld, as while Put it live makes production", () => {
+    expect(section(render({ groups: [ready] }), 'data-zerops-group="aaa"')).toContain(
+      "1 change ready to release",
+    );
+    const html = section(
+      render({ groups: [ready], renderReleaseVerb: () => null }),
+      'data-zerops-group="aaa"',
+    );
+    expect(html).not.toContain("ready to release");
+  });
+});
+
+// The onboarding run: the owner searched 21 s for Add stage, which lived in the card's ··· menu.
+describe("a card's stage", () => {
+  it("offers adding a stage where the project has none, where the stage would stand", () => {
+    const pressed: string[] = [];
+    const offered = mount(
+      <ZeropsProjectsFlow<Item>
+        {...FLOW_PROPS}
+        groups={[entry([WREN])]}
+        setUpStage={({ group }) =>
+          () => {
+            pressed.push(group.groupId);
+          }}
+      />,
+    );
+    const button = offered.root.findAll(
+      (node) => node.type === "button" && node.children.includes("Add stage"),
+    );
+    expect(button).toHaveLength(1);
+    act(() => {
+      button[0]!.props.onClick();
+    });
+    expect(pressed).toEqual(["aaa"]);
+    expect(section(render({ groups: [entry([WREN])] }), 'data-zerops-group="aaa"')).not.toContain(
+      "Add stage",
+    );
+  });
+});
+
+// The onboarding run: an Admin who joined looked 11 s for a way to add their own Mate.
+describe("a card's Mates", () => {
+  it("closes with Add a Mate where the person may add one, and says why where it stands off", () => {
+    const added: string[] = [];
+    const open = mount(
+      <ZeropsProjectsFlow<Item>
+        {...FLOW_PROPS}
+        groups={[entry([WREN])]}
+        addMate={({ group }) => ({
+          onAdd: () => {
+            added.push(group.groupId);
+          },
+          why: null,
+        })}
+      />,
+    );
+    const button = open.root.findAll(
+      (node) => node.type === "button" && node.props["data-zerops-surface"] === "add-mate",
+    );
+    expect(button).toHaveLength(1);
+    act(() => {
+      button[0]!.props.onClick();
+    });
+    expect(added).toEqual(["aaa"]);
+    const held = section(
+      render({
+        groups: [entry([WREN])],
+        addMate: () => ({ onAdd: () => {}, why: "The project's setup files are not ready." }),
+      }),
+      'data-zerops-group="aaa"',
+    );
+    expect(held).toContain("The project&#x27;s setup files are not ready.");
+    expect(section(render({ groups: [entry([WREN])] }), 'data-zerops-group="aaa"')).not.toContain(
+      "Add a Mate",
+    );
+  });
+});
+
 describe("production's version", () => {
   const running = entry([WREN, PROD], {
     stops: [

@@ -712,6 +712,17 @@ describe("a group's one line about itself", () => {
       { placeholder: false, unfinished: "stage", finishing: "stage", halfMade: "stage" },
       "Finishing stage…",
     ],
+    // The onboarding run: at the press "isn't finished" stood under the name for 0.7 s.
+    [
+      {
+        placeholder: false,
+        unfinished: undefined,
+        finishing: undefined,
+        halfMade: "stage",
+        creating: "stage",
+      },
+      undefined,
+    ],
   ] as const)("reads %j as %j — never the platform's own words", (input, expected) => {
     expect(projectsGroupLine(input)).toBe(expected);
   });

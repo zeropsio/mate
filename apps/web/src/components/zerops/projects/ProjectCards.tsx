@@ -43,6 +43,7 @@ import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from ".
 import {
   cardChangeRows,
   cardReady,
+  cardReleasing,
   foldMates,
   foldWords,
   mateChangeForReview,
@@ -51,6 +52,7 @@ import {
   placeLines,
   readyLine,
   readyTitle,
+  releasingTitle,
   type CardChange,
   type CardMateReading,
   type PlaceLine,
@@ -221,6 +223,17 @@ function useDetailWhileSeen(groupId: string) {
 
 const NO_GROUPS: ReadonlyArray<string> = [];
 
+/** A stage the project does not have yet, as its card names it where one would stand. */
+const NEW_STAGE: PlaceLine = {
+  projectId: undefined,
+  kind: "stage",
+  name: "stage",
+  dot: "none",
+  words: [],
+  trouble: false,
+  addresses: [],
+};
+
 /** What a place says where the page gives it nothing more: its name and its line. */
 function PlainPanel({ line }: { readonly line: PlaceLine }) {
   return (
@@ -259,11 +272,9 @@ function SetUpPanel({
         type="button"
       >
         <PlusIcon aria-hidden="true" className="size-3.5" />
-        {line.kind === "production"
-          ? environmentDoorLabel("production", placeLabel(line))
-          : `Set up ${placeLabel(line).toLowerCase()}`}
+        {environmentDoorLabel(line.kind, placeLabel(line))}
       </button>
-      {onSetUp === "busy" ? (
+      {onSetUp === "busy" && line.kind === "production" ? (
         <p className="text-muted-foreground text-xs" role="status">
           {PUT_LIVE_AFTER_CREATION}
         </p>
@@ -546,9 +557,24 @@ function ProjectCard<T>({
     (line) => line !== undefined,
   );
   const ready = cardReady(flow);
-  const releaseDoor = ready === undefined ? null : props.renderReleaseVerb?.(entry);
+  const releasing = ready === undefined ? cardReleasing(flow) : undefined;
+  const releaseDoor =
+    ready === undefined && releasing === undefined ? null : props.renderReleaseVerb?.(entry);
+  // The page's door decides whether a release is offered here at all (Put it live releases the
+  // production it makes); where the page gives none, the card says what the flow says.
+  const releaseShown =
+    (ready !== undefined || releasing !== undefined) &&
+    (props.renderReleaseVerb === undefined || drawn(releaseDoor));
   const placeFacts = props.cardPlaces?.(entry);
   const readyWhere = ready === undefined ? undefined : readyLine(ready, placeFacts?.releaseOnStage);
+  // No stage yet: where one would stand, the way to add it — or that one is being set up.
+  const stageSetUp =
+    flow.stages.length > 0
+      ? undefined
+      : flow.creatingStages.length > 0
+        ? ("creating" as const)
+        : props.setUpStage?.(entry);
+  const addMate = page === undefined ? props.addMate?.(entry) : undefined;
   const lines = placeLines({ flow, ...placeFacts, nowMs });
   // Production first — what a person runs for others — then each stage behind it.
   const places = [
@@ -619,18 +645,29 @@ function ProjectCard<T>({
           </section>
         );
       })}
-      {ready === undefined ? null : (
+      {stageSetUp === undefined ? null : (
+        <section className="ov-sec" data-zerops-place="stage">
+          {stageSetUp === "creating" ? (
+            <PlainPanel line={{ ...NEW_STAGE, dot: "unknown", words: ["Setting up…"] }} />
+          ) : (
+            <SetUpPanel line={NEW_STAGE} onSetUp={stageSetUp} />
+          )}
+        </section>
+      )}
+      {!releaseShown ? null : (
         <section className="ov-sec" data-zerops-card-ready="true">
-          <p className="ov-ready-title">{readyTitle(ready)}</p>
+          <p className="ov-ready-title">
+            {ready !== undefined ? readyTitle(ready) : releasingTitle(releasing ?? "")}
+          </p>
           {readyWhere === undefined ? null : <p className="ov-ready-line">{readyWhere}</p>}
           {drawn(releaseDoor) ? <div className="ov-acts">{releaseDoor}</div> : null}
         </section>
       )}
       <CardMates
-        addWhy={page?.addMateWhy ?? null}
+        addWhy={page?.addMateWhy ?? addMate?.why ?? null}
         all={page !== undefined}
         entry={entry}
-        onAdd={page?.onAddMate}
+        onAdd={page?.onAddMate ?? addMate?.onAdd}
         props={props}
       />
       {page?.people}
