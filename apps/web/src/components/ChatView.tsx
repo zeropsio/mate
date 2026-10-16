@@ -260,6 +260,7 @@ import {
   useZeropsChangeLandedEvents,
   useZeropsMateAppDetailHold,
   useZeropsConversationLandings,
+  useZeropsProductionLive,
 } from "../zerops/useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "../zerops/vaultTurnNotes";
 import { vaultChipsOnlyText } from "../zerops/vaultTurnNotes.logic";
@@ -268,6 +269,7 @@ import {
   agentNotesFor,
   agentTurnNotes,
   agentNeedsSignIn,
+  productionTurnNotes,
 } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
@@ -3084,6 +3086,8 @@ function ConversationView(props: ChatViewProps) {
   // agent, so it does not come from the activity stream.
   useZeropsMateAppDetailHold(activeThreadEnvironmentId);
   const changeLandedEvents = useZeropsChangeLandedEvents(activeThreadEnvironmentId);
+  // Production running a release is news to the Mate too: where the app answers now.
+  const productionLive = useZeropsProductionLive(activeThreadEnvironmentId);
   // When the agent last spoke — the line between what it knows and what has
   // happened since. Without one nothing is said rather than everything.
   const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
@@ -3092,11 +3096,14 @@ function ConversationView(props: ChatViewProps) {
   // Fitted to the bound a send takes: a vault change a line, the rest counted and told later.
   const turnContext = useMemo(() => {
     const context = agentContext(
-      agentTurnNotes(changeLandedEvents, agentSpokeAt),
+      [
+        ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
+        ...productionTurnNotes(productionLive, agentSpokeAt),
+      ],
       vaultTurn.changes,
     );
     return { notes: context.lines, vaultChanges: context.told };
-  }, [agentSpokeAt, changeLandedEvents, vaultTurn.changes]);
+  }, [agentSpokeAt, changeLandedEvents, productionLive, vaultTurn.changes]);
   const agentNotes = turnContext.notes;
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(

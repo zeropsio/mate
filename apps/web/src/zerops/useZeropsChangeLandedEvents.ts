@@ -21,12 +21,14 @@ import {
   readZeropsMembership,
   type ChangeLandedEvent,
   type FlowPullRequest,
+  type ProductionLive,
 } from "@t3tools/client-runtime/zerops";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { findCandidate, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
-import { useAppsChanges, useHqAddress } from "./projectFlows";
+import { useProductionAddresses } from "../components/zerops/review/reviewReads";
+import { useAppsChanges, useCompactProjectFlows, useHqAddress } from "./projectFlows";
 import { useHqAppDetailHold } from "./useHqAppDetail";
 import { useHeldZeropsDetailCandidates } from "./useZeropsCandidates";
 
@@ -94,6 +96,30 @@ export function useZeropsChangeLandedEvents(
     );
     return events.length === 0 ? NONE : events;
   }, [changes, mate]);
+}
+
+/**
+ * The release the application's production runs, and where it answers, for the Mate that lives in
+ * `environmentId`: what its next turn is told once that release is newer than its last words
+ * (`productionTurnNotes`). None outside an application, or before a release runs there.
+ */
+export function useZeropsProductionLive(
+  environmentId: string | null | undefined,
+): ProductionLive | undefined {
+  const rows = useHeldZeropsDetailCandidates();
+  const mate = rows.find((row) => String(row.environmentId) === environmentId);
+  const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
+  const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
+  const flow = useCompactProjectFlows(appIds).flows.get(groupId ?? "");
+  const live = flow?.releases.find((release) => release.standing === "live");
+  const production = flow?.environments.find((entry) => entry.tier === "production")?.projectId;
+  const address = useProductionAddresses(live === undefined ? undefined : production)[0]?.url;
+  const tag = live?.tag;
+  const taggedAt = live?.taggedAt;
+  return useMemo(
+    () => (tag === undefined || taggedAt === undefined ? undefined : { tag, taggedAt, address }),
+    [address, tag, taggedAt],
+  );
 }
 
 type SaidMessage = { readonly text: string; readonly createdAt: string };
