@@ -4,7 +4,11 @@
  * successful RPC carrying its JSON, never a transport error.
  */
 import { describe, expect, it } from "@effect/vitest";
-import type { TerminalError, ZeropsAgentLoginError } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  type TerminalError,
+  type ZeropsAgentLoginError,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -14,6 +18,7 @@ import {
   runZeropsMateCheckUpdate,
   runZeropsMateUpdate,
   runAgentAuthCheck,
+  runCrewPropose,
   runAgentLoginCancel,
   runAgentLoginSignOut,
   runAgentLoginSubmitCode,
@@ -382,6 +387,37 @@ describe("a personal login acts for its person alone", () => {
       yield* runAgentLoginSignOut(loginDeps("zerops-user:eva", ran), { agentId: "claude-code" });
       yield* runAgentLoginCancel(loginDeps("zerops-user:eva", ran), { agentId: "codex" });
       expect(ran).toEqual(["sign out claude-code", "cancel codex"]);
+    }),
+  );
+});
+
+describe("crew proposals", () => {
+  it.effect("proposes a crew as the connecting session, never as anyone the input names", () =>
+    Effect.gen(function* () {
+      const asked: Array<string> = [];
+      yield* runCrewPropose(
+        {
+          zeropsCrewProposals: {
+            propose: (_input, subject) => {
+              asked.push(subject);
+              return Effect.succeed({
+                lead: { name: "Lead", part: "Plans the tea shop." },
+                builders: [{ name: "Checkout", part: "Builds the checkout." }],
+              });
+            },
+          },
+          subject: "zerops-user:owner",
+          admit: (_method, effect) => effect,
+        },
+        {
+          goal: "A tea shop that ships weekly.",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("claude"),
+            model: "claude-sonnet-4-5",
+          },
+        },
+      );
+      expect(asked).toEqual(["zerops-user:owner"]);
     }),
   );
 });

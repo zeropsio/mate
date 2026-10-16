@@ -6,7 +6,6 @@ import {
   WS_METHODS,
   AuthOrchestrationOperateScope,
   EnvironmentAuthorizationError,
-  ProviderInstanceId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -15,7 +14,6 @@ import * as Stream from "effect/Stream";
 
 import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
 import { inertCrewEngine } from "./CrewEngine.ts";
-import { inertCrewProposals } from "./CrewProposals.ts";
 import { registerCrewRpc } from "./registerCrewRpc.ts";
 import { eventually } from "./testing/crewEngineFixture.ts";
 import { crewJourney } from "./testing/crewWorld.ts";
@@ -23,7 +21,6 @@ import { makeRpcUpdateAdmission } from "../../RpcUpdateAdmission.ts";
 
 const passThrough = {
   admit: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
-  proposals: inertCrewProposals,
 };
 
 const SUBJECT = `${ZEROPS_SUBJECT_PREFIX}user-karel`;
@@ -39,7 +36,6 @@ describe("registerCrewRpc", () => {
         yield* admission.begin;
         const handlers = registerCrewRpc({
           crew: { ...inertCrewEngine, command: () => Effect.succeed({ _tag: "done" }) },
-          proposals: inertCrewProposals,
           subject: SUBJECT,
           admit: (_method, effect, continuation = false) =>
             admission.run(
@@ -62,34 +58,6 @@ describe("registerCrewRpc", () => {
         );
         expect(denied).toMatchObject({ _tag: "EnvironmentAuthorizationError" });
       }).pipe(Effect.scoped),
-  );
-
-  it.effect("proposes a crew as the connecting session, never as anyone the input names", () =>
-    Effect.gen(function* () {
-      const asked: Array<string> = [];
-      const handlers = registerCrewRpc({
-        ...passThrough,
-        crew: inertCrewEngine,
-        proposals: {
-          propose: (_input, subject) => {
-            asked.push(subject);
-            return Effect.succeed({
-              lead: { name: "Lead", part: "Plans the tea shop." },
-              builders: [{ name: "Checkout", part: "Builds the checkout." }],
-            });
-          },
-        },
-        subject: SUBJECT,
-      });
-      yield* handlers[WS_METHODS.zeropsCrewPropose]({
-        goal: "A tea shop that ships weekly.",
-        modelSelection: {
-          instanceId: ProviderInstanceId.make("claude"),
-          model: "claude-sonnet-4-5",
-        },
-      });
-      expect(asked).toEqual([SUBJECT]);
-    }),
   );
 
   it.effect("inert: streams one snapshot saying crew mode is off", () =>

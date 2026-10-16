@@ -11,9 +11,9 @@ import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
-import * as TextGeneration from "../../textGeneration/TextGeneration.ts";
-import { ZeropsTurnAdmission } from "../ZeropsTurnAdmission.ts";
-import * as CrewProposals from "./CrewProposals.ts";
+import * as TextGeneration from "../textGeneration/TextGeneration.ts";
+import * as CrewProposals from "./ZeropsCrewProposals.ts";
+import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 
 const input: CrewProposalInput = {
   goal: "A tea shop that ships weekly.",
@@ -53,7 +53,8 @@ const layerWith = (generate: Generate, refusal?: string) =>
         ZeropsTurnAdmission.of({
           admit: () => Effect.void,
           admitOperator: () => Effect.void,
-          admitRun: () =>
+          admitRun: () => Effect.die("a proposal is no run"),
+          admitGeneration: () =>
             refusal === undefined
               ? Effect.void
               : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
@@ -64,7 +65,7 @@ const layerWith = (generate: Generate, refusal?: string) =>
   );
 
 const propose = Effect.gen(function* () {
-  const proposals = yield* CrewProposals.CrewProposals;
+  const proposals = yield* CrewProposals.ZeropsCrewProposals;
   return yield* Effect.exit(proposals.propose(input, "user-1"));
 });
 

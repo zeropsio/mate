@@ -39,7 +39,6 @@ import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
-import * as CrewProposals from "./crew/CrewProposals.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import { macPairCommands, macRemoveCommands } from "./mac/MacHost.ts";
 import { engineLayer } from "../engine/layer.ts";
@@ -51,6 +50,7 @@ import {
   zeropsRunAdmission,
 } from "./engineAdapters.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
+import * as ZeropsCrewProposals from "./ZeropsCrewProposals.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
@@ -619,7 +619,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     // A fixture scene has no dev services for a crew to work on: crew mode
     // is off, the feed says so and every crew request is refused.
     crewLayerInert,
-    CrewProposals.layerInert,
+    ZeropsCrewProposals.layerInert,
     // The engine the switch names, as on a live Mate: its runs pass the same
     // gate, and a scene has no platform to read a restart from.
     engineLayer.pipe(

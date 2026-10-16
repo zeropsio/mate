@@ -132,7 +132,7 @@ import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
 import serverPackageJson from "../package.json" with { type: "json" };
 import { CrewEngine } from "./zerops/crew/CrewEngine.ts";
-import * as CrewProposals from "./zerops/crew/CrewProposals.ts";
+import * as ZeropsCrewProposals from "./zerops/ZeropsCrewProposals.ts";
 import { registerCrewRpc } from "./zerops/crew/registerCrewRpc.ts";
 import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
 import { registerEngineRpc } from "./engine/registerEngineRpc.ts";
@@ -514,7 +514,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           ? Effect.fail(new ThreadFileWritesError({ reason: "unavailable" }))
           : run(threadFileWrites);
       const crew = yield* CrewEngine;
-      const crewProposals = yield* CrewProposals.CrewProposals;
+      const zeropsCrewProposals = yield* ZeropsCrewProposals.ZeropsCrewProposals;
       const relayClient = yield* RelayClient.RelayClient;
       // While a Mate update waits, a call that changes something is refused, unless it continues
       // work already accepted; the update starts once nothing admitted is running.
@@ -1335,12 +1335,12 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           serverVersion: serverPackageJson.version,
           zeropsDataConsole,
           zeropsGitRemoteProbe,
+          zeropsCrewProposals,
           subject: currentSession.subject,
           admit,
         }),
         ...registerCrewRpc({
           crew,
-          proposals: crewProposals,
           subject: currentSession.subject,
           admit,
         }),
