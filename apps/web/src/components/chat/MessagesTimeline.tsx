@@ -378,6 +378,11 @@ interface MessagesTimelineProps {
   runningTurnId: TurnId | null;
   turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   routeThreadKey: string;
+  /**
+   * The conversation its own draft just became: its message was already on screen in the draft's
+   * frame, so it opens with no opening of its own — nothing fades out and back in.
+   */
+  arrivesFromItsDraft?: boolean;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string, fromTurnId?: TurnId) => void;
   supportsConversationRollback: boolean;
   /** The thread's provider driver: how its live field reads a batch (`batchesByTiming`). */
@@ -486,6 +491,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   runningTurnId,
   turnDiffSummaries,
   routeThreadKey,
+  arrivesFromItsDraft = false,
   onOpenTurnDiff,
   supportsConversationRollback,
   provider = null,
@@ -2174,6 +2180,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               data-timeline-placing={listPlaced ? undefined : ""}
               // Placement proves readiness; the opening stage owns the conversation's entrance.
               data-timeline-arrives="at-once"
+              // Its own draft's frame showed these rows: they show again in place, not eased in.
+              data-timeline-from-draft={arrivesFromItsDraft ? "" : undefined}
               data-timeline-thread={routeThreadKey}
             >
               <LegendList<MessagesTimelineRow>
@@ -2268,7 +2276,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       <div className="h-full min-h-0" data-conversation-content="">
         <TimelineRowReadsCtx value={rowReads}>{content}</TimelineRowReadsCtx>
       </div>
-      {kept?.shown === false || pauseStageId !== null ? null : (
+      {kept?.shown === false || pauseStageId !== null || arrivesFromItsDraft ? null : (
         <ConversationOpeningStage
           ready={standing}
           readPending={onItsWay}

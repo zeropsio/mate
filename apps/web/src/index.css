@@ -2814,6 +2814,15 @@ code {
   transition-duration: 0ms;
 }
 
+/* The conversation its own draft just became: the draft's frame showed its rows, so they show
+   again in place at once — eased in, they would read as the message thrown away and resent. */
+[data-timeline-from-draft]
+  .timeline-legend-list
+  .legend-list-content-container
+  > div[style*="opacity"] {
+  transition-duration: 0ms;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .timeline-legend-list .legend-list-content-container > div[style*="opacity"] {
     transition: none;

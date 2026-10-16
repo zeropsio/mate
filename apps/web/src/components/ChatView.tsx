@@ -1473,6 +1473,17 @@ function ConversationView(props: ChatViewProps) {
     [environmentId, threadId],
   );
   const routeThreadKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
+  // The conversation its own draft just became (the draft's record stands until the promotion
+  // is finalized): read as it opens, so it keeps what the draft's frame showed.
+  const fromItsDraft = () =>
+    routeKind === "server" &&
+    useComposerDraftStore.getState().getDraftThreadByRef(routeThreadRef) !== null;
+  const [draftArrival, setDraftArrival] = useState(() => ({
+    key: routeThreadKey,
+    fromItsDraft: fromItsDraft(),
+  }));
+  if (draftArrival.key !== routeThreadKey)
+    setDraftArrival({ key: routeThreadKey, fromItsDraft: fromItsDraft() });
   const updateProjectScriptSettings = useAtomCommand(serverEnvironment.updateSettings, {
     reportFailure: false,
   });
@@ -8445,6 +8456,7 @@ function ConversationView(props: ChatViewProps) {
                   turnDiffSummaries: activeThread.checkpoints,
                   activeThreadEnvironmentId: activeThread.environmentId,
                   routeThreadKey,
+                  arrivesFromItsDraft: draftArrival.fromItsDraft,
                   onOpenTurnDiff,
                   supportsConversationRollback,
                   provider:
