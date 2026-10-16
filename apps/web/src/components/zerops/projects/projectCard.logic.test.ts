@@ -328,8 +328,8 @@ describe("a card's places", () => {
       birth: { ended: false },
       words: "Turning its address on…",
     },
-    { case: "once HQ has brought it up", birth: { ended: true }, words: "Running · main" },
-    { case: "where HQ did not bring it up", birth: undefined, words: "Running · main" },
+    { case: "once HQ has brought it up", birth: { ended: true }, words: "Running" },
+    { case: "where HQ did not bring it up", birth: undefined, words: "Running" },
   ])("says a stage runs only with its address, $case", ({ birth, words: said }) => {
     const lines = placeLines({
       flow: {
@@ -338,6 +338,7 @@ describe("a card's places", () => {
           stop({
             projectId: "stage",
             name: "stage",
+            source: "main",
             addresses: [],
             ...(birth === undefined ? {} : { birth }),
           }),
@@ -806,6 +807,39 @@ describe("a card's header", () => {
     const kai = { userId: "kai" };
     expect(cardPeople([ada, null, ada])).toEqual([]);
     expect(cardPeople([ada, kai, ada, undefined])).toEqual([ada, kai]);
+  });
+});
+
+describe("a stage's line on a card", () => {
+  // The run's stage read "Running · main": a branch is no version a person knows, nor is a commit.
+  it.each([
+    { case: "the branch it follows", version: "main", said: "Running" },
+    { case: "a commit", version: "f1b66ee", said: "Running" },
+    { case: "a release's tag", version: "v2.4.0", said: "Running · v2.4.0" },
+  ])("names what a stage runs only by a release's tag, never by $case", ({ version, said }) => {
+    const lines = placeLines({
+      flow: {
+        production: { kind: "absent" },
+        stages: [
+          stop({
+            projectId: "stage",
+            name: "stage",
+            source: "main",
+            version: {
+              name: undefined,
+              branch: "main",
+              commit: "f1b66ee",
+              sha: "f1b66ee0",
+              taggedBy: undefined,
+              label: "f1b66ee",
+            },
+          }),
+        ],
+      },
+      stageChips: new Map([["stage", chip({ label: "stage", version })]]),
+      nowMs: NOW,
+    });
+    expect(lines[0]?.words.join(" · ")).toBe(said);
   });
 });
 

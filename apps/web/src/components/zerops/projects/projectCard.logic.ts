@@ -205,8 +205,19 @@ function stageLine(
       words: [stop.git.line],
       trouble: stop.git.blocked,
     };
-  const said =
+  const told =
     chip !== undefined ? chipLine(chip, { since: undefined, down }) : flowStageLine(stop);
+  // What it runs is named by a release's tag only: the branch it follows and a commit are no
+  // version a person knows (the run's stage read "Running · main").
+  const unnamed = [stop.source, stop.version?.branch, stop.version?.commit].filter(
+    (word) => word !== undefined && word !== stop.version?.name,
+  );
+  const said = {
+    ...told,
+    words: told.words.filter((word) =>
+      unnamed.every((name) => word !== name && word !== `still runs ${name}`),
+    ),
+  };
   // HQ brings a stage up until its first deploy's address is on (`EnvironmentBirth`): running
   // with nowhere to open is still coming up, as the menu's heading says (`stopComing`).
   if (said.dot === "running" && stop.addresses.length === 0 && stop.birth?.ended === false)
@@ -232,7 +243,7 @@ function flowStageLine(stop: GroupFlowStop): Pick<PlaceLine, "dot" | "words" | "
     case "deployed":
       return {
         dot: "running",
-        words: ["Running", stop.version?.label].filter((word) => word !== undefined),
+        words: ["Running", stop.version?.name].filter((word) => word !== undefined),
         trouble: false,
       };
   }
