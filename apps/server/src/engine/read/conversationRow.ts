@@ -202,6 +202,15 @@ const latestOf = (view: ConversationView): ViewRun | null =>
       null,
     );
 
+/**
+ * The agent's words that answer the person's latest ask: none where they came before it — a Stop
+ * before the Mate said anything left the row reading "now" over its answer to the ask before.
+ */
+const answerOf = (view: ConversationView): ConversationView["lastAgent"] =>
+  view.lastAgent !== null && view.lastAsked !== null && view.lastAgent.at < view.lastAsked.at
+    ? null
+    : view.lastAgent;
+
 /** The menu row of a conversation, at the revision its environment and epoch give it. */
 export const conversationRowOf = (
   view: ConversationView,
@@ -229,7 +238,7 @@ export const conversationRowOf = (
             turnState: turnStateOf(latest),
           },
     subject: view.lastAsked === null ? null : subjectOf(view.lastAsked),
-    snippet: rowText(view.lastAgent?.text),
+    snippet: rowText(answerOf(view)?.text),
     at: view.updatedAt,
     askedAt: asked?.at ?? null,
     ...(view.runtimeMode == null ? {} : { runtimeMode: view.runtimeMode }),
