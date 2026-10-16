@@ -22,6 +22,8 @@ import {
 } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
+import { useMateCheckouts } from "../zerops/useMateCheckouts";
+import { terminalStartCwd } from "../zerops/terminalCwd.logic";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOwners";
 import { useEngineRunCards } from "../zerops/useEngineCardPaging";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
@@ -989,16 +991,19 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     }
     return worktreePath;
   }, [launchContext, worktreePath]);
+  // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden drawer reads none.
+  const checkouts = useMateCheckouts(visible ? threadRef.environmentId : null);
   const cwd = useMemo(
     () =>
-      launchContext?.cwd ??
-      (project
-        ? projectScriptCwd({
-            project: { cwd: project.workspaceRoot },
+      project
+        ? terminalStartCwd({
+            launchCwd: launchContext?.cwd,
+            workspaceRoot: project.workspaceRoot,
             worktreePath: effectiveWorktreePath,
+            checkouts,
           })
-        : null),
-    [effectiveWorktreePath, launchContext?.cwd, project],
+        : (launchContext?.cwd ?? null),
+    [checkouts, effectiveWorktreePath, launchContext?.cwd, project],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -1258,17 +1263,19 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
       ?.state.summary ?? null;
   const worktreePath =
     launchContext?.worktreePath ?? activeSummary?.worktreePath ?? threadWorktreePath;
+  // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden panel reads none.
+  const checkouts = useMateCheckouts(visible ? threadRef.environmentId : null);
   const cwd = useMemo(
     () =>
-      launchContext?.cwd ??
-      activeSummary?.cwd ??
-      (project
-        ? projectScriptCwd({
-            project: { cwd: project.workspaceRoot },
+      project
+        ? terminalStartCwd({
+            launchCwd: launchContext?.cwd ?? activeSummary?.cwd,
+            workspaceRoot: project.workspaceRoot,
             worktreePath,
+            checkouts,
           })
-        : null),
-    [activeSummary?.cwd, launchContext?.cwd, project, worktreePath],
+        : (launchContext?.cwd ?? activeSummary?.cwd ?? null),
+    [activeSummary?.cwd, checkouts, launchContext?.cwd, project, worktreePath],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -3149,6 +3156,16 @@ function ConversationView(props: ChatViewProps) {
       })
     : null;
   const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
+  // A Mate's new terminal starts in its code checkout, never its bare workspace (`terminalStartCwd`).
+  const mateCheckouts = useMateCheckouts(activeProject ? environmentId : null);
+  const terminalOpenCwd = activeProject
+    ? terminalStartCwd({
+        launchCwd: null,
+        workspaceRoot: activeProject.workspaceRoot,
+        worktreePath: activeThread?.worktreePath ?? null,
+        checkouts: mateCheckouts,
+      })
+    : null;
   const gitStatusQuery = useEnvironmentQuery(
     gitStatusCwd === null
       ? null
@@ -3517,7 +3534,7 @@ function ConversationView(props: ChatViewProps) {
       if (!activeThreadId || !activeProject) {
         return;
       }
-      const cwdForOpen = gitCwd ?? activeProject.workspaceRoot;
+      const cwdForOpen = terminalOpenCwd ?? activeProject.workspaceRoot;
       if (!cwdForOpen) {
         return;
       }
@@ -3546,7 +3563,7 @@ function ConversationView(props: ChatViewProps) {
     activeThreadWorktreePath,
     allocatableActiveTerminalIds,
     environmentId,
-    gitCwd,
+    terminalOpenCwd,
     openTerminal,
     setTerminalOpen,
     storeEnsureTerminal,
@@ -3558,7 +3575,7 @@ function ConversationView(props: ChatViewProps) {
       if (!activeThreadRef || hasReachedSplitLimit || !activeThreadId || !activeProject) {
         return;
       }
-      const cwdForOpen = gitCwd ?? activeProject.workspaceRoot;
+      const cwdForOpen = terminalOpenCwd ?? activeProject.workspaceRoot;
       if (!cwdForOpen) {
         return;
       }
@@ -3591,7 +3608,7 @@ function ConversationView(props: ChatViewProps) {
       openTerminal,
       activeThreadWorktreePath,
       environmentId,
-      gitCwd,
+      terminalOpenCwd,
       hasReachedSplitLimit,
       storeSplitTerminal,
       storeSplitTerminalVertical,
@@ -3601,7 +3618,7 @@ function ConversationView(props: ChatViewProps) {
     if (!activeThreadRef || !activeThreadId || !activeProject) {
       return;
     }
-    const cwdForOpen = gitCwd ?? activeProject.workspaceRoot;
+    const cwdForOpen = terminalOpenCwd ?? activeProject.workspaceRoot;
     if (!cwdForOpen) {
       return;
     }
@@ -3629,7 +3646,7 @@ function ConversationView(props: ChatViewProps) {
     openTerminal,
     activeThreadWorktreePath,
     environmentId,
-    gitCwd,
+    terminalOpenCwd,
     storeNewTerminal,
   ]);
   const closeTerminal = useCallback(
