@@ -4,7 +4,12 @@ import * as Logger from "effect/Logger";
 import * as Queue from "effect/Queue";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
-import { drainMateUpdate, joinUpdateIdleFacts } from "./mateUpdateDrain.ts";
+import {
+  drainMateUpdate,
+  joinUpdateIdleFacts,
+  quietWaitMs,
+  type UpdateQuietFacts,
+} from "./mateUpdateDrain.ts";
 
 describe("Mate drain", () => {
   it.effect.each([
@@ -131,5 +136,137 @@ describe("native closure participates in the final idle proof", () => {
         ).idle,
       ).toBe(expected);
     },
+  );
+});
+
+// Run 2: the organization updates idle Mates automatically, and a Mate was restarted one second
+// after its answer — its person saw it "isn't answering" while reading the result.
+describe("an automatic update leaves a quiet minute after a turn", () => {
+  it.each([
+    { name: "no turn yet", lastTurnEndedAt: undefined, refusedAt: undefined, now: 5, wait: 0 },
+    {
+      name: "a turn that just ended",
+      lastTurnEndedAt: 1_000,
+      refusedAt: undefined,
+      now: 1_000,
+      wait: 60_000,
+    },
+    {
+      name: "a turn half a minute ago",
+      lastTurnEndedAt: 1_000,
+      refusedAt: undefined,
+      now: 31_000,
+      wait: 30_000,
+    },
+    {
+      name: "a turn a minute ago",
+      lastTurnEndedAt: 1_000,
+      refusedAt: undefined,
+      now: 61_000,
+      wait: 0,
+    },
+    {
+      name: "work that met the closing admission",
+      lastTurnEndedAt: 1_000,
+      refusedAt: 100_000,
+      now: 130_000,
+      wait: 30_000,
+    },
+  ])("$name waits $wait ms", ({ lastTurnEndedAt, refusedAt, now, wait }) => {
+    expect(quietWaitMs({ lastTurnEndedAt, refusedAt, now, quietMs: 60_000 })).toBe(wait);
+  });
+
+  const automatic = (read: () => UpdateQuietFacts, facts: () => boolean = () => true) =>
+    Effect.gen(function* () {
+      const changes = yield* Queue.unbounded<void>();
+      const record = { begun: 0, canceled: 0 };
+      const fiber = yield* drainMateUpdate({
+        allowed: Effect.succeed(true),
+        begin: Effect.sync(() => {
+          record.begun++;
+        }),
+        cancel: Effect.sync(() => {
+          record.canceled++;
+        }),
+        facts: Effect.sync(() => ({ idle: facts(), blockers: facts() ? [] : ["turn"] })),
+        quiesce: Effect.succeed({ idle: true, blockers: [] }),
+        changed: Queue.take(changes),
+        quiet: Effect.sync(read),
+      }).pipe(Effect.forkChild);
+      return { fiber, record, changes };
+    });
+
+  it.effect("an automatic update closes admission only a quiet minute after the last turn", () =>
+    Effect.gen(function* () {
+      const { fiber, record } = yield* automatic(() => ({
+        idle: true,
+        blockers: [],
+        lastTurnEndedAt: 0,
+      }));
+      yield* TestClock.adjust(59_999);
+      expect(record.begun).toBe(0);
+      // No other event comes: the minute's own wake goes ahead.
+      yield* TestClock.adjust(1);
+      expect(yield* Fiber.join(fiber)).toBe(true);
+      expect(record.begun).toBe(1);
+    }),
+  );
+
+  it.effect("a turn inside the quiet minute starts the minute over", () =>
+    Effect.gen(function* () {
+      let ended = 0;
+      let working = false;
+      const { fiber, record, changes } = yield* automatic(() => ({
+        idle: !working,
+        blockers: working ? ["turn"] : [],
+        lastTurnEndedAt: ended,
+      }));
+      yield* TestClock.adjust(20_000);
+      working = true;
+      yield* Queue.offer(changes, undefined);
+      yield* TestClock.adjust(50_000);
+      ended = 70_000;
+      working = false;
+      yield* Queue.offer(changes, undefined);
+      yield* TestClock.adjust(59_999);
+      expect(record.begun).toBe(0);
+      yield* TestClock.adjust(1);
+      expect(yield* Fiber.join(fiber)).toBe(true);
+    }),
+  );
+
+  it.effect("work that meets the closing admission reopens it and waits a quiet minute again", () =>
+    Effect.gen(function* () {
+      let proofs = 0;
+      const { fiber, record } = yield* automatic(
+        () => ({ idle: true, blockers: [], lastTurnEndedAt: undefined }),
+        () => proofs++ > 0,
+      );
+      yield* TestClock.adjust(0);
+      expect(record).toEqual({ begun: 1, canceled: 1 });
+      yield* TestClock.adjust(59_999);
+      expect(record.begun).toBe(1);
+      yield* TestClock.adjust(1);
+      expect(yield* Fiber.join(fiber)).toBe(true);
+      expect(record).toEqual({ begun: 2, canceled: 1 });
+    }),
+  );
+
+  it.effect("an update the person asked for closes admission straight after a turn", () =>
+    Effect.gen(function* () {
+      let begun = false;
+      const done = yield* drainMateUpdate({
+        allowed: Effect.succeed(true),
+        begin: Effect.sync(() => {
+          begun = true;
+        }),
+        cancel: Effect.void,
+        facts: Effect.succeed({ idle: true, blockers: [] }),
+        quiesce: Effect.succeed({ idle: true, blockers: [] }),
+        changed: Effect.never,
+      });
+      expect(done).toBe(true);
+      expect(begun).toBe(true);
+    }),
   );
 });

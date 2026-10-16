@@ -184,6 +184,15 @@ const drainRoute = HttpRouter.add(
             ),
           ),
           changed: Queue.take(changed),
+          // Only the organization's automatic update waits for quiet: the person's own runs now.
+          ...(input.value.automatic
+            ? {
+                quiet: Effect.all([
+                  facts,
+                  engineDrain.lastTurnEndedAt ?? Effect.succeed(undefined),
+                ]).pipe(Effect.map(([idle, lastTurnEndedAt]) => ({ ...idle, lastTurnEndedAt }))),
+              }
+            : {}),
         });
       }),
     );

@@ -16,4 +16,6 @@ export interface MateUpdateDrain {
   readonly subscribeChanges?: SubscribeUpdateChanges;
   /** Closes idle native sessions and persists their final resume bindings, keeping admission shut. */
   readonly quiesce: Effect.Effect<UpdateIdleFacts>;
+  /** When the Mate's last turn ended (epoch ms), of any conversation; absent before one has. */
+  readonly lastTurnEndedAt?: Effect.Effect<number | undefined>;
 }

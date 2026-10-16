@@ -22,3 +22,12 @@ export const engineStateBlockers = (state: IdleState): ReadonlyArray<string> => 
   if (state.history?.state === "importing") blockers.push("history import");
   return blockers;
 };
+
+/** When the conversation's latest run ended: the state keeps the last ended one. */
+export const lastRunEndedAt = (state: Pick<ConversationState, "runs">): number | undefined => {
+  let latest: number | undefined;
+  for (const run of Object.values(state.runs))
+    if (run.endedAt !== null && (latest === undefined || run.endedAt > latest))
+      latest = run.endedAt;
+  return latest;
+};

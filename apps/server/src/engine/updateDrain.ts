@@ -1,4 +1,5 @@
 import { subscribeUpdateChanges, mergeUpdateSubscriptions } from "../update/subscribeChanges.ts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -11,7 +12,7 @@ import type { MateUpdateDrain, UpdateIdleFacts } from "../update/MateUpdateDrain
 import { Conversations } from "./Conversations.ts";
 import { EngineSignals } from "./EngineSignals.ts";
 import { providerThreadOf, TurnPump } from "./pump/TurnPump.ts";
-import { engineStateBlockers } from "./updateIdle.ts";
+import { engineStateBlockers, lastRunEndedAt } from "./updateIdle.ts";
 
 export const makeEngineUpdateDrain = Effect.gen(function* () {
   const conversations = yield* Conversations;
@@ -100,8 +101,26 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
     ),
   );
 
+  const lastTurnEndedAt = Effect.gen(function* () {
+    let latest: number | undefined;
+    const rows = yield* sql<{
+      readonly conversation_id: string;
+    }>`SELECT conversation_id FROM engine_conversation WHERE owner_kind = 'conversation'`;
+    for (const row of rows) {
+      const ended = lastRunEndedAt(
+        yield* conversations.state(ConversationId.make(row.conversation_id)),
+      );
+      if (ended !== undefined && (latest === undefined || ended > latest)) latest = ended;
+    }
+    return latest;
+  }).pipe(
+    // Unreadable, it is as if a turn just ended: the wait only grows.
+    Effect.catchCause(() => Effect.map(Clock.currentTimeMillis, (now): number | undefined => now)),
+  );
+
   return {
     begin: admission.begin,
+    lastTurnEndedAt,
     cancel: admission.cancel.pipe(Effect.andThen(signals.wakes.ring)),
     facts,
     quiesce,
