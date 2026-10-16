@@ -105,6 +105,9 @@ export function putLiveMergeGate(input: {
   return enabled ? { kind: "open" } : { kind: "held", words: verdict.title };
 }
 
+/** Why *Put it live* waits while another environment of the page is being set up. */
+export const PUT_LIVE_AFTER_CREATION = "Another environment is being set up first.";
+
 /**
  * What a project's door to an environment it lacks says: production's puts the app live, in one
  * step (`PutLiveHost`); a stage's adds it, from the project's form.

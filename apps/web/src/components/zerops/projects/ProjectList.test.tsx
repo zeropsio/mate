@@ -119,6 +119,8 @@ import {
 } from "./flowTestFixtures";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 
+import { PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
+
 import { CardMateLiftActions } from "./ProjectCards";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
@@ -335,6 +337,22 @@ describe("a card's production", () => {
         'data-zerops-group="aaa"',
       ),
     ).not.toContain("Not released yet");
+  });
+});
+
+describe("production's setup while another environment is set up", () => {
+  it("says why production's setup waits while another environment is set up", () => {
+    const html = section(
+      render({ groups: [entry([WREN])], setUpProduction: () => "busy" }),
+      'data-zerops-group="aaa"',
+    );
+    expect(html).toContain(PUT_LIVE_AFTER_CREATION);
+    expect(
+      section(
+        render({ groups: [entry([WREN])], setUpProduction: () => () => {} }),
+        'data-zerops-group="aaa"',
+      ),
+    ).not.toContain(PUT_LIVE_AFTER_CREATION);
   });
 });
 

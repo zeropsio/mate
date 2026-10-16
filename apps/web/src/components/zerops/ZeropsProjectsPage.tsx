@@ -76,7 +76,7 @@ import { heldCandidates, listsNoProject } from "@t3tools/client-runtime/zerops/p
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
-import { environmentDoorLabel } from "~/zerops/putLive.logic";
+import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import { useOpenPutLive } from "~/zerops/putLive";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
@@ -2432,6 +2432,8 @@ export function ZeropsProjectsContent({
                 {
                   id: "add-production",
                   label: environmentDoorLabel("production", "production"),
+                  disabled: creationRunning,
+                  ...(creationRunning ? { why: PUT_LIVE_AFTER_CREATION } : {}),
                   onSelect: () => {
                     openPutLive(group.groupId);
                   },
@@ -2596,9 +2598,11 @@ export function ZeropsProjectsContent({
         setUpProduction={({ group }) =>
           !addableTiers(group).includes("production") || groupIsEmpty(group)
             ? undefined
-            : () => {
-                openPutLive(group.groupId);
-              }
+            : creationRunning
+              ? "busy"
+              : () => {
+                  openPutLive(group.groupId);
+                }
         }
         renderCardPeople={overview.renderCardPeople}
         renderReleaseVerb={({ group, flow }) => {

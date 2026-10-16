@@ -9,7 +9,7 @@
  * Structural like the list it replaced: a Mate's row, the project's menu, the release's door and
  * a place's panel are the page's slots (`ZeropsProjectsFlowProps`).
  */
-import { environmentDoorLabel } from "~/zerops/putLive.logic";
+import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import {
   ArrowUpRightIcon,
   ChevronLeftIcon,
@@ -231,6 +231,11 @@ function SetUpPanel({
           ? environmentDoorLabel("production", placeLabel(line))
           : `Set up ${placeLabel(line).toLowerCase()}`}
       </button>
+      {onSetUp === "busy" ? (
+        <p className="text-muted-foreground text-xs" role="status">
+          {PUT_LIVE_AFTER_CREATION}
+        </p>
+      ) : null}
     </div>
   );
 }
