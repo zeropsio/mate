@@ -9,6 +9,7 @@
  * Pure: no DOM, no clock.
  */
 import {
+  deployedVersion,
   type GroupFlowAddress,
   linksChange,
   type Moved,
@@ -16,6 +17,7 @@ import {
   type ReviewPrimary,
   type ReviewState,
   type ReviewVerdict,
+  type ReleaseReplaces,
 } from "@t3tools/client-runtime/zerops";
 import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
 import { quoteWords } from "@t3tools/shared/messagePreview";
@@ -727,6 +729,48 @@ export function productionNow(input: {
           ...(host === undefined ? [] : [host]),
         ].join(" · ");
       }),
+  };
+}
+
+/**
+ * What "Production now" says production ran as the release was offered: since when the release it
+ * replaces runs — that release's own time, never a newer one's — and the parts a release puts
+ * something on. A database runs no release, so it is no part here. While the release goes out, a
+ * part it redeploys names the build on its way, not what it serves: it still serves the release it
+ * replaces.
+ */
+export function productionBefore(input: {
+  readonly replaces: ReleaseReplaces;
+  readonly releases: ReadonlyArray<{
+    readonly tag: string;
+    readonly taggedAt: string;
+    readonly entries: ReadonlyArray<{ readonly service: string }>;
+  }>;
+  readonly services: ReadonlyArray<{
+    readonly hostname: string;
+    readonly appVersionName?: string | undefined;
+  }>;
+  readonly releasing: boolean;
+}): {
+  readonly at: string | undefined;
+  readonly parts: ReadonlyArray<{
+    readonly hostname: string;
+    readonly version: string | undefined;
+  }>;
+} {
+  const replaced = input.replaces.kind === "release" ? input.replaces.tag : undefined;
+  const released = new Set(
+    input.releases.flatMap((release) => release.entries.map((entry) => entry.service)),
+  );
+  return {
+    at: input.releases.find((release) => release.tag === replaced)?.taggedAt,
+    parts: input.services
+      .filter((service) => released.has(service.hostname))
+      .map((service) => ({
+        hostname: service.hostname,
+        version:
+          deployedVersion(service.appVersionName).label ?? (input.releasing ? replaced : undefined),
+      })),
   };
 }
 
