@@ -7618,6 +7618,36 @@ a.ov-chip-who:focus-visible {
   white-space: nowrap;
 }
 
+.tm-sent {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+
+/* An invitation just sent grows in once, top first; it is the only row that ever animates here. */
+@media (prefers-reduced-motion: no-preference) {
+  .tm-cards > li[data-arrived] {
+    overflow: clip;
+    overflow-clip-margin: 4px;
+    animation: tm-card-arrive var(--duration-base) var(--ease-out-strong);
+  }
+
+  .tm-cards > li[data-arrived] > .tm-card {
+    min-height: 0;
+  }
+}
+
+@keyframes tm-card-arrive {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+
 .tm-empty {
   padding: 24px 0;
   color: var(--muted-foreground);

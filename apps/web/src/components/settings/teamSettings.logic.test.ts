@@ -2,6 +2,7 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  sentInvitation,
   shownTeam,
   teamSearchShown,
   teamGrantIds,
@@ -411,5 +412,36 @@ describe("finding someone on the team", () => {
       ["B", "Custom role", "Works on every project"],
       ["R", "Custom role", "Sees every project"],
     ]);
+  });
+});
+
+describe("an invitation just sent", () => {
+  const nova = member("nova", "Nova", "NO_ACCESS", {
+    status: "WAITING_AUTHORIZATION",
+    user: { id: "nova", email: "nova@example.com" },
+  });
+  it.each([
+    {
+      sentence:
+        "An invitation just sent is said once above the list, and its row is the one that arrived",
+      list: [member("me", "Me", "OWNER"), nova],
+      arrived: "cu-nova",
+    },
+    {
+      sentence: "Before Zerops lists the invitation, the line stands and no row is marked",
+      list: [member("me", "Me", "OWNER")],
+      arrived: null,
+    },
+    {
+      sentence: "Someone already on the team with that address is never marked as just invited",
+      list: [member("me", "Me", "OWNER"), member("nova", "Nova", "NO_ACCESS")],
+      arrived: null,
+    },
+  ])("$sentence", ({ list, arrived }) => {
+    expect(sentInvitation(people(teamPeople(input(list))), " Nova@Example.com ")).toEqual({
+      line: "Invitation sent to Nova@Example.com. They'll show here as joined once they accept.",
+      announce: "Invitation sent to Nova@Example.com",
+      arrivedKey: arrived,
+    });
   });
 });

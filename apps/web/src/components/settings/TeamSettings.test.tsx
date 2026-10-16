@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import type { ReactNode } from "react";
+import { act, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -159,5 +160,42 @@ describe("the organization's team", () => {
     expect(
       drawn(viewer === undefined ? undefined : { roleCode: viewer, membershipId: "cu-x" }).invite,
     ).toBe(invite);
+  });
+
+  it("Back from inviting, the team says the invitation went out, marks the new row and puts focus on Invite", async () => {
+    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(
+        <TeamList
+          sent="iva@example.com"
+          view={teamPeople(input({ roleCode: "OWNER", membershipId: "cu-ada" }))}
+        />,
+      );
+    });
+    expect(host.querySelector('[data-part="sent"]')?.textContent).toBe(
+      "Invitation sent to iva@example.com. They'll show here as joined once they accept.",
+    );
+    expect(host.querySelector('[role="status"]')?.textContent).toBe(
+      "Invitation sent to iva@example.com",
+    );
+    expect(
+      [...host.querySelectorAll("ul[aria-label=People] > li")].map((row) =>
+        row.hasAttribute("data-arrived"),
+      ),
+    ).toEqual([false, false, false, true]);
+    expect(document.activeElement?.getAttribute("data-zerops-surface")).toBe("invite-team");
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("A visit with no invitation just sent says nothing of one and marks no row", () => {
+    const markup = renderToStaticMarkup(
+      <TeamList view={teamPeople(input({ roleCode: "OWNER", membershipId: "cu-ada" }))} />,
+    );
+    expect(markup).not.toContain("Invitation sent");
+    expect(markup).not.toContain("data-arrived");
   });
 });

@@ -316,3 +316,26 @@ export function shownTeam(
     (a, b) => Number(a.pending) - Number(b.pending) || a.name.localeCompare(b.name),
   );
 }
+
+/** What the team says on return from sending an invitation to `address`. */
+export interface SentInvitation {
+  /** The quiet line above the list, for this visit. */
+  readonly line: string;
+  /** What a screen reader hears, politely. */
+  readonly announce: string;
+  /** The invitation's own row once Zerops lists it: it grows in, the only row that does. */
+  readonly arrivedKey: string | null;
+}
+
+export function sentInvitation(people: ReadonlyArray<TeamPerson>, address: string): SentInvitation {
+  const typed = address.trim();
+  const key = typed.toLocaleLowerCase();
+  const arrived = people.find(
+    (person) => person.pending && person.email?.toLocaleLowerCase() === key,
+  );
+  return {
+    line: `Invitation sent to ${typed}. They'll show here as joined once they accept.`,
+    announce: `Invitation sent to ${typed}`,
+    arrivedKey: arrived?.key ?? null,
+  };
+}
