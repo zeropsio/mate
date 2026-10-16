@@ -258,6 +258,7 @@ const withDeploys = <A, E>(
           view: Effect.succeed({ ...orgView, freshness: "cached" as const }),
           forWrite: Effect.succeed({ ...orgView, freshness: "recent" as const }),
           recent: Effect.succeed({ ...orgView, freshness: "cached" as const }),
+          readSince: () => Effect.die("HQ's door is outside this fixture"),
           exists: () => Effect.succeed(true),
           answeredAt: Effect.succeed(undefined),
           views: Stream.never,

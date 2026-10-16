@@ -10,7 +10,7 @@ import * as Redacted from "effect/Redacted";
 import * as TestClock from "effect/testing/TestClock";
 
 import { emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
-import { Door, doorLayer } from "./door.ts";
+import { Door, DoorRefused, doorLayer } from "./door.ts";
 import { doorRateLimitLayer } from "./rateLimit.ts";
 import { Roles, rolesLayer } from "./roles.ts";
 import { ZeropsApi, type ZeropsMember } from "./zerops/api.ts";
@@ -54,8 +54,8 @@ const world = () => {
   return made;
 };
 
-/** The owner's throwaway for HQ's door, minted now. */
-const throwaway = (made: ReturnType<typeof emptyWorld>, value: string) =>
+/** A person's throwaway for HQ's door, minted now: the owner's unless another is named. */
+const throwaway = (made: ReturnType<typeof emptyWorld>, value: string, person = "owner") =>
   Effect.map(Clock.currentTimeMillis, (now) => {
     made.tokens.set(value, {
       id: value,
@@ -67,7 +67,7 @@ const throwaway = (made: ReturnType<typeof emptyWorld>, value: string) =>
       canEditFinances: false,
       projects: [],
       createdMs: now,
-      createdByUser: "owner",
+      createdByUser: person,
     });
     return Redacted.make(value);
   });
@@ -180,6 +180,113 @@ describe("HQ's door, over the org's view", () => {
         (yield* roles.view).members.map((row) => row.userId),
         ["owner"],
       );
+    }),
+  );
+});
+
+/** A developer the owner has just invited, once they accept. */
+const newcomer: ZeropsMember = {
+  ...owner,
+  name: "newcomer",
+  roleCode: "DEVELOPER",
+  userId: "newcomer",
+  clientUserId: "C-newcomer",
+};
+
+// 2026-10-16: a person invited to an organization accepted on HQ and was sent straight into Mate;
+// its door came 10 s after they joined, HQ's view of the org did not list them yet, and the door
+// refused them until they reloaded.
+describe("HQ's door, for someone its view of the org does not list", () => {
+  it.effect("a person who joined after HQ last read its members is let in through the door", () =>
+    Effect.gen(function* () {
+      const made = world();
+      const { door } = yield* services(made);
+      yield* door.admit(yield* throwaway(made, "door-1"));
+      const before = membersRead(made);
+
+      made.members.set("ORG", [owner, newcomer]);
+      yield* TestClock.adjust("10 seconds");
+      const caller = yield* door.admit(yield* throwaway(made, "door-2", "newcomer"));
+      assert.strictEqual(caller.userId, "newcomer");
+      assert.strictEqual(membersRead(made) - before, 1);
+    }),
+  );
+
+  it.effect("someone who is not a member is still refused after the fresh read", () =>
+    Effect.gen(function* () {
+      const made = world();
+      const { door } = yield* services(made);
+      yield* door.admit(yield* throwaway(made, "door-1"));
+      const before = membersRead(made);
+
+      yield* TestClock.adjust("10 seconds");
+      const refused = yield* Effect.flip(door.admit(yield* throwaway(made, "door-2", "stranger")));
+      assert.deepStrictEqual(refused, new DoorRefused({ rule: "not_member" }));
+      assert.strictEqual(membersRead(made) - before, 1);
+    }),
+  );
+
+  it.effect("a member already in HQ's view is let in without reading Zerops again", () =>
+    Effect.gen(function* () {
+      const made = world();
+      made.members.set("ORG", [owner, newcomer]);
+      const { door } = yield* services(made);
+      yield* door.admit(yield* throwaway(made, "door-1"));
+      const before = membersRead(made);
+
+      yield* TestClock.adjust("10 seconds");
+      const caller = yield* door.admit(yield* throwaway(made, "door-2", "newcomer"));
+      assert.strictEqual(caller.userId, "newcomer");
+      assert.strictEqual(membersRead(made) - before, 0);
+    }),
+  );
+
+  it.effect("refuses over a view read for its own door without reading Zerops again", () =>
+    Effect.gen(function* () {
+      const made = world();
+      const { door } = yield* services(made);
+      const refused = yield* Effect.flip(door.admit(yield* throwaway(made, "door-1", "stranger")));
+      assert.deepStrictEqual(refused, new DoorRefused({ rule: "not_member" }));
+      assert.strictEqual(membersRead(made), 1);
+    }),
+  );
+
+  it.effect("doors of several people it has not seen share one fresh read", () =>
+    Effect.gen(function* () {
+      const made = world();
+      const { door } = yield* services(made);
+      yield* door.admit(yield* throwaway(made, "door-1"));
+      const before = membersRead(made);
+
+      made.members.set("ORG", [owner, newcomer]);
+      yield* TestClock.adjust("10 seconds");
+      const doors = [
+        throwaway(made, "door-2", "newcomer"),
+        throwaway(made, "door-3", "stranger"),
+        throwaway(made, "door-4", "newcomer"),
+      ].map((minted) =>
+        Effect.flatMap(minted, (presented) => Effect.result(door.admit(presented))),
+      );
+      const answers = yield* Effect.all(doors, { concurrency: "unbounded" });
+      assert.deepStrictEqual(
+        answers.map((answer) => answer._tag),
+        ["Success", "Failure", "Success"],
+      );
+      assert.strictEqual(membersRead(made) - before, 1);
+    }),
+  );
+
+  it.effect("is unavailable when Zerops does not answer the fresh read", () =>
+    Effect.gen(function* () {
+      const made = world();
+      const { door } = yield* services(made);
+      yield* door.admit(yield* throwaway(made, "door-1"));
+
+      // the organization's member list failing, as an empty answer.
+      made.members.set("ORG", []);
+      yield* TestClock.adjust("10 seconds");
+      const refused = yield* Effect.flip(door.admit(yield* throwaway(made, "door-2", "newcomer")));
+      assert.strictEqual(refused._tag, "ZeropsUnavailable");
     }),
   );
 });
