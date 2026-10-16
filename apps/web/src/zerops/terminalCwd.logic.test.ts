@@ -42,6 +42,26 @@ describe("where a new terminal starts", () => {
       input: { workspaceRoot: "/home/nova/tea-shop", repositories: ["appdev"] },
       cwd: "/home/nova/tea-shop",
     },
+    {
+      sentence:
+        "A Mate's terminal waits while its checkouts are read, never opening outside its code first",
+      input: { workspaceRoot: "/var/www", repositories: null },
+      cwd: null,
+    },
+    {
+      sentence: "A thread's own worktree waits for no checkout",
+      input: {
+        workspaceRoot: "/var/www",
+        worktreePath: "/var/www/.lanes/nova",
+        repositories: null,
+      },
+      cwd: "/var/www/.lanes/nova",
+    },
+    {
+      sentence: "A project that is not a Mate's workspace waits for no checkout",
+      input: { workspaceRoot: "/home/nova/tea-shop", repositories: null },
+      cwd: "/home/nova/tea-shop",
+    },
   ])("$sentence", ({ input, cwd }) => {
     expect(terminalStartCwd({ launchCwd: null, worktreePath: null, ...input })).toBe(cwd);
   });
@@ -61,5 +81,11 @@ describe("where a new terminal starts", () => {
     expect(repositoriesOnDisk(["api", "web"], (path) => onDisk.includes(path))).toEqual(
       repositories,
     );
+  });
+
+  it("A checkout whose read has not answered leaves the Mate's checkouts unread", () => {
+    expect(
+      repositoriesOnDisk(["api", "web"], (path) => (path === "/var/www/api" ? true : null)),
+    ).toBe(null);
   });
 });

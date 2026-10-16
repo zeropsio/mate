@@ -1021,18 +1021,20 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     return worktreePath;
   }, [launchContext, worktreePath]);
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden drawer reads none.
+  // Terminals already open stay on screen while the checkouts are read: they keep their folders.
   const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
+  const hasOpenTerminals = drawerTerminalSessions.length > 0;
   const cwd = useMemo(
     () =>
       project
-        ? terminalStartCwd({
+        ? (terminalStartCwd({
             launchCwd: launchContext?.cwd,
             workspaceRoot: project.workspaceRoot,
             worktreePath: effectiveWorktreePath,
             repositories,
-          })
+          }) ?? (hasOpenTerminals ? project.workspaceRoot : null))
         : (launchContext?.cwd ?? null),
-    [effectiveWorktreePath, launchContext?.cwd, project, repositories],
+    [effectiveWorktreePath, hasOpenTerminals, launchContext?.cwd, project, repositories],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -1341,15 +1343,15 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
           .summary ?? null;
       const terminalWorktreePath =
         launchContext?.worktreePath ?? summary?.worktreePath ?? threadWorktreePath;
-      const terminalCwd =
-        launchContext?.cwd ??
-        summary?.cwd ??
-        (project
-          ? projectScriptCwd({
-              project: { cwd: project.workspaceRoot },
-              worktreePath: terminalWorktreePath,
-            })
-          : null);
+      // A terminal not opened yet starts where a new one does: in the Mate's code (`terminalStartCwd`).
+      const terminalCwd = project
+        ? terminalStartCwd({
+            launchCwd: launchContext?.cwd ?? summary?.cwd,
+            workspaceRoot: project.workspaceRoot,
+            worktreePath: terminalWorktreePath,
+            repositories,
+          })
+        : null;
       if (!terminalCwd || !project) continue;
       locations.set(terminalId, {
         cwd: terminalCwd,
@@ -1366,6 +1368,7 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
     launchContext?.cwd,
     launchContext?.worktreePath,
     project,
+    repositories,
     surface.terminalIds,
     threadWorktreePath,
   ]);
