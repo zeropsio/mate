@@ -6,7 +6,7 @@
  * page. The heading carries the count, a search by name or e-mail and, for an organization owner or
  * admin, *Invite*.
  */
-import { Link } from "@tanstack/react-router";
+import { Link, useRouter } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -35,6 +35,11 @@ export function TeamSettings() {
   // Taken once on arrival: the visit keeps it, nothing after it sees it again.
   const [sent] = useState(invitationSentTo);
   useEffect(forgetInvitationSent, []);
+  // Invite is this page's way on: its code is fetched ahead, so the form paints at once.
+  const router = useRouter();
+  useEffect(() => {
+    void router.preloadRoute({ to: "/settings/team/invite" }).catch(() => undefined);
+  }, [router]);
   return (
     <SettingsPageContainer width="wide">
       <TeamList sent={sent} view={view} />

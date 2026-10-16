@@ -8,10 +8,10 @@
  * and stays for the next one — the address and name cleared, the role and projects kept — the name
  * typed kept for their row until they join. *Done* goes back to the team.
  */
-import { Link, useSearch } from "@tanstack/react-router";
+import { Link, useRouter, useSearch } from "@tanstack/react-router";
 import type { Invitee, InviteeCheck } from "@t3tools/client-runtime/data";
 import { presetMembership, type OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { rememberInvitedName } from "~/zerops/invitationMemory";
 import { Button } from "../ui/button";
@@ -315,9 +315,14 @@ export function TeamInviteView({
 
 /** Settings → Team → Invite; `?project=<group id>` picks the project it was opened from. */
 export function TeamInvitePage() {
+  const router = useRouter();
   const { project: from } = useSearch({ from: "/settings/team_/invite" });
   const team = useTeam();
   const { clientId, write, check } = team;
+  // The team is where this page leads back to: its code is fetched ahead, so it paints at once.
+  useEffect(() => {
+    void router.preloadRoute({ to: "/settings/team" }).catch(() => undefined);
+  }, [router]);
   const actions: TeamInviteActions = {
     check,
     send: async ({ email, name, invitee, membership, grants }) => {
