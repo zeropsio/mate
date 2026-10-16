@@ -15,10 +15,17 @@ export interface OpenCodeKeyProvider {
   readonly name: string;
   /** The environment variable OpenCode reads the key from. */
   readonly variable: string;
+  /** What its key runs, in people's words: "Runs OpenCode on <models>". */
+  readonly models: string;
 }
 
 export const OPENCODE_KEY_PROVIDERS: ReadonlyArray<OpenCodeKeyProvider> = [
-  { id: "nebius", name: "Nebius Token Factory", variable: "NEBIUS_API_KEY" },
+  {
+    id: "nebius",
+    name: "Nebius Token Factory",
+    variable: "NEBIUS_API_KEY",
+    models: "open models — Kimi, Qwen, DeepSeek, GLM and more",
+  },
 ];
 
 /** The key-signed provider an OpenCode model slug (`provider/model`) runs on, if it is one. */
