@@ -25,7 +25,7 @@ import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
 
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import {
   DialogDescription,
   DialogFooter,
@@ -50,7 +50,7 @@ import { MateFacePicker } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import { WhatHappensNext } from "./WhatHappensNext";
-import { newMateNext } from "./whatHappensNext.logic";
+import { newMateCost, newMateNext, ZEROPS_PRICING_URL } from "./whatHappensNext.logic";
 
 /** What the form hands over: the Mate's own name, which its project's is built from, the recipe and the face. */
 export interface NewMateChoice {
@@ -283,6 +283,14 @@ export function ZeropsNewMateForm({
               />
               {access === undefined ? null : access(setUserRoles)}
               {forecast}
+              <p className="text-sm text-muted-foreground" data-zerops-mate-cost="">
+                {newMateCost(botName)}{" "}
+                <InlineButton
+                  render={<a href={ZEROPS_PRICING_URL} rel="noreferrer" target="_blank" />}
+                >
+                  Zerops pricing
+                </InlineButton>
+              </p>
             </div>
           </DialogPanel>
         </div>

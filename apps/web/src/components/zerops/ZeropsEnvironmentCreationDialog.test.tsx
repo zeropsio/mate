@@ -99,6 +99,15 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(html).not.toContain("Starts with");
   });
 
+  it("The New Mate form says what a Mate costs: its own computer, billed by Zerops by use, Zerops's prices a link away", () => {
+    render({ role: "dev", defaultName: "Nova" });
+    const line = document.querySelector("[data-zerops-mate-cost]");
+    expect(line?.textContent).toBe(
+      "Nova runs on its own computer, which Zerops bills by use while it runs. Zerops pricing",
+    );
+    expect(line?.querySelector("a")?.getAttribute("href")).toBe("https://zerops.io/pricing");
+  });
+
   it("keeps a stage's own form, its title naming the role", () => {
     const html = render();
     expect(html).toContain(">New stage environment<");
