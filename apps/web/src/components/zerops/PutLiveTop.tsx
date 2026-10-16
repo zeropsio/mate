@@ -10,7 +10,7 @@
  * The wait row is drawn by `PutLiveProgress` alone, so the shared progress piece can take its
  * place in one spot.
  */
-import { readZeropsMembership } from "@t3tools/client-runtime/zerops";
+import { productionProjectOf, readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
@@ -237,7 +237,7 @@ export function usePutLiveOffered(groupId: string | undefined): boolean {
 function putLiveFlowFacts(flow: ZeropsProjectFlow | undefined): PutLiveFlowFacts | undefined {
   if (flow === undefined || !flow.declarationsRead || !flow.releasesKnown) return undefined;
   return {
-    production: flow.environments.find((entry) => entry.tier === "production")?.projectId,
+    production: productionProjectOf(flow.environments),
     gate: flow.release.gate,
     releases: flow.releases,
     inFlight: flow.release.inFlight,

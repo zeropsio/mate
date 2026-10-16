@@ -76,6 +76,28 @@ describe("the pages the Mate checked, as the Browser page lists them", () => {
       rows: ["Home page · iPhone 14", "/cart · Desktop · failed", "Home page · Desktop"],
     },
     {
+      // The live check of 0.15.144: every row read "Home page" though the pages were searches.
+      name: "a search is named by what was searched, on a hash route or in the query",
+      entries: [
+        check("b1", 1, "https://shop.example.com/#/?q=green"),
+        check("b2", 2, "https://shop.example.com/#/?q=oolong"),
+        check("b3", 3, "https://shop.example.com/teas?search=white"),
+      ],
+      rows: [
+        "/teas · Search: white · Desktop",
+        "Search: oolong · Desktop",
+        "Search: green · Desktop",
+      ],
+    },
+    {
+      name: "a hash route names its own page",
+      entries: [
+        check("b1", 1, "https://shop.example.com/#/"),
+        check("b2", 2, "https://shop.example.com/#/teas/new?sort=price"),
+      ],
+      rows: ["/teas/new · sort: price · Desktop", "Home page · Desktop"],
+    },
+    {
       name: "a deploy is no page",
       entries: [check("d1", 1, "https://shop.example.com/", { kind: "deploy" })],
       rows: [],

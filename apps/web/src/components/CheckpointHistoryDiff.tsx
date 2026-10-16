@@ -37,6 +37,22 @@ interface HistoryDiffProps {
   composerDraftTarget: ScopedThreadRef | DraftId;
   selectedFilePath: string | null;
   revealRequestId: number;
+  /** The Mate whose turn it is, by its Zerops project: its own service is named its workspace. */
+  mate?: { readonly projectId: string; readonly name: string } | undefined;
+}
+
+/**
+ * A service's section as a person names it: the Mate's own service is "{Mate}'s workspace"
+ * where it is its only one here; any other keeps the name the server gave it.
+ */
+function rootName(
+  root: CheckpointHistoryRoot["root"],
+  roots: ReadonlyArray<CheckpointHistoryRoot>,
+  mate: HistoryDiffProps["mate"],
+): string {
+  if (mate === undefined || root.projectId !== mate.projectId) return root.label;
+  const own = roots.filter((entry) => entry.root.projectId === mate.projectId);
+  return own.length === 1 ? `${mate.name}'s workspace` : root.label;
 }
 
 export function CheckpointHistoryDiff(props: HistoryDiffProps) {
@@ -75,6 +91,7 @@ function CheckpointRootDiff(
   props: HistoryDiffProps & { entry: CheckpointHistoryRoot; initiallyOpen: boolean },
 ) {
   const { entry } = props;
+  const name = rootName(entry.root, props.history.roots, props.mate);
   const selectionKey = `${props.revealRequestId}:${props.selectedFilePath ?? ""}`;
   const selectionMatchesRoot = Boolean(
     props.selectedFilePath &&
@@ -111,7 +128,8 @@ function CheckpointRootDiff(
   );
   const responseError = checkpointRootResponseError(query.data, entry.root.rootId);
   const detail = responseError ? null : query.data;
-  const state = checkpointDetailState(detail, query.error ?? responseError, query.isPending);
+  const failure = query.error ?? responseError;
+  const state = checkpointDetailState(detail, failure, query.isPending);
   const patch = useMemo(
     () => getRenderablePatch(detail?.diff, `history:${props.resolvedTheme}`),
     [detail?.diff, props.resolvedTheme],
@@ -142,11 +160,7 @@ function CheckpointRootDiff(
       viewer.scrollTo({ type: "item", id: selected.fileKey, align: "start" });
   }, [files, props.selectedFilePath, selectionKey, viewer]);
   return (
-    <section
-      ref={sectionRef}
-      className="border-t border-border"
-      aria-label={`${entry.root.label} changes`}
-    >
+    <section ref={sectionRef} className="border-t border-border" aria-label={`${name} changes`}>
       <div className="flex items-center gap-2 bg-secondary px-3 py-2">
         <button
           className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs font-medium"
@@ -158,22 +172,22 @@ function CheckpointRootDiff(
           ) : (
             <ChevronRightIcon className="size-3.5" />
           )}
-          <span className="truncate">{entry.root.label}</span>
+          <span className="truncate">{name}</span>
           {entry.files !== undefined && (
             <span className="font-normal text-muted-foreground">
               {entry.files.length} recorded file{entry.files.length === 1 ? "" : "s"}
             </span>
           )}
         </button>
-        {expanded && notRecorded === null && (
+        {/* Only a read that failed has something to try again. */}
+        {expanded && notRecorded === null && failure !== null && (
           <Button
             size="sm"
             variant="secondary"
-            disabled={query.isPending && !query.error}
             onClick={query.refresh}
-            aria-label={`Retry ${entry.root.label} diff`}
+            aria-label={`Retry ${name} diff`}
           >
-            {query.isPending && !query.error ? "Loading…" : "Retry"}
+            Retry
           </Button>
         )}
       </div>
@@ -192,7 +206,7 @@ function CheckpointRootDiff(
           )}
           {state.kind === "loading" && (
             <p role="status" className="px-3 pb-2 text-xs text-muted-foreground">
-              Loading {entry.root.label} changes…
+              Loading {name} changes…
             </p>
           )}
           {files.length > 0 && (
@@ -202,7 +216,7 @@ function CheckpointRootDiff(
               className="h-96 min-h-0 overflow-auto"
               files={files}
               sectionId={`run:${props.history.runId}:root:${entry.root.rootId}`}
-              sectionTitle={entry.root.label}
+              sectionTitle={name}
               composerDraftTarget={props.composerDraftTarget}
               renderHeaderPrefix={(_file, key, collapsed) => (
                 <Button

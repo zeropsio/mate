@@ -107,9 +107,11 @@ const EMPTY_COLLAPSED_DIFF_FILE_KEYS: ReadonlySet<string> = new Set();
 interface DiffPanelProps {
   mode?: DiffPanelMode;
   composerDraftTarget: ScopedThreadRef | DraftId;
+  /** The conversation's Mate, by its Zerops project: its own service reads as its workspace. */
+  mate?: { readonly projectId: string; readonly name: string } | undefined;
 }
 
-export default function DiffPanel({ mode = "inline", composerDraftTarget }: DiffPanelProps) {
+export default function DiffPanel({ mode = "inline", composerDraftTarget, mate }: DiffPanelProps) {
   const { resolvedTheme } = useTheme();
   const settings = useClientSettings();
   const diffRenderMode = useDiffPanelStore((state) => state.diffRenderMode);
@@ -946,6 +948,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
           composerDraftTarget={composerDraftTarget}
           selectedFilePath={selectedFilePath}
           revealRequestId={selectedFileRevealRequestId}
+          mate={mate}
         />
       ) : shownSelection.kind === "no-turns" && runChangesRead === "reading" ? (
         <DiffPanelLoadingState label="Loading changes..." />

@@ -343,7 +343,7 @@ export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefin
       ...flow,
       declarations: stops.declarations,
       environmentInputs: stops.environments,
-      environments: flow.environments.flatMap(({ id: _id, target, projectId: _legacy, ...row }) =>
+      environments: flow.environments.flatMap(({ id: _id, target, ...row }) =>
         target.kind === "zerops" ? [{ ...row, projectId: target.projectId }] : [],
       ),
     };

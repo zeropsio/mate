@@ -34,6 +34,7 @@ import {
   releaseLine,
   sinceWords,
   whySaid,
+  productionBefore,
 } from "./ZeropsReview.logic";
 
 describe("reviewKindLine", () => {
@@ -780,6 +781,40 @@ describe("the release sheet's lines", () => {
       },
     ])("$name", ({ parts, addresses, expected }) => {
       expect(productionNow({ live: "v2.3.1", since: "Tue", parts, addresses })).toEqual(expected);
+    });
+  });
+
+  describe("Production now is what ran as the release was offered", () => {
+    const releases = [
+      { tag: "v0.1.1", taggedAt: "2026-10-16T19:44:40Z", entries: [{ service: "app" }] },
+      { tag: "v0.1.0", taggedAt: "2026-10-16T09:16:00Z", entries: [{ service: "app" }] },
+    ];
+    const services = [
+      { hostname: "app", appVersionName: "v0.1.0 4be1c0d" },
+      { hostname: "db", appVersionName: undefined },
+    ];
+    it.each([
+      {
+        name: "Production now says when the release it replaces went live, never a newer one's time",
+        input: { replaces: { kind: "release", tag: "v0.1.0" }, releasing: false },
+        expected: { at: "2026-10-16T09:16:00Z", parts: [{ hostname: "app", version: "v0.1.0" }] },
+      },
+      {
+        name: "Production now names only the parts a release puts something on: a database runs none",
+        input: { replaces: { kind: "unnamed" }, releasing: false },
+        expected: { at: undefined, parts: [{ hostname: "app", version: "v0.1.0" }] },
+      },
+      {
+        name: "while a release goes out, a part it redeploys still runs the release it replaces",
+        input: {
+          replaces: { kind: "release", tag: "v0.1.0" },
+          releasing: true,
+          services: [{ hostname: "app", appVersionName: undefined }],
+        },
+        expected: { at: "2026-10-16T09:16:00Z", parts: [{ hostname: "app", version: "v0.1.0" }] },
+      },
+    ] as const)("$name", ({ input, expected }) => {
+      expect(productionBefore({ releases, services, ...input })).toEqual(expected);
     });
   });
 

@@ -15,6 +15,7 @@ import { hqOffer } from "@t3tools/shared/hqOffers";
 import type { CanonicalHqEnvironment, HqJob } from "../../zerops/hq/environments.ts";
 import { environmentById } from "./appEnvironments.ts";
 import { canonicalProjectFlow, projectFlow } from "./projectFlow.ts";
+import { productionRelease } from "../../zerops/projectFlow.ts";
 
 const key = {
   orgId: "org",
@@ -579,6 +580,67 @@ describe("the version names the account's store states", () => {
         ["s3", undefined],
       ],
     );
+    f.registry.dispose();
+  });
+});
+
+describe("what a Mate is told of production", () => {
+  const COMMIT = "4be1c0d9a7e2f3b4c5d6e7f8091a2b3c4d5e6f70";
+  /** HQ's releases of the application, delivered on its detail scope. */
+  function deliverReleases(store: ReturnType<typeof fixture>["store"]) {
+    const scope = hqAppDetailScope("org", "shop");
+    store.dispatch({
+      kind: "stream",
+      key: scope,
+      now: 0,
+      event: { kind: "demand", demanded: true },
+    });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
+    store.dispatch({
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: [{ scope, generation: store.state().streams.get(scope)!.generation }],
+      reset: true,
+      removals: [],
+      rows: [
+        {
+          family: "hqAppDetail",
+          id: "shop/releases",
+          value: {
+            kind: "releases",
+            value: [
+              {
+                tag: "v0.2.0",
+                sha: "a".repeat(40),
+                entries: [{ service: "web", sha: COMMIT }],
+                at: "2026-10-16T19:44:40Z",
+                by: "owner",
+                reason: null,
+                rollbackOf: null,
+                state: "approved",
+              },
+            ],
+          },
+          revision: { kind: "hq", incarnation: "i", revision: 1 },
+        },
+      ],
+    });
+  }
+
+  it("A Mate is told the project production runs in, so its note can carry production's address", () => {
+    const f = fixture([
+      {
+        id: "web",
+        activeAppVersion: { id: "v-2", name: `v0.2.0 ${COMMIT.slice(0, 7)}`, source: "GIT" },
+      },
+    ]);
+    deliverReleases(f.store);
+    const flow = canonicalProjectFlow.derive(readsOfState(f.store.state()), key);
+    expect(productionRelease(flow)).toEqual({
+      tag: "v0.2.0",
+      taggedAt: "2026-10-16T19:44:40Z",
+      projectId: "prod",
+    });
     f.registry.dispose();
   });
 });
