@@ -19,6 +19,7 @@ import * as ServerConfig from "../config.ts";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
+import { emptyTreeFor } from "./GitVcsDriverSnapshot.ts";
 import type * as VcsDriver from "./VcsDriver.ts";
 import * as VcsDriverRegistry from "./VcsDriverRegistry.ts";
 import * as VcsProcess from "./VcsProcess.ts";
@@ -157,6 +158,29 @@ it.effect("restores empty checkpoints without changing paths outside the workspa
         assert.strictEqual(staged.stdout.trim(), "outside.txt");
       }
     }
+  }).pipe(Effect.scoped, Effect.provide(GitContractLayer)),
+);
+
+it.effect("a snapshot of a source that was not there at the start shows all of it as added", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const driver = yield* GitVcsDriver.makeVcsDriverShape();
+    const cwd = yield* fileSystem.makeTempDirectoryScoped({
+      prefix: "t3-checkpoint-from-nothing-",
+    });
+    yield* runGit(cwd, ["init"]);
+    yield* fileSystem.writeFileString(path.join(cwd, "app.js"), "one\ntwo\n");
+    const checkpointRef = CheckpointRef.make("refs/t3/checkpoints/t/runs/r/a/after");
+    const { oid } = yield* driver.checkpoints.captureSnapshot({ cwd, checkpointRef });
+    const numstat = yield* driver.checkpoints.diffCheckpoints({
+      cwd,
+      fromCheckpointRef: CheckpointRef.make(emptyTreeFor(oid)),
+      toCheckpointRef: CheckpointRef.make(oid),
+      ignoreWhitespace: false,
+      format: "numstat",
+    });
+    assert.strictEqual(numstat, "2\t0\tapp.js\0");
   }).pipe(Effect.scoped, Effect.provide(GitContractLayer)),
 );
 

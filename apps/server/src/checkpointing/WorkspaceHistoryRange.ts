@@ -49,7 +49,11 @@ export function workspaceHistoryRange(
     runId: `range:${start?.runId ?? "unknown"}:${end.runId}`,
     coverage:
       complete &&
-      entries.every((r) => r.before.status === "captured" && r.after.status === "captured")
+      entries.every(
+        (r) =>
+          (r.before.status === "captured" || r.before.status === "absent") &&
+          r.after.status === "captured",
+      )
         ? "complete"
         : "partial",
   };
