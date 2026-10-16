@@ -271,6 +271,7 @@ import {
   agentNeedsSignIn,
   productionTurnNotes,
 } from "@t3tools/client-runtime/zerops";
+import { MATE_READ_ACCESS_LINE } from "@t3tools/client-runtime/zerops/mateAccess";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   nextTimelineFollow,
@@ -3336,7 +3337,7 @@ function ConversationView(props: ChatViewProps) {
         })
       : admission.readOnly
         ? {
-            notice: admission.sendBlockReason ?? "Your Zerops access to this Mate is read-only.",
+            notice: admission.sendBlockReason ?? MATE_READ_ACCESS_LINE,
             waitingLabel: "Waiting for a project operator",
           }
         : null;

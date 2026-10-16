@@ -148,16 +148,20 @@ export function resolveMateVerbs(input: {
 }
 
 /**
+ * What a person whose role only reads a Mate has, in the product's words (Read access): said as
+ * what they have, never as another product's permission or as what they may not do.
+ */
+export const MATE_READ_ACCESS_LINE = "You have Read access to this Mate.";
+
+/**
  * The one line a row the person cannot open carries, in place of the verb.
  *
  * Names the owner when the account can be read for one. Without a name it says
- * the same native permission reason without inventing ownership.
+ * the same access without inventing ownership.
  */
 export function mateOnlyOwnerOpensIt(ownerName?: string | undefined): string {
   const owner = ownerName?.trim() ?? "";
-  return owner.length === 0
-    ? "Your Zerops access to this Mate is read-only."
-    : `${owner}'s Mate — your Zerops access is read-only.`;
+  return owner.length === 0 ? MATE_READ_ACCESS_LINE : `${owner}'s Mate — you have Read access.`;
 }
 
 /**

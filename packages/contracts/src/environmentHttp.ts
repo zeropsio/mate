@@ -69,7 +69,7 @@ export const EnvironmentOperationForbiddenReason = Schema.Literals([
   "zerops_throwaway_required",
   // The caller is a `READ_ONLY` member here: the Mate is theirs to see in the
   // list and not to open (D5). Never the generic permission error — the app
-  // turns this one into "Jan's Mate — your Zerops access is read-only".
+  // turns this one into "Jan's Mate — you have Read access".
   "zerops_read_only",
   "zerops_chief_owner_required",
   "browser_session_unsupported",

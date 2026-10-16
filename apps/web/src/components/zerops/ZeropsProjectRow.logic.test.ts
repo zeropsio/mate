@@ -911,13 +911,13 @@ describe("a Mate the person may see and not open (D5)", () => {
   it("says whose it is in place of the verb", () => {
     expect(deriveZeropsRowPresentation(listed(READY, "Jan"))).toEqual({
       status: { label: "Read-only", tone: "off" },
-      detail: "Jan's Mate — your Zerops access is read-only.",
+      detail: "Jan's Mate — you have Read access.",
     });
   });
 
   it("says the same thing without a name when the account has none", () => {
     expect(deriveZeropsRowPresentation(listed(READY)).detail).toBe(
-      "Your Zerops access to this Mate is read-only.",
+      "You have Read access to this Mate.",
     );
   });
 
