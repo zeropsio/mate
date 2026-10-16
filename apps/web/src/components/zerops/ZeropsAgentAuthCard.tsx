@@ -115,8 +115,9 @@ export function ZeropsAgentAuthCard({
           {signInDemanded ? "Authorize coding agents" : "Coding agents"}
         </h3>
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
+          {/* Signed in, its row says it: the header only says whose access it is. */}
           {ownSignedIn
-            ? `${AGENT_NAMES[own.agentId]} is signed in. Access is shared by this project.`
+            ? "Access is shared by this project."
             : "Sign in inside this Zerops Control Plane. Access is shared by this project."}
         </p>
       </header>
@@ -337,7 +338,11 @@ function ZeropsAgentAuthRow({
               <span className="min-w-0 text-xs leading-4 text-muted-foreground">{label}</span>
             )}
           </div>
-          <AuthCheckedAt at={agent.verification?.checkedAt} />
+          {/* A check that holds says nothing a clock adds; one that did not, when it ran. */}
+          {agent.verification?.status === "authenticated" &&
+          agent.verification.reason === undefined ? null : (
+            <AuthCheckedAt at={agent.verification?.checkedAt} />
+          )}
           <RunsOnLine runsOn={runsOn} />
         </div>
       </div>
