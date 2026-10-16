@@ -516,6 +516,7 @@ function ProjectCard<T>({
   const ready = cardReady(flow);
   const releaseDoor = ready === undefined ? null : props.renderReleaseVerb?.(entry);
   const placeFacts = props.cardPlaces?.(entry);
+  const readyWhere = ready === undefined ? undefined : readyLine(ready, placeFacts?.releaseOnStage);
   const lines = placeLines({ flow, ...placeFacts, nowMs });
   // Production first — what a person runs for others — then each stage behind it.
   const places = [
@@ -580,7 +581,7 @@ function ProjectCard<T>({
       {ready === undefined ? null : (
         <section className="ov-sec" data-zerops-card-ready="true">
           <p className="ov-ready-title">{readyTitle(ready)}</p>
-          <p className="ov-ready-line">{readyLine(ready, placeFacts?.releaseOnStage)}</p>
+          {readyWhere === undefined ? null : <p className="ov-ready-line">{readyWhere}</p>}
           {drawn(releaseDoor) ? <div className="ov-acts">{releaseDoor}</div> : null}
         </section>
       )}
