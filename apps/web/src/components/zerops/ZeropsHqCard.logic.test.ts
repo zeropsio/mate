@@ -41,6 +41,12 @@ describe("hqCardView — the headline", () => {
       { standing: { kind: "unavailable", since: 7 } },
       { kind: "down", tone: "failed", word: "Unavailable since t7" },
     ],
+    // A refusal is HQ answering this person, not an outage anybody else shares.
+    [
+      "HQ refusing this person's sign-in",
+      { standing: { kind: "refused" } },
+      { kind: "down", tone: "failed", word: "Refused your sign-in" },
+    ],
     // Serving inside HQ's grace: no outage, but not all is well either.
     [
       "HQ serving while it cannot check Zerops",

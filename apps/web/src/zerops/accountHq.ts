@@ -403,7 +403,12 @@ export type HqStanding =
       readonly parts?: HqParts;
     }
   /** Not answering as the official HQ since `since` (wall ms): the last known state stays shown. */
-  | { readonly kind: "unavailable"; readonly since: number };
+  | { readonly kind: "unavailable"; readonly since: number }
+  /**
+   * Answering, and refusing this person's sign-in: no outage anybody else shares, so no time it
+   * began; the menu's outage line carries HQ's own reason.
+   */
+  | { readonly kind: "refused" };
 
 /** The standing a health read leaves: an outage keeps the time it began. */
 export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {

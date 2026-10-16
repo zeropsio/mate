@@ -2,6 +2,7 @@ import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
+import { placementNotice } from "./projects/placementNotice.logic";
 import { overviewPaints, tiersAddable } from "./projects/projectsView.logic";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
 import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
@@ -2657,19 +2658,10 @@ export function ZeropsProjectsContent({
           if (candidate === undefined) return null;
           return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} />;
         }}
-        placementNotice={
-          placementStatus.complete && placementStatus.unavailableReason === undefined
-            ? undefined
-            : placementStatus.unavailableReason === "expired-session"
-              ? "Placement not read — sign in again"
-              : placementStatus.unavailableReason === "forbidden"
-                ? "Placement unavailable — access denied"
-                : placementStatus.unavailableReason === "refused"
-                  ? "Placement unavailable — HQ refused this read"
-                  : hqStructure.capped || placementStatus.reconnecting
-                    ? "Placement not read — HQ is unavailable"
-                    : "Reading HQ placement…"
-        }
+        placementNotice={placementNotice(
+          placementStatus,
+          hqStructure.capped || placementStatus.reconnecting,
+        )}
         placementReading={
           !placementStatus.complete &&
           placementStatus.unavailableReason === undefined &&
