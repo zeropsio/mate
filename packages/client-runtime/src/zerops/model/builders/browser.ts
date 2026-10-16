@@ -47,6 +47,15 @@ function isBrowserTailLabel(label: string): boolean {
   return BROWSER_TAIL_COMMANDS.has(label.split(" ")[0] ?? "");
 }
 
+/**
+ * The wait zcp runs after every open for the page's first paint
+ * (`browserPaintWait`, `internal/ops/browser_warm.go`): it goes on when the
+ * wait times out, so it is never a step of the Mate's, nor a failure.
+ */
+function isBrowserPaintWait(label: string): boolean {
+  return label.startsWith("wait --fn performance.getEntriesByName('first-contentful-paint')");
+}
+
 /** `["set", "viewport", "1920", "1080"]` (agent-browser `set --help`) — the caller's own resize, if it issued one; a zero side is none. */
 function browserViewportFromLabel(label: string): ZeropsBrowserViewport | undefined {
   const match = label.match(/^set viewport ([1-9]\d*) ([1-9]\d*)(?:\s|$)/);
@@ -208,15 +217,17 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
   const subject = pickFirst(readInputString(call.input, "url"), card?.url) ?? "the page";
   const { voice, voiceSource } = mateVoiceFor("browser", subject);
 
-  const steps = (card?.steps ?? []).map((step, index) => {
-    const built = buildStep(
-      `step-${index}`,
-      step.label,
-      step.success ? "ACTIVE" : "FAILED",
-      browserStepNote(step),
-    );
-    return isBrowserTailLabel(step.label) ? { ...built, kind: "tail" as const } : built;
-  });
+  const steps = (card?.steps ?? [])
+    .filter((step) => !isBrowserPaintWait(step.label))
+    .map((step, index) => {
+      const built = buildStep(
+        `step-${index}`,
+        step.label,
+        step.success ? "ACTIVE" : "FAILED",
+        browserStepNote(step),
+      );
+      return isBrowserTailLabel(step.label) ? { ...built, kind: "tail" as const } : built;
+    });
   const browserSummary =
     card !== undefined
       ? browserSummaryFor(steps, {

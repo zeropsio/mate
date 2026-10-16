@@ -815,6 +815,51 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
     ]);
   });
 
+  // zcp waits for the page's first paint after every open and goes on when it
+  // times out (`browserPaintWait`, internal/ops/browser_warm.go).
+  it("the browser's own wait for a page's first paint is no step of the Mate's, and its timeout fails no check", () => {
+    const { operations } = reduceFrom([
+      {
+        id: "brw-paint",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_browser",
+        input: { url: "https://shop.example.com" },
+        status: "completed",
+        resultText: JSON.stringify({
+          url: "https://shop.example.com",
+          steps: [
+            { command: ["set", "viewport", "1280", "577"], success: true },
+            { command: ["open", "https://shop.example.com"], success: true },
+            {
+              command: [
+                "wait",
+                "--fn",
+                "performance.getEntriesByName('first-contentful-paint').length>0",
+                "--timeout",
+                "5000",
+              ],
+              success: false,
+              error: "Timeout 5000ms exceeded",
+              errorKind: "timeout",
+            },
+            { command: ["wait", "--text", "Cart"], success: true },
+            { command: ["errors"], success: true },
+          ],
+        }),
+      },
+    ]);
+    const op = operations[0]!;
+
+    expect(op.browserSummary?.failedStep).toBeUndefined();
+    expect(op.browserSummary?.stepCount).toBe(3);
+    expect(op.steps.map((step) => step.label)).toEqual([
+      "set viewport 1280 577",
+      "open https://shop.example.com",
+      "wait --text Cart",
+      "errors",
+    ]);
+  });
+
   it.each([
     {
       name: "read from the call's own commands while it runs",
