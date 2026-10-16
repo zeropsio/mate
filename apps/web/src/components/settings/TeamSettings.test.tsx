@@ -26,6 +26,33 @@ vi.mock("@tanstack/react-router", async (actual) => ({
   ),
 }));
 
+// A tooltip drawn in place, in a template of its own: what a pointer reads is in the markup.
+vi.mock("../ui/tooltip", async () => {
+  const { cloneElement, isValidElement } = await import("react");
+  return {
+    Tooltip: ({ children }: { readonly children: ReactNode }) => <>{children}</>,
+    TooltipTrigger: ({
+      render,
+      children,
+    }: {
+      readonly render: unknown;
+      readonly children?: ReactNode;
+    }) =>
+      isValidElement(render) ? (
+        children === undefined ? (
+          render
+        ) : (
+          cloneElement(render, undefined, children)
+        )
+      ) : (
+        <>{children}</>
+      ),
+    TooltipPopup: ({ children }: { readonly children: ReactNode }) => (
+      <template data-tooltip="">{children}</template>
+    ),
+  };
+});
+
 const member = (
   id: string,
   name: string,
@@ -105,6 +132,36 @@ describe("the organization's team", () => {
       ["Bob Guest", "Guest", "bob@example.com"],
       ["Iva Invited", "Guest", "iva@example.com"],
     ]);
+  });
+
+  it("An address too long for its card keeps its domain, the whole address on hover", () => {
+    const address = "nova.storefront-operations@teashop-example.com";
+    const markup = renderToStaticMarkup(
+      <TeamList
+        view={teamPeople({
+          ...input(),
+          members: {
+            known: true,
+            status: "ready",
+            refused: false,
+            list: [
+              member("nova", address, "NO_ACCESS", {
+                status: "WAITING_AUTHORIZATION",
+                user: { id: "nova", email: address },
+              }),
+            ],
+          },
+        })}
+      />,
+    );
+    const body = new DOMParser().parseFromString(markup, "text/html").body;
+    const name = body.querySelector('[data-part="name"]');
+    // The name before the @ and the domain stand apart, the domain whole; hover says it all.
+    expect([...(name?.firstElementChild?.children ?? [])].map((part) => part.textContent)).toEqual([
+      "nova.storefront-operations",
+      "@teashop-example.com",
+    ]);
+    expect(name?.querySelector("template")?.innerHTML).toBe(address);
   });
 
   it("A card opens that person's own page", () => {

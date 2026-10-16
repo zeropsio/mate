@@ -66,6 +66,11 @@ const MEMBERS = [
     status: "WAITING_AUTHORIZATION",
     user: { id: "iva", email: "iva.mala@example.com" },
   }),
+  // Invited from another browser: no name typed here, an address longer than its card.
+  member("nova", "nova.storefront-operations@teashop-example.com", "NO_ACCESS", {
+    status: "WAITING_AUTHORIZATION",
+    user: { id: "nova", email: "nova.storefront-operations@teashop-example.com" },
+  }),
   { id: "cu-token", status: "ACTIVE", roleCode: "ADMIN", user: { email: "token-x@zerops.io" } },
 ];
 

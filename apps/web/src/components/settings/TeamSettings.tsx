@@ -189,7 +189,7 @@ function PersonCard({ person }: { readonly person: TeamPerson }) {
         <PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />
       </span>
       <span className="tm-card-name" data-part="name">
-        {person.name}
+        {person.name === person.email ? <Address address={person.name} /> : person.name}
       </span>
       <span className="tm-card-badges">
         {person.badgeHint === null ? (
@@ -221,7 +221,7 @@ function PersonCard({ person }: { readonly person: TeamPerson }) {
       ) : null}
       {person.email === null || person.email === person.name ? null : (
         <span className="tm-card-mail" data-part="email">
-          {person.email}
+          <Address address={person.email} />
         </span>
       )}
       {reach === null ? null : (
@@ -230,5 +230,27 @@ function PersonCard({ person }: { readonly person: TeamPerson }) {
         </span>
       )}
     </Link>
+  );
+}
+
+/**
+ * An e-mail address cut in its middle where it does not fit — "nova.store…@example.com" — so the
+ * domain, which tells a colleague from an outsider, always shows; the whole address on hover.
+ */
+function Address({ address }: { readonly address: string }) {
+  const at = address.lastIndexOf("@");
+  if (at <= 0) return address;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="tm-address">
+            <span className="tm-address-local">{address.slice(0, at)}</span>
+            <span className="tm-address-domain">{address.slice(at)}</span>
+          </span>
+        }
+      />
+      <TooltipPopup>{address}</TooltipPopup>
+    </Tooltip>
   );
 }

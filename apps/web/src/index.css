@@ -7641,6 +7641,31 @@ a.ov-chip-who:focus-visible {
   font-size: 14px;
 }
 
+/* An address cut in its middle: the name before the @ gives way, the domain always shows. */
+.tm-address {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: top;
+}
+
+.tm-address-local {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A domain too long for the card gives way last. */
+.tm-address-domain {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* An invitation just sent grows in once, top first; it is the only row that ever animates here. */
 @media (prefers-reduced-motion: no-preference) {
   .tm-cards > li[data-arrived] {
