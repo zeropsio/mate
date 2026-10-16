@@ -127,7 +127,7 @@ import { submitZeropsWrite } from "~/zerops/zeropsWrite";
 import type { AuthGateState } from "~/environments/primary/auth";
 import {
   activityOfNow,
-  mateFaceOf,
+  listedMateFace,
   mateReviewWaits,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
@@ -175,6 +175,7 @@ import {
   useMateComingOf,
   useMateConversationsRead,
   useMateRowActivity,
+  useMatesLinkedInHq,
 } from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
@@ -967,6 +968,8 @@ export function ZeropsProjectsContent({
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   // Each Mate as its menu row reads it: HQ's word of it, or its socket's.
   const activityOf = useMateRowActivity(useMatesActivity());
+  // Whom HQ holds linked: a Mate's face is awake as its menu row's is (`listedMateFace`).
+  const hqMates = useMatesLinkedInHq();
   // Whether a Mate's conversations are read: one with none says nothing was asked yet.
   const conversationsRead = useMateConversationsRead();
   // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
@@ -1679,14 +1682,15 @@ export function ZeropsProjectsContent({
   // changes it does not says so in their steps, never "None yet".
 
   /**
-   * The face a Mate wears (`mateFaceOf`): the state of its conversation while a word of now says
+   * The face a Mate wears (`listedMateFace`): the state of its conversation while a word of now says
    * it — HQ's, or its socket's — else asleep, and needing you while its own change waits for your
    * review, as its row in the menu and its conversation's composer say.
    */
   const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState => {
     const groupId = readZeropsMembership(candidate.project).groupId;
-    return mateFaceOf({
-      connected: candidate.group === "connected" && candidate.environmentId !== undefined,
+    return listedMateFace({
+      candidate,
+      hqMates,
       activity: activityOf(candidate),
       reviewWaits: mateReviewWaits(
         groupId === undefined ? undefined : projectFlow.flows.get(groupId),

@@ -375,6 +375,21 @@ export function mateFaceOf(input: {
   return input.activity?.kind === "failed" && face === "needs" ? "idle" : face;
 }
 
+/**
+ * The face of a Mate a surface lists, from the facts its menu row reads: awake as `mateAwake` says
+ * (its container runs, or HQ holds its link open), then `mateFaceOf` — so a change's row, a card
+ * and the menu never draw one Mate with two faces, whether or not this tab holds a socket to it.
+ */
+export function listedMateFace(
+  input: Omit<Parameters<typeof mateFaceOf>[0], "connected"> & {
+    readonly candidate: Parameters<typeof mateAwake>[0];
+    readonly hqMates: Parameters<typeof mateAwake>[1];
+  },
+): MateMarkState {
+  const { candidate, hqMates, ...facts } = input;
+  return mateFaceOf({ ...facts, connected: mateAwake(candidate, hqMates) });
+}
+
 export function agentActivitySnippet(
   thread: Pick<AgentActivityThread, "latestMessagePreview">,
 ): string | undefined {
