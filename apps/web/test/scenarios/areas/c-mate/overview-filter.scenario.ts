@@ -64,7 +64,7 @@ describe("overview filter history", () => {
                 (show) =>
                   document
                     .querySelector(`[data-zerops-surface="overview-filters"] [data-show="${show}"]`)
-                    ?.hasAttribute("data-current"),
+                    ?.getAttribute("data-active-tab") === "true",
                 {},
                 show,
               );

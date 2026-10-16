@@ -30,7 +30,8 @@ describe("C: reading, replay and attention", () => {
         wire.history();
         chat.fixture("Bea").history("Bea is the conversation I parked on");
         yield* s.given.signedIn;
-        yield* chat.when.open();
+        // The owner first visits Ada only to read: the fake stamps its result on its fixed day,
+        // before any visit, and an earlier visit would already prove that result seen.
         const colleague = yield* s.given.browserActor({ person: "dev" });
         yield* colleague.given.signedIn;
         const theirs = mateChat({ ...s, ...colleague });
