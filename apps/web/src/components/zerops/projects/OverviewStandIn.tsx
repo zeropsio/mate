@@ -5,17 +5,13 @@
  * The reload's whole path stands in with it (the router, the chat's layout, the door, HQ's member
  * read), so a reload paints this once and then the cards in the same places.
  */
-import type { Ref } from "react";
+import { useState, type Ref } from "react";
+
+import { rememberedOverviewCards } from "~/zerops/overviewCardCount";
 
 import { Loading } from "../../ui/loading";
 import { Skeleton } from "../../ui/skeleton";
 import { ZeropsHostedFrame } from "../landing/ZeropsHostedFrame";
-
-/**
- * One card: the fewest an overview with projects stands, so a card the stand-in paints is never
- * taken back. How many there are is not known until they are read; more land beside it.
- */
-const STAND_IN_CARDS = 1;
 
 /** The title row, as `ZeropsProjectsHeader` stands it: its height is its buttons'. */
 function TitleRow() {
@@ -70,13 +66,19 @@ export function ProjectCardStandIn({
   );
 }
 
-/** The cards' rail, as `ProjectCards` lays it out: the same row and card boxes, their words grey. */
-export function OverviewCardsStandIn({ count = STAND_IN_CARDS }: { readonly count?: number }) {
+/**
+ * The cards' rail, as `ProjectCards` lays it out: the same row and card boxes, their words grey —
+ * as many as this browser's overview drew last.
+ */
+export function OverviewCardsStandIn({ count }: { readonly count?: number }) {
+  // As many as this browser's overview drew last (`rememberedOverviewCards`), read once.
+  const [remembered] = useState(rememberedOverviewCards);
+  const cards = count ?? remembered;
   return (
     <Loading label="Your projects">
       <div className="ov-rail">
         <div className="ov-row" data-overview-stand-in-cards="">
-          {Array.from({ length: count }, (_, index) => (
+          {Array.from({ length: cards }, (_, index) => (
             <ProjectCardStandIn key={index} />
           ))}
         </div>

@@ -33,6 +33,7 @@ import type { GroupFlowPreview } from "@t3tools/client-runtime/zerops";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
+import { rememberOverviewCards } from "~/zerops/overviewCardCount";
 import { useNowMs } from "~/zerops/useNowMs";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { MateDot } from "../MateDot";
@@ -761,6 +762,10 @@ export function ProjectCards<T>({
       .getElementById(cardId(focusGroup))
       ?.scrollIntoView({ block: "nearest", inline: "start" });
   }, [focusGroup, shown, orderKey]);
+  // What the next load's stand-in draws (`OverviewCardsStandIn`).
+  useEffect(() => {
+    rememberOverviewCards(groups.length);
+  }, [groups.length]);
   if (groups.length === 0) return null;
   return (
     <CardRow contentsKey={orderKey}>
