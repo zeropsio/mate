@@ -78,7 +78,10 @@ export interface PutLiveRun {
   /** When production was made, or *Try again* pressed after: what its patience counts from. */
   readonly since?: number | undefined;
   readonly failure?: PutLiveFailure | undefined;
-  /** When the run went live. */
+  /**
+   * When what it runs was released, as HQ dates the release (`putLiveLandedAt`) — the age its live
+   * card counts, as the release's review does; when it was seen live where HQ dates none.
+   */
   readonly liveAt?: number | undefined;
   /** When the step under way began: what the wait row's clock counts from. */
   readonly stepAt?: number | undefined;
@@ -505,6 +508,20 @@ export function putLiveDeadline(run: PutLiveRun): number | undefined {
     : undefined;
 }
 
+/**
+ * When a run's release was made, as HQ dates it: what its live card's age counts from, whenever and
+ * however often the page sees it live — the run's conversation read "just now" for minutes, its age
+ * counted from when the page last came to it. `seenAt` where HQ dates none.
+ */
+export function putLiveLandedAt(run: PutLiveRun, facts: PutLiveFacts, seenAt: number): number {
+  return releasedAt(facts.releases.find((entry) => entry.tag === run.tag)?.taggedAt) ?? seenAt;
+}
+
+function releasedAt(taggedAt: string | undefined): number | undefined {
+  const at = taggedAt === undefined ? Number.NaN : Date.parse(taggedAt);
+  return Number.isNaN(at) ? undefined : at;
+}
+
 export function putLiveNext(run: PutLiveRun, facts: PutLiveFacts, now?: number): PutLiveNext {
   if (run.phase === "creating") {
     // Production's services are still awaited: nothing is released to them before they are up.
@@ -707,6 +724,9 @@ export function putLiveResumed(input: {
         ...run,
         phase: "live",
         tag: newest.tag,
+        ...(releasedAt(newest.taggedAt) === undefined
+          ? {}
+          : { liveAt: releasedAt(newest.taggedAt) }),
         ...(newest.rollbackOf === undefined ? {} : { rollsBackTo: newest.rollbackOf }),
       },
     };

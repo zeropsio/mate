@@ -19,6 +19,7 @@ import {
   putLiveNext,
   putLiveOffered,
   putLiveProgress,
+  putLiveLandedAt,
   putLiveReleased,
   putLiveResumed,
   putLiveSettle,
@@ -796,6 +797,34 @@ describe("after a reload, how Put it live ended", () => {
     });
     if (away.kind !== "follow") throw new Error("follow expected");
     expect(putLiveReleased(away.run, 0)).toBe("Rolled back to v0.1.0");
+  });
+
+  // The run's conversation read "Released v0.1.2 · just now" for minutes: the age counted from when
+  // this page saw it live, and a page that came back to it saw it live again. It counts from the
+  // release itself, as its review's "released 3 minutes ago" does.
+  it("A followed release's live card counts its age from the release, never from when the page saw it", () => {
+    const tagged = "1970-01-01T00:02:00.000Z";
+    const flow = read({
+      inFlight: "v0.1.1",
+      releases: [{ tag: "v0.1.1", standing: undefined, taggedAt: tagged }],
+    });
+    const shown = resumed({ facts: flow });
+    if (shown.kind !== "follow") throw new Error("follow expected");
+    const landed = read({ releases: [{ tag: "v0.1.1", standing: "live", taggedAt: tagged }] });
+    const seenAt = 9 * 60_000;
+    const live = putLiveStep(
+      shown.run,
+      { kind: "live", at: putLiveLandedAt(shown.run, landed, seenAt) },
+      seenAt,
+    );
+    expect(putLiveReleased(live, 10 * 60_000)).toBe("Released v0.1.1 · 8 min ago");
+    // Live while the page was away: the same age, from the same release.
+    const away = resumed({ kept: "p-prod", facts: landed });
+    if (away.kind !== "follow") throw new Error("follow expected");
+    expect(putLiveReleased(away.run, 10 * 60_000)).toBe("Released v0.1.1 · 8 min ago");
+    // A release with no time of its own counts from when it was seen.
+    const untimed = read({ releases: [{ tag: "v0.1.1", standing: "live" }] });
+    expect(putLiveLandedAt(shown.run, untimed, seenAt)).toBe(seenAt);
   });
 
   it("a stopped or finished row gives way to what happened since, never stays behind it", () => {
