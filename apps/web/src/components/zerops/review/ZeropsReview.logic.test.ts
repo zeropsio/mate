@@ -18,6 +18,7 @@ import {
   releaseChangeRows,
   remarkFold,
   reviewDescription,
+  descriptionHeads,
   reviewPictureBox,
   reviewKindLine,
   reviewOrigin,
@@ -105,6 +106,20 @@ describe("reviewDescription: the change's own words first, the run's when it wro
     ],
   ] as const)("%s", (_case, input, shown) => {
     expect(reviewDescription(input)).toEqual(shown);
+  });
+});
+
+// A run 2 follow-up: "What it does" stood as the section's label, then again as the description's
+// own first heading.
+describe("descriptionHeads: the description's own heading names its section once", () => {
+  it.each([
+    ["its own heading of the same name", "Lead.\n\n## What it does\n- Browse", true],
+    ["any level, any case, a colon after it", "# what it does:\nBrowse", true],
+    ["a heading of another name", "## How it's built\nNode", false],
+    ["the words in a sentence, no heading", "What it does: browse teas.", false],
+    ["a heading inside code", "```\n## What it does\n```", false],
+  ] as const)("%s", (_case, text, heads) => {
+    expect(descriptionHeads(text, "What it does")).toBe(heads);
   });
 });
 
