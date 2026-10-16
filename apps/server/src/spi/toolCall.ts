@@ -239,6 +239,32 @@ const readClaudeToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult =
 /** Codex's own shell and patch items: tools, but never an MCP call, and read by nothing. */
 const CODEX_OWN_TOOL_ITEMS: ReadonlySet<unknown> = new Set(["commandExecution", "fileChange"]);
 
+/**
+ * The blocks a Codex `mcpToolCall` result holds. Its schema says a block
+ * list, yet live `zerops_browser` calls (2026-10-16) delivered the whole MCP
+ * result as one JSON string, `{"content":[…]}`, base64 included: read as
+ * text, it ran over the result text cap and the person saw neither text nor
+ * screenshot. A string holding such a document, or a block list, is read as
+ * its blocks; any other string stays text.
+ */
+const codexResultContent = (content: unknown): unknown => {
+  if (typeof content !== "string" || !/^\s*[{[]/.test(content)) {
+    return content;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return content;
+  }
+  const blocks = isRecord(parsed) ? parsed.content : parsed;
+  return Array.isArray(blocks) &&
+    blocks.length > 0 &&
+    blocks.every((block) => isRecord(block) && typeof block.type === "string")
+    ? blocks
+    : content;
+};
+
 /** Codex: `data = {item: {...}}`; only the `mcpToolCall` variant is read. */
 const readCodexToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult => {
   const isToolItem = isToolLifecycleItemType(payload.itemType);
@@ -288,7 +314,8 @@ const readCodexToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult =>
       reason: "item.result is not an object",
     };
   }
-  const text = readContentText(item.result.content);
+  const content = codexResultContent(item.result.content);
+  const text = readContentText(content);
   if (text === undefined) {
     return {
       kind: "unrecognized",
@@ -301,7 +328,7 @@ const readCodexToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult =>
     kind: "toolCall",
     call: {
       ...base,
-      result: { text, failed, ...readResultImageFields(item.result.content) },
+      result: { text, failed, ...readResultImageFields(content) },
     },
   };
 };
