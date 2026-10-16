@@ -27,22 +27,6 @@ describe("the first minute after an invitation", () => {
       action: null,
     },
     {
-      sentence: "An Admin is told what the role reaches and starts their own Mate",
-      viewer: { roleCode: "ADMIN" },
-      apps: [SNAP, BEVIRO],
-      line: "Welcome to Acme. You're an Admin: every project and its Mates, and you invite people.",
-      detail: null,
-      action: { label: "Start your own Mate on Snap", groupId: "g-snap" },
-    },
-    {
-      sentence: "An Owner is told the organization is theirs to run",
-      viewer: { roleCode: "OWNER" },
-      apps: [SNAP],
-      line: "Welcome to Acme. You're an Owner: everything here, billing and the team included.",
-      detail: null,
-      action: { label: "Start your own Mate on Snap", groupId: "g-snap" },
-    },
-    {
       sentence:
         "A Developer on several projects hears them named, and starts on the first they may",
       viewer: { roleCode: "NO_ACCESS", canCreateProjects: true },
@@ -68,6 +52,23 @@ describe("the first minute after an invitation", () => {
       detail,
       action,
     });
+  });
+
+  it.each([
+    { role: "an Owner", viewer: { roleCode: "OWNER" } },
+    { role: "an Admin", viewer: { roleCode: "ADMIN" } },
+  ])("$role runs the organization and is never welcomed to it", ({ viewer }) => {
+    expect(arrivalWelcome({ organizationName: "Acme", viewer, apps: [SNAP, BEVIRO] })).toBeNull();
+  });
+
+  it("an organization whose name ends in a period is welcomed with one period", () => {
+    expect(
+      arrivalWelcome({
+        organizationName: "Acme s.r.o.",
+        viewer: { roleCode: "NO_ACCESS", canCreateProjects: true },
+        apps: [SNAP],
+      })?.line,
+    ).toBe("Welcome to Acme s.r.o. You're a Developer on Snap.");
   });
 });
 

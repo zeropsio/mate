@@ -64,8 +64,11 @@ export function arrivalWelcome(input: {
   readonly viewer: { readonly roleCode?: string | undefined; readonly canCreateProjects?: boolean };
   /** The projects the person sees, in the overview's order; at least one. */
   readonly apps: ReadonlyArray<ArrivalApp>;
-}): ArrivalWelcome {
-  const welcome = `Welcome to ${input.organizationName}.`;
+}): ArrivalWelcome | null {
+  // "Acme s.r.o." already ends its sentence.
+  const welcome = /[.!?]$/.test(input.organizationName)
+    ? `Welcome to ${input.organizationName}`
+    : `Welcome to ${input.organizationName}.`;
   const start = input.apps.find(({ addMate }) => addMate);
   const action =
     start === undefined
@@ -73,18 +76,10 @@ export function arrivalWelcome(input: {
       : { label: `Start your own Mate on ${start.name}`, groupId: start.groupId };
   const on = projectsPhrase(input.apps);
   switch (teamRoleOf(input.viewer)) {
+    // An Owner or an Admin runs the organization: on a new browser they are not arriving anywhere.
     case "owner":
-      return {
-        line: `${welcome} You're an Owner: everything here, billing and the team included.`,
-        detail: null,
-        action,
-      };
     case "admin":
-      return {
-        line: `${welcome} You're an Admin: every project and its Mates, and you invite people.`,
-        detail: null,
-        action,
-      };
+      return null;
     case "developer":
       return { line: `${welcome} You're a Developer on ${on}.`, detail: null, action };
     case "guest":

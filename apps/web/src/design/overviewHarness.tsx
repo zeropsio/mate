@@ -602,7 +602,6 @@ const ARRIVAL =
     {
       developer: { roleCode: "NO_ACCESS", canCreateProjects: true },
       guest: { roleCode: "NO_ACCESS", canCreateProjects: false },
-      admin: { roleCode: "ADMIN", canCreateProjects: true },
     } as Record<string, { roleCode: string; canCreateProjects: boolean }>
   )[params.get("arrival") ?? ""] ?? null;
 
