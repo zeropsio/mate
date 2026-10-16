@@ -2,7 +2,10 @@
  * *Put it live* in the conversation, at the composer's top where the change waited (G7, G8): while
  * the run is under way, the one wait row — its step's words replacing each other in place; once
  * live, the live card — the address, large and the way in, *Copy link*, and the release it runs;
- * stopped, the cause and the one action that fixes it.
+ * stopped, the cause and the one action that fixes it. With no run of this tab, it says from the
+ * project's flow how a release ended (`putLiveResumed`): one on its way, followed to the live card
+ * wherever it was pressed; production the person's own run made and a reload stopped short of its
+ * release, with *Release* one press away.
  *
  * The wait row is drawn by `PutLiveProgress` alone, so the shared progress piece can take its
  * place in one spot.
@@ -12,20 +15,23 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { XIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
-import { useCompactProjectFlows } from "~/zerops/projectFlows";
+import { useCompactProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { usePutLive, usePutLiveRun } from "~/zerops/putLive";
 import {
   putLiveAddress,
   putLiveOffered,
   putLiveProgress,
   putLiveReleased,
+  putLiveResumed,
+  type PutLiveFlowFacts,
   type PutLiveRun,
 } from "~/zerops/putLive.logic";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { useOpenReview } from "~/zerops/review";
 import { useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -34,7 +40,7 @@ import { ComposerAsk } from "../chat/ComposerAsk";
 import { Button } from "../ui/button";
 import { FailureDetails } from "../ui/failure";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { useProductionAddresses } from "./review/reviewReads";
+import { useGroupName, useProductionAddresses } from "./review/reviewReads";
 import { MateFace } from "./primitives";
 import { formatElapsed } from "../ui/progress.logic";
 import { Spinner } from "../ui/spinner";
@@ -88,6 +94,7 @@ const FAILURE_ACTION = {
   again: "Try again",
   "see-code": "See the code",
   project: "Open the project",
+  release: "Release",
 } as const;
 
 export function PutLiveRow(props: PutLiveRowProps) {
@@ -146,7 +153,7 @@ export function PutLiveRow(props: PutLiveRowProps) {
             ) : null}
             <Button
               onClick={
-                action === "again"
+                action === "again" || action === "release"
                   ? props.onAgain
                   : action === "see-code"
                     ? props.onSeeCode
@@ -226,12 +233,57 @@ export function usePutLiveOffered(groupId: string | undefined): boolean {
   return groupId !== undefined && putLiveOffered(facts);
 }
 
+/** What a run resumed from the project's flow reads; `undefined` until it is read. */
+function putLiveFlowFacts(flow: ZeropsProjectFlow | undefined): PutLiveFlowFacts | undefined {
+  if (flow === undefined || !flow.declarationsRead || !flow.releasesKnown) return undefined;
+  return {
+    production: flow.environments.find((entry) => entry.tier === "production")?.projectId,
+    gate: flow.release.gate,
+    releases: flow.releases,
+    inFlight: flow.release.inFlight,
+    suggestion: flow.release.suggestion,
+  };
+}
+
+/**
+ * How a project's release ended where no run of this tab is under way (`putLiveResumed`): a run
+ * to follow is kept, and the host drives it; an attempt no longer the person's is forgotten.
+ */
+function usePutLiveResumed(groupId: string, current: PutLiveRun | undefined) {
+  const orgId = useZeropsSession().activeOrganization?.id;
+  const project = useGroupName(groupId);
+  const kept = usePutLive((state) => state.kept.get(groupId));
+  const restore = usePutLive((state) => state.restore);
+  const forget = usePutLive((state) => state.forget);
+  const flow = useCompactProjectFlows(useMemo(() => [groupId], [groupId])).flows.get(groupId);
+  const resumed = useMemo(
+    () =>
+      orgId === undefined
+        ? ({ kind: "none" } as const)
+        : putLiveResumed({
+            orgId,
+            groupId,
+            project: project ?? "The project",
+            current,
+            kept,
+            facts: putLiveFlowFacts(flow),
+          }),
+    [current, flow, groupId, kept, orgId, project],
+  );
+  useEffect(() => {
+    if (resumed.kind === "follow") restore(resumed.run);
+    else if (resumed.kind === "forget") forget(groupId);
+  }, [forget, groupId, restore, resumed]);
+  return resumed;
+}
+
 /** A project's run, as the conversation draws it: the row, or nothing while there is none. */
-export function usePutLiveRow(
-  groupId: string | undefined,
-  face: PutLiveRowProps["face"],
-): React.ReactNode {
-  const run = usePutLiveRun(groupId);
+export function usePutLiveRow(groupId: string, face: PutLiveRowProps["face"]): React.ReactNode {
+  const stored = usePutLiveRun(groupId);
+  const resumed = usePutLiveResumed(groupId, stored);
+  // Drawn in the frame the flow says it, before the store holds it.
+  const run = resumed.kind === "follow" || resumed.kind === "stopped" ? resumed.run : stored;
+  const restore = usePutLive((state) => state.restore);
   const step = usePutLive((state) => state.step);
   const forget = usePutLive((state) => state.forget);
   const openReview = useOpenReview();
@@ -239,7 +291,10 @@ export function usePutLiveRow(
   const nowMs = useNowMs();
   const addresses = useProductionAddresses(run?.phase === "live" ? run.productionId : undefined);
   const { copyToClipboard, isCopied } = useCopyToClipboard();
-  if (run === undefined || groupId === undefined) return null;
+  // The person's own attempt is known and the flow not yet: the strip holds its room.
+  if (resumed.kind === "reading")
+    return <div aria-label="Reading production" data-composer-top="unread" className="h-[61px]" />;
+  if (run === undefined) return null;
   return (
     <PutLiveRow
       address={putLiveAddress(addresses)}
@@ -247,6 +302,8 @@ export function usePutLiveRow(
       face={face}
       nowMs={nowMs}
       onAgain={() => {
+        // A row said from the flow becomes the run its press resumes: production is released to.
+        restore(run);
         step(groupId, { kind: "again", at: Date.now() });
       }}
       onCopy={(url) => {

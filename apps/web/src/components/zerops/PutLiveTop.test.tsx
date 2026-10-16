@@ -126,10 +126,45 @@ describe("Put it live in the conversation", () => {
     expect(props.onOpenProject).toHaveBeenCalledOnce();
   });
 
+  it("After a reload, production made and not released says so, and Release is its one press", () => {
+    const onAgain = vi.fn();
+    const props: PutLiveRowProps = {
+      address: undefined,
+      copied: false,
+      face: { tint: "coral" },
+      nowMs: 0,
+      onAgain,
+      onCopy: () => {},
+      onDismiss: () => {},
+      onOpenProject: () => {},
+      onSeeCode: () => {},
+      run: {
+        ...RUN,
+        change: undefined,
+        phase: "failed",
+        failedAt: "creating",
+        productionId: "p-prod",
+        failure: { words: "Production is made; v0.1.0 isn't released yet.", action: "release" },
+      },
+    };
+    const markup = renderToStaticMarkup(<PutLiveRow {...props} />);
+    expect(markup).toContain("Production is made; v0.1.0 isn&#x27;t released yet.");
+    expect(onAgain).not.toHaveBeenCalled();
+    const release = visitElements(
+      PutLiveRow(props),
+      (element) => element.type === Button && element.props.children === "Release",
+    );
+    const onClick = release?.props.onClick;
+    if (typeof onClick !== "function") throw new Error("No Release button");
+    onClick();
+    expect(onAgain).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ["again", "Try again"],
     ["see-code", "See the code"],
     ["project", "Open the project"],
+    ["release", "Release"],
   ] as const)("says why it stopped, with the one action that fixes it (%s)", (action, label) => {
     const markup = row({
       phase: "failed",
