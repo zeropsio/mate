@@ -28,7 +28,7 @@ export function firstRunWords(input: {
         }
       : {
           heading: "Start a project",
-          body: `You're a Developer: you start projects and join the ones you're added to. Projects your team gives you access to appear here. ${MATE_IS}`,
+          body: `You're a Developer: you start projects and join the ones you're added to. Projects an owner or admin gives you access to appear here. ${MATE_IS}`,
           newProject: true,
         };
   return input.reachesEveryProject
