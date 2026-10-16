@@ -24,6 +24,7 @@ import { TARGET_QUESTION } from "./wire.ts";
 import { menuScenario } from "../b-menu/dsl.ts";
 import { journey, sampled } from "./pageJourney.ts";
 import { reportConversation } from "../b-menu/fake.ts";
+import { environmentFixtureWith } from "../e-env/fake.ts";
 
 // Use the actual resize control so every witness has the owner's menu width.
 /** Runs the page's animations at `rate` of their speed until restored (CDP's own timeline). */
@@ -998,6 +999,64 @@ describe("owner-reported layout regressions", () => {
               yield* s.then.noExternalNetwork;
             }),
         );
+      });
+    });
+
+    describe("Decision: a mark between two names gives way whole; the Mate's name keeps its letters while a mark holds room.", () => {
+      describe("B: marks between a project's name and its Mate's", () => {
+        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+          it.effect(
+            "a waiting release's mark is never cut, and never cuts the Mate's name, at any menu width",
+            () =>
+              Effect.gen(function* () {
+                const f = yield* environmentFixtureWith({}, { stage: false });
+                yield* f.s.drivers.core.call("PATCH", `/api/apps/${f.appId}`, {
+                  session: f.s.owner,
+                  body: { name: "Tea Shop Front Counter" },
+                });
+                yield* f.merge("Ship the storefront");
+                yield* Effect.promise(() => f.s.page.setViewport({ width: 1786, height: 1000 }));
+                yield* f.s.given.signedIn;
+                const mark = `[data-zerops-group="${f.appId}"] [data-zerops-surface="sidebar-project-release-mark"]`;
+                yield* Effect.promise(() => f.s.page.waitForSelector(mark, { timeout: 30_000 }));
+                const readings: string[] = [];
+                for (let width = 435; width >= 256; width -= 9) {
+                  yield* Effect.promise(() => menuAt(f.s.page, width));
+                  const reading = yield* Effect.promise(() =>
+                    f.s.page.$eval(mark, (element) => {
+                      const marks = element.closest(".menu-marks")!.getBoundingClientRect();
+                      const own = element.getBoundingClientRect();
+                      const mate = element
+                        .closest('[data-zerops-surface="sidebar-mate-name"]')!
+                        .querySelector<HTMLElement>(".menu-name-mate")!;
+                      return {
+                        whole: own.right <= marks.right + 0.5 && own.bottom <= marks.bottom + 0.5,
+                        gone: own.top >= marks.bottom - 0.5,
+                        room: marks.width,
+                        mateCut: mate.scrollWidth > mate.clientWidth,
+                      };
+                    }),
+                  );
+                  readings.push(
+                    `${String(width)}: mark ${reading.whole ? "whole" : reading.gone ? "gone" : "cut"}, room ${reading.room.toFixed(1)}, Mate's name ${reading.mateCut ? "cut" : "whole"}`,
+                  );
+                  expect(
+                    reading.whole || reading.gone,
+                    `ASSERTION: the mark shows whole or not at all: ${readings.join(" ")}`,
+                  ).toBe(true);
+                  expect(
+                    reading.mateCut && reading.room > 0.5,
+                    `ASSERTION: the Mate's name keeps its letters while the marks hold room: ${readings.join(" ")}`,
+                  ).toBe(false);
+                }
+                expect(
+                  readings.some((reading) => reading.includes("mark gone")),
+                  `ASSERTION: the sweep reached a width the mark gives way at: ${readings.join(" ")}`,
+                ).toBe(true);
+                yield* f.s.then.noExternalNetwork;
+              }),
+          );
+        });
       });
     });
 
