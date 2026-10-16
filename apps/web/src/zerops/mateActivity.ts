@@ -204,6 +204,9 @@ function readMatesActivity(input: MatesActivityInput): Map<string, ZeropsAgentAc
 /** The kinds a chat is on its way in: what an agent at work is doing. */
 const UNDER_WAY: ReadonlySet<ThreadStatusKind> = new Set(["connecting", "working", "monitoring"]);
 
+/** Whether a chat of this kind is on its way: its agent at work. */
+export const underWay = (kind: ThreadStatusKind): boolean => UNDER_WAY.has(kind);
+
 /**
  * A Mate's activity off its attention: its chat's words, under the attention's own word of what it
  * does — what it waits on its person for first, else whether it works, else whether the person has

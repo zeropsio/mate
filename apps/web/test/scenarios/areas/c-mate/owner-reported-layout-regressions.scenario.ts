@@ -1203,16 +1203,16 @@ describe("owner-reported layout regressions", () => {
               );
               yield* s.menu.text("Ada", "Thinking", "sidebar-mate-live-step");
               const working = yield* height();
-              // The step gone, its answer on the way: the dots hold the answer's place.
+              // The step gone, its answer on the way: the row holds its last step until the next
+              // one or the answer takes its place (run 2: it fell back to the prompt mid-turn).
               yield* reportConversation(
                 s.drivers,
                 "Ada",
                 { ...running, liveStep: null },
                 "working",
               );
-              yield* Effect.promise(() =>
-                s.page.waitForSelector(`${ROW} [data-zerops-surface="sidebar-mate-pending"]`),
-              );
+              yield* Effect.promise(() => waitForStillFrames(s.page));
+              yield* s.menu.text("Ada", "Thinking", "sidebar-mate-live-step");
               const waiting = yield* height();
               // The answer, under what was asked.
               yield* reportConversation(

@@ -179,9 +179,20 @@ export function paceLiveStep(
 /** What each row shows of its Mate's live step, paced, by the environment it belongs to. */
 export type ShownLiveSteps<Key> = ReadonlyMap<Key, ShownLiveStep>;
 
+/**
+ * A working row between two steps: its last step ended and the next has not begun. It holds the
+ * step it shows, so the line never falls back to what was asked mid-turn.
+ */
+export const BETWEEN_STEPS = "between-steps";
+
 export interface LiveStepPacer<Key> {
-  /** Every row's latest step, absent for a row that is not working. */
-  readonly update: (steps: ReadonlyMap<Key, LiveStepWords | undefined>) => void;
+  /**
+   * Every row's latest step, absent for a row that is not working, `BETWEEN_STEPS` for one working
+   * on with no step this moment.
+   */
+  readonly update: (
+    steps: ReadonlyMap<Key, LiveStepWords | typeof BETWEEN_STEPS | undefined>,
+  ) => void;
   /** Cancels the pending hold's end. */
   readonly dispose: () => void;
 }
@@ -194,7 +205,7 @@ export function createLiveStepPacer<Key>(
   onChange: (shown: ShownLiveSteps<Key>) => void,
 ): LiveStepPacer<Key> {
   let shown: ShownLiveSteps<Key> = new Map();
-  let latest: ReadonlyMap<Key, LiveStepWords | undefined> = new Map();
+  let latest: ReadonlyMap<Key, LiveStepWords | typeof BETWEEN_STEPS | undefined> = new Map();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const settle = () => {
@@ -206,7 +217,7 @@ export function createLiveStepPacer<Key>(
     let recheckAt: number | null = null;
     for (const [key, step] of latest) {
       const before = shown.get(key);
-      const paced = paceLiveStep(before, step, nowMs);
+      const paced = paceLiveStep(before, step === BETWEEN_STEPS ? before?.step : step, nowMs);
       if (paced.shown !== undefined) next.set(key, paced.shown);
       if (paced.shown !== before) changed = true;
       if (paced.recheckAt !== null) recheckAt = Math.min(recheckAt ?? Infinity, paced.recheckAt);
