@@ -146,7 +146,7 @@ describe("VaultPanelBody — what the Vault tab shows", () => {
       "appdev: FEATURE_FLAGS",
     ]);
     expect(q(container, "[data-vault-made]")?.textContent).toBe(
-      "dbDatabase · PostgreSQL5 made by Zerops",
+      "dbDatabase · PostgreSQL5 values set by Zerops",
     );
     expect(q(container, '[data-vault-row="API_URL"] > button')?.textContent).toBe(
       "API URLAPI_URLhttps://api.acme.dev",
@@ -472,7 +472,7 @@ describe("VaultPanelBody — apps", () => {
     );
     expect(q(container, '[data-vault-part="svc-appstage"]')).toBeNull();
     expect(q(container, '[data-vault-app="db"] > button')?.textContent).toBe(
-      "dbDatabase · PostgreSQL5 made by Zerops",
+      "dbDatabase · PostgreSQL5 values set by Zerops",
     );
   });
 
@@ -571,7 +571,7 @@ describe("VaultPanelBody — states", () => {
         .map((scope) => (scope.kind === "shared" ? { ...scope, values: [] } : scope)),
     };
     const { container } = await mount({ view: madeOnly });
-    expect(container.textContent).toContain("made by Zerops");
+    expect(container.textContent).toContain("set by Zerops");
     expect(container.textContent).not.toContain("No values yet.");
   });
 
