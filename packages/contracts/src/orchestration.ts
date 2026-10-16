@@ -449,7 +449,12 @@ export const CheckpointCaptureSnapshot = Schema.Union([
     completedAt: IsoDateTime,
   }),
   Schema.Struct({
+    /**
+     * `absent`: a start with nothing in it — the source was not in a workspace whose every source
+     * the run's start listed, so everything in it at the end is the run's to show.
+     */
     status: Schema.Literals([
+      "absent",
       "missing-baseline",
       "missing-end",
       "unavailable",

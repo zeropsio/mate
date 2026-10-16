@@ -7,8 +7,8 @@
  * project grants (`&who=` another key: `cu-karel` an admin, `cu-iva` an invitation, `cu-me`
  * your own; `&viewer=ADMIN` as an admin sees it; `&advanced=1` a custom role with Advanced open;
  * `&picker=1` the project picker open). `?page=invite` the invitation, empty (`&from=g-snap` as
- * opened from Snap's ···); `&step=details` a new address checked, its names asked, a guest
- * (`&role=developer` a Developer). The team's invitation is named as its inviter typed it.
+ * opened from Snap's ···); `&step=details` an address typed and Snap picked, a guest
+ * (`&role=developer` a Developer); Invite answers after a moment, as Zerops would. The team's invitation is named as its inviter typed it.
  * Fixtures only: no route imports this module.
  */
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
@@ -66,6 +66,11 @@ const MEMBERS = [
     status: "WAITING_AUTHORIZATION",
     user: { id: "iva", email: "iva.mala@example.com" },
   }),
+  // Invited from another browser: no name typed here, an address longer than its card.
+  member("nova", "nova.storefront-operations@teashop-example.com", "NO_ACCESS", {
+    status: "WAITING_AUTHORIZATION",
+    user: { id: "nova", email: "nova.storefront-operations@teashop-example.com" },
+  }),
   { id: "cu-token", status: "ACTIVE", roleCode: "ADMIN", user: { email: "token-x@zerops.io" } },
 ];
 
@@ -116,6 +121,11 @@ const INVITABLE = [
 
 const VIEW = teamPeople(INPUT);
 const never = () => new Promise<never>(() => {});
+/** Zerops's answer after a moment, so the invitation can be sent and the next one typed. */
+const answered =
+  <T,>(value: T) =>
+  () =>
+    new Promise<T>((resolve) => setTimeout(() => resolve(value), 400));
 
 function Page() {
   const page = params.get("page");
@@ -154,9 +164,8 @@ function Page() {
     const role = params.get("role") === "developer" ? "developer" : "guest";
     return (
       <TeamInviteView
-        actions={{ check: never, send: never }}
+        actions={{ check: answered({ kind: "new" }), send: answered(undefined) }}
         from={params.get("from") ?? (details ? "g-snap" : undefined)}
-        initialAnswer={details ? { kind: "new" } : undefined}
         initialEmail={details ? "petra.kralova@example.com" : ""}
         initialMembership={presetMembership(details ? role : "developer")}
         onSent={() => {}}
@@ -170,18 +179,12 @@ function Page() {
 }
 
 function HarnessPage() {
-  const narrow = params.get("page") === "member" || params.get("page") === "invite";
   return (
     <div className="flex h-dvh bg-background text-foreground">
       <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }} />
       <main className="min-w-0 flex-1 overflow-y-auto">
-        <div
-          className={
-            narrow
-              ? "mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 pt-10 pb-12"
-              : "mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-10 pb-12"
-          }
-        >
+        {/* The team, a person and the invitation share one column, as the app's pages do. */}
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-10 pb-12">
           <Page />
         </div>
       </main>

@@ -269,6 +269,17 @@ export function formatShortcutLabel(
   return parts.join("+");
 }
 
+/**
+ * The keys a browser keeps for its own windows and tabs — new, close, reopen — which no page
+ * receives: a label offering one would open a window or close the tab instead.
+ */
+const BROWSER_KEPT_KEYS = new Set(["n", "t", "w"]);
+
+function browserKeepsShortcut(shortcut: KeybindingShortcut, platform: string): boolean {
+  const mod = shortcut.modKey || (isMacPlatform(platform) ? shortcut.metaKey : shortcut.ctrlKey);
+  return mod && !shortcut.altKey && BROWSER_KEPT_KEYS.has(shortcut.key);
+}
+
 export function shortcutLabelForCommand(
   keybindings: ResolvedKeybindingsConfig,
   command: KeybindingCommand | null,
@@ -281,7 +292,11 @@ export function shortcutLabelForCommand(
       : options;
   const platform = resolvePlatform(resolvedOptions);
   const shortcut = findEffectiveShortcutForCommand(keybindings, command, resolvedOptions);
-  return shortcut ? formatShortcutLabel(shortcut, platform) : null;
+  if (!shortcut) return null;
+  if (resolveContext(resolvedOptions).isWeb && browserKeepsShortcut(shortcut, platform)) {
+    return null;
+  }
+  return formatShortcutLabel(shortcut, platform);
 }
 
 export function threadJumpCommandForIndex(index: number): ThreadJumpKeybindingCommand | null {

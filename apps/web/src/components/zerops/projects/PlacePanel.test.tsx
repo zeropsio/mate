@@ -171,12 +171,22 @@ describe("a place's addresses on its panel", () => {
   });
 
   it.each([
-    ["has a domain of its own", place([domain("shop.acme.com", "live")])],
-    ["is still being read", reading("reading")],
-  ])("offers no Put it on your domain while production %s", async (_case, read) => {
+    ["has a domain of its own", place([domain("shop.acme.com", "live")]), "Manage addresses"],
+    // Read, its door names what it opens once: no "Manage addresses" that turns into another.
+    ["is still being read", reading("reading"), undefined],
+  ])("offers no Put it on your domain while production %s", async (_case, read, door) => {
     const container = await mount("production", inAccount({ prod: read }));
     expect(button(container, "Put it on your domain")).toBeNull();
-    expect(button(container, "Manage addresses")).not.toBeNull();
+    expect(button(container, "Manage addresses") === null).toBe(door === undefined);
+  });
+
+  // The run: Stage offered "Manage addresses" while it said "Not deployed yet", beside
+  // production's "Put it on your domain" — two names for one door, one with nothing behind it.
+  it("offers a stage's card no door into the sheet: its address heads it, its page manages it", async () => {
+    const card = await mount("stage", inAccount({ stage: place([]) }));
+    expect(card.querySelector('[aria-label="Open Stage"]')).not.toBeNull();
+    expect(button(card, "Manage addresses")).toBeNull();
+    expect(button(card, "Put it on your domain")).toBeNull();
   });
 
   it("is headed by its own domain once it answers, and says how far one not live yet is", async () => {

@@ -113,7 +113,7 @@ function takeFindings(check: ZeropsOperation): string | null {
 }
 
 /** A take's picture, its content cropped in when the page is mostly empty. */
-function takeSource(src: string | undefined, threadRef: ScopedThreadRef | null) {
+export function takeSource(src: string | undefined, threadRef: ScopedThreadRef | null) {
   return src?.startsWith("mate-asset:") && threadRef
     ? mateImageSource({
         environmentId: threadRef.environmentId,
@@ -121,7 +121,7 @@ function takeSource(src: string | undefined, threadRef: ScopedThreadRef | null) 
       })
     : src;
 }
-function TakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
+export function TakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
   return src.startsWith("mate-image:") ? (
     <AssetImage
       src={src}

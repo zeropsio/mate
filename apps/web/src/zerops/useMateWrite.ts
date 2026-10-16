@@ -12,7 +12,12 @@
 import { agentContext } from "@t3tools/client-runtime/data";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { derivePendingRequests } from "@t3tools/client-runtime/pending-requests";
-import { agentLastSpokeAt, agentNotesFor, agentTurnNotes } from "@t3tools/client-runtime/zerops";
+import {
+  agentLastSpokeAt,
+  agentNotesFor,
+  agentTurnNotes,
+  productionTurnNotes,
+} from "@t3tools/client-runtime/zerops";
 import {
   ApprovalRequestId,
   type EnvironmentId,
@@ -27,7 +32,10 @@ import { useThreadShells } from "~/state/entities";
 import { threadEnvironment, useEnvironmentThread } from "~/state/threads";
 
 import { useMateCommand, useMateHeld } from "./accountEnvironments";
-import { useZeropsChangeLandedEvents } from "./useZeropsChangeLandedEvents";
+import {
+  useZeropsChangeLandedEvents,
+  useZeropsProductionLive,
+} from "./useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "./vaultTurnNotes";
 
 export function useMateWrite(environmentId: EnvironmentId | null, threadId: ThreadId | null) {
@@ -43,6 +51,7 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
     [detail?.activities],
   );
   const landed = useZeropsChangeLandedEvents(environmentId);
+  const production = useZeropsProductionLive(environmentId);
   // The vault changes the Mate has not heard, the same note its own composer would carry.
   const vaultTurn = useVaultTurnNotes(
     environmentId,
@@ -67,8 +76,9 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
     // When the agent last spoke: the line between what it knows and what landed since — the
     // conversation's own reading of it. A slash command carries none.
     // Fitted to the bound a send takes: a vault change a line, the rest counted and told later.
+    const spokeAt = agentLastSpokeAt(detail.messages);
     const context = agentContext(
-      agentTurnNotes(landed, agentLastSpokeAt(detail.messages)),
+      [...agentTurnNotes(landed, spokeAt), ...productionTurnNotes(production, spokeAt)],
       vaultTurn.changes,
     );
     const notes = agentNotesFor(text, context.lines);

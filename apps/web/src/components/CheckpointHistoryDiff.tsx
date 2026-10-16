@@ -40,9 +40,7 @@ interface HistoryDiffProps {
 }
 
 export function CheckpointHistoryDiff(props: HistoryDiffProps) {
-  const firstAvailable = props.history.roots.find(
-    (entry) => entry.before.status === "captured" && entry.after.status === "captured",
-  );
+  const firstAvailable = props.history.roots.find((entry) => checkpointRootNotice(entry) === null);
   return (
     <div className="min-h-0 flex-1 overflow-auto">
       {checkpointHistoryNotice(props.history) ? (
@@ -95,6 +93,9 @@ function CheckpointRootDiff(
   // A side that was not captured leaves nothing to compare: the server answers
   // with the capture's own reason, already said once above the diff.
   const notRecorded = checkpointRootNotice(entry);
+  // A service that was not there at the turn's start has all of its code to show, as new.
+  const fromNothing =
+    notRecorded === null && entry.before.status === "absent" ? entry.before.reason : null;
   const query = useCheckpointDiff(
     {
       environmentId: props.environmentId,
@@ -176,8 +177,8 @@ function CheckpointRootDiff(
           </Button>
         )}
       </div>
-      {notRecorded === null ? null : (
-        <p className="px-3 py-2 text-xs text-muted-foreground">{notRecorded}</p>
+      {(notRecorded ?? fromNothing) === null ? null : (
+        <p className="px-3 py-2 text-xs text-muted-foreground">{notRecorded ?? fromNothing}</p>
       )}
       {expanded && notRecorded === null && (
         <>

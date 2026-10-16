@@ -13,18 +13,21 @@ import {
   putLiveCreation,
   putLiveHoldsRelease,
   putLiveLines,
+  putLiveSheetUnderWay,
   putLiveMergeGate,
   putLiveDeadline,
   putLiveNext,
   putLiveOffered,
   putLiveProgress,
   putLiveReleased,
+  putLiveResumed,
   putLiveSettle,
   putLiveSheet,
   putLiveStep,
   startPutLive,
   type PutLiveChange,
   type PutLiveFacts,
+  type PutLiveFlowFacts,
   type PutLiveMergePull,
   type PutLiveRun,
 } from "./putLive.logic";
@@ -278,6 +281,25 @@ describe("the Put it live sheet", () => {
       ),
     ).toEqual(["Adds search to the box."]);
     expect(putLiveLines(undefined)).toEqual([]);
+  });
+});
+
+// A run 2 follow-up: right after the person's only press the sheet said "It's already on its
+// way.", as if somebody had pressed before them.
+describe("the Put it live sheet once a run is under way", () => {
+  const sheet = putLiveSheet({ project: "Tea Shop", changes: [{ title: "x" }], recipe: "present" });
+
+  it("says it is going live once pressed here, never that it was already on its way", () => {
+    const pressed = putLiveSheetUnderWay(sheet, { pressedHere: true });
+    expect(pressed.button).toBe("Putting it live…");
+    expect(pressed.busy).toBe(true);
+    expect(pressed.hold).toBeUndefined();
+  });
+
+  it("says a run somebody started before it opened is already on its way", () => {
+    const before = putLiveSheetUnderWay(sheet, { pressedHere: false });
+    expect(before.hold).toBe("It's already on its way.");
+    expect(before.button).toBe("Put it live");
   });
 });
 
@@ -659,5 +681,116 @@ describe("while Put it live makes production", () => {
       9_000,
     );
     expect(putLiveProgress(live).since).toBeUndefined();
+  });
+});
+
+describe("after a reload, how Put it live ended", () => {
+  const read = (over: Partial<PutLiveFlowFacts> = {}): PutLiveFlowFacts => ({
+    ...facts({ production: "p-prod", gate: { allowed: true } }),
+    inFlight: undefined,
+    suggestion: "v0.1.0",
+    ...over,
+  });
+  const resumed = (input: {
+    readonly current?: PutLiveRun | undefined;
+    readonly kept?: string | undefined;
+    readonly facts: PutLiveFlowFacts | undefined;
+  }) =>
+    putLiveResumed({
+      orgId: "o1",
+      groupId: "g1",
+      project: "Tea Shop",
+      current: input.current,
+      kept: input.kept,
+      facts: input.facts,
+    });
+
+  it("production the person's Put it live made but never released says so, with Release one press away", () => {
+    const shown = resumed({ kept: "p-prod", facts: read() });
+    expect(shown.kind).toBe("stopped");
+    if (shown.kind !== "stopped") return;
+    expect(putLiveProgress(shown.run)).toEqual({
+      title: "Tea Shop isn't live yet",
+      step: "Production is made; v0.1.0 isn't released yet.",
+    });
+    expect(shown.run.failure?.action).toBe("release");
+    // Release goes on from the production it made: it releases, it never makes another.
+    const pressed = putLiveStep(shown.run, { kind: "again", at: 5 });
+    expect(pressed).toMatchObject({ phase: "creating", productionId: "p-prod", since: 5 });
+    expect(putLiveNext(pressed, read(), 5)).toEqual({ kind: "release" });
+  });
+
+  it("says a release whose deploy failed as that, with Release again", () => {
+    const shown = resumed({
+      kept: "p-prod",
+      facts: read({
+        releases: [{ tag: "v0.1.0", standing: "deploy-failed" }],
+        suggestion: "v0.1.1",
+      }),
+    });
+    expect(shown.kind === "stopped" ? putLiveProgress(shown.run).step : shown.kind).toBe(
+      "v0.1.0 didn't go out: its deploy failed.",
+    );
+  });
+
+  it("holds the strip's room while the project's flow is read, and says nothing it did not make", () => {
+    expect(resumed({ kept: "p-prod", facts: undefined })).toEqual({ kind: "reading" });
+    expect(resumed({ facts: undefined })).toEqual({ kind: "none" });
+    expect(resumed({ facts: read() })).toEqual({ kind: "none" });
+  });
+
+  it.each([
+    ["production is gone", read({ production: undefined })],
+    ["another production stands", read({ production: "p-other" })],
+  ])("forgets an attempt whose production it no longer finds (%s)", (_case, flow) => {
+    expect(resumed({ kept: "p-prod", facts: flow })).toEqual({ kind: "forget" });
+  });
+
+  it("a release that went live while the page reloaded ends on the live card", () => {
+    const shown = resumed({
+      kept: "p-prod",
+      facts: read({ releases: [{ tag: "v0.1.0", standing: "live" }] }),
+    });
+    expect(shown).toMatchObject({ kind: "follow", run: { phase: "live", tag: "v0.1.0" } });
+  });
+
+  it("A release started from the conversation is followed there to the live address", () => {
+    const flow = read({
+      inFlight: "v0.1.1",
+      releases: [{ tag: "v0.1.1", standing: undefined, taggedAt: "1970-01-01T00:00:02.000Z" }],
+    });
+    const shown = resumed({ facts: flow });
+    expect(shown).toMatchObject({
+      kind: "follow",
+      run: { phase: "releasing", tag: "v0.1.1", productionId: "p-prod", stepAt: 2_000 },
+    });
+    if (shown.kind !== "follow") return;
+    expect(putLiveProgress(shown.run).step).toBe("Releasing v0.1.1");
+    const live = putLiveNext(shown.run, read({ releases: [{ tag: "v0.1.1", standing: "live" }] }));
+    expect(live).toEqual({ kind: "live" });
+  });
+
+  it("a stopped or finished row gives way to what happened since, never stays behind it", () => {
+    const stopped = resumed({ kept: "p-prod", facts: read() });
+    if (stopped.kind !== "stopped") throw new Error("stopped expected");
+    // Released meanwhile from the project: the row follows that release.
+    expect(
+      resumed({ current: stopped.run, kept: "p-prod", facts: read({ inFlight: "v0.1.0" }) }),
+    ).toMatchObject({ kind: "follow", run: { phase: "releasing", tag: "v0.1.0" } });
+    // Live meanwhile: the row is the live card.
+    expect(
+      resumed({
+        current: stopped.run,
+        facts: read({ releases: [{ tag: "v0.1.0", standing: "live" }] }),
+      }),
+    ).toMatchObject({ kind: "follow", run: { phase: "live", tag: "v0.1.0" } });
+    const live: PutLiveRun = { ...stopped.run, phase: "live", tag: "v0.1.0", failure: undefined };
+    expect(
+      resumed({ current: live, facts: read({ releases: [{ tag: "v0.1.0", standing: "live" }] }) }),
+    ).toEqual({ kind: "none" });
+    // A run under way is the host's to drive.
+    expect(
+      resumed({ current: { ...live, phase: "releasing" }, facts: read({ inFlight: "v0.1.1" }) }),
+    ).toEqual({ kind: "none" });
   });
 });

@@ -19,6 +19,7 @@ const session = vi.hoisted(() => ({ value: null as { user: { id: string } } | nu
 vi.mock("~/zerops/useMenuMateReadings", () => ({
   useMateLinkedInHq: () => linked.value,
   useMateOfflineSince: () => undefined,
+  useMateAwayNow: () => 0,
 }));
 vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
   ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),

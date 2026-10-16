@@ -38,7 +38,7 @@ import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
 /** At most this many Mates stand on a card; past it the quiet ones fold. */
 export const CARD_MATES_SHOWN = 4;
 
-/** A place's dot: grey running, amber failed, red down, blue releasing, hollow when none. */
+/** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
 export type PlaceDot = "running" | "failed" | "down" | "releasing" | "none" | "unknown";
 
 /** One line at a card's foot: a place the code runs, by its name, in plain words, and its door. */
@@ -205,8 +205,19 @@ function stageLine(
       words: [stop.git.line],
       trouble: stop.git.blocked,
     };
-  const said =
+  const told =
     chip !== undefined ? chipLine(chip, { since: undefined, down }) : flowStageLine(stop);
+  // What it runs is named by a release's tag only: the branch it follows and a commit are no
+  // version a person knows (the run's stage read "Running · main").
+  const unnamed = [stop.source, stop.version?.branch, stop.version?.commit].filter(
+    (word) => word !== undefined && word !== stop.version?.name,
+  );
+  const said = {
+    ...told,
+    words: told.words.filter((word) =>
+      unnamed.every((name) => word !== name && word !== `still runs ${name}`),
+    ),
+  };
   // HQ brings a stage up until its first deploy's address is on (`EnvironmentBirth`): running
   // with nowhere to open is still coming up, as the menu's heading says (`stopComing`).
   if (said.dot === "running" && stop.addresses.length === 0 && stop.birth?.ended === false)
@@ -232,7 +243,7 @@ function flowStageLine(stop: GroupFlowStop): Pick<PlaceLine, "dot" | "words" | "
     case "deployed":
       return {
         dot: "running",
-        words: ["Running", stop.version?.label].filter((word) => word !== undefined),
+        words: ["Running", stop.version?.name].filter((word) => word !== undefined),
         trouble: false,
       };
   }
@@ -353,6 +364,18 @@ export function cardReady(flow: Pick<GroupFlow, "production" | "stages" | "main"
  */
 export function cardReleasing(flow: Pick<GroupFlow, "production" | "stages" | "main">) {
   return flow.production.kind === "releasing" ? flow.production.tag : undefined;
+}
+
+/**
+ * Whether production's panel offers its history: once production runs a release. Before, there is
+ * no history to open, and a first release on its way gets it with the rest of its result — it came
+ * 6 s into the run's first release and pushed the domain's door 72 px aside.
+ */
+export function historyOffered(input: {
+  readonly releases: number;
+  readonly runs: boolean;
+}): boolean {
+  return input.releases > 0 && input.runs;
 }
 
 /** "Putting v2.4.0 live" — the glossary's words for a release under way. */
@@ -603,7 +626,13 @@ export interface PanelAddresses {
   /** Several services serving: a door each, by its service, at its own domain where it has one. */
   readonly doors: ReadonlyArray<GroupFlowAddress>;
   readonly pending: ReadonlyArray<PanelPendingDomain>;
-  /** Production read with no domain of its own: the popover's "Put it on your domain" (`lacksOwnDomain`). */
+  /**
+   * The card's door into the addresses sheet: only once the place runs something and its addresses
+   * are read and it has one — before, there is nothing to put on a domain, and a door read early
+   * would change its words once they are (the run: "Manage addresses", then "Put it on your domain").
+   */
+  readonly door: boolean;
+  /** That door is production's "Put it on your domain": it has none of its own (`lacksOwnDomain`). */
   readonly offerDomain: boolean;
 }
 
@@ -619,6 +648,8 @@ export function panelAddresses(input: {
   readonly listed: ReadonlyArray<GroupFlowAddress>;
   /** The place's addresses as read; `undefined` outside an account. */
   readonly place: PlaceAddresses | undefined;
+  /** Something runs there: a release on production, a deploy on a stage. */
+  readonly runs: boolean;
 }): PanelAddresses {
   const { place } = input;
   if (place?.state !== "ready") {
@@ -628,6 +659,7 @@ export function panelAddresses(input: {
       head: host === undefined || first === undefined ? undefined : { host, url: first.url },
       doors: input.listed.length < 2 ? [] : input.listed,
       pending: [],
+      door: false,
       offerDomain: false,
     };
   }
@@ -646,6 +678,7 @@ export function panelAddresses(input: {
   const headUrl = own?.url ?? (doors.length === 1 ? doors[0]?.url : undefined);
   const host = siteOf(headUrl);
   const seen = new Set<string>();
+  const door = input.runs && routes.length > 0;
   return {
     head: host === undefined || headUrl === undefined ? undefined : { host, url: headUrl },
     doors: doors.length < 2 ? [] : doors,
@@ -655,7 +688,8 @@ export function panelAddresses(input: {
       const { word, tone } = domainFaceWords(domain.face);
       return [{ name: domain.domainName, word, tone: tone === "warn" ? "attention" : "muted" }];
     }),
-    offerDomain: input.kind === "production" && lacksOwnDomain(place),
+    door,
+    offerDomain: door && input.kind === "production" && lacksOwnDomain(place),
   };
 }
 

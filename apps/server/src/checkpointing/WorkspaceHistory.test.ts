@@ -12,6 +12,7 @@ import { ZeropsWorkspaceObserver, workspaceRootId } from "../zerops/ZeropsWorksp
 import { CheckpointStore } from "./CheckpointStore.ts";
 import * as Journal from "./WorkspaceCaptureJournal.ts";
 import * as History from "./WorkspaceHistory.ts";
+import { emptyTreeFor } from "../vcs/GitVcsDriverSnapshot.ts";
 
 const threadId = ThreadId.make("thread");
 const turnId = TurnId.make("turn");
@@ -25,6 +26,7 @@ const repository = (host: string, serviceId = host): ZeropsRepository => ({
 
 const harness = Effect.fn("harness")(function* () {
   let repositories = [repository("api"), repository("app")];
+  let listingFails = false;
   const captures: Array<{ cwd: string; ref: string; oid: string }> = [];
   const comparisons: Array<{ cwd: string; from: string; to: string }> = [];
   const objects = new Set<string>();
@@ -109,7 +111,11 @@ const harness = Effect.fn("harness")(function* () {
   });
   const source = ZeropsRepositorySource.of({
     list: Effect.sync(() => ({ _tag: "available" as const, repositories })),
-    refresh: Effect.sync(() => ({ _tag: "available" as const, repositories })),
+    refresh: Effect.sync(() =>
+      listingFails
+        ? { _tag: "unavailable" as const, reason: "The mount table could not be read." }
+        : { _tag: "available" as const, repositories },
+    ),
     known: Effect.sync(() => repositories),
     remember: () => Effect.void,
   });
@@ -183,6 +189,9 @@ const harness = Effect.fn("harness")(function* () {
     },
     setRepositories: (value: ZeropsRepository[]) => {
       repositories = value;
+    },
+    failListing: (value: boolean) => {
+      listingFails = value;
     },
     blockCapture: (barrier: Deferred.Deferred<void>) => {
       captureBarrier = barrier;
@@ -688,11 +697,58 @@ describe("Workspace history", () => {
       yield* h.prepare();
       h.setRepositories([repository("api"), repository("app")]);
       const completed = yield* h.finish();
-      expect(completed.roots[1]?.before.status).toBe("missing-baseline");
+      expect(completed.roots[1]?.before.status).toBe("absent");
       expect(completed.roots[1]?.after.status).toBe("captured");
       expect(h.captures.filter((c) => c.cwd === "/var/www/app")).toHaveLength(1);
-      expect(completed.coverage).toBe("partial");
     }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect(
+    "a service the run brought into the workspace shows everything in it as that run's change",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness();
+        h.setRepositories([]);
+        yield* h.prepare();
+        h.setRepositories([repository("app")]);
+        const completed = yield* h.finish();
+        const app = completed.roots[0]!;
+        expect(app.before.status).toBe("absent");
+        expect(app.files?.map((file) => file.path)).toEqual(["app/src/main.ts"]);
+        expect(completed.coverage).toBe("complete");
+        const after = app.after.status === "captured" ? app.after.oid : "";
+        h.comparisons.length = 0;
+        const result = yield* h.history.read(completed, { ignoreWhitespace: false });
+        expect(result.roots.map((root) => root.status)).toEqual(["available"]);
+        expect(result.diff).toContain("app/src/main.ts");
+        expect(h.comparisons).toEqual([
+          { cwd: "/var/www/app", from: emptyTreeFor(after), to: after },
+        ]);
+      }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect.each([
+    {
+      start: "the start could not list the workspace",
+      arrange: (h: Effect.Success<ReturnType<typeof harness>>) =>
+        Effect.gen(function* () {
+          h.failListing(true);
+          yield* h.prepare();
+          h.failListing(false);
+        }),
+    },
+    { start: "the run's start was never recorded", arrange: () => Effect.void },
+  ])(
+    "a service whose start the run cannot vouch for never shows as all new: $start",
+    ({ arrange }) =>
+      Effect.gen(function* () {
+        const h = yield* harness();
+        yield* arrange(h);
+        const completed = yield* h.finish();
+        const app = completed.roots.find((entry) => entry.root.label === "app");
+        expect(app?.before.status).toBe("missing-baseline");
+        expect(app?.files).toBeUndefined();
+      }).pipe(Effect.provide(testLayer)),
   );
 
   it.effect("same hostname and new service ID keep distinct historical roots", () =>

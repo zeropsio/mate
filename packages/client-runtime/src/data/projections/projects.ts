@@ -3,9 +3,13 @@
  * list is whole, and how current it is. A project that left the roster stays listed until its
  * owner proves it deleted or withholds it; an outage keeps what was read and says it is catching
  * up. Where HQ places a project is HQ's: a project nobody placed yet is listed all the same.
+ * A project HQ places that the roster does not name yet — Zerops' search trails a project just
+ * made and its grants — is listed once its own row, read by its id (`data/placedRows.ts`), says
+ * it is the organization's: Zerops answering that read is its word that the viewer reads it.
  *
  * @module data/projections/projects
  */
+import { placementsScope } from "../families/hqNavigation.ts";
 import { projectsScope, type ProjectValue } from "../families/project.ts";
 import { acceptedProjectOf } from "../operations/receipts.ts";
 import type { Projection } from "../store.ts";
@@ -37,13 +41,19 @@ export const organizationProjects: Projection<string, OrganizationProjects> = {
   derive: (read, orgId) => {
     const scope = projectsScope(orgId);
     const { complete: baselined, ...freshness } = scopeFreshness(read, scope);
-    const { ids, unverified } = read.members(scope);
+    const { ids, unverified, excluded } = read.members(scope);
     const projects: ProjectValue[] = [];
     let unreadRows = false;
     for (const id of [...ids, ...unverified]) {
       const fact = read.fact("project", id);
       if (fact.kind === "known") projects.push(fact.value);
       else if (fact.kind === "unknown") unreadRows = true;
+    }
+    const named = new Set([...ids, ...unverified, ...excluded]);
+    for (const id of read.members(placementsScope(orgId)).ids) {
+      if (named.has(id)) continue;
+      const fact = read.fact("project", id);
+      if (fact.kind === "known" && fact.value.clientId === orgId) projects.push(fact.value);
     }
     const phase = read.stream(scope).phase;
     return {

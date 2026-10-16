@@ -230,13 +230,13 @@ describe("zeropsCandidatePresentation", () => {
       label: "Read-only",
       tone: "off",
       action: null,
-      notice: "Your Zerops access to this Mate is read-only.",
+      notice: "You have Read access to this Mate.",
     });
   });
 
   it("names the owner when the account can be read for one", () => {
     expect(present(candidate(), { visibility: "listed", ownerName: "Jan" }).notice).toBe(
-      "Jan's Mate — your Zerops access is read-only.",
+      "Jan's Mate — you have Read access.",
     );
   });
 });

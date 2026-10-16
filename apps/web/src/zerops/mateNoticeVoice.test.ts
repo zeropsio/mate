@@ -62,6 +62,25 @@ describe("the web Mate's link notice", () => {
       }),
     ).toMatchObject({ surface: "banner", face: "waking" });
   });
+  // Run 2: an automatic update restarted the Mate right after its answer, and the conversation
+  // said it "isn't answering", counting down, with Try now.
+  it("an update beside the conversation reads as one: back in a moment, nothing to press", () => {
+    expect(
+      mateNoticeVoice({
+        reachability: { kind: "container", container: { level: "updating", overdue: false } },
+        conversationShown: true,
+        nowMs: 0,
+        mateName: "Rosa",
+      }),
+    ).toMatchObject({
+      surface: "banner",
+      headline: "Rosa is updating to the new version.",
+      secondary: "Back in a moment.",
+      severity: "info",
+      actions: [],
+      face: "waking",
+    });
+  });
   it("a lost link does not claim a restart or a return time", () => {
     expect(say({ kind: "reconnecting" })).toMatchObject({
       text: "Rosa is reconnecting. The conversation will open when the connection returns.",

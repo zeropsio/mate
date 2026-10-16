@@ -4,6 +4,7 @@ import { TurnId } from "@t3tools/contracts";
 
 import {
   diffScope,
+  latestChangedTurnId,
   resolveCheckpointDiffAvailability,
   resolveDiffSelection,
 } from "./DiffPanel.logic";
@@ -150,5 +151,28 @@ describe("diffScope", () => {
     expected: ReturnType<typeof diffScope>;
   }>)("$name reads $expected", ({ shown, expected }) => {
     expect(diffScope({ shown, latestTurnId: latest })).toBe(expected);
+  });
+});
+
+/**
+ * Diff lists only turns that changed code. Beside a later turn that changed none (stopped after
+ * 28 s in the onboarding run), the newest change was still called "Latest turn".
+ */
+describe("latestChangedTurnId", () => {
+  const newest = { turnId: TurnId.make("turn-1"), completedAt: "2026-10-16T10:00:00.000Z" };
+  it.each([
+    { name: "no turn has been asked for", latestTurn: null, expected: newest.turnId },
+    {
+      name: "the latest turn is the one that changed code",
+      latestTurn: { requestedAt: "2026-10-16T09:50:00.000Z" },
+      expected: newest.turnId,
+    },
+    {
+      name: "a later turn changed no code",
+      latestTurn: { requestedAt: "2026-10-16T10:05:00.000Z" },
+      expected: undefined,
+    },
+  ])("the newest change is the latest turn when $name", ({ latestTurn, expected }) => {
+    expect(latestChangedTurnId({ newest, latestTurn })).toBe(expected);
   });
 });

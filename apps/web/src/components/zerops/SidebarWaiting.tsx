@@ -32,6 +32,7 @@ import { mateDecision } from "./mateDecision.logic";
 import { MateFace } from "./primitives";
 import {
   releaseWaitingLine,
+  waitingCountWords,
   waitingTitle,
   type WaitingItem,
   type WaitingMate,
@@ -137,6 +138,49 @@ export function SidebarWaitingPopover({
         </PopoverPrimitive.Positioner>
       </WaitingPortal>
     </PopoverPrimitive.Root>
+  );
+}
+
+/**
+ * A bare count of what waits on the person — the menu's top, the Chief's row, the rail — that opens
+ * the list; hovered, it says what it counts ("Waiting on you", the first things by name), so the
+ * number never stands without its noun.
+ */
+export function SidebarWaitingCount({
+  items,
+  verbs,
+  className,
+}: {
+  readonly items: ReadonlyArray<WaitingItem>;
+  readonly verbs: WaitingVerbs;
+  readonly className: string;
+}) {
+  const words = waitingCountWords(items);
+  return (
+    <SidebarWaitingPopover
+      items={items}
+      tooltip={
+        <span className="menu-rail-tip">
+          <span className="menu-rail-tip-name">
+            Waiting on you
+            <span className="menu-rail-tip-key">⌥↓</span>
+          </span>
+          <span className="menu-rail-tip-line">{words.line}</span>
+        </span>
+      }
+      trigger={
+        <button
+          aria-label={words.label}
+          className={className}
+          data-waiting-trigger=""
+          data-zerops-surface="sidebar-waiting"
+          type="button"
+        />
+      }
+      verbs={verbs}
+    >
+      <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
+    </SidebarWaitingPopover>
   );
 }
 

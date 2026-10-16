@@ -120,6 +120,8 @@ export interface CatalogListener {
   readonly environments: (registered: ReadonlyArray<RegisteredEnvironment>) => void;
   /** Each publication of an environment's link (region L): every one is an observation. */
   readonly link: (environmentId: EnvironmentId, phase: LinkPhase) => void;
+  /** Its server's word on an automatic update: the version it moves from, or null for none. */
+  readonly updateUnderway: (environmentId: EnvironmentId, from: string | null) => void;
 }
 
 export interface AccountEnvironmentPorts {
@@ -941,6 +943,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           updateParking();
         },
         link: (environmentId, phase) => built.link(environmentId, phase),
+        updateUnderway: (environmentId, from) => built.updateUnderway(environmentId, from),
       }),
       atomRegistry.subscribe(
         mateListingsAtom,

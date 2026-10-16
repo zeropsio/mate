@@ -701,11 +701,20 @@ function MateHome({ mate }: { mate: ZeropsMateOnMap }) {
  * resources, plus the stage line a dev service folds in. Inside the hover
  * pop's trigger.
  */
-function ServiceCardBody({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
+function ServiceCardBody({
+  row,
+  usageRead,
+  home,
+}: {
+  row: ZeropsServiceRow;
+  usageRead: boolean;
+  /** A Mate's home: its title and its Mate name it, never its hostname (`zcp`). */
+  home: boolean;
+}) {
   return (
     <>
       <ServiceHeader
-        aside={row.isControlPlane ? row.service.hostname : row.typeShort}
+        aside={row.isControlPlane ? (home ? undefined : row.service.hostname) : row.typeShort}
         portLabel={row.portLabel}
         folded={row.routesFolded}
         routes={row.routes}
@@ -741,11 +750,13 @@ const TRIGGER_CLASS =
 function ServiceCard({
   row,
   usageRead,
+  home = false,
   children,
   render,
 }: {
   row: ZeropsServiceRow;
   usageRead: boolean;
+  home?: boolean;
   children?: ReactNode;
   render: ReactElement<Record<string, unknown>>;
 }) {
@@ -759,7 +770,7 @@ function ServiceCard({
         openOnHover
         render={render}
       >
-        <ServiceCardBody row={row} usageRead={usageRead} />
+        <ServiceCardBody home={home} row={row} usageRead={usageRead} />
         {children}
       </PopoverTrigger>
       <PopoverPopup align="start" side="left" sideOffset={8}>
@@ -795,6 +806,7 @@ function ControlPlaneRow({
     <li data-zerops-service-row="control-plane" data-zerops-service-id={row.service.serviceId}>
       <MintPanel className={hangs ? "pb-3" : undefined}>
         <ServiceCard
+          home={mate !== undefined}
           render={<div className={cn("px-3.5 pt-2.5", versioned ? "pb-1" : "pb-2.5")} />}
           row={row}
           usageRead={usageRead}

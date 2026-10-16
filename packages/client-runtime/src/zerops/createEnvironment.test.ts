@@ -187,7 +187,7 @@ describe("environmentCreationStepLabel", () => {
     });
     if (!plan.ok) throw new Error("expected a plan");
 
-    expect(plan.steps.map(environmentCreationStepLabel)).toEqual([
+    expect(plan.steps.map((step) => environmentCreationStepLabel(step))).toEqual([
       "Creating it",
       "Adding its databases and storage",
       "Adding it to HQ",
@@ -210,6 +210,34 @@ describe("environmentCreationStepLabel", () => {
       expect(environmentCreationStepLabel(step)).toBe(label);
     },
   );
+
+  // The run's stage read "Creating it", "Adding it to HQ", "Starting its services": never what
+  // was being made, and HQ is no word its owner was told of.
+  it.each([
+    {
+      subject: "the stage",
+      said: [
+        "Creating the stage",
+        "Adding the stage to your project",
+        "Starting the stage's services",
+      ],
+    },
+    {
+      subject: "production",
+      said: [
+        "Creating production",
+        "Adding production to your project",
+        "Starting production's services",
+      ],
+    },
+  ])("names $subject in its steps, and its project where HQ takes it in", ({ subject, said }) => {
+    const steps: ReadonlyArray<EnvironmentCreationStep> = [
+      { kind: "import-project", name: "x", tagList: [], yaml: "" },
+      { kind: "register" },
+      { kind: "await-ready", withAgent: false },
+    ];
+    expect(steps.map((step) => environmentCreationStepLabel(step, { subject }))).toEqual(said);
+  });
 
   it("says what it is waiting for when there is no agent", () => {
     expect(environmentCreationStepLabel({ kind: "await-ready", withAgent: false })).toBe(

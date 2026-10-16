@@ -68,3 +68,15 @@ export function mateUnreachableWords(
 ): string {
   return `${name} ${reconnecting ? "is reconnecting" : "isn't answering"}${since === undefined ? "" : ` since ${formatDayAwareTimestamp(since, timestampFormat)}`}.`;
 }
+
+/**
+ * How long a Mate may be away before its row says it isn't answering: an update's restart is back
+ * within it (run 2 measured 23 s).
+ */
+export const MATE_AWAY_GRACE_MS = 30_000;
+
+/** Whether a Mate away since `offlineSince` is still within its grace at `nowMs`. */
+export function mateAwaySettling(offlineSince: string, nowMs: number | undefined): boolean {
+  const since = Date.parse(offlineSince);
+  return nowMs !== undefined && Number.isFinite(since) && nowMs - since < MATE_AWAY_GRACE_MS;
+}

@@ -60,6 +60,17 @@ const ROWS: ReadonlyArray<{ readonly name: string; readonly run: PutLiveRun }> =
     },
   },
   {
+    name: "After a reload, not released yet",
+    run: {
+      ...RUN,
+      change: undefined,
+      phase: "failed",
+      failedAt: "creating",
+      productionId: "p-prod",
+      failure: { words: "Production is made; v0.1.0 isn't released yet.", action: "release" },
+    },
+  },
+  {
     name: "Services never showed ready",
     run: {
       ...RUN,

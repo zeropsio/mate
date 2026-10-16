@@ -14,6 +14,7 @@ import { normalizeBasePath } from "@t3tools/shared/basePath";
 import { DEV_PROXIED_PATH_PREFIXES } from "@t3tools/shared/devProxy";
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
+import { buildDocumentTitle } from "./src/branding.logic";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -149,6 +150,28 @@ const devProxyTarget = resolveDevProxyTarget(process.env.T3CODE_PORT, configured
 // both machines sit idle. Compressing turns it into a few seconds of CPU.
 // Brotli quality 5 keeps encode time in the hundreds of ms; the default
 // (quality 11) would trade the transfer stall for an equally long encode stall.
+/**
+ * The boot shell's title, as the app will title the tab (`buildDocumentTitle`): the tab never
+ * changes its name as the app starts (run 2: "Zerops Mate (Alpha)", then "Zerops Mate").
+ */
+function documentTitlePlugin(): Plugin {
+  let dev = false;
+  return {
+    name: "mate:document-title",
+    configResolved(config) {
+      dev = config.command === "serve";
+    },
+    transformIndexHtml(html) {
+      const title = buildDocumentTitle({
+        baseName: "Zerops Mate",
+        channel: configuredHostedAppChannel,
+        dev,
+      });
+      return html.replace(/<title>[^<]*<\/title>/u, `<title>${title}</title>`);
+    },
+  };
+}
+
 function devCompressionPlugin(): Plugin {
   return {
     name: "t3code:dev-compression",
@@ -217,6 +240,7 @@ export default defineConfig(() => {
     base,
     assetsInclude: ["**/*.wasm"],
     plugins: [
+      documentTitlePlugin(),
       devCompressionPlugin(),
       ...(process.env.T3CODE_WEB_ANALYZE === "1" ? [bundleCompositionPlugin()] : []),
       tanstackRouter({ autoCodeSplitting: true }),

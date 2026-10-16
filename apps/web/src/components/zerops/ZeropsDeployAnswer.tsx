@@ -57,7 +57,7 @@ function PlatformDeployAnswer({
                     {job.service}
                   </b>
                   <span data-zerops-job-state={job.state}>
-                    {job.line}
+                    {job.standing}
                     {log === undefined ? null : (
                       <ZeropsDeployLog
                         key={log.target.jobId}

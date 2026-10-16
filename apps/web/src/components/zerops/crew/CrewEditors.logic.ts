@@ -18,6 +18,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import {
+  CREW_JOB_WORDS,
   crewDevHostDatabaseWord,
   crewNoDevHostWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -235,4 +236,20 @@ export function crewWaitingMembers(
   if (definition === null) return [];
   const standing = new Set(roster.map((row) => row.handle));
   return definition.members.filter((member) => !standing.has(member.handle));
+}
+
+/**
+ * What a crewmate's Save does, under its job: one never run starts with it when the crew starts,
+ * or joins a running crew now — never "its next message" or "its work" (run 2) — and one running
+ * picks it up with its next message, or afresh now on another login.
+ */
+export function crewJobFootLine(input: {
+  /** It runs in the standing crew. */
+  readonly applied: boolean;
+  /** The crew stands. */
+  readonly crewApplied: boolean;
+  readonly loginChanged: boolean;
+}): string {
+  if (!input.applied) return input.crewApplied ? CREW_JOB_WORDS.joinLine : CREW_JOB_WORDS.draftLine;
+  return input.loginChanged ? CREW_JOB_WORDS.freshLine : CREW_JOB_WORDS.saveLine;
 }

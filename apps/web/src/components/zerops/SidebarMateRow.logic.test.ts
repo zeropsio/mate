@@ -1,7 +1,7 @@
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { restingActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 
@@ -2043,4 +2043,49 @@ it("A sidebar Mate with no deployment says nothing is deployed rather than setup
   const view = mateComingRowView(mateRowView(undefined, "sleep"), coming);
   expect(view.coming).toEqual(coming);
   expect(mateBornLineText(mateBornLine(coming), 0)).toBe("Nothing is deployed yet.");
+});
+
+// Run 2: an automatic update restarted a Mate a second after its answer, and its row said at once
+// that it "isn't answering since" then, "Last known: … had no active work". A restart that comes
+// back within half a minute is not an outage.
+describe("a Mate's row waits half a minute before it says the Mate isn't answering", () => {
+  const OFF = "2026-10-16T10:00:00.000Z";
+  const offMs = Date.parse(OFF);
+  const told: ZeropsAgentActivity = {
+    threadId: ThreadId.make("thread-1"),
+    kind: "done",
+    status: null,
+    face: "done",
+    subject: "Speed up the photo gallery",
+    at: OFF,
+    snippet: "Thumbnails load lazily now.",
+    unread: true,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Speed up the photo gallery",
+  };
+  const row = (nowMs: number) =>
+    mateRowReading({
+      name: "Nova",
+      connected: false,
+      activity: restingActivity(told),
+      offlineSince: OFF,
+      nowMs,
+      mine: true,
+    }).reply;
+
+  it.each([1_000, 29_999])("%i ms after it went: its last words, no alarm", (after) => {
+    expect(row(offMs + after)).toMatchObject({
+      kind: "words",
+      text: "Thumbnails load lazily now.",
+    });
+  });
+
+  it("half a minute after it went: it isn't answering, and what was last known", () => {
+    const reply = row(offMs + 30_000);
+    expect(reply).toMatchObject({ kind: "words", lastKnown: true });
+    expect(reply?.kind === "words" ? reply.text : "").toMatch(
+      /^Nova isn't answering since .*Last known/,
+    );
+  });
 });

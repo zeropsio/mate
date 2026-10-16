@@ -26,6 +26,7 @@ import {
   type CaptureRun,
 } from "./WorkspaceCaptureJournal.ts";
 import { parseTurnDiffFilesFromNumstat } from "./Diffs.ts";
+import { emptyTreeFor } from "../vcs/GitVcsDriverSnapshot.ts";
 import { prefixUnifiedPatch } from "../zerops/ZeropsCheckpointTargets.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../zerops/ZeropsRepositorySource.ts";
 import { ZeropsWorkspaceObserver, withRepository } from "../zerops/ZeropsWorkspaceObserver.ts";
@@ -51,7 +52,7 @@ const historyFor = (
       ? "unknown"
       : roots.every(
             (r) =>
-              r.before.status === "captured" &&
+              (r.before.status === "captured" || r.before.status === "absent") &&
               r.after.status === "captured" &&
               r.files !== undefined,
           )
@@ -543,14 +544,23 @@ export const make = Effect.gen(function* () {
       if (entry) entry.dispatched = true;
     });
 
+  /** What a source's diff starts from: its start snapshot, or nothing when it was not there. */
+  const startOf = (entry: CheckpointHistoryRoot): string | undefined =>
+    entry.before.status === "captured"
+      ? entry.before.oid
+      : entry.before.status === "absent" && entry.after.status === "captured"
+        ? emptyTreeFor(entry.after.oid)
+        : undefined;
+
   const summarize = Effect.fn("WorkspaceHistory.summarize")(
     function* (entry: CheckpointHistoryRoot) {
-      if (entry.before.status !== "captured" || entry.after.status !== "captured") return undefined;
+      const from = startOf(entry);
+      if (from === undefined || entry.after.status !== "captured") return undefined;
       const numstat = yield* atRoot(
         entry.root,
         store.diffCheckpoints({
           cwd: entry.root.mountPath ?? entry.root.remotePath,
-          fromCheckpointRef: CheckpointRef.make(entry.before.oid),
+          fromCheckpointRef: CheckpointRef.make(from),
           toCheckpointRef: CheckpointRef.make(entry.after.oid),
           fallbackFromToHead: false,
           ignoreWhitespace: false,
@@ -613,14 +623,24 @@ export const make = Effect.gen(function* () {
       yield* journal.save({ ...initial, phase: "finishing" });
       const observed = yield* observe(input.cwd);
       const roots = new Map(prior.map((r) => [r.root.rootId, r]));
+      // The run's start vouches for a source it did not list only when it listed every source:
+      // a run never prepared, or one whose start could not list them all, knows nothing of it.
+      const startListedAll =
+        run?.phase === "prepared" && prior.every((r) => r.root.mountPath !== undefined);
+      const absentAtStart = (root: CheckpointRoot) =>
+        startListedAll &&
+        root.mountPath !== undefined &&
+        !prior.some((r) => r.root.mountPath === root.mountPath);
       for (const { root, problem } of observed) {
         if (!roots.has(root.rootId))
           roots.set(root.rootId, {
             root,
-            before: missing(
-              "missing-baseline",
-              "This source was first observed after work started.",
-            ),
+            before: absentAtStart(root)
+              ? missing(
+                  "absent",
+                  "This code wasn't here when the turn began, so all of it shows as new.",
+                )
+              : missing("missing-baseline", "This source was first observed after work started."),
             after: problem
               ? missing("unavailable", problem)
               : missing("missing-end", "Not captured yet."),
@@ -698,8 +718,10 @@ export const make = Effect.gen(function* () {
               diff: "",
               result: { ...base, status, reason },
             });
-            if (before.status !== "captured") return failure("missing-baseline", before.reason);
+            if (before.status !== "captured" && before.status !== "absent")
+              return failure("missing-baseline", before.reason);
             if (after.status !== "captured") return failure("missing-end", after.reason);
+            const from = before.status === "captured" ? before.oid : emptyTreeFor(after.oid);
             if (isRemoteRoot(root) && !repositoryFor(root))
               return failure(
                 "identity-unresolved",
@@ -709,7 +731,7 @@ export const make = Effect.gen(function* () {
             return yield* atRoot(
               root,
               Effect.gen(function* () {
-                for (const snapshot of [before, after]) {
+                for (const snapshot of before.status === "captured" ? [before, after] : [after]) {
                   if (
                     !(yield* store.resolveSnapshot({
                       cwd,
@@ -724,7 +746,7 @@ export const make = Effect.gen(function* () {
                 }
                 const patch = yield* store.diffCheckpoints({
                   cwd,
-                  fromCheckpointRef: CheckpointRef.make(before.oid),
+                  fromCheckpointRef: CheckpointRef.make(from),
                   toCheckpointRef: CheckpointRef.make(after.oid),
                   fallbackFromToHead: false,
                   ignoreWhitespace: options.ignoreWhitespace,

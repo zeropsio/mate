@@ -38,6 +38,15 @@ describe("ContextWindowMeter", () => {
     expect(markup).toContain("Compact context");
   });
 
+  // Run 2: a pie appeared beside Send after the first run, and nothing on screen said what it
+  // measures.
+  it("says beside its pie what it measures, unless the composer is compact", () => {
+    expect(renderToStaticMarkup(<ContextWindowMeter usage={usage} />)).toContain(">Context 10%<");
+    expect(renderToStaticMarkup(<ContextWindowMeter usage={usage} compact />)).not.toContain(
+      ">Context 10%<",
+    );
+  });
+
   it("closes an informational hover popover without delay", () => {
     const markup = renderToStaticMarkup(<ContextWindowMeter usage={usage} />);
 

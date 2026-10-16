@@ -488,6 +488,7 @@ export {
   releaseStep,
   type ReleaseFacts,
 } from "./releaseFacts.ts";
+export { formatRunClock } from "./runClock.ts";
 export {
   changeReadout,
   type ChangeReadout,
@@ -514,8 +515,10 @@ export {
   agentLastSpokeAt,
   agentNotesFor,
   agentTurnNotes,
+  productionTurnNotes,
   changeLandedEvents,
   type ChangeLandedEvent,
+  type ProductionLive,
   changeAsksForReview,
   changeShowsReview,
   type MateRunFacts,

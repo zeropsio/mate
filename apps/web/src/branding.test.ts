@@ -2,6 +2,7 @@ import { markupDom } from "../test/markupDom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import indexHtml from "../index.html?raw";
 import {
+  buildDocumentTitle,
   resolveServerBackedAppDisplayName,
   resolveServerBackedAppStageLabel,
 } from "./branding.logic";
@@ -70,6 +71,16 @@ describe("branding", () => {
 
     expect(branding.HOSTED_APP_CHANNEL).toBeNull();
     expect(branding.HOSTED_APP_CHANNEL_LABEL).toBeNull();
+  });
+
+  // Run 2: the tab read "Zerops Mate (Alpha)" from the page, then "Zerops Mate" once the app ran.
+  it.each([
+    { name: "the latest hosted build", channel: "latest", dev: false, title: "Zerops Mate" },
+    { name: "a nightly build", channel: "nightly", dev: false, title: "Zerops Mate (Nightly)" },
+    { name: "a dev server", channel: "", dev: true, title: "Zerops Mate (Dev)" },
+    { name: "any other build", channel: "", dev: false, title: "Zerops Mate (Alpha)" },
+  ])("titles the boot shell as the app titles the tab: $name", ({ channel, dev, title }) => {
+    expect(buildDocumentTitle({ baseName: "Zerops Mate", channel, dev })).toBe(title);
   });
 
   it("brands the pre-React boot shell as Zerops Mate", () => {

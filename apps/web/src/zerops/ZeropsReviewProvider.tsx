@@ -21,7 +21,13 @@ import { XIcon } from "lucide-react";
 
 import { ZeropsReviewDialog } from "../components/zerops/review/ZeropsReviewDialog";
 import { Loading } from "../components/ui/loading";
-import { ReviewContext, reviewTargetKey, type OpenReview, type ReviewTarget } from "./review";
+import {
+  ReviewContext,
+  ReviewShownContext,
+  reviewTargetKey,
+  type OpenReview,
+  type ReviewTarget,
+} from "./review";
 import { appChunk } from "../lib/appChunks";
 
 /**
@@ -128,7 +134,9 @@ export function ZeropsReviewProvider({ children }: { readonly children: ReactNod
   // without its entrance.
   return (
     <ReviewContext.Provider value={openReview}>
-      {children}
+      <ReviewShownContext.Provider value={open && shown !== null}>
+        {children}
+      </ReviewShownContext.Provider>
       <ZeropsReviewDialog
         from={shown?.from ?? null}
         labelledBy={titleId}

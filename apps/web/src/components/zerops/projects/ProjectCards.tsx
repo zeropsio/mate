@@ -144,7 +144,7 @@ function CardRow({
   );
 }
 
-/** A place's dot: grey running, amber failed, red down, blue releasing, hollow when none. */
+/** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
 export function PlaceDot({ dot }: { readonly dot: PlaceLine["dot"] }) {
   return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
 }
@@ -164,6 +164,15 @@ export function PlaceWords({ line }: { readonly line: PlaceLine }) {
         </Fragment>
       ))}
     </span>
+  );
+}
+
+/** A stage's services' line while they are read: its height, nothing in it. */
+export function ServicesHeld() {
+  return (
+    <p aria-hidden="true" className="ov-panel-services" data-zerops-services-held="">
+      <span className="ov-service">{"\u200b"}</span>
+    </p>
   );
 }
 
@@ -235,8 +244,11 @@ const NEW_STAGE: PlaceLine = {
   addresses: [],
 };
 
-/** What a place says where the page gives it nothing more: its name and its line. */
-function PlainPanel({ line }: { readonly line: PlaceLine }) {
+/**
+ * What a place says where the page gives it nothing more: its name and its line — and, for a stage
+ * being set up, its services' line held, so the stage it becomes takes the same room.
+ */
+function PlainPanel({ line, held = false }: { readonly line: PlaceLine; readonly held?: boolean }) {
   return (
     <div className="ov-panel">
       <div className="ov-panel-head">
@@ -246,6 +258,7 @@ function PlainPanel({ line }: { readonly line: PlaceLine }) {
         <PlaceDot dot={line.dot} />
         <PlaceWords line={line} />
       </p>
+      {held ? <ServicesHeld /> : null}
     </div>
   );
 }
@@ -649,7 +662,7 @@ function ProjectCard<T>({
       {stageSetUp === undefined ? null : (
         <section className="ov-sec" data-zerops-place="stage">
           {stageSetUp === "creating" ? (
-            <PlainPanel line={{ ...NEW_STAGE, dot: "unknown", words: ["Setting up…"] }} />
+            <PlainPanel held line={{ ...NEW_STAGE, dot: "unknown", words: ["Setting up…"] }} />
           ) : (
             <SetUpPanel line={NEW_STAGE} onSetUp={stageSetUp} />
           )}

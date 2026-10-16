@@ -783,5 +783,5 @@ it("a native project downgrade closes the composer even while its owner stays si
   ).toBe("read-only");
   expect(downgraded.canSend).toBe(false);
   expect(downgraded.readOnly).toBe(true);
-  expect(downgraded.sendBlockReason).toBe("Your Zerops access to this Mate is read-only.");
+  expect(downgraded.sendBlockReason).toBe("You have Read access to this Mate.");
 });

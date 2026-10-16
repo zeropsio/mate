@@ -460,12 +460,15 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
     action: undefined,
   };
 
-  it("says why in the form's place, under the same title, with no Add", () => {
+  // Run 2: titled "Add a project Mate to …" over "Works on this project only.", the dialog promised
+  // the form it then refused.
+  it("says why in the form's place, under a title saying the project takes no Mate yet, with no Add", () => {
     const tree = mount(form({ tier: undefined, closed: REVIEW }));
     expect(said(tree)).toBe(REVIEW.reason);
-    expect(renderToStaticMarkup(form({ tier: undefined, closed: REVIEW }))).toContain(
-      ">Add a project Mate to Acme Docs<",
-    );
+    const markup = renderToStaticMarkup(form({ tier: undefined, closed: REVIEW }));
+    expect(markup).toContain(">Acme Docs isn&#x27;t ready for new Mates yet<");
+    expect(markup).not.toContain("Add a project Mate");
+    expect(markup).not.toContain("Works on this project only.");
     expect(buttons(tree)).toEqual(["Close", "Review the change"]);
     expect(
       tree.root.findAll((node) => node.type === "button" && node.props.type === "submit"),

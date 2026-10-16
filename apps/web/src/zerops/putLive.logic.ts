@@ -41,10 +41,11 @@ export interface PutLiveFailure {
   /** The cause, in the person's words (HQ's or the platform's where they said it). */
   readonly words: string;
   /**
-   * The one thing that fixes it: try the step again, read the change it could not merge, or open
-   * the project, where a production half made is finished.
+   * The one thing that fixes it: try the step again, read the change it could not merge, open
+   * the project, where a production half made is finished — or, production made and not released
+   * (a reload stopped the run), release to it.
    */
-  readonly action: "again" | "see-code" | "project";
+  readonly action: "again" | "see-code" | "project" | "release";
   /**
    * The project, offered beside *Try again*: production is made, and its services can be looked
    * at there while the run goes on from it.
@@ -146,6 +147,8 @@ export interface PutLiveSheetModel {
   readonly button: string;
   /** Why the button waits, where it does: the setup files being read, or none to make it from. */
   readonly hold: string | undefined;
+  /** Pressed here: the run is under way and the button says so (`putLiveSheetUnderWay`). */
+  readonly busy?: true | undefined;
 }
 
 const MAX_LINES = 3;
@@ -254,6 +257,20 @@ export function putLiveSheet(input: {
               ? SETUP_MISSING
               : SETUP_UNREADABLE,
   };
+}
+
+/**
+ * The sheet while its project's run is under way: pressed here, its button says it is going live
+ * for the moment the sheet stays; a run somebody started before the sheet opened is already on its
+ * way, and its button waits.
+ */
+export function putLiveSheetUnderWay(
+  model: PutLiveSheetModel,
+  input: { readonly pressedHere: boolean },
+): PutLiveSheetModel {
+  return input.pressedHere
+    ? { ...model, button: "Putting it live…", busy: true, hold: undefined }
+    : { ...model, hold: "It's already on its way." };
 }
 
 // ---------------------------------------------------------------------------
@@ -436,11 +453,14 @@ export interface PutLiveFacts {
   /** The production HQ holds now, by its Zerops project; `undefined` while it holds none. */
   readonly production: string | undefined;
   readonly gate: ReleaseGate;
+  /** Newest first. */
   readonly releases: ReadonlyArray<{
     readonly tag: string;
     readonly standing: "live" | "deploy-failed" | undefined;
     readonly verdict?: string | undefined;
     readonly detail?: string | undefined;
+    /** When HQ made it: what a release followed from its way out counts from. */
+    readonly taggedAt?: string | undefined;
   }>;
 }
 
@@ -598,4 +618,96 @@ export function putLiveAddress(
   const first = addresses[0];
   if (first === undefined) return undefined;
   return { url: first.url, host: first.url.replace(/^[a-z]+:\/\//iu, "").replace(/\/+$/u, "") };
+}
+
+// ---------------------------------------------------------------------------
+// After a reload
+// ---------------------------------------------------------------------------
+
+/** The project's flow as a run resumed from it reads it: what runs, and what is on its way. */
+export interface PutLiveFlowFacts extends PutLiveFacts {
+  /** The release on its way to production, by its tag. */
+  readonly inFlight: string | undefined;
+  /** The version the next release takes. */
+  readonly suggestion: string;
+}
+
+/**
+ * What the conversation draws of a project's release where no run of this tab is under way:
+ *
+ * - `follow` — a run to keep, which the host drives: a release on its way, followed to its live
+ *   address wherever it was pressed; or one that went live while the page was away.
+ * - `stopped` — production the person's own *Put it live* made (`kept`, the one fact the browser
+ *   keeps of it) and nothing released to it: said from the flow on every read, with *Release*
+ *   one press away. Nothing is released without that press.
+ * - `forget` — that production is gone or another stands: the attempt is no longer the person's.
+ * - `reading` — the attempt is known and the flow not yet: the strip holds its room.
+ */
+export type PutLiveResumed =
+  | { readonly kind: "none" }
+  | { readonly kind: "reading" }
+  | { readonly kind: "forget" }
+  | { readonly kind: "stopped"; readonly run: PutLiveRun }
+  | { readonly kind: "follow"; readonly run: PutLiveRun };
+
+const NONE = { kind: "none" } as const;
+
+export function putLiveResumed(input: {
+  readonly orgId: string;
+  readonly groupId: string;
+  readonly project: string;
+  /** This tab's run of the project, where there is one. */
+  readonly current: PutLiveRun | undefined;
+  /** The production the person's *Put it live* made, as the browser kept it. */
+  readonly kept: string | undefined;
+  /** `undefined` until the project's environments and releases are read. */
+  readonly facts: PutLiveFlowFacts | undefined;
+}): PutLiveResumed {
+  const { current, kept, facts } = input;
+  // A run under way is the host's to drive; a stopped or finished one gives way to what came since.
+  if (current !== undefined && current.phase !== "failed" && current.phase !== "live") return NONE;
+  if (facts === undefined)
+    return current === undefined && kept !== undefined ? { kind: "reading" } : NONE;
+  const run = {
+    orgId: input.orgId,
+    groupId: input.groupId,
+    project: input.project,
+    change: undefined,
+    productionId: facts.production,
+  } as const;
+  const { inFlight } = facts;
+  if (inFlight !== undefined && inFlight !== current?.tag) {
+    const tagged = facts.releases.find((release) => release.tag === inFlight)?.taggedAt;
+    const at = tagged === undefined ? Number.NaN : Date.parse(tagged);
+    return {
+      kind: "follow",
+      run: {
+        ...run,
+        phase: "releasing",
+        tag: inFlight,
+        ...(Number.isNaN(at) ? {} : { stepAt: at }),
+      },
+    };
+  }
+  const [newest] = facts.releases;
+  const mine = kept !== undefined && facts.production === kept;
+  if (newest?.standing === "live" && (current === undefined ? mine : newest.tag !== current.tag))
+    return { kind: "follow", run: { ...run, phase: "live", tag: newest.tag } };
+  if (current !== undefined || kept === undefined) return NONE;
+  if (!mine) return { kind: "forget" };
+  return {
+    kind: "stopped",
+    run: {
+      ...run,
+      phase: "failed",
+      failedAt: "creating",
+      failure: {
+        words:
+          newest?.standing === "deploy-failed"
+            ? `${newest.tag} didn't go out: its deploy failed.`
+            : `Production is made; ${facts.suggestion} isn't released yet.`,
+        action: "release",
+      },
+    },
+  };
 }

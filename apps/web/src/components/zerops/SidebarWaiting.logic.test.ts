@@ -5,6 +5,7 @@ import {
   waitingItemsOf,
   waitingKindOf,
   waitingPhrase,
+  waitingCountWords,
   waitingSummary,
   waitingTitle,
   type WaitingItem,
@@ -92,6 +93,27 @@ describe("waitingSummary — the Waiting on you row's second line", () => {
     },
   ])("$title", ({ items, summary }) => {
     expect(waitingSummary(items)).toEqual(summary);
+  });
+});
+
+// Run 2: an amber 1 stood in the menu's header with no noun beside it.
+describe("waitingCountWords — what the menu's bare count says it counts", () => {
+  it.each([
+    {
+      title: "A count says what waits on the person, by name",
+      items: [release],
+      words: { label: "1 waiting on you: Release Tea Shop", line: "Release Tea Shop" },
+    },
+    {
+      title: "A count past two says how many more",
+      items: [item(mate("Fen", "failed")), item(mate("Wren", "plan")), release],
+      words: {
+        label: "3 waiting on you: Help Fen · Approve Wren's plan, 1 more",
+        line: "Help Fen · Approve Wren's plan · 1 more",
+      },
+    },
+  ])("$title", ({ items, words }) => {
+    expect(waitingCountWords(items)).toEqual(words);
   });
 });
 

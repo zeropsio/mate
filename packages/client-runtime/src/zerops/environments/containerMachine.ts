@@ -20,6 +20,7 @@
  *   unanswered probes, long enough for the platform to say why; silent past it, it is a boot
  *   that only failed probes suggest — `guessed`, read at the backing-off intervals, and capped.
  */
+import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 import type { Instant } from "./exchange.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
 import type { ProbeCadence, ProbeReading } from "./probe.ts";
@@ -123,6 +124,11 @@ export interface ContainerMachine {
   readonly intent: ContainerIntent | null;
   /** A restart of ours already ended with the container still predating Mate. */
   readonly restartTried: boolean;
+  /**
+   * The version its connected server said an automatic update is moving it from; null while none
+   * is under way. Its link dropping then is the update's restart (`UPDATE_UNDERWAY`).
+   */
+  readonly updateUnderway: string | null;
   /** When the current cap runs out; null when no cap is running. */
   readonly timer: Instant | null;
 }
@@ -134,9 +140,27 @@ export type ContainerEvent =
   | { readonly type: "LINK"; readonly connected: boolean }
   | { readonly type: "MATE_FLAG"; readonly flag: MateFlag }
   | { readonly type: "INTENT"; readonly intent: ContainerIntent }
+  /** Its connected server's word on an automatic update: under way from `from`, or none (null). */
+  | { readonly type: "UPDATE_UNDERWAY"; readonly from: string | null }
   | { readonly type: "TICK" };
 
 export const CONTAINER_TIMER_KEY = "container";
+
+/** The automatic update's phases before its restart: the server stops at the end of them. */
+const UPDATE_BEFORE_RESTART: ReadonlySet<string> = new Set(["staging", "draining", "switching"]);
+
+/**
+ * The version a server's automatic update is moving it from while one is under way (`zcp mate
+ * status` relayed in its descriptor's `update`), else null: what `UPDATE_UNDERWAY` carries.
+ */
+export const automaticUpdateFrom = (
+  update: ExecutionEnvironmentUpdate | null | undefined,
+): string | null => {
+  const automatic = update?.automatic;
+  return automatic !== undefined && UPDATE_BEFORE_RESTART.has(automatic.phase)
+    ? automatic.runningVersion
+    : null;
+};
 
 export type ContainerEffect =
   | {
@@ -189,6 +213,7 @@ export const initialContainer = (): ContainerMachine => ({
   mateFlag: null,
   intent: null,
   restartTried: false,
+  updateUnderway: null,
   timer: null,
 });
 
@@ -649,7 +674,7 @@ const apply = (
     case "LINK": {
       const connected = machine.connectedSince !== null;
       if (event.connected === connected) return machine;
-      return settleLevel(
+      const linked = settleLevel(
         {
           ...machine,
           connectedSince: event.connected ? now : null,
@@ -657,7 +682,22 @@ const apply = (
         },
         now,
       );
+      // The server said its update was under way: its link dropping is that update's restart,
+      // held as one until it is back or its budget runs out. It speaks for this one drop.
+      if (event.connected || machine.updateUnderway === null) return linked;
+      const updating = settleLevel(
+        intend(
+          { ...linked, updateUnderway: null },
+          { kind: "update", since: now, from: machine.updateUnderway },
+        ),
+        now,
+      );
+      return updating.intent === null ? { ...linked, updateUnderway: null } : updating;
     }
+    case "UPDATE_UNDERWAY":
+      return event.from === machine.updateUnderway
+        ? machine
+        : { ...machine, updateUnderway: event.from };
     case "MATE_FLAG":
       return event.flag === machine.mateFlag
         ? machine

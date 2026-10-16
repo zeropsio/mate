@@ -122,6 +122,27 @@ export function reviewDescription(input: {
 }
 
 /**
+ * Whether a description heads one of its own parts with the section's label — "## What it does"
+ * under the label "What it does": the label then says nothing the description does not, and goes.
+ * A heading counts at any level, in any case, with a colon after it; one inside code does not.
+ */
+export function descriptionHeads(text: string, label: string): boolean {
+  const wanted = label.trim().toLocaleLowerCase();
+  let fenced = false;
+  for (const raw of text.split(/\r?\n/u)) {
+    const line = raw.trim();
+    if (line.startsWith("```") || line.startsWith("~~~")) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced) continue;
+    const heading = /^#{1,6}\s+(.*?)\s*#*\s*$/u.exec(line);
+    if (heading?.[1]?.replace(/:$/u, "").trim().toLocaleLowerCase() === wanted) return true;
+  }
+  return false;
+}
+
+/**
  * Where one of a description's pictures is read from. A change's picture at the organization's
  * official HQ (`parseAttachmentUrl`) is read as the person and shown from its bytes: HQ answers
  * nobody without a session, and a page's own `<img>` carries none. A picture anywhere else — HQ's

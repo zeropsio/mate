@@ -85,7 +85,7 @@ describe("resolveMateVisibility", () => {
 
 describe("mateOnlyOwnerOpensIt", () => {
   it("names the owner when one is known", () => {
-    expect(mateOnlyOwnerOpensIt("Jan")).toBe("Jan's Mate — your Zerops access is read-only.");
+    expect(mateOnlyOwnerOpensIt("Jan")).toBe("Jan's Mate — you have Read access.");
   });
 
   // A wrong name would be worse than none, and so would a blank.
@@ -95,7 +95,7 @@ describe("mateOnlyOwnerOpensIt", () => {
       name,
     })),
   )("$title", ({ name }) => {
-    expect(mateOnlyOwnerOpensIt(name)).toBe("Your Zerops access to this Mate is read-only.");
+    expect(mateOnlyOwnerOpensIt(name)).toBe("You have Read access to this Mate.");
   });
 });
 

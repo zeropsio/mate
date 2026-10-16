@@ -1,13 +1,13 @@
 /**
- * The MCP tab: the servers this Mate's agents can call, one row each, and a
- * form to add one for every agent.
+ * The MCP tab: the servers this Mate's coding agents can call, one row each, and
+ * Add a server, whose form opens when pressed.
  *
  * `McpPanelBody` draws a list it is given and reports what the person does;
  * `McpPanel` feeds it from the Mate (`useMcpServers`). The harness
  * (`/design-mcp.html`) draws the body over a fixture.
  */
 import type { EnvironmentId, ProviderDriverKind, ThreadId } from "@t3tools/contracts";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, PlusIcon } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -31,10 +31,15 @@ import {
 } from "./McpServers.logic";
 import { useMcpServers, type McpAction, type McpActionResult } from "./useMcpServers";
 import { Badge } from "~/components/ui/badge";
+import { useKnownMate } from "~/zerops/useZeropsMates";
+
+/** Who the page speaks of where the Mate's name is not known. */
+const NO_NAME = "this Mate";
 
 export const MCP_WORDS = {
   title: "MCP servers",
-  line: "Tools your agents can call. A server added here is set up for every agent on this Mate.",
+  line: (mate: string) =>
+    `Tools ${mate} can use. A server added here works with each of ${mate}'s coding agents.`,
   builtIn: "Built in",
   readFailed: "Couldn't read the servers:",
   tryAgain: "Try again",
@@ -50,20 +55,23 @@ export const MCP_WORDS = {
   turnOff: "Turn off",
   turnOn: "Turn on",
   remove: "Remove",
-  removeAsk: (name: string) => `Remove ${name} for every agent?`,
+  removeAsk: (name: string) => `Remove ${name} for every coding agent?`,
   keep: "Keep",
   fromRepo: "From this repo's .mcp.json — edit it there.",
   addTitle: "Add a server",
   name: "Name",
   command: "Command",
   url2: "URL",
-  commandPlaceholder: "npx -y @modelcontextprotocol/server-github",
-  urlPlaceholder: "https://mcp.example.com/mcp",
+  // Examples, said as examples: a grey value in a field reads as one already filled in.
+  namePlaceholder: "e.g. github",
+  commandPlaceholder: "e.g. npx -y @modelcontextprotocol/server-github",
+  urlPlaceholder: "e.g. https://mcp.example.com/mcp",
   env: "Environment",
   envHint: "KEY=value, one a line",
   headers: "Headers",
   headersHint: "Name: value, one a line",
   add: "Add",
+  cancel: "Cancel",
 } as const;
 
 export function McpPanel(props: {
@@ -76,12 +84,23 @@ export function McpPanel(props: {
     environmentId: props.environmentId,
     threadId: props.threadId,
   });
-  return <McpPanelBody act={act} driver={props.driver} onRetry={refresh} state={state} />;
+  const mate = useKnownMate(props.environmentId);
+  return (
+    <McpPanelBody
+      act={act}
+      driver={props.driver}
+      mateName={mate?.name}
+      onRetry={refresh}
+      state={state}
+    />
+  );
 }
 
 export function McpPanelBody(props: {
   readonly state: McpTabState;
   readonly driver: ProviderDriverKind | null;
+  /** The Mate whose tools these are, by name; unknown, the page says "this Mate". */
+  readonly mateName?: string | undefined;
   readonly act: (action: McpAction) => Promise<McpActionResult>;
   readonly onRetry: () => void;
 }) {
@@ -113,7 +132,9 @@ export function McpPanelBody(props: {
             {state.busy ? <Spinner size="sm" tone="muted" /> : null}
           </span>
         </div>
-        <p className="mt-0.5 text-line leading-4.5 text-muted-foreground">{MCP_WORDS.line}</p>
+        <p className="mt-0.5 text-line leading-4.5 text-muted-foreground">
+          {MCP_WORDS.line(props.mateName ?? NO_NAME)}
+        </p>
 
         {state.error === null ? null : (
           <p className="mt-3 text-line leading-4.5 text-destructive-foreground" role="alert">
@@ -396,6 +417,8 @@ function McpAddServer(props: {
   readonly act: (action: McpAction) => Promise<McpActionResult>;
   readonly onAdded: (name: string) => void;
 }) {
+  // Most people only glance at the list: the form waits behind its button.
+  const [open, setOpen] = useState(false);
   const [form, setForm] = useState<McpAddForm>(BLANK_FORM);
   const [errors, setErrors] = useState<McpAddFormErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
@@ -426,10 +449,28 @@ function McpAddServer(props: {
       return;
     }
     setForm(BLANK_FORM);
+    setOpen(false);
     props.onAdded(read.input.name);
   };
 
+  const close = () => {
+    setOpen(false);
+    setForm(BLANK_FORM);
+    setErrors({});
+    setFailure(null);
+  };
+
   const command = form.kind === "command";
+  const filled = form.name.trim() !== "" && (command ? form.commandLine : form.url).trim() !== "";
+  if (!open)
+    return (
+      <div className="mt-3 -ms-2" data-mcp-add>
+        <Button onClick={() => setOpen(true)} size="sm" variant="ghost">
+          <PlusIcon aria-hidden="true" />
+          {MCP_WORDS.addTitle}
+        </Button>
+      </div>
+    );
   return (
     <form
       className="mt-8 flex flex-col gap-3"
@@ -444,9 +485,11 @@ function McpAddServer(props: {
         <Input
           autoCapitalize="off"
           autoComplete="off"
+          // Opened by its button: the name is the next thing typed.
+          autoFocus
           nativeInput
           onChange={(event) => edit({ name: event.target.value }, "name")}
-          placeholder="github"
+          placeholder={MCP_WORDS.namePlaceholder}
           size="sm"
           spellCheck={false}
           value={form.name}
@@ -498,9 +541,12 @@ function McpAddServer(props: {
         />
       </FieldLine>
       <div className="flex items-center gap-3">
-        <Button disabled={pending} size="sm" type="submit">
+        <Button disabled={pending || !filled} size="sm" type="submit">
           {pending ? <Spinner size="xs" /> : null}
           {MCP_WORDS.add}
+        </Button>
+        <Button disabled={pending} onClick={close} size="sm" type="button" variant="ghost">
+          {MCP_WORDS.cancel}
         </Button>
         {failure === null ? null : (
           <span className="text-xs text-destructive-foreground" role="alert">

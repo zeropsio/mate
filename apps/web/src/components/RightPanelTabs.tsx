@@ -26,6 +26,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -43,7 +44,14 @@ import { readLocalApi } from "~/localApi";
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
-import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "~/components/ui/menu";
+import {
+  Menu,
+  MenuItem,
+  MenuItemText,
+  MenuPopup,
+  MenuShortcut,
+  MenuTrigger,
+} from "~/components/ui/menu";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { useTheme } from "~/hooks/useTheme";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
@@ -160,21 +168,31 @@ function DisabledReasonTooltip(props: { reason: string; trigger: ReactElement })
   );
 }
 
+/** A page in the menu: its name, what it opens under it, and its letter. */
 function SurfaceMenuItem(props: {
   available: boolean;
   disabledReason?: string;
   shortcut: string | null;
   onClick: () => void;
-  children: ReactNode;
+  icon: ReactNode;
+  label: string;
+  description: string;
 }) {
+  const descriptionId = useId();
   const item = (
     <MenuItem
       className={!props.available ? "data-disabled:pointer-events-auto" : undefined}
       onClick={props.onClick}
       disabled={!props.available}
+      aria-describedby={descriptionId}
       aria-keyshortcuts={props.shortcut ?? undefined}
     >
-      {props.children}
+      {props.icon}
+      <MenuItemText
+        description={props.description}
+        descriptionId={descriptionId}
+        label={props.label}
+      />
       {props.shortcut === null ? null : <MenuShortcut>{props.shortcut}</MenuShortcut>}
     </MenuItem>
   );
@@ -724,10 +742,10 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                         disabledReason={SURFACE_DISABLED_REASONS[action.kind]}
                         shortcut={action.shortcut}
                         onClick={action.onClick}
-                      >
-                        <Icon />
-                        {action.label}
-                      </SurfaceMenuItem>
+                        icon={<Icon />}
+                        label={action.label}
+                        description={action.description}
+                      />
                     );
                   })}
                 </MenuPopup>

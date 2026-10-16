@@ -90,16 +90,12 @@ import {
   type ZeropsGroupPendingMember,
   type ZeropsPlacedBirth,
   type ZeropsPublicRoute,
+  formatRunClock,
 } from "@t3tools/client-runtime/zerops";
 import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomValue } from "@effect/atom-react";
-import {
-  shownHqMateIdentitiesAtom,
-  shownHqPersonFactsAtom,
-  hqMatePresenceAtom,
-  shownAttentionProjectsAtom,
-} from "@t3tools/client-runtime/data";
+import { shownHqMateIdentitiesAtom, shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
@@ -163,7 +159,12 @@ import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
-import { useMateOfflineSince, useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
+import {
+  useMateAwayNow,
+  useMateOfflineSince,
+  useMateLinkedInHq,
+  useMatesLinkedInHq,
+} from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { hqDown, hqPlacementsAtom } from "~/state/zerops";
@@ -220,7 +221,6 @@ import { useStopPress } from "~/zerops/conversationStop";
 import { withStopPress } from "~/zerops/conversationStop.logic";
 import {
   addressesPlace,
-  formatRunClock,
   projectHeadingMenu,
   sidebarMateKey,
   type HeadingMenuEntry,
@@ -334,26 +334,6 @@ const menuPersonFactsAtom = Atom.make((get) =>
     Object.entries(get(shownHqPersonFactsAtom)).map(([id, fact]) => [id, { mine: fact.mine }]),
   ),
 ).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
-const menuHqPresenceAtom = Atom.make((get) => {
-  const mates = new Map<
-    string,
-    { readonly presence: import("@t3tools/shared/hqMates").MatePresence }
-  >();
-  for (const id of get(shownAttentionProjectsAtom)) {
-    const fact = get(hqMatePresenceAtom(id));
-    if (fact.live && fact.presence !== null) mates.set(id, { presence: fact.presence });
-  }
-  return mates;
-}).pipe(
-  Atom.withEquality(
-    (
-      a: ReadonlyMap<string, { readonly presence: import("@t3tools/shared/hqMates").MatePresence }>,
-      b,
-    ) =>
-      a.size === b.size &&
-      [...a].every(([id, mate]) => b.get(id)?.presence.online === mate.presence.online),
-  ),
-);
 /** What the client holds per environment, when it holds anything. */
 type RosterCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -758,7 +738,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
     ? undefined
     : mateEnvironmentsEmptyReason(withoutOfficialHq(candidates, accountHq.hq));
-  const hqMates = useAtomValue(menuHqPresenceAtom);
+  const hqMates = useMatesLinkedInHq();
   // Which projects a build or deploy runs on now, as Zerops says: the headings' indicator.
   const building = useBuildsUnderWay(
     useMemo(() => candidates.map((candidate) => candidate.project.id), [candidates]),
@@ -3237,7 +3217,7 @@ export function MenuMateLine<T extends RosterCandidate>({
   const person = useHqProjectPerson(candidate.project.id);
   const viewer = useZeropsSessionOptional()?.user?.id;
   const linked = useMateLinkedInHq(candidate.project.id);
-  const hqMates = useAtomValue(menuHqPresenceAtom);
+  const hqMates = useMatesLinkedInHq();
   const { view, second, askLine, askChanged, known, finishing } = useMateRowState({
     candidate,
     activity,
@@ -3322,6 +3302,7 @@ function useMateRowState<T extends RosterCandidate>({
   const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
   const offlineSince = useMateOfflineSince(candidate.project.id, candidate.key);
+  const awayNowMs = useMateAwayNow(offlineSince);
   // Waking while it comes up and arrives (`mateFaceFor`).
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming));
   // A Stop pressed in this tab reads as stopping at once, before the Mate's row says so.
@@ -3330,6 +3311,7 @@ function useMateRowState<T extends RosterCandidate>({
     name,
     connected: up,
     offlineSince,
+    nowMs: awayNowMs,
     timestampFormat,
     activity: withStopPress(activity, stopPress),
     reviewWaits,

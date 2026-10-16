@@ -243,10 +243,10 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         !hasSendableContent
       }
       aria-label={
-        isEnvironmentUnavailable
-          ? "Environment disconnected"
-          : sendDisabledReason
-            ? sendDisabledReason
+        sendDisabledReason
+          ? sendDisabledReason
+          : isEnvironmentUnavailable
+            ? "Environment disconnected"
             : isConnecting
               ? "Connecting"
               : isPreparingWorktree

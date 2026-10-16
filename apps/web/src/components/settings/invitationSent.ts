@@ -1,19 +1,19 @@
 /**
- * The address an invitation was just sent to, handed from the invite page to the team it returns
- * to. It lives for this visit only: the team takes it once, and a reload or a later visit finds
- * nothing, so the confirmation and the new row's arrival are never replayed.
+ * The addresses invitations were just sent to, handed from the invite page to the team it returns
+ * to. They live for this visit only: the team takes them once, and a reload or a later visit finds
+ * nothing, so the new rows' arrival is never replayed.
  */
-let sentTo: string | null = null;
+let sentTo: ReadonlyArray<string> = [];
 
 export function noteInvitationSent(address: string): void {
-  sentTo = address;
+  sentTo = [...sentTo, address];
 }
 
-/** The address just invited, if any; leaves it for `forgetInvitationSent`. */
-export function invitationSentTo(): string | null {
+/** The addresses just invited, oldest first; leaves them for `forgetInvitationSent`. */
+export function invitationSentTo(): ReadonlyArray<string> {
   return sentTo;
 }
 
 export function forgetInvitationSent(): void {
-  sentTo = null;
+  sentTo = [];
 }

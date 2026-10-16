@@ -31,6 +31,7 @@ import {
   agentLastSpokeAt,
   agentNotesFor,
   agentTurnNotes,
+  productionTurnNotes,
   type ChangeLandedEvent,
 } from "./projectFlow.ts";
 
@@ -1026,5 +1027,31 @@ describe("changeShowsReview — one rule for every list a change stands in", () 
     { case: "a draft, its Mate at work", ready: false, mate: { working: true }, shows: false },
   ])("$case: $shows", ({ ready, mate, shows }) => {
     expect(changeShowsReview({ ready }, mate)).toBe(shows);
+  });
+});
+
+describe("productionTurnNotes", () => {
+  const live = {
+    tag: "v0.1.0",
+    taggedAt: "2026-09-20T12:00:00Z",
+    address: "https://app-abcd-3000.prg1.zerops.app",
+  };
+
+  it("A Mate is told where production runs once a release goes live there, so it names that address and not its preview", () => {
+    expect(productionTurnNotes(live, "2026-09-20T11:00:00Z")).toEqual([
+      "v0.1.0 is live on production at https://app-abcd-3000.prg1.zerops.app: that is the app now. Send the person there for anything real; your own address is only their preview.",
+    ]);
+  });
+
+  it("is told the release without an address while production's is not known", () => {
+    expect(productionTurnNotes({ ...live, address: undefined }, "2026-09-20T11:00:00Z")).toEqual([
+      "v0.1.0 is live on production: that is the app now. Your own address is only their preview.",
+    ]);
+  });
+
+  it("says nothing of a release it already heard of, or when its last turn is unknown", () => {
+    expect(productionTurnNotes(live, "2026-09-20T13:00:00Z")).toEqual([]);
+    expect(productionTurnNotes(live, undefined)).toEqual([]);
+    expect(productionTurnNotes(undefined, "2026-09-20T11:00:00Z")).toEqual([]);
   });
 });

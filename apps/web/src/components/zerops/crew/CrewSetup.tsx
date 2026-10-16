@@ -25,12 +25,13 @@ import {
   CREW_SETUP_WORDS,
   crewAskMateWord,
   crewBrokenCopyWord,
-  crewJobSentence,
+  crewJobLine,
   crewLockWords,
   crewNamingTheMate,
   crewNoDevHostWord,
   crewPortsOfferWords,
   crewProposingWord,
+  crewRoleTag,
   crewSetUpFooter,
   crewSetUpTitle,
   crewStartFailedWords,
@@ -218,16 +219,16 @@ export function CrewSetup(props: CrewSetupProps) {
   const startLock = members === null ? null : (props.startLock?.(members) ?? null);
   const writers = members === null ? [] : members.filter((member) => member.kind === "writer");
   const noDevHost = writers.length > 0 && props.devHosts.length === 0;
-  const writerHosts = (shared: boolean) => [
-    ...new Set(
-      writers.flatMap((member) =>
-        member.host === undefined ||
-        (shared && (member.database !== "shared" || !databaseHosts.includes(member.host)))
-          ? []
-          : [member.host],
-      ),
+  // The services whose database its builders share: the footer says how many, never their names.
+  const sharedDatabases = new Set(
+    writers.flatMap((member) =>
+      member.host === undefined ||
+      member.database !== "shared" ||
+      !databaseHosts.includes(member.host)
+        ? []
+        : [member.host],
     ),
-  ];
+  ).size;
   const portless = props.applied
     ? props.hosts.filter(
         (host) =>
@@ -426,7 +427,7 @@ export function CrewSetup(props: CrewSetupProps) {
         {/* Said from the start, under a Start still waiting too: a roster landing fills who's
             on it and adds no note above Start. */}
         <span className="text-line leading-4.5 text-muted-foreground">
-          {crewSetUpFooter(mate.name, writerHosts(false), writerHosts(true))}
+          {crewSetUpFooter(mate.name, sharedDatabases)}
         </span>
         {startFailure === null ? null : (
           <div className="flex flex-col gap-1" data-crew-start-failure>
@@ -509,6 +510,9 @@ function SetupRow({
   const lane = applied ? (crewmate?.lane ?? null) : null;
   const readying = lane?.state === "creating" || lane?.state === "setting-up";
   const broken = lane === null ? null : crewBrokenCopyWord(lane, mateName);
+  // The job as its editor's *Its job* holds it, every sentence: one text in both (run 2).
+  const sentence = crewJobLine(member.job.split("\n")[0] ?? "", member.displayName);
+  const tag = crewRoleTag(member.kind, member.displayName, sentence);
   return (
     <button
       className="crew-row text-start"
@@ -519,10 +523,13 @@ function SetupRow({
     >
       <MateFace size={24} state={readying ? "working" : "idle"} tint={member.tint ?? "slate"} />
       <span className="flex min-w-0 flex-col">
-        <span className="truncate font-medium text-sm leading-5">{member.displayName}</span>
-        <span className="mt-0.5 text-line leading-4.5 text-muted-foreground">
-          {crewJobSentence(member.job.split("\n")[0] ?? "", member.displayName)}
+        <span className="truncate font-medium text-sm leading-5">
+          {member.displayName}
+          {tag === null ? null : (
+            <span className="font-normal text-muted-foreground">{` · ${tag}`}</span>
+          )}
         </span>
+        <span className="mt-0.5 text-line leading-4.5 text-muted-foreground">{sentence}</span>
         {readying ? (
           <span className="text-line leading-4.5 text-muted-foreground">{CREW_COPY_READYING}</span>
         ) : null}

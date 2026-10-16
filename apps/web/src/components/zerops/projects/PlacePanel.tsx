@@ -23,7 +23,7 @@ import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useAccountOrgId, useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 
-import { PlaceDot, PlaceWords } from "./ProjectCards";
+import { PlaceDot, PlaceWords, ServicesHeld } from "./ProjectCards";
 import { panelAddresses, placeLabel, type PlaceLine } from "./projectCard.logic";
 import { Button } from "~/components/ui/button";
 
@@ -91,9 +91,12 @@ export function PlacePanel({
   /** The page's buttons for it: sm secondary Buttons. */
   readonly actions: ReactNode;
   /**
-   * Drawn at a project page's width: both doors into the sheet. On a card one door is enough —
-   * *Put it on your domain* while production has none of its own (the sheet it opens manages the rest),
-   * *Manage addresses* otherwise — and the actions keep to one row.
+   * Drawn at a project page's width: both doors into the sheet. On a card one door is enough, and
+   * only production's — *Put it on your domain* while it has none of its own (the sheet it opens
+   * manages the rest), *Manage addresses* otherwise — once it runs something at an address
+   * (`panelAddresses`); a stage's address heads its panel, and its page manages it. One name for
+   * one door: the run's card said "Put it on your domain" for production and "Manage addresses"
+   * for a stage with no address yet.
    */
   readonly roomy?: boolean;
 }) {
@@ -105,8 +108,10 @@ export function PlacePanel({
     kind: line.kind,
     listed: line.addresses,
     place: usePlaceAddresses(orgId, projectId),
+    runs: model.version !== undefined || line.dot === "running",
   });
   const { head, doors } = said;
+  const cardDoor = line.kind === "production" && said.door;
   // The sheet on this place, as the globe's popover opens it; none outside an account, and none
   // where the viewer's role there changes no address (`projectRoleOffers`).
   const { manageAddresses } = useProjectRoleOffers(projectId);
@@ -157,7 +162,13 @@ export function PlacePanel({
         <PlaceDot dot={line.dot} />
         <PlaceWords line={line} />
       </p>
-      {model.services.length === 0 ? null : (
+      {model.services.length === 0 ? (
+        // A stage always has services: their line is held while they are read, so it does not
+        // grow the card when they come (the run's new stage pushed the card 24 px a minute in).
+        line.kind === "stage" ? (
+          <ServicesHeld />
+        ) : null
+      ) : (
         <p className="ov-panel-services">
           {model.services.map((service) => (
             <span className="ov-service" data-state={service.state} key={service.hostname}>
@@ -204,7 +215,7 @@ export function PlacePanel({
             Put it on your domain
           </Button>
         )}
-        {manage === undefined || (said.offerDomain && !roomy) ? null : (
+        {manage === undefined || !(roomy || (cardDoor && !said.offerDomain)) ? null : (
           <Button
             onClick={() => {
               manage();

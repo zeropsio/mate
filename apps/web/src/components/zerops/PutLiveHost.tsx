@@ -26,6 +26,7 @@ import {
   putLiveNext,
   putLiveSettle,
   putLiveSheet,
+  putLiveSheetUnderWay,
   SETUP_MISSING,
   SETUP_UNREADABLE,
   type PutLiveEvent,
@@ -128,6 +129,8 @@ function PutLiveSheetContainer({
   const close = usePutLive((state) => state.close);
   const openReview = useOpenReview();
   const running = usePutLiveRun(ask.groupId);
+  // Whether the run under way is the one this sheet's button started.
+  const [pressed, setPressed] = useState(false);
   const orgId = useZeropsSession().activeOrganization?.id;
   const project = entry?.group.name ?? "The project";
   // Asked from the project: what is merged goes live, newest first — once the flow is read.
@@ -171,7 +174,7 @@ function PutLiveSheetContainer({
     <PutLiveSheet
       model={
         running !== undefined && running.phase !== "failed"
-          ? { ...model, hold: "It's already on its way." }
+          ? putLiveSheetUnderWay(model, { pressedHere: pressed })
           : gate.kind === "held"
             ? { ...model, hold: gate.words }
             : offers?.zerops?.production === false
@@ -189,7 +192,9 @@ function PutLiveSheetContainer({
           : undefined
       }
       onPutLive={() => {
-        if (orgId !== undefined) start({ orgId, groupId: ask.groupId, project, change });
+        if (orgId === undefined) return;
+        setPressed(true);
+        start({ orgId, groupId: ask.groupId, project, change });
       }}
       onSeeCode={
         seeCode === undefined

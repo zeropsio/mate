@@ -43,6 +43,11 @@ export interface DeployAnswerJob extends DeployObservation {
   readonly service: string | null;
   /** The commit and outcome, for a row that already names the service. */
   readonly line: string;
+  /**
+   * Its outcome alone, for a review's Where row that names the service: where it stands, no
+   * commit — the run's release panel read "app f1b66ee building"; the commit is its log's.
+   */
+  readonly standing: string;
   readonly text: string;
 }
 
@@ -78,7 +83,7 @@ const jobText = (
     case "submitting": {
       const waiting = deployFollowText(outcome);
       return waiting === undefined
-        ? `${prefix}submitted; HQ reads where it stands`
+        ? `${prefix}on its way`
         : `${subject === "" ? "" : `${subject}: `}${waiting}`;
     }
     case "queued": {
@@ -128,6 +133,8 @@ function deployJobSaid(outcome: HqDeployOutcome, answer: HqDeployAnswer): Deploy
       outcome.service === null
         ? jobText(outcome, answer)
         : jobText(outcome, answer, outcome.sha === null ? "" : shortCommit(outcome.sha)).trim(),
+    standing:
+      outcome.service === null ? jobText(outcome, answer) : jobText(outcome, answer, "").trim(),
     text: jobText(outcome, answer),
   };
 }

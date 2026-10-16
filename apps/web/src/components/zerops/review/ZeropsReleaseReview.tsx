@@ -568,6 +568,11 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     version === undefined || !offered
       ? undefined
       : releaseVersionField(version.value, version.tags);
+  // A first release names its version in words: the field and its rules — semver, what the code
+  // declares — come only when the person asks to change it, or when what they typed is wrong.
+  const [changing, setChanging] = useState(false);
+  const inWords =
+    props.replaces.kind === "first" && !changing && checkedVersion?.error === undefined;
   // What goes out is still compared: how many is not said until it is known.
   const comparing = offered && !props.gate.allowed && props.gate.reason === RELEASE_CHECKING;
   const model = releaseReview({
@@ -637,8 +642,17 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
               live: props.replaces.kind === "release" ? props.replaces.tag : undefined,
             }))
       }
+      // Released onto the live app, its foot is the way in: the panel's × closes it, no Close
+      // wraps onto a line of its own beside it.
       dismiss={
-        props.git !== undefined ? "Cancel" : model.primary === undefined ? "Close" : "Cancel"
+        props.git !== undefined
+          ? "Cancel"
+          : model.primary !== undefined
+            ? "Cancel"
+            : props.outcome.kind === "released" &&
+                (openLive !== undefined || props.onAddDomain !== undefined)
+              ? undefined
+              : "Close"
       }
       fix={
         fix === undefined || props.fixer === undefined
@@ -772,7 +786,18 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           <ReviewWhere answer={answer} rows={props.where} />
         </ReviewSection>
       )}
-      {version === undefined ? null : (
+      {version === undefined ? null : inWords ? (
+        <ReviewSection title="Version">
+          <div className="rv-version-use">
+            <span className="rv-words">{checkedVersion?.tag ?? `v${version.value}`}</span>
+            {offered ? (
+              <Button onClick={() => setChanging(true)} size="sm" variant="link">
+                Change
+              </Button>
+            ) : null}
+          </div>
+        </ReviewSection>
+      ) : (
         <ReviewSection title="Version">
           <div className="rv-version">
             <div className="w-44">

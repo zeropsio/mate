@@ -509,7 +509,9 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                       )}
                       <span className="grow" />
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {scope.values.length} made by Zerops
+                        {scope.values.length === 1
+                          ? "1 value set by Zerops"
+                          : `${scope.values.length} values set by Zerops`}
                       </span>
                       <ChevronDownIcon
                         aria-hidden="true"

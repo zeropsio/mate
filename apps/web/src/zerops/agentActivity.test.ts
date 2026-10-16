@@ -23,6 +23,7 @@ import {
   agentActivitySnippet,
   agentActivitySubject,
   deriveZeropsAgentActivity,
+  listedMateFace,
   mateFaceFor,
   mateFaceOf,
   mateReviewWaits,
@@ -111,6 +112,27 @@ describe("mateReviewWaits — a Mate's own change waits for the person's review"
     },
   ])("$case", ({ flow, waits }) => {
     expect(mateReviewWaits(flow, "nova")).toBe(waits);
+  });
+});
+
+// Run 2: for a Guest, whose tab opens no socket to a Mate, its menu row and its card wore open eyes
+// and its changes' rows sleepy ones, at the same moment.
+describe("listedMateFace — one face for a Mate on every surface that lists it", () => {
+  it.each([
+    { case: "its container runs, no socket open", group: "ready", online: false, face: "idle" },
+    { case: "HQ holds its link open", group: "unavailable", online: true, face: "idle" },
+    { case: "neither", group: "unavailable", online: false, face: "sleep" },
+  ] as const)("A Mate wears the face its menu row wears: $case", ({ group, online, face }) => {
+    expect(
+      listedMateFace({
+        candidate: { group, project: { id: "nova" } },
+        hqMates: new Map([["nova", { presence: { online } as MateLiveView["presence"] }]]),
+        activity: undefined,
+        reviewWaits: false,
+        mine: false,
+        pose: undefined,
+      }),
+    ).toBe(face);
   });
 });
 

@@ -458,8 +458,9 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
         ...(currentServiceId === undefined ? {} : { currentServiceId }),
       });
       expect(html.match(/data-zerops-service-row="control-plane"/gu)).toHaveLength(2);
-      expect(html).toContain(">zcp<");
-      expect(html).toContain(">probe<");
+      // A control plane nobody is known to live in goes by its hostname.
+      if (currentServiceId !== zcp.serviceId) expect(html).toContain(">zcp<");
+      if (currentServiceId !== probe.serviceId) expect(html).toContain(">probe<");
       const matched = currentServiceId === zcp.serviceId || currentServiceId === probe.serviceId;
       expect(html.match(/data-zerops-mate-home/gu) ?? []).toHaveLength(matched ? 1 : 0);
       expect(html.match(/data-test-agents/gu) ?? []).toHaveLength(matched ? 1 : 0);
@@ -471,6 +472,16 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
       }
     },
   );
+
+  it("calls the Mate's home Zerops Control Plane and its Mate's, never by its hostname", () => {
+    const html = render(topology([service({ hostname: "app" }), zcp]), {
+      mate: fen,
+      currentServiceId: zcp.serviceId,
+    });
+    const home = html.slice(html.indexOf('data-zerops-service-row="control-plane"'));
+    expect(home).toContain("Zerops Control Plane");
+    expect(home).not.toContain(">zcp<");
+  });
 
   it("does not label the project's core infrastructure as another control plane", () => {
     const core = service({ hostname: "core", type: "core@1", group: "infrastructure" });

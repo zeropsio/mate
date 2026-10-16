@@ -29,7 +29,7 @@ import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic
 import type { ChatMessage } from "../../types";
 import { backgroundLineOf, jobItems } from "./backgroundLine.logic";
 import { deriveMessagesTimelineRows, helperFinishesOf } from "./MessagesTimeline.logic";
-import { nowLineOf, nowLineWords, workedWords } from "./runCard.logic";
+import { nowLineOf, nowLineWords, runClockMs, workedWords } from "./runCard.logic";
 import { runEffortWords } from "./runResult.logic";
 
 const key = { environmentId: "env", conversationId: "conversation" };
@@ -280,6 +280,32 @@ describe("an engine Mate's run card, from the engine's record", () => {
       requests: [question],
     });
     expect(workedWords("Milo", cardOf(rows).status!)).toBe("Milo worked 48s");
+  });
+
+  // Run 2: the clock read 0:31 at the Stop and the card settled on "stopped after 28s" — the clock
+  // had counted the run's start from the send.
+  it.each([
+    { name: "before its run starts, standing at nothing", startedAt: null, at: 10_000, ms: 0 },
+    {
+      name: "from its run's start, never its queue",
+      startedAt: t0 + 22_900,
+      at: 27_900,
+      ms: 5_000,
+    },
+  ])("its live clock counts what its worked line will say: $name", ({ startedAt, at, ms }) => {
+    const rows = render({
+      runs: [
+        stressRun({
+          state: startedAt === null ? "sending" : "running",
+          startedAt,
+          endedAt: null,
+          end: null,
+        } as never),
+      ],
+      items: [personItem(run1, 1, "Run the stress checks", { at: t0 })],
+      isWorking: true,
+    });
+    expect(runClockMs(cardOf(rows).status!, t0 + at)).toBe(ms);
   });
 
   /** What the card's line says, live or settled. */
