@@ -22,7 +22,7 @@ import {
 } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
-import { useMateCheckouts } from "../zerops/useMateCheckouts";
+import { useMateRepositories } from "../zerops/useMateRepositories";
 import { terminalStartCwd } from "../zerops/terminalCwd.logic";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOwners";
 import { useEngineRunCards } from "../zerops/useEngineCardPaging";
@@ -995,7 +995,7 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     return worktreePath;
   }, [launchContext, worktreePath]);
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden drawer reads none.
-  const checkouts = useMateCheckouts(visible ? threadRef.environmentId : null);
+  const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
   const cwd = useMemo(
     () =>
       project
@@ -1003,10 +1003,10 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
             launchCwd: launchContext?.cwd,
             workspaceRoot: project.workspaceRoot,
             worktreePath: effectiveWorktreePath,
-            checkouts,
+            repositories,
           })
         : (launchContext?.cwd ?? null),
-    [checkouts, effectiveWorktreePath, launchContext?.cwd, project],
+    [effectiveWorktreePath, launchContext?.cwd, project, repositories],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -1267,7 +1267,7 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
   const worktreePath =
     launchContext?.worktreePath ?? activeSummary?.worktreePath ?? threadWorktreePath;
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden panel reads none.
-  const checkouts = useMateCheckouts(visible ? threadRef.environmentId : null);
+  const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
   const cwd = useMemo(
     () =>
       project
@@ -1275,10 +1275,10 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
             launchCwd: launchContext?.cwd ?? activeSummary?.cwd,
             workspaceRoot: project.workspaceRoot,
             worktreePath,
-            checkouts,
+            repositories,
           })
         : (launchContext?.cwd ?? activeSummary?.cwd ?? null),
-    [activeSummary?.cwd, checkouts, launchContext?.cwd, project, worktreePath],
+    [activeSummary?.cwd, launchContext?.cwd, project, repositories, worktreePath],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -3160,13 +3160,13 @@ function ConversationView(props: ChatViewProps) {
     : null;
   const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
   // A Mate's new terminal starts in its code checkout, never its bare workspace (`terminalStartCwd`).
-  const mateCheckouts = useMateCheckouts(activeProject ? environmentId : null);
+  const mateRepositories = useMateRepositories(activeProject ? environmentId : null);
   const terminalOpenCwd = activeProject
     ? terminalStartCwd({
         launchCwd: null,
         workspaceRoot: activeProject.workspaceRoot,
         worktreePath: activeThread?.worktreePath ?? null,
-        checkouts: mateCheckouts,
+        repositories: mateRepositories,
       })
     : null;
   const gitStatusQuery = useEnvironmentQuery(
