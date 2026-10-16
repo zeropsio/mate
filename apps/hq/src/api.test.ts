@@ -1228,6 +1228,34 @@ describe("HQ API", () => {
     );
 
     it.effect(
+      "Each reader's organization record says when they first signed in to HQ, and only the person who set it up founded it",
+      () =>
+        Effect.gen(function* () {
+          const { call, socket } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const viewerOf = (session: string) =>
+            Effect.gen(function* () {
+              const reader = yield* socket(
+                `/api/structure/ws?ticket=${yield* ticketFor(call, session)}`,
+              );
+              const initial = yield* scopeReset(reader, { kind: "navigation" });
+              return scopeValue<{
+                viewer: { firstSignedInAt: string | null; founder: boolean };
+              }>(initial, "org").viewer;
+            });
+          const owner = yield* viewerOf(yield* sessionFor(call, "door-owner"));
+          const dev = yield* viewerOf(yield* sessionFor(call, "door-dev"));
+          const ownerAgain = yield* viewerOf(yield* sessionFor(call, "door-owner-2"));
+          assert.isTrue(owner.founder);
+          assert.isFalse(dev.founder);
+          assert.isString(owner.firstSignedInAt);
+          assert.isTrue(dev.firstSignedInAt! >= owner.firstSignedInAt!);
+          // A later sign-in is not a first one: the record keeps the first.
+          assert.deepStrictEqual(ownerAgain, owner);
+        }),
+    );
+
+    it.effect(
       "streams demanded navigation values, people and explicit removals while answering pings",
       () =>
         Effect.gen(function* () {

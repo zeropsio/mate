@@ -2,9 +2,12 @@
  * The first minute after an invitation: the overview opens on the organization's projects the
  * person can reach, with one line naming their role there and the one thing that role can do —
  * a Developer starts their own Mate on the team's project, a Guest follows the work and creates
- * nothing. Said once, on the first visit that finds projects someone else started; later visits
- * are quiet, and someone who started a Mate here is no newcomer. Pure: the viewer's membership
- * and what each project offers them arrive read.
+ * nothing, an invited Owner or Admin hears what is theirs to run. Said once, on the person's first
+ * visit as HQ records it (their first sign-in there, on any browser) that finds projects someone
+ * else started; later visits are quiet, the person who set HQ up is never welcomed, and someone who
+ * started a Mate here is no newcomer. An older HQ that keeps no first sign-in leaves it to this
+ * browser's memory, and an Owner or Admin unwelcomed. Pure: the viewer's membership, their first
+ * sign-in and what each project offers them arrive read.
  */
 import { teamRoleOf } from "@t3tools/client-runtime/zerops/teamRoles";
 import { asOrgRole } from "@t3tools/shared/zeropsRoles";
@@ -34,11 +37,35 @@ function projectsPhrase(apps: ReadonlyArray<ArrivalApp>): string {
   return apps.length > 2 ? `${first!.name} and ${apps.length - 1} more projects` : first!.name;
 }
 
+/** The reader's first sign-in as HQ records it (`HqOrganizationViewer`). */
+export interface ArrivalSignIn {
+  readonly firstSignedInAt: string | null;
+  /** They were HQ's first person: the one who set it up. */
+  readonly founder: boolean;
+}
+
+/** How long a first visit lasts: the life of HQ's first session (`sessions.ts`, 12 hours). */
+export const FIRST_VISIT_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * Whether this is the person's first Mate visit as HQ records it: within their first session's
+ * life, never for the person who set HQ up. `null` where HQ does not say (an older HQ).
+ */
+export function firstVisit(signIn: ArrivalSignIn | undefined, nowMs: number): boolean | null {
+  if (signIn === undefined) return null;
+  if (signIn.founder || signIn.firstSignedInAt === null) return false;
+  const at = Date.parse(signIn.firstSignedInAt);
+  return Number.isFinite(at) && nowMs - at < FIRST_VISIT_MS;
+}
+
 /** Whether the welcome is said now: a first visit, to projects someone else started. */
 export function welcomeOwed(input: {
   readonly welcomed: boolean;
   readonly apps: ReadonlyArray<ArrivalApp>;
+  /** HQ's word on a first visit (`firstVisit`); `null` or absent where it gives none. */
+  readonly firstVisit?: boolean | null;
 }): boolean {
+  if (input.firstVisit === false) return false;
   return !input.welcomed && input.apps.length > 0 && !input.apps.some(({ mine }) => mine);
 }
 
@@ -64,6 +91,8 @@ export function arrivalWelcome(input: {
   readonly viewer: { readonly roleCode?: string | undefined; readonly canCreateProjects?: boolean };
   /** The projects the person sees, in the overview's order; at least one. */
   readonly apps: ReadonlyArray<ArrivalApp>;
+  /** HQ's word on a first visit (`firstVisit`): only it welcomes an Owner or an Admin. */
+  readonly firstVisit?: boolean | null;
 }): ArrivalWelcome | null {
   // "Acme s.r.o." already ends its sentence.
   const welcome = /[.!?]$/.test(input.organizationName)
@@ -76,10 +105,24 @@ export function arrivalWelcome(input: {
       : { label: `Start your own Mate on ${start.name}`, groupId: start.groupId };
   const on = projectsPhrase(input.apps);
   switch (teamRoleOf(input.viewer)) {
-    // An Owner or an Admin runs the organization: on a new browser they are not arriving anywhere.
+    // An Owner or an Admin runs the organization: a new browser is no arrival, so only HQ's record
+    // of their first sign-in welcomes them.
     case "owner":
+      return input.firstVisit === true
+        ? {
+            line: `${welcome} You're an Owner.`,
+            detail: "The organization is yours to run: every project, its billing and its team.",
+            action,
+          }
+        : null;
     case "admin":
-      return null;
+      return input.firstVisit === true
+        ? {
+            line: `${welcome} You're an Admin.`,
+            detail: "You reach every project and its Mates, and you invite people.",
+            action,
+          }
+        : null;
     case "developer":
       return { line: `${welcome} You're a Developer on ${on}.`, detail: null, action };
     case "guest":

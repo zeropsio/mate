@@ -1,19 +1,23 @@
 /**
- * The overview's welcome on a person's first visit after joining (`arrival.logic`): one line
- * naming the organization and their role, and the one thing that role can do. It is decided once,
- * when the projects and who started their Mates are read, in the same render that draws it; the
- * decision is kept, so later visits are quiet.
+ * The overview's welcome on a person's first visit after joining (`arrival.logic`) — first as HQ
+ * records it, on any browser: one line naming the organization and their role, and the one thing
+ * that role can do. It is decided once, when the projects, who started their Mates and HQ's record
+ * of the person are read, in the same render that draws it; the decision is kept, so later visits
+ * are quiet.
  */
 import { useEffect, useState } from "react";
 
 import { markWelcomed, wasWelcomed } from "~/zerops/invitationMemory";
+import { useNowMs } from "~/zerops/useNowMs";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
 import {
   arrivalWelcome,
+  firstVisit,
   welcomeOwed,
   welcomeStep,
   type ArrivalApp,
+  type ArrivalSignIn,
   type ArrivalWelcome as Welcome,
 } from "./arrival.logic";
 
@@ -32,6 +36,7 @@ export function ArrivalWelcome({
   settled,
   painted,
   onStart,
+  signIn,
 }: {
   readonly orgId: string;
   readonly organizationName: string;
@@ -42,17 +47,22 @@ export function ArrivalWelcome({
   /** The overview shows now (`overviewPaints`); the welcome paints with it or not on this visit. */
   readonly painted: boolean;
   readonly onStart: (groupId: string) => void;
+  /** The person's first sign-in as HQ records it; absent where HQ does not say. */
+  readonly signIn?: ArrivalSignIn | undefined;
 }) {
+  const first = firstVisit(signIn, useNowMs());
   const [decided, setDecided] = useState<Decided | null>(null);
   // Decided during render, so the line lands with the page and never pushes it down a frame later.
   if (decided?.orgId !== orgId) {
     const step = welcomeStep({ settled, hasApps: apps.length > 0, painted });
     if (step === "late") setDecided({ orgId, welcome: null, late: true });
     if (step === "decide") {
-      const owed = welcomeOwed({ welcomed: wasWelcomed(orgId), apps });
+      const owed = welcomeOwed({ welcomed: wasWelcomed(orgId), apps, firstVisit: first });
       setDecided({
         orgId,
-        welcome: owed ? arrivalWelcome({ organizationName, viewer, apps }) : null,
+        welcome: owed
+          ? arrivalWelcome({ organizationName, viewer, apps, firstVisit: first })
+          : null,
         late: false,
       });
     }

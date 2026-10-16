@@ -2067,10 +2067,15 @@ export function ZeropsProjectsContent({
       })),
     [addMateOffer, filterFacts, flowGroups],
   );
+  // HQ's record of the person's first sign-in (`arrival.logic`'s `firstVisit`) comes with the
+  // organization's record: the welcome decides once that is read too.
+  const hqOrganization = hqStructure.organization;
   const arrivalSettled =
+    hqOrganization !== null &&
     candidates.every(
       (candidate) => !hasMate(candidate) || personFacts[candidate.project.id] !== undefined,
-    ) && flowGroups.every((entry) => addMateOffer(entry.group.groupId).kind !== "unknown");
+    ) &&
+    flowGroups.every((entry) => addMateOffer(entry.group.groupId).kind !== "unknown");
   const keptGroups = flowGroups.filter((entry) =>
     overviewKeeps({
       show: search.show,
@@ -2563,6 +2568,7 @@ export function ZeropsProjectsContent({
       {project === undefined && activeOrganization !== null ? (
         <ArrivalWelcome
           apps={arrivalApps}
+          signIn={hqOrganization?.viewer}
           onStart={addMate}
           orgId={activeOrganization.id}
           organizationName={activeOrganization.name}

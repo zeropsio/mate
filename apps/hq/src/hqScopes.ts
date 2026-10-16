@@ -388,6 +388,29 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)].filter(
           (project) => project.can?.observe_mate?.allow === true,
         );
+      // When a person first signed in to this HQ, and whether they were its first person — the one
+      // who set it up. Neither changes once they have a session, so each is read once per person.
+      const firstSignIns = new Map<
+        string,
+        { readonly firstSignedInAt: string | null; readonly founder: boolean }
+      >();
+      const firstSignInOf = (userId: string) =>
+        Effect.gen(function* () {
+          const held = firstSignIns.get(userId);
+          if (held !== undefined) return held;
+          const rows = yield* sql<{
+            readonly first_at: string | null;
+            readonly founder: boolean | null;
+          }>`SELECT to_char(min(created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS first_at,
+               (SELECT user_id FROM hq_session ORDER BY created_at, token_hash LIMIT 1) = ${userId} AS founder
+             FROM hq_session WHERE user_id = ${userId}`;
+          const read = {
+            firstSignedInAt: rows[0]?.first_at ?? null,
+            founder: rows[0]?.founder === true,
+          };
+          if (read.firstSignedInAt !== null) firstSignIns.set(userId, read);
+          return read;
+        });
       // One read for the visible projects this delivery needs, never the person's whole history.
       const loadSeenFor = (userId: string, projectIds: ReadonlyArray<string>) =>
         Effect.gen(function* () {
@@ -605,7 +628,13 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             if (projects === undefined) {
               values.push({
                 key: "org",
-                value: { can: view.can, unheld: view.unheld, tools: view.tools ?? [], build },
+                value: {
+                  can: view.can,
+                  unheld: view.unheld,
+                  tools: view.tools ?? [],
+                  build,
+                  viewer: yield* firstSignInOf(entry.userId),
+                },
               });
               values.push(yield* statusValue);
               if (policyMember(current, entry.userId))

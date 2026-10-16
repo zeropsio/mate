@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { arrivalWelcome, welcomeOwed, welcomeStep, type ArrivalApp } from "./arrival.logic";
+import {
+  arrivalWelcome,
+  firstVisit,
+  welcomeOwed,
+  welcomeStep,
+  type ArrivalApp,
+} from "./arrival.logic";
 
 const SNAP: ArrivalApp = { groupId: "g-snap", name: "Snap", mine: false, addMate: true };
 const BEVIRO: ArrivalApp = { groupId: "g-beviro", name: "Beviro", mine: false, addMate: true };
@@ -135,5 +141,91 @@ describe("the welcome paints with the overview or not at all on that visit", () 
     },
   ] as const)("$sentence", ({ settled, hasApps, painted, step }) => {
     expect(welcomeStep({ settled, hasApps, painted })).toBe(step);
+  });
+});
+
+describe("a first visit, as HQ records it", () => {
+  const NOW = Date.parse("2026-10-16T12:00:00Z");
+  it.each([
+    {
+      sentence: "Someone who first signed in to HQ within the hour is on their first visit",
+      signIn: { firstSignedInAt: "2026-10-16T11:00:00Z", founder: false },
+      first: true,
+    },
+    {
+      sentence: "Someone who first signed in days ago is not, whichever browser they come from",
+      signIn: { firstSignedInAt: "2026-10-12T11:00:00Z", founder: false },
+      first: false,
+    },
+    {
+      sentence: "The person who set HQ up is never welcomed to their own organization",
+      signIn: { firstSignedInAt: "2026-10-16T11:00:00Z", founder: true },
+      first: false,
+    },
+    {
+      sentence: "Where HQ holds no sign-in of theirs, it is no first visit",
+      signIn: { firstSignedInAt: null, founder: false },
+      first: false,
+    },
+    {
+      sentence: "An older HQ that does not say leaves the browser's memory to decide",
+      signIn: undefined,
+      first: null,
+    },
+  ])("$sentence", ({ signIn, first }) => {
+    expect(firstVisit(signIn, NOW)).toBe(first);
+  });
+
+  it.each([
+    {
+      sentence: "A first visit as HQ records it is welcomed, on any browser",
+      welcomed: false,
+      first: true,
+      owed: true,
+    },
+    {
+      sentence: "A later visit as HQ records it is quiet, even on a browser that never said it",
+      welcomed: false,
+      first: false,
+      owed: false,
+    },
+    {
+      sentence: "A first visit already welcomed in this browser is quiet",
+      welcomed: true,
+      first: true,
+      owed: false,
+    },
+    {
+      sentence: "Where HQ does not say, the browser remembers the welcome as before",
+      welcomed: false,
+      first: null,
+      owed: true,
+    },
+  ])("$sentence", ({ welcomed, first, owed }) => {
+    expect(welcomeOwed({ welcomed, apps: [SNAP], firstVisit: first })).toBe(owed);
+  });
+
+  it.each([
+    {
+      sentence: "An invited Owner on their first visit is told the organization is theirs to run",
+      viewer: { roleCode: "OWNER" },
+      line: "Welcome to Acme. You're an Owner.",
+      detail: "The organization is yours to run: every project, its billing and its team.",
+    },
+    {
+      sentence:
+        "An invited Admin on their first visit is told they reach every project and invite people",
+      viewer: { roleCode: "ADMIN" },
+      line: "Welcome to Acme. You're an Admin.",
+      detail: "You reach every project and its Mates, and you invite people.",
+    },
+  ])("$sentence", ({ viewer, line, detail }) => {
+    expect(
+      arrivalWelcome({ organizationName: "Acme", viewer, apps: [SNAP], firstVisit: true }),
+    ).toEqual({
+      line,
+      detail,
+      action: { label: "Start your own Mate on Snap", groupId: "g-snap" },
+    });
   });
 });

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { hqAppFamily, placementFamily, hqPersonFamily } from "./hqNavigation.ts";
+import {
+  hqAppFamily,
+  hqOrganizationFamily,
+  placementFamily,
+  hqPersonFamily,
+} from "./hqNavigation.ts";
 import { gitEnvironment } from "../__fixtures__/hqWire.ts";
 
 const app = {
@@ -170,3 +175,30 @@ it.each([[], { refused: "Changes are private" }])(
     expect(hqAppFamily.keepUnsaid?.(held, row, false) ?? row).toEqual(row);
   },
 );
+
+describe("the organization's record, as its reader reads it", () => {
+  const organization = { can: {}, unheld: {}, tools: [], build: "0.15.80" };
+  const decode = (raw: unknown) =>
+    hqOrganizationFamily.hq!.decode(raw, "org", { orgId: "org", ownerId: null });
+  it.each([
+    {
+      sentence: "It keeps when its reader first signed in to HQ, and whether they set HQ up",
+      viewer: { firstSignedInAt: "2026-10-16T08:00:00Z", founder: false },
+      read: { firstSignedInAt: "2026-10-16T08:00:00Z", founder: false },
+    },
+    {
+      sentence: "An older HQ's record says nothing of its reader's first sign-in",
+      viewer: undefined,
+      read: undefined,
+    },
+    {
+      sentence: "A first sign-in sent unreadably is unknown, and the record stands",
+      viewer: { firstSignedInAt: 42, founder: "yes" },
+      read: undefined,
+    },
+  ])("$sentence", ({ viewer, read }) => {
+    expect(decode(viewer === undefined ? organization : { ...organization, viewer })).toEqual(
+      read === undefined ? organization : { ...organization, viewer: read },
+    );
+  });
+});
