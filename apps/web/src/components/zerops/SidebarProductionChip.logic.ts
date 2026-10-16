@@ -206,6 +206,8 @@ export interface ProductionChip {
   readonly version?: string;
   /** What is on its way, while releasing — and while down or stopped, where one is. */
   readonly next?: string;
+  /** The release `next` rolls production back to, where it is a roll back: it is said by it. */
+  readonly rollsBackTo?: string;
   /** Changes merged and not live, while they wait — and while down or stopped. */
   readonly waiting?: number;
   /** Whether `waiting` is only how many at least: HQ stopped counting. */
@@ -240,8 +242,34 @@ export type ChipView =
  * yet — its flow not read, or not answered.
  */
 export type ReleasesAnswer =
-  | { readonly kind: "answered"; readonly failure: ReleaseFailure | undefined }
+  | {
+      readonly kind: "answered";
+      readonly failure: ReleaseFailure | undefined;
+      /** HQ's roll backs, by the tag each made: the release it rolls production back to. */
+      readonly rollbacks?: ReadonlyMap<string, string> | undefined;
+    }
   | { readonly kind: "waiting" };
+
+/** HQ's roll backs among a flow's releases, by the tag each made (`ReleasesAnswer.rollbacks`). */
+export function rollbacksOf(
+  releases: ReadonlyArray<{ readonly tag: string; readonly rollbackOf?: string | undefined }>,
+): ReadonlyMap<string, string> {
+  return new Map(
+    releases.flatMap(({ tag, rollbackOf }) =>
+      rollbackOf === undefined ? [] : [[tag, rollbackOf] as const],
+    ),
+  );
+}
+
+/** What is on its way, as the chip says it: a roll back by what it goes back to. */
+function onItsWayWords(chip: ProductionChip): string | undefined {
+  if (chip.next === undefined) return undefined;
+  return chip.rollsBackTo === undefined
+    ? `Releasing ${chip.next}`
+    : `Rolling back to ${chip.rollsBackTo}`;
+}
+
+const lowerFirst = (words: string) => `${words.charAt(0).toLowerCase()}${words.slice(1)}`;
 
 const NONE: ChipView = { kind: "none" };
 const UNKNOWN: ChipView = { kind: "unknown" };
@@ -265,6 +293,7 @@ function chipOf(
     readonly readLine?: string;
     readonly version?: string | undefined;
     readonly next?: string | undefined;
+    readonly rollsBackTo?: string | undefined;
     readonly waiting?: number | undefined;
     readonly waitingAtLeast?: boolean;
     readonly untold?: ReadonlyArray<string>;
@@ -276,6 +305,9 @@ function chipOf(
     ...(facts.readLine === undefined ? {} : { readLine: facts.readLine }),
     ...(facts.version === undefined ? {} : { version: facts.version }),
     ...(facts.next === undefined ? {} : { next: facts.next }),
+    ...(facts.next === undefined || facts.rollsBackTo === undefined
+      ? {}
+      : { rollsBackTo: facts.rollsBackTo }),
     ...(facts.waiting === undefined ? {} : { waiting: facts.waiting }),
     ...(facts.waiting !== undefined && facts.waitingAtLeast === true
       ? { waitingAtLeast: true as const }
@@ -318,12 +350,17 @@ export function productionChip(input: {
     input.building === undefined ? production.stop.version?.label : input.building.from;
   const waiting = input.waiting > 0 ? input.waiting : undefined;
   const { serving, waitingAtLeast, untold } = input;
+  const rollsBack = (next: string | undefined) =>
+    next === undefined || input.releases.kind !== "answered"
+      ? undefined
+      : input.releases.rollbacks?.get(next);
   if (serving.kind === "down" || serving.kind === "stopped") {
     // A release tagged for production, or a deploy the platform runs on it.
     const next = production.kind === "releasing" ? production.tag : input.building?.to;
     return chipOf("prod", serving.kind, {
       version: served,
       next: next === served ? undefined : next,
+      rollsBackTo: rollsBack(next),
       waiting,
       waitingAtLeast,
     });
@@ -340,13 +377,18 @@ export function productionChip(input: {
     production.kind === "deploy-failed";
   const chip = (): ChipView => {
     if (production.kind === "releasing") {
-      return chipOf("prod", "releasing", { version: served, next: production.tag });
+      return chipOf("prod", "releasing", {
+        version: served,
+        next: production.tag,
+        rollsBackTo: rollsBack(production.tag),
+      });
     }
     if (input.building !== undefined || production.kind === "deploying") {
       const next = input.building?.to;
       return chipOf("prod", "releasing", {
         version: served,
         next: next === served ? undefined : next,
+        rollsBackTo: rollsBack(next),
       });
     }
     if (failed) return chipOf("prod", "failed", { version: served, untold });
@@ -557,7 +599,8 @@ const TIER_WORD: Record<ChipLabel, string> = { prod: "Production", stage: "Stage
 
 /** What else is true of a stop down or stopped: a release on its way, else changes waiting. */
 function alongside(chip: ProductionChip): string | undefined {
-  if (chip.next !== undefined) return `releasing ${chip.next}`;
+  const coming = onItsWayWords(chip);
+  if (coming !== undefined) return lowerFirst(coming);
   if (chip.waiting !== undefined) {
     return `${changesCountWords(chip.waiting, chip.waitingAtLeast === true)} waiting`;
   }
@@ -611,7 +654,7 @@ function chipWords(chip: ProductionChip): string {
     case "waiting":
       return named(healthyWord(chip));
     case "releasing":
-      return named(chip.next === undefined ? "deploying" : `releasing ${chip.next}`);
+      return named(lowerFirst(onItsWayWords(chip) ?? "deploying"));
     // The release that did not go out is the line's; production still serves the one before.
     case "failed":
       return named(chip.label === "prod" ? healthyWord(chip) : "the last deploy failed");
@@ -758,7 +801,7 @@ function mainWord(chip: ProductionChip): string {
     case "waiting":
       return chip.untold === undefined ? "Healthy" : cannotTellWhatRuns(chip.untold);
     case "releasing":
-      return chip.next === undefined ? "Deploying…" : `Releasing ${chip.next}`;
+      return onItsWayWords(chip) ?? "Deploying…";
     case "failed":
       return chip.label === "prod" ? "Release failed" : "Deploy failed";
     case "down":
@@ -828,7 +871,8 @@ function troubleNote(input: {
   const production = chip.label === "prod";
   const failed =
     production && failure !== undefined ? failureSentence(failure, input.nowMs) : undefined;
-  const coming = chip.next === undefined ? undefined : `Releasing ${chip.next}.`;
+  const onItsWay = onItsWayWords(chip);
+  const coming = onItsWay === undefined ? undefined : `${onItsWay}.`;
   if (chip.state === "down" || chip.state === "stopped") {
     const down =
       chip.state === "down"

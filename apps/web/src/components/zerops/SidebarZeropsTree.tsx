@@ -447,6 +447,8 @@ export interface SidebarProjectFlow {
    * says what failed, when and in whose words.
    */
   readonly releaseFailure?: ReleaseFailure | undefined;
+  /** HQ's roll backs, by the tag each made: the release it goes back to (`rollbacksOf`). */
+  readonly releaseRollbacks?: ReadonlyMap<string, string> | undefined;
   /**
    * Opens the stop's own page, in place of the thread.
    *
@@ -1280,7 +1282,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     // Until HQ's releases are read, a place is only what the platform alone says: partial.
     const releases: ReleasesAnswer =
       flow !== undefined && flow.releasesKnown !== false
-        ? { kind: "answered", failure: flow.releaseFailure }
+        ? { kind: "answered", failure: flow.releaseFailure, rollbacks: flow.releaseRollbacks }
         : { kind: "waiting" };
     const stopName = (stop: GroupFlowStop) =>
       projectNameInApp(stopItem(stop.projectId)?.project) || stop.name;

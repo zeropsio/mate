@@ -43,6 +43,7 @@ import {
   productionChip,
   productionMenu,
   releaseFailureOf,
+  rollbacksOf,
   stageStopChip,
   stopServing,
   type ProductionChip,
@@ -134,6 +135,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
               releases: read.releases,
               environmentInputs: read.environmentInputs,
             }),
+            rollbacks: rollbacksOf(read.releases),
           }
         : { kind: "waiting" };
     const deploymentsOf = (id: string) => {
@@ -179,11 +181,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         ? undefined
         : (deployActivatedAt(deploymentsOf(prodStop.projectId)) ?? prodItem?.services?.deployedAt);
     // The release on its way, where it is a roll back: production's line says what it goes back to.
-    const onItsWay = production.kind === "releasing" ? production.tag : chip?.next;
-    const rollsBackTo =
-      onItsWay === undefined || read?.releasesKnown !== true
-        ? undefined
-        : read.releases.find((release) => release.tag === onItsWay)?.rollbackOf;
+    const rollsBackTo = chip?.rollsBackTo;
     return {
       read,
       releases,
