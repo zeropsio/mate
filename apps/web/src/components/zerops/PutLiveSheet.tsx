@@ -1,5 +1,6 @@
 /**
- * The *Put it live* sheet (G7): what goes live — the change's title and a few plain lines, with
+ * The *Put it live* sheet (G7): what goes live — the change's title and a few plain lines, one
+ * line each (three wrapped paragraphs of the description pushed Where down: a run 2 follow-up), with
  * the way to its code — where it goes, stage left for later, and one button. It asks nothing it
  * already knows: production's name, its recipe and its first version are decided, and the release
  * follows production by itself (`putLive.logic.ts`).
@@ -66,7 +67,10 @@ export function PutLiveSheet({
                 {model.what.lines.length === 0 ? null : (
                   <ul className="flex flex-col gap-0.5 text-muted-foreground text-sm">
                     {model.what.lines.map((line) => (
-                      <li key={line}>{line}</li>
+                      // One line each: the review reads it whole, and the sheet's question is where.
+                      <li className="truncate" key={line}>
+                        {line}
+                      </li>
                     ))}
                   </ul>
                 )}
