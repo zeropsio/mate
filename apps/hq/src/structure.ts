@@ -29,6 +29,7 @@ import type { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeplo
 import type { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import type { MateState } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -743,6 +744,16 @@ export const structureLayer = (options: {
       );
       /** After a write that added an environment or kept its key: its deploys are asked for. */
       const changedAsking = Effect.andThen(changed, rollouts.wake);
+      const layerScope = yield* Effect.scope;
+      /**
+       * After a project is placed: who may read it, read again behind the write. Its creator's
+       * browser grants its people after the press hold's read of the new project, so the view HQ
+       * holds — at most 30 s old — would keep it from them until it aged out (run 2, a Guest given
+       * Read on a new Mate). Readers are sent it when that read lands (`hqScopes.ts`, `views`).
+       */
+      const rereadRoles = Effect.flatMap(Clock.currentTimeMillis, (placed) =>
+        Effect.forkIn(Effect.ignoreCause(roles.readSince(placed)), layerScope),
+      );
       const mateChanged = yield* PubSub.unbounded<string>();
       /**
        * A Mate's record and birth, named as its project is in Zerops, as HQ's view of the org has
@@ -1822,6 +1833,7 @@ export const structureLayer = (options: {
                 "placed_or_production_taken",
               );
               yield* changedAsking;
+              yield* rereadRoles;
               yield* PubSub.publish(mateChanged, input.projectId);
             }),
           ),
