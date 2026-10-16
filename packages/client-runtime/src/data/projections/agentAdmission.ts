@@ -14,6 +14,7 @@ import { agentIdForDriverKind, agentIdForProviderInstance } from "@t3tools/contr
 import type { Known } from "../../zerops/knowledge/index.ts";
 import { resolveSpentLogin } from "../../zerops/logins.ts";
 import { signedOutAgent } from "../../zerops/agentSignIn.ts";
+import { MATE_READ_ACCESS_LINE } from "../../zerops/mateAccess.ts";
 import {
   classifyZeropsAgentAuth,
   zeropsAgentUnavailableReason,
@@ -153,10 +154,7 @@ export function agentAdmission(input: {
     explainsRefusal: admissionExplainsRefusal(attention, input.refusalSource),
     footer: readOnly ? ("read-only" as const) : cold ? ("held" as const) : ("composer" as const),
     canSend: !readOnly && !cold && !holdsComposer && attention === null,
-    sendBlockReason:
-      input.operate === false
-        ? "Your Zerops access to this Mate is read-only."
-        : (attention?.text ?? null),
+    sendBlockReason: input.operate === false ? MATE_READ_ACCESS_LINE : (attention?.text ?? null),
     // Signer records establish no client permission, including compact HQ records; HQ's recorded
     // owner does.
     readOnly,

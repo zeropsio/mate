@@ -43,7 +43,7 @@ describe("answeredDeploys — a press's deploys, where HQ answered them", () => 
       <ZeropsDeployAnswer answer={answeredDeploys({ kind: "done", deploys: ANSWER })} />,
     );
     expect(markup).not.toContain("stage");
-    expect(markup).toContain("5c3ea18 queued behind the build under way");
+    expect(markup).toContain("queued behind the build under way");
     expect(markup).toContain('data-zerops-job-state="queued"');
     expect(markup).toContain("the production tier could not be read");
   });
@@ -133,8 +133,8 @@ describe("an answered job follows HQ's stream to its end", () => {
   };
 
   it.each([
-    ["live", null, "5c3ea18 live"],
-    ["failed", "build broke", "5c3ea18 failed: build broke"],
+    ["live", null, ">live<"],
+    ["failed", "build broke", "failed: build broke"],
   ])("says %s once HQ's job has ended", (state, reason, said) => {
     navigation.environments = streamed(state, reason);
     const markup = renderToStaticMarkup(<ZeropsDeployAnswer answer={building} />);

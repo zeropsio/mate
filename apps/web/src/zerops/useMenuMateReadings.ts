@@ -1,4 +1,4 @@
-import { lastKnownMateWords } from "./lastKnownMate.logic";
+import { lastKnownMateWords, MATE_AWAY_GRACE_MS } from "./lastKnownMate.logic";
 import { attentionActivity } from "./mateActivity";
 import { useProjectsActivityRead } from "./activity/useProjectActivity";
 /**
@@ -21,8 +21,9 @@ import {
   hqMateOverviewAtom,
   hqMatePresenceAtom,
   mateAttentionAtom,
+  shownAttentionProjectsAtom,
 } from "@t3tools/client-runtime/data";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { environmentsWithSnapshotAtom } from "../state/shell";
 import { hqMainChatsAtom } from "../state/zerops";
@@ -78,6 +79,39 @@ const mateLinkedInHqAtom = Atom.family((projectId: string) =>
     const read = get(hqMatePresenceAtom(projectId));
     return read.live && read.presence?.online === true;
   }),
+);
+
+/**
+ * Whom HQ relays as linked, for every Mate the menu shows (`mateAwake`'s second fact): the menu's
+ * rows and the overview's faces read one map, which changes only when some Mate's link opens or
+ * closes.
+ */
+export function useMatesLinkedInHq(): ReadonlyMap<
+  string,
+  { readonly presence: import("@t3tools/shared/hqMates").MatePresence }
+> {
+  return useAtomValue(matesLinkedInHqAtom);
+}
+
+const matesLinkedInHqAtom = Atom.make((get) => {
+  const mates = new Map<
+    string,
+    { readonly presence: import("@t3tools/shared/hqMates").MatePresence }
+  >();
+  for (const id of get(shownAttentionProjectsAtom)) {
+    const fact = get(hqMatePresenceAtom(id));
+    if (fact.live && fact.presence !== null) mates.set(id, { presence: fact.presence });
+  }
+  return mates;
+}).pipe(
+  Atom.withEquality(
+    (
+      a: ReadonlyMap<string, { readonly presence: import("@t3tools/shared/hqMates").MatePresence }>,
+      b,
+    ) =>
+      a.size === b.size &&
+      [...a].every(([id, mate]) => b.get(id)?.presence.online === mate.presence.online),
+  ),
 );
 
 /**
@@ -228,4 +262,16 @@ export function useMateOfflineSince(
       ? read.presence.since
       : undefined
     : new Date(lostAt).toISOString();
+}
+
+/**
+ * Now, for how long a Mate has been away (`mateAwaySettling`): it moves when its grace runs out,
+ * so a row that waited out a restart says it isn't answering on time, and only then.
+ */
+export function useMateAwayNow(offlineSince: string | undefined): number {
+  const graceEnds =
+    offlineSince === undefined ? Number.NaN : Date.parse(offlineSince) + MATE_AWAY_GRACE_MS;
+  const wokeAt = useWakeAt(Number.isFinite(graceEnds) ? [graceEnds] : []);
+  const [mountedAt] = useState(() => Date.now());
+  return Math.max(wokeAt, mountedAt);
 }

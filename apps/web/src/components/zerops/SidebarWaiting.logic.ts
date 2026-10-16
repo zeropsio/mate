@@ -98,6 +98,21 @@ export function waitingSummary(items: ReadonlyArray<WaitingItem>): {
   return { words: shown.map(waitingPhrase).join(" · "), more: items.length - shown.length };
 }
 
+/**
+ * What a bare count of the waiting things says it counts — its accessible name, and the line its
+ * tooltip carries under "Waiting on you" — so a number never stands without its noun.
+ */
+export function waitingCountWords(items: ReadonlyArray<WaitingItem>): {
+  readonly label: string;
+  readonly line: string;
+} {
+  const { words, more } = waitingSummary(items);
+  return {
+    label: `${String(items.length)} waiting on you: ${words}${more > 0 ? `, ${String(more)} more` : ""}`,
+    line: `${words}${more > 0 ? ` · ${String(more)} more` : ""}`,
+  };
+}
+
 /** An item's title in the list: the Mate's name, or the release in a sentence. */
 export function waitingTitle(item: WaitingItem): string {
   return item.kind === "release" ? `${item.release.name} is ready to release` : item.mate.name;

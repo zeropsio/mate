@@ -70,6 +70,7 @@ import {
   crewRowVerbLine,
   crewRunsOnWord,
   crewServedWord,
+  crewRoleTag,
   crewSetUpFooter,
   crewStoppedWords,
   crewSuggestedLine,
@@ -521,10 +522,57 @@ describe("a row's words", () => {
 
 describe("the setup's and the job's words", () => {
   it("says where the builders' copies go", () => {
-    expect(crewSetUpFooter("Fen", ["appdev"])).toBe(
-      "Each builder works in its own copy of Fen's code on appdev; nothing reaches Fen's code until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.",
+    // Run 2: the footer named the service by its hostname, "on appdev".
+    expect(crewSetUpFooter("Fen")).toBe(
+      "Each builder works in its own copy of Fen's code; nothing reaches Fen's code until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.",
     );
   });
+
+  // Run 2: the roster said nobody was the lead; a job that opens with what its crewmate does is
+  // never tagged with it again.
+  it.each([
+    {
+      name: "the lead, named for its part",
+      kind: "lead",
+      who: "Planner",
+      job: "Plans the work.",
+      tag: "Lead",
+    },
+    { name: "the lead, named Lead", kind: "lead", who: "Lead", job: "Plans the work.", tag: null },
+    {
+      name: "a builder whose job says it builds",
+      kind: "writer",
+      who: "Checkout",
+      job: "Builds the checkout.",
+      tag: null,
+    },
+    {
+      name: "a builder whose job doesn't say so",
+      kind: "writer",
+      who: "Checkout",
+      job: "The checkout and its payment step.",
+      tag: "Builds",
+    },
+    {
+      name: "a reviewer whose job doesn't say so",
+      kind: "reader",
+      who: "Taster",
+      job: "Checks every change to the catalog.",
+      tag: "Reviews",
+    },
+    {
+      name: "a reviewer whose job says it reviews",
+      kind: "reader",
+      who: "Taster",
+      job: "Reviews every change.",
+      tag: null,
+    },
+  ] as const)(
+    "tags a roster row with what its crewmate does where its job doesn't: $name",
+    ({ kind, who, job, tag }) => {
+      expect(crewRoleTag(kind, who, job)).toBe(tag);
+    },
+  );
 
   it("says the rows came from the Mate only when they did", () => {
     expect(crewSuggestedLine("Fen", true)).toBe(
@@ -703,20 +751,19 @@ describe("the drafts a crew surface hands the Mate", () => {
       CREW_SETUP_WORDS.line,
       crewSuggestLine("Fen"),
       CREW_SETUP_WORDS.leadAndTwoLine,
-      crewSetUpFooter("Fen", []),
+      crewSetUpFooter("Fen"),
     ].filter((words) => words.includes("own copy"));
-    expect(said).toEqual([crewSetUpFooter("Fen", [])]);
+    expect(said).toEqual([crewSetUpFooter("Fen")]);
   });
 
   it("says the builders share a database only where they do", () => {
-    expect(crewSetUpFooter("Fen", ["appdev"], ["appdev"])).toContain(
-      "until you review it. The builders share appdev's database. Getting",
+    expect(crewSetUpFooter("Fen", 1)).toContain(
+      "until you review it. The builders share one database. Getting",
     );
-    expect(crewSetUpFooter("Fen", ["appdev", "apidev"], ["appdev", "apidev"])).toContain(
-      "The builders share the databases of appdev and apidev.",
-    );
-    expect(crewSetUpFooter("Fen", ["appdev"], [])).not.toContain("database");
-    expect(crewSetUpFooter("Fen", ["appdev"])).not.toContain("database");
+    expect(crewSetUpFooter("Fen", 2)).toContain("The builders share Fen's databases.");
+    expect(crewSetUpFooter("Fen", 0)).not.toContain("database");
+    expect(crewSetUpFooter("Fen")).not.toContain("database");
+    expect(crewSetUpFooter("Fen", 2)).not.toMatch(/appdev|apidev/u);
   });
 });
 

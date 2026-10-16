@@ -130,7 +130,9 @@ export function arrivalWelcome(input: {
   const action =
     start === undefined
       ? null
-      : { label: `Start your own Mate on ${start.name}`, groupId: start.groupId };
+      : // The words of the dialog it opens, and of the menu's way to it (run 2: "Start your own
+        // Mate" opened "Add a project Mate").
+        { label: `Add a project Mate to ${start.name}`, groupId: start.groupId };
   const on = projectsPhrase(input.apps);
   switch (teamRoleOf(input.viewer)) {
     // An Owner or an Admin runs the organization: a new browser is no arrival, so only HQ's record
@@ -157,8 +159,9 @@ export function arrivalWelcome(input: {
       return {
         line: `${welcome} You're a Guest on ${on}.`,
         // A Mate's live work is for whoever its door opens for (HQ's `observe_mate`); a read-only
-        // role reads the changes and the app, so that is what it is promised.
-        detail: "You can see the changes and open the app.",
+        // role reads the changes and the app, so that is what it is promised — the app once it is
+        // released, since a project may have none live yet when the person arrives.
+        detail: "You can see the changes and open the app once it is released.",
         action: null,
       };
     case null:
@@ -166,7 +169,7 @@ export function arrivalWelcome(input: {
         ? { line: `${welcome} You work on every project.`, detail: null, action }
         : {
             line: `${welcome} You see every project.`,
-            detail: "You can see the changes and open the app.",
+            detail: "You can see the changes and open the app once it is released.",
             action: null,
           };
   }

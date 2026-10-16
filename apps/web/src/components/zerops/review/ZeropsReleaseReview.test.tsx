@@ -83,6 +83,24 @@ describe("ReleaseReviewView", () => {
     );
   });
 
+  // The run: released, "Close" stood alone on a line of its own under Open and the domain, beside
+  // the panel's ×: a third way out where the panel's last word is the live app.
+  it("ends a release with its way into the live app and no Close beside it: the panel's × closes it", () => {
+    const markup = render({
+      outcome: { kind: "released", at: undefined },
+      production: {
+        at: undefined,
+        parts: [],
+        addresses: [{ service: "app", url: "https://app-abcd-3000.prg1.zerops.app" }],
+      },
+      onAddDomain: () => {},
+    });
+    const page = new Window().document;
+    page.body.innerHTML = markup;
+    const words = [...page.querySelectorAll(".rv-btns button")].map((button) => button.textContent);
+    expect(words).not.toContain("Close");
+  });
+
   it("says what production runs on a service cannot be told, under what goes out", () => {
     const markup = render({ untold: ["web"] });
     expect(markup).toContain("What goes out");
@@ -100,6 +118,31 @@ describe("ReleaseReviewView", () => {
     expect(markup).toContain("app is deploying.");
     expect(markup).toContain("Can&#x27;t tell what web runs.");
     expect(markup).not.toContain("Can&#x27;t tell what app runs.");
+  });
+
+  // The run: a first release opened on an editable "0.1.0", "Must be newer than every release.
+  // Next patch is v0.1.0.", "Use v1.0.0 · Set in the code, in package.json" — with no release
+  // before it, semver and package.json are questions nobody asked.
+  it("names a first release's version in words, its field and rules behind Change", () => {
+    const version = {
+      value: "0.1.0",
+      onChange: () => {},
+      tags: [],
+      suggestions: [{ tag: "v1.0.0", source: "app/package.json" }],
+      nextPatch: "v0.1.0",
+    };
+    const page = new Window().document;
+    page.body.innerHTML = render({ version, replaces: { kind: "first" } });
+    const section = [...page.querySelectorAll("section")].find(
+      (each) => each.querySelector("h3")?.textContent === "Version",
+    );
+    expect(section?.textContent).toContain("v0.1.0");
+    expect(section?.querySelector("input")).toBeNull();
+    expect(section?.textContent).not.toContain("package.json");
+    expect(section?.textContent).not.toContain("Next patch");
+    expect(
+      [...(section?.querySelectorAll("button") ?? [])].map((each) => each.textContent),
+    ).toEqual(["Change"]);
   });
 
   // The onboarding run: at the press the Version block went and the foot rose 110 px under the
@@ -310,7 +353,8 @@ describe("a review's deploy answer belongs to its service in Where", () => {
       document.body.innerHTML = markup;
       const job = document.querySelector('[data-zerops-job-state="building"]');
       expect(job?.closest("section")?.querySelector("h3")?.textContent).toBe("Where");
-      expect(document.body.textContent.match(/96e2309/g)).toHaveLength(1);
+      expect(document.querySelectorAll("[data-zerops-job-state]")).toHaveLength(1);
+      expect(document.body.textContent).not.toContain("96e2309");
       expect(document.body.textContent).not.toContain("app is deploying");
       expect(document.body.textContent).not.toContain("Can't tell what app runs");
       expect(document.body.textContent).not.toContain("redeploys from 3fa9c21");

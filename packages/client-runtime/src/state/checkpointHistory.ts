@@ -14,9 +14,10 @@ export function checkpointHistoryNotice(
   return null;
 }
 
-/** Why a root's snapshot is missing, when it is. */
+/** Why a root's snapshot is missing, when it is. A start with nothing in it is not missing. */
 export function checkpointRootNotice(entry: CheckpointHistoryRoot): string | null {
-  if (entry.before.status !== "captured") return entry.before.reason;
+  if (entry.before.status !== "captured" && entry.before.status !== "absent")
+    return entry.before.reason;
   if (entry.after.status !== "captured") return entry.after.reason;
   return null;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -290,6 +291,37 @@ describe("an idle engine Mate", () => {
           yield* w.shutdown;
         }),
       ),
+  );
+});
+
+describe("an automatic update's quiet minute", () => {
+  it.effect("the quiet minute starts when the Mate's last turn ended", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "claudeAgent" });
+        yield* w.boot;
+        const drain = (yield* w.engine).updateDrain;
+        if (drain?.lastTurnEndedAt === undefined) throw new Error("The engine has no turn end");
+        expect(yield* w.within(drain.lastTurnEndedAt)).toBeUndefined();
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            profile: { kind: "mate" },
+          },
+        });
+        yield* w.tell({ _tag: "Send", text: "hello" });
+        yield* w.advance(5_000);
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const ended = yield* w.within(drain.lastTurnEndedAt);
+        expect(ended).toBe(yield* Clock.currentTimeMillis);
+        yield* w.advance(30_000);
+        expect(yield* w.within(drain.lastTurnEndedAt)).toBe(ended);
+        yield* w.shutdown;
+      }),
+    ),
   );
 });
 

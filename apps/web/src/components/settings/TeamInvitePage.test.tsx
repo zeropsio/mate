@@ -1,8 +1,8 @@
 /**
- * Inviting someone from Settings → Team, on one page: the address checked with Zerops as it is
- * left or Invite pressed, a name asked only where the address has no Zerops account, the role
- * cards, the projects they get at Full or Read; each answer awaited on the page, a refusal said
- * there.
+ * Inviting someone from Settings → Team, on one page: the address and a name, asked of every
+ * address alike, checked with Zerops once Invite is pressed; the role cards, the projects they get
+ * at Full or Read; each answer awaited on the page, a refusal said there; the page staying for the
+ * next invitation once one went out.
  */
 import type { InviteeCheck } from "@t3tools/client-runtime/data";
 import type { ReactNode } from "react";
@@ -98,10 +98,19 @@ function mount(
     onSent,
     heading: () => text(root.findByType("h1")),
     type: (id: string, value: string) => act(() => field(id).props.onChange({ target: { value } })),
-    leave: (id: string) =>
-      act(async () => {
-        field(id).props.onBlur();
-      }),
+    value: (id: string) => String(field(id).props.value),
+    emailLine: () =>
+      text(
+        section("Who").find(
+          (node) => node.type === "span" && node.props.className === "tm-block-desc",
+        ),
+      ),
+    sentLine: () =>
+      text(section("Who").find((node) => node.type === "span" && node.props.role === "status")),
+    named: (first: string, last: string) => {
+      act(() => field("first").props.onChange({ target: { value: first } }));
+      act(() => field("last").props.onChange({ target: { value: last } }));
+    },
     hasField: (id: string) =>
       root.findAll((node) => node.type === "input" && String(node.props.id).endsWith(id)).length >
       0,
@@ -121,6 +130,10 @@ function mount(
           .props.onClick();
       }),
     levels: () => radios("Projects").map(nameOf),
+    noPick: () =>
+      section("Projects")
+        .findAll((node) => node.props["data-part"] === "no-pick")
+        .map(text),
     pickLevel: (name: string) =>
       act(() => {
         radios("Projects")
@@ -153,18 +166,15 @@ describe("inviting someone to the team", () => {
     const page = mount();
     expect(page.heading()).toBe("Invite someone to Acme");
     page.type("email", "petra.kralova@example.com");
-    expect(page.hasField("first")).toBe(false);
-    await page.submit();
-    expect(page.check).toHaveBeenCalledWith("petra.kralova@example.com");
-    expect(page.send).not.toHaveBeenCalled();
-    page.type("first", "Petra");
-    page.type("last", "Kralova");
+    page.named("Petra", "Kralova");
     page.pickRole("Guest");
     page.toggleProject("Snap");
     await page.submit();
+    expect(page.check).toHaveBeenCalledWith("petra.kralova@example.com");
     expect(page.check).toHaveBeenCalledTimes(1);
     expect(page.send).toHaveBeenCalledWith({
       email: "petra.kralova@example.com",
+      name: "Petra Kralova",
       invitee: { kind: "new", firstName: "Petra", lastName: "Kralova" },
       membership: {
         roleCode: "NO_ACCESS",
@@ -180,27 +190,64 @@ describe("inviting someone to the team", () => {
     expect(page.onSent).toHaveBeenCalledWith("petra.kralova@example.com");
   });
 
-  it("An address with a Zerops account is asked no name", async () => {
-    const page = mount("OWNER", { check: async () => ({ kind: "existing", userId: "u-petra" }) });
+  it.each([
+    { kind: "new" as const, invitee: { kind: "new", firstName: "Petra", lastName: "Kralova" } },
+    { kind: "existing" as const, invitee: { kind: "existing", userId: "u-petra" } },
+  ])(
+    "Every address is asked for a name, and the page never says whether it has a Zerops account ($kind)",
+    async ({ kind, invitee }) => {
+      const page = mount("OWNER", {
+        check: async () => (kind === "new" ? { kind } : { kind, userId: "u-petra" }),
+      });
+      expect(page.hasField("first")).toBe(true);
+      page.type("email", "petra.kralova@example.com");
+      expect(page.emailLine()).toBe("Zerops e-mails them a link to join Acme.");
+      page.named("Petra", "Kralova");
+      await page.submit();
+      // The same words whoever the address turned out to be.
+      expect(page.emailLine()).toBe("Invitation sent to petra.kralova@example.com.");
+      expect(page.send.mock.calls[0]?.[0]).toMatchObject({ name: "Petra Kralova", invitee });
+    },
+  );
+
+  it("Once an invitation went out the page stays for the next one: who is cleared, what they get is kept", async () => {
+    const page = mount("OWNER", {}, { from: "g-snap" });
+    page.pickRole("Guest");
     page.type("email", "petra.kralova@example.com");
+    page.named("Petra", "Kralova");
     await page.submit();
-    expect(page.hasField("first")).toBe(false);
-    expect(page.send.mock.calls[0]?.[0].invitee).toEqual({ kind: "existing", userId: "u-petra" });
+    expect(page.onSent).toHaveBeenCalledWith("petra.kralova@example.com");
+    expect(page.sentLine()).toBe("Invitation sent to petra.kralova@example.com.");
+    expect([page.value("email"), page.value("first"), page.value("last")]).toEqual(["", "", ""]);
+    expect(page.cards().find(({ name }) => name === "Guest")).toBeDefined();
+    expect(page.projects().filter(({ picked }) => picked)).toEqual([
+      { name: "Snap", picked: true },
+    ]);
+    page.type("email", "jan@example.com");
+    expect(page.sentLine()).toBe("Zerops e-mails them a link to join Acme.");
+    page.named("Jan", "Novak");
+    await page.submit();
+    expect(page.send.mock.calls[1]?.[0]).toMatchObject({
+      email: "jan@example.com",
+      membership: { roleCode: "NO_ACCESS", canCreateProjects: false },
+      grants: [
+        { projectId: "snap-prod", roleCode: "READ_ONLY" },
+        { projectId: "snap-fen", roleCode: "READ_ONLY" },
+      ],
+    });
   });
 
   it("A new account's names are asked before anything is sent", async () => {
     const page = mount();
     page.type("email", "petra.kralova@example.com");
     await page.submit();
-    await page.submit();
+    expect(page.check).not.toHaveBeenCalled();
     expect(page.send).not.toHaveBeenCalled();
     expect(page.alerts()).toEqual(["Enter their first and last name."]);
   });
 
   it("An admin is offered only the roles an admin may give", async () => {
     const page = mount("ADMIN");
-    page.type("email", "petra.kralova@example.com");
-    await page.submit();
     expect(page.cards()).toEqual([
       { name: "Owner", disabled: true },
       { name: "Admin", disabled: true },
@@ -214,6 +261,7 @@ describe("inviting someone to the team", () => {
       check: async () => ({ kind: "member", clientUserId: "cu-petra", roleCode: "NO_ACCESS" }),
     });
     page.type("email", "petra.kralova@example.com");
+    page.named("Petra", "Kralova");
     await page.submit();
     expect(page.alerts()).toEqual(["petra.kralova@example.com is in Acme already."]);
     expect(page.send).not.toHaveBeenCalled();
@@ -227,6 +275,7 @@ describe("inviting someone to the team", () => {
       },
     });
     page.type("email", "petra.kralova@example.com");
+    page.named("Petra", "Kralova");
     await page.submit();
     expect(page.alerts()).toEqual(["Only an organization owner or admin can invite."]);
     expect(page.heading()).toBe("Invite someone to Acme");
@@ -239,17 +288,6 @@ describe("inviting someone to the team", () => {
     await page.submit();
     expect(page.check).not.toHaveBeenCalled();
     expect(page.alerts()).toEqual(["That isn't an e-mail address."]);
-  });
-
-  it("Leaving the e-mail checks it with Zerops: a new address asks for names before Invite is pressed", async () => {
-    const page = mount();
-    page.type("email", "petra.kralova@example.com");
-    await page.leave("email");
-    expect(page.check).toHaveBeenCalledWith("petra.kralova@example.com");
-    expect(page.hasField("first")).toBe(true);
-    await page.submit();
-    expect(page.check).toHaveBeenCalledTimes(1);
-    expect(page.alerts()).toEqual(["Enter their first and last name."]);
   });
 
   it.each([
@@ -294,7 +332,7 @@ describe("inviting someone to the team", () => {
   ])(
     "a $role's projects say what they get, Full and Read each explained where chosen",
     ({ role, list, levels, line }) => {
-      const page = mount();
+      const page = mount("OWNER", {}, { from: "g-snap" });
       page.pickRole(role);
       expect(page.projects().length > 0).toBe(list);
       expect(page.levels()).toEqual(levels);
@@ -313,9 +351,27 @@ describe("inviting someone to the team", () => {
     page.pickLevel("Read");
     expect(page.projectsLine()).toContain("Follows the work and opens the app; changes nothing.");
     page.type("email", "petra.kralova@example.com");
+    page.named("Petra", "Kralova");
     await page.submit();
     expect(page.send.mock.calls[0]?.[0].grants).toEqual([
       { projectId: "beviro-prod", roleCode: "READ_ONLY" },
     ]);
+  });
+
+  it.each([
+    {
+      role: "Developer",
+      line: "No project picked: they can start their own, and you can add them to one later.",
+    },
+    { role: "Guest", line: "No project picked: you can add them to one later." },
+  ])("With no project picked a $role is asked no access, the page saying why", ({ role, line }) => {
+    const page = mount();
+    page.pickRole(role);
+    expect(page.projects().some(({ picked }) => picked)).toBe(false);
+    expect(page.levels()).toEqual([]);
+    expect(page.noPick()).toEqual([line]);
+    expect(page.projectsLine()).not.toContain("access:");
+    page.toggleProject("Snap");
+    expect(page.noPick()).toEqual([]);
   });
 });

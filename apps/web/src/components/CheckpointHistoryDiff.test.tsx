@@ -139,3 +139,37 @@ it("does not label an older server aggregate patch as one service's changes", ()
   expect(html).toContain("did not provide a comparison for the requested service");
   expect(html).not.toContain("aggregate patch");
 });
+
+it("a service that wasn't there when the turn began shows its whole code as new, and says so", () => {
+  const reason = "This code was not here when the turn began, so all of it shows as new.";
+  query.mockReset();
+  query.mockReturnValue({
+    data: {
+      diff: "diff --git a/app/a.js b/app/a.js\nnew file mode 100644\n--- /dev/null\n+++ b/app/a.js\n@@ -0,0 +1 @@\n+one\n",
+      coverage: "complete",
+      roots: [{ rootId: "app", label: "app", pathPrefix: "app/", status: "available" }],
+    },
+    error: null,
+    isPending: false,
+    refresh: () => {},
+  });
+  const html = renderToStaticMarkup(
+    <CheckpointHistoryDiff
+      {...props}
+      history={{
+        ...history,
+        coverage: "complete",
+        roots: [
+          {
+            root: { rootId: "app", label: "app", remotePath: "/var/www", pathPrefix: "app/" },
+            before: { status: "absent", reason },
+            after: snapshot,
+          },
+        ],
+      }}
+    />,
+  );
+  expect(html).toContain("Available code changes");
+  expect(html.split(reason)).toHaveLength(2);
+  expect(query.mock.calls[0]?.[1]).toEqual({ enabled: true });
+});

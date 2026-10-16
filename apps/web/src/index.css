@@ -7636,9 +7636,29 @@ a.ov-chip-who:focus-visible {
   white-space: nowrap;
 }
 
-.tm-sent {
-  color: var(--muted-foreground);
-  font-size: 14px;
+/* An address cut in its middle: the name before the @ gives way, the domain always shows. */
+.tm-address {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: top;
+}
+
+.tm-address-local {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A domain too long for the card gives way last. */
+.tm-address-domain {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* An invitation just sent grows in once, top first; it is the only row that ever animates here. */
@@ -7673,12 +7693,14 @@ a.ov-chip-who:focus-visible {
   text-align: center;
 }
 
+/* A person's page and the invitation start where the team's own column does, so going in and
+   back never moves the content sideways. */
 .tm-page {
   display: grid;
   gap: 44px;
   width: 100%;
   max-width: 560px;
-  margin: 0 auto;
+  padding-inline: 12px;
 }
 
 .tm-section {
@@ -7742,12 +7764,6 @@ a.ov-chip-who:focus-visible {
 
 .tm-actions > [role="alert"] {
   margin-inline-end: auto;
-}
-
-.tm-label {
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 18px;
 }
 
 .tm-role {
@@ -8193,6 +8209,11 @@ label.tm-advanced-row:not([data-disabled]) {
   height: 8px;
   border-radius: 999px;
   background: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
+}
+
+/* Running wears its services' green: a grey beside green service dots read as stopped. */
+.ov-dot[data-dot="running"] {
+  background: var(--zerops-status-ok);
 }
 
 .ov-dot[data-dot="failed"] {
@@ -11291,8 +11312,10 @@ a.message-file:focus-visible {
   width: min(520px, calc(100% - 24px));
   max-height: none;
 }
+/* Held while what it shows is read (`useReviewHold`): it slides in once, whole. */
 .rv[data-starting-style],
-.rv[data-ending-style] {
+.rv[data-ending-style],
+.rv[data-holding] {
   opacity: 0;
   scale: 0.99;
   translate: 24px 0;
@@ -11304,7 +11327,8 @@ a.message-file:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .rv,
   .rv[data-starting-style],
-  .rv[data-ending-style] {
+  .rv[data-ending-style],
+  .rv[data-holding] {
     scale: none;
     translate: none;
   }
@@ -12326,8 +12350,8 @@ button.rv-relrow:hover .rv-relrow-go {
 .rv-where b {
   font-weight: 500;
 }
-.rv-where span {
-  font-family: var(--font-mono);
+/* Where each service stands, in the panel's words: no code type, and its deploy's door a link. */
+.rv-where > span {
   font-size: 13px;
   color: var(--muted-foreground);
 }

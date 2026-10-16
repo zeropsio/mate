@@ -260,6 +260,7 @@ import {
   useZeropsChangeLandedEvents,
   useZeropsMateAppDetailHold,
   useZeropsConversationLandings,
+  useZeropsProductionLive,
 } from "../zerops/useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "../zerops/vaultTurnNotes";
 import { vaultChipsOnlyText } from "../zerops/vaultTurnNotes.logic";
@@ -268,7 +269,9 @@ import {
   agentNotesFor,
   agentTurnNotes,
   agentNeedsSignIn,
+  productionTurnNotes,
 } from "@t3tools/client-runtime/zerops";
+import { MATE_READ_ACCESS_LINE } from "@t3tools/client-runtime/zerops/mateAccess";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   nextTimelineFollow,
@@ -1019,18 +1022,20 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     return worktreePath;
   }, [launchContext, worktreePath]);
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden drawer reads none.
+  // Terminals already open stay on screen while the checkouts are read: they keep their folders.
   const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
+  const hasOpenTerminals = drawerTerminalSessions.length > 0;
   const cwd = useMemo(
     () =>
       project
-        ? terminalStartCwd({
+        ? (terminalStartCwd({
             launchCwd: launchContext?.cwd,
             workspaceRoot: project.workspaceRoot,
             worktreePath: effectiveWorktreePath,
             repositories,
-          })
+          }) ?? (hasOpenTerminals ? project.workspaceRoot : null))
         : (launchContext?.cwd ?? null),
-    [effectiveWorktreePath, launchContext?.cwd, project, repositories],
+    [effectiveWorktreePath, hasOpenTerminals, launchContext?.cwd, project, repositories],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -1339,15 +1344,15 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
           .summary ?? null;
       const terminalWorktreePath =
         launchContext?.worktreePath ?? summary?.worktreePath ?? threadWorktreePath;
-      const terminalCwd =
-        launchContext?.cwd ??
-        summary?.cwd ??
-        (project
-          ? projectScriptCwd({
-              project: { cwd: project.workspaceRoot },
-              worktreePath: terminalWorktreePath,
-            })
-          : null);
+      // A terminal not opened yet starts where a new one does: in the Mate's code (`terminalStartCwd`).
+      const terminalCwd = project
+        ? terminalStartCwd({
+            launchCwd: launchContext?.cwd ?? summary?.cwd,
+            workspaceRoot: project.workspaceRoot,
+            worktreePath: terminalWorktreePath,
+            repositories,
+          })
+        : null;
       if (!terminalCwd || !project) continue;
       locations.set(terminalId, {
         cwd: terminalCwd,
@@ -1364,6 +1369,7 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
     launchContext?.cwd,
     launchContext?.worktreePath,
     project,
+    repositories,
     surface.terminalIds,
     threadWorktreePath,
   ]);
@@ -3084,6 +3090,8 @@ function ConversationView(props: ChatViewProps) {
   // agent, so it does not come from the activity stream.
   useZeropsMateAppDetailHold(activeThreadEnvironmentId);
   const changeLandedEvents = useZeropsChangeLandedEvents(activeThreadEnvironmentId);
+  // Production running a release is news to the Mate too: where the app answers now.
+  const productionLive = useZeropsProductionLive(activeThreadEnvironmentId);
   // When the agent last spoke — the line between what it knows and what has
   // happened since. Without one nothing is said rather than everything.
   const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
@@ -3092,11 +3100,14 @@ function ConversationView(props: ChatViewProps) {
   // Fitted to the bound a send takes: a vault change a line, the rest counted and told later.
   const turnContext = useMemo(() => {
     const context = agentContext(
-      agentTurnNotes(changeLandedEvents, agentSpokeAt),
+      [
+        ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
+        ...productionTurnNotes(productionLive, agentSpokeAt),
+      ],
       vaultTurn.changes,
     );
     return { notes: context.lines, vaultChanges: context.told };
-  }, [agentSpokeAt, changeLandedEvents, vaultTurn.changes]);
+  }, [agentSpokeAt, changeLandedEvents, productionLive, vaultTurn.changes]);
   const agentNotes = turnContext.notes;
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(
@@ -3326,7 +3337,7 @@ function ConversationView(props: ChatViewProps) {
         })
       : admission.readOnly
         ? {
-            notice: admission.sendBlockReason ?? "Your Zerops access to this Mate is read-only.",
+            notice: admission.sendBlockReason ?? MATE_READ_ACCESS_LINE,
             waitingLabel: "Waiting for a project operator",
           }
         : null;
@@ -8203,7 +8214,9 @@ function ConversationView(props: ChatViewProps) {
               return "url" in activeRightPanelSurface ? null : (
                 <ZeropsBrowserSurface
                   mateName={admissionMate.kind === "mate" ? admissionMate.mate.name : undefined}
+                  onOpenImage={onExpandTimelineImage}
                   threadRef={zeropsChrome.threadRef}
+                  zeropsEntries={zeropsThreadModel.entries}
                 />
               );
             case "mac":
@@ -8752,7 +8765,8 @@ function ConversationView(props: ChatViewProps) {
                                   ? "Sending feedback"
                                   : threadDetailLoading
                                     ? "Messages loading"
-                                    : cloneSendBlockReason(cloneShown)
+                                    : // Out of reach, the send says why in the Mate's own words.
+                                      (mateAwayWords ?? cloneSendBlockReason(cloneShown))
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                               isPreparingWorktree={isPreparingWorktree}

@@ -1,16 +1,17 @@
 /**
- * Inviting someone to the team, on one page: their e-mail, checked with Zerops as the field is
- * left (or Invite pressed); their first and last name where the address has no Zerops account yet
- * (Zerops makes one with the invitation); their role, each card saying what it can do; the
- * projects they get — the one the invitation was opened from, or the organization's only one,
- * already picked — at Full or Read, each explained once here; then *Invite*. A press waits for
- * Zerops's answer and says a refusal beside it; once the invitation landed the team is shown, the
- * name typed kept for their row until they join and the team told the invitation went out.
+ * Inviting someone to the team, on one page: their e-mail and name — asked of every address alike,
+ * so the page never tells whether an address has a Zerops account (Zerops makes one, with the name,
+ * where it has none); their role, each card saying what it can do; the projects they get — the one
+ * the invitation was opened from, or the organization's only one, already picked — at Full or Read,
+ * asked only once a project is picked; then *Invite*. A press asks Zerops who the address is and
+ * sends, saying a refusal beside it; once the invitation landed the page says so under the address
+ * and stays for the next one — the address and name cleared, the role and projects kept — the name
+ * typed kept for their row until they join. *Done* goes back to the team.
  */
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useRouter, useSearch } from "@tanstack/react-router";
 import type { Invitee, InviteeCheck } from "@t3tools/client-runtime/data";
 import { presetMembership, type OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { rememberInvitedName } from "~/zerops/invitationMemory";
 import { Button } from "../ui/button";
@@ -29,6 +30,7 @@ import {
   invitePreselect,
   inviteReachLine,
   nameProblem,
+  noPickLine,
   teamInviteStep,
   type InviteLevel,
   type InviteProject,
@@ -40,6 +42,8 @@ export interface TeamInviteActions {
   readonly check: (email: string) => Promise<InviteeCheck>;
   readonly send: (input: {
     readonly email: string;
+    /** The name typed, as the team shows them until they join. */
+    readonly name: string;
     readonly invitee: Invitee;
     readonly membership: OrgMembership;
     readonly grants: ReturnType<typeof inviteGrants>;
@@ -48,12 +52,6 @@ export interface TeamInviteActions {
 
 const messageOf = (cause: unknown) =>
   cause instanceof Error ? cause.message : "Zerops didn't take the invitation.";
-
-/** Zerops's answer for the address it was asked about. */
-interface Checked {
-  readonly email: string;
-  readonly answer: InviteeCheck;
-}
 
 const LEVEL_WORDS: Readonly<Record<InviteLevel, string>> = { full: "Full", read: "Read" };
 
@@ -68,7 +66,6 @@ export function TeamInviteView({
   onSent,
   initialEmail = "",
   initialMembership,
-  initialAnswer,
 }: {
   readonly organizationName: string;
   readonly viewerRole: string | undefined;
@@ -81,15 +78,10 @@ export function TeamInviteView({
   /** Where the invitation starts; a harness shows it filled. */
   readonly initialEmail?: string;
   readonly initialMembership?: OrgMembership;
-  /** Zerops's answer for `initialEmail`, as a harness shows it checked. */
-  readonly initialAnswer?: InviteeCheck | undefined;
 }) {
   const id = useId();
+  const emailField = useRef<HTMLInputElement | null>(null);
   const [email, setEmail] = useState(initialEmail);
-  const [checked, setChecked] = useState<Checked | null>(
-    initialAnswer === undefined ? null : { email: initialEmail.trim(), answer: initialAnswer },
-  );
-  const [checking, setChecking] = useState(false);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [membership, setMembership] = useState<OrgMembership>(
@@ -104,75 +96,57 @@ export function TeamInviteView({
   const [addressTrouble, setAddressTrouble] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  // The address the last invitation went to, said beside Invite until the next one is typed.
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
-  const address = email.trim();
-  const answer = checked?.email === address ? checked.answer : null;
-  const isNew = answer?.kind === "new";
   const offered = inviteLevels(membership);
   const level =
     chosenLevel !== null && offered.levels.includes(chosenLevel) ? chosenLevel : offered.level;
-  const pending = checking || sending;
-
-  /** Asks Zerops who the address is; the answer, or `null` where it stops the invitation. */
-  const check = async (): Promise<InviteeCheck | null> => {
-    if (answer !== null) return answer;
-    setChecking(true);
-    try {
-      const next = await actions.check(address);
-      setChecked({ email: address, answer: next });
-      const step = teamInviteStep(address, next, organizationName);
-      if ("problem" in step) {
-        setAddressTrouble(step.problem);
-        return null;
-      }
-      return next;
-    } catch (cause) {
-      setAddressTrouble(messageOf(cause));
-      return null;
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  const leaveEmail = () => {
-    if (pending || answer !== null || addressProblem(email) !== null) return;
-    setAddressTrouble(null);
-    void check();
-  };
 
   const submit = async () => {
-    if (pending) return;
+    if (sending) return;
     setTrouble(null);
+    setSentTo(null);
     const wrongAddress = addressProblem(email);
     if (wrongAddress !== null) {
       setAddressTrouble(wrongAddress);
       return;
     }
-    const known = await check();
-    if (known === null || known.kind === "member") return;
-    if (known.kind === "new") {
-      // Names are asked once the address turns out new: a press before they were seen says nothing.
-      if (answer === null) return;
-      const missing = nameProblem(first, last);
-      if (missing !== null) {
-        setSubmitted(true);
-        setTrouble(missing);
-        return;
-      }
+    const missing = nameProblem(first, last);
+    if (missing !== null) {
+      setSubmitted(true);
+      setTrouble(missing);
+      return;
     }
-    const invitee: Invitee =
-      known.kind === "new"
-        ? { kind: "new", firstName: first.trim(), lastName: last.trim() }
-        : { kind: "existing", userId: known.userId };
+    const address = email.trim();
     setSending(true);
     try {
+      // Who the address is decides only how Zerops is asked; the page says nothing of it.
+      const known = await actions.check(address);
+      const step = teamInviteStep(address, known, organizationName);
+      if ("problem" in step) {
+        setAddressTrouble(step.problem);
+        return;
+      }
+      const invitee: Invitee =
+        known.kind === "existing"
+          ? { kind: "existing", userId: known.userId }
+          : { kind: "new", firstName: first.trim(), lastName: last.trim() };
       await actions.send({
         email: address,
+        name: `${first.trim()} ${last.trim()}`,
         invitee,
         membership,
         grants: level === null ? [] : inviteGrants({ projects, picked, level }),
       });
       onSent(address);
+      // The next invitation starts here: who is cleared, what they get is kept.
+      setEmail("");
+      setFirst("");
+      setLast("");
+      setSubmitted(false);
+      setSentTo(address);
+      emailField.current?.focus();
     } catch (cause) {
       setTrouble(messageOf(cause));
     } finally {
@@ -180,16 +154,7 @@ export function TeamInviteView({
     }
   };
 
-  // The line under the address: what goes wrong, else who Zerops says it is.
-  const emailTrouble = addressTrouble;
-  const emailLine =
-    answer?.kind === "new"
-      ? "No Zerops account uses this address yet: Zerops makes one with the invitation."
-      : answer?.kind === "existing"
-        ? "They have a Zerops account: they join once they accept."
-        : checking
-          ? "Checking the address with Zerops…"
-          : `Zerops e-mails them a link to join ${organizationName}${organizationName.endsWith(".") ? "" : "."}`;
+  const pickedNone = picked.length === 0;
 
   return (
     <form
@@ -209,55 +174,62 @@ export function TeamInviteView({
         <div className="tm-field">
           <Label htmlFor={`${id}-email`}>E-mail</Label>
           <Input
-            aria-invalid={emailTrouble !== null ? true : undefined}
+            aria-invalid={addressTrouble !== null ? true : undefined}
             autoComplete="off"
             autoFocus
             id={`${id}-email`}
-            onBlur={leaveEmail}
             onChange={(event) => {
               setEmail(event.target.value);
               setAddressTrouble(null);
               setTrouble(null);
-              setSubmitted(false);
+              setSentTo(null);
             }}
             readOnly={sending}
+            ref={emailField}
             type="email"
             value={email}
           />
-          {emailTrouble === null ? (
+          {addressTrouble === null ? (
+            // Where the eyes are once the field takes the focus back: the invitation that went out.
             <span className="tm-block-desc" role="status">
-              {emailLine}
+              {sentTo === null
+                ? `Zerops e-mails them a link to join ${organizationName}${organizationName.endsWith(".") ? "" : "."}`
+                : `Invitation sent to ${sentTo}.`}
             </span>
           ) : (
             <p className="tm-trouble" role="alert">
-              {emailTrouble}
+              {addressTrouble}
             </p>
           )}
         </div>
-        {isNew ? (
-          <div className="tm-names">
-            <div className="tm-field">
-              <Label htmlFor={`${id}-first`}>First name</Label>
-              <Input
-                aria-invalid={submitted && first.trim() === "" ? true : undefined}
-                id={`${id}-first`}
-                onChange={(event) => setFirst(event.target.value)}
-                readOnly={sending}
-                value={first}
-              />
-            </div>
-            <div className="tm-field">
-              <Label htmlFor={`${id}-last`}>Last name</Label>
-              <Input
-                aria-invalid={submitted && last.trim() === "" ? true : undefined}
-                id={`${id}-last`}
-                onChange={(event) => setLast(event.target.value)}
-                readOnly={sending}
-                value={last}
-              />
-            </div>
+        <div className="tm-names">
+          <div className="tm-field">
+            <Label htmlFor={`${id}-first`}>First name</Label>
+            <Input
+              aria-invalid={submitted && first.trim() === "" ? true : undefined}
+              id={`${id}-first`}
+              onChange={(event) => {
+                setFirst(event.target.value);
+                setSentTo(null);
+              }}
+              readOnly={sending}
+              value={first}
+            />
           </div>
-        ) : null}
+          <div className="tm-field">
+            <Label htmlFor={`${id}-last`}>Last name</Label>
+            <Input
+              aria-invalid={submitted && last.trim() === "" ? true : undefined}
+              id={`${id}-last`}
+              onChange={(event) => {
+                setLast(event.target.value);
+                setSentTo(null);
+              }}
+              readOnly={sending}
+              value={last}
+            />
+          </div>
+        </div>
       </section>
       <section aria-label="Role" className="tm-section">
         <TeamRoleEditor
@@ -291,11 +263,15 @@ export function TeamInviteView({
                 </li>
               ))}
             </ul>
-            {offered.levels.length > 1 ? (
+            {pickedNone ? (
+              <span className="tm-block-desc" data-part="no-pick">
+                {noPickLine(membership)}
+              </span>
+            ) : offered.levels.length > 1 ? (
               <div className="tm-role">
-                <span className="tm-label" id={`${id}-level`}>
+                <h2 className="tm-block-title" id={`${id}-level`}>
                   Access
-                </span>
+                </h2>
                 <div aria-labelledby={`${id}-level`} className="tm-role-cards" role="radiogroup">
                   {offered.levels.map((option) => (
                     <button
@@ -324,8 +300,13 @@ export function TeamInviteView({
       </section>
       <div className="tm-actions">
         {trouble === null ? null : <p role="alert">{trouble}</p>}
-        <Button aria-busy={pending || undefined} disabled={pending} type="submit">
-          {sending ? "Inviting…" : checking ? "Checking…" : "Invite"}
+        {sentTo === null ? null : (
+          <Button render={<Link to="/settings/team" />} variant="secondary">
+            Done
+          </Button>
+        )}
+        <Button aria-busy={sending || undefined} disabled={sending} type="submit">
+          {sending ? "Inviting…" : "Invite"}
         </Button>
       </div>
     </form>
@@ -334,33 +315,33 @@ export function TeamInviteView({
 
 /** Settings → Team → Invite; `?project=<group id>` picks the project it was opened from. */
 export function TeamInvitePage() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const { project: from } = useSearch({ from: "/settings/team_/invite" });
   const team = useTeam();
   const { clientId, write, check } = team;
+  // The team is where this page leads back to: its code is fetched ahead, so it paints at once.
+  useEffect(() => {
+    void router.preloadRoute({ to: "/settings/team" }).catch(() => undefined);
+  }, [router]);
   const actions: TeamInviteActions = {
     check,
-    send: async ({ email, invitee, membership, grants }) => {
+    send: async ({ email, name, invitee, membership, grants }) => {
       if (clientId === null) throw new Error("Zerops isn't reachable from here.");
       await write({ kind: "invite-member", orgId: clientId, email, invitee, membership, grants });
       // Zerops lists the invitation by its address until they join: the typed name stands in.
-      if (invitee.kind === "new")
-        rememberInvitedName(clientId, email, `${invitee.firstName} ${invitee.lastName}`);
+      rememberInvitedName(clientId, email, name);
     },
   };
   const mayInvite = team.view.kind === "people" && team.view.invite.length > 0;
   return (
-    <SettingsPageContainer>
+    <SettingsPageContainer width="wide">
       {team.view.kind === "people" && !mayInvite ? (
         <p className="tm-empty">Only an organization owner or admin can invite.</p>
       ) : (
         <TeamInviteView
           actions={actions}
           from={from}
-          onSent={(address) => {
-            noteInvitationSent(address);
-            void navigate({ to: "/settings/team" });
-          }}
+          onSent={noteInvitationSent}
           organizationName={team.organizationName}
           projects={team.invitable}
           viewerRole={team.viewerRole}

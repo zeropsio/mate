@@ -343,6 +343,36 @@ export function agentTurnNotes(
   });
 }
 
+/** The release production runs, as a Mate is told of it. */
+export interface ProductionLive {
+  readonly tag: string;
+  /** When HQ made it. */
+  readonly taggedAt: string;
+  /** Where production answers, once known. */
+  readonly address: string | undefined;
+}
+
+/**
+ * What to tell a Mate of its application's production, in the turn that wakes it: a release that
+ * went live there since it last spoke, and where the app answers now. Its own address previews the
+ * work with test data; once production runs a release, that is the app the person uses, and a
+ * Mate that was never told keeps sending them to its preview.
+ *
+ * Pure: no network, no clock, no platform globals (rule R1).
+ */
+export function productionTurnNotes(
+  live: ProductionLive | undefined,
+  since: string | undefined,
+): ReadonlyArray<string> {
+  if (live === undefined || since === undefined) return [];
+  if (!(Date.parse(live.taggedAt) > Date.parse(since))) return [];
+  return [
+    live.address === undefined
+      ? `${live.tag} is live on production: that is the app now. Your own address is only their preview.`
+      : `${live.tag} is live on production at ${live.address}: that is the app now. Send the person there for anything real; your own address is only their preview.`,
+  ];
+}
+
 /**
  * The notes a message carries: none on a slash command, which the agent runs
  * only when it stands first. A Mate keeps them off a command itself; an older

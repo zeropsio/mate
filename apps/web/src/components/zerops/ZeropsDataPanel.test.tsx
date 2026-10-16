@@ -396,6 +396,51 @@ describe("ZeropsDataPanel", () => {
     });
   });
 
+  // The onboarding run, 2026-10-16: a line, then the row that replaced it, then its words.
+  it("while it opens, draws the project's databases in their rows' place, never a line the rows replace", () => {
+    feedState.session = undefined;
+    feedState.topology = {
+      view: {
+        services: [
+          {
+            hostname: "app",
+            group: "runtime",
+            status: "ACTIVE",
+            transient: false,
+            type: "nodejs@24",
+          },
+          {
+            hostname: "db",
+            group: "data",
+            status: "ACTIVE",
+            transient: false,
+            type: "postgresql@18",
+            typeName: "PostgreSQL",
+          },
+        ],
+      },
+    };
+    commandSpy.mockImplementation(() => new Promise(() => {}));
+    const tree = render();
+    expect(findByAttribute(tree, "data-zerops-data-starting")).toBeNull();
+    const rows: string[] = [];
+    visitElements(tree, (element) => {
+      const hostname = element.props["data-zerops-data-service"] as string | undefined;
+      if (hostname !== undefined) rows.push(hostname);
+      return false;
+    });
+    expect(rows).toEqual(["db"]);
+    const row = findByAttribute(tree, "data-zerops-data-service");
+    expect(textOf(row)).toContain("PostgreSQL 18");
+    // Not browsable before the console answers.
+    expect(row?.props.disabled).toBe(true);
+
+    // Opened, its listing still out: the rows hold their place.
+    feedState.session = { status: "ready" };
+    const opened = render();
+    expect(textOf(findByAttribute(opened, "data-zerops-data-service"))).toContain("PostgreSQL 18");
+  });
+
   it("does not re-issue the services request when idle turns into ready", async () => {
     feedState.session = { status: "idle" };
     commandSpy.mockImplementation(() => Promise.resolve(AsyncResult.success(servicesResponse())));

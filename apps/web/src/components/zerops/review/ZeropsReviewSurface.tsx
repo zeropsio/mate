@@ -337,11 +337,14 @@ export function ReviewSection({
   title,
   aside,
   fold,
+  titleShown = true,
   children,
 }: {
   readonly title: string;
   readonly aside?: ReactNode;
   readonly fold?: ReviewFoldState | undefined;
+  /** Whether its label is seen; one what it holds already says is kept for screen readers only. */
+  readonly titleShown?: boolean | undefined;
   readonly children: ReactNode;
 }) {
   if (fold !== undefined) {
@@ -367,10 +370,14 @@ export function ReviewSection({
   }
   return (
     <section>
-      <h3 className="rv-sec-h">
-        {title}
-        {aside === undefined ? null : <span>{aside}</span>}
-      </h3>
+      {titleShown || aside !== undefined ? (
+        <h3 className={titleShown ? "rv-sec-h" : "rv-sec-h justify-end"}>
+          {titleShown ? title : <span className="sr-only">{title}</span>}
+          {aside === undefined ? null : <span>{aside}</span>}
+        </h3>
+      ) : (
+        <h3 className="sr-only">{title}</h3>
+      )}
       {children}
     </section>
   );

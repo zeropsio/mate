@@ -14,14 +14,24 @@ function formatPercentage(value: number | null): string | null {
   return `${Math.round(value)}%`;
 }
 
+/** What the meter measures, in the words beside its pie: "Context 42%", else what it holds. */
+function meterLabel(usage: ContextWindowSnapshot): string {
+  const used = usage.maxTokens === null ? null : formatPercentage(usage.usedPercentage);
+  return `Context ${used ?? formatContextWindowTokens(usage.usedTokens)}`;
+}
+
 export function ContextWindowMeter(props: {
   usage: ContextWindowSnapshot;
+  /** A narrow composer: the pie alone, its words in its popover. */
+  compact?: boolean | undefined;
   modelDisplayName?: string | null;
   onCompact?: (() => void) | undefined;
   compactDisabled?: boolean | undefined;
   compactDisabledReason?: string | null | undefined;
 }) {
   const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
+  // Beside Send a pie alone read as progress or a warning (run 2): it says what it measures.
+  const label = props.compact === true ? null : meterLabel(usage);
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   // A pie, never a ring: a ring's growing arc reads as a spinner beside Send.
@@ -45,15 +55,22 @@ export function ContextWindowMeter(props: {
         closeDelay={onCompact ? 150 : 0}
         render={
           <Button
-            size="icon-sm"
+            size={label === null ? "icon-sm" : "sm"}
             variant="ghost"
-            className="size-7"
+            className={label === null ? "size-7" : undefined}
             aria-label={
               usage.maxTokens !== null && usedPercentage
                 ? `Context window ${usedPercentage} used`
                 : `Context window ${formatContextWindowTokens(usage.usedTokens)} tokens used`
             }
           >
+            {/* Before the pie: as its number grows it reaches into the room on its left, so the
+                pie and Send never move. */}
+            {label === null ? null : (
+              <span aria-hidden="true" className="text-muted-foreground text-xs tabular-nums">
+                {label}
+              </span>
+            )}
             <span className="relative flex size-5 items-center justify-center">
               <svg
                 viewBox="0 0 24 24"

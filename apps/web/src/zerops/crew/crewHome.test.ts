@@ -55,6 +55,27 @@ describe("the crewmate draft", () => {
     expect(crewmateSpecOf(crewmateDraftOf(backend), false, backend)).toEqual(backend);
   });
 
+  // Run 2: the roster said a crewmate's job in one sentence, its editor in two — the second its
+  // standing instruction.
+  it("holds the job as the roster says it, and what the crewmate is told past it as how it works", () => {
+    const told = member({
+      handle: "orders",
+      job: "Builds the order pages.\nBuild what your task asks. Report when the check passes.\n",
+    });
+    const draft = crewmateDraftOf(told);
+    expect(draft.job).toBe("Builds the order pages.");
+    expect(draft.howItWorks).toBe("Build what your task asks. Report when the check passes.\n");
+    expect(crewmateSpecOf(draft, false, told).job).toBe(told.job);
+    expect(
+      crewmateSpecOf({ ...draft, job: "Builds the order and invoice pages." }, false, told).job,
+    ).toBe(
+      "Builds the order and invoice pages.\nBuild what your task asks. Report when the check passes.\n",
+    );
+    expect(
+      crewmateSpecOf({ ...emptyCrewmateDraft(false), job: "Builds tea." }, false, undefined).job,
+    ).toBe("Builds tea.\n");
+  });
+
   it("drops a read-only crewmate's copy: no service, commands, switches or env", () => {
     const draft = { ...crewmateDraftOf(backend), readOnly: true };
     expect(crewmateSpecOf(draft, false, backend)).toEqual({

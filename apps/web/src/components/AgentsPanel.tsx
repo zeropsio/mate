@@ -728,6 +728,7 @@ export function AgentsPanel({
   const asked = focus !== null && focus.at > opened.at ? focus : null;
   const openId = asked !== null ? asked.helperId : opened.id;
   const scrollRef = useRef<HTMLDivElement>(null);
+  const mate = useKnownMate(environmentId ?? ("" as EnvironmentId));
   // A helper asked for from the run card comes into view.
   useEffect(() => {
     if (asked === null) return;
@@ -755,8 +756,8 @@ export function AgentsPanel({
         <Bot aria-hidden className="size-6 text-muted-foreground/60" />
         <p className="text-sm font-medium">No helpers yet</p>
         <p className="max-w-56 text-xs text-muted-foreground">
-          When the Mate starts helpers, each shows here with what it does now, and opens onto its
-          own work.
+          When {mate?.name ?? "this Mate"} starts helpers, each shows here with what it does now,
+          and opens onto its own work.
         </p>
       </div>
     );

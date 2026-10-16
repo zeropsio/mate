@@ -7,7 +7,7 @@
  * (`crewHandleFor`) and stays once it stands. The two restart switches keep
  * their values in the crew home and leave the view.
  *
- * One Save: it picks up its new job with its next message, in a fresh
+ * One Save: a running crewmate picks up its new job with its next message, in a fresh
  * conversation (`jobSave` `nextTurn`); a changed login starts one now
  * (`fresh`). A crewmate added to a standing crew joins it at once (`apply`);
  * before the crew stands a save only writes its files. *Remove from the
@@ -52,6 +52,7 @@ import { useCrewHome, type CrewHomeRead } from "../../../zerops/crew/useCrewHome
 import { MateFace } from "../primitives";
 import {
   crewEffortOptions,
+  crewJobFootLine,
   crewLoginLabel,
   crewLoginNote,
   crewLoginOptions,
@@ -324,6 +325,15 @@ function JobForm({
               </span>
             </CrewViewField>
           )}
+          {/* What it is told past its job: one place for the job, the row's words (run 2). */}
+          <CrewViewField label={CREW_JOB_WORDS.howItWorks} line={CREW_JOB_WORDS.howItWorksLine}>
+            <CrewTextArea
+              aria-label={CREW_JOB_WORDS.howItWorks}
+              lines={4}
+              onChange={(event) => set("howItWorks", event.target.value)}
+              value={draft.howItWorks}
+            />
+          </CrewViewField>
           <CrewViewField label={CREW_JOB_WORDS.runsOn} line={loginNote}>
             <div className="flex flex-col gap-2">
               <Select
@@ -466,9 +476,7 @@ function JobForm({
         <span className="text-line leading-4.5 text-muted-foreground">
           {lock !== null
             ? crewLockWords(lock.ownership)
-            : loginChanged
-              ? CREW_JOB_WORDS.freshLine
-              : CREW_JOB_WORDS.saveLine}
+            : crewJobFootLine({ applied: isApplied, crewApplied, loginChanged })}
         </span>
         <span className="flex items-center gap-1.5">
           <CrewPress

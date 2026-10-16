@@ -26,6 +26,7 @@ import {
   foldWords,
   mateChangeForReview,
   panelAddresses,
+  historyOffered,
   placeLines,
   putLiveHasChange,
   readyLine,
@@ -328,8 +329,8 @@ describe("a card's places", () => {
       birth: { ended: false },
       words: "Turning its address on…",
     },
-    { case: "once HQ has brought it up", birth: { ended: true }, words: "Running · main" },
-    { case: "where HQ did not bring it up", birth: undefined, words: "Running · main" },
+    { case: "once HQ has brought it up", birth: { ended: true }, words: "Running" },
+    { case: "where HQ did not bring it up", birth: undefined, words: "Running" },
   ])("says a stage runs only with its address, $case", ({ birth, words: said }) => {
     const lines = placeLines({
       flow: {
@@ -338,6 +339,7 @@ describe("a card's places", () => {
           stop({
             projectId: "stage",
             name: "stage",
+            source: "main",
             addresses: [],
             ...(birth === undefined ? {} : { birth }),
           }),
@@ -809,6 +811,50 @@ describe("a card's header", () => {
   });
 });
 
+describe("a stage's line on a card", () => {
+  // The run's stage read "Running · main": a branch is no version a person knows, nor is a commit.
+  it.each([
+    { case: "the branch it follows", version: "main", said: "Running" },
+    { case: "a commit", version: "f1b66ee", said: "Running" },
+    { case: "a release's tag", version: "v2.4.0", said: "Running · v2.4.0" },
+  ])("names what a stage runs only by a release's tag, never by $case", ({ version, said }) => {
+    const lines = placeLines({
+      flow: {
+        production: { kind: "absent" },
+        stages: [
+          stop({
+            projectId: "stage",
+            name: "stage",
+            source: "main",
+            version: {
+              name: undefined,
+              branch: "main",
+              commit: "f1b66ee",
+              sha: "f1b66ee0",
+              taggedBy: undefined,
+              label: "f1b66ee",
+            },
+          }),
+        ],
+      },
+      stageChips: new Map([["stage", chip({ label: "stage", version })]]),
+      nowMs: NOW,
+    });
+    expect(lines[0]?.words.join(" · ")).toBe(said);
+  });
+});
+
+describe("production's actions", () => {
+  // The run: History came 6 s into the first release and pushed the domain door 72 px aside.
+  it.each([
+    { case: "nothing released yet", releases: 0, runs: false, offered: false },
+    { case: "its first release on its way", releases: 1, runs: false, offered: false },
+    { case: "a release it runs", releases: 1, runs: true, offered: true },
+  ])("offers production's history only once it runs a release: $case", (input) => {
+    expect(historyOffered(input)).toBe(input.offered);
+  });
+});
+
 describe("production's panel", () => {
   const release = (tag: string, taggedAt: string, standing?: "live", rollBack = true) => ({
     tag,
@@ -1214,7 +1260,7 @@ describe("a place's addresses on its panel", () => {
       doors: [],
     },
   ])("a place is headed by the address it answers at: $case", ({ place, head, doors }) => {
-    const said = panelAddresses({ kind: "production", listed, place });
+    const said = panelAddresses({ kind: "production", listed, place, runs: true });
     expect(said.head?.host).toBe(head);
     expect(said.doors).toEqual(doors);
   });
@@ -1233,6 +1279,7 @@ describe("a place's addresses on its panel", () => {
       const said = panelAddresses({
         kind: "stage",
         listed,
+        runs: true,
         place: place(
           [domain("shop.acme.com", "app", face), domain("acme.com", "app")],
           [subdomain("app")],
@@ -1243,7 +1290,12 @@ describe("a place's addresses on its panel", () => {
   );
 
   it("a place with only its default address and nothing pending says nothing more", () => {
-    const said = panelAddresses({ kind: "stage", listed, place: place([], [subdomain("app")]) });
+    const said = panelAddresses({
+      kind: "stage",
+      listed,
+      place: place([], [subdomain("app")]),
+      runs: true,
+    });
     expect(said.pending).toEqual([]);
     expect(said.offerDomain).toBe(false);
   });
@@ -1283,7 +1335,39 @@ describe("a place's addresses on its panel", () => {
   ] as const)(
     "offers a domain of its own as the globe's popover does: $case",
     ({ kind, place, offered }) => {
-      expect(panelAddresses({ kind, listed, place }).offerDomain).toBe(offered);
+      expect(panelAddresses({ kind, listed, place, runs: true }).offerDomain).toBe(offered);
+    },
+  );
+
+  // The run: production offered "Put it on your domain" while it said "Not released yet", and
+  // its door read "Manage addresses" a beat before it became "Put it on your domain".
+  it.each([
+    { case: "it does", place: place([], [subdomain("app")]), runs: true, door: true },
+    {
+      case: "nothing runs there yet",
+      place: place([], [subdomain("app")]),
+      runs: false,
+      door: false,
+    },
+    {
+      case: "it has no address",
+      place: place([], [subdomain("app", false)]),
+      runs: true,
+      door: false,
+    },
+    {
+      case: "its addresses are still read",
+      place: place([], [], "reading"),
+      runs: true,
+      door: false,
+    },
+    { case: "outside an account", place: undefined, runs: true, door: false },
+  ])(
+    "opens a door into the addresses sheet only once the place runs something at an address: $case",
+    ({ place, runs, door }) => {
+      const said = panelAddresses({ kind: "production", listed, place, runs });
+      expect(said.door).toBe(door);
+      if (!door) expect(said.offerDomain).toBe(false);
     },
   );
 });

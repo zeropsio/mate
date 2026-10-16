@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { ConversationId, EffectId, RunId, SessionId } from "@t3tools/contracts";
 
 import { initialState } from "./domain/state.ts";
-import { engineStateBlockers } from "./updateIdle.ts";
+import { engineStateBlockers, lastRunEndedAt } from "./updateIdle.ts";
 
 describe("auto-update idle proof", () => {
   it.each([
@@ -78,5 +78,20 @@ describe("auto-update idle proof", () => {
 
   it("a conversation with no accepted work is idle", () => {
     expect(engineStateBlockers(initialState(ConversationId.make("idle")))).toEqual([]);
+  });
+});
+
+describe("when a Mate's last turn ended", () => {
+  const run = (endedAt: number | null) => ({ endedAt }) as never;
+  it.each([
+    { name: "no run yet", runs: {}, ended: undefined },
+    { name: "a run still going", runs: { a: run(null) }, ended: undefined },
+    {
+      name: "the latest of its ended runs",
+      runs: { a: run(5), b: run(9), c: run(null) },
+      ended: 9,
+    },
+  ])("$name: $ended", ({ runs, ended }) => {
+    expect(lastRunEndedAt({ runs })).toBe(ended);
   });
 });

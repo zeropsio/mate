@@ -19,6 +19,8 @@ import {
   faceName,
   hasCreationErrors,
   newMateDoor,
+  newMateDoorTitle,
+  type NewMateDoorAction,
   newMateDoorMates,
   newMateFace,
   newMateGate,
@@ -721,6 +723,37 @@ function change(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
     ...overrides,
   };
 }
+
+// Run 2: a refused dialog was titled "Add a project Mate to …" over "Works on this project only.",
+// and only then said it could not add one.
+describe("newMateDoorTitle — what the Mate's dialog is titled", () => {
+  const closed = (action: NewMateDoorAction | undefined) =>
+    ({ kind: "closed", reason: "Why.", action }) as const;
+  it.each([
+    {
+      name: "the form, while the project takes a Mate",
+      door: undefined,
+      title: "Add a project Mate to Shop Front",
+    },
+    {
+      name: "the state, while its setup is still being written",
+      door: closed({ kind: "mate", label: "Open Nova", projectId: "p-nova" }),
+      title: "Shop Front isn't ready for new Mates yet",
+    },
+    {
+      name: "the state, while its setup waits in a change",
+      door: closed({ kind: "change", label: "Review the change", number: 4 }),
+      title: "Shop Front isn't ready for new Mates yet",
+    },
+    {
+      name: "the state, while its setup files can't be read",
+      door: closed({ kind: "retry", label: "Try again", busy: false }),
+      title: "Can't add a Mate to Shop Front right now",
+    },
+  ])("$name", ({ door, title }) => {
+    expect(newMateDoorTitle("Shop Front", door)).toBe(title);
+  });
+});
 
 describe("newMateGate — why Add a Mate is off before it is pressed", () => {
   const NOVA = { projectId: "nova-project", name: "Nova" };

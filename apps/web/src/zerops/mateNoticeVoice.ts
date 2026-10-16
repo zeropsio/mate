@@ -231,11 +231,13 @@ export function mateNoticeVoice(
       restartLines: RESTART_LINES.map((line) => line(name)),
     };
   if (decision.phase === "updating")
-    return say(
-      `${name} is updating.`,
-      "The conversation will open once the update finishes.",
-      "waking",
-    );
+    return surface === "banner"
+      ? say(`${name} is updating to the new version.`, "Back in a moment.", "waking")
+      : say(
+          `${name} is updating.`,
+          "The conversation will open once the update finishes.",
+          "waking",
+        );
   if (decision.phase === "none") return { surface: "none" };
   if (decision.phase === "opening")
     return {

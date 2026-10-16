@@ -214,6 +214,15 @@ describe("what the conversation's header asks to review", () => {
   ])("$name", ({ items, shown }) => {
     expect(headerReviewItems(items, "mate-vira").map((one) => one.key)).toEqual(shown);
   });
+
+  // The menu's word of the Mate (HQ's) said it rested while the conversation said it worked: the
+  // header goes by the conversation, as the composer's strip does.
+  it("asks for nothing while the conversation's Mate works, whatever the menu's word says", () => {
+    expect(headerReviewItems([item("1")], "mate-vira", { mateWorks: true })).toEqual([]);
+    expect(
+      headerReviewItems([item("1")], "mate-vira", { mateWorks: false }).map((one) => one.key),
+    ).toEqual(["appdev#1"]);
+  });
 });
 
 describe("the Release tag's tooltip", () => {

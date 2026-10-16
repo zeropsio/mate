@@ -327,7 +327,10 @@ function buildRow(
           ? { kind: "quiet", text: "Turned off" }
           : state === "absent"
             ? { kind: "quiet", text: absentLabel }
-            : null;
+            : // A grey dot says why in a word: the agent has it, and cannot say how it is doing.
+              state === "configured"
+              ? { kind: "quiet", text: STATE_LABEL.configured }
+              : null;
   const toolSource =
     agent?.tools !== undefined && agent.tools.length > 0
       ? agent.tools

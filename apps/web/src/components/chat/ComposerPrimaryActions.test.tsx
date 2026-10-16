@@ -74,7 +74,10 @@ function renderAfterTurnActions(stopping: boolean) {
   );
 }
 
-function renderSendButton(sendDisabledReason: string | null = null) {
+function renderSendButton(
+  sendDisabledReason: string | null = null,
+  isEnvironmentUnavailable = false,
+) {
   return renderToStaticMarkup(
     createElement(ComposerPrimaryActions, {
       compact: true,
@@ -85,7 +88,7 @@ function renderSendButton(sendDisabledReason: string | null = null) {
       isSendBusy: false,
       sendDisabledReason,
       isConnecting: false,
-      isEnvironmentUnavailable: false,
+      isEnvironmentUnavailable,
       isPreparingWorktree: false,
       hasSendableContent: true,
       onPreviousPendingQuestion: () => {},
@@ -101,6 +104,14 @@ describe("ComposerPrimaryActions", () => {
 
     expect(markup).toContain("disabled");
     expect(markup).toContain('aria-label="Sending feedback"');
+  });
+
+  // Run 2: through an update's restart the send read "Environment disconnected".
+  it("a Mate out of reach says why its send waits in its own words", () => {
+    const markup = renderSendButton("Rosa is updating to the new version.", true);
+
+    expect(markup).toContain("disabled");
+    expect(markup).toContain('aria-label="Rosa is updating to the new version."');
   });
 
   it("offers Stop generation while a running turn is waiting for user input", () => {

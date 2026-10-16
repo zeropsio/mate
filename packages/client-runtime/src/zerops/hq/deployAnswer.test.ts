@@ -84,7 +84,7 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
     {
       name: "its submission's answer lost",
       job: outcome({ state: "submitting", processId: null }),
-      text: "web 5c3ea18 submitted; HQ reads where it stands",
+      text: "web 5c3ea18 on its way",
     },
     {
       name: "queued behind a build the answer does not name",
@@ -186,6 +186,23 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
     });
   });
 
+  // The run's release panel read "app f1b66ee building" and "app f1b66ee submitted; HQ reads where
+  // it stands": a hash and HQ's bookkeeping, where its owner wants where their app stands.
+  it.each([
+    ["submitting", "on its way"],
+    ["building", "building"],
+    ["live", "live"],
+  ] as const)(
+    "says a review's row for a service as where it stands, no commit: %s",
+    (state, line) => {
+      const [environment] = deployAnswerSaid({
+        jobs: [outcome({ state, processId: null })],
+        note: null,
+      }).environments;
+      expect(environment?.jobs[0]?.standing).toBe(line);
+    },
+  );
+
   it.each([
     ["refused", "no deploy key", "HQ refused: no deploy key"],
     ["skipped", "no recipe", "skipped: no recipe"],
@@ -195,7 +212,7 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
       jobs: [outcome({ state, reason, sha: null })],
       note: null,
     }).environments;
-    expect(environment?.jobs[0]?.line).toBe(line);
+    expect(environment?.jobs[0]?.standing).toBe(line);
   });
 
   it("says nothing of an event that asked for nothing", () => {

@@ -66,7 +66,7 @@ function render(
   if (props.git === undefined && props.role !== "dev" && !destination) {
     act(() =>
       [...document.querySelectorAll("button")]
-        .find((button) => button.textContent === "Set it up yourself…")!
+        .find((button) => button.textContent === "Change its name or services…")!
         .click(),
     );
   }
@@ -194,7 +194,7 @@ it("offers Git without a recipe when HQ authorizes while Zerops stays the defaul
     },
   });
   expect(html).toContain("Use a branch in your Git repository instead…");
-  expect(html).toContain("A new Zerops project");
+  expect(html).toContain("A separate copy of");
   expect(html).not.toContain('data-zerops-surface="git-environment-form"');
 });
 

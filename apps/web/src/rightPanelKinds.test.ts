@@ -69,7 +69,7 @@ describe("right panel kinds", () => {
         kind: "agents",
         label: "Helpers",
         description: "Follow this Mate's helpers and their work.",
-        shortcut: "A",
+        shortcut: "H",
         unavailableHint: "Available from a chat.",
       },
       {
@@ -97,14 +97,14 @@ describe("right panel kinds", () => {
         kind: "data",
         label: "Data",
         description: "Browse databases and storage.",
-        shortcut: "V",
+        shortcut: null,
         unavailableHint: "Available in a Zerops project.",
       },
       {
         kind: "vault",
         label: "Vault",
         description: "Settings and secrets your apps use.",
-        shortcut: "E",
+        shortcut: "V",
         unavailableHint: "Available in a Zerops project.",
       },
       {

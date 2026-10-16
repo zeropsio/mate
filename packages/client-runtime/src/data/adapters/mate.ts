@@ -182,6 +182,11 @@ export interface MateAdapter {
   readonly online: () => void;
   /** What the supervisor of an environment publishes. */
   readonly link: (environmentId: EnvironmentId, phase: LinkPhase) => void;
+  /**
+   * What the environment's server last said of an automatic update: the version it is moving
+   * from while one is under way, else null. Its link dropping then reads as that update.
+   */
+  readonly updateUnderway: (environmentId: EnvironmentId, from: string | null) => void;
   /** Whether a platform process runs against the target (the activity feed). */
   readonly process: (key: TargetKey, running: boolean) => void;
   /**
@@ -296,6 +301,18 @@ const after = (instant: Instant, ms: number): Instant => ({
   wall: instant.wall + ms,
   mono: instant.mono + ms,
 });
+
+/** The target registered as, or holding a credential for, this environment. */
+const holdsEnvironment = (
+  entry: { readonly environment: EnvironmentMachine },
+  environmentId: EnvironmentId,
+): boolean => {
+  const credential = entry.environment.credential;
+  return (
+    entry.environment.record === environmentId ||
+    (credential.kind === "held" && credential.environmentId === environmentId)
+  );
+};
 
 /** True once either clock has passed `at`. */
 const reached = (at: Instant, now: Instant): boolean => now.wall >= at.wall || now.mono >= at.mono;
@@ -1419,13 +1436,14 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     online: () => enqueue(everyTarget({ type: "ONLINE" })),
     link: (environmentId, phase) =>
       enqueue(() => {
-        for (const entry of entries.values()) {
-          const credential = entry.environment.credential;
-          const holdsIt =
-            entry.environment.record === environmentId ||
-            (credential.kind === "held" && credential.environmentId === environmentId);
-          if (holdsIt) step(entry, { type: "LINK", link: phase });
-        }
+        for (const entry of entries.values())
+          if (holdsEnvironment(entry, environmentId)) step(entry, { type: "LINK", link: phase });
+      }),
+    updateUnderway: (environmentId, from) =>
+      enqueue(() => {
+        for (const entry of entries.values())
+          if (holdsEnvironment(entry, environmentId))
+            transition(entry, { type: "UPDATE_UNDERWAY", from });
       }),
     process: (key, running) =>
       enqueue(() => {

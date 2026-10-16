@@ -64,7 +64,7 @@ export function engineRunTurns(
 
 /**
  * Whether a run changed the workspace, so the Diff page offers it as a turn: a file it changed,
- * or a source whose changes were too many to list.
+ * or a source whose changes were too many to list — one that was not there at its start too.
  */
 export function engineRunChangedSomething(turn: OrchestrationCheckpointSummary): boolean {
   if (turn.files.length > 0) return true;
@@ -72,7 +72,7 @@ export function engineRunChangedSomething(turn: OrchestrationCheckpointSummary):
     turn.history?.roots.some(
       (root) =>
         root.files === undefined &&
-        root.before.status === "captured" &&
+        (root.before.status === "captured" || root.before.status === "absent") &&
         root.after.status === "captured",
     ) ?? false
   );

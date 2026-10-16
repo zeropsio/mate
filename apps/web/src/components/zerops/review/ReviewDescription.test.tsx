@@ -165,6 +165,22 @@ describe("what a change does, first", () => {
     for (const word of words) expect(markup).toContain(word);
   });
 
+  // A run 2 follow-up: the label, then the description's own heading of the same words.
+  it("says What it does once where the description heads its own part with it", () => {
+    const document = markupDom(
+      html({ description: "A tea shop.\n\n## What it does\n- Browse", onOpenRun: () => {} }),
+    );
+    const heading = document.querySelector("h3");
+    // Still the section's name to a screen reader, and still the way back to the run.
+    expect(heading?.textContent).toContain("What it does");
+    expect(heading?.textContent).toContain("The run that made it");
+    const seen = [...(heading?.querySelectorAll("span") ?? [])].filter(
+      (span) => span.textContent === "What it does" && !span.classList.contains("sr-only"),
+    );
+    expect(seen).toHaveLength(0);
+    expect(heading?.querySelector(".sr-only")?.textContent).toBe("What it does");
+  });
+
   it("shows nothing at all where neither said anything: no heading over no words", () => {
     expect(html()).toBe("");
   });

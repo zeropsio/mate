@@ -93,6 +93,33 @@ describe("the menu row", () => {
     expect(row.at).toBe(900);
   });
 
+  // Run 2: a Stop before the Mate said anything left the row reading "now" over its answer to the
+  // ask before, sixteen minutes old.
+  it.each([
+    {
+      name: "its words answer the person's latest message",
+      lastAgent: { text: "The tea catalog is live.", at: 400 },
+      snippet: "The tea catalog is live.",
+    },
+    {
+      name: "its words came before the person's latest message",
+      lastAgent: { text: "The shop front is built.", at: 50 },
+      snippet: null,
+    },
+  ])("carries the agent's words as its snippet only when $name", ({ lastAgent, snippet }) => {
+    const asked = { text: "Add a print button to each tea's page", at: 100 };
+    const row = conversationRowOf(
+      view({
+        lastPerson: asked,
+        lastAsked: asked,
+        lastAgent,
+        lastEnded: ended(2, { kind: "stopped", by: ana }),
+      }),
+      revision,
+    );
+    expect(row.snippet).toBe(snippet);
+  });
+
   it("never names the conversation by a request a page sent for the person", () => {
     const typed = { text: "Build the tea catalog", at: 100 };
     const fromPanel = { text: "Open crew ports on appdev", at: 200 };

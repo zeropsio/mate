@@ -145,6 +145,32 @@ describe("CrewSetup", () => {
     expect(words).not.toMatch(/\b(Plans|Builds|Reviews) (Plans|Builds)/u);
   });
 
+  // Run 2: the row said a job one way and its editor another.
+  it("lists each crewmate's job as its editor holds it, every sentence of it", () => {
+    const twoSentences = crewFromProposal({
+      proposal: {
+        ...TEA_SHOP,
+        builders: [{ name: "Checkout", part: "Builds the checkout. Its code is src/checkout." }],
+      },
+      crew: "crew",
+      devHosts: ["appdev"],
+    });
+    expect(text(render(withGoal(twoSentences, "A tea shop.")))).toContain(
+      "Checkout Builds the checkout. Its code is src/checkout.",
+    );
+  });
+
+  it("says which crewmate leads beside its name", () => {
+    const planner = crewFromProposal({
+      proposal: { ...TEA_SHOP, lead: { name: "Planner", part: TEA_SHOP.lead.part } },
+      crew: "crew",
+      devHosts: ["appdev"],
+    });
+    const words = text(render(withGoal(planner, "A tea shop.")));
+    expect(words).toContain("Planner · Lead Plans the tea shop and splits the work.");
+    expect(words).toContain("Checkout Builds the checkout and its payment step.");
+  });
+
   // The onboarding run, 2026-10-16: when the Mate's roster landed, the goal's line went, its box
   // jumped up 20 px and shrank from 164 to 120 px, and a three-line note pushed Start down.
   it("keeps the goal and the footer's note as they were when a proposal lands", () => {
@@ -161,7 +187,7 @@ describe("CrewSetup", () => {
     const words = text(render(withGoal(proposed, "A tea shop.")));
     expect(count(words, "own copy")).toBe(1);
     expect(words).toContain(
-      "Each builder works in its own copy of Nova's code on appdev; nothing reaches Nova's code until you review it.",
+      "Each builder works in its own copy of Nova's code; nothing reaches Nova's code until you review it.",
     );
   });
 
@@ -173,7 +199,7 @@ describe("CrewSetup", () => {
       databaseHosts: ["appdev"],
     });
     expect(text(render(withGoal(sharing, "A tea shop."), READY, true))).toContain(
-      "until you review it. The builders share appdev's database.",
+      "until you review it. The builders share one database.",
     );
     expect(text(render(withGoal(proposed, "A tea shop."), READY, false))).not.toContain("database");
     // Not known yet: never said, and never "no".

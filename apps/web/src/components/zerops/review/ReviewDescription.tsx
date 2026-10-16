@@ -26,6 +26,7 @@ import { useProjectedHqPicture, type ChangePictureSource } from "~/zerops/usePro
 
 import {
   absoluteDescription,
+  descriptionHeads,
   descriptionPicture,
   keyStaysInReview,
   reviewDescription,
@@ -34,6 +35,9 @@ import {
 import { ReviewSection, ReviewSkeleton } from "./ZeropsReviewSurface";
 
 const ViewerPortal = gatedPortal(DialogPrimitive.Portal);
+
+/** The section's label, unless the description heads a part of its own with it. */
+const WHAT_IT_DOES = "What it does";
 
 /** One picture opened large, among the description's pictures that were read. */
 interface PictureView {
@@ -70,7 +74,9 @@ export function ReviewDescription({
           </button>
         )
       }
-      title="What it does"
+      title={WHAT_IT_DOES}
+      // Its own heading says it: the label does not say it twice.
+      titleShown={shown.kind !== "body" || !descriptionHeads(shown.text, WHAT_IT_DOES)}
     >
       <div className="rv-what">
         {shown.kind === "body" ? (

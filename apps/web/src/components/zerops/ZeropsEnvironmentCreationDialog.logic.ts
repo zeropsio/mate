@@ -488,6 +488,17 @@ export function newMateDoor(input: {
 }
 
 /**
+ * What the Mate's dialog is titled: the form it offers, or, while the project takes no Mate, that
+ * state — never a title promising a form the dialog then refuses (run 2).
+ */
+export function newMateDoorTitle(groupName: string, closed: NewMateDoorClosed | undefined): string {
+  if (closed === undefined) return `Add a project Mate to ${groupName}`;
+  return closed.action?.kind === "retry"
+    ? `Can't add a Mate to ${groupName} right now`
+    : `${groupName} isn't ready for new Mates yet`;
+}
+
+/**
  * Why *Add a Mate* stands off before it is pressed, in the words the door says after the press —
  * only where the project's setup files and changes are already read and the door is closed on
  * them. Anything not known yet leaves Add on, as before; so do setup files that can't be read,

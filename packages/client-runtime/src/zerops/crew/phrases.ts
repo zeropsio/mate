@@ -781,22 +781,18 @@ export const crewSuggestLine = (mateName: string): string =>
 
 /**
  * The setup's footer — the one place it says where the crewmates work: their own copies, and,
- * where builders share their service's database (`sharedDatabases`), that they do.
+ * where builders share their service's database (`sharedDatabases`, how many), that they do —
+ * never by a service's hostname (run 2: "on appdev").
  */
-export function crewSetUpFooter(
-  mateName: string,
-  hosts: ReadonlyArray<string>,
-  sharedDatabases: ReadonlyArray<string> = [],
-): string {
-  const where = hosts.length === 0 ? "" : ` on ${hosts.join(" and ")}`;
+export function crewSetUpFooter(mateName: string, sharedDatabases = 0): string {
   const code = `${crewPossessive(mateName)} code`;
   const database =
-    sharedDatabases.length === 0
+    sharedDatabases === 0
       ? ""
-      : sharedDatabases.length === 1
-        ? ` The builders share ${crewPossessive(sharedDatabases[0]!)} database.`
-        : ` The builders share the databases of ${sharedDatabases.join(" and ")}.`;
-  return `Each builder works in its own copy of ${code}${where}; nothing reaches ${code} until you review it.${database} Getting the copies ready takes a minute or two; each row shows how it's going.`;
+      : sharedDatabases === 1
+        ? " The builders share one database."
+        : ` The builders share ${crewPossessive(mateName)} databases.`;
+  return `Each builder works in its own copy of ${code}; nothing reaches ${code} until you review it.${database} Getting the copies ready takes a minute or two; each row shows how it's going.`;
 }
 
 /**
@@ -851,6 +847,21 @@ export const CREW_KIND_WORDS = {
   reader: "Reviews",
 } as const;
 
+/**
+ * What a roster row says beside a crewmate's name: *Lead* for the lead not named so, and what a
+ * builder or reviewer does where its job's sentence doesn't open with it — said once (run 2: the
+ * roster said nobody was the lead).
+ */
+export function crewRoleTag(
+  kind: keyof typeof CREW_KIND_WORDS,
+  name: string,
+  jobSentence: string,
+): string | null {
+  if (kind === "lead") return name.trim().toLowerCase() === "lead" ? null : "Lead";
+  const word = CREW_KIND_WORDS[kind];
+  return jobSentence.trimStart().startsWith(word) ? null : word;
+}
+
 /** A dev service without crew ports: the setup's offer, and its press. */
 export const crewPortsOfferWords = (mateName: string): string =>
   `To try each builder's work at its own address, ${mateName} can give each one`;
@@ -891,6 +902,9 @@ export const CREW_JOB_WORDS = {
   reviews: CREW_KIND_WORDS.reader,
   reviewsLine: "Reads and checks the others' work. Changes nothing.",
   more: "More",
+  /** The job past its first line: what the crewmate is told, which its row never says. */
+  howItWorks: "How it works",
+  howItWorksLine: "How it goes about its job. It reads this with its job.",
   name: "Its name",
   face: "Its face",
   runsOn: "Runs on",
@@ -906,6 +920,10 @@ export const CREW_JOB_WORDS = {
   saveLine:
     "It picks up its new job with its next message, in a fresh conversation. Its work stays.",
   freshLine: "It starts a fresh conversation now.",
+  /** A crewmate of a crew not started yet: nothing of it runs. */
+  draftLine: "It starts with this job when you start the crew.",
+  /** A crewmate added to a running crew. */
+  joinLine: "It joins the crew now, with this job.",
   newTitle: "A new crewmate",
   newLeadTitle: "A lead",
   add: "Add to the crew",

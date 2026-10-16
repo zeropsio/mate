@@ -902,7 +902,7 @@ describe("CheckpointDiffQuery recorded workspace history", () => {
 });
 
 /** A Mate engine conversation whose runs' captures the journal holds, and no projection record. */
-function makeEngineRunsHarness() {
+function makeEngineRunsHarness(only?: ReadonlyArray<CaptureRun>) {
   const threadId = ThreadId.make("mate-conversation");
   const root = {
     rootId: "zerops:project:appdev:/var/www",
@@ -967,7 +967,7 @@ function makeEngineRunsHarness() {
     finish: () => Effect.die("unused"),
     release: () => Effect.die("unused"),
     cleanup: () => Effect.die("unused"),
-    runs: () => Effect.succeed(runs),
+    runs: () => Effect.succeed(only ?? runs),
     read: (history) =>
       Effect.sync(() => {
         reads.push(history);
@@ -1051,6 +1051,37 @@ describe("a Mate engine conversation's runs on the Diff page", () => {
 
       expect(changes.turns.map((turn) => turn.checkpointTurnCount)).not.toContain(2);
     }),
+  );
+
+  it.effect(
+    "the run that brought a service in is offered though its files were too many to list",
+    () =>
+      Effect.gen(function* () {
+        const harness = makeEngineRunsHarness();
+        const [first] = harness.runs;
+        const { files: _files, ...end } = first!.history.roots[0]!;
+        const built: CaptureRun = {
+          ...first!,
+          history: {
+            ...first!.history,
+            roots: [
+              {
+                ...end,
+                before: {
+                  status: "absent",
+                  reason: "This code wasn't here when the turn began, so all of it shows as new.",
+                },
+              },
+            ],
+          },
+        };
+        const changes = yield* Effect.gen(function* () {
+          const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+          return yield* query.getRunChanges({ threadId: harness.threadId });
+        }).pipe(Effect.provide(makeEngineRunsHarness([built]).layer));
+
+        expect(changes.turns.map((turn) => turn.checkpointTurnCount)).toEqual([1]);
+      }),
   );
 
   it.effect("a Mate's run's diff is read from that run's own capture", () =>

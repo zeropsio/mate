@@ -104,7 +104,7 @@ describe("first run", () => {
       onCreateProject: () => {},
     });
     expect(html).toContain("Start a project");
-    expect(html).toContain("Projects your team gives you access to appear here");
+    expect(html).toContain("Projects an owner or admin gives you access to appear here");
     expect(html).toContain("New project</button>");
   });
 });

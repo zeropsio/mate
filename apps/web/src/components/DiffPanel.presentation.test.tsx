@@ -4,6 +4,7 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
 import DiffPanel from "./DiffPanel";
+import { useRightPanelStore } from "../rightPanelStore";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -340,6 +341,37 @@ it("a Mate's Diff with no recorded changes never says the agent changed nothing 
     expect(container.textContent).not.toContain("yet");
     expect(container.querySelector('[aria-label="Hide whitespace changes"]')).toBeNull();
   } finally {
+    await act(() => root.unmount());
+    container.remove();
+    input.repo = true;
+  }
+});
+
+it("a Mate's Diff with no recorded changes opens the Git page, where its merged changes are", async () => {
+  input.repo = false;
+  input.turns = {
+    turnDiffSummaries: [],
+    inferredCheckpointTurnCountByTurnId: {},
+    runChangesRead: "read",
+  };
+  const open = vi.spyOn(useRightPanelStore.getState(), "open");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(() =>
+      root.render(
+        <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
+      ),
+    );
+    const button = Array.from(container.querySelectorAll("button")).find(
+      (candidate) => candidate.textContent === "Open Git",
+    );
+    expect(button).toBeDefined();
+    await act(() => button!.click());
+    expect(open).toHaveBeenCalledWith({ environmentId: "mate", threadId: "thread" }, "git");
+  } finally {
+    open.mockRestore();
     await act(() => root.unmount());
     container.remove();
     input.repo = true;

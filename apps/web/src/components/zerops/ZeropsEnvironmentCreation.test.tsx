@@ -6,7 +6,11 @@ import type {
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { environmentCreationSteps, ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
+import {
+  creationSettled,
+  environmentCreationSteps,
+  ZeropsEnvironmentCreation,
+} from "./ZeropsEnvironmentCreation";
 
 const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
   { kind: "create-project", name: "Beviro CRM - production", tagList: [], location: undefined },
@@ -82,6 +86,38 @@ describe("environmentCreationSteps", () => {
       0,
     );
     expect(second?.note).toBe("projectImportProjectIncluded");
+  });
+});
+
+// The run: "Tea Shop - stage is set up" stood 70 s after the stage's own line said Running at
+// its address, saying it again and asking for a Dismiss.
+describe("a set-up card's end", () => {
+  it.each([
+    {
+      case: "the place runs at its address",
+      outcome: "done",
+      runs: true,
+      addressed: true,
+      gone: true,
+    },
+    {
+      case: "it runs with no address yet",
+      outcome: "done",
+      runs: true,
+      addressed: false,
+      gone: false,
+    },
+    { case: "nothing runs there yet", outcome: "done", runs: false, addressed: true, gone: false },
+    { case: "it failed", outcome: "failed", runs: true, addressed: true, gone: false },
+    {
+      case: "it is still being set up",
+      outcome: undefined,
+      runs: true,
+      addressed: true,
+      gone: false,
+    },
+  ] as const)("goes by itself once the place it set up says the rest: $case", (input) => {
+    expect(creationSettled(input)).toBe(input.gone);
   });
 });
 

@@ -90,6 +90,49 @@ export function overviewKeeps(input: {
   return true;
 }
 
+/** One of the overview's filters: its words, and how many projects it holds when any. */
+export interface OverviewFilterTab {
+  readonly show: OverviewShow | undefined;
+  readonly label: string;
+  readonly count: number | undefined;
+}
+
+/**
+ * The overview's filters as offered: All, then Waiting on you and Mine, each counting the projects
+ * it holds and saying nothing at none (a zero names nothing to look at). A role that never has a
+ * Mate of its own (`ownsMates` false: no project, so no Mate, to make) is offered neither while
+ * it could not fill them — Waiting on you comes when something does wait — and the one an address
+ * opened stays. With All alone left there is no filter at all.
+ */
+export function overviewFilterTabs(input: {
+  readonly waiting: number;
+  readonly mine: number;
+  readonly ownsMates: boolean;
+  readonly show: OverviewShow | undefined;
+}): ReadonlyArray<OverviewFilterTab> {
+  const counted = (count: number) => (count > 0 ? count : undefined);
+  const filters: ReadonlyArray<OverviewFilterTab & { readonly fills: boolean }> = [
+    {
+      show: "waiting",
+      label: "Waiting on you",
+      count: counted(input.waiting),
+      fills: input.ownsMates || input.waiting > 0,
+    },
+    {
+      show: "mine",
+      label: "Mine",
+      count: counted(input.mine),
+      fills: input.ownsMates || input.mine > 0,
+    },
+  ];
+  const offered = filters
+    .filter((filter) => filter.fills || filter.show === input.show)
+    .map(({ show, label, count }) => ({ show, label, count }));
+  return offered.length === 0
+    ? []
+    : [{ show: undefined, label: "All", count: undefined }, ...offered];
+}
+
 /**
  * The steps somebody has something to do for: their rows rise, the left menu
  * dots them. A project without production owes nobody anything —

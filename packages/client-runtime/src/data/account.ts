@@ -23,6 +23,7 @@ import { hqVerdictScope, type HqVerdict } from "./families/hqVerdict.ts";
 import { familySpec } from "./families/index.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { holdStandingDemands } from "./operations/standing.ts";
+import { holdPlacedProjectRows } from "./placedRows.ts";
 import { linkKeys } from "./model.ts";
 import { streamOf } from "./reducer.ts";
 import type { AccountStore } from "./store.ts";
@@ -236,6 +237,8 @@ export function observeAccount(options: {
   readonly kinds?: ReadonlyArray<RegisteredOperationKind>;
 }): AccountObservation {
   let shown: { readonly orgId: string; readonly link: RunningLink } | null = null;
+  /** Lets go of the own rows of the Mates HQ places that the shown roster does not list yet. */
+  let stopPlaced: (() => void) | null = null;
   /** The HQ the app named last, and the one observed: only while it is the shown organization's. */
   let wantedHq: ShownHq | null = null;
   let heldVerdict: { readonly orgId: string; readonly verdict: HqVerdict } | null = null;
@@ -326,6 +329,8 @@ export function observeAccount(options: {
       if (shown !== null) {
         stopHq();
         detach("zerops");
+        stopPlaced?.();
+        stopPlaced = null;
         shown.link.stop();
         shown = null;
       }
@@ -339,6 +344,11 @@ export function observeAccount(options: {
       const link = startZeropsNavigation({ ...options, orgId });
       shown = { orgId, link };
       attach("zerops");
+      stopPlaced = holdPlacedProjectRows({
+        store: options.store,
+        orgId,
+        demandDetail: observation.demandDetail,
+      });
       followHq();
     },
     showHq: (next) => {

@@ -12,25 +12,34 @@
  */
 import { checkoutPathFor, ZEROPS_WORKSPACE_ROOT } from "./useZeropsGitRemoteProbe";
 
-/** The checkouts, in the Git tab's order, that the disk holds as Git repositories now. */
+/**
+ * The checkouts, in the Git tab's order, that the disk holds as Git repositories now; `null` while
+ * any checkout's read has not answered (`isRepository` says `null`).
+ */
 export function repositoriesOnDisk(
   hostnames: ReadonlyArray<string>,
-  isRepository: (path: string) => boolean,
-): ReadonlyArray<string> {
-  return hostnames.filter((hostname) => isRepository(checkoutPathFor(hostname)));
+  isRepository: (path: string) => boolean | null,
+): ReadonlyArray<string> | null {
+  const read = hostnames.map((hostname) => isRepository(checkoutPathFor(hostname)));
+  if (read.includes(null)) return null;
+  return hostnames.filter((_, index) => read[index] === true);
 }
 
+/**
+ * The folder, or `null` while a Mate's checkouts are still read: a shell opened in the bare
+ * workspace stays there, outside the code (the onboarding run, 2026-10-16: "→ www").
+ */
 export function terminalStartCwd(input: {
   readonly launchCwd: string | null | undefined;
   readonly workspaceRoot: string;
   readonly worktreePath: string | null;
-  /** The Mate's checkouts that are repositories on disk (`repositoriesOnDisk`). */
-  readonly repositories: ReadonlyArray<string>;
-}): string {
+  /** The Mate's checkouts that are repositories on disk (`repositoriesOnDisk`); `null` unread. */
+  readonly repositories: ReadonlyArray<string> | null;
+}): string | null {
   if (input.launchCwd != null) return input.launchCwd;
   if (input.worktreePath !== null) return input.worktreePath;
+  if (input.workspaceRoot !== ZEROPS_WORKSPACE_ROOT) return input.workspaceRoot;
+  if (input.repositories === null) return null;
   const first = input.repositories[0];
-  return input.workspaceRoot === ZEROPS_WORKSPACE_ROOT && first !== undefined
-    ? checkoutPathFor(first)
-    : input.workspaceRoot;
+  return first === undefined ? input.workspaceRoot : checkoutPathFor(first);
 }

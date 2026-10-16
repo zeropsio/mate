@@ -153,7 +153,12 @@ const withStructure = <A, E, B = never>(
         ask("recent"),
         Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "cached" as const })),
       ),
-      readSince: () => Effect.die("HQ's door is outside this fixture"),
+      // A read begun after it was asked: HQ's own, behind a write that placed a project.
+      readSince: () =>
+        Effect.andThen(
+          ask("since"),
+          Effect.map(Ref.get(view), (org) => ({ ...org, freshness: "fresh" as const })),
+        ),
       exists: (projectId) =>
         Effect.flatMap(Ref.get(down), (isDown) =>
           isDown
@@ -1789,6 +1794,28 @@ describe("structure", () => {
             assert.deepStrictEqual(yield* birthsOf, []);
           }),
         ),
+    );
+
+    // The creator's browser gives a new Mate's people their grants after HQ's view last read the
+    // project (its press hold confirmed over a read before them): HQ reads the org again behind
+    // the Mate's placement, so a Read grantee is sent it without waiting out that view's 30 s.
+    it.effect("a Mate placed in an application has HQ read who may read it again at once", () =>
+      withStructure((_view, _down, _zerops, asked) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const app = yield* structure.createApp("owner", "Tea Shop");
+          yield* Ref.set(asked, []);
+          yield* structure.attachProject("owner", app.id, {
+            projectId: "P_OWN",
+            kind: "mate",
+            mate: { face: "nova" },
+          });
+          // Behind the write, not in it: the attach answered before that read lands.
+          for (let turn = 0; turn < 100 && !(yield* Ref.get(asked)).includes("since"); turn += 1)
+            yield* Effect.yieldNow;
+          assert.include(yield* Ref.get(asked), "since");
+        }),
+      ),
     );
 
     // B5: a Mate's press in one browser, read in another — held while its press renews it, taken

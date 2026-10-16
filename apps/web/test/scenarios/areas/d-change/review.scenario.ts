@@ -1,3 +1,4 @@
+import type { Page } from "puppeteer-core";
 import { resizeMenu } from "../../harness/browser.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -6,6 +7,18 @@ import { createScenario } from "../../harness/scenario.ts";
 import { installArea, mergeFor } from "./fake.ts";
 import { changeFixture, review } from "./dsl.ts";
 import { changeFixture as sourceChange } from "../../fakes/d-change/changes.ts";
+
+/** The sheet's entrance has finished: nothing it measures still slides. */
+const sheetSettled = (s: { readonly page: Page }) =>
+  Effect.promise(() =>
+    s.page.waitForFunction(
+      () => {
+        const sheet = document.querySelector(".rv");
+        return sheet !== null && sheet.getAnimations().length === 0;
+      },
+      { polling: "raf", timeout: 5_000 },
+    ),
+  );
 
 const setup = Effect.gen(function* () {
   const s = yield* createScenario([installArea]);
@@ -149,6 +162,7 @@ describe("owner-reported layout regressions", () => {
         yield* s.given.signedIn;
         yield* r.open;
         yield* r.mergeEnabled;
+        yield* sheetSettled(s);
         const bodyTop = Effect.promise(() =>
           s.page.evaluate(
             () =>
@@ -169,6 +183,100 @@ describe("owner-reported layout regressions", () => {
         expect(before).not.toBeNull();
         // Within half a pixel: the dialog's entrance may still settle its last fraction.
         for (const top of [merging, merged]) expect(Math.abs(top! - before!)).toBeLessThan(0.5);
+      }),
+    );
+
+    // A run 2 follow-up: Merge took the composer's review strip and the header's Review tag away at
+    // once, so the composer shrank 61 px under the conversation and the goal slid 143 px left.
+    it.effect(
+      "merge moves nothing behind the review: the composer and the header's goal stay",
+      () =>
+        Effect.gen(function* () {
+          const { s, r, area } = yield* setup;
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.signedIn;
+          yield* r.open;
+          yield* r.mergeEnabled;
+          yield* sheetSettled(s);
+          const behind = Effect.promise(() =>
+            s.page.evaluate(() => {
+              const shown = (selector: string) =>
+                [...document.querySelectorAll<HTMLElement>(selector)].find(
+                  (node) => node.getBoundingClientRect().height > 0,
+                );
+              return {
+                strip: shown('[data-composer-top="review"]') !== undefined,
+                composer:
+                  shown('[data-slot="composer-shell"]')?.getBoundingClientRect().top ?? null,
+                // The Review tag's room: what follows it in the header starts where it ends.
+                tag:
+                  document.querySelector(".chat-header-review")?.getBoundingClientRect().right ??
+                  null,
+              };
+            }),
+          );
+          const before = yield* behind;
+          // What the press could move: the strip in the composer and the goal after the Review tag.
+          expect(before.strip).toBe(true);
+          expect(before.composer).not.toBeNull();
+          expect(before.tag).not.toBeNull();
+          area.merge.hold();
+          yield* r.merge;
+          yield* Effect.promise(() => area.merge.received());
+          yield* r.text("Merging into main");
+          const merging = yield* behind;
+          area.merge.resume();
+          yield* r.text("Merged into main");
+          yield* r.text("Not now");
+          const merged = yield* behind;
+          for (const after of [merging, merged]) {
+            expect(Math.abs(after.composer! - before.composer!)).toBeLessThan(0.5);
+            expect(after.tag).not.toBeNull();
+            expect(Math.abs(after.tag! - before.tag!)).toBeLessThan(0.5);
+          }
+        }),
+    );
+
+    // A run 2 follow-up: the review painted in three pieces — an empty sheet, then Merge greyed with
+    // "Merging waits until its files are read.", then the counts and Merge.
+    it.effect("the review shows whole: Merge is ready in its first painted frame", () =>
+      Effect.gen(function* () {
+        const { s, r } = yield* setup;
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* s.given.signedIn;
+        // Each frame from the press: whether the sheet is painted, and whether Merge can be pressed.
+        yield* Effect.promise(() =>
+          s.page.evaluate(() => {
+            const frames: Array<{ painted: boolean; merge: boolean }> = [];
+            (window as unknown as { reviewFrames: typeof frames }).reviewFrames = frames;
+            const sample = () => {
+              const sheet = document.querySelector<HTMLElement>('[data-zerops-surface="review"]');
+              const primary = sheet?.querySelector<HTMLButtonElement>("[data-review-primary]");
+              frames.push({
+                painted:
+                  sheet !== null &&
+                  sheet !== undefined &&
+                  Number(getComputedStyle(sheet).opacity) > 0,
+                merge: primary !== null && primary !== undefined && !primary.disabled,
+              });
+              if (frames.length < 1800) requestAnimationFrame(sample);
+            };
+            requestAnimationFrame(sample);
+          }),
+        );
+        yield* r.open;
+        yield* r.mergeEnabled;
+        yield* sheetSettled(s);
+        const frames = yield* Effect.promise(() =>
+          s.page.evaluate(
+            () =>
+              (window as unknown as { reviewFrames: Array<{ painted: boolean; merge: boolean }> })
+                .reviewFrames,
+          ),
+        );
+        const painted = frames.filter((frame) => frame.painted);
+        expect(painted.length).toBeGreaterThan(0);
+        expect(painted.every((frame) => frame.merge)).toBe(true);
       }),
     );
   });

@@ -39,7 +39,7 @@ import {
 } from "./GitVcsDriverCore.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
-import { makeSnapshotOperations } from "./GitVcsDriverSnapshot.ts";
+import { isEmptyTree, makeSnapshotOperations } from "./GitVcsDriverSnapshot.ts";
 import { zeropsPolicy } from "../zerops/ZeropsPolicy.ts";
 
 export interface ExecuteGitInput {
@@ -1151,7 +1151,8 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           "--no-textconv",
           ...PATCH_RENDER_PREFIX_ARGS,
           ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
-          `${fromRevision}^{commit}`,
+          // A source that was not there at the start is compared from nothing.
+          isEmptyTree(fromRevision) ? fromRevision : `${fromRevision}^{commit}`,
           `${input.toCheckpointRef}^{commit}`,
         ],
         allowNonZeroExit: true,

@@ -241,6 +241,7 @@ import {
   subscribeRunFolds,
   type NowLine as NowLineModel,
   cardHeadLine,
+  runClockMs,
   type RunFold,
   type RunScrollPosition,
   standsAtFoot,
@@ -3085,11 +3086,8 @@ function RunTicker({ status }: { readonly status: RunStatus }) {
   const ref = useRef<HTMLSpanElement>(null);
   // What it last showed: it never counts back (`calmClockMs`).
   const last = useRef<{ readonly run: string; readonly ms: number } | null>(null);
-  const { startedAt, waitingSince, waitedMs } = status;
-  const elapsed = () => {
-    const now = waitingSince === null ? Date.now() : Date.parse(waitingSince);
-    return now - Date.parse(startedAt) - waitedMs;
-  };
+  const { startedAt, waitingSince, waitedMs, ran } = status;
+  const elapsed = () => runClockMs(status, Date.now());
   const read = () => {
     const ms = calmClockMs(last.current, startedAt, elapsed());
     last.current = { run: startedAt, ms };
@@ -3111,7 +3109,7 @@ function RunTicker({ status }: { readonly status: RunStatus }) {
     };
     tick();
     return () => clearTimeout(timer);
-  }, [startedAt, waitingSince, waitedMs]);
+  }, [startedAt, waitingSince, waitedMs, ran?.ms, ran?.since, ran?.personMs]);
   return (
     <span ref={ref} className="run-now-clock" data-work-line-clock>
       {read()}

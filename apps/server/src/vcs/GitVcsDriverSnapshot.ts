@@ -8,6 +8,17 @@ import type {
   VcsResolveSnapshotInput,
 } from "./VcsDriver.ts";
 
+/**
+ * Git's tree with nothing in it, in the object format of `oid` (SHA-1 or SHA-256): what a source
+ * that was not there when a run began is compared from. Git knows it without storing it.
+ */
+export const emptyTreeFor = (oid: string): string =>
+  oid.length === 64
+    ? "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"
+    : "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+export const isEmptyTree = (revision: string): boolean => revision === emptyTreeFor(revision);
+
 export const SNAPSHOT_POLICY = {
   maxPaths: 10_000,
   maxPathBytes: 1_048_576,

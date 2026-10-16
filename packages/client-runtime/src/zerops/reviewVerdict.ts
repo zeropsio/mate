@@ -158,8 +158,15 @@ export interface ReviewSecondary {
  */
 export interface ReviewQuestion {
   readonly text: string;
-  /** Equal peers, in the order stage, production; none is the default. */
-  readonly options: ReadonlyArray<{ readonly tier: GroupEnvironmentTier; readonly label: string }>;
+  /**
+   * Equal peers, in the order stage, production; none is the default. Each says in one short line
+   * what it gives, so neither is a guess (a run 2 follow-up: two equal buttons, nothing between them).
+   */
+  readonly options: ReadonlyArray<{
+    readonly tier: GroupEnvironmentTier;
+    readonly label: string;
+    readonly hint: string;
+  }>;
   /** The word that closes the question and keeps the slots in the application's page. */
   readonly dismiss: string;
 }
@@ -671,10 +678,20 @@ function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined 
   if (input.downstream.production || input.productionHeld === true) return undefined;
   const options = (
     [
-      ["stage", input.addable?.stage === true, "Add stage"],
-      ["production", input.addable?.production === true, "Put it live"],
+      [
+        "stage",
+        input.addable?.stage === true,
+        "Add stage",
+        "A stage is a copy to try changes on before they go live.",
+      ],
+      [
+        "production",
+        input.addable?.production === true,
+        "Put it live",
+        "Put it live gives it its own public address.",
+      ],
     ] as const
-  ).flatMap(([tier, offered, label]) => (offered ? [{ tier, label }] : []));
+  ).flatMap(([tier, offered, label, hint]) => (offered ? [{ tier, label, hint }] : []));
   if (options.length === 0) return undefined;
   // What runs it, as it is: the Mate's preview runs its own copy for trying it out, never the
   // stage (a first run asked "Where should it run?" beside "Your shop front is online").
@@ -913,9 +930,14 @@ export interface ReleaseReviewModel extends ReviewModel {
   readonly ifWrong: string | undefined;
 }
 
-const RELEASE_FOLLOWS = "You can close this. The project's line in the menu follows the release.";
-/** What a release's foot says before the press: how long it takes. */
-export const RELEASE_TAKES = "It takes about a minute.";
+// Where a release goes on being said once its panel is closed: production's line on the card. The
+// menu's row shows no more than a busy mark (the run read "the project's line in the menu").
+const RELEASE_FOLLOWS = "You can close this. Production's line on the project's card follows it.";
+/** What a release's foot says before the press: how long it takes, as measured — the run's
+ *  first release went live in 98 s. */
+export const RELEASE_TAKES = "It takes a minute or two.";
+/** Past this, a release on its way says it takes longer than usual (`releaseOutcomeOf`). */
+export const RELEASE_ESTIMATE_MS = 2 * 60_000;
 
 function stageWhy(input: ReleaseReviewInput): string {
   const since =
@@ -1101,7 +1123,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
           tone: "done",
           title: `Released ${tag}`,
           // The age is the tag's: the landing's own moment is not read.
-          why: age === undefined ? "Production runs it" : `Production runs it · tagged ${age}`,
+          why: age === undefined ? "Production runs it" : `Production runs it · released ${age}`,
           fix: undefined,
         },
         consequence:

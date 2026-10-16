@@ -15,9 +15,15 @@
  */
 
 import { serviceNames } from "./projectAttention.ts";
+import { formatRunClock } from "./runClock.ts";
 import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
 import type { Moved } from "./releaseCompare.ts";
-import type { ReleaseOutcome, ReleaseReplaces, ReviewPress } from "./reviewVerdict.ts";
+import {
+  RELEASE_ESTIMATE_MS,
+  type ReleaseOutcome,
+  type ReleaseReplaces,
+  type ReviewPress,
+} from "./reviewVerdict.ts";
 import { stageMarks, type StageMark, type StageStandings } from "./stageMarks.ts";
 
 /** A release's own facts, as the review shows them. */
@@ -215,9 +221,12 @@ export function releaseOutcomeOf(input: {
   if (Number.isNaN(since)) {
     return { kind: "releasing", progress: `Putting ${input.tag} live` };
   }
-  const elapsed = Math.max(0, Math.floor((input.clockMs - since) / 1000));
-  const clock = `${String(Math.floor(elapsed / 60))}:${String(elapsed % 60).padStart(2, "0")}`;
-  return { kind: "releasing", progress: `Putting ${input.tag} live · ${clock}` };
+  // The clock the conversation and the menu count in; past the minute or two it promised
+  // (`RELEASE_TAKES`), it says so, never a bare clock that might have hung.
+  const elapsedMs = input.clockMs - since;
+  const clock = formatRunClock(elapsedMs);
+  const late = elapsedMs >= RELEASE_ESTIMATE_MS ? " · taking longer than usual" : "";
+  return { kind: "releasing", progress: `Putting ${input.tag} live · ${clock}${late}` };
 }
 
 /**

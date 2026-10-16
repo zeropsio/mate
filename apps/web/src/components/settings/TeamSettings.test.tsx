@@ -26,6 +26,33 @@ vi.mock("@tanstack/react-router", async (actual) => ({
   ),
 }));
 
+// A tooltip drawn in place, in a template of its own: what a pointer reads is in the markup.
+vi.mock("../ui/tooltip", async () => {
+  const { cloneElement, isValidElement } = await import("react");
+  return {
+    Tooltip: ({ children }: { readonly children: ReactNode }) => <>{children}</>,
+    TooltipTrigger: ({
+      render,
+      children,
+    }: {
+      readonly render: unknown;
+      readonly children?: ReactNode;
+    }) =>
+      isValidElement(render) ? (
+        children === undefined ? (
+          render
+        ) : (
+          cloneElement(render, undefined, children)
+        )
+      ) : (
+        <>{children}</>
+      ),
+    TooltipPopup: ({ children }: { readonly children: ReactNode }) => (
+      <template data-tooltip="">{children}</template>
+    ),
+  };
+});
+
 const member = (
   id: string,
   name: string,
@@ -98,13 +125,43 @@ function drawn(
 describe("the organization's team", () => {
   it("Everyone in the organization is a card, never a token: their name, role and e-mail", () => {
     const page = drawn();
-    expect(page.heading).toBe("Team4 people");
+    expect(page.heading).toBe("Team3 people · 1 invited");
     expect(page.cards.map(({ name, role, email }) => [name, role, email])).toEqual([
       ["Ada Owner", "Owner", "ada@example.com"],
       ["Al Admin", "Admin", "al@example.com"],
       ["Bob Guest", "Guest", "bob@example.com"],
       ["Iva Invited", "Guest", "iva@example.com"],
     ]);
+  });
+
+  it("An address too long for its card keeps its domain, the whole address on hover", () => {
+    const address = "nova.storefront-operations@teashop-example.com";
+    const markup = renderToStaticMarkup(
+      <TeamList
+        view={teamPeople({
+          ...input(),
+          members: {
+            known: true,
+            status: "ready",
+            refused: false,
+            list: [
+              member("nova", address, "NO_ACCESS", {
+                status: "WAITING_AUTHORIZATION",
+                user: { id: "nova", email: address },
+              }),
+            ],
+          },
+        })}
+      />,
+    );
+    const body = new DOMParser().parseFromString(markup, "text/html").body;
+    const name = body.querySelector('[data-part="name"]');
+    // The name before the @ and the domain stand apart, the domain whole; hover says it all.
+    expect([...(name?.firstElementChild?.children ?? [])].map((part) => part.textContent)).toEqual([
+      "nova.storefront-operations",
+      "@teashop-example.com",
+    ]);
+    expect(name?.querySelector("template")?.innerHTML).toBe(address);
   });
 
   it("A card opens that person's own page", () => {
@@ -170,14 +227,13 @@ describe("the organization's team", () => {
     await act(async () => {
       root.render(
         <TeamList
-          sent="iva@example.com"
+          sent={["iva@example.com"]}
           view={teamPeople(input({ roleCode: "OWNER", membershipId: "cu-ada" }))}
         />,
       );
     });
-    expect(host.querySelector('[data-part="sent"]')?.textContent).toBe(
-      "Invitation sent to iva@example.com. They'll show here as joined once they accept.",
-    );
+    // Said to a screen reader only: the invite page said it where it was sent.
+    expect(host.querySelector('[data-part="sent"]')).toBeNull();
     // The live region stands empty on the first paint, and is filled once focus has moved.
     expect(host.querySelector('[role="status"]')?.textContent).toBe("");
     await act(async () => {

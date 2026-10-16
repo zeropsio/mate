@@ -139,7 +139,7 @@ function ConversationLine() {
 
 function Filters() {
   const [show, setShow] = useState<OverviewShow | undefined>(undefined);
-  return <OverviewFilters mine={2} onShow={setShow} show={show} waiting={3} />;
+  return <OverviewFilters mine={2} onShow={setShow} ownsMates show={show} waiting={3} />;
 }
 
 const CLAUDE = ProviderDriverKind.make("claudeAgent");
