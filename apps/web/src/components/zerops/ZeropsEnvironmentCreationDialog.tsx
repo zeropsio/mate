@@ -256,12 +256,14 @@ function EnvironmentSheet(
             <h3 className="text-muted-foreground text-xs">Where</h3>
             <p className="font-medium text-foreground text-sm">{defaultName}</p>
             <p className="text-muted-foreground text-sm">
-              A new Zerops project with its own address, ready in a few minutes.
+              {/* The person's project is the application: this is a copy of it, never a second
+                  project (the run's owner read "a new Zerops project" as another in the menu). */}
+              A separate copy of {groupName} with its own address, ready in a few minutes.
             </p>
           </section>
           <div className="flex flex-col gap-1">
             <Button className={SHEET_LINK} onClick={props.onYourself} size="sm" variant="link">
-              Set it up yourself…
+              Change its name or services…
             </Button>
             {props.git === undefined ? null : (
               <>
@@ -368,7 +370,7 @@ function EnvironmentForm({
             Carrying one string in both said nothing twice. */}
         <DialogTitle>{`New ${what} environment`}</DialogTitle>
         <DialogDescription>
-          A new Zerops project in {groupName}. It takes a couple of minutes to come up.
+          A separate copy of {groupName}. It takes a few minutes to come up.
         </DialogDescription>
       </DialogHeader>
       <DialogPanel className="flex flex-col gap-5 space-y-0">

@@ -180,7 +180,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
     chooseDestination: (target: "zerops" | "git") =>
       click(
         target === "zerops"
-          ? "Set it up yourself…"
+          ? "Change its name or services…"
           : "Use a branch in your Git repository instead…",
       ),
     withAgent: Effect.promise(() =>
