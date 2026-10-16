@@ -8203,7 +8203,9 @@ function ConversationView(props: ChatViewProps) {
               return "url" in activeRightPanelSurface ? null : (
                 <ZeropsBrowserSurface
                   mateName={admissionMate.kind === "mate" ? admissionMate.mate.name : undefined}
+                  onOpenImage={onExpandTimelineImage}
                   threadRef={zeropsChrome.threadRef}
+                  zeropsEntries={zeropsThreadModel.entries}
                 />
               );
             case "mac":
