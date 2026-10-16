@@ -19,8 +19,8 @@ import { zeropsAccountDisplay } from "../landing/ZeropsAccountControl.logic";
 import { MateDot } from "../MateDot";
 import { MateOwnerMark } from "../MateOwnerMark";
 import { ownerMark } from "../SidebarMateRow.logic";
-import { SidebarWaitingPopover, type WaitingVerbs } from "../SidebarWaiting";
-import { waitingSummary, type WaitingItem } from "../SidebarWaiting.logic";
+import { SidebarWaitingCount, type WaitingVerbs } from "../SidebarWaiting";
+import type { WaitingItem } from "../SidebarWaiting.logic";
 import { chiefNameParts, type ChiefSetupRowState } from "./chiefTop.logic";
 import { carryBandToChief } from "./chiefLitTravel";
 
@@ -64,7 +64,6 @@ export function SidebarChiefRow({
   waiting,
 }: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
-  const summary = items.length === 0 ? undefined : waitingSummary(items);
   // The person's own Chief, by their name and with their picture on its mark (the owner,
   // 2026-10-13: "Aleš's Chief Mate and combine it with avatar, no second line"); a line only while
   // its setup has one to say.
@@ -77,7 +76,7 @@ export function SidebarChiefRow({
         className="menu-chief-row"
         data-current={current ? "" : undefined}
         data-lined={shown === null ? undefined : ""}
-        data-waits={summary === undefined ? undefined : ""}
+        data-waits={items.length === 0 ? undefined : ""}
         data-zerops-surface="sidebar-chief-row"
         onClick={(event) => {
           // Lit at once, over its own hover, as a Mate's row is (`slideSelectedBandTo`), until its
@@ -123,22 +122,8 @@ export function SidebarChiefRow({
           </span>
         </span>
       </button>
-      {waiting === undefined || summary === undefined ? null : (
-        <SidebarWaitingPopover
-          items={items}
-          trigger={
-            <button
-              aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
-              className="menu-chief-count"
-              data-waiting-trigger=""
-              data-zerops-surface="sidebar-waiting"
-              type="button"
-            />
-          }
-          verbs={waiting.verbs}
-        >
-          <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
-        </SidebarWaitingPopover>
+      {waiting === undefined || items.length === 0 ? null : (
+        <SidebarWaitingCount className="menu-chief-count" items={items} verbs={waiting.verbs} />
       )}
     </div>
   );
@@ -157,7 +142,6 @@ export function SidebarChiefTile({
   waiting,
 }: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
-  const summary = items.length === 0 ? undefined : waitingSummary(items);
   // Named as its row names it: one name on the rail and in the open menu.
   const name = chiefRowName(useSignedInAccount());
   return (
@@ -197,22 +181,8 @@ export function SidebarChiefTile({
           </span>
         </TooltipPopup>
       </Tooltip>
-      {waiting === undefined || summary === undefined ? null : (
-        <SidebarWaitingPopover
-          items={items}
-          trigger={
-            <button
-              aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
-              className="menu-rail-count"
-              data-waiting-trigger=""
-              data-zerops-surface="sidebar-waiting"
-              type="button"
-            />
-          }
-          verbs={waiting.verbs}
-        >
-          <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
-        </SidebarWaitingPopover>
+      {waiting === undefined || items.length === 0 ? null : (
+        <SidebarWaitingCount className="menu-rail-count" items={items} verbs={waiting.verbs} />
       )}
     </div>
   );
@@ -230,7 +200,6 @@ export function SidebarChiefPlace({
   readonly waiting: SidebarChiefRowProps["waiting"];
 }) {
   const items = waiting?.items ?? [];
-  const summary = items.length === 0 ? undefined : waitingSummary(items);
   return (
     <div className="menu-top-chief" data-zerops-surface="sidebar-chief-place">
       <Link aria-label="Overview" className="menu-chief-place" to="/zerops">
@@ -240,22 +209,8 @@ export function SidebarChiefPlace({
           </span>
         </span>
       </Link>
-      {waiting === undefined || summary === undefined ? null : (
-        <SidebarWaitingPopover
-          items={items}
-          trigger={
-            <button
-              aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
-              className="menu-chief-count"
-              data-waiting-trigger=""
-              data-zerops-surface="sidebar-waiting"
-              type="button"
-            />
-          }
-          verbs={waiting.verbs}
-        >
-          <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
-        </SidebarWaitingPopover>
+      {waiting === undefined || items.length === 0 ? null : (
+        <SidebarWaitingCount className="menu-chief-count" items={items} verbs={waiting.verbs} />
       )}
     </div>
   );
