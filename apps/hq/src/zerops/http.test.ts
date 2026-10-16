@@ -135,6 +135,27 @@ describe("makeZeropsApiHttp", () => {
     }),
   );
 
+  // A standby takes the leader's ok only from a Zerops that answered it (`official.ts`).
+  it.live("tells a Zerops that answered 503 from one it could not reach", () =>
+    Effect.gen(function* () {
+      const flaky = yield* stub(1, 503, "");
+      const statusOf = (url: string) =>
+        Effect.gen(function* () {
+          const client = yield* Layer.build(NodeHttpClient.layerNodeHttp);
+          const api = yield* makeZeropsApiHttp(url).pipe(Effect.provide(client));
+          const error = yield* Effect.flip(api.members("ORG")(Redacted.make("token")));
+          return [error._tag, error._tag === "ZeropsUnavailable" ? error.status : "none"];
+        });
+      assert.deepStrictEqual(
+        [yield* statusOf(flaky.url), yield* statusOf("http://127.0.0.1:1")],
+        [
+          ["ZeropsUnavailable", 503],
+          ["ZeropsUnavailable", undefined],
+        ],
+      );
+    }),
+  );
+
   it.live("answers a 503 as unavailable, asking once, and a verdict such as projectNotFound", () =>
     Effect.gen(function* () {
       const flaky = yield* stub(1, 503, "");

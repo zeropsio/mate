@@ -79,7 +79,10 @@ export interface FakeWorld {
   >;
   /** Integration tokens by their value; the fake's clock stamps `readAtMs` on each read. */
   tokens: Map<string, Omit<ZeropsOwnToken, "readAtMs">>;
+  /** Zerops answers every read 500. */
   down: boolean;
+  /** Zerops is not reached at all — DNS, TLS, connect, no answer in time: no read gets an answer. */
+  unreachable: boolean;
   /** How long the org's member list takes to answer, ms: the organization's stalls (F22); none at 0. */
   membersTake: number;
   /** Whether answers carry the API's clock (`readAtMs`). */
@@ -121,6 +124,7 @@ export const emptyWorld = (): FakeWorld => ({
   setupMarkers: new Set(),
   tokens: new Map(),
   down: false,
+  unreachable: false,
   membersTake: 0,
   apiClock: true,
   calls: [],
@@ -261,8 +265,15 @@ const notFound = (operation: string, code: string) =>
 const tokenOf = (world: FakeWorld, operation: string, credential: Redacted.Redacted) =>
   Effect.suspend((): Effect.Effect<Omit<ZeropsOwnToken, "readAtMs">, ZeropsError> => {
     world.calls.push(`${operation}:${Redacted.value(credential)}`);
+    if (world.unreachable) {
+      return Effect.fail(
+        new ZeropsUnavailable({ operation, message: "fake: platform unreachable" }),
+      );
+    }
     if (world.down || world.unanswered.has(operation)) {
-      return Effect.fail(new ZeropsUnavailable({ operation, message: "fake: platform down" }));
+      return Effect.fail(
+        new ZeropsUnavailable({ operation, message: "fake: platform down", status: 500 }),
+      );
     }
     const token = world.tokens.get(Redacted.value(credential));
     return token === undefined

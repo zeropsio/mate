@@ -438,6 +438,55 @@ describe("GET /health", () => {
         }),
     );
 
+    // A build that cannot reach Zerops at all — its DNS, TLS, egress or base URL — would lead on
+    // the leader's ok only until the grace ran out: its deploy fails instead, the leader serving on.
+    it.effect(
+      "a standby that cannot reach Zerops stays unready beside a leader with a fresh ok",
+      () =>
+        Effect.gen(function* () {
+          const leader = yield* startCore(true);
+          yield* untilHealth(leader.call, "active");
+
+          const world = seedCoreWorld(yield* Clock.currentTimeMillis, true, "ORG");
+          world.unreachable = true;
+          const next = yield* startCore(true, {
+            url: leader.url,
+            world,
+            officialRecheck: Duration.millis(100),
+          });
+          yield* untilHealth(next.call, "standby");
+          yield* next.official.nextCheck;
+          assert.deepStrictEqual(yield* next.official.status, {
+            official: "unknown",
+            allowed: false,
+          });
+          const health = yield* next.call("GET", "/health");
+          assert.deepStrictEqual(
+            [health.status, (health.body as { official: string }).official],
+            [503, "unknown"],
+          );
+        }),
+    );
+
+    // Its own first answer may still refuse it: a slow one must not let the deploy retire the leader.
+    it.effect("a standby is not ready on the leader's ok before its own first check finishes", () =>
+      Effect.gen(function* () {
+        const leader = yield* startCore(true);
+        yield* untilHealth(leader.call, "active");
+
+        const world = seedCoreWorld(yield* Clock.currentTimeMillis, true, "ORG");
+        world.membersTake = 60_000;
+        const next = yield* startCore(true, { url: leader.url, world });
+        yield* untilHealth(next.call, "standby");
+        assert.isFalse(yield* next.official.checked);
+        const health = yield* next.call("GET", "/health");
+        assert.deepStrictEqual(
+          [health.status, (health.body as { official: string }).official],
+          [503, "unknown"],
+        );
+      }),
+    );
+
     it.effect("counts a structure socket's views in a running Core, beside its loop's watch", () =>
       Effect.gen(function* () {
         const { call, socket } = yield* startCore(true);

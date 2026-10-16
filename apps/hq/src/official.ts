@@ -19,7 +19,8 @@ import { completionReceipt } from "@t3tools/shared/completionReceipt";
  * that led before held counts as its own (`inherit`, recorded in `hq_leader` by `leader.ts`): a
  * takeover does not wait on a Zerops that is slow to answer the new container (F18). The same holds
  * for the `ok` the leader announces while it leads (`allowedWith`): a deploy's new Core is ready
- * beside it however long ago the Core before it let go.
+ * beside it however long ago the Core before it let go — once Zerops answered its own last read,
+ * if only with no verdict.
  *
  * @module official
  */
@@ -114,7 +115,9 @@ export class Official extends Context.Service<
     readonly inherit: (ok: OfficialOk) => Effect.Effect<void>;
     /**
      * Whether this Core could lead once it took `ok` (`inherit`): the leader's, which it hands
-     * over as it lets go, so a standby beside it answers readiness by it (`health.ts`).
+     * over as it lets go, so a standby beside it answers readiness by it (`health.ts`). Only once
+     * Zerops answered this Core's last read: a first answer still to come may refuse it, and a
+     * Core that cannot reach Zerops would lead only until the grace ran out.
      */
     readonly allowedWith: (ok: OfficialOk) => Effect.Effect<boolean>;
   }
@@ -154,11 +157,17 @@ export const officialLayer = (
         readonly okAt: number | undefined;
         /** Whether the platform has answered this Core: from then on its own verdicts rule. */
         readonly answered: boolean;
+        /**
+         * Whether Zerops answered the last read, if only with no verdict (a 5xx): not before the
+         * first check finished, nor while Zerops is not reached at all.
+         */
+        readonly reached: boolean;
       }
       const state = yield* Ref.make<State>({
         official: "unknown",
         okAt: undefined,
         answered: false,
+        reached: false,
       });
       /** `current` with another Core's `ok` taken: its project's, newer, while Zerops is silent. */
       const taking = (current: State, ok: OfficialOk): State =>
@@ -181,7 +190,10 @@ export const officialLayer = (
           return fit;
         });
 
-      /** The verdict; a refusal of any read is the credential's fault, an unanswered read none. */
+      /**
+       * The verdict and whether Zerops answered it; a refusal of any read is the credential's
+       * fault, an unanswered read none.
+       */
       const read = Effect.gen(function* () {
         if (Option.isNone(options.credential)) return "credentials_wrong" as const;
         const view = yield* roles.recent;
@@ -195,20 +207,24 @@ export const officialLayer = (
           view.members,
         );
       }).pipe(
+        Effect.map((official) => ({ official, reached: true })),
         Effect.catchTags({
-          ZeropsRefused: () => Effect.succeed("credentials_wrong" as const),
-          ZeropsUnavailable: () => Effect.succeed("unknown" as const),
+          ZeropsRefused: () =>
+            Effect.succeed({ official: "credentials_wrong" as const, reached: true }),
+          ZeropsUnavailable: (error) =>
+            Effect.succeed({ official: "unknown" as const, reached: error.status !== undefined }),
         }),
       );
 
       const completed = completionReceipt();
       const check = Effect.gen(function* () {
-        const official = yield* read;
+        const { official, reached } = yield* read;
         const now = yield* Clock.currentTimeMillis;
         const was = yield* Ref.getAndUpdate(state, (current) => ({
           official,
           okAt: official === "ok" ? now : official === "unknown" ? current.okAt : undefined,
           answered: current.answered || official !== "unknown",
+          reached,
         }));
         yield* Ref.set(checked, true);
         if (was.official !== official) {
@@ -244,8 +260,9 @@ export const officialLayer = (
                 : Effect.void,
           ),
         allowedWith: (ok) =>
-          Effect.map(Effect.zip(Ref.get(state), Clock.currentTimeMillis), ([current, now]) =>
-            allows(taking(current, ok), now),
+          Effect.map(
+            Effect.zip(Ref.get(state), Clock.currentTimeMillis),
+            ([current, now]) => current.reached && allows(taking(current, ok), now),
           ),
         status: Effect.gen(function* () {
           const current = yield* Ref.get(state);

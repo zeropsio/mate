@@ -266,7 +266,11 @@ const ask = <A>(
       status >= 500 ||
       (status === 400 && (options.transient ?? []).includes(code))
     ) {
-      return yield* unavailable(`The Zerops API answered ${String(status)} ${code}.`);
+      return yield* new ZeropsUnavailable({
+        operation,
+        message: `The Zerops API answered ${String(status)} ${code}.`,
+        status,
+      });
     }
     return yield* new ZeropsRefused({ operation, reason: reasonOf(status, code), status, code });
   });
