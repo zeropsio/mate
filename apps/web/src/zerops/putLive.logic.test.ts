@@ -45,7 +45,7 @@ const facts = (over: Partial<PutLiveFacts> = {}): PutLiveFacts => ({
 });
 
 const start = (over: Partial<PutLiveChange> = {}): PutLiveRun =>
-  startPutLive({ groupId: "g1", project: "Tea Shop", change: change(over) });
+  startPutLive({ orgId: "o1", groupId: "g1", project: "Tea Shop", change: change(over) });
 
 describe("putting an app live", () => {
   it("Putting an app live for the first time creates production and releases it in one step", () => {

@@ -5,11 +5,13 @@
  * wait row, then as the live card, until the person puts the card away.
  *
  * Kept in memory for the tab: what a run made stays in HQ and on the platform, and the menu and the
- * project say it from there after a reload.
+ * project say it from there after a reload. A run is its organization's, driven only while that one
+ * is shown, and none outlives its account: another account on the tab starts with none.
  */
 import { useCallback } from "react";
 import { create } from "zustand";
 
+import { onAccountLifetimeClose } from "./accountLifetime";
 import {
   putLiveStep,
   startPutLive,
@@ -34,6 +36,7 @@ interface PutLiveState {
   readonly close: () => void;
   /** Pressed: the sheet closes and the run starts, one per project. */
   readonly start: (input: {
+    readonly orgId: string;
     readonly groupId: string;
     readonly project: string;
     readonly change: PutLiveChange | undefined;
@@ -64,6 +67,18 @@ export const usePutLive = create<PutLiveState>((set, get) => ({
     if (runs.delete(groupId)) set({ runs });
   },
 }));
+
+onAccountLifetimeClose(() => {
+  usePutLive.setState({ asked: null, runs: new Map() });
+});
+
+/** The runs of the organization shown: the only ones driven. */
+export function putLiveRunsIn(
+  runs: ReadonlyMap<string, PutLiveRun>,
+  orgId: string | undefined,
+): ReadonlyArray<PutLiveRun> {
+  return [...runs.values()].filter((run) => orgId !== undefined && run.orgId === orgId);
+}
 
 /** Opens the sheet from a project's own door: what is merged goes live. */
 export function useOpenPutLive(): (groupId: string) => void {

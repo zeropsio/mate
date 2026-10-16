@@ -18,7 +18,7 @@ import {
   useProjectFlows,
   type ZeropsProjectFlow,
 } from "~/zerops/projectFlows";
-import { usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
+import { putLiveRunsIn, usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
 import {
   putLiveDeadline,
   putLiveMergeGate,
@@ -45,7 +45,7 @@ import {
 } from "./ZeropsEnvironmentCreationDialog.logic";
 
 export function PutLiveHost() {
-  const { status } = useZeropsSession();
+  const { status, activeOrganization } = useZeropsSession();
   const asked = usePutLive((state) => state.asked);
   const close = usePutLive((state) => state.close);
   const runs = usePutLive((state) => state.runs);
@@ -80,7 +80,7 @@ export function PutLiveHost() {
           />
         )}
       </Dialog>
-      {[...runs.values()].map((run) =>
+      {putLiveRunsIn(runs, activeOrganization?.id).map((run) =>
         run.phase === "live" || run.phase === "failed" ? null : (
           <PutLiveDriver key={run.groupId} run={run} />
         ),
@@ -125,6 +125,7 @@ function PutLiveSheetContainer({
   const close = usePutLive((state) => state.close);
   const openReview = useOpenReview();
   const running = usePutLiveRun(ask.groupId);
+  const orgId = useZeropsSession().activeOrganization?.id;
   const project = entry?.group.name ?? "The project";
   // Asked from the project: what is merged goes live, newest first — once the flow is read.
   const merged = useMemo(
@@ -186,7 +187,7 @@ function PutLiveSheetContainer({
           : undefined
       }
       onPutLive={() => {
-        start({ groupId: ask.groupId, project, change });
+        if (orgId !== undefined) start({ orgId, groupId: ask.groupId, project, change });
       }}
       onSeeCode={
         seeCode === undefined

@@ -49,6 +49,8 @@ export interface PutLiveFailure {
 }
 
 export interface PutLiveRun {
+  /** The organization it was pressed in: driven only while that one is shown. */
+  readonly orgId: string;
   readonly groupId: string;
   /** The project's name: "Putting Shop Front live". */
   readonly project: string;
@@ -223,11 +225,13 @@ export function putLiveSheet(input: {
 
 /** A run, pressed: the change merged first when it still waits, else production made at once. */
 export function startPutLive(input: {
+  readonly orgId: string;
   readonly groupId: string;
   readonly project: string;
   readonly change: PutLiveChange | undefined;
 }): PutLiveRun {
   return {
+    orgId: input.orgId,
     groupId: input.groupId,
     project: input.project,
     change: input.change,
