@@ -47,6 +47,7 @@ import {
   zeropsStatusWord,
   zeropsTypeShort,
 } from "@t3tools/client-runtime/zerops/serviceMap";
+import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
 import {
   type EnvironmentId,
   type ScopedThreadRef,
@@ -63,6 +64,7 @@ import { useDatabasePanel, useDatabaseServices } from "../../zerops/useDatabase"
 import { databaseTreeTarget } from "@t3tools/client-runtime/data";
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import { useZeropsDataConsole } from "../../zerops/useZeropsFeeds";
+import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { MicroLabel, STATUS_BADGE_TONE } from "./primitives";
@@ -118,6 +120,16 @@ const FAMILY_WORDS: Readonly<Record<string, string>> = {
   object: "Object storage",
   stream: "Message stream",
 };
+/** One service row in the picker, from the console's listing or, while it opens, from Zerops'. */
+interface DataServiceRowView {
+  readonly hostname: string;
+  readonly topologyService: ZeropsTopologyService | undefined;
+  readonly typeWords: string;
+  readonly viewOnly: boolean;
+  readonly canBrowse: boolean;
+  readonly vpnGateReason: string | undefined;
+}
+
 const ASSUMED_WIDTH_MAXIMIZED = 1200;
 const ASSUMED_WIDTH_INLINE = 420;
 
@@ -153,6 +165,11 @@ export function ZeropsDataPanel({
     service ?? null,
   );
   const database = useDatabasePanel(dataConsoleSupported ? environmentId : null, service ?? null);
+  // The project's data services as Zerops lists them: the picker draws them in their rows' place
+  // while the console opens, so the page paints once, in its shape.
+  const topologyView = useProjectTopology(
+    dataConsoleSupported && service === undefined ? environmentId : null,
+  ).view;
   const summaryRead = database.readStates.summary;
   // A console that does not offer the summary yet leaves the identity quiet: nothing to retry.
   const summaryUnoffered = summaryRead?.code === "unsupported";
@@ -686,6 +703,59 @@ export function ZeropsDataPanel({
       </div>
     ) : null;
 
+  // Until the console lists its services, whether it is still opening or has opened.
+  const awaitingListing = services === undefined && status !== "unavailable";
+  const standInRows: ReadonlyArray<DataServiceRowView> =
+    serviceRows.length > 0 || topologyView === undefined
+      ? []
+      : topologyView.services
+          .filter((entry) => entry.group === "data")
+          .map((entry) => ({
+            hostname: entry.hostname,
+            topologyService: entry,
+            typeWords: zeropsTypeShort(entry),
+            viewOnly: false,
+            // Nothing opens before the console answers what each service offers.
+            canBrowse: false,
+            vpnGateReason: undefined,
+          }));
+  const serviceList = (rows: ReadonlyArray<DataServiceRowView>) => (
+    <div className="space-y-1" data-zerops-data-services>
+      {rows.map((row) => (
+        <button
+          className="flex w-full flex-col items-start gap-0.5 rounded-[var(--zerops-card-radius)] px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+          data-zerops-data-service={row.hostname}
+          disabled={!row.canBrowse}
+          key={row.hostname}
+          onClick={() => (row.canBrowse ? onOpenService(row.hostname) : undefined)}
+          type="button"
+        >
+          <span className="flex w-full items-center justify-between gap-1">
+            <span className="flex min-w-0 items-center gap-1.5">
+              {row.topologyService !== undefined ? (
+                <Badge
+                  dot
+                  data-zerops-data-service-status
+                  tone={STATUS_BADGE_TONE[STATUS_DOT_TONE[serviceStatusTone(row.topologyService)]]}
+                >
+                  {zeropsStatusWord(row.topologyService.status)}
+                </Badge>
+              ) : null}
+              <span className="truncate">{row.hostname}</span>
+            </span>
+            {row.viewOnly ? <Badge data-zerops-data-service-view-only>View only</Badge> : null}
+          </span>
+          <span className="text-muted-foreground">{row.typeWords}</span>
+          {row.vpnGateReason !== undefined ? (
+            <span className="text-muted-foreground" data-zerops-data-service-vpn-hint>
+              {row.vpnGateReason}
+            </span>
+          ) : null}
+        </button>
+      ))}
+    </div>
+  );
+
   if (service === undefined) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -703,71 +773,36 @@ export function ZeropsDataPanel({
                   Refresh
                 </Button>
               </div>
-              {sessionLine ??
-                (services !== undefined && services.length === 0 ? (
-                  /* A project with no managed data service rendered a label, a
+              {awaitingListing && standInRows.length > 0
+                ? serviceList(standInRows)
+                : (sessionLine ??
+                  (services !== undefined && services.length === 0 ? (
+                    /* A project with no managed data service rendered a label, a
                  Refresh and eight hundred pixels of nothing. Saying so is not
                  an error — most projects have no database — so it is a line,
                  not a warning. */
-                  <p className="text-muted-foreground text-xs" data-zerops-data-empty>
-                    This project has no database or storage service. Add one and it will be
-                    browsable here.
-                  </p>
-                ) : (
-                  <div className="space-y-1" data-zerops-data-services>
-                    {serviceRows.map((row) => {
-                      const entry = row.service;
-                      const rowAffordances = resolveServiceAffordances(entry);
-                      return (
-                        <button
-                          className="flex w-full flex-col items-start gap-0.5 rounded-[var(--zerops-card-radius)] px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-                          data-zerops-data-service={entry.hostname}
-                          disabled={!rowAffordances.canBrowse}
-                          key={entry.hostname}
-                          onClick={() =>
-                            rowAffordances.canBrowse ? onOpenService(entry.hostname) : undefined
-                          }
-                          type="button"
-                        >
-                          <span className="flex w-full items-center justify-between gap-1">
-                            <span className="flex min-w-0 items-center gap-1.5">
-                              {row.topologyService !== undefined ? (
-                                <Badge
-                                  dot
-                                  data-zerops-data-service-status
-                                  tone={
-                                    STATUS_BADGE_TONE[
-                                      STATUS_DOT_TONE[serviceStatusTone(row.topologyService)]
-                                    ]
-                                  }
-                                >
-                                  {zeropsStatusWord(row.topologyService.status)}
-                                </Badge>
-                              ) : null}
-                              <span className="truncate">{entry.hostname}</span>
-                            </span>
-                            {entry.support !== "supported" ? (
-                              <Badge data-zerops-data-service-view-only>View only</Badge>
-                            ) : null}
-                          </span>
-                          <span className="text-muted-foreground">
-                            {row.topologyService !== undefined
+                    <p className="text-muted-foreground text-xs" data-zerops-data-empty>
+                      This project has no database or storage service. Add one and it will be
+                      browsable here.
+                    </p>
+                  ) : (
+                    serviceList(
+                      serviceRows.map((row) => {
+                        const affordances = resolveServiceAffordances(row.service);
+                        return {
+                          hostname: row.service.hostname,
+                          topologyService: row.topologyService,
+                          typeWords:
+                            row.topologyService !== undefined
                               ? zeropsTypeShort(row.topologyService)
-                              : (FAMILY_WORDS[entry.family] ?? entry.type)}
-                          </span>
-                          {rowAffordances.vpnGateReason !== undefined ? (
-                            <span
-                              className="text-muted-foreground"
-                              data-zerops-data-service-vpn-hint
-                            >
-                              {rowAffordances.vpnGateReason}
-                            </span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
+                              : (FAMILY_WORDS[row.service.family] ?? row.service.type),
+                          viewOnly: row.service.support !== "supported",
+                          canBrowse: affordances.canBrowse,
+                          vpnGateReason: affordances.vpnGateReason,
+                        };
+                      }),
+                    )
+                  )))}
               {errorLine}
             </div>
           </Card>
