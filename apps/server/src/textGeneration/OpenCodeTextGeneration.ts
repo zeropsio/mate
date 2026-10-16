@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import {
@@ -35,6 +36,8 @@ import {
   toOpenCodeFileParts,
   type OpenCodeServerConnection,
 } from "../spi/openCodeRuntime.ts";
+
+const OPENCODE_TIMEOUT_MS = 180_000;
 
 const OpenCodeTextGenerationOperation = Schema.Literals([
   "generateCommitMessage",
@@ -243,21 +246,40 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
           modelId: parsedModel.modelID,
         };
 
-        const result = yield* Effect.tryPromise({
-          try: () =>
-            client.session.prompt({
-              sessionID: session.data.id,
-              model: parsedModel,
-              ...(selectedAgent ? { agent: selectedAgent } : {}),
-              ...(selectedVariant ? { variant: selectedVariant } : {}),
-              parts: [{ type: "text", text: input.prompt }, ...fileParts],
-            }),
+        const sessionID = session.data.id;
+        // The model runs on a server other clients share: a request given up on — interrupted,
+        // or out of time — stops it there too, rather than leaving it working for nobody.
+        const abortSession = Effect.tryPromise(() => client.session.abort({ sessionID })).pipe(
+          Effect.ignore,
+        );
+        const answered = yield* Effect.tryPromise({
+          try: (signal) =>
+            client.session.prompt(
+              {
+                sessionID,
+                model: parsedModel,
+                ...(selectedAgent ? { agent: selectedAgent } : {}),
+                ...(selectedVariant ? { variant: selectedVariant } : {}),
+                parts: [{ type: "text", text: input.prompt }, ...fileParts],
+              },
+              { signal },
+            ),
           catch: (cause) =>
             new OpenCodeTextGenerationPromptRequestError({
               ...promptContext,
               cause,
             }),
-        });
+        }).pipe(
+          Effect.onInterrupt(() => abortSession),
+          Effect.timeoutOption(OPENCODE_TIMEOUT_MS),
+        );
+        if (Option.isNone(answered)) {
+          return yield* new TextGenerationError({
+            operation: input.operation,
+            detail: "OpenCode request timed out.",
+          });
+        }
+        const result = answered.value;
         const promptFailure = getOpenCodePromptFailure(result.data?.info?.error);
         if (promptFailure) {
           return yield* new OpenCodeTextGenerationPromptResponseError({
