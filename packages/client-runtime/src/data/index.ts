@@ -132,6 +132,7 @@ export {
 export { addonsScope, type ProjectIpv4Addon } from "./families/projectAddons.ts";
 export { creditForecast } from "./projections/creditForecast.ts";
 export { creditScope } from "./families/organizationCredit.ts";
+export { balanceScope } from "./families/organizationBalance.ts";
 export type { PortRoutingWrite } from "./operations/addressWrites.ts";
 export type { Invitee, InviteeCheck } from "./operations/appAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
@@ -243,6 +244,7 @@ export {
   projectServicesAtom,
   creditForecastAtom,
   creditReadGenerationAtom,
+  balanceReadGenerationAtom,
   projectsServicesAtom,
   projectUsageAtom,
   NOT_READ_VAULT,
