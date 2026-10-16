@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { Instant } from "./exchange.ts";
 import {
+  automaticUpdateFrom,
   CONTAINER_CAPS_MS,
   containerVerdict,
   initialContainer,
@@ -732,5 +733,83 @@ describe("container machine (DESIGN §4.5)", () => {
     expect(containerVerdict(second.machine).level).toBe("restarting");
     const connected = drive([{ type: "LINK", connected: true }], second);
     expect(containerVerdict(connected.machine)).toEqual({ level: "ready" });
+  });
+});
+
+// Run 2: the organization's automatic update restarted a Mate a second after its answer, and its
+// conversation said it "isn't answering", counting down, instead of that it was updating.
+describe("an automatic update the Mate's server announced", () => {
+  const announced = (from: string | null) => {
+    const linked = drive([{ type: "LINK", connected: true }], ready());
+    return drive([{ type: "UPDATE_UNDERWAY", from }], linked);
+  };
+
+  it("a Mate whose server said its update is under way reads as updating once its link drops", () => {
+    const underway = announced("0.11.40");
+    // Still connected, it is only waiting for its quiet minute: nothing to say yet.
+    expect(containerVerdict(underway.machine)).toEqual({ level: "ready" });
+    const dropped = drive([{ type: "LINK", connected: false }], underway);
+    expect(containerVerdict(dropped.machine)).toEqual({ level: "updating", overdue: false });
+    const back = drive([{ type: "LINK", connected: true }], dropped);
+    expect(containerVerdict(back.machine)).toEqual({ level: "ready" });
+  });
+
+  it("a link that drops with no update under way is not an update", () => {
+    const quiet = announced(null);
+    const dropped = drive([{ type: "LINK", connected: false }], quiet);
+    expect(containerVerdict(dropped.machine).level).not.toBe("updating");
+  });
+
+  it("an announced update speaks for one drop only", () => {
+    const first = drive(
+      [
+        { type: "LINK", connected: false },
+        { type: "LINK", connected: true },
+        { type: "LINK", connected: false },
+      ],
+      announced("0.11.40"),
+    );
+    expect(containerVerdict(first.machine).level).not.toBe("updating");
+  });
+
+  it("an update that does not come back in its budget turns overdue", () => {
+    const dropped = drive([{ type: "LINK", connected: false }], announced("0.11.40"));
+    const late = drive(
+      [
+        { type: "TICK" },
+        // Read since its budget ran out, still on the version it was updating from.
+        probed(READY, dropped.nowMs + CONTAINER_CAPS_MS.updating + 1_000),
+      ],
+      dropped,
+    );
+    expect(containerVerdict(late.machine)).toEqual({ level: "updating", overdue: true });
+  });
+});
+
+describe("when a server's automatic update is under way", () => {
+  it.each([
+    ["idle", null],
+    ["staging", "0.11.40"],
+    ["draining", "0.11.40"],
+    ["switching", "0.11.40"],
+    ["verifying", null],
+    ["updated", null],
+    ["postponed", null],
+    ["failed", null],
+  ] as const)("its phase %s → under way from %s", (phase, from) => {
+    expect(
+      automaticUpdateFrom({
+        installed: "0.11.40",
+        latest: "0.11.41",
+        available: true,
+        checkedAt: "2026-10-16T10:00:00Z",
+        automatic: { protocol: 1, rollbackCompatible: true, phase, runningVersion: "0.11.40" },
+      }),
+    ).toBe(from);
+  });
+
+  it("a server with no automatic update record has none under way", () => {
+    expect(automaticUpdateFrom(undefined)).toBeNull();
+    expect(automaticUpdateFrom(null)).toBeNull();
   });
 });

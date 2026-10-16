@@ -27,6 +27,7 @@ import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zero
 import { mateContainerReads } from "@t3tools/client-runtime/data";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import {
+  automaticUpdateFrom,
   closeOffWordOf,
   systemExchangeClock,
   type CloseOffWord,
@@ -57,6 +58,7 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
+import { serverEnvironment } from "~/state/server";
 import { hqMatesAtom, hqNavigationAtom, hqProjectOf } from "~/state/zerops";
 
 import { accountStorageKey, captureAccountLifetime } from "./accountLifetime";
@@ -316,18 +318,32 @@ function catalogPort(registry: AtomRegistry.AtomRegistry): AccountEnvironmentPor
           }
           for (const environmentId of entries.keys()) {
             if (links.has(environmentId)) continue;
-            links.set(
-              environmentId,
-              registry.subscribe(
-                environmentCatalog.stateAtom(environmentId),
-                (result) => {
-                  const state = Option.getOrNull(AsyncResult.value(result));
-                  const phase = state === null ? null : linkPhaseOf(state);
-                  if (phase !== null) listener.link(environmentId, phase);
-                },
-                { immediate: true },
-              ),
+            const stopLink = registry.subscribe(
+              environmentCatalog.stateAtom(environmentId),
+              (result) => {
+                const state = Option.getOrNull(AsyncResult.value(result));
+                const phase = state === null ? null : linkPhaseOf(state);
+                if (phase !== null) listener.link(environmentId, phase);
+              },
+              { immediate: true },
             );
+            // Its server's word on an automatic update, as last said: an unread config says none.
+            let underway: string | null = null;
+            const stopUpdate = registry.subscribe(
+              serverEnvironment.configValueAtom(environmentId),
+              (config) => {
+                if (config === null) return;
+                const from = automaticUpdateFrom(config.environment.update);
+                if (from === underway) return;
+                underway = from;
+                listener.updateUnderway(environmentId, from);
+              },
+              { immediate: true },
+            );
+            links.set(environmentId, () => {
+              stopLink();
+              stopUpdate();
+            });
           }
           listener.environments(registered);
         },
