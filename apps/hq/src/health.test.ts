@@ -399,7 +399,11 @@ describe("GET /health", () => {
       "a standby started during a short Zerops outage is ready when the leader confirmed ok within the grace",
       () =>
         Effect.gen(function* () {
-          const leader = yield* startCore(true, { officialRecheck: Duration.millis(100) });
+          // The leader keeps no view, so each check reads Zerops itself.
+          const leader = yield* startCore(true, {
+            officialRecheck: Duration.millis(100),
+            viewTtl: Duration.zero,
+          });
           yield* untilHealth(leader.call, "active");
           yield* leader.sql`
             UPDATE hq_leader
