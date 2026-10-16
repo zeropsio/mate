@@ -110,7 +110,7 @@ function Tab() {
     }));
     return { ok: true };
   };
-  return <McpPanelBody act={act} driver={AGENT} onRetry={noop} state={state} />;
+  return <McpPanelBody act={act} driver={AGENT} mateName="Nova" onRetry={noop} state={state} />;
 }
 
 function Harness() {

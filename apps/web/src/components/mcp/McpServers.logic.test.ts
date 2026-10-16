@@ -69,7 +69,7 @@ describe("the built-in server's reported state", () => {
       expected: {
         state: "configured",
         tone: "off",
-        note: null,
+        note: { kind: "quiet", text: "Set up" },
         tools: [],
         actions: { reconnect: false },
       },
@@ -230,7 +230,13 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
       },
     },
     // An agent that cannot say how a server does is quiet, never a warning.
-    { name: "playwright", driver: CURSOR, state: "configured", tone: "off", note: null },
+    {
+      name: "playwright",
+      driver: CURSOR,
+      state: "configured",
+      tone: "off",
+      note: { kind: "quiet", text: "Set up" },
+    },
     {
       name: "github",
       driver: CLAUDE,
