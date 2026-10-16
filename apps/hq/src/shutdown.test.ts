@@ -52,9 +52,14 @@ describe("Core shutdown after a renderer leaves", () => {
                   headers: { authorization: `Mate ${credential}` },
                 })).body as { ticket: string }
               ).ticket;
-        // Wait for Core's receipt of the FIN, not an elapsed delay or a client-side flush alone.
+        // Wait for Core's receipt of the peer's departure, not an elapsed delay or a client-side
+        // flush alone: its FIN, or the reset that closes the socket when Core read the request
+        // first and answered before reading the FIN (Linux reads a FIN on a later loop turn).
         const peerEnded = new Promise<void>((resolve) =>
-          server.once("upgrade", (_request, socket) => socket.once("end", resolve)),
+          server.once("upgrade", (_request, socket) => {
+            socket.once("end", resolve);
+            socket.once("close", resolve);
+          }),
         );
         const port = Number(new URL(core.origin).port);
         yield* Effect.promise(
