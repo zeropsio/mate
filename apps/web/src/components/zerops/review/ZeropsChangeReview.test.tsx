@@ -932,6 +932,13 @@ describe("the one question after the first merge", () => {
     expect(text).toContain("Not now");
   });
 
+  // A run 2 follow-up: Add stage and Put it live stood as equals with nothing said between them.
+  it("says beside its buttons what each answer gives", () => {
+    const foot = textOf(footOf(render(FIRST, [changed("a.ts")], asking)));
+    expect(foot).toContain("A stage is a copy to try changes on before they go live.");
+    expect(foot).toContain("Put it live gives it its own public address.");
+  });
+
   it.each([
     ["it was not the first code merge", merged({ firstCodeMerge: false }), asking],
     ["the review is only reopened", FIRST, { ...asking, press: { kind: "idle" } as const }],

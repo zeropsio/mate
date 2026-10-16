@@ -669,7 +669,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       }
       consequence={
         question !== undefined
-          ? question.text
+          ? [question.text, ...question.options.map((option) => option.hint)].join(" ")
           : !over && !asked && props.offers?.merge === false && props.offers.why.merge !== undefined
             ? props.offers.why.merge
             : mergeFoot({

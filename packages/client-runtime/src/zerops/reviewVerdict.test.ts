@@ -1315,8 +1315,16 @@ describe("changeReview: where should it run (the one question)", () => {
     expect(changeReview(first()).question).toEqual({
       text: "Only Nova's preview runs it, for trying it out.",
       options: [
-        { tier: "stage", label: "Add stage" },
-        { tier: "production", label: "Put it live" },
+        {
+          tier: "stage",
+          label: "Add stage",
+          hint: "A stage is a copy to try changes on before they go live.",
+        },
+        {
+          tier: "production",
+          label: "Put it live",
+          hint: "Put it live gives it its own public address.",
+        },
       ],
       dismiss: "Not now",
     });
@@ -1359,6 +1367,18 @@ describe("changeReview: where should it run (the one question)", () => {
     ["no tier is offered at all", { addable: undefined }],
   ])("asks nothing when %s", (_name, over) => {
     expect(changeReview(first(over)).question).toBeUndefined();
+  });
+
+  it("says in one short line what each answer gives", () => {
+    for (const option of changeReview(first()).question?.options ?? []) {
+      expect(option.hint).not.toBe("");
+      expect(option.hint).not.toContain("\n");
+      expect(option.hint.length).toBeLessThanOrEqual(64);
+    }
+    expect(changeReview(first()).question?.options.map((option) => option.hint)).toEqual([
+      "A stage is a copy to try changes on before they go live.",
+      "Put it live gives it its own public address.",
+    ]);
   });
 
   it.each<[string, ChangeReviewInput["addable"], ReadonlyArray<string>]>([
