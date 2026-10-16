@@ -18,7 +18,14 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
-import { LOCK_KEY, Leader, type LeaderStatus, NotLeader, leaderLayer } from "./leader.ts";
+import {
+  LOCK_KEY,
+  Leader,
+  type LeaderStatus,
+  NotLeader,
+  announcedOk,
+  leaderLayer,
+} from "./leader.ts";
 import { type Migration, MIGRATIONS_TABLE } from "./migrations.ts";
 import { Official, officialLayer } from "./official.ts";
 import { rolesLayer } from "./roles.ts";
@@ -52,6 +59,7 @@ const startInstance = (
       nextCheck: Effect.never,
       lastOk: Effect.undefined,
       inherit: () => Effect.void,
+      allowedWith: () => Effect.succeed(false),
     });
     const context = yield* Layer.buildWithScope(
       leaderLayer({ databaseUrl, migrations, ...FAST }).pipe(
@@ -260,7 +268,7 @@ describe("leaderLayer", () => {
             Scope.provide(rival),
           );
           yield* other.query(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND application_name = 'hq-leader'",
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND application_name LIKE 'hq-leader%'",
           );
           yield* other.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
           const standby = yield* statusWhere(core.leader, (status) => status.state === "standby");
@@ -294,7 +302,7 @@ describe("leaderLayer", () => {
           });
           yield* admin.query(`ALTER DATABASE ${database} WITH ALLOW_CONNECTIONS false`);
           yield* admin.query(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND application_name = 'hq-leader'",
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND application_name LIKE 'hq-leader%'",
             [database],
           );
           yield* statusWhere(core.leader, (status) => status.state === "failed");
@@ -454,6 +462,42 @@ describe("leaderLayer", () => {
         }),
     );
 
+    // A deploy's new Core answers readiness by the leader's ok (`health.ts`). A write would have
+    // every hourly backup check take a new set (`backup.ts`); a session's name takes no transaction.
+    it.effect(
+      "names its lock session after its newest ok while it leads, and moves nothing a backup set compares",
+      () =>
+        Effect.gen(function* () {
+          const url = yield* (yield* TempPostgres).createDatabase;
+          const core = yield* startReading(url, anchoredWorld());
+          yield* statusWhere(core.leader, (status) => status.state === "active");
+          const session = (after: string) =>
+            core.sql<{ readonly name: string; readonly beat: string; readonly xmax: string }>`
+              SELECT application_name AS name, query_start::text AS beat,
+                     pg_snapshot_xmax(pg_current_snapshot())::text AS xmax
+              FROM pg_stat_activity
+              WHERE datname = current_database() AND application_name LIKE 'hq-leader%'`.pipe(
+              Effect.map((rows) => rows[0]),
+              Effect.filterOrFail(
+                (row) =>
+                  row !== undefined && announcedOk(row.name) !== undefined && row.beat !== after,
+              ),
+              Effect.retry(Schedule.spaced(Duration.millis(20))),
+              Effect.timeout("5 seconds"),
+              Effect.orDie,
+            );
+          const first = yield* session("");
+          const ok = yield* core.official.lastOk;
+          assert.deepStrictEqual(announcedOk(first.name), {
+            at: Math.floor(ok?.at ?? Number.NaN),
+            projectId: "P1",
+          });
+          const second = yield* session(first.beat);
+          const third = yield* session(second.beat);
+          assert.deepStrictEqual([third.name, third.xmax], [first.name, first.xmax]);
+          yield* core.stop;
+        }),
+    );
     it.effect("releases the lead on shutdown at once, and never takes it again", () =>
       Effect.gen(function* () {
         const url = yield* (yield* TempPostgres).createDatabase;

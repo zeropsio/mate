@@ -2,6 +2,7 @@ import { scopeReset } from "../test/harness/scopes.ts";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import * as PgConnection from "@effect/sql-pg/PgConnection";
 import { assert, describe, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -21,7 +22,13 @@ import {
   testKey,
 } from "../test/harness/deployKeys.ts";
 import { rowsWhere } from "../test/harness/mates.ts";
-import { sessionFor, startCore, ticketFor, untilHealth } from "../test/harness/runningCore.ts";
+import {
+  seedCoreWorld,
+  sessionFor,
+  startCore,
+  ticketFor,
+  untilHealth,
+} from "../test/harness/runningCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { Backup, type BackupStatus } from "./backup.ts";
 import { deployKeysLayer } from "./deployKeys.ts";
@@ -77,6 +84,7 @@ const getHealth = (
             nextCheck: Effect.never,
             lastOk: Effect.undefined,
             inherit: () => Effect.void,
+            allowedWith: () => Effect.succeed(official === "ok"),
           }),
           Layer.succeed(Backup, {
             nextCheck: Effect.never,
@@ -381,6 +389,48 @@ describe("GET /health", () => {
           steps.length = 0;
           yield* core.call("GET", "/health");
           assert.deepEqual(steps, []);
+        }),
+    );
+
+    // KRLS HQ, 2026-10-16 12:00Z: Zerops answered 500 for 80 s while a deploy's new Core started.
+    // The leader still held an ok of a minute before; the one recorded in `hq_leader`, by the
+    // Core that led before it as it let go, was 17 minutes old, past the grace.
+    it.effect(
+      "a standby started during a short Zerops outage is ready when the leader confirmed ok within the grace",
+      () =>
+        Effect.gen(function* () {
+          const leader = yield* startCore(true, { officialRecheck: Duration.millis(100) });
+          yield* untilHealth(leader.call, "active");
+          yield* leader.sql`
+            UPDATE hq_leader
+            SET official_ok_at = now() - interval '17 minutes', official_ok_project = 'HQ1'`;
+          leader.fake.down = true;
+          // The check under way may have read before Zerops went down; the next one did not.
+          yield* leader.official.nextCheck;
+          yield* leader.official.nextCheck;
+          assert.deepStrictEqual(yield* leader.official.status, {
+            official: "unknown",
+            allowed: true,
+          });
+
+          const world = seedCoreWorld(yield* Clock.currentTimeMillis, true, "ORG");
+          world.down = true;
+          const next = yield* startCore(true, { url: leader.url, world });
+          yield* untilHealth(next.call, "standby");
+          // On its own the standby could not lead: Zerops never answered it, its ok is the old one.
+          assert.deepStrictEqual(yield* next.official.status, {
+            official: "unknown",
+            allowed: false,
+          });
+          const health = yield* next.call("GET", "/health");
+          assert.deepStrictEqual(
+            [health.status, (health.body as { official: string }).official],
+            [200, "unknown"],
+          );
+
+          // The deploy retires the leader; it hands its ok over as it lets go, and the next leads.
+          yield* leader.stop;
+          yield* untilHealth(next.call, "active");
         }),
     );
 
