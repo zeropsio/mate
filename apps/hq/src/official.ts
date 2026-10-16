@@ -192,7 +192,8 @@ export const officialLayer = (
 
       /**
        * The verdict and whether Zerops answered it; a refusal of any read is the credential's
-       * fault, an unanswered read none.
+       * fault, an unanswered read none. An answer HQ cannot read is none either, yet Zerops did
+       * answer: as with a 5xx, this Core is not one that cannot reach it.
        */
       const read = Effect.gen(function* () {
         if (Option.isNone(options.credential)) return "credentials_wrong" as const;
@@ -213,6 +214,11 @@ export const officialLayer = (
             Effect.succeed({ official: "credentials_wrong" as const, reached: true }),
           ZeropsUnavailable: (error) =>
             Effect.succeed({ official: "unknown" as const, reached: error.status !== undefined }),
+          ZeropsUnexpectedAnswer: (error) =>
+            Effect.as(Effect.logError("zerops answer unreadable", error), {
+              official: "unknown" as const,
+              reached: true,
+            }),
         }),
       );
 

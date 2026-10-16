@@ -354,6 +354,36 @@ describe("officialLayer", () => {
     }),
   );
 
+  it.effect("the official check keeps running after a Zerops answer it cannot read", () =>
+    Effect.gen(function* () {
+      const fake = world();
+      fake.members.get("ORG")!.push(token(OWN));
+      fake.unreadable.add("members");
+      const service = yield* official(fake);
+      yield* Effect.yieldNow;
+      assert.isTrue(yield* service.checked);
+      assert.deepStrictEqual(yield* service.status, { official: "unknown", allowed: false });
+      fake.unreadable.delete("members");
+      yield* after("30 seconds");
+      assert.deepStrictEqual(yield* service.status, { official: "ok", allowed: true });
+    }),
+  );
+
+  // Zerops answered, as with a 5xx: the standby is not one that cannot reach it.
+  it.effect(
+    "a standby whose last read Zerops answered unreadably could lead with the leader's ok",
+    () =>
+      Effect.gen(function* () {
+        const fake = world();
+        fake.members.get("ORG")!.push(token(OWN));
+        fake.unreadable.add("members");
+        const service = yield* official(fake);
+        yield* Effect.yieldNow;
+        const announced = { at: (yield* Clock.currentTimeMillis) - 20_000, projectId: "P1" };
+        assert.isTrue(yield* service.allowedWith(announced));
+      }),
+  );
+
   it.effect("keeps an ok through an unreachable platform for ten minutes, never a refusal", () =>
     Effect.gen(function* () {
       const fake = world();
