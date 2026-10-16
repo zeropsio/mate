@@ -220,7 +220,7 @@ import { useStopPress } from "~/zerops/conversationStop";
 import { withStopPress } from "~/zerops/conversationStop.logic";
 import {
   addressesPlace,
-  formatWorkingTime,
+  formatRunClock,
   projectHeadingMenu,
   sidebarMateKey,
   type HeadingMenuEntry,
@@ -4440,7 +4440,7 @@ function MateWorkingTime({
       data-zerops-surface="sidebar-mate-time"
     >
       <span aria-hidden="true" className="menu-clock-mark" />
-      {formatWorkingTime(nowMs - Date.parse(since))}
+      {formatRunClock(nowMs - Date.parse(since))}
     </span>
   );
 }

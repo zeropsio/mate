@@ -16,6 +16,20 @@ export function formatWorkingTime(elapsedMs: number): string {
   return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
+/**
+ * A working Mate's clock beside its name, in the menu and on its card: in units, as the
+ * conversation's clocks read ("42s", "7m 05s", "1h 04m"), so it never reads like the time of day
+ * the same place shows for a finished row. Seconds and minutes keep two digits, so it ticks in a
+ * steady width.
+ */
+export function formatRunClock(elapsedMs: number): string {
+  const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  if (seconds < 60) return `${String(seconds)}s`;
+  if (seconds < 3600)
+    return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60).padStart(2, "0")}s`;
+  return formatWorkingTime(elapsedMs);
+}
+
 /** A week: a Mate untouched for longer folds into its project's quiet Mates. */
 export const QUIET_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 

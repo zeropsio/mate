@@ -3174,7 +3174,7 @@ describe("a Mate's row says more without words", () => {
   // counts up in ink where the age was.
   it("counts up how long it has been working, where its age was", () => {
     const time = slot(row(working()));
-    expect(time).toContain("3:12");
+    expect(time).toContain("3m 12s");
     expect(slot(row(live()))).toContain(">2h<");
   });
 
@@ -3183,7 +3183,7 @@ describe("a Mate's row says more without words", () => {
   // beside a working face (the approved menu; the 2026-09-28 audit's gap).
   it("counts up work left running in the background, as it counts a run", () => {
     const time = slot(row(working({ kind: "monitoring" })));
-    expect(time).toContain("3:12");
+    expect(time).toContain("3m 12s");
   });
 
   it.each([

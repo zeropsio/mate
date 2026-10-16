@@ -31,7 +31,7 @@ import { mateDecision } from "../mateDecision.logic";
 import { PersonAvatar } from "../primitives";
 import { SidebarMateAge } from "../SidebarMateAge";
 import type { MateRowSlot } from "../SidebarMateRow.logic";
-import { formatWorkingTime } from "../SidebarZeropsTree.logic";
+import { formatRunClock } from "../SidebarZeropsTree.logic";
 import {
   buildingOf,
   drawnChip,
@@ -430,7 +430,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
 /** A working Mate's clock, a step a second (R6). */
 function CardClock({ since }: { readonly since: string }) {
   const nowMs = useSecondsNowMs(true);
-  return <>{formatWorkingTime(nowMs - Date.parse(since))}</>;
+  return <>{formatRunClock(nowMs - Date.parse(since))}</>;
 }
 
 /**
