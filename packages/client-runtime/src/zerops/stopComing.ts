@@ -158,6 +158,8 @@ export function stopComing(input: {
   readonly deployed: boolean | undefined;
   /** Its public routes. */
   readonly routes: number;
+  /** It serves a port its public address would open (`addressOffered`); `undefined` while unread. */
+  readonly addressOffered?: boolean | undefined;
   /** A stage's first deploy, while it runs nothing (`firstDeploy`); unknown is awaited. */
   readonly firstDeploy: FirstDeploy | undefined;
 }): StopComing | undefined {
@@ -177,9 +179,19 @@ export function stopComing(input: {
   if (deployed === true && input.routes > 0) return undefined;
   // What the platform says it is making is its import's own step, whoever brought it up; past
   // that, only HQ still bringing it up makes it coming up.
+  const turningOn = addressComing({
+    birth: input.birth,
+    addresses: input.routes,
+    offered: input.addressOffered,
+  });
   if (!beingBorn(input.birth)) {
     if (others.some(({ status }) => MAKING.has(status))) return coming("database");
-    return runtimes.some(({ status }) => MAKING.has(status)) ? coming("app") : undefined;
+    if (runtimes.some(({ status }) => MAKING.has(status))) return coming("app");
+    // HQ's bringing up ends with its first deploy, a beat before the platform turns the address on.
+    const up = input.services.every(({ status }) => running(status));
+    return input.tier === "stage" && deployed === true && up && turningOn
+      ? coming("address")
+      : undefined;
   }
   const brokenOther = others.find(({ status }) => failing(status));
   if (brokenOther !== undefined && deployed !== true) {
@@ -220,8 +232,37 @@ export function stopComing(input: {
     }
   }
   if (runtimes.some(({ status }) => !running(status))) return coming("build");
-  if (input.routes === 0) return coming("address");
-  return undefined;
+  return turningOn ? coming("address") : undefined;
+}
+
+/**
+ * Whether a place HQ brought up is still turning its address on — the one rule the card's line and
+ * the menu's heading say it by. HQ ends its bringing up as the first deploy ends, and the platform
+ * turns the address on in its next read, about 0.8 s later: one serving a port its address would
+ * open waits for that address, so it says Running in the paint its address comes in; one serving
+ * no such port runs as it is; one whose ports are unread waits on HQ's word.
+ */
+export function addressComing(input: {
+  /** HQ bringing it up (`HqEnvironment.birth`); none where HQ did not. */
+  readonly birth: EnvironmentBirth | null | undefined;
+  /** Its public addresses. */
+  readonly addresses: number;
+  /** It serves a port its address would open (`addressOffered`); `undefined` while unread. */
+  readonly offered: boolean | undefined;
+}): boolean {
+  return input.birth != null && (input.offered ?? !input.birth.ended) && input.addresses === 0;
+}
+
+/**
+ * Whether a place serves a port its public address would open: one on already, or one its address
+ * would turn on (`derivePublicRouteOffers`); `undefined` while its services are unread.
+ */
+export function addressOffered(listing: {
+  readonly routeOffers?: ReadonlyArray<unknown> | undefined;
+  readonly routes?: ReadonlyArray<unknown> | undefined;
+}): boolean | undefined {
+  if (listing.routeOffers === undefined) return undefined;
+  return listing.routeOffers.length + (listing.routes?.length ?? 0) > 0;
 }
 
 /** One service of an environment, as the platform lists it (`summarizeEnvironmentServices`). */
@@ -280,6 +321,8 @@ export interface ListedStop {
   /** A deploy runs on it (`deployBuilding`). */
   readonly building: boolean;
   readonly routes: number;
+  /** It serves a port its public address would open (`addressOffered`); `undefined` while unread. */
+  readonly addressOffered?: boolean | undefined;
 }
 
 /** Where a listed stage or production coming up has got — the one reading every surface makes. */
@@ -296,6 +339,7 @@ export function listedStopComing(
     building: listed.building,
     deployed: stopDeployed(listed.stop),
     routes: listed.routes,
+    addressOffered: listed.addressOffered,
     firstDeploy: listed.stop.firstDeploy,
   });
 }

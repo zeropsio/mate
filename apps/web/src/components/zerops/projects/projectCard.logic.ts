@@ -11,6 +11,7 @@
  */
 import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/data";
 import {
+  addressComing,
   changeState,
   placeAddresses,
   PRODUCTION_DEPLOYING,
@@ -243,8 +244,11 @@ function stageLine(
   // its bringing up as that deploy ends, and the address comes in the platform's next read: one
   // it brought up that serves a port its address opens runs once that address is there, and one
   // serving none runs as it is.
-  const turningOn =
-    stop.birth != null && (offered ?? !stop.birth.ended) && stop.addresses.length === 0;
+  const turningOn = addressComing({
+    birth: stop.birth,
+    addresses: stop.addresses.length,
+    offered,
+  });
   if (said.dot === "running" && turningOn)
     return { ...base, dot: "unknown", words: ["Turning its address on…"], trouble: false };
   return { ...base, ...said };

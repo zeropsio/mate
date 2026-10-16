@@ -404,6 +404,8 @@ export {
   type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
+  addressComing,
+  addressOffered,
   comingLine,
   FIRST_DEPLOY_FAILED,
   FIRST_DEPLOY_ON_ITS_WAY,

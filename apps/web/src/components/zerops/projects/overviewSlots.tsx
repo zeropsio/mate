@@ -11,6 +11,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import {
+  addressOffered as addressOfferedBy,
   formatRunClock,
   stageMarks,
   stageStandings,
@@ -169,11 +170,8 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       const item = itemOf(entry, stop.projectId);
       const serving = servingOf(item);
       down.set(stop.projectId, downOf(serving));
-      if (item?.routeOffers !== undefined)
-        addressOffered.set(
-          stop.projectId,
-          item.routeOffers.length + (item.routes?.length ?? 0) > 0,
-        );
+      const offered = item === undefined ? undefined : addressOfferedBy(item);
+      if (offered !== undefined) addressOffered.set(stop.projectId, offered);
       stageChips.set(stop.projectId, drawnChip(stageStopChip({ stop, serving, releases })));
     }
     const since =
