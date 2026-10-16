@@ -117,11 +117,16 @@ export function reviewItemByline(item: ProjectReviewItem): string {
 /**
  * What a Mate's conversation header asks to review: its Mate's changes that ask for it — none
  * while the Mate still works on them (`changeShowsReview`), which the menu's mark keeps, quieter.
+ * The conversation's own word that its Mate works wins over the menu's, as it does for the
+ * composer's strip: the two never disagree on one screen (a run 2 follow-up: the header's Review
+ * came and went while the conversation's card said Working).
  */
 export function headerReviewItems(
   items: ReadonlyArray<ProjectReviewItem>,
   mateProjectId: string | undefined,
+  conversation: { readonly mateWorks: boolean } = { mateWorks: false },
 ): ReadonlyArray<ProjectReviewItem> {
+  if (conversation.mateWorks) return [];
   return items.filter((item) => item.mateProjectId === mateProjectId && item.inProgress !== true);
 }
 

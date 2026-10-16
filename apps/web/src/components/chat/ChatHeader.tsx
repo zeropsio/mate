@@ -59,7 +59,7 @@ import { useHeldBehindReview } from "~/zerops/heldBehindReview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { MateFaceAsMark } from "../zerops/primitives";
 import { ChatHeaderLinks } from "./ChatHeaderLinks";
-import { ConversationStrip } from "./ConversationStrip";
+import { ConversationStrip, useMateWorks } from "./ConversationStrip";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
 import {
   WorkspaceBreadcrumb,
@@ -280,14 +280,18 @@ export const ChatHeader = memo(function ChatHeader({
   // 2026-10-12: "add it somewhere to the app bar in detail which would trigger the same pop").
   const headerReview = useProjectReviewOf(mate?.chief === true ? undefined : mate?.projectId);
   // Held while a review stands open: a merge pressed there never slides the goal under the sheet.
+  // The conversation's own word that its Mate works, which holds the composer's strip too.
+  const conversation = { mateWorks: useMateWorks(activeThreadEnvironmentId) };
   const reviewTags = useHeldBehindReview(
     headerReview === undefined ||
-      (headerReviewItems(headerReview.items, mate?.projectId).length === 0 &&
+      (headerReviewItems(headerReview.items, mate?.projectId, conversation).length === 0 &&
         headerReview.release === undefined)
       ? null
       : headerReview,
   );
-  const headerChanges = headerReviewItems(reviewTags.value?.items ?? [], mate?.projectId);
+  const headerChanges = reviewTags.held
+    ? headerReviewItems(reviewTags.value?.items ?? [], mate?.projectId)
+    : headerReviewItems(reviewTags.value?.items ?? [], mate?.projectId, conversation);
   const lead = headerLead(whoLivesHere.kind, { chief: mate?.chief });
   const showOpenInPicker = shouldShowOpenInPicker({
     activeProjectName,
