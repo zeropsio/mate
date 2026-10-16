@@ -409,6 +409,8 @@ export function makeZeropsExecutor(input: {
               return people.check(requestId, intent);
             case "invite-member":
               return people.invite(requestId, intent);
+            case "resend-invitation":
+              return people.resend(requestId, intent);
             case "set-app-access":
               return people.setAccess(requestId, intent);
             case "set-org-role":

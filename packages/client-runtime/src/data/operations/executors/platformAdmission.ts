@@ -39,6 +39,7 @@ export function admitPlatformOperation(input: {
     if (
       intent.kind === "check-invitee" ||
       intent.kind === "invite-member" ||
+      intent.kind === "resend-invitation" ||
       intent.kind === "set-app-access" ||
       intent.kind === "set-project-access"
     ) {
