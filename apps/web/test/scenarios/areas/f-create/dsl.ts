@@ -174,7 +174,8 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
           );
           await (more.asElement() as ElementHandle<Element>).click();
         });
-        yield* click(`Add ${role}`);
+        // The menu's item, not the card's own Add stage beneath the open menu.
+        yield* click(`Add ${role}[role="menuitem"]`);
       }),
     /** The sheet's quiet ways out: production's or a stage's own form, or a Git branch. */
     chooseDestination: (target: "zerops" | "git") =>
