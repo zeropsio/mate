@@ -91,6 +91,7 @@ import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
 import { finishedEnableAt, heldCandidates, type CandidateRow } from "../projections/candidates.ts";
+import { addressWatchedProjects } from "./addressWatch.ts";
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
 
@@ -765,9 +766,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   };
 
   /**
-   * Reads the processes — running, and the newest history — of every project a surface shows (the
-   * route's, the drawn, the viewed, the detailed) of the active organization with a container
-   * ACTIVE without its address, for as long as it lacks one: its address landing, the project
+   * Reads the processes — running, and the newest history — of every project of the active
+   * organization with a container ACTIVE without its address that a surface shows (the route's,
+   * the drawn, the viewed, the detailed) or that is on its way to its address, shown or not
+   * (`addressWatchedProjects`), for as long as it lacks one: its address landing, the project
    * leaving view or the organization leaving view lets the read go. Navigation alone reads no
    * history. Each time an enable of such a container is read as finished, its service's own row is
    * read once after it: no push is promised to bring the record that caught up (8c076ec029).
@@ -778,14 +780,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       ...[...drawnKeys, ...viewed, ...(routeKey === null ? [] : [routeKey])].map(targetProject),
       ...detailProjects,
     ]);
-    const lacking = new Set<string>();
-    for (const row of rows) {
-      if (row.presence !== "known" || row.service?.status !== "ACTIVE") continue;
-      if (row.containerOrigin !== undefined || !shown.has(row.project.id)) continue;
-      const ref = projectRefOf(row.project.id);
-      if (ref !== undefined && ref.organization.organizationId === activeOrganization)
-        lacking.add(row.project.id);
-    }
+    const lacking = addressWatchedProjects({
+      rows,
+      shown,
+      inOrganization: (projectId) =>
+        projectRefOf(projectId)?.organization.organizationId === activeOrganization,
+    });
     for (const [projectId, stop] of addressWatch) {
       if (lacking.has(projectId)) continue;
       addressWatch.delete(projectId);
