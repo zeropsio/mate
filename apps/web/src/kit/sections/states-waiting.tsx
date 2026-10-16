@@ -34,7 +34,7 @@ function ArrivalStage({ age }: { readonly age: BirthAge }) {
     <MateEmptyStateView
       coming={{
         kind: "coming",
-        sentence: comingSentenceOf({ coming, progress, nowMs }),
+        sentence: comingSentenceOf({ coming, progress }),
         below: (
           <ComingBelow
             coming={coming}

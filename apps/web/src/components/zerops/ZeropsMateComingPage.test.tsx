@@ -1550,7 +1550,6 @@ describe("comingSentenceOf — the sentence over a stop", () => {
         coming: { kind: "failed", line: reason, verb: "try-again" },
         failureReason: reason,
         progress: progressOf([sub("setup", "failed", "CommandExec: init command failed.")]),
-        nowMs: 0,
       }),
     ).toBe(reason);
   });
@@ -1585,7 +1584,7 @@ describe("comingSentenceOf — the sentence over a stop", () => {
       want: CREDIT_REFUSED_LINE,
     },
   ] as const)("$case", ({ coming, press, want }) => {
-    expect(comingSentenceOf({ coming, progress: progressOf(press), nowMs: 0 })).toBe(want);
+    expect(comingSentenceOf({ coming, progress: progressOf(press) })).toBe(want);
   });
 });
 

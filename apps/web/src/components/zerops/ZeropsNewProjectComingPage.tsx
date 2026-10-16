@@ -123,7 +123,7 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
       : {
           kind: coming.kind,
           pressed: true,
-          sentence: comingSentenceOf({ coming, progress, nowMs }),
+          sentence: comingSentenceOf({ coming, progress }),
           below: (
             <ComingBelow
               coming={coming}

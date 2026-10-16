@@ -643,6 +643,38 @@ function pressedStep(
   };
 }
 
+/**
+ * Its setup's one clock on its Mate's view, wall ms: from the Create or Add this tab holds, which
+ * the creation's view counted from too, so the clock never resets at the hand-over or once the
+ * press's own record is gone — else from its press.
+ */
+export function setupClockSince(
+  made: Pick<NewProjectBirth, "startedAt"> | undefined,
+  press: { readonly startedAt: number; readonly pressedAt?: number | undefined } | undefined,
+): number | undefined {
+  return (
+    made?.startedAt ?? (press === undefined ? undefined : (press.pressedAt ?? press.startedAt))
+  );
+}
+
+/**
+ * The steps this tab runs for a Mate it made, on the Mate's view: as the creation's view drew
+ * them until the press is seen here (`pressSeen`), then the press's own, and none once the press
+ * went — through, its record goes, and the tab is never asked to stay open again.
+ */
+export function madePressSteps(input: {
+  readonly made: NewProjectBirth | undefined;
+  readonly press:
+    | { readonly progress?: ReadonlyArray<EnvironmentCreationStepProgress> | undefined }
+    | undefined;
+  readonly pressSeen: boolean;
+  readonly registration: MateRegistration;
+}): ReadonlyArray<ArrivalSubstep> | undefined {
+  const { made, press } = input;
+  if (made === undefined || (press === undefined && input.pressSeen)) return undefined;
+  return creationSubsteps(made, press?.progress ?? null, input.registration);
+}
+
 /** The registration receipt's line, retained even when the originating press is gone. */
 export function registrationSubstep(name: string, registration: MateRegistration): ArrivalSubstep {
   return registration.state === "unfinished"

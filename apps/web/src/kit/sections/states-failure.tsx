@@ -36,7 +36,7 @@ function NotCreatedStage() {
     <MateEmptyStateView
       coming={{
         kind: "failed",
-        sentence: comingSentenceOf({ coming, progress, nowMs }),
+        sentence: comingSentenceOf({ coming, progress }),
         below: (
           <ComingBelow
             coming={coming}

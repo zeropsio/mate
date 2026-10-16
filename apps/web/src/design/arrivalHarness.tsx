@@ -739,7 +739,7 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
     };
     return {
       kind: "failed",
-      sentence: comingSentenceOf({ coming, progress, nowMs }),
+      sentence: comingSentenceOf({ coming, progress }),
       below: (
         <ComingBelow
           coming={coming}
@@ -837,7 +837,7 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
       : comingProgress(state.coming, nowMs);
   return {
     kind: coming.kind,
-    sentence: comingSentenceOf({ coming, progress, nowMs }),
+    sentence: comingSentenceOf({ coming, progress }),
     below: (
       <ComingBelow
         coming={coming}

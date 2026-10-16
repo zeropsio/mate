@@ -6,7 +6,11 @@ import {
   pressRuns,
   type ArrivalSubstep,
 } from "./mateArrival";
-import { TAKING_LONGER_LINE, type MateComing } from "@t3tools/client-runtime/data";
+import {
+  ALMOST_THERE_LINE,
+  TAKING_LONGER_LINE,
+  type MateComing,
+} from "@t3tools/client-runtime/data";
 import { NOT_SET_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
 import { usageLimitWords } from "./noticeWords";
 
@@ -47,7 +51,6 @@ export interface MateArrivalNoticeInput {
         readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
       }
     | undefined;
-  readonly nowMs: number | undefined;
   readonly failureReason?: string | undefined;
   readonly details?: string | undefined;
   readonly attemptId?: string | undefined;
@@ -57,7 +60,7 @@ export interface MateArrivalNoticeInput {
 
 /** Current source evidence chooses the words; refusals keep their diagnostics collapsed. */
 export function mateArrivalNotice(input: MateArrivalNoticeInput) {
-  const { coming, progress, nowMs } = input;
+  const { coming, progress } = input;
   const note = pressNote(progress?.press);
   const running = coming?.kind === "coming" && note?.kind !== "unfinished";
   const refusal =
@@ -79,8 +82,6 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
             : refusal.kind === "remove"
               ? "Zerops didn't accept removing the project."
               : "Zerops couldn't finish setting up the Mate.";
-  const startedAt = Date.parse(progress?.startedAt ?? "");
-  const elapsed = nowMs === undefined || Number.isNaN(startedAt) ? undefined : nowMs - startedAt;
   const secondary =
     coming?.kind === "failed" && coming.verb === "redeploy"
       ? coming.line
@@ -97,7 +98,9 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
             : (input.finish ??
               (pressRuns(progress?.press)
                 ? KEEP_TAB_OPEN_LINE
-                : comingSentence(elapsed, coming.line === TAKING_LONGER_LINE)))));
+                : coming.line === ALMOST_THERE_LINE
+                  ? ALMOST_THERE_LINE
+                  : comingSentence(coming.line === TAKING_LONGER_LINE)))));
   const details = [
     ...new Set(
       [

@@ -99,6 +99,7 @@ import {
 } from "~/zerops/mateIdentities";
 import { takeMateConversation } from "~/zerops/mateOpening";
 import {
+  ARRIVAL_PACE_MS,
   arrivalRow,
   arrivalSteps,
   onSetupClock,
@@ -111,8 +112,9 @@ import { dismissCreation, useCreations } from "~/zerops/creations";
 import { useMateHandOver } from "~/zerops/newMate";
 import {
   comingPlanned,
-  creationSubsteps,
+  madePressSteps,
   registrationSubstep,
+  setupClockSince,
   madeOf,
   newProjectProgress,
 } from "~/zerops/newProjectBirth";
@@ -136,7 +138,6 @@ import {
   finishSetupView,
   forgetPress,
   pressFailure,
-  pressSince,
   useMatePress,
 } from "~/zerops/matePress";
 import { useDeleteProject } from "~/zerops/deleteProject";
@@ -550,7 +551,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
   // Made here, the steps this tab runs stay under the project's row until the hand-over.
-  // Its running step and its sentence count on its row's clock: from the first press.
+  // Its running step and its sentence count on its row's clock: from the first press — the
+  // creation's, which this tab holds from Create or Add until it connects, so the clock reads the
+  // same across the hand-over and once the press's own record is gone (run 2, 2026-10-16: 0:05,
+  // then 0:00 at the hand-over; 0:34, 0:39, then 0:35 as the press ended).
+  const setupSince = setupClockSince(made, press);
+  // The steps this tab runs, as the creation's view drew them until its press is seen here, and
+  // never again once it went: through, its record goes, and the tab is free for good.
+  const [pressSeen, setPressSeen] = useState(false);
+  if (press !== undefined && !pressSeen) setPressSeen(true);
+  const pressSteps = madePressSteps({ made, press, pressSeen, registration });
   const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
@@ -559,7 +569,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             made === undefined || made.adds !== undefined
               ? progress.progress
               : newProjectProgress(made, progress.progress, progress.nowMs),
-            press === undefined ? undefined : pressSince(press),
+            setupSince,
           ),
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
@@ -567,9 +577,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           // A registration's receipt stands after any originating press is gone.
           ...(press === undefined && registration.state === "unfinished"
             ? { press: [registrationSubstep(mate.name, registration)] }
-            : made === undefined || press === undefined
+            : pressSteps === undefined
               ? {}
-              : { press: creationSubsteps(made, press.progress ?? null, registration) }),
+              : { press: pressSteps }),
           ...(empty.agentReady ? { agentReady: true } : {}),
         };
 
@@ -720,7 +730,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const arrivalWords = mateArrivalNotice({
     coming: shown,
     progress: lineProgress,
-    nowMs: progress?.nowMs,
     failureReason: failedReason?.text,
     details: failedReason?.details,
     attemptId: failedProcess?.id,
@@ -1143,6 +1152,9 @@ export function ComingBelow({
           identity={attemptId ?? ""}
           label={`${mate.name} coming up`}
           nowMs={nowMs}
+          // Its steps say little of how far it has got — its workspace is most of the wait — so
+          // time paces the bar; the sentence over it says the estimate.
+          paceMs={ARRIVAL_PACE_MS}
           startedAtMs={row.startedAtMs}
           steps={row.steps}
           view={
@@ -1254,7 +1266,6 @@ export function ComingBelow({
   const copy = mateArrivalNotice({
     coming,
     progress,
-    nowMs,
     refusal: operationTrouble,
     attemptId,
     details: setupFailureDetails?.details,

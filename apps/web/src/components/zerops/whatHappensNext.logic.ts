@@ -1,8 +1,9 @@
 /**
  * What happens after the press, as the New Mate and New project dialogs end (board D1, the
  * owner, 2026-09-30): the steps in order, the person's own among them, each with an honest time
- * where one is worth saying, and one quiet line on whether they can leave meanwhile. In the
- * person's words: never the machinery's — no container, no zcp, no recipe deployed.
+ * where one is worth saying, and one quiet line on when they can leave: the press's own steps run
+ * in this tab for its first half minute, and the page it lands on says the same line until they
+ * are through (`KEEP_TAB_OPEN_LINE`). In the person's words: never the machinery's — no container, no zcp, no recipe deployed.
  *
  * The times:
  * - a Mate is up in about 2–4 minutes, ready to be signed in (measured +160 s 2026-09-22, +202 s
@@ -17,6 +18,7 @@ import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 
 import { signInPhrase, signInPhraseWords, type SignInPhrasePart } from "./ZeropsAgentSignIn.logic";
 import type { NewMateRecipe } from "./ZeropsEnvironmentCreationDialog.logic";
+import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
 
 /** One step after the press. */
 export interface NextStep {
@@ -27,7 +29,7 @@ export interface NextStep {
   readonly time: string | undefined;
 }
 
-/** What happens after the press: its steps, and whether the person can leave meanwhile. */
+/** What happens after the press: its steps, and when the person can leave. */
 export interface WhatHappensNext {
   readonly steps: ReadonlyArray<NextStep>;
   readonly note: string;
@@ -52,7 +54,7 @@ function signInStep(object: string): NextStep {
 
 /**
  * Once a Mate is added: it comes up, its person signs it in, and — where the project has code —
- * it sets up development by itself, deploying that code, so they can leave meanwhile. The
+ * it sets up development by itself, deploying that code. The
  * project's first Mate has nothing to deploy yet: its person tells it what to build. While the
  * project is still being read the steps are the likelier, with code; the dialog holds both in
  * one place, so learning otherwise moves nothing.
@@ -68,7 +70,7 @@ export function newMateNext(input: {
   if (input.recipe === "none") {
     return {
       steps: [up, signIn, { words: `You tell ${object} what to build`, time: undefined }],
-      note: `You can leave while ${object} comes up.`,
+      note: KEEP_TAB_OPEN_LINE,
     };
   }
   return {
@@ -80,7 +82,7 @@ export function newMateNext(input: {
         time: DEVELOPMENT_UP,
       },
     ],
-    note: "You can leave meanwhile.",
+    note: KEEP_TAB_OPEN_LINE,
   };
 }
 
@@ -98,7 +100,7 @@ export function newProjectNext(input: {
       signInStep(object),
       { words: `You tell ${object} what to build`, time: undefined },
     ],
-    note: "You can leave while they come up.",
+    note: KEEP_TAB_OPEN_LINE,
   };
 }
 

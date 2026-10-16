@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
+import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { MateEmptyStateView } from "./ZeropsMateEmptyState";
 
-const KEEP_OPEN = "Keep this tab open for about half a minute: after that it needs nobody.";
+const KEEP_OPEN = KEEP_TAB_OPEN_LINE;
 
 let root: Root | undefined;
 let host: HTMLElement;

@@ -373,7 +373,6 @@ describe("the missing-deployment notice", () => {
       mateArrivalNotice({
         coming: { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" },
         progress: undefined,
-        nowMs: 0,
         ...oldSetup,
       }).secondary,
     ).toBe("Nothing is deployed yet.");
@@ -381,11 +380,18 @@ describe("the missing-deployment notice", () => {
 });
 
 it("a creation page calls a Mate coming up late only where its arrival's verdict says so, never past four minutes alone", () => {
+  // Ten minutes in: the clock alone says nothing new.
   const startedAt = "2026-10-15T10:00:00.000Z";
-  const nowMs = Date.parse(startedAt) + 600_000;
   const say = (line: string) =>
-    mateArrivalNotice({ coming: { kind: "coming", line }, progress: { startedAt }, nowMs })
-      .secondary;
-  expect(say("Coming up. A few minutes.")).toBe("Almost there.");
+    mateArrivalNotice({ coming: { kind: "coming", line }, progress: { startedAt } }).secondary;
+  expect(say("Coming up. A few minutes.")).toBe("Usually two to four minutes.");
   expect(say("Taking longer than usual.")).toBe("Taking longer than usual.");
+});
+
+// Run 2 (2026-10-16): "Almost there." came with the clock at 2:00, 76 s before the Mate did.
+it("a creation page says Almost there only once its Mate is up and its conversation being read", () => {
+  const say = (line: string) =>
+    mateArrivalNotice({ coming: { kind: "coming", line }, progress: undefined }).secondary;
+  expect(say("Coming up. A few minutes.")).toBe("Usually two to four minutes.");
+  expect(say("Almost there.")).toBe("Almost there.");
 });

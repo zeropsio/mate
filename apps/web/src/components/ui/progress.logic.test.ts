@@ -98,6 +98,18 @@ describe("progressFraction — how far the bar reaches", () => {
     expect(later).toBeGreaterThan(early);
   });
 
+  // Run 2 (2026-10-16): a Mate's arrival sat at one third for two minutes under "Almost there".
+  it("A wait paced by time keeps moving toward its end, and is full only once done", () => {
+    const paced = (elapsedMs: number, state: "running" | "done" = "running") =>
+      progressFraction({ at: 1, count: 3, elapsedMs, estimateMs: null, paceMs: 3 * MIN, state });
+    const reads = [10_000, 60_000, 120_000, 170_000, 240_000, 10 * MIN].map((ms) => paced(ms));
+    for (const [index, reach] of reads.entries()) {
+      if (index > 0) expect(reach).toBeGreaterThan(reads[index - 1]!);
+      expect(reach).toBeLessThan(1);
+    }
+    expect(paced(3 * MIN, "done")).toBe(1);
+  });
+
   it("A finished operation's bar is full; a stopped one stays where it stopped", () => {
     expect(
       progressFraction({ at: 1, count: 3, elapsedMs: 0, estimateMs: null, state: "done" }),
