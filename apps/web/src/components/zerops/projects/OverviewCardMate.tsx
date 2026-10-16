@@ -317,16 +317,19 @@ export function OverviewCardMate({
         </>
       }
       line={
-        containerLine ??
-        (view.coming !== undefined ? (
+        // Coming up, in its menu row's words first: one state, one word on every surface.
+        view.coming !== undefined ? (
           <CardComingLine coming={view.coming} />
-        ) : marked ? (
-          <span className="ov-mate-change" data-zerops-surface="card-mate-change">
-            <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
-            <span className="ov-mate-change-title">{reading.text}</span>
-            {reviewButton}
-          </span>
-        ) : undefined)
+        ) : (
+          (containerLine ??
+          (marked ? (
+            <span className="ov-mate-change" data-zerops-surface="card-mate-change">
+              <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+              <span className="ov-mate-change-title">{reading.text}</span>
+              {reviewButton}
+            </span>
+          ) : undefined))
+        )
       }
       previews={previews}
       name={name}
