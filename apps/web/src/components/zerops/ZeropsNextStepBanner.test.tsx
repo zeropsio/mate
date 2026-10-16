@@ -277,7 +277,7 @@ describe("ZeropsNextStepStrip", () => {
     const onReview = vi.fn();
     const buttons: Array<ReactElement<Record<string, unknown>>> = [];
     visitElements(ZeropsNextStepStrip({ onReview, strip }) as ReactElement, (element) => {
-      if (element.type === "button") buttons.push(element);
+      if (element.type === "button" || element.type === Button) buttons.push(element);
       return false;
     });
     expect(buttons).toHaveLength(3);

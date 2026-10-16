@@ -167,27 +167,29 @@ export function ZeropsNextStepStrip({
             key={`${line.target.repository}#${String(line.target.number)}`}
           >
             <p className="truncate text-muted-foreground text-line leading-4.5">{line.label}</p>
-            <button
-              className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            <Button
               onClick={(event) => {
                 onReview(line.target, event.currentTarget);
               }}
-              type="button"
+              size="sm"
+              variant="link"
             >
               Review
-            </button>
+            </Button>
           </div>
         ))}
         {strip.more === undefined || strip.more === 0 ? null : (
-          <button
-            className="col-start-2 cursor-pointer justify-self-start rounded-sm text-muted-foreground text-line leading-6 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => {
-              onMore?.(strip.target.groupId);
-            }}
-            type="button"
-          >
-            and {strip.more} more
-          </button>
+          <div className="col-start-2 -ms-2.5 justify-self-start">
+            <Button
+              onClick={() => {
+                onMore?.(strip.target.groupId);
+              }}
+              size="sm"
+              variant="ghost"
+            >
+              and {strip.more} more
+            </Button>
+          </div>
         )}
       </section>
     );
