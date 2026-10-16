@@ -3,8 +3,7 @@
  * A rolling deploy retires the Core that runs once the new one answers 200 (`zerops.yml`), so 200
  * means it may (H5a): an active Core once its git is open; a standby while its database answers
  * and either no Core holds the lock — nothing runs to retire, as at HQ's birth, which deploys Core
- * before its anchor — or it could lead itself, the official HQ by its own verdict or by the `ok`
- * the leader announces and hands over as it lets go (`official.ts` `allowedWith`).
+ * before its anchor — or it could lead itself, the official HQ by its own verdict (`official.ts`).
  * A standby that could not, beside a Core that leads, answers 503: the deploy waits, and the old
  * Core serves on until the new one could lead or the deploy fails. 503 otherwise. A Core that holds the lock
  * serving nothing says why (`reason`, `leader.ts` `hold`). `git` is where git stands on this Core —
@@ -27,7 +26,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { Backup } from "./backup.ts";
 import { DeployKeys } from "./deployKeys.ts";
 import { GitHost } from "./gitHost.ts";
-import { LOCK_KEY, Leader, RETRY_AFTER, announcedOk } from "./leader.ts";
+import { LOCK_KEY, Leader, RETRY_AFTER } from "./leader.ts";
 import { LoopWatch } from "./loopWatch.ts";
 import { Official } from "./official.ts";
 import { Recomputes } from "./recomputes.ts";
@@ -77,8 +76,7 @@ export const healthRoute = (build: string, observe?: HealthObserver) =>
       const leader = yield* Leader;
       const { state, epoch } = yield* leader.status;
       const held = yield* leader.held;
-      const officialService = yield* Official;
-      const { official, allowed } = yield* officialService.status;
+      const { official, allowed } = yield* (yield* Official).status;
       const sql = yield* SqlClient.SqlClient;
       trace?.("SQL");
       const db = yield* sql`SELECT 1`.pipe(
@@ -90,31 +88,27 @@ export const healthRoute = (build: string, observe?: HealthObserver) =>
       const { git: gitState, ...parts } = yield* healthParts;
       const loop = yield* (yield* LoopWatch).status;
       const recomputes = yield* (yield* Recomputes).lastMinute;
-      // Whether this standby could lead once the Core holding the lock — the one a deploy would
-      // retire — let go: none holds it, or the ok it announces would let this one. Not known
-      // counts as held, announcing none.
-      const couldLeadAfterHolder = Effect.gen(function* () {
+      // Another Core holds the lock: the one a deploy would retire. Not known counts as held.
+      const lockHeld = Effect.gen(function* () {
         trace?.("SQL");
-        const holder = yield* sql<{ readonly name: string | null }>`
-        SELECT activity.application_name AS name
-        FROM pg_locks AS lock LEFT JOIN pg_stat_activity AS activity ON activity.pid = lock.pid
-        WHERE lock.database = (SELECT oid FROM pg_database WHERE datname = current_database())
-          AND lock.locktype = 'advisory' AND lock.classid = 0 AND lock.objid::bigint = ${LOCK_KEY}
-          AND lock.objsubid = 1 AND lock.granted`.pipe(
+        const held = yield* sql<{ readonly held: boolean }>`
+        SELECT EXISTS (
+          SELECT 1 FROM pg_locks
+          WHERE database = (SELECT oid FROM pg_database WHERE datname = current_database())
+            AND locktype = 'advisory' AND classid = 0 AND objid::bigint = ${LOCK_KEY}
+            AND objsubid = 1 AND granted
+        ) AS held`.pipe(
           Effect.timeout(PROBE_TIMEOUT),
-          Effect.map((rows) => ({ held: rows.length > 0, ok: announcedOk(rows[0]?.name) })),
-          Effect.orElseSucceed(() => ({ held: true, ok: undefined })),
+          Effect.map((rows) => rows[0]?.held !== false),
+          Effect.orElseSucceed(() => true),
         );
         trace?.("SQL complete");
-        return (
-          !holder.held ||
-          (holder.ok !== undefined && (yield* officialService.allowedWith(holder.ok)))
-        );
+        return held;
       });
       const ready =
         state === "active"
           ? gitState === "open"
-          : state === "standby" && db === "up" && (allowed || (yield* couldLeadAfterHolder));
+          : state === "standby" && db === "up" && (allowed || !(yield* lockHeld));
       trace?.("handler complete");
       return HttpServerResponse.jsonUnsafe(
         {

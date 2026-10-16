@@ -13,9 +13,7 @@
  * that verdict in `hq_leader`, and a waiting instance that Zerops has not answered yet takes it as
  * its own (`Official.inherit`): a deploy's new container leads within a heartbeat of the old one's
  * release, however slow Zerops is to answer it (F18). A leader that ends without releasing records
- * nothing, and the next waits for its own verdict. While it leads it names its lock session after
- * that `ok` (`announcing`), which moves nothing a backup set compares: the deploy's new container
- * answers readiness by the `ok` it will be handed (`health.ts`).
+ * nothing, and the next waits for its own verdict.
  *
  * @module leader
  */
@@ -36,7 +34,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
 import { type Migration, migrate } from "./migrations.ts";
-import { Official, type OfficialOk } from "./official.ts";
+import { Official } from "./official.ts";
 
 /**
  * `starting` until the first session reaches the database; `standby` while connected and not
@@ -115,20 +113,6 @@ export interface LeaderOptions {
 
 /** The advisory lock's key ("MATE" in ASCII); every build uses it, so old and new exclude each other. */
 export const LOCK_KEY = 1_296_254_021;
-
-const SESSION_NAME = "hq-leader";
-
-/** The lock session's name while it leads: its newest official `ok`, if it holds one. */
-const announcing = (ok: OfficialOk | undefined) =>
-  ok === undefined
-    ? SESSION_NAME
-    : `${SESSION_NAME} ok ${String(Math.floor(ok.at))} ${ok.projectId}`;
-
-/** The `ok` a lock session's name announces, if any. */
-export const announcedOk = (name: string | null | undefined): OfficialOk | undefined => {
-  const [, at, projectId] = /^hq-leader ok (\d+) (\S+)$/u.exec(name ?? "") ?? [];
-  return at === undefined || projectId === undefined ? undefined : { at: Number(at), projectId };
-};
 
 /**
  * The server drops a holder it cannot reach after 3 + 2 × 3 = 9 s instead of its two-hour default,
@@ -260,20 +244,16 @@ export const leaderLayer = (
           WHERE id = 1 AND epoch = ${epoch}`;
       }).pipe(Effect.catch((error) => Effect.logWarning("official ok not recorded", error)));
 
-      const readEpoch = (
-        connection: PgConnection.PgConnection,
-        statement: string,
-        params?: ReadonlyArray<unknown>,
-      ) =>
+      const readEpoch = (connection: PgConnection.PgConnection, statement: string) =>
         connection
-          .query(statement, params)
+          .query(statement)
           .pipe(Effect.map((result) => Number(String(result.rows[0]?.["epoch"]))));
 
       const attempts = completionReceipt();
       const session = Effect.gen(function* () {
         const connection = yield* PgConnection.make({
           url: options.databaseUrl,
-          applicationName: SESSION_NAME,
+          applicationName: "hq-leader",
         }).pipe(Effect.tapError(() => SubscriptionRef.update(status, unreachable)));
         yield* Effect.forEach(SESSION_SETTINGS, (statement) => connection.query(statement), {
           discard: true,
@@ -313,15 +293,8 @@ export const leaderLayer = (
           held: null,
         });
 
-        // Each beat names the session after the newest ok: a read, which takes no transaction id.
-        const check = Effect.flatMap(official.lastOk, (ok) =>
-          withinTimeout(
-            readEpoch(
-              connection,
-              "SELECT epoch, set_config('application_name', $1, false) FROM hq_leader WHERE id = 1",
-              [announcing(ok)],
-            ),
-          ),
+        const check = withinTimeout(
+          readEpoch(connection, "SELECT epoch FROM hq_leader WHERE id = 1"),
         );
         return yield* Effect.andThen(
           Effect.sleep(heartbeat),

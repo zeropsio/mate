@@ -145,7 +145,6 @@ const leading = (url: string, secret: KeySecret | null, migrations?: ReadonlyArr
             nextCheck: Effect.never,
             lastOk: Effect.undefined,
             inherit: () => Effect.void,
-            allowedWith: () => Effect.succeed(true),
           }),
         ),
       ),

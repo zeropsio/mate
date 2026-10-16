@@ -179,39 +179,6 @@ const official = (fake: FakeWorld, credential: string | null = "org-token") => {
 const after = (duration: Duration.Input) =>
   Effect.andThen(TestClock.adjust(duration), Effect.yieldNow);
 
-/** Another Core's ok as a Core with no answer of its own sees it, and whether it lets it lead. */
-const predecessorOks: ReadonlyArray<{
-  readonly name: string;
-  readonly inherited: { readonly secondsAgo: number; readonly projectId: string };
-  /** Its own answer came first: `anchor_elsewhere`, a decoy standing; then Zerops went quiet. */
-  readonly answered?: true;
-  readonly allowed: boolean;
-}> = [
-  {
-    name: "its project's ok, 20 s old",
-    inherited: { secondsAgo: 20, projectId: "P1" },
-    allowed: true,
-  },
-  // A database restored into another project carries its HQ's ok, which is not this one's.
-  {
-    name: "another project's ok",
-    inherited: { secondsAgo: 20, projectId: "P2" },
-    allowed: false,
-  },
-  {
-    name: "its project's ok, as old as the grace",
-    inherited: { secondsAgo: 600, projectId: "P1" },
-    allowed: false,
-  },
-  // Its own answer rules from then on, as an `ok` of its own would.
-  {
-    name: "its project's ok, once it answered",
-    inherited: { secondsAgo: 20, projectId: "P1" },
-    answered: true,
-    allowed: false,
-  },
-];
-
 describe("officialLayer", () => {
   it.effect("is anchor_missing until the anchor is minted, ok within one recheck", () =>
     Effect.gen(function* () {
@@ -277,7 +244,37 @@ describe("officialLayer", () => {
 
   // F18: a Core with no answer of its own yet — a takeover while Zerops is slow — takes the ok the
   // Core that led before read, as `hq_leader` records it (`leader.ts`), under the same grace.
-  it.effect.each(predecessorOks)(
+  it.effect.each<{
+    readonly name: string;
+    readonly inherited: { readonly secondsAgo: number; readonly projectId: string };
+    /** Its own answer came first: `anchor_elsewhere`, a decoy standing; then Zerops went quiet. */
+    readonly answered?: true;
+    readonly allowed: boolean;
+  }>([
+    {
+      name: "its project's ok, 20 s old",
+      inherited: { secondsAgo: 20, projectId: "P1" },
+      allowed: true,
+    },
+    // A database restored into another project carries its HQ's ok, which is not this one's.
+    {
+      name: "another project's ok",
+      inherited: { secondsAgo: 20, projectId: "P2" },
+      allowed: false,
+    },
+    {
+      name: "its project's ok, as old as the grace",
+      inherited: { secondsAgo: 600, projectId: "P1" },
+      allowed: false,
+    },
+    // Its own answer rules from then on, as an `ok` of its own would.
+    {
+      name: "its project's ok, once it answered",
+      inherited: { secondsAgo: 20, projectId: "P1" },
+      answered: true,
+      allowed: false,
+    },
+  ])(
     "with no answer of its own, takes the predecessor's ok: $name",
     ({ inherited, answered, allowed }) =>
       Effect.gen(function* () {
@@ -294,30 +291,6 @@ describe("officialLayer", () => {
           projectId: inherited.projectId,
         });
         assert.deepStrictEqual(yield* service.status, { official: "unknown", allowed });
-      }),
-  );
-
-  // KRLS HQ, 2026-10-16 12:00Z: a deploy's new Core, Zerops silent, beside a leader whose ok was a
-  // minute old (`health.ts`). Readiness asks what taking that ok would allow, and takes nothing.
-  it.effect.each(predecessorOks)(
-    "a standby could lead with the leader's announced ok only where it would take it: $name",
-    ({ inherited, answered, allowed }) =>
-      Effect.gen(function* () {
-        const fake = world();
-        fake.members.get("ORG")!.push(token(OWN));
-        if (answered) fake.members.get("ORG")!.push(token("mate-hq:P2:https://decoy.invalid"));
-        fake.down = answered === undefined;
-        const service = yield* official(fake);
-        yield* Effect.yieldNow;
-        fake.down = true;
-        yield* after("10 minutes");
-        const announced = {
-          at: (yield* Clock.currentTimeMillis) - inherited.secondsAgo * 1000,
-          projectId: inherited.projectId,
-        };
-        assert.strictEqual(yield* service.allowedWith(announced), allowed);
-        assert.deepStrictEqual(yield* service.status, { official: "unknown", allowed: false });
-        assert.strictEqual(yield* service.lastOk, undefined);
       }),
   );
 

@@ -17,9 +17,7 @@ import { completionReceipt } from "@t3tools/shared/completionReceipt";
  * platform could not answer is `unknown`: it keeps an `ok` for at most ten minutes after that `ok`
  * was read, and never allows otherwise. Until the platform first answers this Core, the `ok` the Core
  * that led before held counts as its own (`inherit`, recorded in `hq_leader` by `leader.ts`): a
- * takeover does not wait on a Zerops that is slow to answer the new container (F18). The same holds
- * for the `ok` the leader announces while it leads (`allowedWith`): a deploy's new Core is ready
- * beside it however long ago the Core before it let go.
+ * takeover does not wait on a Zerops that is slow to answer the new container (F18).
  *
  * @module official
  */
@@ -112,11 +110,6 @@ export class Official extends Context.Service<
      * has an answer of its own.
      */
     readonly inherit: (ok: OfficialOk) => Effect.Effect<void>;
-    /**
-     * Whether this Core could lead once it took `ok` (`inherit`): the leader's, which it hands
-     * over as it lets go, so a standby beside it answers readiness by it (`health.ts`).
-     */
-    readonly allowedWith: (ok: OfficialOk) => Effect.Effect<boolean>;
   }
 >()("@t3tools/hq/official") {}
 
@@ -148,27 +141,13 @@ export const officialLayer = (
       /** When the credential's own token was last read to fit; none until it was, or once not. */
       const fitAt = yield* Ref.make<number | undefined>(undefined);
       const checked = yield* Ref.make(false);
-      interface State {
+      const state = yield* Ref.make<{
         readonly official: OfficialStatus["official"];
         /** When the last verdict was read, if it was `ok`. */
         readonly okAt: number | undefined;
         /** Whether the platform has answered this Core: from then on its own verdicts rule. */
         readonly answered: boolean;
-      }
-      const state = yield* Ref.make<State>({
-        official: "unknown",
-        okAt: undefined,
-        answered: false,
-      });
-      /** `current` with another Core's `ok` taken: its project's, newer, while Zerops is silent. */
-      const taking = (current: State, ok: OfficialOk): State =>
-        current.answered ||
-        ok.projectId !== options.projectId ||
-        (current.okAt !== undefined && current.okAt >= ok.at)
-          ? current
-          : { ...current, okAt: ok.at };
-      const allows = ({ official, okAt }: State, now: number) =>
-        official === "ok" || (official === "unknown" && okAt !== undefined && now - okAt < grace);
+      }>({ official: "unknown", okAt: undefined, answered: false });
 
       /** Whether the credential's own token fits, read again once the last fitting read is old. */
       const fits = (credential: Redacted.Redacted, orgId: string) =>
@@ -231,26 +210,28 @@ export const officialLayer = (
           okAt === undefined ? undefined : { at: okAt, projectId: options.projectId },
         ),
         inherit: (ok) =>
-          Effect.flatMap(
-            Ref.modify(state, (current) => {
-              const next = taking(current, ok);
-              return [next !== current, next];
-            }),
-            (taken) =>
-              taken
-                ? Effect.logInfo("official ok taken from the Core that led before", {
-                    readAt: DateTime.formatIso(DateTime.makeUnsafe(ok.at)),
-                  })
-                : Effect.void,
-          ),
-        allowedWith: (ok) =>
-          Effect.map(Effect.zip(Ref.get(state), Clock.currentTimeMillis), ([current, now]) =>
-            allows(taking(current, ok), now),
-          ),
+          ok.projectId !== options.projectId
+            ? Effect.void
+            : Effect.flatMap(
+                Ref.modify(state, (current) =>
+                  current.answered || (current.okAt !== undefined && current.okAt >= ok.at)
+                    ? [false, current]
+                    : [true, { ...current, okAt: ok.at }],
+                ),
+                (taken) =>
+                  taken
+                    ? Effect.logInfo("official ok taken from the Core that led before", {
+                        readAt: DateTime.formatIso(DateTime.makeUnsafe(ok.at)),
+                      })
+                    : Effect.void,
+              ),
         status: Effect.gen(function* () {
-          const current = yield* Ref.get(state);
+          const { official, okAt } = yield* Ref.get(state);
           const now = yield* Clock.currentTimeMillis;
-          return { official: current.official, allowed: allows(current, now) };
+          const allowed =
+            official === "ok" ||
+            (official === "unknown" && okAt !== undefined && now - okAt < grace);
+          return { official, allowed };
         }),
       });
     }),

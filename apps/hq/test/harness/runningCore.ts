@@ -170,8 +170,6 @@ export const startCore = (
   given: {
     /** Scenario suites can share an HTTP fake; existing Core tests keep their in-memory backend. */
     readonly zeropsHttp?: { readonly baseUrl: string; readonly world: FakeWorld };
-    /** The in-memory backend's world; the rig in miniature (`seedCoreWorld`) by default. */
-    readonly world?: FakeWorld;
     /** Observe native transport receipts without changing Core's routes or socket lifecycle. */
     readonly httpServer?: NodeHttp.Server;
     readonly url?: string;
@@ -219,7 +217,6 @@ export const startCore = (
     const stagingDir = given.stagingDir ?? (yield* tempDir("hq-backup-"));
     const fake =
       given.zeropsHttp?.world ??
-      given.world ??
       seedCoreWorld(yield* Clock.currentTimeMillis, anchored, given.orgId ?? "ORG");
     const readinessObservers = new Map<string, (step: ReadinessStep) => void>();
     const options = {
