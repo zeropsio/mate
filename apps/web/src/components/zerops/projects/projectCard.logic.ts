@@ -578,7 +578,7 @@ export interface PanelAddresses {
   /** Several services serving: a door each, by its service, at its own domain where it has one. */
   readonly doors: ReadonlyArray<GroupFlowAddress>;
   readonly pending: ReadonlyArray<PanelPendingDomain>;
-  /** Production read with no domain of its own: the popover's "Add your domain" (`lacksOwnDomain`). */
+  /** Production read with no domain of its own: the popover's "Put it on your domain" (`lacksOwnDomain`). */
   readonly offerDomain: boolean;
 }
 

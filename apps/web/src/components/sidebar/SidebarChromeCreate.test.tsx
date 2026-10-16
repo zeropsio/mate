@@ -135,6 +135,16 @@ describe("SidebarCreateButton — the top row's +", () => {
     },
   );
 
+  it("asks for a New project at once, with no menu, where that is all it makes", async () => {
+    const { container, onNewProject } = await mount([]);
+    const plus = container.querySelector<HTMLElement>('[data-zerops-surface="sidebar-create"]');
+    expect(plus?.getAttribute("aria-haspopup")).toBeNull();
+    await act(async () => {
+      plus?.click();
+    });
+    expect(onNewProject).toHaveBeenCalledTimes(1);
+  });
+
   it("is not drawn when the role may make nothing here", async () => {
     const { container } = await mount([], { newProject: false });
     expect(container.querySelector('[data-zerops-surface="sidebar-create"]')).toBeNull();

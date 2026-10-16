@@ -17,9 +17,12 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+
+import type { DraftPeople } from "./projects/accessDraft.logic";
 
 export interface RecipeOption {
   readonly id: string;
@@ -56,24 +59,24 @@ export function recipeOptions(input: {
   if (input.tier !== undefined) {
     options.push({
       id: "tier",
-      label: `The project's ${input.roleLabel} recipe`,
+      label: "Same services as the project",
       // Every service arrives empty: the platform cannot clone a private
       // repository, so the tier is imported `startWithoutCode` and the first
       // deploy fills them.
       detail:
         input.services.length === 0
-          ? "From the project's repository, on main."
-          : `${input.services.join(", ")} · imported without code; the first deploy fills them`,
+          ? "As the project's setup files describe them."
+          : `${input.services.join(", ")} · your code arrives with the first deploy`,
       choice: input.tier,
     });
   }
   options.push({
     id: "none",
-    label: "Nothing yet",
+    label: "Empty",
     detail:
       options.length === 0 && input.recipe === "absent"
-        ? "This project has no recipe on main yet. The agent sets the application up."
-        : "The agent sets the application up.",
+        ? "This project has no setup files yet. Set it up later."
+        : "Set it up later.",
     choice: { kind: "none" },
   });
   return options;
@@ -167,8 +170,8 @@ export function validateCreationForm(
     // not in this dialog at all — it is a pull request on the group repo.
     errors.recipe =
       context.recipe === "absent"
-        ? "This project has no recipe on main yet. Merge one first, or switch the agent on."
-        : "Take the project's recipe, or switch the agent on to have one set up.";
+        ? "This project has no setup files yet. Merge its setup change first, or give it its own Mate."
+        : "Start with the project's services, or give it its own Mate to set them up.";
   }
   return errors;
 }
@@ -187,7 +190,7 @@ export function creationRecipe(read: {
   return read.loading || read.state === "loading" ? "reading" : read.state;
 }
 
-const RECIPE_UNREADABLE = "The project's recipe can't be read right now.";
+const RECIPE_UNREADABLE = "The project's setup files can't be read right now.";
 
 /** What holds a stage's or a production's form: its recipe still being read, or not readable. */
 export function creationRecipeHold(recipe: CreationRecipe): string | undefined {
@@ -197,6 +200,68 @@ export function creationRecipeHold(recipe: CreationRecipe): string | undefined {
 
 export function hasCreationErrors(errors: CreationFormErrors): boolean {
   return errors.name !== undefined || errors.recipe !== undefined;
+}
+
+export const READING_PEOPLE = "Reading who can see the project…";
+export const PEOPLE_UNREADABLE = "Who can see the project can't be read right now.";
+
+/**
+ * What a stage's or a production's one sheet sends, or why its button waits. It asks nothing the
+ * project already says: its name, the project's setup, and the people who reach the project now, at
+ * their level there (`draftPeople`) — a Developer or a Guest on the project sees the new
+ * environment too.
+ */
+export function environmentSheetSubmit(input: {
+  readonly name: string;
+  readonly withAgent: boolean;
+  readonly options: ReadonlyArray<RecipeOption>;
+  readonly recipe: CreationRecipe;
+  /** The project's people as the access draft reads them; absent where the host sends none. */
+  readonly people: DraftPeople | undefined;
+}):
+  | {
+      readonly kind: "held";
+      readonly reason: string;
+      /** The one thing that moves it on: the setup change to merge, where none is merged. */
+      readonly action?: "setup-change" | undefined;
+    }
+  | {
+      readonly kind: "create";
+      readonly choice: {
+        readonly name: string;
+        readonly withAgent: boolean;
+        readonly recipe: EnvironmentRecipeChoice;
+        readonly userRoles?: ReadonlyArray<ProjectGrant>;
+      };
+    } {
+  const option = input.options[0];
+  // The form's own checks, on what the sheet decided: nothing empty is made with no one to fill it.
+  const errors = validateCreationForm(
+    { name: input.name, withAgent: input.withAgent, recipeId: option?.id ?? "" },
+    { options: input.options, recipe: input.recipe },
+  );
+  const reason = errors.recipe ?? errors.name;
+  if (reason !== undefined || option === undefined)
+    return {
+      kind: "held",
+      reason: reason ?? "Choose what goes in the environment.",
+      ...(input.recipe === "absent" && errors.recipe !== undefined
+        ? { action: "setup-change" as const }
+        : {}),
+    };
+  const { people } = input;
+  if (people?.kind === "reading") return { kind: "held", reason: READING_PEOPLE };
+  if (people?.kind === "failed") return { kind: "held", reason: PEOPLE_UNREADABLE };
+  const userRoles = people?.kind === "ready" ? people.userRoles : [];
+  return {
+    kind: "create",
+    choice: {
+      name: input.name,
+      withAgent: input.withAgent,
+      recipe: option.choice,
+      ...(userRoles.length === 0 ? {} : { userRoles }),
+    },
+  };
 }
 
 /**
@@ -303,7 +368,7 @@ export function newMateSubmit(input: {
 }
 
 /** The quiet line while the group repo is read for the recipe. */
-export const READING_RECIPE = "Reading the project's recipe…";
+export const READING_RECIPE = "Reading the project's setup files…";
 
 /**
  * What the Mate's dialog says: what the button does, and the one quiet line beside it, for what
@@ -392,7 +457,7 @@ export function newMateDoor(input: {
     case "unreadable":
       return {
         kind: "closed",
-        reason: `${crewPossessive(groupName)} recipe can't be read right now.`,
+        reason: `${crewPossessive(groupName)} setup files can't be read right now.`,
         action: { kind: "retry", label: "Try again", busy: input.rereading },
       };
     case "absent":
@@ -403,7 +468,7 @@ export function newMateDoor(input: {
     const where = change.mate === undefined ? "a change" : `${crewPossessive(change.mate)} change`;
     return {
       kind: "closed",
-      reason: `${crewPossessive(groupName)} recipe is waiting in ${where}. New Mates start from it once it's merged.`,
+      reason: `${crewPossessive(groupName)} setup for new Mates is waiting in ${where}. New Mates can join once it's merged.`,
       action: { kind: "change", label: "Review the change", number: change.number },
     };
   }
@@ -411,13 +476,13 @@ export function newMateDoor(input: {
   if (writer !== undefined && others.length === 0) {
     return {
       kind: "closed",
-      reason: `${groupName} has no recipe yet. ${writer.name} writes it when it finishes setting ${groupName} up, and new Mates start from it.`,
+      reason: `${writer.name} is still setting ${groupName} up. New Mates can join once it's done.`,
       action: { kind: "mate", label: `Open ${writer.name}`, projectId: writer.projectId },
     };
   }
   return {
     kind: "closed",
-    reason: `${groupName} has no recipe yet. ${crewPossessive(groupName)} Mates write it when one of them finishes setting ${groupName} up.`,
+    reason: `${crewPossessive(groupName)} Mates are still setting it up. New Mates can join once one of them is done.`,
     action: undefined,
   };
 }
@@ -509,8 +574,8 @@ const PRESS_STEPS: ReadonlyArray<{
 }> = [
   { label: "Project", kinds: ["create-project", "import-project", "import-managed"] },
   { label: "Registered", kinds: ["register"] },
-  { label: "Container", kinds: ["import-container"] },
-  { label: "Closed off", kinds: ["close-off"] },
+  { label: "Its computer", kinds: ["import-container"] },
+  { label: "Private network ready", kinds: ["close-off"] },
 ];
 
 /**

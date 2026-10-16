@@ -1499,8 +1499,8 @@ export function OpenCommandPaletteDialog(props: {
               <TooltipTrigger
                 render={
                   <Button
-                    variant="warning-outline"
-                    size="micro"
+                    variant="secondary"
+                    size="sm"
                     onClick={() => {
                       openSourceControlSettings();
                     }}
@@ -2572,8 +2572,8 @@ export function OpenCommandPaletteDialog(props: {
         <TooltipTrigger
           render={
             <Button
-              variant="outline"
-              size="xs"
+              variant="secondary"
+              size="sm"
               tabIndex={-1}
               className="absolute inset-e-2.5 top-1/2 -translate-y-1/2"
               aria-label={`${remoteProjectButtonLabel ?? "Continue"} (Enter)`}
@@ -2599,8 +2599,8 @@ export function OpenCommandPaletteDialog(props: {
         <TooltipTrigger
           render={
             <Button
-              variant="outline"
-              size="xs"
+              variant="secondary"
+              size="sm"
               tabIndex={-1}
               className="absolute inset-e-2.5 top-1/2 -translate-y-1/2"
               aria-label={`${submitActionLabel} (${addShortcutLabel})`}

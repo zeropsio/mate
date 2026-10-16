@@ -106,7 +106,7 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
                 stackToggle={
                   hasStack ? (
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="ghost"
                       aria-expanded={expanded}
                       aria-controls={detailsId}
@@ -158,7 +158,7 @@ function ComposerBannerStackAlert({
   const dismissOnly = item.onDismiss && !item.actions;
   const dismiss = item.onDismiss ? (
     <Button
-      size="icon-xs"
+      size="icon-sm"
       variant="ghost"
       aria-label={item.dismissLabel ?? "Dismiss notice"}
       onClick={onDismissRequest}

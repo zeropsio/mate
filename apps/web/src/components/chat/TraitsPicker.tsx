@@ -85,7 +85,7 @@ const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
 
 function DefaultBadge() {
   return (
-    <Badge variant="outline" size="sm" className="min-w-0">
+    <Badge tone="neutral" size="sm" className="min-w-0">
       Default
     </Badge>
   );

@@ -1,64 +1,76 @@
-import type { ComponentProps } from "react";
 import { CircleCheckIcon } from "lucide-react";
 
-import { Badge } from "~/components/ui/badge";
+import { Badge, type BadgeTone } from "~/components/ui/badge";
 
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix } from "../Specimen";
 import { variantsOf } from "../specimenLabel";
 
-type BadgeVariant = NonNullable<ComponentProps<typeof Badge>["variant"]>;
-type BadgeSize = NonNullable<ComponentProps<typeof Badge>["size"]>;
-
-const VARIANTS = variantsOf<BadgeVariant>({
-  default: true,
-  chip: true,
-  destructive: true,
-  error: true,
+const TONES = variantsOf<BadgeTone>({
+  neutral: true,
   info: true,
-  outline: true,
-  secondary: true,
   success: true,
   warning: true,
+  danger: true,
 });
-const SIZES = variantsOf<BadgeSize>({ sm: true, default: true, lg: true });
+
+const WORDS: Readonly<Record<BadgeTone, string>> = {
+  neutral: "Stopped",
+  info: "Deploying",
+  success: "Running",
+  warning: "Needs you",
+  danger: "Failed",
+};
 
 function BadgeSpecimens() {
   return (
     <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Variants × sizes">
+      <SpecimenBlock title="Tones × forms: a pill label, a dot before its words">
         <SpecimenMatrix
-          rowProp="variant"
-          rows={VARIANTS}
-          columnProp="size"
-          columns={SIZES}
-          render={(variant, size) => (
-            <Badge size={size} variant={variant}>
-              Running
-            </Badge>
-          )}
+          rowProp="tone"
+          rows={TONES}
+          columnProp="form"
+          columns={["pill", "dot", "dot in a sentence"] as const}
+          render={(tone, form) =>
+            form === "pill" ? (
+              <Badge tone={tone}>{WORDS[tone]}</Badge>
+            ) : form === "dot" ? (
+              <Badge dot tone={tone}>
+                {WORDS[tone]}
+              </Badge>
+            ) : (
+              <span className="text-body text-muted-foreground">
+                Stage is{" "}
+                <Badge dot tone={tone}>
+                  {WORDS[tone].toLowerCase()}
+                </Badge>{" "}
+                · main
+              </span>
+            )
+          }
         />
       </SpecimenBlock>
-      <SpecimenBlock title="With icon, count, long text, as a link">
+      <SpecimenBlock title="A dot alone, an icon, a count, long words, a link">
         <SpecimenGrid>
-          <Specimen label='variant="success" + icon'>
-            <Badge variant="success">
+          <Specimen label='dot aria-label="Running" (a row too narrow for words)'>
+            <Badge aria-label="Running" dot tone="success" />
+          </Specimen>
+          <Specimen label='tone="success" + icon'>
+            <Badge tone="success">
               <CircleCheckIcon />
               Running
             </Badge>
           </Specimen>
-          <Specimen label='variant="secondary" (count)'>
-            <Badge variant="secondary">12</Badge>
+          <Specimen label="a count">
+            <Badge>12</Badge>
           </Specimen>
-          <Specimen label='variant="outline" in a 128px box'>
+          <Specimen label="in a 128px box">
             <div className="flex w-32">
-              <Badge variant="outline">storefront-preview-eu-central-2</Badge>
+              <Badge>storefront-preview-eu-central-2</Badge>
             </div>
           </Specimen>
-          <Specimen label='variant="chip" render={<a href="#badge" />}'>
-            <Badge render={<a href="#badge" />} variant="chip">
-              storefront
-            </Badge>
+          <Specimen label='render={<a href="#badge" />}'>
+            <Badge render={<a href="#badge" />}>storefront</Badge>
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
@@ -69,8 +81,9 @@ function BadgeSpecimens() {
 export default defineKitSection({
   id: "badge",
   title: "Badge",
-  purpose: "A short word or count beside the thing it describes.",
-  group: "Kit",
+  purpose:
+    "The one label: a short word or count beside what it describes, a pill so it never reads as a press. Five tones carry meaning (neutral, info, success, warning, danger); the dot form is a status mark that always has its words or an accessible name.",
+  group: "Chosen",
   kind: "Labels",
   source: "apps/web/src/components/ui/badge.tsx",
   render: () => <BadgeSpecimens />,

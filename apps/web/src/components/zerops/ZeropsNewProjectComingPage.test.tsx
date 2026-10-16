@@ -158,27 +158,19 @@ function textOf(node: ReactTestRendererJSON | ReactTestRendererJSON[] | string |
   return (node.children ?? []).map(textOf).join(" ");
 }
 
-/** Each step as the arrival draws it, in order: which, and where it stands. */
-const steps = () =>
+/** The arrival's one row: how it stands, and its words. */
+const row = () =>
   tree?.root
-    .findAll((node) => node.props["data-arrival-step"] !== undefined)
+    .findAll((node) => node.props["data-slot"] === "progress")
     .map(
-      (node) => `${String(node.props["data-arrival-step"])}:${String(node.props["data-state"])}`,
+      (node) =>
+        `${String(node.props["data-progress-state"])}:${node
+          .findAll((inner) => inner.props["data-slot"] === "progress-words")
+          .flatMap((inner) => inner.children)
+          .join("")}`,
     ) ?? [];
 
 const kind = () => tree?.root.findByType("section").props["data-kind"];
-
-/** The steps this tab runs, under the row that holds them: `row › label:state`. */
-const substeps = () =>
-  tree?.root
-    .findAll((node) => node.props["data-arrival-substep"] !== undefined)
-    .map((node) => {
-      let row = node.parent;
-      while (row !== null && row.props["data-arrival-step"] === undefined) row = row.parent;
-      return `${String(row?.props["data-arrival-step"])} › ${textOf(node.children as never)
-        .replace(/\s+/g, " ")
-        .trim()}:${String(node.props["data-state"])}`;
-    }) ?? [];
 
 const button = (label: string) =>
   tree?.root.findAllByType("button").find((node) => node.children.join("") === label);
@@ -203,11 +195,9 @@ describe("a New project's first Mate, before its project exists", () => {
     openView();
     expect(kind()).toBe("coming");
     expect(said()).toContain("Vera on Acme CRM");
-    // The project's own steps, then its first Mate's workspace, then the person's own sign-in.
-    expect(steps()).toEqual(["registry:active", "workspace:waiting", "you:you"]);
-    expect(said()).toContain("Acme CRM");
-    expect(said()).toContain("Vera's workspace");
-    expect(said()).toContain("You sign Vera in with your Claude or ChatGPT subscription");
+    // The project's own step first: the one row stands on it, its Mate's own steps to come.
+    expect(row()).toEqual(["running:Acme CRM"]);
+    expect(said()).not.toContain("Vera's workspace");
     expect(app.navigate).not.toHaveBeenCalled();
   });
 
@@ -302,32 +292,21 @@ describe("the steps this tab runs, on the Mate's own view", () => {
     adds: { appId: "g-acme", registers: true },
   };
 
-  it("draws a New project's under the project's row, and asks for the tab while they run", () => {
+  it("a New project's press stands on the project's row while it runs, and asks for the tab", () => {
     hold({ ...ACME, step: "registry" });
     openView();
-    expect(substeps()).toEqual([
-      "registry › Registered:active",
-      "registry › Created:waiting",
-      "registry › Vera registered:waiting",
-      "registry › Container:waiting",
-      "registry › Closed off:waiting",
-    ]);
-    expect(steps()[0]).toBe("registry:active");
+    expect(row()).toEqual(["running:Acme CRM"]);
+    expect(said()).not.toContain("Registered");
     expect(said()).toContain(KEEP_TAB_OPEN_LINE);
   });
 
-  it("draws an added Mate's under its copy, from the press", () => {
+  it("an added Mate's press stands on its copy's row, from the press", () => {
     hold(IDA);
     openView("add-1");
     expect(kind()).toBe("coming");
     expect(said()).toContain("Ida on Acme CRM");
-    expect(steps()).toEqual(["copy:active", "workspace:waiting", "you:you"]);
-    expect(substeps()).toEqual([
-      "copy › Created:active",
-      "copy › Ida registered:waiting",
-      "copy › Container:waiting",
-      "copy › Closed off:waiting",
-    ]);
+    expect(row()).toEqual(["running:Ida's copy of Acme CRM"]);
+    expect(said()).not.toContain("Private network ready");
     expect(said()).toContain(KEEP_TAB_OPEN_LINE);
   });
 
@@ -367,7 +346,7 @@ describe("the steps this tab runs, on the Mate's own view", () => {
     hold({ ...IDA, failed: { reason: "No room in this account.", uncertain: false } });
     openView("add-1");
     expect(kind()).toBe("failed");
-    expect(substeps()[0]).toBe("copy › Created:failed");
+    expect(row()).toEqual(["failed:Ida's copy of Acme CRM didn't finish."]);
     expect(said()).not.toContain("No room in this account.");
     openDetails();
     expect(said()).toContain("No room in this account.");

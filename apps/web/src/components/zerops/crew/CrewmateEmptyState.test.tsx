@@ -114,7 +114,7 @@ describe("CrewmateEmptyState", () => {
     const whose = between(render(timeline(who)), "data-crewmate-whose", "data-crewmate-card");
     expect(whose).toContain(says);
     expect(whose).toContain('data-mate-face-tint="amber"');
-    expect(whose).toContain('data-mate-face-size="sm"');
+    expect(whose).toContain('data-mate-face-size="20"');
   });
 
   it("says whose it is without a face while the Mate's is not known", () => {

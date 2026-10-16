@@ -353,18 +353,18 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
   switch (step.kind) {
     case "create-project":
     case "import-project":
-      return "Creating the environment";
+      return "Creating it";
     case "import-container":
-      return "Adding the agent container";
+      return "Adding its Mate's computer";
     case "close-off":
-      return "Closing the project off";
+      return "Making its network private";
     case "register":
-      return "Registering it in its project";
+      return "Adding it to HQ";
     case "import-recipe":
-      return "Importing the application";
+      return "Adding its services";
     case "import-managed":
-      return "Adding the managed services";
+      return "Adding its databases and storage";
     case "await-ready":
-      return step.withAgent ? "Waiting for the agent" : "Waiting for the services";
+      return step.withAgent ? "Waiting for its Mate" : "Starting its services";
   }
 }

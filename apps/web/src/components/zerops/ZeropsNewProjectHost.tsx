@@ -238,7 +238,9 @@ function NewProjectDialog() {
   return (
     <ZeropsNewProjectDialog
       // A brand new app: its creator, and whom the organization's roles give it.
-      access={(onChange) => <ProjectAccessDraft groupId={null} kind="mate" onChange={onChange} />}
+      access={(onChange) => (
+        <ProjectAccessDraft groupId={null} kind="mate" label="Project access" onChange={onChange} />
+      )}
       forecast={<ZeropsCreditForecast organizationId={activeOrganization.id} />}
       closed={
         addProject.offered

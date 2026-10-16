@@ -104,7 +104,7 @@ export function ZeropsChangeLinkChip({
             </Tooltip>
           )}
           {landed.readAgain === undefined ? null : (
-            <Button variant="link" size="xs" onClick={landed.readAgain}>
+            <Button variant="link" size="sm" onClick={landed.readAgain}>
               Read again
             </Button>
           )}
@@ -194,7 +194,7 @@ export function ZeropsChangeLinkChip({
       <TooltipTrigger render={chip} />
       <TooltipPopup side="top">
         {state.word}
-        {landedSince ? " — landed after this was written" : ""}
+        {landedSince ? " — merged after this was written" : ""}
       </TooltipPopup>
     </Tooltip>
   );

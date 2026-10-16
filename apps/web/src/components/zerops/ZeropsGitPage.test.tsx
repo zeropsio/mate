@@ -96,7 +96,7 @@ describe("ZeropsGitOverview", () => {
 
   it("gives each change its state and its own page", () => {
     const html = render({ kind: "read", apps: APPS, failure: null }, () => {});
-    expect(html).toContain('data-zerops-status-tone="attention"');
+    expect(html).toContain('data-tone="warning"');
     expect(html).toContain('data-zerops-surface="pull-request-title"');
   });
 
@@ -195,7 +195,7 @@ describe("Git overview slice 1", () => {
     await press("All repositories");
     expect(repositoryNames()).toEqual(["todo/appdev", "todo/group"]);
     expect(host.textContent).toContain("No open changes.");
-    expect(host.textContent).toContain("Recipe");
+    expect(host.textContent).toContain("Setup");
     await press("Open changes");
     expect(repositoryNames()).toEqual(["todo/appdev"]);
   });

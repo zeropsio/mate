@@ -95,7 +95,7 @@ export const RIGHT_PANEL_KIND_META = {
   diff: {
     launcher: {
       label: "Diff",
-      description: "Review changes in this thread.",
+      description: "Review what this Mate changed.",
       shortcut: "D",
       unavailableHint: "Available for Git repositories.",
     },
@@ -113,9 +113,9 @@ export const RIGHT_PANEL_KIND_META = {
   agents: {
     launcher: {
       label: "Helpers",
-      description: "Follow the helpers it started and their workflows.",
+      description: "Follow this Mate's helpers and their work.",
       shortcut: "A",
-      unavailableHint: "Available from a thread.",
+      unavailableHint: "Available from a chat.",
     },
     availability: () => "available",
   },
@@ -131,7 +131,7 @@ export const RIGHT_PANEL_KIND_META = {
   browser: {
     launcher: {
       label: "Browser",
-      description: "Watch the agent's browser live.",
+      description: "Watch this Mate's browser live.",
       shortcut: "B",
       unavailableHint: "Available in a Zerops project.",
     },
@@ -182,7 +182,7 @@ export const RIGHT_PANEL_KIND_META = {
   mcp: {
     launcher: {
       label: "MCP",
-      description: "Add and check your agents' tools.",
+      description: "Add and check this Mate's tools.",
       shortcut: "M",
       unavailableHint: "Available from a conversation.",
     },

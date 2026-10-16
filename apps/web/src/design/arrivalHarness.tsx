@@ -85,7 +85,7 @@ const VERA: ZeropsMateIdentity = {
   project: "Acme Shop",
   connected: false,
 };
-const YOU = { initials: "AR", avatarUrl: null };
+const YOU = { name: "Ada", avatarUrl: null };
 
 const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
 
@@ -746,7 +746,6 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
           progress={progress}
           nowMs={nowMs}
           mate={WREN}
-          you={null}
           onTryAgain={() => undefined}
         />
       ),
@@ -865,7 +864,6 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
             }
           : {})}
         progress={progress}
-        you={YOU}
       />
     ),
   };
@@ -1016,7 +1014,7 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
       {state.dialog === undefined ? null : (
         <Dialog defaultOpen key={state.id}>
           <div className="self-start p-4">
-            <DialogTrigger render={<Button size="sm" variant="outline" />}>
+            <DialogTrigger render={<Button size="sm" variant="secondary" />}>
               Sign {state.mate.name} in
             </DialogTrigger>
           </div>
@@ -1040,9 +1038,8 @@ function Header({ state }: { readonly state: HarnessState }) {
       {state.conversation === true ? (
         <span className="flex items-center gap-2.5">
           <MateFace
-            className="size-6"
             shape={state.mate.shape}
-            size="sm"
+            size={24}
             state={state.mate.connected ? "idle" : "sleep"}
             tint={state.mate.tint}
           />
@@ -1084,7 +1081,7 @@ function Harness() {
           A Mate's arrival — Direction A, sign-in S1
         </p>
         <div className="pb-2">
-          <Button onClick={play} size="sm" variant="outline">
+          <Button onClick={play} size="sm" variant="secondary">
             Play the arrival
           </Button>
         </div>

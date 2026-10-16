@@ -37,7 +37,7 @@ import {
   spokenUpcomingTimestamp,
 } from "../../timestampFormat";
 import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
@@ -182,15 +182,7 @@ export function HeldMessageLine({
           ? "Sends when the limit resets"
           : `Sends when the limit resets ${spokenUpcoming(resetsAt, timestampFormat)}`}
       </span>
-      {onWithdraw === null ? null : (
-        <button
-          className="cursor-pointer rounded-sm font-medium text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onWithdraw}
-          type="button"
-        >
-          Don't send
-        </button>
-      )}
+      {onWithdraw === null ? null : <InlineButton onClick={onWithdraw}>Don't send</InlineButton>}
     </p>
   );
 }
@@ -305,10 +297,7 @@ export function EventLine({
           icon={<GitMergeIcon className="size-3.5 text-status-ok" />}
           timestampFormat={timestampFormat}
         >
-          <span className="font-medium text-foreground">
-            {event.event.repository} #{event.event.number}
-          </span>{" "}
-          landed · {event.event.title}
+          <span className="font-medium text-foreground">{event.event.title}</span> merged
         </EventShell>
       );
     case "compaction":
@@ -418,14 +407,13 @@ export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) 
   const unavailable = action?.unavailable ?? null;
   const button =
     action === undefined ? null : (
-      <button
-        className="ms-3 shrink-0 cursor-pointer rounded-sm font-medium text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60 disabled:hover:no-underline"
+      <InlineButton
+        className="ms-3 shrink-0"
         disabled={unavailable !== null}
         onClick={action.onAction}
-        type="button"
       >
         {action.label}
-      </button>
+      </InlineButton>
     );
   return (
     <div
@@ -468,8 +456,8 @@ export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) 
             aria-label={notice.dismissLabel ?? "Dismiss"}
             className="ms-2 shrink-0"
             onClick={notice.onDismiss}
-            size="icon-xs"
-            variant="ghost-muted"
+            size="icon-sm"
+            variant="ghost"
           >
             <XIcon className="size-3.5" />
           </Button>
@@ -572,8 +560,8 @@ export function ErrorLine({
         aria-label="Dismiss"
         className="mt-1"
         onClick={onDismiss}
-        size="icon-xs"
-        variant="ghost-muted"
+        size="icon-sm"
+        variant="ghost"
       >
         <XIcon />
       </Button>

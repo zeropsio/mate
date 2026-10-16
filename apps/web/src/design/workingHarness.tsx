@@ -197,12 +197,12 @@ const IMPORT_ONE_FAILED: ZeropsOperation = {
   steps: [
     {
       id: "appdev",
-      label: "appdev",
+      label: "Nova's workspace",
       state: "failed",
       stateLabel: "Failed",
       note: "serviceStackCreateFailed: the project's disk quota is used up",
     },
-    { id: "appstage", label: "appstage", state: "done", stateLabel: "Done" },
+    { id: "appstage", label: "Nova's preview", state: "done", stateLabel: "Done" },
   ],
 };
 
@@ -398,7 +398,7 @@ const AFTER_DOCK: DockModel = {
     tasks: [
       {
         id: "w1",
-        title: "Watch the pull request's checks",
+        title: "Watch the change's checks",
         state: "running",
         watch: true,
         turnId: "turn-1",
@@ -732,8 +732,8 @@ const SO_FAR: ReadonlyArray<RecordItem> = [
     at: ago(18),
     entry: call({
       id: "k1",
-      label: "Watch the pull request's checks",
-      toolTitle: "Watch the pull request's checks",
+      label: "Watch the change's checks",
+      toolTitle: "Watch the change's checks",
       tone: "info",
       sourceActivityKind: "task.completed",
       taskId: "bk1",
@@ -1010,7 +1010,9 @@ function RelayedStandup() {
   };
   return (
     <div className="grid gap-1" data-standup-state="Relayed by its Mate">
-      <p className="text-muted-foreground text-xs">Relayed by its Mate, from zcp's status file</p>
+      <p className="text-muted-foreground text-xs">
+        Relayed by its Mate, from Zerops Control Plane's status file
+      </p>
       <Card>
         <RunChat
           row={record({

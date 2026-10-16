@@ -70,7 +70,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
         <Menu>
           <MenuTrigger
             render={
-              <Button aria-label="Where it goes" size="xs" variant="ghost" className="-ml-0.5" />
+              <Button aria-label="Where it goes" size="sm" variant="ghost" className="-ml-0.5" />
             }
           >
             {scope.hostname === null ? "every app" : `${scope.hostname} only`}
@@ -124,8 +124,8 @@ export function VaultAddCard(props: VaultAddCardProps) {
                 <Button
                   aria-label="Generate a value"
                   onClick={() => setValue(generateVaultValue())}
-                  size="icon-xs"
-                  variant="ghost-muted"
+                  size="icon-sm"
+                  variant="ghost"
                 />
               }
             >
@@ -158,10 +158,10 @@ export function VaultAddCard(props: VaultAddCardProps) {
             {sensitive ? "nobody reads it back once saved" : ""}
           </span>
           <span className="grow" />
-          <Button onClick={props.onCancel} size="xs" variant="ghost-muted">
+          <Button onClick={props.onCancel} size="sm" variant="ghost">
             Cancel
           </Button>
-          <Button disabled={!canSave} onClick={save} size="xs">
+          <Button disabled={!canSave} onClick={save} size="sm">
             {props.busy ? <Spinner size="xs" /> : null}
             Save
           </Button>
@@ -243,13 +243,13 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
         <span className="font-medium text-line">{scopeName(props.scope)}</span>
         <span className="text-xs text-muted-foreground">as text</span>
         <span className="grow" />
-        <Button onClick={props.onCancel} size="xs" variant="ghost-muted">
+        <Button onClick={props.onCancel} size="sm" variant="ghost">
           Cancel
         </Button>
         <Button
           disabled={changes === 0 || diff.problems.length > 0}
           onClick={props.onReview}
-          size="xs"
+          size="sm"
         >
           {changes === 0 ? "Review" : `Review ${changes} change${changes > 1 ? "s" : ""}`}
         </Button>
@@ -344,8 +344,8 @@ export function VaultReview(props: VaultReviewProps) {
               <div className="mt-2 flex gap-1.5">
                 <Button
                   onClick={() => setForced((current) => new Set(current).add(write.key))}
-                  size="xs"
-                  variant="ghost-destructive"
+                  size="sm"
+                  variant="destructive"
                 >
                   Remove anyway
                 </Button>
@@ -358,14 +358,14 @@ export function VaultReview(props: VaultReviewProps) {
         <Button
           disabled={applied.length === 0 || props.applying}
           onClick={() => props.onApply(applied.map(({ write }) => write))}
-          size="xs"
+          size="sm"
         >
           {props.applying ? <Spinner size="xs" /> : null}
           {props.applying
             ? "Applying"
             : `Apply ${applied.length} change${applied.length === 1 ? "" : "s"}`}
         </Button>
-        <Button onClick={props.onBack} size="xs" variant="ghost-muted">
+        <Button onClick={props.onBack} size="sm" variant="ghost">
           Back to text
         </Button>
         <span className="ml-auto truncate text-xs text-muted-foreground">

@@ -99,13 +99,12 @@ import {
 } from "~/zerops/mateIdentities";
 import { takeMateConversation } from "~/zerops/mateOpening";
 import {
+  arrivalRow,
   arrivalSteps,
-  inFirstSeenOrder,
   onSetupClock,
   pressNote,
   SETUP_FAILURE_WORDS,
   type ArrivalSubstep,
-  type ArrivalStep,
 } from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
 import { dismissCreation, useCreations } from "~/zerops/creations";
@@ -154,7 +153,6 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { MateDetailFailure } from "./MateDetailFailure";
 import { useCloseOffHolds, useMateDetailRead } from "~/zerops/accountEnvironments";
 import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
-import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 import { ZeropsProjectLink } from "./ZeropsProjectLink";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
@@ -164,7 +162,7 @@ import { EllipsisIcon } from "lucide-react";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
-import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
+import { Progress } from "../ui/progress";
 import { PressSteps } from "./ZeropsEnvironmentCreationDialog";
 import {
   MateEmptyStateView,
@@ -191,8 +189,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const openMate = useOpenMate();
   const { activeOrganization, user } = useZeropsSession();
   const viewer = user?.id;
-  // The person's own step wears their picture.
-  const you = useMemo(() => personOf(user), [user]);
   // Which agent this project's other Mates use, read while it comes up: its sign-in is ready in it.
   useUsualAgent(projectId);
   const { organizationRef } = useZeropsData();
@@ -777,7 +773,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                         })}
                     progress={lineProgress}
                     removing={removing}
-                    you={you}
                   />
                 ),
             }
@@ -1013,7 +1008,7 @@ export function MateComingHeader({
             data-chat-header-ghost
             inert
             size="icon-sm"
-            variant="ghost-muted"
+            variant="ghost"
           >
             <EllipsisIcon className="size-4" />
           </Button>
@@ -1061,22 +1056,13 @@ const SILENT_STAGE: Exclude<MateVoice, { readonly surface: "none" }> = {
   processes: false,
 };
 
-/** The person, as their own step wears them: their picture, else their initials. */
-export function personOf(
-  user: Parameters<typeof zeropsAccountDisplay>[0] | undefined,
-): ArrivalYou | null {
-  if (user === undefined || user === null) return null;
-  const display = zeropsAccountDisplay(user);
-  return { initials: display.initials, avatarUrl: display.avatarUrl };
-}
-
 /**
  * The sentence under the headline while it comes up: how long is left, measured from the press;
  * one that did not come, why.
  */
 /**
- * In the slot while it comes up: the Mate's own steps (`arrivalSteps`), with their times — and
- * under them, for one that did not come, the view's one verb: *Remove*, *Try again* where a press
+ * In the slot while it comes up: the Mate's own steps (`arrivalSteps`) as one progress row whose
+ * words replace themselves in place (`arrivalRow`) — and under it, for one that did not come, the view's one verb: *Remove*, *Try again* where a press
  * stopped at a step safe to ask again, or *Go to projects* where the platform may have made it
  * anyway.
  */
@@ -1085,7 +1071,6 @@ export function ComingBelow({
   progress,
   nowMs,
   mate,
-  you,
   removing = false,
   finishing = false,
   onRemove,
@@ -1115,7 +1100,6 @@ export function ComingBelow({
   readonly progress: ArrivalProgress | undefined;
   readonly nowMs: number | undefined;
   readonly mate: Pick<ZeropsMateIdentity, "name" | "project">;
-  readonly you: ArrivalYou | null;
   readonly removing?: boolean;
   /** *Finish setup* runs. */
   readonly finishing?: boolean;
@@ -1137,41 +1121,46 @@ export function ComingBelow({
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
-  // Each step's services in the order first seen here: a read that orders them otherwise — the
-  // birth's recipe order handing over to the listing's own — never makes them trade places.
-  const [seen, setSeen] = useState<ReadonlyMap<string, ReadonlyArray<string>>>(() => new Map());
-  const remembered = new Map(seen);
-  // A creation that stopped says why in the sentence over its steps: the steps only mark where.
-  const arrived =
+  // The arrival as one row, its words replaced in place; a creation that stopped stops it where it
+  // stood, and its sentence over the row says why.
+  const row =
     progress === undefined || nowMs === undefined
       ? null
-      : arrivalSteps(progress, mate, nowMs).map((step) => {
-          const { why: _said, substeps, ...marked } = step;
-          const plain = {
-            ...marked,
-            ...(substeps === undefined
-              ? {}
-              : { substeps: substeps.map(({ why: _details, ...substep }) => substep) }),
-          };
-          const shown = coming?.kind === "failed" ? stoppedStep(plain) : plain;
-          if (shown.services === undefined) return shown;
-          const kept = inFirstSeenOrder(
-            seen.get(step.id) ?? [],
-            shown.services.map((service) => service.name),
-          );
-          if (kept.seen !== seen.get(step.id)) remembered.set(step.id, kept.seen);
-          const byName = new Map(shown.services.map((service) => [service.name, service]));
-          return { ...shown, services: kept.order.flatMap((name) => byName.get(name) ?? []) };
-        });
-  if ([...remembered].some(([id, names]) => seen.get(id) !== names)) setSeen(remembered);
-  const steps = arrived === null ? null : <ZeropsArrivalSteps steps={arrived} you={you} />;
+      : arrivalRow(
+          arrivalSteps(progress, mate, nowMs),
+          progress.steps,
+          coming?.kind === "failed",
+          progress.startedAt,
+        );
+  const steps =
+    row === null ? null : (
+      // The slot centres its words; the row's own read from its start edge.
+      <div className="w-full text-start">
+        <Progress
+          at={row.at}
+          endedAtMs={row.endedAtMs}
+          identity={attemptId ?? ""}
+          label={`${mate.name} coming up`}
+          nowMs={nowMs}
+          startedAtMs={row.startedAtMs}
+          steps={row.steps}
+          view={
+            row.state === "failed"
+              ? { state: "failed", cause: `${row.steps[row.at] ?? mate.name} didn't finish.` }
+              : row.state === "done"
+                ? { state: "done", result: row.steps[row.at] ?? "" }
+                : undefined
+          }
+        />
+      </div>
+    );
   const verb =
     coming?.kind === "failed" && coming.verb !== "redeploy" && setupFailureDetails !== undefined ? (
       <>
         {onTryAgain === undefined ? null : (
           <Button
-            variant="pill"
-            size="compact"
+            variant="primary"
+            size="md"
             disabled={setupFailureDetails.retrying || removing}
             onClick={onTryAgain}
           >
@@ -1180,10 +1169,10 @@ export function ComingBelow({
         )}
         {onRemove === undefined ? null : (
           <Button
-            size="compact"
+            size="sm"
             disabled={removing || setupFailureDetails.retrying}
             onClick={onRemove}
-            variant="outline"
+            variant="secondary"
           >
             Remove
           </Button>
@@ -1191,29 +1180,29 @@ export function ComingBelow({
       </>
     ) : coming?.kind === "failed" ? (
       coming.verb === "redeploy" && onRedeploy !== undefined ? (
-        <Button variant="pill" size="compact" onClick={onRedeploy}>
+        <Button variant="primary" size="md" onClick={onRedeploy}>
           Redeploy
         </Button>
       ) : coming.verb === "remove" && onRemove !== undefined ? (
-        <Button variant="pill" size="compact" disabled={removing} onClick={onRemove}>
+        <Button variant="primary" size="md" disabled={removing} onClick={onRemove}>
           Remove
         </Button>
       ) : coming.verb === "finish-setup" && onFinishSetup !== undefined ? (
-        <Button variant="pill" size="compact" disabled={finishing} onClick={onFinishSetup}>
+        <Button variant="primary" size="md" disabled={finishing} onClick={onFinishSetup}>
           {FINISH_MATE_SETUP_VERB}
         </Button>
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
         <>
-          <Button variant="pill" size="compact" onClick={onTryAgain}>
+          <Button variant="primary" size="md" onClick={onTryAgain}>
             {MATE_STAND_UP_RETRY_LABEL}
           </Button>
           {ends?.onStartOver === undefined ? null : (
-            <Button size="compact" onClick={ends.onStartOver} variant="outline">
+            <Button size="sm" onClick={ends.onStartOver} variant="secondary">
               Start over
             </Button>
           )}
           {ends === undefined ? null : (
-            <Button size="compact" onClick={ends.onDismiss} variant="ghost">
+            <Button size="sm" onClick={ends.onDismiss} variant="ghost">
               Dismiss
             </Button>
           )}
@@ -1221,8 +1210,8 @@ export function ComingBelow({
       ) : coming.verb === "add-credit" && addCredit !== undefined ? (
         <>
           <Button
-            variant="pill"
-            size="compact"
+            variant="primary"
+            size="md"
             render={<a href={addCredit} rel="noreferrer" target="_blank" />}
           >
             Add credit in HQ
@@ -1230,28 +1219,28 @@ export function ComingBelow({
           {/* Credit may come from another tab, another device or before a reload: *Try again*
               stands beside the way to HQ for as long as the refusal does. */}
           {onTryAgain === undefined ? null : (
-            <Button variant="outline" size="compact" onClick={onTryAgain}>
+            <Button variant="secondary" size="sm" onClick={onTryAgain}>
               {MATE_STAND_UP_RETRY_LABEL}
             </Button>
           )}
           {ends?.onStartOver === undefined ? null : (
-            <Button size="compact" onClick={ends.onStartOver} variant="outline">
+            <Button size="sm" onClick={ends.onStartOver} variant="secondary">
               Start over
             </Button>
           )}
           {ends === undefined ? null : (
-            <Button size="compact" onClick={ends.onDismiss} variant="ghost">
+            <Button size="sm" onClick={ends.onDismiss} variant="ghost">
               Dismiss
             </Button>
           )}
         </>
       ) : coming.verb === "go-to-projects" && projects !== undefined ? (
         <>
-          <Button variant="pill" size="compact" render={projects}>
+          <Button variant="primary" size="md" render={projects}>
             Go to projects
           </Button>
           {ends === undefined ? null : (
-            <Button size="compact" onClick={ends.onDismiss} variant="ghost">
+            <Button size="sm" onClick={ends.onDismiss} variant="ghost">
               Dismiss
             </Button>
           )}
@@ -1272,7 +1261,7 @@ export function ComingBelow({
   const pressRead = copy.note === null ? null : { text: copy.note };
   const finishVerb =
     coming?.kind === "coming" && onFinishSetup !== undefined ? (
-      <Button variant="pill" size="compact" disabled={finishing} onClick={onFinishSetup}>
+      <Button variant="primary" size="md" disabled={finishing} onClick={onFinishSetup}>
         {FINISH_MATE_SETUP_VERB}
       </Button>
     ) : null;
@@ -1282,7 +1271,7 @@ export function ComingBelow({
     pressRead ?? (setupFailure === undefined ? null : { text: SETUP_FAILURE_WORDS[setupFailure] });
   const setupVerb =
     pressRead === null && setupFailure !== undefined && onSetupAgain !== undefined ? (
-      <Button variant="pill" size="compact" onClick={onSetupAgain}>
+      <Button variant="primary" size="md" onClick={onSetupAgain}>
         Try again
       </Button>
     ) : null;
@@ -1328,8 +1317,8 @@ export function ComingBelow({
                 render={
                   <a href={setupFailureDetails.projectUrl} target="_blank" rel="noreferrer" />
                 }
-                size="compact"
-                variant="pill"
+                size="md"
+                variant="primary"
               >
                 Open the process in Zerops
               </Button>
@@ -1339,20 +1328,6 @@ export function ComingBelow({
       </div>
     </div>
   );
-}
-
-/** A step's word once its creation stopped while it was under way. */
-const STOPPED_NOTE = "Stopped";
-
-/**
- * A step of a creation that stopped: one still under way stopped with it, so its clock runs no
- * further and its spinner turns no more — a press that never settled ran it on past two hours
- * (F6b, 2026-10-03). Its time is not known, and it says so rather than guess one.
- */
-function stoppedStep(step: ArrivalStep): ArrivalStep {
-  if (step.state !== "active") return step;
-  const { time: _running, note: _estimate, ...rest } = step;
-  return { ...rest, state: "failed", note: STOPPED_NOTE };
 }
 
 /**

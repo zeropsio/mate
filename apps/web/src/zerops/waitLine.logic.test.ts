@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  routePendingLine,
   BOOT_WAIT_LINE_MS,
-  bootWaitLine,
   openingConversationLine,
-  READING_PROJECTS_LINE,
+  overviewStandsIn,
   waitLineDueInMs,
   waitLineShows,
 } from "./waitLine.logic";
@@ -27,14 +25,6 @@ describe("a wait's one line", () => {
         delayMs: BOOT_WAIT_LINE_MS,
       }),
     ).toBe(row.due);
-  });
-
-  it.each([
-    { conversationRoute: false, line: READING_PROJECTS_LINE },
-    // The Mate's page says its own line once it knows the Mate: the frame never guesses a name.
-    { conversationRoute: true, line: null },
-  ])("the boot says $line on a conversation's route: $conversationRoute", (row) => {
-    expect(bootWaitLine(row.conversationRoute)).toBe(row.line);
   });
 
   it.each([
@@ -63,16 +53,22 @@ describe("a wait's one line", () => {
   });
 });
 
-describe("routePendingLine — what a route says while its code loads", () => {
+describe("overviewStandsIn — what a route draws while the app or its code loads", () => {
   it.each([
-    { pathname: "/zerops", line: READING_PROJECTS_LINE },
-    { pathname: "/", line: READING_PROJECTS_LINE },
-    { pathname: "/settings/general", line: "Loading…" },
-    { pathname: "/env-1/thread-1", line: "Loading…" },
+    { pathname: "/zerops", standsIn: true },
+    // Any other route holds its room and paints nothing: its code arrives in a beat.
+    { pathname: "/settings/general", standsIn: false },
+    { pathname: "/env-1/thread-1", standsIn: false },
   ])(
-    "The overview's route loading says the overview's one wait: $pathname",
-    ({ pathname, line }) => {
-      expect(routePendingLine(pathname)).toBe(line);
+    "The overview's route stands in shaped like the overview while it loads: $pathname",
+    ({ pathname, standsIn }) => {
+      expect(overviewStandsIn(pathname)).toBe(standsIn);
     },
   );
+
+  // The home lands on HQ's Mate as often as on the overview: until it knows which, it paints
+  // nothing it would take back, and the overview's shape is the overview's own route's.
+  it("opening Mate paints only what it lands on", () => {
+    expect(overviewStandsIn("/")).toBe(false);
+  });
 });

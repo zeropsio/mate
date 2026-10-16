@@ -61,6 +61,27 @@ function render(over: Partial<ReleaseReviewViewProps>): string {
 }
 
 describe("ReleaseReviewView", () => {
+  // The onboarding run: released, the sheet's one button was "Put it on your domain" and the
+  // production address stood small and grey behind the scrim.
+  it("ends a release on the live app: Open its address, a domain of its own beside it", () => {
+    const markup = render({
+      outcome: { kind: "released", at: undefined },
+      production: {
+        at: undefined,
+        parts: [],
+        addresses: [{ service: "app", url: "https://app-abcd-3000.prg1.zerops.app" }],
+      },
+      onAddDomain: () => {},
+    });
+    const page = new Window().document;
+    page.body.innerHTML = markup;
+    const primary = page.querySelector("[data-review-primary]");
+    expect(primary?.textContent).toContain("Open app-abcd-3000.prg1.zerops.app");
+    expect(page.querySelector("[data-review-secondary]")?.textContent).toBe(
+      "Put it on your domain",
+    );
+  });
+
   it("says what production runs on a service cannot be told, under what goes out", () => {
     const markup = render({ untold: ["web"] });
     expect(markup).toContain("What goes out");
@@ -88,7 +109,7 @@ describe("ReleaseReviewView", () => {
       markup,
     )?.[0];
     expect(button).toBeDefined();
-    expect(button).not.toContain("disabled");
+    expect(button).not.toMatch(/\sdisabled(?:=""|[\s>])/u);
   });
 });
 

@@ -115,6 +115,17 @@ export function roleOffers(
 }
 
 /**
+ * Whether the viewer brings people into the organization — Invite on the team page and on a
+ * project's ···: only an owner or an admin, whom Zerops lets invite. While the membership is not
+ * read, what is drawn stays drawn, as with `roleOffers`.
+ */
+export function teamOffers(
+  capabilities: Pick<PlatformCapabilities, "membershipKnown" | "manageOrganization">,
+): { readonly invite: boolean } {
+  return { invite: !capabilities.membershipKnown || capabilities.manageOrganization };
+}
+
+/**
  * Whether the organization's credit is the viewer's to add in HQ: only for someone who may edit
  * its finances; anyone else asks an owner. While the membership is not read, what is drawn stays
  * drawn, as with `roleOffers`.

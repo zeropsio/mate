@@ -184,7 +184,7 @@ export function ZeropsHqUpdate({
   }, [carried, orgId, projectId, runOperation, running, serviceId]);
   return (
     <>
-      <Button onClick={() => setOpen(true)} size="xs" variant="link">
+      <Button onClick={() => setOpen(true)} size="sm" variant="link">
         {trigger}
       </Button>
       <Dialog onOpenChange={setOpen} open={open}>

@@ -14,7 +14,10 @@ import { EllipsisIcon, PlusIcon, ShieldIcon, XIcon } from "lucide-react";
 import { useId, useState } from "react";
 
 import { Button } from "../../ui/button";
+import { EmptyState } from "../../ui/empty";
+import { Failure } from "../../ui/failure";
 import { Input } from "../../ui/input";
+import { Loading } from "../../ui/loading";
 import { Label } from "../../ui/label";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Radio, RadioGroup } from "../../ui/radio-group";
@@ -34,7 +37,6 @@ import {
   guardTitle,
   OthersList,
   RowMeta,
-  SheetEmpty,
   SheetRow,
   SheetSection,
   Trouble,
@@ -82,8 +84,8 @@ export function AddressesDirect({
           <Button
             disabled={ctx.hold}
             onClick={() => setMode({ kind: "open-port" })}
-            size="xs"
-            variant="ghost-primary"
+            size="sm"
+            variant="ghost"
           >
             <PlusIcon />
             Open a port
@@ -127,9 +129,9 @@ export function AddressesDirect({
       title="Direct access"
     >
       {place.portsState === "failed" ? (
-        <SheetEmpty>You can't see {ctx.placeName}'s open ports.</SheetEmpty>
+        <Failure cause={`You can't see ${ctx.placeName}'s open ports.`} />
       ) : place.portsState === "reading" ? (
-        <SheetEmpty>Reading…</SheetEmpty>
+        <Loading count={1} label={`${ctx.placeName}'s open ports`} shape="rows" />
       ) : (
         <>
           {place.ports.map((port) =>
@@ -157,11 +159,11 @@ export function AddressesDirect({
             ),
           )}
           {place.ports.length > 0 || opening ? null : (
-            <SheetEmpty>
+            <EmptyState size="row">
               {place.portTargets.length === 0
                 ? `None of ${ctx.placeName}'s services can open a port directly.`
                 : "No open ports. Open one to let a database client connect."}
-            </SheetEmpty>
+            </EmptyState>
           )}
         </>
       )}
@@ -209,7 +211,7 @@ function PortRow({
                   <Button
                     aria-label={`More for port ${port.publicPort}`}
                     size="icon-sm"
-                    variant="ghost-muted"
+                    variant="ghost"
                   />
                 }
               >
@@ -398,14 +400,14 @@ function PortForm({
             onClick={() => setRanges(ranges.filter((_, at) => at !== index))}
             size="icon-sm"
             type="button"
-            variant="ghost-muted"
+            variant="ghost"
           >
             <XIcon />
           </Button>
         </div>
       ))}
       <div>
-        <Button onClick={() => setRanges([...ranges, ""])} size="xs" type="button" variant="ghost">
+        <Button onClick={() => setRanges([...ranges, ""])} size="sm" type="button" variant="ghost">
           <PlusIcon />
           Add an address
         </Button>

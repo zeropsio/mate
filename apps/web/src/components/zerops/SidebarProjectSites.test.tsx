@@ -447,7 +447,7 @@ describe("the addresses sheet's doors", () => {
     expect(surfaces("sidebar-project-sites-manage")).toEqual([]);
   });
 
-  it("Add your domain shows in production's section only while production has no domain of its own, and opens the sheet to add one", async () => {
+  it("Put it on your domain shows in production's section only while production has no domain of its own, and opens the sheet to add one", async () => {
     await mount({}, inAccount({ "quill-production": place([]), "quill-stage": place([]) }));
     await press(surface("sidebar-project-sites"));
     expect(surfaces("sidebar-project-sites-add-domain")).toHaveLength(1);
@@ -465,7 +465,7 @@ describe("the addresses sheet's doors", () => {
   it.each([
     ["has a domain of its own", place(["quill.example.com"])],
     ["is still being read", place("reading")],
-  ])("Add your domain does not show while production %s", async (_case, production) => {
+  ])("Put it on your domain does not show while production %s", async (_case, production) => {
     await mount({}, inAccount({ "quill-production": production }));
     await press(surface("sidebar-project-sites"));
     expect(addDomain()).toBeNull();

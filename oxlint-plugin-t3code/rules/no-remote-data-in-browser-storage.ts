@@ -94,6 +94,8 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/lib/backgroundActivityReporter.ts",
   "apps/web/src/lib/staleChunk.ts",
   "apps/web/src/zerops/creationMemory.ts",
+  // The names an inviter typed for invitations not joined yet, and whether a welcome was said.
+  "apps/web/src/zerops/invitationMemory.ts",
   "apps/web/src/zerops/diagnostics.ts",
   "apps/web/src/zerops/throwawayDebt.ts",
 ]);

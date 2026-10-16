@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { Fragment, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
 import { isMacPlatform } from "~/lib/utils";
 
@@ -168,7 +169,7 @@ export function ZeropsReviewSurface({
                 <MateFace
                   className="size-5.5"
                   shape={face.shape}
-                  size="sm"
+                  size={20}
                   state={face.state ?? "idle"}
                   tint={face.tint}
                 />
@@ -218,9 +219,9 @@ export function ZeropsReviewSurface({
           <div className="rv-why" data-tone={verdict.tone}>
             {whySaid ? <span>{verdict.why}</span> : null}
             {fix === undefined ? null : (
-              <button className="rv-textbtn" onClick={fix.onPress} type="button">
+              <Button onClick={fix.onPress} size="sm" variant="link">
                 {fix.label}
-              </button>
+              </Button>
             )}
           </div>
         ) : null}
@@ -229,8 +230,7 @@ export function ZeropsReviewSurface({
       <footer className="rv-foot">
         <div className="rv-btns">
           {primary === undefined ? null : (
-            <button
-              className="rv-btn1"
+            <Button
               data-review-primary=""
               data-safe={
                 primary.safe && primary.enabled && primary.busy !== true ? "true" : "false"
@@ -238,16 +238,17 @@ export function ZeropsReviewSurface({
               data-zerops-primary-action={primary.label}
               disabled={!primary.enabled || primary.busy === true}
               onClick={primary.onPress}
-              type="button"
             >
               {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
               {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
               {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
               {primary.busy === true ? `${primary.label}…` : (primary.text ?? primary.label)}
               {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
-                <kbd aria-hidden="true">{PRESS_KEYS}</kbd>
+                <kbd aria-hidden="true" className="rv-keys">
+                  {PRESS_KEYS}
+                </kbd>
               ) : null}
-            </button>
+            </Button>
           )}
           {settled === undefined ? null : (
             <span className="rv-settled">
@@ -256,25 +257,24 @@ export function ZeropsReviewSurface({
             </span>
           )}
           {ask === undefined ? null : (
-            <button className="rv-btn2" data-review-ask="" onClick={ask.onPress} type="button">
+            <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
               {ask.label}
-            </button>
+            </Button>
           )}
           {secondary === undefined ? null : (
-            <button
-              className="rv-quiet"
+            <Button
               data-review-secondary=""
               disabled={!secondary.enabled}
               onClick={secondary.onPress}
-              type="button"
+              variant="ghost"
             >
               {secondary.label}
-            </button>
+            </Button>
           )}
           {dismiss === undefined || frame === "page" ? null : (
-            <button className="rv-quiet" onClick={onClose} type="button">
+            <Button onClick={onClose} variant="ghost">
               {dismiss}
-            </button>
+            </Button>
           )}
         </div>
         <p className="rv-conseq">{consequence}</p>
@@ -433,9 +433,9 @@ export function ReviewFailed({
         {what} <span className="rv-failed-why">{reason}</span>
       </span>
       {onRetry === undefined ? null : (
-        <button className="rv-textbtn" onClick={onRetry} type="button">
+        <Button onClick={onRetry} size="sm" variant="link">
           Try again
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -675,15 +675,16 @@ export function ReviewDiff({
         ))}
       </div>
       {rest?.kind === "show" ? (
-        <button
-          className="rv-textbtn rv-diff-more"
+        <Button
+          className="mt-1 mb-0.5 ml-15 self-start"
           onClick={() => {
             setAll(true);
           }}
-          type="button"
+          size="sm"
+          variant="link"
         >
           {rest.label}
-        </button>
+        </Button>
       ) : null}
       {rest?.kind === "cut" ? <p className="rv-diff-note">{rest.words}</p> : null}
     </div>
@@ -728,7 +729,7 @@ export function ReviewReleaseRows({
               <MateFace
                 className="size-5.5"
                 shape={row.face.shape}
-                size="sm"
+                size={20}
                 state={row.face.state ?? "idle"}
                 tint={row.face.tint}
               />

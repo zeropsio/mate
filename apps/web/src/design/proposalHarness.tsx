@@ -3,9 +3,10 @@
  * wide, the left menu at 435, `?menu=` for another): a restart, a secret value, a service's plain
  * value, a message with an attachment to another Mate, and each outcome — running, done, failed,
  * declined, and an approval a reload interrupted. Below them, a project's Mate asking the person's
- * Chief: with a Chief, without one (*Set up your Chief*), sent, and refused by HQ. Then the Chief
+ * Chief: with a Chief, without one (*Set up Chief*), sent, and refused by HQ. Then the Chief
  * putting production on the person's domain: undecided, with another change waiting, and approved
- * at each step its domain goes through. Every face is
+ * at each step its domain goes through. First, the Chief proposing who has access to an
+ * application: undecided, held for a name nobody in the organization has, and done. Every face is
  * the mark there; the receiving Mate keeps its own. Approve answers after 900 ms; `?fail=1`
  * refuses it. `?theme=dark` for dark.
  *
@@ -129,6 +130,26 @@ const STOP: ZeropsProposal = {
   serviceName: "worker",
 };
 
+const ACCESS: ZeropsProposal = {
+  id: "access",
+  kind: "access.set",
+  summary: "Access to Shop Front: Dana full access, Greta read only",
+  reason: "Dana starts on the app today; Greta reviews it.",
+  projectId: "p-prod",
+  projectName: "Shop Front",
+  params: {
+    projects: [
+      { id: "p-prod", name: "Shop Front - production" },
+      { id: "p-stage", name: "Shop Front - stage" },
+      { id: "p-alba", name: "Shop Front - Alba" },
+    ],
+    people: [
+      { person: "Dana", level: "full" },
+      { person: "Greta", level: "read" },
+    ],
+  },
+};
+
 const CARDS: ReadonlyArray<{
   readonly proposal: ZeropsProposal;
   readonly stage: ProposalStage;
@@ -141,7 +162,15 @@ const CARDS: ReadonlyArray<{
   readonly domainAlso?: string;
   readonly domainState?: ProposalCardProps["domainState"];
   readonly domainRecords?: ProposalCardProps["domainRecords"];
+  readonly approveBlocked?: string;
 }> = [
+  { proposal: ACCESS, stage: "open" },
+  {
+    proposal: { ...ACCESS, id: "access-unknown" },
+    stage: "open",
+    approveBlocked: "No one in your organization is Greta. Invite them from Team, then ask again.",
+  },
+  { proposal: { ...ACCESS, id: "access-done" }, stage: "done" },
   { proposal: RESTART, stage: "open" },
   { proposal: SECRET, stage: "open" },
   { proposal: PLAIN, stage: "open" },
@@ -226,6 +255,7 @@ function Card(card: (typeof CARDS)[number]) {
   const [failure, setFailure] = useState(card.failure);
   return (
     <ProposalCard
+      approveBlocked={card.approveBlocked}
       chiefTarget={card.chiefTarget}
       domainAlso={card.domainAlso}
       domainState={card.domainState}

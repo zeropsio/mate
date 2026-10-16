@@ -264,9 +264,8 @@ export function ProviderModelsSection({
                       <TooltipTrigger
                         render={
                           <Button
-                            size="icon-micro"
+                            size="icon-sm"
                             variant="ghost"
-                            className="text-muted-foreground/60 hover:text-muted-foreground"
                             aria-label={`Details for ${model.name}`}
                           />
                         }
@@ -301,8 +300,8 @@ export function ProviderModelsSection({
                     <TooltipTrigger
                       render={
                         <Button
-                          size="icon-micro"
-                          variant="ghost-muted"
+                          size="icon-sm"
+                          variant="ghost"
                           onClick={() => handleToggleFavorite(model.slug)}
                           aria-label={`${isFavorite ? "Remove" : "Add"} ${model.name} ${
                             isFavorite ? "from" : "to"
@@ -322,8 +321,8 @@ export function ProviderModelsSection({
                     <TooltipTrigger
                       render={
                         <Button
-                          size="icon-micro"
-                          variant="ghost-muted"
+                          size="icon-sm"
+                          variant="ghost"
                           disabled={!canMoveUp}
                           onClick={() => handleMove(model.slug, -1)}
                           aria-label={`Move ${model.name} up`}
@@ -338,8 +337,8 @@ export function ProviderModelsSection({
                     <TooltipTrigger
                       render={
                         <Button
-                          size="icon-micro"
-                          variant="ghost-muted"
+                          size="icon-sm"
+                          variant="ghost"
                           disabled={!canMoveDown}
                           onClick={() => handleMove(model.slug, 1)}
                           aria-label={`Move ${model.name} down`}
@@ -355,8 +354,8 @@ export function ProviderModelsSection({
                       <TooltipTrigger
                         render={
                           <Button
-                            size="icon-micro"
-                            variant="ghost-muted"
+                            size="icon-sm"
+                            variant="ghost"
                             onClick={() => handleToggleHidden(model.slug)}
                             aria-label={`${isHidden ? "Show" : "Hide"} ${model.name}`}
                           />
@@ -378,8 +377,8 @@ export function ProviderModelsSection({
                       <TooltipTrigger
                         render={
                           <Button
-                            size="icon-micro"
-                            variant="ghost-muted"
+                            size="icon-sm"
+                            variant="ghost"
                             aria-label={`Edit ${model.name}`}
                             aria-expanded={editingSlug === model.slug}
                             onClick={() =>
@@ -400,8 +399,8 @@ export function ProviderModelsSection({
                       <TooltipTrigger
                         render={
                           <Button
-                            size="icon-micro"
-                            variant="ghost-muted"
+                            size="icon-sm"
+                            variant="ghost"
                             aria-label={`Remove ${model.slug}`}
                             onClick={() => handleRemove(model.slug)}
                           />
@@ -447,7 +446,7 @@ export function ProviderModelsSection({
             placeholder={driverKind ? CUSTOM_MODEL_PLACEHOLDER_BY_KIND[driverKind] : "model-slug"}
             spellCheck={false}
           />
-          <Button className="shrink-0" variant="outline" onClick={handleAdd}>
+          <Button className="shrink-0" variant="secondary" onClick={handleAdd}>
             <PlusIcon className="size-3.5" />
             Add
           </Button>

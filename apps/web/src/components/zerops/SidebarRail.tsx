@@ -264,7 +264,7 @@ function RailFace({ mate, kid = false }: { readonly mate: RailMate; readonly kid
           greets
           known={mate.known}
           shape={mate.shape}
-          size={kid ? "md" : "lg"}
+          size={kid ? 24 : 32}
           state={mate.face}
           tint={mate.tint}
         />

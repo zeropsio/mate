@@ -5,12 +5,12 @@ const pillState = vi.hoisted(() => ({
   handlers: new Map<string, () => void>(),
 }));
 
-vi.mock("./primitives", () => ({
-  Pill: ({ label, onClick }: { readonly label: string; readonly onClick?: () => void }) => {
+vi.mock("../ui/button", () => ({
+  Button: ({ children, onClick }: { readonly children: string; readonly onClick?: () => void }) => {
     if (onClick !== undefined) {
-      pillState.handlers.set(label, onClick);
+      pillState.handlers.set(children, onClick);
     }
-    return <button data-zerops-primitive="pill">{label}</button>;
+    return <button data-quick-action="">{children}</button>;
   },
 }));
 
@@ -30,7 +30,7 @@ describe("ZeropsQuickActions", () => {
     expect(html).toContain("Deploy");
     expect(html).toContain("Show logs");
     expect(html).toContain("data-zerops-quick-actions");
-    expect(html.match(/data-zerops-primitive="pill"/gu)).toHaveLength(2);
+    expect(html.match(/data-quick-action=""/gu)).toHaveLength(2);
 
     pillState.handlers.get("Deploy")?.();
     pillState.handlers.get("Show logs")?.();

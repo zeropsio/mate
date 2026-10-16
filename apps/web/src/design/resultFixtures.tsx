@@ -552,14 +552,14 @@ const STATES: ReadonlyArray<ResultState> = [
     minutes: 1.34,
   },
   {
-    label: "After a later run redeploys appdev",
+    label: "After a later run redeploys its workspace",
     note: "appdev shows under that run now; what this run saw stays, in its strip.",
     outcome: { ...NOVA, later: { ...NOTHING_LATER, services: ["appdev"], answered: true } },
     facts: { changes: forge([], [STATUS_PAGE]), services: new Map([["appdev", running]]) },
     minutes: 1.34,
   },
   {
-    label: "If appdev stops tonight",
+    label: "If its workspace stops tonight",
     note: "Still this run's service, and broken now: back in red, with its fix.",
     outcome: NOVA,
     facts: {

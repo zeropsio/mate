@@ -190,28 +190,28 @@ export function MateOpeningLine({
             <Button
               disabled={busy}
               onClick={() => onContainerAction(containerAction)}
-              size="compact"
-              variant="pill"
+              size="md"
+              variant="primary"
             >
               {mateRecoveryActionLabel(containerAction, busy)}
             </Button>
           )}
           {askAgain === null ? null : (
-            <Button onClick={onTryNow} size="compact" variant="pill">
+            <Button onClick={onTryNow} size="md" variant="primary">
               {askAgain}
             </Button>
           )}
           {openInZerops ? (
             <Button
               render={<a href={projectUrl} rel="noreferrer" target="_blank" />}
-              size="compact"
-              variant="pill"
+              size="md"
+              variant="primary"
             >
               Open in Zerops
             </Button>
           ) : null}
           {toProjects ? (
-            <Button render={projects} size="compact" variant="pill">
+            <Button render={projects} size="md" variant="primary">
               Go to projects
             </Button>
           ) : null}

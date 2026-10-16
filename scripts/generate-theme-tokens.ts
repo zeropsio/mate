@@ -16,7 +16,7 @@ import {
   type ThemeColors,
   type ThemeDefinition,
 } from "@t3tools/shared/themePalettes";
-import { MATE_MARK } from "@t3tools/shared/brand";
+import { MATE_MARK, MOTION, RADII, TYPE_SCALE } from "@t3tools/shared/brand";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { Command, Flag } from "effect/cli";
@@ -41,13 +41,27 @@ export const MOBILE_THEME_TOKEN_MARKERS = {
   end: "/* generated:theme-tokens end */",
 } as const;
 
+export const WEB_SCALE_TOKEN_MARKERS = {
+  start: "/* generated:scale-tokens start */",
+  end: "/* generated:scale-tokens end */",
+} as const;
+
+export const WEB_MOTION_TOKEN_MARKERS = {
+  start: "/* generated:motion-tokens start */",
+  end: "/* generated:motion-tokens end */",
+} as const;
+
 export interface GeneratedRegionMarkers {
   readonly start: string;
   readonly end: string;
 }
 
 export interface ThemeTokenProjectionOutput {
-  readonly target: "apps/web/index.html" | "apps/web/public/favicon.svg" | "apps/mobile/global.css";
+  readonly target:
+    | "apps/web/index.html"
+    | "apps/web/public/favicon.svg"
+    | "apps/web/src/index.css"
+    | "apps/mobile/global.css";
   readonly path: string;
   readonly contents: string;
 }
@@ -288,6 +302,44 @@ const projectWebThemeTokens = (source: string): string =>
     WEB_THEME_TOKEN_MARKERS,
   );
 
+const rem = (pixels: number): string => `${pixels / 16}rem`;
+
+// The scale's Tailwind theme: `text-caption`…`text-display`, `rounded-control|card|sheet` and the
+// two easings as `ease-*` utilities.
+const renderWebScaleTokens = (): string =>
+  [
+    ...Object.entries(TYPE_SCALE).flatMap(([step, { fontSize, lineHeight }]) => [
+      `  --text-${step}: ${rem(fontSize)};`,
+      `  --text-${step}--line-height: ${rem(lineHeight)};`,
+    ]),
+    ...Object.entries(RADII).map(([step, radius]) => `  --radius-${step}: ${rem(radius)};`),
+    `  --ease-out-strong: ${MOTION.easing.out};`,
+    `  --ease-in-out-strong: ${MOTION.easing.inOut};`,
+  ].join("\n");
+
+// The motion tokens hand-written CSS reads through `var()`.
+const renderWebMotionTokens = (): string =>
+  [
+    ...Object.entries(MOTION.duration).map(
+      ([step, duration]) => `  --duration-${step}: ${duration}ms;`,
+    ),
+    `  --ease-out-strong: ${MOTION.easing.out};`,
+    `  --ease-in-out-strong: ${MOTION.easing.inOut};`,
+  ].join("\n");
+
+const projectWebStylesheetTokens = (source: string): string =>
+  replaceGeneratedRegion(
+    replaceGeneratedRegion(
+      source,
+      renderWebScaleTokens(),
+      "apps/web/src/index.css",
+      WEB_SCALE_TOKEN_MARKERS,
+    ),
+    renderWebMotionTokens(),
+    "apps/web/src/index.css",
+    WEB_MOTION_TOKEN_MARKERS,
+  );
+
 const renderVariant = (name: ThemeAppearance, variables: MobileThemeVariables): string => {
   const declarations = Object.entries(variables)
     .map(([variable, value]) => `      ${variable}: ${value};`)
@@ -314,6 +366,7 @@ export function getThemeTokenProjectionOutputs(
   const webPath = NodePath.join(repositoryRoot, "apps/web/index.html");
   const webFaviconPath = NodePath.join(repositoryRoot, "apps/web/public/favicon.svg");
   const mobilePath = NodePath.join(repositoryRoot, "apps/mobile/global.css");
+  const stylesheetPath = NodePath.join(repositoryRoot, "apps/web/src/index.css");
   return [
     {
       target: "apps/web/index.html",
@@ -324,6 +377,11 @@ export function getThemeTokenProjectionOutputs(
       target: "apps/web/public/favicon.svg",
       path: webFaviconPath,
       contents: renderZeropsFaviconSvg(),
+    },
+    {
+      target: "apps/web/src/index.css",
+      path: stylesheetPath,
+      contents: projectWebStylesheetTokens(NodeFS.readFileSync(stylesheetPath, "utf8")),
     },
     {
       target: "apps/mobile/global.css",
@@ -396,7 +454,11 @@ export const generateThemeTokensCommand = Command.make(
         });
       }
     }),
-).pipe(Command.withDescription("Project shared theme roles and brand marks into client defaults."));
+).pipe(
+  Command.withDescription(
+    "Project shared theme roles, the type, radius and motion scale, and brand marks into client defaults.",
+  ),
+);
 
 if (import.meta.main) {
   Command.run(generateThemeTokensCommand, { version: "0.0.0" }).pipe(

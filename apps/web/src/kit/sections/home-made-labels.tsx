@@ -1,11 +1,9 @@
 import { ProviderInstanceId } from "@t3tools/contracts";
-import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import { HelperMark, StatusDot as HelperStatusDot } from "~/components/AgentsPanel";
 import { AvailabilityDot } from "~/components/chat/AgentAvailability";
 import { ComposerStashBadge } from "~/components/chat/ComposerStashBadge";
 import { ComposerTasksBadge } from "~/components/chat/ComposerTasksBadge";
-import { ToneDot } from "~/components/chat/DetailRow";
 import { SkillChip } from "~/components/chat/SkillInlineText";
 import { TerminalContextInlineChip } from "~/components/chat/TerminalContextInlineChip";
 import {
@@ -13,50 +11,32 @@ import {
   connectionPhaseDotClassName,
   connectionPhasePingClassName,
 } from "~/components/ConnectionStatusDot";
-import { KeybindingPill } from "~/components/settings/KeybindingsSettings";
-import { SourceStatusBadge } from "~/components/settings/ResourceTelemetryDiagnostics";
-import { JumpHintBadge } from "~/components/Sidebar";
 import { CommandPaletteMetaDot } from "~/components/ThreadCommandSubtitle";
 import { MateDot } from "~/components/zerops/MateDot";
-import { Chip, KeyChip, MateFace, StatusDot } from "~/components/zerops/primitives";
-import { AccessBadge } from "~/components/zerops/projects/ProjectAccessChips";
+import { MateFace } from "~/components/zerops/primitives";
 import { PlaceDot } from "~/components/zerops/projects/ProjectCards";
 import { EnvDot } from "~/components/zerops/SidebarProductionChip";
 import { UrlChip } from "~/components/zerops/ZeropsOperationCard";
-import { ZeropsRoleTag } from "~/components/zerops/ZeropsEnvironmentRow";
 
 import { CensusComponent, CensusCount, CensusLook, CensusLooks } from "../census";
 import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
-const TONES: readonly ServiceStatusToneId[] = ["ok", "busy", "attention", "failed", "off"];
 const HELPER_STATUSES = ["running", "waiting", "idle", "completed", "failed", "cancelled"] as const;
-const PRIMITIVES = "apps/web/src/components/zerops/primitives";
 const AGENTS_PANEL = "apps/web/src/components/AgentsPanel.tsx";
-const ACCESS = "apps/web/src/components/zerops/projects/ProjectAccessChips.tsx";
 
 function LabelSpecimens() {
   return (
     <CensusLooks>
       <CensusCount
-        components={30}
-        files={50}
-        kit="the kit has Badge with 9 variants, rendered in 10 files"
-        looks={16}
+        components={13}
+        files={14}
+        kit="the kit has Badge with 5 tones and a dot form, rendered in 30 files"
+        looks={6}
       />
 
-      <CensusLook files={18} name="8 px status dots" note="a dot, mostly with a word" uses={30}>
-        <CensusComponent name="StatusDot" source={`${PRIMITIVES}/StatusDot.tsx`}>
-          {TONES.map((tone) => (
-            <Specimen key={tone} label={specimenLabel({ tone, label: "Running" })}>
-              <StatusDot label="Running" tone={tone} />
-            </Specimen>
-          ))}
-          <Specimen label={specimenLabel({ tone: "ok", dotOnly: true })}>
-            <StatusDot dotOnly label="Running" tone="ok" />
-          </Specimen>
-        </CensusComponent>
+      <CensusLook files={1} name="8 px status dots" note="a dot with a ping, no word" uses={1}>
         <CensusComponent
           name="ConnectionStatusDot"
           source="apps/web/src/components/ConnectionStatusDot.tsx"
@@ -72,67 +52,7 @@ function LabelSpecimens() {
         </CensusComponent>
       </CensusLook>
 
-      <CensusLook
-        files={11}
-        name="Small tags"
-        note="a word in a rounded box, each with its own radius, size and case"
-        uses={14}
-      >
-        <CensusComponent
-          name="ZeropsRoleTag"
-          source="apps/web/src/components/zerops/ZeropsEnvironmentRow.tsx"
-        >
-          {["DEV", "STAGE", "PROD"].map((label) => (
-            <Specimen key={label} label={specimenLabel({ label })}>
-              <ZeropsRoleTag label={label} />
-            </Specimen>
-          ))}
-        </CensusComponent>
-        <CensusComponent name="Chip" source={`${PRIMITIVES}/Chip.tsx`}>
-          {TONES.map((tone) => (
-            <Specimen key={tone} label={specimenLabel({ tone })}>
-              <Chip label="Running" tone={tone} />
-            </Specimen>
-          ))}
-        </CensusComponent>
-        <CensusComponent name="AccessBadge" source={ACCESS}>
-          {(["owner", "full", "basic", "read", "mixed", "hidden"] as const).map((level) => (
-            <Specimen key={level} label={specimenLabel({ level })}>
-              <AccessBadge level={level} />
-            </Specimen>
-          ))}
-          <Specimen label={specimenLabel({ level: "full", busy: true })}>
-            <AccessBadge busy level="full" />
-          </Specimen>
-        </CensusComponent>
-        <CensusComponent
-          name="SourceStatusBadge"
-          source="apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx"
-        >
-          {(["healthy", "starting", "unavailable"] as const).map((status) => (
-            <Specimen key={status} label={specimenLabel({ status })}>
-              <SourceStatusBadge label={status} status={status} />
-            </Specimen>
-          ))}
-        </CensusComponent>
-        <CensusComponent name="JumpHintBadge" source="apps/web/src/components/Sidebar.tsx">
-          <Specimen label={`${specimenLabel({ label: "⌘3" })} at a row's edge`}>
-            {/* It floats at a row's right edge; the dashed box stands in for the row. */}
-            <span className="relative flex h-8 w-24 rounded-md border border-dashed">
-              <JumpHintBadge label="⌘3" />
-            </span>
-          </Specimen>
-        </CensusComponent>
-      </CensusLook>
-
-      <CensusLook files={8} name="6 px bare dots" note="a state's colour with no word" uses={14}>
-        <CensusComponent name="ToneDot" source="apps/web/src/components/chat/DetailRow.tsx">
-          {TONES.map((tone) => (
-            <Specimen key={tone} label={specimenLabel({ tone })}>
-              <ToneDot tone={tone} />
-            </Specimen>
-          ))}
-        </CensusComponent>
+      <CensusLook files={6} name="6 px bare dots" note="a state's colour with no word" uses={12}>
         <CensusComponent
           name="AvailabilityDot"
           source="apps/web/src/components/chat/AgentAvailability.tsx"
@@ -193,7 +113,7 @@ function LabelSpecimens() {
           ))}
           <Specimen label={`${specimenLabel({ tone: "attention", place: "corner" })} on a face`}>
             <span className="relative flex">
-              <MateFace className="size-9" size="lg" state="needs" tint="sky" />
+              <MateFace className="size-9" size={32} state="needs" tint="sky" />
               <MateDot place="corner" tone="attention" />
             </span>
           </Specimen>
@@ -280,22 +200,6 @@ function LabelSpecimens() {
         <CensusComponent name="SkillChip" source="apps/web/src/components/chat/SkillInlineText.tsx">
           <Specimen label='skill "Deploy"'>
             <SkillChip rawText="$deploy" skill={{ name: "deploy", displayName: "Deploy" }} />
-          </Specimen>
-        </CensusComponent>
-      </CensusLook>
-
-      <CensusLook files={2} name="Key caps" note="a shortcut, beside the kit's Kbd" uses={2}>
-        <CensusComponent name="KeyChip" source={`${PRIMITIVES}/KeyChip.tsx`}>
-          <Specimen label="⌘K">
-            <KeyChip>⌘K</KeyChip>
-          </Specimen>
-        </CensusComponent>
-        <CensusComponent
-          name="KeybindingPill"
-          source="apps/web/src/components/settings/KeybindingsSettings.tsx"
-        >
-          <Specimen label={specimenLabel({ value: "mod+shift+k" })}>
-            <KeybindingPill value="mod+shift+k" />
           </Specimen>
         </CensusComponent>
       </CensusLook>

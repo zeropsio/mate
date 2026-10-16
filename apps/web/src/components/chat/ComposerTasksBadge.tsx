@@ -85,11 +85,11 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
     return (
       <span className="inline-flex shrink-0 items-center gap-0.5" data-composer-tasks-badge="true">
         <Button
-          size="micro"
-          variant="ghost-muted"
+          size="sm"
+          variant="ghost"
           aria-expanded={expanded}
           aria-label={label}
-          className="shrink-0 gap-1 px-1.5"
+          className="shrink-0"
           onClick={onToggle}
           onPointerDown={(event) => event.preventDefault()}
         >
@@ -106,8 +106,8 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
           </span>
         </Button>
         <Button
-          size="icon-micro"
-          variant="ghost-muted"
+          size="icon-sm"
+          variant="ghost"
           aria-label="Dismiss tasks for this turn"
           className="shrink-0"
           onClick={onDismiss}
@@ -155,8 +155,8 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
         <TaskSegments className="w-20" steps={steps} />
       </button>
       <Button
-        size="icon-micro"
-        variant="ghost-muted"
+        size="icon-sm"
+        variant="ghost"
         aria-label="Dismiss tasks for this turn"
         className="shrink-0"
         onClick={onDismiss}
@@ -196,8 +196,8 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
           </span>
         </button>
         <Button
-          size="icon-micro"
-          variant="ghost-muted"
+          size="icon-sm"
+          variant="ghost"
           aria-label="Dismiss tasks for this turn"
           className="shrink-0"
           onClick={onDismiss}

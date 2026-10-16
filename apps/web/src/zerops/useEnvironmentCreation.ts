@@ -251,11 +251,18 @@ export function useEnvironmentCreation(): (
       } catch (cause) {
         return { kind: "refused", reason: zeropsErrorMessage(cause) };
       }
+      // Nothing is made before the plan: a read that fails refuses the creation, said.
+      let agents: Awaited<ReturnType<typeof readGroupAgents>>;
+      try {
+        agents = await readGroupAgents(request.environments);
+      } catch (cause) {
+        return { kind: "refused", reason: zeropsErrorMessage(cause) };
+      }
       const plan = planEnvironmentCreation({
         clientId: organization.id,
         role,
         name,
-        agents: await readGroupAgents(request.environments),
+        agents,
         recipe: choice.recipe,
         withAgent: choice.withAgent,
         ...(intent === undefined ? {} : { birth: intent }),

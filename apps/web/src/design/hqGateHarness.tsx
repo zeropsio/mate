@@ -38,7 +38,7 @@ const GATE: Readonly<Record<string, Exclude<HqGate, { readonly kind: "open" }>>>
   uncertain: { kind: "birth" },
   ask: {
     kind: "ask",
-    line: "An admin sets up Mate for this organization. Ask Alex Morgan or Jan Novák.",
+    line: "An admin sets up HQ for this organization. Ask Alex Morgan or Jan Novák.",
   },
   reading: { kind: "reading", failed: false },
   unread: { kind: "reading", failed: true },
@@ -46,7 +46,7 @@ const GATE: Readonly<Record<string, Exclude<HqGate, { readonly kind: "open" }>>>
 };
 
 const BIRTH: Readonly<Record<string, HqBirthView>> = {
-  birth: { kind: "running", step: STEP },
+  birth: { kind: "running", step: STEP, startedAt: Date.now() - 130_000 },
   failed: {
     kind: "failed",
     step: "deploy",

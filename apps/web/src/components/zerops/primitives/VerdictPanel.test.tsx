@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { VERDICT_BORDER_CLASS, VerdictPanel } from "./VerdictPanel";
+import { STATUS_BADGE_TONE } from "./statusBadgeTone";
 
 describe("VerdictPanel", () => {
   it.each(["ok", "busy", "attention", "failed", "off"] as const)(
@@ -9,7 +10,7 @@ describe("VerdictPanel", () => {
     (tone) => {
       const html = renderToStaticMarkup(<VerdictPanel text="It can land." tone={tone} />);
       expect(html).toContain(VERDICT_BORDER_CLASS[tone]);
-      expect(html).toContain(`data-zerops-status-tone="${tone}"`);
+      expect(html).toContain(`data-tone="${STATUS_BADGE_TONE[tone]}"`);
     },
   );
 

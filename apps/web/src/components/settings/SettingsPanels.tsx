@@ -397,8 +397,8 @@ function AboutVersionSection() {
             <TooltipTrigger
               render={
                 <Button
-                  size="xs"
-                  variant={action === "install" ? "default" : "outline"}
+                  size="sm"
+                  variant={action === "install" ? "primary" : "secondary"}
                   disabled={buttonDisabled || isUpdateActionPending}
                   onClick={handleButtonClick}
                 >
@@ -944,7 +944,7 @@ function BackgroundActivityAdvancedDialog({
         </DialogPanel>
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => updateSettings(resetBackgroundActivitySettings())}
           >
             Reset all
@@ -1703,10 +1703,10 @@ function TokenStreamingWarningDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <Button variant="ghost-muted" className="sm:mr-auto" onClick={onConfirm}>
+          <Button variant="ghost" className="sm:mr-auto" onClick={onConfirm}>
             Use token by token
           </Button>
-          <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+          <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
           <Button onClick={onUseParagraphs}>Use paragraphs</Button>
         </AlertDialogFooter>
       </AlertDialogPopup>
@@ -2224,7 +2224,7 @@ export function GeneralSettingsPanel() {
                     render={
                       <Button
                         size="icon-sm"
-                        variant="outline"
+                        variant="secondary"
                         aria-label="Configure advanced background activity"
                         onClick={() => setBackgroundActivityDialogOpen(true)}
                       >
@@ -2551,7 +2551,7 @@ export function GeneralSettingsPanel() {
           {...searchableSetting("diagnostics")}
           description={diagnosticsDescription}
           control={
-            <Button render={<Link to="/settings/diagnostics" />} size="xs" variant="outline">
+            <Button render={<Link to="/settings/diagnostics" />} size="sm" variant="secondary">
               View diagnostics
             </Button>
           }
@@ -2748,9 +2748,9 @@ export function ArchivedThreadsPanel() {
                 control={
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
-                    className="h-7 shrink-0 cursor-pointer gap-1.5 px-2.5"
+                    className="shrink-0"
                     onClick={() => {
                       void (async () => {
                         const result = await unarchiveThread(

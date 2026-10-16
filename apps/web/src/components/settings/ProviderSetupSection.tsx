@@ -74,7 +74,7 @@ export function ProviderSetupSection(props: ProviderSetupSectionProps) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground">Enable it to use it in threads.</span>
           {!props.readOnly ? (
-            <Button size="xs" variant="outline" onClick={props.onEnable}>
+            <Button size="sm" variant="secondary" onClick={props.onEnable}>
               Enable Antigravity
             </Button>
           ) : null}
@@ -301,8 +301,8 @@ function ProviderSetupActions({
         <div className="flex flex-wrap gap-2">
           {installActive && installation.operationId ? (
             <Button
-              size="xs"
-              variant="outline"
+              size="sm"
+              variant="secondary"
               disabled={actionsDisabled}
               onClick={() => {
                 const operationId = installation.operationId;
@@ -316,8 +316,8 @@ function ProviderSetupActions({
             </Button>
           ) : !installActive && provider.setup?.canInstall ? (
             <Button
-              size="xs"
-              variant="outline"
+              size="sm"
+              variant="secondary"
               disabled={actionsDisabled || installation === null || authActive}
               onClick={() => void runCommand("Starting installation", () => startInstall(target))}
             >
@@ -334,7 +334,7 @@ function ProviderSetupActions({
           ) : null}
           {installation?.canRemove && !installActive ? (
             <Button
-              size="xs"
+              size="sm"
               variant="ghost"
               disabled={actionsDisabled || authActive}
               onClick={() => void removeRuntime()}
@@ -353,10 +353,10 @@ function ProviderSetupActions({
         {authorizationUrl ? (
           <>
             <div className="flex flex-wrap gap-2">
-              <Button size="xs" variant="outline" onClick={() => void openSignInPage()}>
+              <Button size="sm" variant="secondary" onClick={() => void openSignInPage()}>
                 Open sign-in page
               </Button>
-              <Button size="xs" variant="ghost" onClick={() => void copySignInLink()}>
+              <Button size="sm" variant="ghost" onClick={() => void copySignInLink()}>
                 {copiedFlowId === auth?.flowId ? "Link copied" : "Copy sign-in link"}
               </Button>
             </div>
@@ -397,8 +397,8 @@ function ProviderSetupActions({
                 }
               />
               <Button
-                size="xs"
-                variant="outline"
+                size="sm"
+                variant="secondary"
                 type="submit"
                 className="w-fit"
                 disabled={actionsDisabled || !callbackUrl.trim()}
@@ -415,7 +415,7 @@ function ProviderSetupActions({
         <div className="flex flex-wrap gap-2">
           {authActive && auth?.flowId ? (
             <Button
-              size="xs"
+              size="sm"
               variant="ghost"
               disabled={actionsDisabled}
               onClick={() => {
@@ -430,8 +430,8 @@ function ProviderSetupActions({
             </Button>
           ) : !authActive && !authenticated && provider.setup?.canAuthenticate ? (
             <Button
-              size="xs"
-              variant="outline"
+              size="sm"
+              variant="secondary"
               disabled={actionsDisabled || !installed || auth === null || installActive}
               onClick={() => void runCommand("Starting sign-in", () => startAuth(target))}
             >
@@ -446,8 +446,8 @@ function ProviderSetupActions({
           ) : null}
           {!authActive && provider.setup?.canAuthenticate ? (
             <Button
-              size="xs"
-              variant={authenticated ? "outline" : "ghost"}
+              size="sm"
+              variant={authenticated ? "secondary" : "ghost"}
               disabled={actionsDisabled || auth === null}
               onClick={() => void signOut()}
             >
@@ -465,8 +465,8 @@ function ProviderSetupActions({
           </p>
           {queryError ? (
             <Button
-              size="xs"
-              variant="outline"
+              size="sm"
+              variant="secondary"
               className="w-fit"
               onClick={() => {
                 authQuery.refresh();

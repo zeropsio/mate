@@ -4,7 +4,8 @@
  * The row is the Chief whatever stands: its mark, "Chief", and a second line only while it has
  * something to say — read the way the menu's Mate rows read their Mates (`mateRowSecond`), cut to
  * what a person acts on: it works, it asks them, it waits for their sign-in, it is coming up. A
- * Chief at rest is its name alone. Before it exists, the line is its setup's.
+ * Chief at rest is its name alone. While it is set up, the line is its setup's; before that there
+ * is no row (`chiefTopShown`).
  */
 import type { OwnChief } from "~/zerops/chief";
 
@@ -50,6 +51,19 @@ export function chiefRowLine(input: {
     (state === "working" && (second.kind === "reply" || second.kind === "ask")) ||
     (state === "needs" && second.kind === "reply" && second.tone === "ink");
   return says ? { kind: "mate", second } : undefined;
+}
+
+/**
+ * Whether the menu's top holds the Chief's row: once it exists, or while its setup runs or stopped.
+ * Never before — a Chief is optional, offered from the account menu (`chiefOffered`), never as a
+ * menu row standing for something that does not exist.
+ */
+export function chiefTopShown(input: {
+  readonly own: OwnChief;
+  /** `chiefSetupLine`. */
+  readonly setup: "offer" | "running" | "stopped" | null;
+}): boolean {
+  return typeof input.own === "string" || input.setup === "running" || input.setup === "stopped";
 }
 
 /** What a press on the row opens: the Chief's conversation, or the Chief page. */
@@ -108,4 +122,14 @@ export function chiefPageView(input: {
           ? undefined
           : MAY_NOT_CREATE;
   return { kind: "offer", blocked };
+}
+
+/**
+ * The Chief's row title in two parts: the words before its noun, which give way first when the
+ * menu is narrow, and the noun itself — "Chief", "Chief Mate" — which always stays whole.
+ */
+export function chiefNameParts(title: string): { readonly head: string; readonly noun: string } {
+  const at = title.lastIndexOf("Chief");
+  if (at <= 0) return { head: "", noun: title };
+  return { head: title.slice(0, at).trimEnd(), noun: title.slice(at) };
 }

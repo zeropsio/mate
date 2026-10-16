@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
+import { Card } from "../ui/card";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import { Input } from "~/components/ui/input";
-import { FlatCard } from "./primitives";
 
 export function GitTokenGuide({ project }: { readonly project: string }) {
   const id = useId();
@@ -15,7 +15,7 @@ export function GitTokenGuide({ project }: { readonly project: string }) {
           Direct push to a branch only. This guide does not connect a repository or check access.
         </p>
       </div>
-      <FlatCard>
+      <Card variant="flat">
         <div className="flex min-w-0 flex-col gap-3 p-4">
           <label htmlFor={id} className="text-sm font-medium text-foreground">
             Repository HTTPS URL
@@ -93,7 +93,7 @@ export function GitTokenGuide({ project }: { readonly project: string }) {
             )}
           </div>
         </div>
-      </FlatCard>
+      </Card>
     </section>
   );
 }

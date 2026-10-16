@@ -64,7 +64,8 @@ import { databaseTreeTarget } from "@t3tools/client-runtime/data";
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import { useZeropsDataConsole } from "../../zerops/useZeropsFeeds";
 import { Button } from "../ui/button";
-import { Chip, FlatCard, MicroLabel, StatusDot } from "./primitives";
+import { Card } from "../ui/card";
+import { MicroLabel, STATUS_BADGE_TONE } from "./primitives";
 import { ZeropsDataFilters } from "./ZeropsDataFilters";
 import { ZeropsDataQuery } from "./ZeropsDataQuery";
 import { ZeropsDataBlob } from "./ZeropsDataBlob";
@@ -73,6 +74,7 @@ import { ZeropsDataRowDrawer } from "./ZeropsDataRowDrawer";
 import { ZeropsDataTable, type ZeropsDataTableSort } from "./ZeropsDataTable";
 import { ZeropsDataTree } from "./ZeropsDataTree";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+import { Badge } from "~/components/ui/badge";
 
 export interface ZeropsDataPanelProps {
   readonly threadRef: ScopedThreadRef | null;
@@ -229,10 +231,11 @@ export function ZeropsDataPanel({
     return (
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mx-auto w-full max-w-3xl">
-          <FlatCard
-            className="space-y-2 p-3"
+          <Card
             data-zerops-data-panel="picker"
             data-zerops-surface="data-console-unsupported"
+            size="sm"
+            variant="flat"
           >
             <MicroLabel>Data</MicroLabel>
             <p className="text-muted-foreground text-xs">
@@ -241,7 +244,7 @@ export function ZeropsDataPanel({
             <ZeropsMateUpdateControl environmentId={environmentId}>
               {({ line }) => line}
             </ZeropsMateUpdateControl>
-          </FlatCard>
+          </Card>
         </div>
       </div>
     );
@@ -652,7 +655,9 @@ export function ZeropsDataPanel({
 
   const sessionLine =
     status === "idle" || status === "starting" ? (
-      <StatusDot label="Starting" tone="busy" />
+      <Badge dot tone="info">
+        Starting
+      </Badge>
     ) : status === "unavailable" ? (
       <div className="space-y-2">
         <p className="text-muted-foreground text-xs" data-zerops-data-unavailable>
@@ -663,8 +668,8 @@ export function ZeropsDataPanel({
         <Button
           data-zerops-data-retry
           onClick={() => requestServices()}
-          size="xs"
-          variant="outline"
+          size="sm"
+          variant="secondary"
         >
           Try again
         </Button>
@@ -675,72 +680,83 @@ export function ZeropsDataPanel({
     return (
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mx-auto w-full max-w-3xl">
-          <FlatCard className="space-y-3 p-3" data-zerops-data-panel="picker">
-            <div className="flex items-center justify-between gap-2">
-              <MicroLabel>Data</MicroLabel>
-              <Button
-                data-zerops-data-refresh
-                onClick={() => requestServices()}
-                size="micro"
-                variant="ghost"
-              >
-                Refresh
-              </Button>
-            </div>
-            {sessionLine ??
-              (services !== undefined && services.length === 0 ? (
-                /* A project with no managed data service rendered a label, a
+          <Card data-zerops-data-panel="picker" size="sm" variant="flat">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <MicroLabel>Data</MicroLabel>
+                <Button
+                  data-zerops-data-refresh
+                  onClick={() => requestServices()}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Refresh
+                </Button>
+              </div>
+              {sessionLine ??
+                (services !== undefined && services.length === 0 ? (
+                  /* A project with no managed data service rendered a label, a
                  Refresh and eight hundred pixels of nothing. Saying so is not
                  an error — most projects have no database — so it is a line,
                  not a warning. */
-                <p className="text-muted-foreground text-xs" data-zerops-data-empty>
-                  This project has no database or storage service. Add one and it will be browsable
-                  here.
-                </p>
-              ) : (
-                <div className="space-y-1" data-zerops-data-services>
-                  {serviceRows.map((row) => {
-                    const entry = row.service;
-                    const rowAffordances = resolveServiceAffordances(entry);
-                    return (
-                      <button
-                        className="flex w-full flex-col items-start gap-0.5 rounded-[var(--zerops-card-radius)] px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-                        data-zerops-data-service={entry.hostname}
-                        disabled={!rowAffordances.canBrowse}
-                        key={entry.hostname}
-                        onClick={() =>
-                          rowAffordances.canBrowse ? onOpenService(entry.hostname) : undefined
-                        }
-                        type="button"
-                      >
-                        <span className="flex w-full items-center justify-between gap-1">
-                          <span className="flex min-w-0 items-center gap-1.5">
-                            {row.topologyService !== undefined ? (
-                              <StatusDot
-                                data-zerops-data-service-status
-                                label={zeropsStatusWord(row.topologyService.status)}
-                                tone={STATUS_DOT_TONE[serviceStatusTone(row.topologyService)]}
-                              />
+                  <p className="text-muted-foreground text-xs" data-zerops-data-empty>
+                    This project has no database or storage service. Add one and it will be
+                    browsable here.
+                  </p>
+                ) : (
+                  <div className="space-y-1" data-zerops-data-services>
+                    {serviceRows.map((row) => {
+                      const entry = row.service;
+                      const rowAffordances = resolveServiceAffordances(entry);
+                      return (
+                        <button
+                          className="flex w-full flex-col items-start gap-0.5 rounded-[var(--zerops-card-radius)] px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+                          data-zerops-data-service={entry.hostname}
+                          disabled={!rowAffordances.canBrowse}
+                          key={entry.hostname}
+                          onClick={() =>
+                            rowAffordances.canBrowse ? onOpenService(entry.hostname) : undefined
+                          }
+                          type="button"
+                        >
+                          <span className="flex w-full items-center justify-between gap-1">
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              {row.topologyService !== undefined ? (
+                                <Badge
+                                  dot
+                                  data-zerops-data-service-status
+                                  tone={
+                                    STATUS_BADGE_TONE[
+                                      STATUS_DOT_TONE[serviceStatusTone(row.topologyService)]
+                                    ]
+                                  }
+                                >
+                                  {zeropsStatusWord(row.topologyService.status)}
+                                </Badge>
+                              ) : null}
+                              <span className="truncate">{entry.hostname}</span>
+                            </span>
+                            {entry.support !== "supported" ? (
+                              <Badge data-zerops-data-service-view-only>View only</Badge>
                             ) : null}
-                            <span className="truncate">{entry.hostname}</span>
                           </span>
-                          {entry.support !== "supported" ? (
-                            <Chip data-zerops-data-service-view-only label="View only" tone="off" />
+                          <span className="text-muted-foreground">{entry.family}</span>
+                          {rowAffordances.vpnGateReason !== undefined ? (
+                            <span
+                              className="text-muted-foreground"
+                              data-zerops-data-service-vpn-hint
+                            >
+                              {rowAffordances.vpnGateReason}
+                            </span>
                           ) : null}
-                        </span>
-                        <span className="text-muted-foreground">{entry.family}</span>
-                        {rowAffordances.vpnGateReason !== undefined ? (
-                          <span className="text-muted-foreground" data-zerops-data-service-vpn-hint>
-                            {rowAffordances.vpnGateReason}
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-            {errorLine}
-          </FlatCard>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              {errorLine}
+            </div>
+          </Card>
         </div>
       </div>
     );
@@ -862,12 +878,7 @@ export function ZeropsDataPanel({
         </p>
       ) : null}
       {treeRootEmpty ? (
-        <Button
-          data-zerops-data-tree-reload
-          onClick={handleReloadTree}
-          size="micro"
-          variant="ghost"
-        >
+        <Button data-zerops-data-tree-reload onClick={handleReloadTree} size="sm" variant="ghost">
           Reload
         </Button>
       ) : null}
@@ -879,7 +890,7 @@ export function ZeropsDataPanel({
             <div key={target} className="text-xs" role="alert">
               <span>{state.error}</span>
               <Button
-                size="micro"
+                size="sm"
                 variant="ghost"
                 onClick={() => loadTreePage(entry?.path ?? { service, segments: [] })}
               >
@@ -995,7 +1006,7 @@ export function ZeropsDataPanel({
                   <Button
                     data-zerops-data-document-search-back
                     onClick={handleDocumentSearchClear}
-                    size="xs"
+                    size="sm"
                     variant="ghost"
                   >
                     Back to index
@@ -1091,16 +1102,11 @@ export function ZeropsDataPanel({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-zerops-data-content>
       {selectedNode !== null ? (
         <div className="flex flex-wrap items-center gap-2 py-2 text-xs">
-          <Button
-            size="micro"
-            variant="ghost"
-            data-zerops-data-back
-            onClick={() => setShowList(true)}
-          >
+          <Button size="sm" variant="ghost" data-zerops-data-back onClick={() => setShowList(true)}>
             Back to {noun}
           </Button>
           <span>{selectedNode.name}</span>
-          <Button size="micro" variant="ghost" onClick={refreshDetail}>
+          <Button size="sm" variant="ghost" onClick={refreshDetail}>
             Refresh detail
           </Button>
           {selectedMetadata?.entryType ? (
@@ -1137,7 +1143,7 @@ export function ZeropsDataPanel({
         <div className="flex items-center gap-2 py-1 text-xs" data-zerops-data-query-result>
           <span>{`Query result · ${queryState.model.rows.length.toLocaleString()} rows loaded`}</span>
           <Button
-            size="micro"
+            size="sm"
             variant="ghost"
             data-zerops-data-query-back
             onClick={() => {
@@ -1157,7 +1163,7 @@ export function ZeropsDataPanel({
       {selectedState?.error ? (
         <div role="alert">
           <span>{selectedState.error}</span>
-          <Button size="micro" variant="ghost" onClick={refreshDetail}>
+          <Button size="sm" variant="ghost" onClick={refreshDetail}>
             Retry
           </Button>
         </div>
@@ -1202,7 +1208,7 @@ export function ZeropsDataPanel({
             {activeModel.bestEffort ? " · Paging without a primary key is best effort" : ""}
           </span>
           <Button
-            size="micro"
+            size="sm"
             variant="ghost"
             disabled={shownPage === 0}
             onClick={() => {
@@ -1213,7 +1219,7 @@ export function ZeropsDataPanel({
             Back
           </Button>
           <Button
-            size="micro"
+            size="sm"
             variant="ghost"
             data-zerops-data-next-page
             disabled={
@@ -1248,11 +1254,12 @@ export function ZeropsDataPanel({
     // The panel's gutter round the card: a full-bleed card put its rounded
     // corners on the panel's own edges.
     <div className="flex h-full min-h-0 flex-col p-4">
-      <FlatCard
-        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      <Card
+        className="min-h-0 flex-1 overflow-hidden"
         data-zerops-data-panel="service"
         data-zerops-data-layout={layout}
         ref={measureRef.current}
+        variant="flat"
       >
         <div className="space-y-1 px-3 pt-3 text-xs" data-zerops-data-identity>
           <div className="flex items-center justify-between gap-2">
@@ -1275,7 +1282,7 @@ export function ZeropsDataPanel({
             </span>
             {database.summary ? (
               <Button
-                size="micro"
+                size="sm"
                 variant="ghost"
                 data-zerops-data-copy-connection
                 onClick={() => copyToClipboard(database.summary!.maskedConnection)}
@@ -1286,7 +1293,7 @@ export function ZeropsDataPanel({
               </Button>
             ) : summaryUnoffered ? null : (
               <Button
-                size="micro"
+                size="sm"
                 variant="ghost"
                 onClick={() =>
                   void database.read({ request: { kind: "summary", service }, target: "summary" })
@@ -1305,7 +1312,7 @@ export function ZeropsDataPanel({
           )}
           {affordances?.canQuery && !database.withheld && !serviceStopped ? (
             <Button
-              size="micro"
+              size="sm"
               variant="ghost"
               data-zerops-data-query-toggle
               onClick={() => {
@@ -1317,7 +1324,7 @@ export function ZeropsDataPanel({
             </Button>
           ) : null}
           <Button
-            size="micro"
+            size="sm"
             variant="ghost"
             data-zerops-data-refresh
             onClick={() => {
@@ -1341,7 +1348,7 @@ export function ZeropsDataPanel({
               />
             )}
             {selectedService !== null && selectedService.support !== "supported" ? (
-              <Chip data-zerops-data-view-only label="View only" tone="off" />
+              <Badge data-zerops-data-view-only>View only</Badge>
             ) : null}
           </div>
           <div className="flex items-center gap-1">
@@ -1349,7 +1356,7 @@ export function ZeropsDataPanel({
               <Button
                 data-zerops-data-tree-toggle-rail
                 onClick={() => setTreeCollapsed((current) => !current)}
-                size="micro"
+                size="sm"
                 variant="ghost"
               >
                 {treeCollapsed ? "Show tree" : "Hide tree"}
@@ -1360,7 +1367,7 @@ export function ZeropsDataPanel({
                 aria-label={maximized ? "Restore panel" : "Maximize panel"}
                 data-zerops-data-maximize
                 onClick={onToggleMaximized}
-                size="icon-xs"
+                size="icon-sm"
                 variant="ghost"
               >
                 {maximized ? <Minimize2Icon /> : <Maximize2Icon />}
@@ -1409,7 +1416,7 @@ export function ZeropsDataPanel({
         )}
 
         {errorLine === null ? null : <div className="shrink-0 px-3 py-2">{errorLine}</div>}
-      </FlatCard>
+      </Card>
     </div>
   );
 }

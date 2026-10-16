@@ -17,11 +17,12 @@ import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { cn } from "~/lib/utils";
 import { useNowMs } from "~/zerops/useNowMs";
 
-import { StatusDot } from "./primitives";
+import { STATUS_BADGE_TONE } from "./primitives";
 import { ZeropsEnvironmentRow, ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import { releaseRowTone } from "./ZeropsProjectRow.logic";
+import { Badge } from "~/components/ui/badge";
 
 /** What the rows need to say what each release carried — HQ's comparisons, folded. */
 export interface ZeropsReleasesCarried {
@@ -101,7 +102,11 @@ function releaseRowParts(
       />
     ) : undefined,
     name: release.tag,
-    status: <StatusDot label={release.word} sentence tone={tone} />,
+    status: (
+      <Badge dot tone={STATUS_BADGE_TONE[tone]}>
+        {release.word}
+      </Badge>
+    ),
     tag: "release",
   };
 }
@@ -313,19 +318,22 @@ export function GitReleaseRows({
           name={release.tag}
           tag="release"
           status={
-            <StatusDot
-              label={
-                release.tag === delivery?.version
-                  ? delivery.line
-                  : release.tag === delivery?.previousVersion
-                    ? `Previously pushed ${release.tag}`
-                    : release.verdict === "refused"
-                      ? "Refused"
-                      : "Hand-over not reported"
+            <Badge
+              dot
+              tone={
+                STATUS_BADGE_TONE[
+                  release.tag === delivery?.version && delivery.blocked ? "attention" : "off"
+                ]
               }
-              sentence
-              tone={release.tag === delivery?.version && delivery.blocked ? "attention" : "off"}
-            />
+            >
+              {release.tag === delivery?.version
+                ? delivery.line
+                : release.tag === delivery?.previousVersion
+                  ? `Previously pushed ${release.tag}`
+                  : release.verdict === "refused"
+                    ? "Refused"
+                    : "Hand-over not reported"}
+            </Badge>
           }
           summary={release.entries
             .map((entry) => `${entry.service} ${entry.commit.slice(0, 7)}`)

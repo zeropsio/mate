@@ -2,6 +2,7 @@ export {
   findOfficialHq,
   hqAnchorName,
   hqOrgTokenName,
+  hqProjectsOf,
   ownersAndAdmins,
   type OfficialHq,
 } from "./anchor.ts";

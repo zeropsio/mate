@@ -519,6 +519,23 @@
         object-fit: contain;
       }
 
+      /* The sign-in's splash: its mark where the sign-in page's mark lands (ZeropsHostedFrame,
+         22vh from the top, 80 px tall), so the page takes over without the mark moving. */
+      html:not([data-boot-frame="app"]) #boot-shell {
+        align-items: flex-start;
+      }
+
+      html:not([data-boot-frame="app"]) #boot-shell-card {
+        width: auto;
+        height: 80px;
+        margin-top: 22vh;
+      }
+
+      html:not([data-boot-frame="app"]) #boot-shell-logo {
+        width: auto;
+        height: 80px;
+      }
+
       #boot-shell-menu,
       #boot-shell-page {
         display: none;

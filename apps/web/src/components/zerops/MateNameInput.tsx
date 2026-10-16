@@ -67,9 +67,9 @@ export function MateNameInput({
                   data-zerops-mate-name="another"
                   disabled={readOnly}
                   onClick={onAnother}
-                  size="icon-xs"
+                  size="icon-sm"
                   type="button"
-                  variant="ghost-muted"
+                  variant="ghost"
                 />
               }
             >

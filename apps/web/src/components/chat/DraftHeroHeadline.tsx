@@ -239,9 +239,8 @@ export function DraftHeroHeadline({
       ) : (
         // The mark's height, so the headline stays put when the Mate is known.
         <MateFace
-          className="size-16 sm:size-18"
           shape={mate.shape}
-          size="lg"
+          size={64}
           state={mateFaceFor(mate.connected, undefined, mateIdentityPose(mate, nowMs))}
           tint={mate.tint}
         />

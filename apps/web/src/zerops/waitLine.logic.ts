@@ -22,22 +22,13 @@ export function openingConversationLine(mateName: string | undefined): string {
 }
 
 /**
- * What the app's frame says while the app cannot draw yet: on a conversation's route nothing —
- * the Mate's page says its own line once it knows the Mate; else that the projects are read.
+ * Whether a route stands in shaped like the overview while the app or its code loads: the
+ * overview's own route, so a reload paints the overview's shape once and then its cards in the
+ * same places. Any other route holds its room and paints nothing it would take back — the home
+ * (`/`) too, which lands on a Mate as often as on the overview and paints neither until it knows.
  */
-export function bootWaitLine(conversationRoute: boolean): string | null {
-  return conversationRoute ? null : READING_PROJECTS_LINE;
-}
-
-/** What any other surface says while its code loads. */
-export const LOADING_LINE = "Loading…";
-
-/**
- * What the router says while a route's code loads: on the overview's route, the overview's own
- * wait, so a reload says one line from the boot frame to the cards; anywhere else, that it loads.
- */
-export function routePendingLine(pathname: string): string {
-  return pathname === "/" || pathname === "/zerops" ? READING_PROJECTS_LINE : LOADING_LINE;
+export function overviewStandsIn(pathname: string): boolean {
+  return pathname === "/zerops";
 }
 
 /**

@@ -142,7 +142,7 @@ export function CrewLeadPlanBlock({
           >
             <span className={row.after === null ? "flex" : "flex pt-px"}>
               {row.owner.tint === null ? null : (
-                <MateFace className="size-4" size="dot" state="idle" tint={row.owner.tint} />
+                <MateFace size={16} state="idle" tint={row.owner.tint} />
               )}
             </span>
             <span className="truncate font-medium text-line leading-4.5">{row.owner.name}</span>
@@ -183,7 +183,7 @@ export function CrewLeadPlanBlock({
               label={CREW_PLAN_VERBS.drop}
               line={CREW_PLAN_LINES.drop}
               onPress={presses.drop}
-              tone={presses.start === null ? "primary" : "quiet"}
+              variant={presses.start === null ? "primary" : "secondary"}
             />
           )}
         </div>

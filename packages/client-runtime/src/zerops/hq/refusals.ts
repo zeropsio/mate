@@ -29,7 +29,7 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
   unknown_kind:
     "HQ and this version of Mate do not know the same kinds of project, so this one is left as it is.",
   not_project_reader: "You have no access to this Zerops project.",
-  not_mate_operator: "You need at least Basic user access to this Mate's Zerops project.",
+  not_mate_operator: "You need more than Read access to this Mate's Zerops project.",
   app_not_seen: "You have no access to that project.",
   cannot_create_projects: "Your Zerops membership does not allow creating projects.",
   not_structure_writer: "Only an owner or admin of the organization can do this.",
@@ -46,18 +46,18 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
   not_your_change: "A Mate words only its own change.",
   not_your_app: "A Mate reaches only its own project's repositories.",
   changes_not_seen:
-    "You need at least Basic user access to one of this project's Zerops projects to see its changes.",
+    "You need more than Read access to one of this project's Zerops projects to see its changes.",
   slot_taken:
     "This project has one of this kind already. Only an owner or admin of the organization replaces it.",
   not_app_developer:
-    "You need at least Basic user access to one of this project's Zerops projects to do this.",
+    "You need more than Read access to one of this project's Zerops projects to do this.",
   not_recipe_repo: "Only the project's recipe lands by itself.",
   author_not_in_app: "Only a Mate of this project proposes its recipe.",
   recipe_empty: "This change changes nothing, so it was closed.",
   recipe_changes_files:
     "This change edits the project's recipe, so it waits for someone who develops the project to merge it.",
   no_production: "This project has no production yet.",
-  not_releaser: "You need at least Basic user access to this project's production to release it.",
+  not_releaser: "You need more than Read access to this project's production to release it.",
 };
 
 /**

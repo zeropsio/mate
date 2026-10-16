@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { visitElements } from "../../test/reactElementTree";
-import { ComposerAskButton } from "../chat/ComposerAsk";
+import { Button } from "../ui/button";
 import { closeAccountLifetime, openAccountLifetime } from "../../zerops/accountLifetime";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import { nextStepBeforeChanges, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
@@ -235,7 +235,10 @@ describe("ZeropsNextStepStrip", () => {
   it("opens the change's review from the button that was pressed", () => {
     const onReview = vi.fn();
     const tree = ZeropsNextStepStrip({ onReview, strip: STRIP }) as ReactElement;
-    const button = visitElements(tree, (element) => element.type === ComposerAskButton);
+    const button = visitElements(
+      tree,
+      (element) => element.type === Button && element.props.children === "Review",
+    );
     if (button === null) throw new Error("the strip has no Review button");
     const pressed = { tagName: "BUTTON" } as unknown as HTMLElement;
     (button.props.onClick as (event: { currentTarget: HTMLElement }) => void)({
@@ -274,7 +277,7 @@ describe("ZeropsNextStepStrip", () => {
     const onReview = vi.fn();
     const buttons: Array<ReactElement<Record<string, unknown>>> = [];
     visitElements(ZeropsNextStepStrip({ onReview, strip }) as ReactElement, (element) => {
-      if (element.type === "button") buttons.push(element);
+      if (element.type === "button" || element.type === Button) buttons.push(element);
       return false;
     });
     expect(buttons).toHaveLength(3);

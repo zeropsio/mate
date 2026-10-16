@@ -45,7 +45,7 @@ export function ChatHeaderLinks({
             aria-label="Open the Mate's sites"
             data-chat-header-ghost
             size="sm"
-            variant="ghost-muted"
+            variant="ghost"
           />
         }
       >
@@ -65,7 +65,7 @@ export function ChatHeaderLinks({
             aria-label="Open the Mate's sites"
             data-chat-header-ghost
             size="sm"
-            variant="ghost-muted"
+            variant="ghost"
           />
         }
       >

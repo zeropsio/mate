@@ -16,14 +16,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/ComposerPendingApprovalActions.tsx",
-    "kind": "TemplateLiteral",
-    "fingerprint": "<Button> in `${APPROVAL_ACTION_CLASS_NAME} h-auto min-h-7 max-w-full px-2.5 py-1.5${ option.warning ? \" text-warning\" : \"\" }`",
-    "owner": "web-intake",
-    "reason": "runtime-built className on a components/ui export that predates the ui-kit pass; upstream has no counterpart call site",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsStopMenu.tsx",
     "kind": "Identifier",
     "fingerprint": "<MenuTrigger> in triggerClassName",

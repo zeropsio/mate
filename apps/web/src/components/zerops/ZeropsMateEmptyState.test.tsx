@@ -195,7 +195,7 @@ describe("ZeropsMateEmptyState", () => {
       mate: ASKED,
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
-      sentence: "Once it's signed in, Fen stands up development on Acme Docs.",
+      sentence: "Once it's signed in, Fen gets Acme Docs running.",
       signIn: true,
     },
     {

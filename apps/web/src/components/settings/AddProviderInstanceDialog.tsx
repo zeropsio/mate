@@ -269,7 +269,7 @@ export function AddProviderInstanceDialog({
                         <CheckIcon className="size-3.5 shrink-0" />
                       </RadioPrimitive.Indicator>
                       {option.badgeLabel ? (
-                        <Badge variant="warning" size="sm">
+                        <Badge tone="warning" size="sm">
                           {option.badgeLabel}
                         </Badge>
                       ) : null}
@@ -294,7 +294,7 @@ export function AddProviderInstanceDialog({
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
                         {option.label}
                       </span>
-                      <Badge variant="warning" size="sm">
+                      <Badge tone="warning" size="sm">
                         Coming Soon
                       </Badge>
                     </RadioPrimitive.Root>
@@ -368,8 +368,7 @@ export function AddProviderInstanceDialog({
                   <Button
                     type="button"
                     size="sm"
-                    variant="ghost-muted"
-                    className="h-7 px-2 text-xs"
+                    variant="ghost"
                     onClick={() => setAccentColor("")}
                   >
                     Clear
@@ -403,7 +402,7 @@ export function AddProviderInstanceDialog({
 
         <DialogFooter className="shrink-0" variant="bare">
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             onClick={() => {
               if (wizardStep === 0) {

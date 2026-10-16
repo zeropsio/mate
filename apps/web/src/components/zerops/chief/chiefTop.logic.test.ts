@@ -2,7 +2,15 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { MateRowSecond, MateRowState } from "../SidebarMateRow.logic";
 import type { ChiefSetup } from "./chiefSetup.logic";
-import { chiefPageView, chiefRowLine, chiefRowOpens, type ChiefPageView } from "./chiefTop.logic";
+import {
+  chiefNameParts,
+  chiefPageView,
+  chiefRowLine,
+  chiefRowOpens,
+  chiefTopShown,
+  type ChiefPageView,
+} from "./chiefTop.logic";
+import { chiefSetupLine, type OwnChief } from "~/zerops/chief";
 
 const mate = (state: MateRowState, second: MateRowSecond) => ({ state, second });
 
@@ -169,5 +177,50 @@ describe("chiefPageView", () => {
     ],
   ])("%s", (_title, input, view) => {
     expect(chiefPageView(input)).toEqual(view);
+  });
+});
+
+describe("chiefNameParts", () => {
+  it.each([
+    ["Ada's Chief Mate", { head: "Ada's", noun: "Chief Mate" }],
+    ["Set up your Chief", { head: "Set up your", noun: "Chief" }],
+    ["Chief Mate", { head: "", noun: "Chief Mate" }],
+  ])("keeps the Chief's noun whole in %s: the words before it give way first", (title, parts) => {
+    expect(chiefNameParts(title)).toEqual(parts);
+  });
+});
+
+describe("chiefTopShown", () => {
+  it("the Chief's row stays from setup until HQ reports it", () => {
+    const steps: ReadonlyArray<[OwnChief, "running" | "done" | "idle"]> = [
+      [null, "running"],
+      [null, "done"],
+      [undefined, "done"],
+      ["chief-project", "done"],
+      ["chief-project", "idle"],
+    ];
+    expect(
+      steps.map(([own, setup]) =>
+        chiefTopShown({ own, setup: chiefSetupLine({ own, mayCreate: true, setup }) }),
+      ),
+    ).toEqual(steps.map(() => true));
+  });
+
+  it.each<[string, Parameters<typeof chiefTopShown>[0], boolean]>([
+    ["the menu holds no Chief row before one exists", { own: null, setup: "offer" }, false],
+    [
+      "the menu holds no Chief row while whose Chief is not known",
+      { own: undefined, setup: null },
+      false,
+    ],
+    ["the Chief is a menu row while it is being set up", { own: null, setup: "running" }, true],
+    [
+      "the Chief is a menu row once its setup stopped, to try again",
+      { own: null, setup: "stopped" },
+      true,
+    ],
+    ["the Chief is a menu row once it exists", { own: "chief-project", setup: null }, true],
+  ])("%s", (_title, input, shown) => {
+    expect(chiefTopShown(input)).toBe(shown);
   });
 });

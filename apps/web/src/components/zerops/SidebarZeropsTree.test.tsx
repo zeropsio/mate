@@ -437,7 +437,7 @@ describe("SidebarZeropsTree", () => {
     expect(html).toContain('data-zerops-primitive="mate-face"');
     // The Mate is the heaviest thing in its project, so its face is the
     // card's size, not the 20px a name in a row of text gets.
-    expect(html).toContain('data-mate-face-size="lg"');
+    expect(html).toContain('data-mate-face-size="32"');
     // The state is the face's: a Mate whose container runs is awake though
     // its socket is not open here yet, and no word says "Ready" or "Idle".
     expect(html).toContain('data-mate-face-state="idle"');
@@ -1684,7 +1684,7 @@ describe("the project's flow under it", () => {
       expect(html).not.toContain('data-zerops-primary-action="Merge"');
       expect(html).not.toContain('data-zerops-primary-action="Ask"');
       expect(html).not.toContain("sidebar-pull-request-blocked");
-      expect(html).not.toContain('data-zerops-primitive="status-dot"');
+      expect(html).not.toContain('data-dot=""');
     }
   });
 
@@ -1813,7 +1813,7 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain('sidebar-environment"');
     expect(html).not.toContain("sidebar-stop");
     expect(html).not.toContain("sidebar-pull-request");
-    expect(html).not.toContain("status-dot");
+    expect(html).not.toContain("data-dot");
     expect(html).not.toContain("Release");
   });
 

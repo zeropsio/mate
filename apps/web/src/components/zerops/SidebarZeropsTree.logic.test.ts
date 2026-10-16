@@ -197,6 +197,11 @@ describe("projectHeadingMenu — a project heading's ···", () => {
       items: ["Fold", "Add a project Mate", "Open project", "Addresses", "—", "All projects"],
     },
     {
+      case: "someone who may invite brings people into the project after Open project",
+      over: { onInvite: () => {} },
+      items: ["Fold", "Add a project Mate", "Open project", "Invite people", "—", "All projects"],
+    },
+    {
       case: "a missing stage or production to add",
       over: { setUp: [{ label: "Add stage", act: () => {} }] },
       items: ["Fold", "Add a project Mate", "Open project", "—", "Add stage", "All projects"],
@@ -213,11 +218,12 @@ describe("projectHeadingMenu — a project heading's ···", () => {
       onAddMate: () => did.push("add"),
       onOpen: () => did.push("open"),
       onAddresses: () => did.push("addresses"),
+      onInvite: () => did.push("invite"),
       reorder: { canMoveUp: true, canMoveDown: true, onMove: (to) => did.push(to) },
       setUp: [],
       onBrowseProjects: () => did.push("browse"),
     });
     for (const entry of entries) if (entry.kind === "item") entry.act();
-    expect(did).toEqual(["fold", "add", "open", "addresses", "up", "down", "browse"]);
+    expect(did).toEqual(["fold", "add", "open", "addresses", "invite", "up", "down", "browse"]);
   });
 });

@@ -92,7 +92,7 @@ export function ZeropsDeletionRecovery() {
           </span>
           <Button
             variant="ghost"
-            size="compact"
+            size="sm"
             disabled={busy !== null}
             onClick={() => void finish(record)}
           >

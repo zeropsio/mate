@@ -180,8 +180,8 @@ export function CustomModelEditor({
         Default
       </label>
       <Button
-        size="icon-micro"
-        variant="ghost-muted"
+        size="icon-sm"
+        variant="ghost"
         aria-label="Remove choice"
         onClick={() =>
           updateDescriptor(descriptor.key, {
@@ -259,8 +259,8 @@ export function CustomModelEditor({
           </SelectPopup>
         </Select>
         <Button
-          size="icon-micro"
-          variant="ghost-muted"
+          size="icon-sm"
+          variant="ghost"
           aria-label={`Remove option ${index + 1}`}
           onClick={() => removeDescriptor(descriptor.key)}
         >
@@ -272,8 +272,8 @@ export function CustomModelEditor({
           {descriptor.choices.map((choice) => renderChoice(descriptor, choice))}
           <Button
             type="button"
-            size="xs"
-            variant="ghost-muted"
+            size="sm"
+            variant="ghost"
             className="-ml-2 self-start"
             onClick={() =>
               updateDescriptor(descriptor.key, {
@@ -352,8 +352,8 @@ export function CustomModelEditor({
               <Button
                 key={preset.id}
                 type="button"
-                size="xs"
-                variant="ghost-muted"
+                size="sm"
+                variant="ghost"
                 className={cn("-ml-2 first:ml-0")}
                 onClick={() => addDescriptor(descriptorFromPreset(preset))}
               >
@@ -363,8 +363,8 @@ export function CustomModelEditor({
             ))}
           <Button
             type="button"
-            size="xs"
-            variant="ghost-muted"
+            size="sm"
+            variant="ghost"
             onClick={() => addDescriptor(emptyEditorDescriptor())}
           >
             <PlusIcon className="size-3" />
@@ -376,7 +376,7 @@ export function CustomModelEditor({
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
       <div className="flex gap-2">
-        <Button size="sm" variant="outline" onClick={handleSave}>
+        <Button size="sm" variant="secondary" onClick={handleSave}>
           Save
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>

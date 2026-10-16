@@ -1,11 +1,17 @@
-import type { AddressDomain, PlaceAddresses, VaultView } from "@t3tools/client-runtime/data";
-import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
+import type {
+  AddressDomain,
+  PlaceAddresses,
+  ProjectGrantsRead,
+  VaultView,
+} from "@t3tools/client-runtime/data";
+import type { ZeropsAccessLevel, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { HqProposalDecision } from "@t3tools/client-runtime/zerops/hq";
 
 import {
   PROPOSAL_DECISIONS_KEPT,
+  accessAskLines,
   chiefAsk,
   chiefMessageTarget,
   decisionFromHq,
@@ -26,6 +32,7 @@ import {
   type ProposalDecisions,
   type ProposalStage,
   domainProposalRecords,
+  accessProposalPlan,
 } from "./proposal.logic";
 
 const AT = "2026-10-12T10:00:00.000Z";
@@ -700,6 +707,333 @@ describe("heldMessageWords", () => {
   it("an approved message its Mate took no turn on says why, and where it waits", () => {
     expect(heldMessageWords("Eddy", "Eddy needs a Claude sign-in to continue.")).toBe(
       "Eddy needs a Claude sign-in to continue. Your message waits in Eddy's composer.",
+    );
+  });
+});
+
+describe("accessProposalPlan", () => {
+  const proposal = (
+    people: ReadonlyArray<{ person: string; level: "full" | "read" | "none" | "remove" }>,
+  ): Extract<ZeropsProposal, { kind: "access.set" }> => ({
+    id: "a1",
+    kind: "access.set",
+    summary: "Access to Contoso",
+    projectId: "pProd",
+    projectName: "Contoso",
+    params: {
+      projects: [
+        { id: "pProd", name: "Contoso - production" },
+        { id: "pDana", name: "Contoso - Dana's Mate" },
+      ],
+      people,
+    },
+  });
+  const members = [
+    {
+      id: "cu-dana",
+      userId: "u-dana",
+      roleCode: "NO_ACCESS",
+      canCreateProjects: true,
+      user: { id: "u-dana", fullName: "Dana Developer", firstName: "Dana", email: "dana@x.io" },
+    },
+    {
+      id: "cu-greta",
+      userId: "u-greta",
+      roleCode: "NO_ACCESS",
+      user: { id: "u-greta", fullName: "Greta Guest", firstName: "Greta", email: "greta@x.io" },
+    },
+    {
+      id: "cu-gina2",
+      userId: "u-gina2",
+      roleCode: "NO_ACCESS",
+      user: { id: "u-gina2", fullName: "Greta Other", firstName: "Greta", email: "g2@x.io" },
+    },
+  ];
+  const owners = { pProd: null, pDana: "u-dana" };
+  const projects = new Map([
+    ["pProd", "Contoso - production"],
+    ["pDana", "Contoso - Dana's Mate"],
+  ]);
+  const read = { projects, hq: new Set<string>(), grants: {} };
+
+  it.each<
+    [
+      string,
+      Parameters<typeof accessProposalPlan>[0],
+      (
+        | Extract<ReturnType<typeof accessProposalPlan>, { kind: "held" }>
+        | { kind: "ready"; changes: ReadonlyArray<unknown> }
+      ),
+    ]
+  >([
+    [
+      "writes each person found by name or address on every project but the Mates they own",
+      {
+        proposal: proposal([
+          { person: "Dana Developer", level: "full" },
+          { person: "GRETA@x.io", level: "read" },
+        ]),
+        members: { known: true, list: members },
+        owners,
+        ...read,
+      },
+      {
+        kind: "ready",
+        changes: [
+          { clientUserId: "cu-dana", projectId: "pProd", roleCode: "ADMIN" },
+          { clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" },
+          { clientUserId: "cu-greta", projectId: "pDana", roleCode: "READ_ONLY" },
+        ],
+      },
+    ],
+    [
+      "finds a person by first name alone when only one member has it, and drops their own grant",
+      {
+        proposal: proposal([{ person: "dana", level: "remove" }]),
+        members: { known: true, list: members },
+        owners: { pProd: null, pDana: null },
+        ...read,
+      },
+      {
+        kind: "ready",
+        changes: [
+          { clientUserId: "cu-dana", projectId: "pProd", roleCode: null },
+          { clientUserId: "cu-dana", projectId: "pDana", roleCode: null },
+        ],
+      },
+    ],
+    [
+      "waits while the organization's members are read",
+      {
+        proposal: proposal([{ person: "Dana", level: "full" }]),
+        members: { known: false, list: [] },
+        owners,
+        ...read,
+      },
+      { kind: "held", words: "Reading your organization's members…" },
+    ],
+    [
+      "holds Approve for a name no member has, pointing to the invitation",
+      {
+        proposal: proposal([{ person: "Zoe", level: "full" }]),
+        members: { known: true, list: members },
+        owners,
+        ...read,
+      },
+      {
+        kind: "held",
+        words: "No one in your organization is Zoe. Invite them from Team, then ask again.",
+      },
+    ],
+    [
+      "holds Approve for a name several members share, asking for their address",
+      {
+        proposal: proposal([{ person: "Greta", level: "read" }]),
+        members: { known: true, list: members },
+        owners,
+        ...read,
+      },
+      { kind: "held", words: "Several people here are Greta. Ask again with their email address." },
+    ],
+  ])("access %s", (_title, input, expected) => {
+    const plan = accessProposalPlan(input);
+    expect(plan.kind === "ready" ? { kind: plan.kind, changes: plan.changes } : plan).toEqual(
+      expected,
+    );
+  });
+
+  const token = {
+    id: "cu-token",
+    userId: "u-token",
+    roleCode: "ADMIN",
+    user: { id: "u-token", fullName: "Dana", email: "token-1@zerops.io" },
+  };
+  const ready = (
+    people: Parameters<typeof proposal>[0],
+    over: Partial<Parameters<typeof accessProposalPlan>[0]> = {},
+  ) =>
+    accessProposalPlan({
+      proposal: proposal(people),
+      members: { known: true, list: members },
+      owners,
+      ...read,
+      ...over,
+    });
+
+  it.each<[string, Partial<Parameters<typeof accessProposalPlan>[0]>, string]>([
+    [
+      "waits while the organization's projects are read",
+      { projects: undefined },
+      "Reading your organization's projects…",
+    ],
+    [
+      "waits until HQ says who owns each Mate",
+      { owners: { pProd: null, pDana: undefined } },
+      "Reading who owns these Mates…",
+    ],
+    [
+      "offers nothing where none of its projects can be given",
+      { projects: new Map(), hq: new Set() },
+      "None of these projects can be given from here.",
+    ],
+  ])("access approval %s", (_title, over, words) => {
+    expect(ready([{ person: "Dana", level: "read" }], over)).toEqual({ kind: "held", words });
+  });
+
+  it("an approved access change never writes a project outside the organization, and says it left it out", () => {
+    const plan = ready([{ person: "Greta Guest", level: "read" }], {
+      projects: new Map([["pProd", "Contoso - production"]]),
+    });
+    expect(plan).toMatchObject({
+      kind: "ready",
+      changes: [{ clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" }],
+      dropped: ["Contoso - Dana's Mate: not a project in your organization"],
+    });
+  });
+
+  it("an approved access change never gives anyone the Headquarters project", () => {
+    const plan = ready([{ person: "Greta Guest", level: "read" }], {
+      projects: new Map([...projects, ["pDana", "Headquarters"]]),
+      hq: new Set(["pDana"]),
+    });
+    expect(plan).toMatchObject({
+      kind: "ready",
+      changes: [{ clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" }],
+      dropped: ["Headquarters: the Headquarters project is never given"],
+    });
+  });
+
+  it("an approved access change never finds a person among HQ's tokens", () => {
+    expect(
+      ready([{ person: "Dana", level: "full" }], {
+        members: { known: true, list: [token, members[0]!] },
+      }),
+    ).toMatchObject({
+      kind: "ready",
+      changes: [{ clientUserId: "cu-dana", projectId: "pProd", roleCode: "ADMIN" }],
+    });
+    expect(
+      ready([{ person: "token-1@zerops.io", level: "full" }], {
+        members: { known: true, list: [token, ...members] },
+      }),
+    ).toEqual({
+      kind: "held",
+      words:
+        "No one in your organization is token-1@zerops.io. Invite them from Team, then ask again.",
+    });
+  });
+
+  it("an approved access change gives a guest Read where it asked for Full", () => {
+    expect(
+      ready([{ person: "greta@x.io", level: "full" }], { owners: { pProd: null, pDana: null } }),
+    ).toMatchObject({
+      kind: "ready",
+      changes: [
+        { clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" },
+        { clientUserId: "cu-greta", projectId: "pDana", roleCode: "READ_ONLY" },
+      ],
+    });
+  });
+
+  it("an access change's card says who gets which level on which project, and what changes from today", () => {
+    const plan = ready(
+      [
+        { person: "Dana", level: "read" },
+        { person: "greta@x.io", level: "full" },
+      ],
+      {
+        grants: {
+          pProd: {
+            status: "ready",
+            grants: [{ clientUserId: "cu-dana", roleCode: "ADMIN" }],
+          },
+          pDana: { status: "ready", grants: [] },
+        },
+      },
+    );
+    expect(plan.kind === "ready" ? plan.lines : plan).toEqual([
+      "Dana Developer · Read on Contoso - production · lowered",
+      "Dana Developer · Contoso - Dana's Mate stays as it is: their own Mate",
+      "Greta Guest · Read on Contoso - production · new · a guest only reads",
+      "Greta Guest · Read on Contoso - Dana's Mate · new · a guest only reads",
+    ]);
+  });
+
+  it.each<[string, ProjectGrantsRead | undefined, ZeropsAccessLevel, string]>([
+    [
+      "raised",
+      { status: "ready", grants: [{ clientUserId: "cu-dana", roleCode: "READ_ONLY" }] },
+      "full",
+      "Dana Developer · Full on Contoso - production · raised",
+    ],
+    [
+      "removed",
+      { status: "ready", grants: [{ clientUserId: "cu-dana", roleCode: "READ_ONLY" }] },
+      "none",
+      "Dana Developer · Hidden on Contoso - production · removed",
+    ],
+    [
+      "unchanged",
+      { status: "ready", grants: [{ clientUserId: "cu-dana", roleCode: "READ_ONLY" }] },
+      "read",
+      "Dana Developer · Read on Contoso - production · unchanged",
+    ],
+    [
+      "back to their role",
+      { status: "ready", grants: [{ clientUserId: "cu-dana", roleCode: "READ_ONLY" }] },
+      "remove",
+      "Dana Developer · Their role's access on Contoso - production · removed",
+    ],
+    [
+      "not said while today's access is read",
+      { status: "loading", grants: undefined },
+      "full",
+      "Dana Developer · Full on Contoso - production",
+    ],
+  ])("an access change's card says what changes from today: %s", (_title, today, level, line) => {
+    const plan = ready([{ person: "Dana", level }], {
+      grants: { pProd: today },
+      owners: { pProd: null, pDana: "u-dana" },
+    });
+    expect(plan.kind === "ready" ? plan.lines[0] : plan).toBe(line);
+  });
+
+  it("an access change's card says what the Mate asks while it is read", () => {
+    expect(
+      accessAskLines(
+        proposal([
+          { person: "Dana", level: "full" },
+          { person: "Greta", level: "remove" },
+        ]),
+      ),
+    ).toEqual([
+      "Dana · Full on Contoso - production",
+      "Dana · Full on Contoso - Dana's Mate",
+      "Greta · Their role's access on Contoso - production",
+      "Greta · Their role's access on Contoso - Dana's Mate",
+    ]);
+  });
+
+  it.each(["none", "remove", "read"] as const)(
+    "an approved access change never lowers a Mate's own person on it: %s",
+    (level) => {
+      const plan = ready([{ person: "Dana", level }]);
+      expect(plan.kind === "ready" ? plan.changes.map(({ projectId }) => projectId) : plan).toEqual(
+        ["pProd"],
+      );
+    },
+  );
+
+  it.each<[string, Exclude<ProposalStage, "open" | "failed">, string]>([
+    ["running", "running", "Changing access to Contoso…"],
+    ["done", "done", "Access to Contoso changed."],
+  ])("an approved access change says it %s", (_title, stage, words) => {
+    expect(proposalOutcomeWords(proposal([{ person: "Dana", level: "full" }]), stage)).toBe(words);
+  });
+
+  it("an application's access says it reaches all of the application, never its projects one by one", () => {
+    expect(proposalWhere(proposal([{ person: "Dana", level: "full" }]))).toBe(
+      "All of Contoso: its environments and Mates",
     );
   });
 });

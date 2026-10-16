@@ -35,7 +35,7 @@ function SampleCard({ variant }: { readonly variant?: "default" | "flat" }) {
         <p className="m-0 text-sm">Deployed eight minutes ago from main.</p>
       </CardPanel>
       <CardFooter>
-        <Button size="sm" variant="outline">
+        <Button size="sm" variant="secondary">
           Open logs
         </Button>
       </CardFooter>

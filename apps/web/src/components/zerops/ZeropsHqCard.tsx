@@ -29,7 +29,7 @@ import { useDetailDemand, useProjectServices } from "~/zerops/ZeropsAccountData"
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button } from "../ui/button";
-import { MicroLabel, StatusDot } from "./primitives";
+import { MicroLabel, STATUS_BADGE_TONE } from "./primitives";
 import {
   hqCardView,
   hqNavigationTrouble,
@@ -38,6 +38,7 @@ import {
 } from "./ZeropsHqCard.logic";
 import { ZeropsHqUpdate } from "./ZeropsHqUpdate";
 import { hqUpdateMount, type HqUpdateMount } from "./ZeropsHqUpdate.logic";
+import { Badge } from "~/components/ui/badge";
 
 /**
  * How many of the Mates the viewer observes in `organizationId` are online, while HQ's view of them
@@ -245,7 +246,9 @@ export function ZeropsHqCardView({
           <span className="font-medium">HQ</span>
         )}
         {view.state === null ? null : (
-          <StatusDot label={view.state.word} sentence tone={view.state.tone} />
+          <Badge dot tone={STATUS_BADGE_TONE[view.state.tone]}>
+            {view.state.word}
+          </Badge>
         )}
         {[view.coreDay, view.backup, view.counts].map((fact) =>
           fact === null ? null : (
@@ -279,12 +282,11 @@ export function ZeropsHqCardView({
             <DetailRow label="Services">
               <span className="flex flex-wrap gap-x-3 gap-y-1">
                 {view.services.map((service) => (
-                  <StatusDot
+                  <Badge
+                    dot
                     key={service.name}
-                    label={`${service.name} · ${service.word}`}
-                    sentence
-                    tone={service.tone}
-                  />
+                    tone={STATUS_BADGE_TONE[service.tone]}
+                  >{`${service.name} · ${service.word}`}</Badge>
                 ))}
               </span>
             </DetailRow>
@@ -292,7 +294,7 @@ export function ZeropsHqCardView({
           <Button
             className="self-start"
             render={<a href={projectUrl} rel="noreferrer" target="_blank" />}
-            size="xs"
+            size="sm"
             variant="link"
           >
             Open in Zerops

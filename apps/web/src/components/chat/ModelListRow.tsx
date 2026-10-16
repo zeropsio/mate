@@ -76,7 +76,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
             </span>
           ) : null}
           {props.unavailable ? (
-            <Badge variant="outline" size="sm">
+            <Badge tone="neutral" size="sm">
               Unavailable
             </Badge>
           ) : null}
@@ -97,8 +97,8 @@ export const ModelListRow = memo(function ModelListRow(props: {
           <TooltipTrigger
             render={
               <Button
-                size="icon-xs"
-                variant="ghost-muted"
+                size="icon-sm"
+                variant="ghost"
                 className="-mr-1 shrink-0"
                 onClick={(event) => {
                   event.stopPropagation();

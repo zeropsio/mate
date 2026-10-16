@@ -104,7 +104,7 @@ describe("RightPanelTabs overflow", () => {
     layOut(250);
     render();
     const strip = host.querySelector("[data-slot='scroll-area-viewport']");
-    const add = host.querySelector('[aria-label="Add panel surface"]');
+    const add = host.querySelector('[aria-label="Add a page"]');
     expect(strip?.querySelectorAll("[data-tab-id]")).toHaveLength(SURFACES.length);
     expect(add).not.toBeNull();
     expect(strip?.contains(add ?? null)).toBe(false);
@@ -116,7 +116,7 @@ describe("RightPanelTabs overflow", () => {
   ])("names the tabs the strip cuts off as $label", ({ stripWidth, label }) => {
     layOut(stripWidth);
     render();
-    expect(host.querySelector("[data-right-panel-hidden-tabs]")?.getAttribute("aria-label")).toBe(
+    expect(host.querySelector("[data-slot='tab-strip-more']")?.getAttribute("aria-label")).toBe(
       label,
     );
   });

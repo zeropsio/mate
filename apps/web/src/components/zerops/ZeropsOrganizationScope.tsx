@@ -7,6 +7,7 @@
  * spend their room on environments.
  */
 
+import { Card } from "../ui/card";
 import { Building2Icon, ChevronRightIcon } from "lucide-react";
 
 import {
@@ -17,7 +18,6 @@ import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { FlatCard } from "./primitives";
 
 export function ZeropsOrganizationScope({
   organizations,
@@ -39,12 +39,14 @@ export function ZeropsOrganizationScope({
 
   if (organizations.length === 0) {
     return (
-      <FlatCard className="p-4">
-        <p className="text-sm text-foreground">No active Zerops organizations.</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Ask an organization owner to invite this account, then refresh the page.
-        </p>
-      </FlatCard>
+      <Card size="md" variant="flat">
+        <div>
+          <p className="text-sm text-foreground">No active Zerops organizations.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Ask an organization owner to invite this account, then refresh the page.
+          </p>
+        </div>
+      </Card>
     );
   }
 

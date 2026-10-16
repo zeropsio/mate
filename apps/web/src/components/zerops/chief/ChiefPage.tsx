@@ -6,7 +6,6 @@
  * that stopped says why over *Try again*, and once it is set up the page is the Chief's own view
  * while its container comes up (`ZeropsMateComingPage`), which hands over to its conversation.
  */
-import { useNowMs } from "~/zerops/useNowMs";
 import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
 import {
   resumeChiefSetup,
@@ -26,11 +25,11 @@ import { hqStandingAtom } from "~/state/zerops";
 
 import { Button } from "../../ui/button";
 import { ArrivalSwap } from "../ArrivalSwap";
-import { MateFaceAsMark, ProcessSteps } from "../primitives";
-import { birthStepToProcessStep } from "../ZeropsBirthProgress.logic";
+import { Progress } from "../../ui/progress";
+import { MateFaceAsMark } from "../primitives";
 import { MateComingFrame, MateComingHeader, ZeropsMateComingPage } from "../ZeropsMateComingPage";
 import { MateEmptyStateView, type MateEmptyComing } from "../ZeropsMateEmptyState";
-import { chiefSetupSteps } from "./chiefSetup.logic";
+import { CHIEF_SETUP_DOING, CHIEF_SETUP_ESTIMATE_MS, chiefSetupSteps } from "./chiefSetup.logic";
 import { chiefPageView, type ChiefPageView } from "./chiefTop.logic";
 
 /** The Chief as its page draws it before it exists: the product's mark, its name. */
@@ -45,7 +44,7 @@ const CHIEF_DRAWN = {
 
 export function ChiefPage() {
   const own = useOwnChief();
-  const { setup } = useChiefSetup();
+  const { setup, startedAtMs } = useChiefSetup();
   const { activeOrganization } = useZeropsSession();
   const orgId = activeOrganization?.id;
   const accountHq = useAccountHq(orgId);
@@ -85,6 +84,7 @@ export function ChiefPage() {
                 resumeChiefSetup(orgId, view.projectId);
             }}
             onSetUp={startChiefSetup}
+            startedAtMs={startedAtMs}
             view={view}
           />
         )}
@@ -93,11 +93,11 @@ export function ChiefPage() {
   );
 }
 
-/** What a Chief is, in one headline and the sentence under it. */
+/** What a Chief is for, in the person's words: one headline and the sentence under it. */
 const CHIEF_IS = {
-  headline: "A Mate for your whole organization.",
+  headline: "One Mate for all your projects.",
   sentence:
-    "Chief lives in its own project, with one container, and runs on your own coding agent's sign-in. It sees what you can see, and changes nothing without your Approve.",
+    "Ask it what runs where, what it costs, or who has access. Anything it would change waits for your approval.",
 } as const;
 
 /**
@@ -109,14 +109,15 @@ export function ChiefStage({
   onSetUp,
   onAgain,
   onFinish,
+  startedAtMs = null,
 }: {
   readonly view: Exclude<ChiefPageView, { kind: "reading" | "coming" }>;
   readonly onSetUp: () => void;
   readonly onAgain: () => void;
   readonly onFinish: () => void;
+  /** When this tab pressed *Set up Chief*: the row's clock; `null` when unknown. */
+  readonly startedAtMs?: number | null;
 }) {
-  // Its steps carry no clock of their own: none says how long it took.
-  const now = useNowMs();
   const coming = ((): MateEmptyComing => {
     switch (view.kind) {
       case "offer":
@@ -132,8 +133,8 @@ export function ChiefStage({
                   data-zerops-surface="chief-set-up"
                   disabled={view.blocked !== undefined}
                   onClick={onSetUp}
-                  size="xl"
-                  variant="pill"
+                  size="lg"
+                  variant="primary"
                 >
                   Set up Chief
                 </Button>
@@ -156,8 +157,8 @@ export function ChiefStage({
               <Button
                 data-zerops-surface="chief-finish"
                 onClick={onFinish}
-                size="xl"
-                variant="pill"
+                size="lg"
+                variant="primary"
               >
                 Finish setting up
               </Button>
@@ -166,30 +167,41 @@ export function ChiefStage({
         };
       case "steps": {
         const stopped = view.setup.phase === "failed";
+        const steps = chiefSetupSteps(view.setup);
+        const on = steps.findIndex((step) => step.state === "active" || step.state === "failed");
+        const at = on === -1 ? steps.length - 1 : on;
         return {
           kind: stopped ? "failed" : "coming",
           face: stopped ? "needs" : "working",
           headline: stopped ? "Setting up your Chief stopped." : "Setting up your Chief.",
           sentence: stopped
-            ? "The step that stopped says why. Try again picks up there."
-            : "Keep this tab open until it is done.",
+            ? "Try again picks up at the step that stopped; finished steps are kept."
+            : "Keep this tab open until these steps are done. Then Chief comes up on its own.",
           pressed: true,
           below: (
             <ArrivalSwap id="steps" kind="slot">
-              <div className="flex flex-col items-center gap-5" data-zerops-surface="chief-setup">
-                <div className="w-fit max-w-full text-start">
-                  <ProcessSteps
-                    aria-label="Setting up your Chief"
-                    steps={chiefSetupSteps(view.setup).map((step) =>
-                      birthStepToProcessStep(step, now),
-                    )}
-                  />
-                </div>
-                {stopped ? (
-                  <Button onClick={onAgain} size="compact" variant="pill">
-                    Try again
-                  </Button>
-                ) : null}
+              <div className="w-full max-w-md text-start" data-zerops-surface="chief-setup">
+                <Progress
+                  at={at}
+                  estimateMs={CHIEF_SETUP_ESTIMATE_MS}
+                  identity={view.setup.birthId}
+                  label="Setting up your Chief"
+                  startedAtMs={startedAtMs}
+                  steps={CHIEF_SETUP_DOING}
+                  view={
+                    stopped
+                      ? {
+                          state: "failed",
+                          cause: `${CHIEF_SETUP_DOING[at]} stopped. ${steps[at]?.detail ?? ""}`,
+                          action: (
+                            <Button onClick={onAgain} size="sm">
+                              Try again
+                            </Button>
+                          ),
+                        }
+                      : undefined
+                  }
+                />
               </div>
             </ArrivalSwap>
           ),

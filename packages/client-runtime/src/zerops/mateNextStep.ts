@@ -23,7 +23,6 @@
 import {
   byNewest,
   changeShowsReview,
-  changeNamesRepository,
   sidebarChangeLabel,
   type FlowPullRequest,
 } from "./projectFlow.ts";
@@ -37,8 +36,8 @@ export type MateNextStep =
       /** The newest of its waiting changes. */
       readonly pull: FlowPullRequest;
       /**
-       * `Wren is waiting for your review of #1` — `of apidev #1` where its changes span
-       * repositories — or `of 2 changes` where more than one waits.
+       * `Wren is waiting for your review`, its change's title under it — or `… of 2 changes` where
+       * more than one waits.
        */
       readonly title: string;
       /** What the newest change is: its own title. */
@@ -89,14 +88,13 @@ export function mateNextStep(input: {
   if (pull === undefined) return NONE;
   const who = `${input.mateName ?? "This Mate"} is waiting for ${
     input.yours === false ? "a" : "your"
-  } review of`;
+  } review`;
   if (waiting.length === 1) {
+    // The change goes by its title, on the line under this one.
     return {
       kind: "review",
       pull,
-      title: `${who} ${
-        changeNamesRepository(pull, pullRequests) ? `${pull.repository} ` : ""
-      }#${String(pull.number)}`,
+      title: who,
       detail: pull.title,
       lines: [],
       more: 0,
@@ -105,7 +103,7 @@ export function mateNextStep(input: {
   return {
     kind: "review",
     pull,
-    title: `${who} ${String(waiting.length)} changes`,
+    title: `${who} of ${String(waiting.length)} changes`,
     detail: pull.title,
     lines: waiting.slice(0, MATE_NEXT_STEP_LINES).map((entry) => ({
       pull: entry,

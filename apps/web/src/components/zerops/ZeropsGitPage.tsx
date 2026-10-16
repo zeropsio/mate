@@ -1,4 +1,5 @@
 /** The organization Git overview consumes the shared projection; local state holds presentation IDs only. */
+import { Card } from "../ui/card";
 import {
   gitRepositoryLine,
   gitOverviewPresentation,
@@ -14,7 +15,6 @@ import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 
 import { appBasePath } from "~/basePath";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
-import { FlatCard } from "./primitives";
 import { ZeropsGitChangeRow } from "./ZeropsGitChangeRow";
 import { useMateNames, useProjectFlows } from "~/zerops/projectFlows";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
@@ -131,7 +131,7 @@ export function ZeropsGitOverview({
           ).map(([value, label]) => (
             <Button
               key={value}
-              variant={view === value ? "outline" : "ghost-muted"}
+              variant={view === value ? "secondary" : "ghost"}
               size="sm"
               aria-pressed={view === value}
               onClick={() => {
@@ -158,14 +158,14 @@ export function ZeropsGitOverview({
       {presentation.changed ? (
         <div className="flex items-center gap-3" role="status">
           <span className="text-sm text-muted-foreground">The repository list has changed.</span>
-          <Button variant="outline" size="sm" onClick={() => setHeld(undefined)}>
+          <Button variant="secondary" size="sm" onClick={() => setHeld(undefined)}>
             Update list
           </Button>
         </div>
       ) : null}
       {presentation.rows.length > 0 ? (
         <section aria-label="Repositories" data-zerops-surface="git-overview">
-          <FlatCard>
+          <Card variant="flat">
             <div className="divide-y divide-border">
               {presentation.rows.map((repository) => {
                 const changeRows = repository.changes.map((change) => (
@@ -215,7 +215,7 @@ export function ZeropsGitOverview({
                         </a>
                       )}
                       {repository.name === "group" ? (
-                        <span className="text-xs text-muted-foreground">Recipe</span>
+                        <span className="text-xs text-muted-foreground">Setup</span>
                       ) : null}
                     </div>
                     {repository.coverage === "unread" ? (
@@ -239,7 +239,7 @@ export function ZeropsGitOverview({
                 );
               })}
             </div>
-          </FlatCard>
+          </Card>
           <p className="mt-3 text-xs text-muted-foreground">
             {view === "all" ? (
               <>
@@ -364,7 +364,7 @@ export function ZeropsGitPage() {
               Repositories and open changes across your projects.
             </p>
           </div>
-          <Button variant="ghost-muted" size="sm" onClick={readAgain}>
+          <Button variant="ghost" size="sm" onClick={readAgain}>
             Read again
           </Button>
         </div>

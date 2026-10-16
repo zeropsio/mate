@@ -5,6 +5,7 @@ import {
   platformViewer,
   projectRoleOffers,
   roleOffers,
+  teamOffers,
 } from "@t3tools/client-runtime/data";
 import { useMemo } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -57,6 +58,12 @@ export function usePlatformCapabilities(environmentId: EnvironmentId | null) {
 export function useRoleOffers() {
   const capabilities = usePlatformCapabilities(null);
   return useMemo(() => roleOffers(capabilities), [capabilities]);
+}
+
+/** Whether the viewer brings people into the organization (`teamOffers`): Invite. */
+export function useTeamOffers() {
+  const capabilities = usePlatformCapabilities(null);
+  return useMemo(() => teamOffers(capabilities), [capabilities]);
 }
 
 /** Whether the organization's credit is the viewer's to add in HQ (`creditOffers`). */

@@ -151,8 +151,9 @@ export interface ReviewSecondary {
 
 /**
  * The one question a review may ask after a merge: where the code should run, with a button for
- * each environment the person may add, and a quiet way to say not now. It is asked once and
- * remembers nothing: no answer is stored, and no later merge asks it.
+ * each environment the person may add — production's is *Put it live*, which makes it and releases
+ * to it in one step — and a quiet way to say not now. It is asked once and remembers nothing: no
+ * answer is stored, and no later merge asks it.
  */
 export interface ReviewQuestion {
   readonly text: string;
@@ -389,19 +390,11 @@ function closeReview(
   }
 }
 
-/** `Squash-merges 3 commits into main as one.` */
-function squashSentence(
-  pull: ChangeReviewInput["pull"],
-  commits: number | undefined,
-  behind: boolean,
-  unshown: boolean,
-): string {
-  const what =
-    commits === undefined ? "it" : commits === 1 ? "1 commit" : `${String(commits)} commits`;
-  const asOne = commits !== undefined && commits > 1 ? " as one" : "";
+/** `Adds this change to main.` — its commits are the Commits fold's to count, not the foot's. */
+function mergeSentence(pull: ChangeReviewInput["pull"], behind: boolean, unshown: boolean): string {
   const unseen = unshown ? " without its files shown" : "";
   const onTop = behind ? ", on top of changes it wasn't checked with" : "";
-  return `Squash-merges ${what} into ${pull.baseBranch}${asOne}${unseen}${onTop}.`;
+  return `Adds this change to ${pull.baseBranch}${unseen}${onTop}.`;
 }
 
 /** What any recipe change does, which is all that can be said of one before its files are read. */
@@ -508,8 +501,13 @@ function changePipelineOf(pull: ChangeReviewInput["pull"]): NonNullable<ReviewMo
   };
 }
 
-/** The change's own verdict, before anything was pressed. */
-function changeVerdictOf(input: ChangeReviewInput): {
+/**
+ * The change's own verdict, before anything was pressed: whether it can merge now, and why not. Every
+ * door that merges a change asks it first — the review's Merge and *Put it live* alike.
+ */
+export function changeMergeVerdict(
+  input: Pick<ChangeReviewInput, "pull" | "mateName" | "conflict" | "commits" | "now">,
+): {
   readonly verdict: ReviewVerdict;
   readonly enabled: boolean;
 } {
@@ -673,12 +671,12 @@ function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined 
   const options = (
     [
       ["stage", input.addable?.stage === true, "Add stage"],
-      ["production", input.addable?.production === true, "Add production"],
+      ["production", input.addable?.production === true, "Put it live"],
     ] as const
   ).flatMap(([tier, offered, label]) => (offered ? [{ tier, label }] : []));
   if (options.length === 0) return undefined;
   // What runs it, as it is: the Mate's preview runs its own copy for trying it out, never the
-  // stage (the onboarding run asked "Where should it run?" beside "Your recipe box is online").
+  // stage (a first run asked "Where should it run?" beside "Your shop front is online").
   const base = input.pull.baseBranch;
   const preview = `${input.mateName}'s preview is only for trying it out.`;
   return {
@@ -754,7 +752,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   // Close without merging, quiet beside Merge where HQ's rule offers it — never while Merge runs.
   const secondary = input.offered?.close === true ? CLOSE_OFFER : undefined;
 
-  const verdictOf = changeVerdictOf(input);
+  const verdictOf = changeMergeVerdict(input);
   const { verdict } = verdictOf;
   if (verdict.state === "empty") {
     return {
@@ -768,12 +766,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   // facts HQ's rule is asked over.
   const enabled = verdictOf.enabled && input.readout !== "reading" && input.offered?.merge === true;
   const squash = sentences(
-    squashSentence(
-      pull,
-      input.commits,
-      verdict.state === "behind-clean",
-      input.readout === "failed",
-    ),
+    mergeSentence(pull, verdict.state === "behind-clean", input.readout === "failed"),
     afterMain(input),
   );
   const waits: Partial<Record<ReviewState, string>> = {
@@ -798,10 +791,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
         state: "merging",
         tone: "busy",
         title: `Merging into ${base}`,
-        why:
-          input.commits === undefined
-            ? `Squashing #${String(pull.number)}`
-            : `Squashing ${count(input.commits, "commit", "commits")} into one`,
+        why: `Adding this change to ${base}`,
         fix: undefined,
       },
       consequence: squash,
@@ -1091,7 +1081,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
           state: "releasing",
           tone: "busy",
           title: `Releasing ${tag}`,
-          why: outcome.progress ?? "Production redeploys from the tag",
+          why: outcome.progress ?? "Putting it live",
           fix: undefined,
         },
         consequence: RELEASE_FOLLOWS,
@@ -1333,7 +1323,7 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
     consequence: RELEASE_FOLLOWS,
     primary: undefined,
   });
-  if (press.kind === "running") return onItsWay(`Tagging main as ${nextTag}`);
+  if (press.kind === "running") return onItsWay(`Preparing ${nextTag}`);
   if (press.kind === "refused") {
     return {
       verdict: {
@@ -1349,7 +1339,7 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
   }
   switch (outcome.kind) {
     case "releasing":
-      return onItsWay(outcome.progress ?? `Production redeploys from ${nextTag}`);
+      return onItsWay(outcome.progress ?? `Putting ${nextTag} live`);
     case "released": {
       const age =
         outcome.at === undefined ? undefined : reviewAge(outcome.at, input.now)?.toLowerCase();
@@ -1392,7 +1382,7 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
     case "offered":
       break;
   }
-  if (press.kind === "done") return onItsWay(`Production redeploys from ${nextTag}`);
+  if (press.kind === "done") return onItsWay(`Putting ${nextTag} live`);
   if (permission?.allowed === false) {
     return {
       verdict: {

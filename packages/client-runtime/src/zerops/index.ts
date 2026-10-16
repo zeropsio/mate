@@ -37,6 +37,7 @@ export {
   canCreateProjectsInOrganization,
   resolveActiveZeropsOrganization,
   zeropsOrganizationRoleLabel,
+  zeropsRoleWords,
   type ZeropsOrganizationSelectionInput,
 } from "./accountScope.ts";
 
@@ -451,6 +452,7 @@ export {
   REVIEW_LABEL,
   REVIEW_RELEASE_LABEL,
   changeReview,
+  changeMergeVerdict,
   crewTaskReview,
   releaseReview,
   gitRemoteExpiry,

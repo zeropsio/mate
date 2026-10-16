@@ -19,7 +19,7 @@ import {
 import { XIcon } from "lucide-react";
 
 import { ZeropsReviewDialog } from "../components/zerops/review/ZeropsReviewDialog";
-import { SurfaceLoading } from "../components/SurfaceLoading";
+import { Loading } from "../components/ui/loading";
 import { ReviewContext, reviewTargetKey, type OpenReview, type ReviewTarget } from "./review";
 
 const ZeropsChangeReview = lazy(() =>
@@ -123,7 +123,7 @@ function ReviewBody({
                 <XIcon aria-hidden="true" />
               </button>
             </div>
-            <SurfaceLoading />
+            <Loading label="The review" shape="room" />
           </div>
         }
       >

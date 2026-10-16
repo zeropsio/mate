@@ -140,7 +140,6 @@ vi.mock("./usagePagePreferences", () => ({
 vi.mock("~/zerops/useWaitLine", () => ({ useWaitLine: (text: string | null) => text !== null }));
 vi.mock("../zerops/WaitLine", () => ({
   WaitLine: ({ text }: { text: string }) => <p>{text}</p>,
-  PageWaitLine: ({ text }: { text: string }) => <p>{text}</p>,
 }));
 
 import { UsagePage } from "./UsagePage";

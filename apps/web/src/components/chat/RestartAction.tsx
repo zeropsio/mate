@@ -10,6 +10,7 @@ import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProjec
 import { Spinner } from "../ui/spinner";
 import type { VaultAskRestart } from "../zerops/vault/vaultRequest.logic";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
+import { Button } from "~/components/ui/button";
 
 export function RestartAction({ services }: { readonly services: ReadonlyArray<VaultAskRestart> }) {
   const row = use(TimelineRowCtx) as TimelineRowSharedState | null;
@@ -35,15 +36,15 @@ export function RestartAction({ services }: { readonly services: ReadonlyArray<V
     }
   };
   return (
-    <button
+    <Button
       aria-label={`Restart ${services.map((service) => service.hostname).join(" and ")}`}
-      className="run-result-action"
+      size="sm"
+      variant="link"
       disabled={busy}
       onClick={() => void restart()}
-      type="button"
     >
       {busy ? <Spinner size="xs" /> : null}
       Restart
-    </button>
+    </Button>
   );
 }

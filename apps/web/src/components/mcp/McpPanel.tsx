@@ -20,7 +20,7 @@ import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { Chip, MicroLabel, StatusDot } from "../zerops/primitives";
+import { MicroLabel, STATUS_BADGE_TONE } from "../zerops/primitives";
 import {
   buildMcpRows,
   readMcpAddForm,
@@ -30,6 +30,7 @@ import {
   type McpTabState,
 } from "./McpServers.logic";
 import { useMcpServers, type McpAction, type McpActionResult } from "./useMcpServers";
+import { Badge } from "~/components/ui/badge";
 
 export const MCP_WORDS = {
   title: "MCP servers",
@@ -165,7 +166,7 @@ function McpServerRowView(props: {
           <span className="flex h-5 shrink-0 items-center">
             <Tooltip>
               <TooltipTrigger render={<span className="inline-flex" />}>
-                <StatusDot dotOnly label={row.stateLabel} tone={row.tone} />
+                <Badge aria-label={row.stateLabel} dot tone={STATUS_BADGE_TONE[row.tone]} />
               </TooltipTrigger>
               <TooltipPopup>{row.stateLabel}</TooltipPopup>
             </Tooltip>
@@ -183,9 +184,7 @@ function McpServerRowView(props: {
               <span className="min-w-0 shrink-[2] truncate text-xs text-muted-foreground">
                 {row.runs}
               </span>
-              {row.managed ? (
-                <Chip className="shrink-0" label={MCP_WORDS.builtIn} tone="off" />
-              ) : null}
+              {row.managed ? <Badge className="shrink-0">{MCP_WORDS.builtIn}</Badge> : null}
             </span>
             {row.note === null ? null : (
               <span
@@ -296,7 +295,7 @@ function McpServerDetails(props: {
             <Button
               disabled={pending !== null}
               onClick={() => void run("remove", { kind: "remove", name: row.name })}
-              size="xs"
+              size="sm"
               variant="destructive"
             >
               {pending === "remove" ? <Spinner size="xs" /> : null}
@@ -305,7 +304,7 @@ function McpServerDetails(props: {
             <Button
               disabled={pending !== null}
               onClick={() => setArmed(false)}
-              size="xs"
+              size="sm"
               variant="ghost"
             >
               {MCP_WORDS.keep}
@@ -317,8 +316,8 @@ function McpServerDetails(props: {
               <Button
                 disabled={pending !== null}
                 onClick={() => void run("reconnect", { kind: "reconnect", name: row.name })}
-                size="xs"
-                variant="outline"
+                size="sm"
+                variant="secondary"
               >
                 {pending === "reconnect" ? <Spinner size="xs" /> : null}
                 {MCP_WORDS.reconnect}
@@ -334,8 +333,8 @@ function McpServerDetails(props: {
                     enabled: row.actions.toggle === "on",
                   })
                 }
-                size="xs"
-                variant="outline"
+                size="sm"
+                variant="secondary"
               >
                 {pending === "toggle" ? <Spinner size="xs" /> : null}
                 {row.actions.toggle === "on" ? MCP_WORDS.turnOn : MCP_WORDS.turnOff}
@@ -345,8 +344,8 @@ function McpServerDetails(props: {
               <Button
                 disabled={pending !== null}
                 onClick={() => setArmed(true)}
-                size="xs"
-                variant="ghost-destructive"
+                size="sm"
+                variant="ghost"
               >
                 {MCP_WORDS.remove}
               </Button>

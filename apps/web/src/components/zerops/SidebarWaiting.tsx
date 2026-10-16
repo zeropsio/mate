@@ -36,6 +36,7 @@ import {
   type WaitingItem,
   type WaitingMate,
 } from "./SidebarWaiting.logic";
+import { Button } from "~/components/ui/button";
 
 const WaitingPortal = gatedPortal(PopoverPrimitive.Portal);
 
@@ -243,9 +244,8 @@ function WaitingEntry({
           </span>
         ) : (
           <MateFace
-            className="size-8"
             shape={item.mate.shape}
-            size="md"
+            size={32}
             state={item.mate.face}
             tint={item.mate.tint}
           />
@@ -281,9 +281,7 @@ function WaitingEntry({
               />
             )
           ) : item.kind === "failed" ? (
-            <button
-              className="menu-wait-button"
-              data-main=""
+            <Button
               onClick={() => {
                 verbs.onAskToFix(item.mate.projectId, {
                   what: `${item.mate.name} stopped on an error`,
@@ -293,10 +291,9 @@ function WaitingEntry({
                 went();
                 onClose();
               }}
-              type="button"
             >
               Ask {item.mate.name} to fix it
-            </button>
+            </Button>
           ) : (
             <MateActions mate={item.mate} onClose={onClose} onDone={went} verbs={verbs} />
           )}
@@ -317,18 +314,15 @@ function ReviewButton({
 }) {
   const openReview = useOpenReview();
   return (
-    <button
-      className="menu-wait-button"
-      data-main=""
+    <Button
       onClick={() => {
         // The list closes first, and the review opens over the page.
         onClose();
         openReview(target);
       }}
-      type="button"
     >
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -342,17 +336,14 @@ function OpenButton({
   readonly onClose: () => void;
 }) {
   return (
-    <button
-      className="menu-wait-button"
-      data-main=""
+    <Button
       onClick={() => {
         onClose();
         verbs.onOpenMate(mate.projectId);
       }}
-      type="button"
     >
       Open {mate.name}
-    </button>
+    </Button>
   );
 }
 
@@ -414,28 +405,24 @@ function MateActions({
         sending={sending}
         label="What should change"
       >
-        <button
-          className="menu-wait-button"
-          data-main=""
+        <Button
           disabled={plan === null || sending}
           onClick={() => {
             if (plan !== null)
               settle(write.send(buildPlanImplementationPrompt(plan.planMarkdown), "default"));
           }}
-          type="button"
         >
           Approve plan
-        </button>
-        <button
-          className="menu-wait-button"
+        </Button>
+        <Button
           disabled={sending}
           onClick={() => {
             setReplying(true);
           }}
-          type="button"
+          variant="secondary"
         >
           Change it…
-        </button>
+        </Button>
       </Replying>
     );
   }
@@ -455,18 +442,16 @@ function MateActions({
     return (
       <Replying error={error} replying={false} sending={sending}>
         {decision.choices.map((choice) => (
-          <button
-            className="menu-wait-button"
-            data-main={choice.primary ? "" : undefined}
+          <Button
             disabled={sending}
             key={choice.value}
             onClick={() => {
               settle(write.decide(decision.requestId, choice.value as ProviderApprovalDecision));
             }}
-            type="button"
+            variant={choice.primary ? "primary" : "secondary"}
           >
             {choice.label}
-          </button>
+          </Button>
         ))}
       </Replying>
     );
@@ -487,29 +472,27 @@ function MateActions({
         sending={sending}
       >
         {decision.choices.map((choice) => (
-          <button
-            className="menu-wait-button"
+          <Button
             disabled={sending}
             key={choice.value}
             onClick={() => {
               settle(write.answer(decision.requestId, decision.questionId, choice.value));
             }}
-            type="button"
+            variant="secondary"
           >
             {choice.label}
-          </button>
+          </Button>
         ))}
         {decision.allowText ? (
-          <button
-            className="menu-wait-button"
+          <Button
             disabled={sending}
             onClick={() => {
               setReplying(true);
             }}
-            type="button"
+            variant="secondary"
           >
             Answer…
-          </button>
+          </Button>
         ) : null}
       </Replying>
     );
@@ -517,9 +500,9 @@ function MateActions({
   // Still being read: its answer's way in stands, waiting for what it asks.
   if (decision?.kind === "reading" && mate.threadId !== undefined) {
     return (
-      <button className="menu-wait-button" disabled type="button">
+      <Button disabled variant="secondary">
         Answer…
-      </button>
+      </Button>
     );
   }
   // More than the list can answer in place, or no conversation to answer in: its conversation.

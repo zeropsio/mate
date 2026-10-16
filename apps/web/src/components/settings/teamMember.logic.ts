@@ -37,26 +37,32 @@ import {
 } from "../zerops/projects/projectPeople.logic";
 import { ROLE_CODE_WORDS } from "./teamSettings.logic";
 
-/** Each preset as its card says it: legacy Zerops's words. */
+/**
+ * Each preset as its card says it: what the person can do in Mate, true to what Zerops gives the
+ * role — an owner everything; an admin every project and inviting below admin, never billing; a
+ * Developer (`NO_ACCESS` that creates projects) the projects given them and their own; a Guest
+ * (`NO_ACCESS`) only the projects given them, read only, starting nothing.
+ */
 export const PRESET_WORDS: Readonly<
   Record<TeamRole, { readonly label: string; readonly description: string }>
 > = {
-  owner: { label: "Owner", description: "Full control over company settings, billing, and team." },
+  owner: { label: "Owner", description: "Everything, billing and the team included." },
   admin: {
     label: "Admin",
-    description: "Full control over all projects. Can invite developers and guests.",
+    description: "Every project and its Mates; invites developers and guests. No billing.",
   },
   developer: {
     label: "Developer",
-    description: "Can create new projects and be assigned to projects.",
+    description: "Works in the projects you give them and starts projects of their own.",
   },
   guest: {
     label: "Guest",
-    description: "Can NOT create projects. Can only be assigned to projects.",
+    description:
+      "Follows the work and opens the app in the projects you give them. Starts nothing.",
   },
 };
 
-/** What each Zerops role gives by itself, as *Advanced* explains it. */
+/** What each Zerops role gives by itself, as *Fine-tune permissions* explains it. */
 export const ROLE_CODE_DESCRIPTIONS: Readonly<Record<OrgRoleCode, string>> = {
   OWNER: "Full control over all projects, company settings, billing, and team.",
   ADMIN: "Full control over all projects. Can manage users below Admin. No access to billing.",
@@ -86,9 +92,9 @@ export function projectAccessIntro(input: {
   }
   const who =
     input.roleCode === "BASIC_USER"
-      ? "A basic user works on"
+      ? "They work on"
       : input.roleCode === "READ_ONLY"
-        ? "A read-only member sees"
+        ? "They see"
         : "Owners and admins reach";
   return input.viewerGives
     ? `${who} every project by their role. Set a different level on a project here.`
@@ -130,7 +136,7 @@ export function roleCards(
 }
 
 export interface AdvancedChoices {
-  /** "Custom (Basic user)" where no card is lit: Advanced opens by itself on it. */
+  /** "Custom (Basic user)" where no card is lit: Fine-tune permissions opens by itself on it. */
   readonly custom: string | null;
   readonly roles: ReadonlyArray<{
     readonly roleCode: OrgRoleCode;
@@ -149,7 +155,7 @@ export interface AdvancedChoices {
   }>;
 }
 
-/** *Advanced*: each Zerops role and flag, what is set, and what the editor may not change. */
+/** *Fine-tune permissions*: each Zerops role and flag, what is set, and what the editor may not change. */
 export function advancedChoices(
   editorRole: string | undefined,
   value: OrgMembership,
@@ -197,7 +203,7 @@ const KIND_WORDS: Readonly<Record<string, string>> = {
  * Every project the organization can give, by its Mate name, in order: each Mate project's places
  * and Mates — a place by its kind, or by its own name where the group has several of that kind, a
  * Mate by its name under the app (`nameUnderApp`: "Snap - Kai" is Snap's Kai) — then projects
- * outside any Mate project by their own names. Chiefs never.
+ * outside any Mate project by their own names. Chiefs and HQ's own project never.
  */
 export function accessProjects(input: {
   readonly groups: ReadonlyArray<{
@@ -207,6 +213,8 @@ export function accessProjects(input: {
   /** Every project the viewer can name: its Zerops name. */
   readonly roster: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly chiefs: ReadonlySet<string>;
+  /** The Headquarters projects (`hqProjectsOf`): HQ's own credentials live there. */
+  readonly hq: ReadonlySet<string>;
 }): ReadonlyArray<AccessProject> {
   const names = new Map(input.roster.map(({ id, name }) => [id, name]));
   const grouped = new Set<string>();
@@ -225,7 +233,9 @@ export function accessProjects(input: {
     });
   });
   const outside = input.roster.flatMap(({ id, name }) =>
-    grouped.has(id) || input.chiefs.has(id) ? [] : [{ projectId: id, label: name }],
+    grouped.has(id) || input.chiefs.has(id) || input.hq.has(id)
+      ? []
+      : [{ projectId: id, label: name }],
   );
   return [...inGroups, ...outside].toSorted((a, b) => a.label.localeCompare(b.label));
 }
@@ -423,5 +433,128 @@ export function teamInviteStep(
       return { step: "details", email, existing: null };
     case "member":
       return { problem: `${email} is in ${organizationName} already.` };
+  }
+}
+
+/** One project an invitation gives: a Mate project whole, or a Zerops project outside any. */
+export interface InviteProject {
+  /** The Mate project's group id, or the outside project's own id. */
+  readonly key: string;
+  readonly name: string;
+  /** Every Zerops project it holds: its places and its Mates. */
+  readonly projectIds: ReadonlyArray<string>;
+}
+
+/**
+ * What an invitation offers to give, by name: each Mate project as one choice holding all of its
+ * places and Mates — the same projects its People section gives — then projects outside any by
+ * their own names. Chiefs and HQ's own project never.
+ */
+export function inviteProjects(input: {
+  readonly groups: ReadonlyArray<{
+    readonly groupId: string;
+    readonly name: string;
+    readonly projects: ReadonlyArray<{ readonly projectId: string; readonly kind: string }>;
+  }>;
+  readonly roster: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  readonly chiefs: ReadonlySet<string>;
+  /** The Headquarters projects (`hqProjectsOf`): HQ's own credentials live there. */
+  readonly hq: ReadonlySet<string>;
+}): ReadonlyArray<InviteProject> {
+  const grouped = new Set(
+    input.groups.flatMap(({ projects }) => projects.map(({ projectId }) => projectId)),
+  );
+  const apps = input.groups.flatMap((group) =>
+    group.projects.length === 0 ||
+    group.projects.some(({ projectId }) => input.chiefs.has(projectId))
+      ? []
+      : [
+          {
+            key: group.groupId,
+            name: group.name,
+            projectIds: group.projects.map(({ projectId }) => projectId),
+          },
+        ],
+  );
+  const outside = input.roster.flatMap(({ id, name }) =>
+    grouped.has(id) || input.chiefs.has(id) || input.hq.has(id)
+      ? []
+      : [{ key: id, name, projectIds: [id] }],
+  );
+  return [...apps, ...outside].toSorted((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * The projects an invitation starts with: the one it was opened from, else the organization's
+ * only project; none where there are several to choose from.
+ */
+export function invitePreselect(input: {
+  readonly projects: ReadonlyArray<InviteProject>;
+  /** The project the invitation was opened from (its group id). */
+  readonly from: string | undefined;
+}): ReadonlyArray<string> {
+  if (input.from !== undefined)
+    return input.projects.some(({ key }) => key === input.from) ? [input.from] : [];
+  return input.projects.length === 1 ? [input.projects[0]!.key] : [];
+}
+
+/** The access an invitation gives on its projects. */
+export type InviteLevel = "full" | "read";
+
+/**
+ * The levels an invitation offers for a membership, the first chosen: a Developer works (Full) or
+ * looks (Read); a Guest only looks; a role that reaches every project by itself is given none.
+ */
+export function inviteLevels(membership: OrgMembership): {
+  readonly levels: ReadonlyArray<InviteLevel>;
+  readonly level: InviteLevel | null;
+} {
+  if (membership.roleCode !== "NO_ACCESS") return { levels: [], level: null };
+  return membership.canCreateProjects
+    ? { levels: ["full", "read"], level: "full" }
+    : { levels: ["read"], level: "read" };
+}
+
+const INVITE_ROLE: Readonly<Record<InviteLevel, ProjectAccessRole>> = {
+  full: "ADMIN",
+  read: "READ_ONLY",
+};
+
+/** What the invitation sends: every project of each picked one, at the level chosen. */
+export function inviteGrants(input: {
+  readonly projects: ReadonlyArray<InviteProject>;
+  readonly picked: ReadonlyArray<string>;
+  readonly level: InviteLevel;
+}): ReadonlyArray<{ readonly projectId: string; readonly roleCode: ProjectAccessRole }> {
+  return input.projects.flatMap(({ key, projectIds }) =>
+    input.picked.includes(key)
+      ? projectIds.map((projectId) => ({ projectId, roleCode: INVITE_ROLE[input.level] }))
+      : [],
+  );
+}
+
+/**
+ * What the invitation's projects say the chosen role reaches: a Developer the projects picked and
+ * their own, a Guest only those picked — or, with no project to pick yet, what they will get —
+ * and a role that reaches every project says so, with nothing to pick.
+ */
+export function inviteReachLine(membership: OrgMembership, projects: number): string {
+  switch (membership.roleCode) {
+    case "OWNER":
+      return "An owner reaches every project.";
+    case "ADMIN":
+      return "An admin reaches every project.";
+    case "BASIC_USER":
+      return "They work on every project by their role.";
+    case "READ_ONLY":
+      return "They see every project by their role.";
+    case "NO_ACCESS":
+      if (membership.canCreateProjects)
+        return projects === 0
+          ? "No projects to give yet: they can start their own."
+          : "They get the projects you pick here, and the ones they start.";
+      return projects === 0
+        ? "No projects to give yet: they see the ones you add them to later."
+        : "They see only the projects you pick here.";
   }
 }

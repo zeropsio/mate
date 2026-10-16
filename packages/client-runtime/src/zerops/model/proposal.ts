@@ -25,7 +25,8 @@ export type ZeropsProposalKind =
   | "env.set"
   | "mate.message"
   | "chief.message"
-  | "domain.add";
+  | "domain.add"
+  | "access.set";
 
 interface ProposalHead {
   readonly id: string;
@@ -67,6 +68,19 @@ export interface ZeropsDomainProposalParams {
   readonly port: number;
 }
 
+/** The levels access gives on a project, as an application's People give them. */
+export type ZeropsAccessLevel = "full" | "read" | "none" | "remove";
+
+export interface ZeropsAccessProposalParams {
+  /** Every project the access is written on: an application's production, stage and Mates. */
+  readonly projects: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  /**
+   * Each person as the person deciding named them — an address or a name — at their level: the
+   * card finds them among the organization's members.
+   */
+  readonly people: ReadonlyArray<{ readonly person: string; readonly level: ZeropsAccessLevel }>;
+}
+
 export type ZeropsProposal =
   | (ProposalHead & {
       readonly kind: "service.restart" | "service.start" | "service.stop";
@@ -93,6 +107,10 @@ export type ZeropsProposal =
       readonly projectId: string;
       readonly serviceId: string;
       readonly params: ZeropsDomainProposalParams;
+    })
+  | (ProposalHead & {
+      readonly kind: "access.set";
+      readonly params: ZeropsAccessProposalParams;
     });
 
 const Words = Schema.NonEmptyString;
@@ -157,6 +175,20 @@ const DomainProposal = Schema.Struct({
   }),
 });
 
+const AccessProposal = Schema.Struct({
+  ...Head,
+  kind: Schema.Literal("access.set"),
+  params: Schema.Struct({
+    projects: Schema.NonEmptyArray(Schema.Struct({ id: Words, name: Schema.String })),
+    people: Schema.NonEmptyArray(
+      Schema.Struct({
+        person: Words,
+        level: Schema.Literals(["full", "read", "none", "remove"]),
+      }),
+    ),
+  }),
+});
+
 const ProposalDocument = Schema.Struct({
   proposal: Schema.Union([
     ServiceProposal,
@@ -164,6 +196,7 @@ const ProposalDocument = Schema.Struct({
     MessageProposal,
     ChiefMessageProposal,
     DomainProposal,
+    AccessProposal,
   ]),
 });
 
@@ -237,6 +270,19 @@ function shaped(proposal: DecodedProposal): ZeropsProposal | undefined {
         projectId: proposal.projectId,
         serviceId: proposal.serviceId,
         params: { domains: [...domains], port },
+      };
+    }
+    case "access.set": {
+      const { projects, people } = proposal.params;
+      if (people.some(({ person }) => blank(person)) || projects.some(({ id }) => blank(id)))
+        return undefined;
+      return {
+        ...head,
+        kind: "access.set",
+        params: {
+          projects: projects.map(({ id, name }) => ({ id, name })),
+          people: people.map(({ person, level }) => ({ person, level })),
+        },
       };
     }
   }

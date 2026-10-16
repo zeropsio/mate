@@ -1,7 +1,7 @@
 import { createRouter, RouterHistory } from "@tanstack/react-router";
 
 import { appBasePathHref } from "./basePath.ts";
-import { RoutePending } from "./components/SurfaceLoading";
+import { RoutePending } from "./components/RoutePending";
 import { routeTree } from "./routeTree.gen";
 
 export function getRouter(history: RouterHistory) {

@@ -1,11 +1,11 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { overviewPaints, tiersAddable } from "./projects/projectsView.logic";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
 import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { isChief } from "~/zerops/chief";
-import { useChiefSetupEntry } from "~/zerops/chiefSetup";
 import { roleOffers } from "@t3tools/client-runtime/data";
 import { usePlatformCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -76,6 +76,8 @@ import { heldCandidates, listsNoProject } from "@t3tools/client-runtime/zerops/p
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
+import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
+import { useOpenPutLive } from "~/zerops/putLive";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
@@ -149,9 +151,10 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
-import { MateFace, StatusDot } from "./primitives";
+import { MateFace, STATUS_BADGE_TONE } from "./primitives";
 import { useOverviewSlots } from "./projects/overviewSlots";
 import { OverviewCardMate } from "./projects/OverviewCardMate";
+import { ArrivalWelcome } from "./projects/ArrivalWelcome";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsHqCard } from "./ZeropsHqCard";
@@ -167,15 +170,20 @@ import {
 } from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
+import { Failure } from "../ui/failure";
 import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
-import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+import {
+  creationRecipe,
+  newMateRecipeChange,
+  proposedEnvironmentName,
+} from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { GitMirrorDialog } from "./GitMirrorDialog";
-import { ProjectAccessDraft, roleProjectKind } from "./projects/ProjectPeople";
+import { ProjectAccessDraft, roleProjectKind, WithDraftPeople } from "./projects/ProjectPeople";
 import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
@@ -213,6 +221,7 @@ import {
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
 import { OverviewFilterEmpty, OverviewFilters } from "./projects/OverviewFilters";
+import { OverviewCardsStandIn, OverviewStandInBody } from "./projects/OverviewStandIn";
 import { applicationContents, deleteOffered, groupIsEmpty } from "./projects/emptyApps.logic";
 import {
   type ZeropsRowAction,
@@ -230,9 +239,8 @@ import {
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { PageWaitLine } from "./WaitLine";
-import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
 import { useMenuRows, usePaintStanding } from "~/zerops/useMenuRows";
+import { Badge } from "~/components/ui/badge";
 
 /** One creation in flight, or just finished, on this screen. */
 interface EnvironmentCreationView {
@@ -528,16 +536,12 @@ function SignedOutNotice({ message }: { readonly message: string }) {
  * (`projectsFreshnessNotice`), and New project on its end. The list keeps itself current.
  */
 export function ZeropsProjectsHeader({
-  setupChief = false,
   newProject = true,
-  onSetupChief,
   notice = null,
   onRetry,
 }: {
-  readonly setupChief?: boolean;
   /** New project, where the viewer's role creates projects (`roleOffers`). */
   readonly newProject?: boolean;
-  readonly onSetupChief?: (() => void) | undefined;
   readonly notice?: ProjectsListingNotice | null;
   readonly onRetry?: (() => void) | undefined;
 }) {
@@ -552,13 +556,8 @@ export function ZeropsProjectsHeader({
         {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
       </div>
       <div className="flex items-center gap-2">
-        {setupChief ? (
-          <Button onClick={onSetupChief} size="sm" variant="outline">
-            Set up Chief
-          </Button>
-        ) : null}
         {newProject ? (
-          <Button onClick={askNewProject} size="sm" variant="outline">
+          <Button onClick={askNewProject} size="sm" variant="secondary">
             <PlusIcon />
             New project
           </Button>
@@ -591,7 +590,7 @@ function ProjectsFreshness({
       <Spinner size="sm" />
       <span>{notice.message.text}</span>
       {notice.affordance == null || onRetry === undefined ? null : (
-        <Button onClick={onRetry} size="sm" variant="outline">
+        <Button onClick={onRetry} size="sm" variant="secondary">
           {notice.affordance.label}
         </Button>
       )}
@@ -790,10 +789,13 @@ export function ZeropsProjectsContent({
   search,
   onShow,
   project,
+  painted = true,
 }: {
   readonly search: ProjectsSearch;
   readonly onShow?: ((show: OverviewShow | undefined) => void) | undefined;
   readonly project?: ProjectPageSlot | undefined;
+  /** The page shows it now, past the overview's one wait (`overviewPaints`). */
+  readonly painted?: boolean;
 }) {
   const openMate = useOpenMate();
   const authGate = useRouteContext({
@@ -1655,6 +1657,20 @@ export function ZeropsProjectsContent({
     });
   };
   const openReview = useOpenReview();
+  // The change that adds a project's setup files, where one waits: what moves on a stage or a
+  // production held for want of them.
+  const setupChangeOf = (groupId: string) => {
+    const change = newMateRecipeChange({
+      flow: projectFlow.flows.get(groupId),
+      mateName: () => undefined,
+    });
+    return change === undefined
+      ? undefined
+      : () => {
+          setCreationRequest(null);
+          openReview({ kind: "change", groupId, repository: RECIPE_REPO, number: change.number });
+        };
+  };
   const groupDeploys = projectFlow.flows;
   // A production just added is the intent to release (P7): the application whose production came
   // up waits here until HQ holds it and the gate says whether its first release is the person's to
@@ -1717,6 +1733,8 @@ export function ZeropsProjectsContent({
   // A Mate is asked for over whatever is on screen (`ZeropsNewMateHost`), from here as from the
   // left menu, and the person lands on it; a stage or a production is this page's own form.
   const addMate = useAddMate();
+  // Production is put live in one step, over this page (`PutLiveHost`).
+  const openPutLive = useOpenPutLive();
   const requestEnvironment = useCallback(
     (groupId: string, role: ZeropsEnvironmentRole) => {
       if (role === "dev") {
@@ -1935,7 +1953,7 @@ export function ZeropsProjectsContent({
       return (
         <MateFace
           shape={mateShapeOf(candidate.project, tint)}
-          size="sm"
+          size={20}
           state={mateFace(candidate)}
           tint={tint}
         />
@@ -2020,6 +2038,22 @@ export function ZeropsProjectsContent({
     );
     return { waits, mine };
   }, [candidates, personFacts, waiting.items]);
+  // A first visit's welcome (`arrival.logic`): the projects as listed, which hold a Mate of the
+  // viewer's own and which take one; decided once who started each Mate and HQ's offers are read.
+  const arrivalApps = useMemo(
+    () =>
+      flowGroups.map((entry) => ({
+        groupId: entry.group.groupId,
+        name: entry.group.name,
+        mine: filterFacts.mine.has(entry.group.groupId),
+        addMate: addMateOffer(entry.group.groupId).kind === "allowed",
+      })),
+    [addMateOffer, filterFacts, flowGroups],
+  );
+  const arrivalSettled =
+    candidates.every(
+      (candidate) => !hasMate(candidate) || personFacts[candidate.project.id] !== undefined,
+    ) && flowGroups.every((entry) => addMateOffer(entry.group.groupId).kind !== "unknown");
   const keptGroups = flowGroups.filter((entry) =>
     overviewKeeps({
       show: search.show,
@@ -2065,7 +2099,7 @@ export function ZeropsProjectsContent({
   // stale read offers a retry, and the page it would go to is this one.
   const listingAffordance =
     listingNotice?.affordance == null ? null : (
-      <Button onClick={refreshCandidates} size="sm" variant="outline">
+      <Button onClick={refreshCandidates} size="sm" variant="secondary">
         {listingNotice.affordance.label}
       </Button>
     );
@@ -2132,8 +2166,8 @@ export function ZeropsProjectsContent({
               onClick={() => {
                 runRowAction(candidate, action.kind);
               }}
-              size="compact"
-              variant="outline"
+              size="sm"
+              variant="secondary"
             >
               {busy ? (action.kind === "remove" ? "Removing…" : "Setting up…") : action.label}
             </Button>
@@ -2147,16 +2181,19 @@ export function ZeropsProjectsContent({
         name={projectNameInApp(candidate.project)}
         status={
           projectTrouble ? (
-            <StatusDot
-              label={presentation.status.label}
-              sentence
-              tone={presentation.status.tone}
+            <Badge
+              dot
               {...(presentation.status.pulse === undefined
                 ? {}
                 : { pulse: presentation.status.pulse })}
-            />
+              tone={STATUS_BADGE_TONE[presentation.status.tone]}
+            >
+              {presentation.status.label}
+            </Badge>
           ) : deployTone !== undefined && deployLabel !== undefined ? (
-            <StatusDot label={deployLabel} sentence tone={deployTone} />
+            <Badge dot tone={STATUS_BADGE_TONE[deployTone]}>
+              {deployLabel}
+            </Badge>
           ) : undefined
         }
         // A project the platform failed to create holds nothing; its
@@ -2203,8 +2240,8 @@ export function ZeropsProjectsContent({
           onClick={() => {
             runRowAction(candidate, "start");
           }}
-          size="compact"
-          variant="outline"
+          size="sm"
+          variant="secondary"
         >
           <PlayIcon />
           {busy ? "Starting…" : "Start"}
@@ -2219,8 +2256,8 @@ export function ZeropsProjectsContent({
           onClick={() => {
             runRowAction(candidate, "remove");
           }}
-          size="compact"
-          variant="outline"
+          size="sm"
+          variant="secondary"
         >
           {busy ? "Removing…" : "Remove"}
         </Button>
@@ -2394,10 +2431,11 @@ export function ZeropsProjectsContent({
             ? [
                 {
                   id: "add-production",
-                  label: "Add production",
+                  label: environmentDoorLabel("production", "production"),
                   disabled: creationRunning,
+                  ...(creationRunning ? { why: PUT_LIVE_AFTER_CREATION } : {}),
                   onSelect: () => {
-                    requestEnvironment(group.groupId, "prod");
+                    openPutLive(group.groupId);
                   },
                 },
               ]
@@ -2482,26 +2520,13 @@ export function ZeropsProjectsContent({
         </>
       ) : null}
       {listingNotice === null ? null : listingNotice.region === "placeholder" ? (
-        // Nothing read yet: the one wait line at the page's centre, where the boot frame said it.
-        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={listingNotice.message.text} />
+        // Nothing read yet: the cards' shape, where they will stand.
+        <OverviewCardsStandIn />
       ) : listingNotice.region === "message" ? (
-        <div
-          className="flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
-          role="alert"
-        >
-          <span>{listingNotice.message.text}</span>
-          {listingAffordance}
-        </div>
+        <Failure action={listingAffordance} cause={listingNotice.message.text} />
       ) : // The list's freshness is the title's row's (`ZeropsProjectsHeader`), never a line here.
       null}
-      {pageError === null ? null : (
-        <div
-          className="rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
-          role="alert"
-        >
-          {pageError}
-        </div>
-      )}
+      {pageError === null ? null : <Failure cause={pageError} />}
       {/* Nothing to show while the account's line says Zerops isn't answering: the page's own
           words, and no retry — Try now is the line's (`projectsTroubleView`). */}
       {troubleView.empty === null ? null : (
@@ -2516,6 +2541,17 @@ export function ZeropsProjectsContent({
           {notice}
         </p>
       ))}
+      {project === undefined && activeOrganization !== null ? (
+        <ArrivalWelcome
+          apps={arrivalApps}
+          onStart={addMate}
+          orgId={activeOrganization.id}
+          organizationName={activeOrganization.name}
+          painted={painted}
+          settled={arrivalSettled}
+          viewer={activeOrganization}
+        />
+      ) : null}
       {project === undefined && flowGroups.some((entry) => entry.flow.mates.length > 0) ? (
         <OverviewFilters
           mine={flowGroups.filter((entry) => filterFacts.mine.has(entry.group.groupId)).length}
@@ -2565,7 +2601,7 @@ export function ZeropsProjectsContent({
             : creationRunning
               ? "busy"
               : () => {
-                  requestEnvironment(group.groupId, "prod");
+                  openPutLive(group.groupId);
                 }
         }
         renderCardPeople={overview.renderCardPeople}
@@ -2637,77 +2673,90 @@ export function ZeropsProjectsContent({
         />
       ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (
-        <ZeropsEnvironmentCreationDialog
-          access={(onChange) => (
-            <ProjectAccessDraft
-              groupId={creationRequest.groupId}
-              kind={roleProjectKind(creationRequest.role)}
-              onChange={onChange}
+        <WithDraftPeople
+          groupId={creationRequest.groupId}
+          key={`${creationRequest.groupId}:${creationRequest.role}`}
+          kind={roleProjectKind(creationRequest.role)}
+        >
+          {(people) => (
+            <ZeropsEnvironmentCreationDialog
+              people={people}
+              onSetupChange={setupChangeOf(creationRequest.groupId)}
+              access={(onChange) => (
+                <ProjectAccessDraft
+                  groupId={creationRequest.groupId}
+                  kind={roleProjectKind(creationRequest.role)}
+                  label="Project access"
+                  onChange={onChange}
+                />
+              )}
+              {...(activeOrganization == null
+                ? {}
+                : { forecast: <ZeropsCreditForecast organizationId={activeOrganization.id} /> })}
+              fallbackFocus={() =>
+                document
+                  .getElementById(`project-${creationRequest.groupId}`)
+                  ?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]') ?? null
+              }
+              git={
+                activeOrganization === null ||
+                activeOrganization === undefined ||
+                gitSetupHq === null
+                  ? undefined
+                  : {
+                      takenNames: gitSetupNames,
+                      repos: gitSetupDetail.live ? gitSetupDetail.repos : undefined,
+                      offered: {
+                        add: gitSetupAdd.kind === "allowed",
+                        connect: gitSetupOffered("connect_remote"),
+                        replace: gitSetupOffered("replace_remote_token"),
+                      },
+                      unavailableReason: hqOffers.words(gitSetupAdd),
+                      setup: gitEnvironmentSetup({
+                        orgId: activeOrganization.id,
+                        appId: creationRequest.groupId,
+                        hqProjectId: gitSetupHq,
+                        operations,
+                      }),
+                      onAdded: () => {
+                        setCreationRequest(null);
+                      },
+                    }
+              }
+              tier={groupRecipe.tier}
+              tierServices={groupRecipe.services}
+              recipe={creationRecipe(groupRecipe)}
+              recipeRereading={groupRecipe.rereading}
+              onRecipeRetry={groupRecipe.reread}
+              defaultName={proposedEnvironmentName({
+                groupName: requestedGroup.group.name,
+                roleLabel:
+                  environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
+                taken: requestedGroup.environments.flatMap(({ item }) =>
+                  item === undefined ? [] : [item.project.name],
+                ),
+              })}
+              defaultTintFor={(name) => newMateTint(candidates, name)}
+              defaultWithAgent={defaultAgentForRole(creationRequest.role)}
+              groupName={requestedGroup.group.name}
+              key={`${creationRequest.groupId}:${creationRequest.role}`}
+              onCancel={() => {
+                setCreationRequest(null);
+              }}
+              onCreate={(choice) => {
+                const { groupId, role } = creationRequest;
+                setCreationRequest(null);
+                void createEnvironment(groupId, role, choice);
+              }}
+              onOpenChange={(open) => {
+                if (!open) setCreationRequest(null);
+              }}
+              open
+              role={creationRequest.role}
+              takenBotNames={taken}
             />
           )}
-          {...(activeOrganization == null
-            ? {}
-            : { forecast: <ZeropsCreditForecast organizationId={activeOrganization.id} /> })}
-          fallbackFocus={() =>
-            document
-              .getElementById(`project-${creationRequest.groupId}`)
-              ?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]') ?? null
-          }
-          git={
-            activeOrganization === null || activeOrganization === undefined || gitSetupHq === null
-              ? undefined
-              : {
-                  takenNames: gitSetupNames,
-                  repos: gitSetupDetail.live ? gitSetupDetail.repos : undefined,
-                  offered: {
-                    add: gitSetupAdd.kind === "allowed",
-                    connect: gitSetupOffered("connect_remote"),
-                    replace: gitSetupOffered("replace_remote_token"),
-                  },
-                  unavailableReason: hqOffers.words(gitSetupAdd),
-                  setup: gitEnvironmentSetup({
-                    orgId: activeOrganization.id,
-                    appId: creationRequest.groupId,
-                    hqProjectId: gitSetupHq,
-                    operations,
-                  }),
-                  onAdded: () => {
-                    setCreationRequest(null);
-                  },
-                }
-          }
-          tier={groupRecipe.tier}
-          tierServices={groupRecipe.services}
-          recipe={creationRecipe(groupRecipe)}
-          recipeRereading={groupRecipe.rereading}
-          onRecipeRetry={groupRecipe.reread}
-          defaultName={proposedEnvironmentName({
-            groupName: requestedGroup.group.name,
-            roleLabel:
-              environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
-            taken: requestedGroup.environments.flatMap(({ item }) =>
-              item === undefined ? [] : [item.project.name],
-            ),
-          })}
-          defaultTintFor={(name) => newMateTint(candidates, name)}
-          defaultWithAgent={defaultAgentForRole(creationRequest.role)}
-          groupName={requestedGroup.group.name}
-          key={`${creationRequest.groupId}:${creationRequest.role}`}
-          onCancel={() => {
-            setCreationRequest(null);
-          }}
-          onCreate={(choice) => {
-            const { groupId, role } = creationRequest;
-            setCreationRequest(null);
-            void createEnvironment(groupId, role, choice);
-          }}
-          onOpenChange={(open) => {
-            if (!open) setCreationRequest(null);
-          }}
-          open
-          role={creationRequest.role}
-          takenBotNames={taken}
-        />
+        </WithDraftPeople>
       )}
       {creation === null ? null : (
         <ZeropsEnvironmentCreation
@@ -2730,9 +2779,7 @@ export function ZeropsProjectsContent({
 }
 
 export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boolean }) {
-  const setupChief = useChiefSetupEntry();
   const roleOffered = useRoleOffers();
-  const navigate = useNavigate();
   const { activeOrganization, organizationStatus, status } = useZeropsSession();
   // The same page is the signed-in door at `/`, so the search is read loosely
   // and through the route's own parser.
@@ -2780,22 +2827,20 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
     // overview's top carries neither a switcher nor a reload, nor an empty bar above its title (the
     // owner, 2026-10-11).
     <ZeropsHostedFrame bar={false} width="full">
-      {paints ? null : (
-        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
-      )}
+      {paints ? null : <OverviewStandInBody />}
       {scoped && !firstRun && paints ? (
         <ZeropsProjectsHeader
-          setupChief={setupChief}
           newProject={roleOffered.newProject}
-          onSetupChief={() => {
-            void navigate({ to: "/chief" });
-          }}
           notice={projectsFreshnessNotice(listing, nowMs)}
           onRetry={refresh}
         />
       ) : null}
       <div className={paints ? "contents" : "hidden"} inert={!paints}>
-        <ZeropsProjectsContent onShow={inPanel ? setPanelShow : undefined} search={search} />
+        <ZeropsProjectsContent
+          onShow={inPanel ? setPanelShow : undefined}
+          painted={paints}
+          search={search}
+        />
       </div>
     </ZeropsHostedFrame>
   );

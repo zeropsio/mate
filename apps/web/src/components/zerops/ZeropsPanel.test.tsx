@@ -379,7 +379,7 @@ describe("ZeropsPanel agent authorization ownership", () => {
         <ZeropsPanel agentAuthCard={snapshot} threadRef={THREAD_REF} />,
       );
 
-      expect(html).toContain('data-zerops-primitive="flat-card"');
+      expect(html).toContain('data-slot="card"');
       if (label !== null) {
         buttonState.handlers.get(label)?.();
       }

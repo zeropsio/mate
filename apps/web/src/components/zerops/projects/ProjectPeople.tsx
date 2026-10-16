@@ -31,7 +31,7 @@ import type {
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import { Atom } from "effect/reactivity";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   useAccountDataOptional,
@@ -46,7 +46,14 @@ import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 
-import { draftChoose, draftPrefill, draftView } from "./accessDraft.logic";
+import {
+  draftChoose,
+  draftPeople,
+  draftPrefill,
+  draftSpeaks,
+  draftView,
+  type DraftPeople,
+} from "./accessDraft.logic";
 import {
   ADD_TROUBLE,
   ProjectAccessChips,
@@ -305,36 +312,21 @@ export function ProjectAccess({
 }
 
 /**
- * A new project's access, before it exists: its creator pinned, then everyone it will reach, the
- * app's people prefilled. Says each change to `onChange` as the list the creation sends.
+ * What a new project of the app starts from: the app's places (or its Mates, where it has none),
+ * their grants and the organization's members — read again as it opens, so whoever joined since
+ * this session first read them is counted.
  */
-export function ProjectAccessDraft({
-  groupId,
-  kind,
-  onChange,
-  heading = false,
-}: {
-  /** The app it is made in; `null` for a brand new app. */
-  readonly groupId: string | null;
-  readonly kind: RoleProjectKind;
-  readonly onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void;
-  /** Drawn with its own heading; by default the creation form names the section. */
-  readonly heading?: boolean;
-}) {
+function useDraftInput(groupId: string | null, kind: RoleProjectKind) {
   const app = useGroupProjects(groupId);
-  // The prefill reads the places, or the Mates where the app has none.
   const read = useMemo(() => {
     const places = app.filter(({ kind: one }) => one !== "mate");
     return places.length > 0 ? places : app;
   }, [app]);
   const { base } = useAccessReads(read);
-  // Who the new project reaches is decided here: the members are read again as it opens, so
-  // whoever joined since this session first read them is listed.
   useDetailReadAsOpened(
     "organizationMembers",
     useZeropsSessionOptional()?.activeOrganization?.id ?? null,
   );
-  const [chosen, setChosen] = useState<ReadonlyArray<ProjectGrant> | null>(null);
   const input = useMemo(
     () => ({
       members: base.members,
@@ -349,6 +341,52 @@ export function ProjectAccessDraft({
     }),
     [base, kind, read],
   );
+  return { base, input };
+}
+
+/**
+ * The people a new environment of the app gets without asking: everyone who reaches the app now,
+ * at their level there (`draftPeople`) — what a creation that asks nothing sends.
+ */
+export function useDraftPeople(groupId: string, kind: RoleProjectKind): DraftPeople {
+  const { input } = useDraftInput(groupId, kind);
+  return useMemo(() => draftPeople(input), [input]);
+}
+
+/** Hands what `useDraftPeople` reads to a creation form drawn without data of its own. */
+export function WithDraftPeople({
+  groupId,
+  kind,
+  children,
+}: {
+  readonly groupId: string;
+  readonly kind: RoleProjectKind;
+  readonly children: (people: DraftPeople) => ReactNode;
+}) {
+  return children(useDraftPeople(groupId, kind));
+}
+
+/**
+ * A new project's access, before it exists: its creator pinned, then everyone it will reach, the
+ * app's people prefilled, under the form's name for it — drawn only where someone besides the
+ * creator is in it or can be added (`draftSpeaks`). Says each change to `onChange` as the list the
+ * creation sends.
+ */
+export function ProjectAccessDraft({
+  groupId,
+  kind,
+  onChange,
+  label,
+}: {
+  /** The app it is made in; `null` for a brand new app. */
+  readonly groupId: string | null;
+  readonly kind: RoleProjectKind;
+  readonly onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void;
+  /** What the creation form names the section: "Project access", "Who can work with this Mate". */
+  readonly label: string;
+}) {
+  const { base, input } = useDraftInput(groupId, kind);
+  const [chosen, setChosen] = useState<ReadonlyArray<ProjectGrant> | null>(null);
   const prefill = useMemo(() => draftPrefill(input), [input]);
   const list = chosen ?? prefill ?? NO_GRANTS;
   const view = useMemo(() => draftView({ ...input, list }), [input, list]);
@@ -383,7 +421,14 @@ export function ProjectAccessDraft({
       ),
     [base.members.list, list],
   );
-  return <ProjectAccessChips heading={heading} onAdd={add} onChoose={choose} view={view} />;
+  // Someone alone in the organization is asked nothing: the creator's own chip says nothing new.
+  if (!draftSpeaks(view)) return null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm">{label}</span>
+      <ProjectAccessChips heading={false} label={label} onAdd={add} onChoose={choose} view={view} />
+    </div>
+  );
 }
 
 /** What a creation role makes, as the access draft names the project. */

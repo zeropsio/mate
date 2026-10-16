@@ -17,7 +17,7 @@ import {
   themeColorToNativeColor,
   type MobileThemeVariables,
 } from "@t3tools/shared/mobileThemeVariables";
-import { MATE_MARK, ZEROPS_MARK } from "@t3tools/shared/brand";
+import { MATE_MARK, MOTION, RADII, TYPE_SCALE, ZEROPS_MARK } from "@t3tools/shared/brand";
 
 import {
   getThemeTokenProjectionOutputs,
@@ -220,6 +220,27 @@ describe("generate theme tokens", () => {
     expect(web.contents.match(/<meta name="theme-color" content="([^"]+)"/u)?.[1]).toBe(
       themeColorToNativeColor(ZEROPS_THEME.variants!.dark!.chrome),
     );
+  });
+
+  it("projects the type scale, radii and motion into the web stylesheet from the shared scale", () => {
+    const css = getThemeTokenProjectionOutputs().find(
+      (output) => output.target === "apps/web/src/index.css",
+    )!.contents;
+    const declared = (name: string) =>
+      new RegExp(`^\\s*${name}: ([^;]+);$`, "mu").exec(css)?.[1]?.trim();
+
+    for (const [step, { fontSize, lineHeight }] of Object.entries(TYPE_SCALE)) {
+      expect(declared(`--text-${step}`)).toBe(`${fontSize / 16}rem`);
+      expect(declared(`--text-${step}--line-height`)).toBe(`${lineHeight / 16}rem`);
+    }
+    for (const [step, radius] of Object.entries(RADII)) {
+      expect(declared(`--radius-${step}`)).toBe(`${radius / 16}rem`);
+    }
+    for (const [step, duration] of Object.entries(MOTION.duration)) {
+      expect(declared(`--duration-${step}`)).toBe(`${duration}ms`);
+    }
+    expect(declared("--ease-out-strong")).toBe(MOTION.easing.out);
+    expect(declared("--ease-in-out-strong")).toBe(MOTION.easing.inOut);
   });
 
   it("projects the Zerops favicon and boot splash from the shared mark", () => {

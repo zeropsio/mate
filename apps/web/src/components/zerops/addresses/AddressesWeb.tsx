@@ -1,7 +1,7 @@
 /**
  * The sheet's *Web addresses*: the place's own domains, each with how far it is from answering and
  * — while it waits for the person's DNS — exactly the records it needs; each service's zerops.app
- * address and its switch; and *Add your domain*, the add flow inline (board "Mate Domain Doors",
+ * address and its switch; and *Put it on your domain*, the add flow inline (board "Mate Domain Doors",
  * option 2). Closing an address or removing a domain asks first, and a write that would put
  * somebody else's waiting change live names it before it does.
  */
@@ -17,6 +17,7 @@ import { useId, useState } from "react";
 
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
+import { EmptyState } from "../../ui/empty";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
@@ -42,7 +43,6 @@ import {
   guardTitle,
   OthersList,
   RowMeta,
-  SheetEmpty,
   SheetRow,
   SheetSection,
   Trouble,
@@ -105,11 +105,11 @@ export function AddressesWeb({
           <Button
             disabled={ctx.hold}
             onClick={() => setMode({ kind: "add-domain" })}
-            size="xs"
-            variant="ghost-primary"
+            size="sm"
+            variant="ghost"
           >
             <PlusIcon />
-            Add your domain
+            Put it on your domain
           </Button>
         )
       }
@@ -170,11 +170,11 @@ export function AddressesWeb({
         />
       ))}
       {place.domains.length === 0 && place.zerops.length === 0 ? (
-        <SheetEmpty>
+        <EmptyState size="row">
           {place.webTargets.length === 0
             ? `Nothing in ${ctx.placeName} serves web pages yet.`
             : `${ctx.placeName} has no web address yet.`}
-        </SheetEmpty>
+        </EmptyState>
       ) : null}
     </SheetSection>
   );
@@ -218,7 +218,7 @@ export function WaitingNotice({
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={busy || held} onClick={onPublish} size="sm" variant="outline">
+          <Button disabled={busy || held} onClick={onPublish} size="sm" variant="secondary">
             {busy ? <Spinner aria-hidden="true" /> : null}
             {waiting.length === 1 ? "Put it live" : "Put them live"}
           </Button>
@@ -322,7 +322,7 @@ function DomainRow({
                   <Button
                     aria-label={`More for ${domain.domainName}`}
                     size="icon-sm"
-                    variant="ghost-muted"
+                    variant="ghost"
                   />
                 }
               >
@@ -452,8 +452,8 @@ function Records({
           <Button
             aria-expanded={ways}
             onClick={() => setWays((open) => !open)}
-            size="xs"
-            variant="ghost-muted"
+            size="sm"
+            variant="ghost"
           >
             <ChevronRightIcon className={ways ? "rotate-90" : undefined} />
             Other ways
@@ -466,7 +466,7 @@ function Records({
                 <b className="font-medium text-foreground">Your own IPv4:</b> then the A record
                 alone is enough.{" "}
                 {onOwnIpv4 === undefined ? null : (
-                  <Button onClick={onOwnIpv4} size="xs" variant="link">
+                  <Button onClick={onOwnIpv4} size="sm" variant="link">
                     Get your own IPv4
                   </Button>
                 )}
@@ -509,8 +509,8 @@ function CheckAgain({
               routingId: domain.routingId,
             })
           }
-          size="xs"
-          variant="outline"
+          size="sm"
+          variant="secondary"
         >
           {busy ? <Spinner aria-hidden="true" /> : null}
           {busy ? "Checking…" : "Check again"}
@@ -631,7 +631,7 @@ function ZeropsRow({
   );
 }
 
-/** *Add your domain*: the domain, where it leads, its www twin; then the add, or the ask first. */
+/** *Put it on your domain*: the domain, where it leads, its www twin; then the add, or the ask first. */
 function AddDomainForm({
   ctx,
   existing,

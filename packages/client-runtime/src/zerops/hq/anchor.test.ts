@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import type { ZeropsOrganizationMember } from "../api.ts";
-import { findOfficialHq, hqAnchorName, ownersAndAdmins } from "./anchor.ts";
+import { findOfficialHq, hqAnchorName, hqProjectsOf, ownersAndAdmins } from "./anchor.ts";
 
 const token = (
   name: string,
@@ -74,5 +74,23 @@ describe("ownersAndAdmins", () => {
         token(ANCHOR),
       ]).map((member) => member.user?.fullName),
     ).toEqual(["Ada", "Eva"]);
+  });
+});
+
+describe("hqProjectsOf", () => {
+  it.each<[string, Parameters<typeof hqProjectsOf>[0], ReadonlyArray<string>]>([
+    [
+      "the official HQ's project is HQ's own",
+      { kind: "official", projectId: "hq1", address: "a" },
+      ["hq1"],
+    ],
+    [
+      "every project an unclear set of anchors names is HQ's own",
+      { kind: "unclear", projectIds: ["hq1", "hq2"] },
+      ["hq1", "hq2"],
+    ],
+    ["an organization with no HQ has no HQ project", { kind: "none" }, []],
+  ])("%s", (_title, hq, projects) => {
+    expect([...hqProjectsOf(hq)]).toEqual(projects);
   });
 });

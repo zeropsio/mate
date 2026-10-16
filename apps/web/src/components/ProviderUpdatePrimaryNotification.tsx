@@ -91,7 +91,7 @@ function addProviderUpdateToast(input: {
         children: "Settings",
         onClick: () => input.openSettings(toastId),
       },
-      actionVariant: "outline",
+      actionVariant: "secondary",
       data: {
         hideCopyButton: true,
       },
@@ -292,7 +292,7 @@ export function ProviderUpdatePrimaryNotification() {
                 children: "Settings",
                 onClick: openSettings,
               },
-        actionVariant: oneClickProviders.length > 0 ? "default" : "outline",
+        actionVariant: oneClickProviders.length > 0 ? "primary" : "secondary",
         data: {
           leadingIcon:
             updateProviders.length === 1 ? (
@@ -306,7 +306,7 @@ export function ProviderUpdatePrimaryNotification() {
                   children: "Settings",
                   onClick: openSettings,
                 },
-                secondaryActionVariant: "outline" as const,
+                secondaryActionVariant: "secondary" as const,
               }
             : {}),
         },

@@ -127,7 +127,7 @@ describe("the right panel's new-tab shortcut", () => {
     (document.activeElement as HTMLElement | null)?.blur();
     const event = await press("t", { metaKey: true });
     expect(event.defaultPrevented).toBe(true);
-    expect(document.activeElement?.getAttribute("aria-label")).toBe("Open a surface");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Open a page");
   });
 
   it.each(["Win32", "Linux x86_64"])(

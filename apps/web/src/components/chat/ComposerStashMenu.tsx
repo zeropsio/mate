@@ -116,8 +116,8 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
       >
         <div className="flex h-7 items-center justify-end px-2 pt-1">
           <Button
-            variant="ghost-muted"
-            size="icon-micro"
+            variant="ghost"
+            size="icon-sm"
             aria-label="Close stash"
             onPointerDown={(event) => event.preventDefault()}
             onClick={onClose}
@@ -182,7 +182,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                   </span>
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon-sm"
                     className="pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
                     aria-label="Delete stashed prompt"
                     onClick={(event) => {

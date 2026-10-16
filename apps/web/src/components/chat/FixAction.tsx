@@ -1,6 +1,7 @@
 import { runFixMate, useFixMates } from "../../zerops/fixMates";
 import { useAskMateToFix, type FixProblem } from "../../zerops/fixRequest";
 import { useZeropsSessionOptional } from "../../zerops/sessionContext";
+import { Button } from "~/components/ui/button";
 
 type FixOrigin = { readonly projectId: string; readonly groupId: string | undefined } | undefined;
 
@@ -34,12 +35,8 @@ function FixActionOffer({
   const askToFix = useAskMateToFix();
   if (fixer === undefined) return null;
   return (
-    <button
-      className="run-result-action"
-      onClick={() => askToFix(fixer.mateProjectId, problem)}
-      type="button"
-    >
+    <Button size="sm" variant="link" onClick={() => askToFix(fixer.mateProjectId, problem)}>
       Ask {fixer.name} to fix it
-    </button>
+    </Button>
   );
 }

@@ -6,6 +6,7 @@
  * Served by the dev server at `/design-overview.html` (`?theme=dark`). It stands beside a blank
  * left menu at the owner's 435 px; open it at 1786 × 1000. A place's line opens its panel; a
  * lifted Mate's buttons say what they would do in `window.__overviewHarness.acted`.
+ * `?arrival=developer|guest|admin` draws the first visit's welcome for someone just invited.
  *
  * Fixtures only. Nothing here ships — `design-overview.html` is not `index.html`, and no route
  * imports this module.
@@ -25,7 +26,8 @@ import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { Avatar, MateFace } from "~/components/zerops/primitives";
+import { ArrivalWelcome } from "~/components/zerops/projects/ArrivalWelcome";
+import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "~/components/zerops/projects/PlacePanel";
@@ -47,6 +49,7 @@ import {
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { placeAddresses, withPlaceAddresses } from "~/zerops/__fixtures__/placeAddresses";
 import "../index.css";
+import { Button } from "~/components/ui/button";
 
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
@@ -275,7 +278,7 @@ const readPlace = (
 
 /**
  * The places' addresses the panels read, in the account `org`: one with its own domain live and
- * its www twin waiting for DNS, one with none yet (Add your domain), one of two services with a
+ * its www twin waiting for DNS, one with none yet (Put it on your domain), one of two services with a
  * domain getting its certificate. The rest are still being read: as their listing says them.
  */
 const inAccount = withPlaceAddresses({
@@ -574,7 +577,7 @@ const HARNESS_CHANGES: ReadonlyArray<CardChange> = [true, false].map((open, inde
   pull: {
     repository: "app",
     number: index + 1,
-    title: open ? "Promo microsite: the rules and the receipt upload" : "The group's import files",
+    title: open ? "Promo microsite: the rules and the receipt upload" : "Setup for new Mates",
     kind: "code",
     mateProjectId: "p-wren",
     url: undefined,
@@ -593,6 +596,15 @@ const HARNESS_CHANGES: ReadonlyArray<CardChange> = [true, false].map((open, inde
   at: undefined,
 }));
 
+/** Who has just arrived, by `?arrival=`: their membership as Zerops stores it. */
+const ARRIVAL =
+  (
+    {
+      developer: { roleCode: "NO_ACCESS", canCreateProjects: true },
+      guest: { roleCode: "NO_ACCESS", canCreateProjects: false },
+    } as Record<string, { roleCode: string; canCreateProjects: boolean }>
+  )[params.get("arrival") ?? ""] ?? null;
+
 function HarnessPage() {
   return (
     <div className="flex h-dvh bg-background text-foreground">
@@ -601,10 +613,24 @@ function HarnessPage() {
         <div className="flex w-full flex-col gap-6 px-6 pt-6 pb-12">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-medium text-foreground">Overview</h1>
-            <button className="ov-btn" type="button">
-              New project
-            </button>
+            <Button variant="secondary">New project</Button>
           </div>
+          {ARRIVAL === null ? null : (
+            <ArrivalWelcome
+              apps={PROJECTS.slice(0, 1).map(({ entry }) => ({
+                groupId: entry.group.groupId,
+                name: entry.group.name,
+                mine: false,
+                addMate: ARRIVAL.canCreateProjects !== false,
+              }))}
+              onStart={() => {}}
+              orgId="harness"
+              organizationName="Acme"
+              painted
+              settled
+              viewer={ARRIVAL}
+            />
+          )}
           <ZeropsProjectsFlow<Mate>
             cardPlaces={(entry) => {
               const found = byId.get(entry.group.groupId);
@@ -633,12 +659,7 @@ function HarnessPage() {
               return people.length === 0 ? null : (
                 <span className="ov-card-people">
                   {people.map((person) => (
-                    <Avatar
-                      className="size-5 text-3xs"
-                      initials={person.initials}
-                      key={person.userId}
-                      size="xs"
-                    />
+                    <PersonAvatar key={person.userId} name={person.name} size={20} />
                   ))}
                 </span>
               );
@@ -678,9 +699,7 @@ function HarnessPage() {
                       />
                     )
                   }
-                  face={
-                    <MateFace className="size-8" size="md" state={entry.face} tint={entry.tint} />
-                  }
+                  face={<MateFace size={32} state={entry.face} tint={entry.tint} />}
                   key={entry.id}
                   name={entry.name}
                   onOpen={() => acted.push(`open:${entry.id}`)}
@@ -689,9 +708,7 @@ function HarnessPage() {
                 />
               );
             }}
-            renderMateFace={(entry) => (
-              <MateFace className="size-4" size="sm" state="idle" tint={entry.tint} />
-            )}
+            renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
             renderPlacePanel={(entry, line) => {
               const found = byId.get(entry.group.groupId);
               if (found === undefined) return null;
@@ -699,24 +716,15 @@ function HarnessPage() {
                 <PlacePanel
                   groupId={entry.group.groupId}
                   actions={found.actions.map((label, index) => (
-                    <button
-                      className="ov-btn"
-                      data-main={index === 0 ? "true" : undefined}
-                      key={label}
-                      type="button"
-                    >
+                    <Button key={label} variant={index === 0 ? "primary" : "secondary"}>
                       {label}
-                    </button>
+                    </Button>
                   ))}
                   model={{ ...found.panel, line }}
                 />,
               );
             }}
-            renderReleaseVerb={() => (
-              <button className="ov-btn" data-main="true" type="button">
-                Review release
-              </button>
-            )}
+            renderReleaseVerb={() => <Button>Review release</Button>}
             ungrouped={[]}
           />
         </div>

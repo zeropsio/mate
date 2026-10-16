@@ -275,7 +275,7 @@ export function SidebarCrewMinis({ facts }: { readonly facts: CrewRowFacts }): R
                   className="size-full"
                   known={facts.known}
                   shape={mini.shape}
-                  size="dot"
+                  size={16}
                   state={pose}
                   style={
                     march < 0

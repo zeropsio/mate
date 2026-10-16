@@ -38,7 +38,7 @@ import {
 describe("reviewKindLine", () => {
   it.each([
     ["change", "code", "Review · change"],
-    ["change", "recipe", "Review · recipe change"],
+    ["change", "recipe", "Review · setup change"],
     ["release", undefined, "Release"],
     ["rollback", undefined, "Roll back"],
     ["crew-task", undefined, "Crew task"],
@@ -644,15 +644,15 @@ describe("the sheet's footnote: what happens next", () => {
     [
       "no stage: the review's own words",
       { state: "ready", stage: undefined, live: "v1" },
-      "Squash-merges.",
+      "Adds this change to main.",
     ],
     [
       "merged: the review's own words",
       { state: "merged", stage: "stage", live: "v1" },
-      "Squash-merges.",
+      "Adds this change to main.",
     ],
   ] as const)("%s", (_case, input, words) => {
-    expect(mergeFoot({ ...input, consequence: "Squash-merges." })).toBe(words);
+    expect(mergeFoot({ ...input, consequence: "Adds this change to main." })).toBe(words);
   });
 
   it.each([
@@ -848,7 +848,7 @@ describe("a change's receipt: each part's preview", () => {
     expect(
       mergeFoot({
         state: "ready",
-        consequence: "Squash-merges.",
+        consequence: "Adds this change to main.",
         stage: "stage",
         live: undefined,
         warning: gaps?.warning,

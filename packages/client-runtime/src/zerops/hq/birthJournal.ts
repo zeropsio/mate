@@ -51,6 +51,7 @@ const Record = Schema.Struct({
   anchorTokenId: Schema.optionalKey(Schema.String),
   syncProcessId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   attempt: Schema.optionalKey(Schema.Number),
+  startedAt: Schema.optionalKey(Schema.Number),
   stopped: Schema.optionalKey(Schema.NullOr(Stop)),
 });
 const Snapshot = Schema.fromJsonString(

@@ -29,7 +29,7 @@ export function ZeropsGitCredentialsView({
           <code>git clone {cloneUrl}</code>
         </pre>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={() => {
             void writeTextToClipboard(`git clone ${cloneUrl}`, "clone command").then(
@@ -52,7 +52,7 @@ export function ZeropsGitCredentialsView({
       </p>
       <div>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           disabled={
             busy || state.credentials.state !== "known" || state.action.kind === "unresolved"
@@ -83,7 +83,7 @@ export function ZeropsGitCredentialsView({
               aria-label="Git password"
               value={state.action.credential.token}
             />
-            <Button variant="outline" size="sm" onClick={onCopy}>
+            <Button variant="secondary" size="sm" onClick={onCopy}>
               Copy password
             </Button>
           </div>

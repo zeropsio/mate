@@ -32,7 +32,7 @@ export function StopPublicAccessStatus({
             : `Publishing ${pending.map((route) => route.host).join(", ")}…`}
       </span>
       {failed ? (
-        <Button size="sm" variant="outline" onClick={access.again}>
+        <Button size="sm" variant="secondary" onClick={access.again}>
           Again
         </Button>
       ) : null}

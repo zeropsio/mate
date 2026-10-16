@@ -17,6 +17,15 @@ import type { ProposalDecision } from "./proposal.logic";
 const source = vi.hoisted(() => ({
   person: undefined as HqProjectPeople | undefined,
   addresses: undefined as PlaceAddresses | undefined,
+  members: undefined as unknown,
+  projects: undefined as unknown,
+  placements: undefined as unknown,
+  grants: undefined as unknown,
+  unread: {
+    projects: { complete: false, projects: [] },
+    placements: { complete: false },
+    grants: {},
+  },
   decision: undefined as ProposalDecision | undefined,
   record: vi.fn(async (_next: ProposalDecision) => null),
   run: vi.fn(async (_intent: unknown) => ({ ok: true })),
@@ -35,11 +44,27 @@ vi.mock("~/zerops/ZeropsAccountData", async () => {
           source.listeners.add(listener);
           return () => source.listeners.delete(listener);
         },
-        () => (projection.name === "addresses" ? source.addresses : source.person),
+        () =>
+          projection.name === "addresses"
+            ? source.addresses
+            : projection.name === "organizationMembers"
+              ? source.members
+              : projection.name === "organizationProjects"
+                ? (source.projects ?? source.unread.projects)
+                : projection.name === "inventoryPlacementStatus"
+                  ? (source.placements ?? source.unread.placements)
+                  : projection.name === "projectsGrants"
+                    ? (source.grants ?? source.unread.grants)
+                    : source.person,
       ),
     useDetailDemand: () => undefined,
   };
 });
+vi.mock("~/zerops/accountHq", () => ({
+  useAccountHq: () => ({
+    hq: { kind: "official", projectId: "hq", address: "https://hq.example" },
+  }),
+}));
 vi.mock("~/zerops/ownChief", () => ({ useOwnChief: () => "readers-chief" }));
 vi.mock("~/zerops/useZeropsEnvironmentProject", () => ({
   useZeropsEnvironmentProject: () => ({ orgId: "org", projectId: "source-mate" }),
@@ -63,6 +88,10 @@ afterEach(async () => {
   document.body.innerHTML = "";
   source.person = undefined;
   source.addresses = undefined;
+  source.members = undefined;
+  source.projects = undefined;
+  source.placements = undefined;
+  source.grants = undefined;
   source.decision = undefined;
   useAddressesSheet.getState().close();
   source.run.mockClear();
@@ -145,7 +174,7 @@ describe("a Mate can ask its Chief only when one exists", () => {
       expect(document.querySelector("[data-proposal-recipient]")).toBeNull();
       expect(decisions().map((button) => button.textContent)).toEqual(["Decline"]);
       const setup = [...document.querySelectorAll("button")].find(
-        (button) => button.textContent === "Set up your Chief",
+        (button) => button.textContent === "Set up Chief",
       );
       expect(setup).toBeDefined();
       await act(async () => setup!.click());
@@ -319,5 +348,131 @@ describe("the Chief's proposal to put a project on a domain", () => {
     expect(document.querySelector("[data-dns-records]")?.textContent).toContain(
       "Keep both: the shared IPv4 needs the AAAA.",
     );
+  });
+});
+
+describe("an access proposal's real card", () => {
+  const accessOffer = {
+    proposal: {
+      id: "access",
+      kind: "access.set",
+      summary: "Access to Contoso: Dana full access, Greta read only",
+      reason: "They start on the shop today.",
+      projectId: "pProd",
+      projectName: "Contoso",
+      params: {
+        projects: [
+          { id: "pProd", name: "Contoso - production" },
+          { id: "pStage", name: "Contoso - stage" },
+        ],
+        people: [
+          { person: "Dana", level: "full" },
+          { person: "greta@x.io", level: "read" },
+        ],
+      },
+    } satisfies ZeropsProposal,
+  } as unknown as ZeropsOperation;
+  const members = (list: ReadonlyArray<{ id: string; name: string; email: string }>) => ({
+    fact: { kind: "known" },
+    members: list.map(({ id, name, email }) => ({
+      id,
+      roleCode: "NO_ACCESS",
+      canCreateProjects: true,
+      user: { id: `u-${id}`, fullName: name, firstName: name.split(" ")[0], email },
+    })),
+  });
+  const press = async (label: string) => {
+    const button = [...document.querySelectorAll("button")].find(
+      (one) => one.textContent === label,
+    );
+    await act(async () => button!.click());
+  };
+  const first = operation;
+  afterEach(() => {
+    operation = first;
+  });
+  const organization = () => {
+    source.projects = {
+      complete: true,
+      projects: [
+        { id: "pProd", name: "Contoso - production" },
+        { id: "pStage", name: "Contoso - stage" },
+      ],
+    };
+    source.placements = { complete: true };
+  };
+
+  it("approving it gives each person their access as the person, on every project it names", async () => {
+    operation = accessOffer;
+    organization();
+    source.members = members([
+      { id: "cu-dana", name: "Dana Developer", email: "dana@x.io" },
+      { id: "cu-greta", name: "Greta Guest", email: "greta@x.io" },
+    ]);
+    await draw();
+    await press("Approve");
+    expect(source.run).toHaveBeenCalledWith({
+      kind: "set-project-access",
+      orgId: "org",
+      changes: [
+        { clientUserId: "cu-dana", projectId: "pProd", roleCode: "ADMIN" },
+        { clientUserId: "cu-dana", projectId: "pStage", roleCode: "ADMIN" },
+        { clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" },
+        { clientUserId: "cu-greta", projectId: "pStage", roleCode: "READ_ONLY" },
+      ],
+    });
+    expect(source.record.mock.calls.map(([next]) => next.state)).toEqual(["running", "done"]);
+  });
+
+  it("offers no Approve for a person nobody in the organization is, and says how to invite them", async () => {
+    operation = accessOffer;
+    source.members = members([{ id: "cu-dana", name: "Dana Developer", email: "dana@x.io" }]);
+    organization();
+    await draw();
+    expect(document.body.textContent).toContain(
+      "No one in your organization is greta@x.io. Invite them from Team, then ask again.",
+    );
+    await press("Approve");
+    expect(source.run).not.toHaveBeenCalled();
+  });
+
+  it("holds Approve until HQ says who owns these Mates, so nobody's own Mate is written over", async () => {
+    operation = accessOffer;
+    source.members = members([
+      { id: "cu-dana", name: "Dana Developer", email: "dana@x.io" },
+      { id: "cu-greta", name: "Greta Guest", email: "greta@x.io" },
+    ]);
+    organization();
+    source.placements = { complete: false };
+    await draw();
+    expect(document.body.textContent).toContain("Reading who owns these Mates…");
+    await press("Approve");
+    expect(source.run).not.toHaveBeenCalled();
+  });
+
+  it("its card says who gets which level on which project, what changes from today, and what it leaves out", async () => {
+    operation = accessOffer;
+    source.members = members([
+      { id: "cu-dana", name: "Dana Developer", email: "dana@x.io" },
+      { id: "cu-greta", name: "Greta Guest", email: "greta@x.io" },
+    ]);
+    organization();
+    source.projects = {
+      complete: true,
+      projects: [{ id: "pProd", name: "Contoso - production" }],
+    };
+    source.grants = {
+      pProd: { status: "ready", grants: [{ clientUserId: "cu-greta", roleCode: "READ_ONLY" }] },
+    };
+    await draw();
+    const lines = (part: string) =>
+      [...document.querySelectorAll(`[data-proposal-${part}] li`)].map((li) => li.textContent);
+    expect(lines("access")).toEqual([
+      "Dana Developer · Full on Contoso - production · new",
+      "Greta Guest · Read on Contoso - production · unchanged",
+    ]);
+    expect(lines("left-out")).toEqual([
+      "Left out: Contoso - stage: not a project in your organization",
+    ]);
   });
 });

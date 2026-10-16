@@ -365,7 +365,7 @@ describe("ZeropsGroupPane", () => {
       const markup = render({ environments: [], slots: slots({}) });
       expect(markup).toContain("Environments");
       expect(markup).toContain("Add stage");
-      expect(markup).toContain("Add production");
+      expect(markup).toContain("Put it live");
     });
 
     it("offers no Add HQ does not offer, and says a tier waits for the recipe", () => {
@@ -390,7 +390,7 @@ describe("ZeropsGroupPane", () => {
         const markup = render({ environments: [], slots: slots({ devstages }) });
         expect(markup).toContain("Ada — deployed by its agent");
         expect(markup).not.toContain("Add stage");
-        expect(markup).toContain("Add production");
+        expect(markup).toContain("Put it live");
       });
     });
 
@@ -401,7 +401,7 @@ describe("ZeropsGroupPane", () => {
       });
       expect(markup).toContain("Vera — deployed by its agent");
       expect(markup).not.toContain("Add stage");
-      expect(markup).toContain("Add production");
+      expect(markup).toContain("Put it live");
     });
 
     it("says a production being created is being set up, and offers no second Add for it", () => {
@@ -410,7 +410,7 @@ describe("ZeropsGroupPane", () => {
         slots: slots({ pending: [{ id: "p-new", tier: "production" }] }),
       });
       expect(markup).toContain("Setting up production…");
-      expect(markup).not.toContain("Add production");
+      expect(markup).not.toContain("Put it live");
     });
 
     it("says a half-made environment is unfinished, with Finish setup and no Add for its tier", () => {
@@ -420,7 +420,7 @@ describe("ZeropsGroupPane", () => {
       });
       expect(markup).toContain("Setup isn&#x27;t finished");
       expect(markup).toContain("Finish setup");
-      expect(markup).not.toContain("Add production");
+      expect(markup).not.toContain("Put it live");
       expect(markup).not.toContain("Waiting for the Mate&#x27;s recipe");
     });
 
@@ -436,7 +436,7 @@ describe("ZeropsGroupPane", () => {
         }),
       });
       expect(markup).toContain("No release yet");
-      expect(markup).not.toContain("Add production");
+      expect(markup).not.toContain("Put it live");
     });
   });
 
@@ -1065,10 +1065,10 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
       mayDeployAgain: true,
     });
     expect(offered).toContain('data-zerops-surface="stop-not-in-zerops"');
-    expect(offered).toContain("db · declared in the recipe, not in Zerops");
+    expect(offered).toContain("db · in its setup files, not in Zerops");
     expect(offered).toContain("Add db");
     const told = renderStop({ tier: "stage", services: TWO_LIVE, notInZerops: ["db"] });
-    expect(told).toContain("db · declared in the recipe, not in Zerops");
+    expect(told).toContain("db · in its setup files, not in Zerops");
     expect(told).not.toContain("Add db");
   });
 
@@ -1873,7 +1873,7 @@ it("An environment page explains HQ's refusal in words without opening project r
       </RegistryContext.Provider>,
     );
     expect(markup).toContain(
-      "You need at least Basic user access to one of this project&#x27;s Zerops projects to see its changes.",
+      "You need more than Read access to one of this project&#x27;s Zerops projects to see its changes.",
     );
     expect(markup).not.toContain("changes_not_seen");
     expect(platform.projectReads).toEqual([]);

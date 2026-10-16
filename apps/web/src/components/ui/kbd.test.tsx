@@ -1,15 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { KeyChip } from "./KeyChip";
+import { Kbd } from "./kbd";
 
-describe("KeyChip", () => {
+describe("Kbd", () => {
   it("renders a glyph with keyboard semantics", () => {
     const key = "⌘K";
-    const html = renderToStaticMarkup(<KeyChip aria-label={`${key} key`}>{key}</KeyChip>);
+    const html = renderToStaticMarkup(<Kbd aria-label={`${key} key`}>{key}</Kbd>);
 
     expect(html.startsWith("<kbd")).toBe(true);
-    expect(html).toContain('data-zerops-primitive="key-chip"');
+    expect(html).toContain('data-slot="kbd"');
     expect(html).toContain(`aria-label="${key} key"`);
   });
 });

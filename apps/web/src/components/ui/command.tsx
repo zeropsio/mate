@@ -69,7 +69,7 @@ function CommandDialogPopup({
           <CommandDialogPrimitive.Close
             aria-label="Close"
             className="absolute end-2 top-2"
-            render={<Button size="icon" variant="ghost" />}
+            render={<Button size="icon-md" variant="ghost" />}
           >
             <XIcon />
           </CommandDialogPrimitive.Close>
@@ -213,8 +213,8 @@ function CommandFooterAction({
   return (
     <Button
       {...props}
-      variant="ghost-muted"
-      size="xs"
+      variant="ghost"
+      size="sm"
       className={cn("h-auto px-2 text-xs hover:bg-transparent", className)}
     />
   );

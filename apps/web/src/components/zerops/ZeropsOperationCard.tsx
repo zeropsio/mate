@@ -77,10 +77,12 @@ import {
 import { OperationSubjectLine } from "./operation/OperationSubjectLine";
 import { operationSubject, type OperationSubject } from "./operation/subject";
 import { versionLabel } from "./operation/version";
-import { FlatCard, MicroLabel, ProcessSteps, StatusDot, type ProcessStep } from "./primitives";
+import { Card } from "../ui/card";
+import { MicroLabel, ProcessSteps, STATUS_BADGE_TONE, type ProcessStep } from "./primitives";
 import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { ZeropsReadResultBody } from "./ZeropsToolResultCards";
+import { Badge } from "~/components/ui/badge";
 
 export interface ObservedRegion {
   /** Replaces `operation.steps` for the body while an observation is attached; a deploy's is empty. */
@@ -199,13 +201,11 @@ function CardHeader({
           role="status"
         >
           <KindGlyph kind={operation.kind} />
-          <StatusDot
-            className={cn("shrink-0 text-muted-foreground", status !== undefined && "text-xs")}
-            label={status?.word ?? operation.statusWord}
-            pulse={dotTone === "busy"}
-            sentence={status !== undefined}
-            tone={dotTone}
-          />
+          <span className={cn("shrink-0 text-muted-foreground", status !== undefined && "text-xs")}>
+            <Badge dot pulse={dotTone === "busy"} tone={STATUS_BADGE_TONE[dotTone]}>
+              {status?.word ?? operation.statusWord}
+            </Badge>
+          </span>
           <OperationSubjectLine running={running} subject={subject} />
         </div>
         <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-xs">
@@ -227,7 +227,9 @@ function CardHeader({
         className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-xs"
         role="status"
       >
-        <StatusDot label={operation.statusWord} pulse={tone === "busy"} sentence tone={tone} />
+        <Badge dot pulse={tone === "busy"} tone={STATUS_BADGE_TONE[tone]}>
+          {operation.statusWord}
+        </Badge>
         <HeaderMeta durationText={durationText} led running={running} />
       </span>
     </header>
@@ -760,14 +762,11 @@ export function ZeropsOperationCard(props: {
     links.length > 0 ||
     props.onRestartRetry !== undefined;
 
-  const Frame = headless ? HeadlessFrame : FlatCard;
+  // On its own a card of the kit (a failed one wears its border in the failed ink, `index.css`);
+  // inside another card's frame only its layout.
+  const Frame = headless ? HeadlessFrame : FlatFrame;
   return (
     <Frame
-      className={cn(
-        "@container flex flex-col gap-2 overflow-hidden",
-        !headless && "px-3.5 py-3",
-        !headless && tone === "failed" && "border-[var(--zerops-status-failed)]/35",
-      )}
       data-zerops-card
       data-zerops-card-kind={operation.kind}
       data-zerops-card-tone={tone}
@@ -824,7 +823,7 @@ export function ZeropsOperationCard(props: {
               ) : null}
               {props.onRestartRetry === undefined ? null : (
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   disabled={retryBusy || props.restartRetryDisabled}
                   onClick={async () => {
@@ -865,10 +864,22 @@ export function ZeropsOperationCard(props: {
 }
 
 /** A headless card's frame: no surface of its own, the line above it is its head. */
-function HeadlessFrame({ className, children, ...props }: ComponentProps<"div">) {
+function HeadlessFrame({ children, ...props }: ComponentProps<"div">) {
   return (
-    <div className={className} data-zerops-card-headless {...props}>
+    <div
+      className="@container flex flex-col gap-2 overflow-hidden"
+      data-zerops-card-headless
+      {...props}
+    >
       {children}
     </div>
+  );
+}
+
+function FlatFrame({ children, ...props }: ComponentProps<"div">) {
+  return (
+    <Card className="@container overflow-hidden" size="sm" variant="flat" {...props}>
+      {children}
+    </Card>
   );
 }

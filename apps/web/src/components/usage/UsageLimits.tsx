@@ -53,8 +53,10 @@ import {
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { Avatar } from "../zerops/primitives";
-import { PageWaitLine, WaitLine } from "../zerops/WaitLine";
+import { PersonAvatar } from "../zerops/primitives";
+import { Loading } from "../ui/loading";
+import { Skeleton } from "../ui/skeleton";
+import { WaitLine } from "../zerops/WaitLine";
 import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { PROVIDER_PRESENTATION } from "./usageProviders";
@@ -216,6 +218,34 @@ export function LimitWindows({
 }
 
 /**
+ * One account while the limits are read, in `AccountLimits`' own boxes — its heading's line and two
+ * windows' rows — so the account paints where its stand-in stood.
+ */
+function AccountLimitsStandIn() {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex h-5 items-center gap-2">
+        <Skeleton className="size-5 shrink-0" shape="pill" />
+        <Skeleton className="h-3 w-40" />
+      </div>
+      <div className="grid grid-cols-[11rem_minmax(0,1fr)_7rem] gap-x-4 gap-y-1">
+        {[0, 1].map((row) => (
+          <Fragment key={row}>
+            <span className="flex h-6 items-center">
+              <Skeleton className="h-3 w-full" />
+            </span>
+            <span className="flex h-6 items-center">
+              <Skeleton className="h-3 w-full" shape="pill" />
+            </span>
+            <span />
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Heading shared by local providers and source accounts: icon, driver, instance, plan,
  * and the signed-in email blurred until clicked, as provider settings do.
  */
@@ -307,7 +337,7 @@ function PlaceChips({ places }: { readonly places: readonly LimitsPlace[] }) {
           className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
         >
           {place.owner ? (
-            <Avatar initials={place.owner.initials} size="xs" src={place.owner.avatarUrl} />
+            <PersonAvatar name={place.owner.name} picture={place.owner.avatarUrl} size={16} />
           ) : null}
           <span className="truncate">{place.name}</span>
           {place.owner ? <span className="sr-only">{`, ${place.owner.name}'s Mate`}</span> : null}
@@ -425,7 +455,7 @@ export function ResetCredits({
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
       <span className="tabular-nums">{summary}</span>
       {credits.availableCount > 0 ? (
-        <Button size="xs" variant="outline" disabled={busy} onClick={() => setConfirming(true)}>
+        <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>
           {busy ? "Using…" : "Use reset"}
         </Button>
       ) : null}
@@ -440,7 +470,7 @@ export function ResetCredits({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
             <Button onClick={() => void redeem()}>Use credit</Button>
           </AlertDialogFooter>
         </AlertDialogPopup>
@@ -588,7 +618,11 @@ export function UsageLimitsSection({
     }));
 
   if (state === "wait") {
-    return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_LIMITS_LINE} />;
+    return (
+      <Loading label={READING_LIMITS_LINE}>
+        <AccountLimitsStandIn />
+      </Loading>
+    );
   }
   if (state === "unavailable" || (state === "none" && unavailableNames.length > 0)) {
     return (

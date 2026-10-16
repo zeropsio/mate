@@ -219,7 +219,7 @@ export function RecoveryItems({
           </span>
           {actions && outcome.retry.action?.kind === "retry" ? (
             <Button
-              size="compact"
+              size="sm"
               variant="ghost"
               onClick={() => void operations.askAgain(invocation.requestId)}
             >
@@ -227,7 +227,7 @@ export function RecoveryItems({
             </Button>
           ) : null}
           {actions && outcome.retry.action?.kind === "submit" && onRetry !== undefined ? (
-            <Button size="compact" variant="ghost" onClick={() => onRetry(invocation.action)}>
+            <Button size="sm" variant="ghost" onClick={() => onRetry(invocation.action)}>
               {outcome.retry.label}
             </Button>
           ) : null}
@@ -238,7 +238,7 @@ export function RecoveryItems({
           ) : null}
           {actions && outcome.terminal ? (
             <Button
-              size="compact"
+              size="sm"
               variant="ghost"
               aria-label={`Dismiss ${invocation.name}'s ${invocation.action} result`}
               onClick={() =>

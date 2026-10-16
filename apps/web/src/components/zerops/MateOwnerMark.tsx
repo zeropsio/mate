@@ -65,10 +65,10 @@ export function MateOwnerMark({
       <TooltipTrigger
         render={
           <span
-            className={cn("menu-owner", className)}
+            className={cn("person-avatar menu-owner", className)}
             data-zerops-avatar={picture === null ? "initials" : "picture"}
             data-zerops-surface="sidebar-mate-owner"
-            style={{ "--menu-owner-hue": mark.hue } as CSSProperties}
+            style={{ "--person-hue": mark.hue } as CSSProperties}
           />
         }
       >

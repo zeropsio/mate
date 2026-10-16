@@ -173,7 +173,13 @@ describe("the New Mate dialog", () => {
     expect(html).toContain('aria-label="Color"');
     expect(html).toContain('aria-label="Shape"');
     expect(html.match(/role="radio"/gu)).toHaveLength(MATE_TINT_IDS.length + MATE_SHAPE_IDS.length);
-    for (const gone of ["Environment", "Runs an agent", "Application", "Nothing yet", "Agent"]) {
+    for (const gone of [
+      "Environment",
+      "Has its own Mate",
+      "Starts with",
+      "Same services as the project",
+      "Agent",
+    ]) {
       expect(html).not.toContain(gone);
     }
   });
@@ -343,7 +349,7 @@ describe("the New Mate dialog", () => {
     const made: EnvironmentCreationChoice[] = [];
     const onCreate = (choice: EnvironmentCreationChoice) => made.push(choice);
     const tree = mount(form({ onCreate, tier: undefined, recipe: "reading" }));
-    expect(lineText(tree)).toBe("Reading the project's recipe…");
+    expect(lineText(tree)).toBe("Reading the project's setup files…");
     press(tree);
     expect(made).toEqual([]);
     expect(
@@ -433,24 +439,23 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
   const REVIEW: NewMateDoorClosed = {
     kind: "closed",
     reason:
-      "Acme Docs' recipe is waiting in Cleo's change. New Mates start from it once it's merged.",
+      "Acme Docs' setup for new Mates is waiting in Cleo's change. New Mates can join once it's merged.",
     action: { kind: "change", label: "Review the change", number: 11 },
   };
   const OPEN_CLEO: NewMateDoorClosed = {
     kind: "closed",
-    reason:
-      "Acme Docs has no recipe yet. Cleo writes it when it finishes setting Acme Docs up, and new Mates start from it.",
+    reason: "Cleo is still setting Acme Docs up. New Mates can join once it's done.",
     action: { kind: "mate", label: "Open Cleo", projectId: "cleo-project" },
   };
   const RETRY: NewMateDoorClosed = {
     kind: "closed",
-    reason: "Acme Docs' recipe can't be read right now.",
+    reason: "Acme Docs' setup files can't be read right now.",
     action: { kind: "retry", label: "Try again", busy: false },
   };
   const NOBODY: NewMateDoorClosed = {
     kind: "closed",
     reason:
-      "Acme Docs has no recipe yet. Acme Docs' Mates write it when one of them finishes setting Acme Docs up.",
+      "Acme Docs' Mates are still setting it up. New Mates can join once one of them is done.",
     action: undefined,
   };
 
@@ -508,7 +513,7 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
       }),
     );
     expect(button(tree, "Try again").props).toMatchObject({ disabled: true, "aria-busy": true });
-    expect(lineText(tree)).toBe("Reading the project's recipe…");
+    expect(lineText(tree)).toBe("Reading the project's setup files…");
   });
 
   it("takes no Mate while it says why: the name is out of reach, and a submit adds nothing", () => {
@@ -550,8 +555,6 @@ it.each(["Mastermate", "Chief"])(
   (groupName) => {
     const html = renderToStaticMarkup(form({ groupName }));
     expect(html).toContain(`>Add a project Mate to ${groupName}<`);
-    expect(html).toContain(
-      "Works on this project. For your personal Mate across the organization, use Set up your Chief.",
-    );
+    expect(html).toContain("Works on this project only.");
   },
 );

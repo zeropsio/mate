@@ -34,8 +34,8 @@ export function CrewRunsOnControl({
         className="-ms-2.5 min-w-0"
         data-crew-runs-on
         onClick={onEdit}
-        size="xs"
-        variant="ghost-muted"
+        size="sm"
+        variant="ghost"
       >
         <span className="truncate">{label}</span>
       </Button>
@@ -53,8 +53,8 @@ export function CrewRunsOnControl({
             aria-label={availabilityName(label, availability)}
             className="-ms-2.5 min-w-0"
             data-crew-runs-on
-            size="xs"
-            variant="ghost-muted"
+            size="sm"
+            variant="ghost"
           />
         }
       >

@@ -53,7 +53,7 @@ export function resolveHqGate(input: {
   if (mayBearHq(input.membership)) return { kind: "birth" };
   const names = accountHq.admins.flatMap((admin) => mateMemberName(admin) ?? []);
   const who = names.length === 0 ? "an owner or admin of the organization" : names.join(" or ");
-  return { kind: "ask", line: `An admin sets up Mate for this organization. Ask ${who}.` };
+  return { kind: "ask", line: `An admin sets up HQ for this organization. Ask ${who}.` };
 }
 
 /** The gate over the organization open now, with its HQ as this browser keeps it or the member list names it. */

@@ -32,7 +32,7 @@ export type ReviewFrame = "dialog" | "page";
 export function reviewKindLine(kind: ReviewKind, pullKind?: "code" | "recipe"): string {
   switch (kind) {
     case "change":
-      return pullKind === "recipe" ? "Review · recipe change" : "Review · change";
+      return pullKind === "recipe" ? "Review · setup change" : "Review · change";
     case "release":
       return "Release";
     case "rollback":

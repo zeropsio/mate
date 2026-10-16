@@ -17,11 +17,9 @@ import { resolveShortcutCommand } from "../keybindings";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { primaryServerKeybindingsAtom } from "~/state/server";
-import { SidebarInset } from "~/components/ui/sidebar";
-import { PageWaitLine } from "~/components/zerops/WaitLine";
 import { MateOpeningView } from "~/components/zerops/MateLinkStage";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
-import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
+import { PageStandIn } from "~/components/RoutePending";
 import { doorWaitsForEnvironments, resolveDoor } from "./-door";
 import { environmentIdFromPathname } from "./-environmentRoute";
 import { resolveThreadRouteRef } from "../threadRoutes";
@@ -140,16 +138,12 @@ function ChatRoutePending() {
       ? null
       : resolveThreadRouteRef({ environmentId: routed, threadId });
   // A conversation's route draws the Mate's own view, its header's place held until the directory
-  // names who lives there; the home and an environment known to hold nobody wait with the line.
+  // names who lives there; the home and an environment known to hold nobody hold their room (`PageStandIn`).
   const whoLivesHere = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
   if (threadRef !== null && whoLivesHere.kind !== "nobody") {
     return <MateOpeningView threadRef={threadRef} />;
   }
-  return (
-    <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">
-      <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
-    </SidebarInset>
-  );
+  return <PageStandIn />;
 }
 
 const NO_ENVIRONMENT = EnvironmentId.make("none");

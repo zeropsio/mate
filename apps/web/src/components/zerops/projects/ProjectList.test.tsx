@@ -119,6 +119,8 @@ import {
 } from "./flowTestFixtures";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 
+import { PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
+
 import { CardMateLiftActions } from "./ProjectCards";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
@@ -196,7 +198,7 @@ describe("a project's row", () => {
 
   it.each([
     ["HQ did not answer for its changes", "failed", "HQ didn’t answer"],
-    ["HQ's rule withholds its changes from this person", "unseen", "Needs Basic user access"],
+    ["HQ's rule withholds its changes from this person", "unseen", "Changes show with Full access"],
   ] as const)(
     "says plainly why its changes are not known, offering nothing: %s",
     (_name, why, line) => {
@@ -300,7 +302,7 @@ describe("a card's production", () => {
       />,
     );
     const button = offered.root.findAll(
-      (node) => node.type === "button" && node.children.includes("Set up production"),
+      (node) => node.type === "button" && node.children.includes("Put it live"),
     );
     expect(button).toHaveLength(1);
     act(() => {
@@ -311,7 +313,7 @@ describe("a card's production", () => {
       render({ groups: [none], setUpProduction: () => undefined }),
       'data-zerops-group="aaa"',
     );
-    expect(withheld).not.toContain("Set up production");
+    expect(withheld).not.toContain("Put it live");
     expect(withheld).toContain("Not released yet");
   });
 
@@ -326,7 +328,7 @@ describe("a card's production", () => {
       />,
     );
     const button = busy.root.findAll(
-      (node) => node.type === "button" && node.children.includes("Set up production"),
+      (node) => node.type === "button" && node.children.includes("Put it live"),
     );
     expect(button.map((node) => node.props.disabled)).toEqual([true]);
     expect(
@@ -335,6 +337,22 @@ describe("a card's production", () => {
         'data-zerops-group="aaa"',
       ),
     ).not.toContain("Not released yet");
+  });
+});
+
+describe("production's setup while another environment is set up", () => {
+  it("says why production's setup waits while another environment is set up", () => {
+    const html = section(
+      render({ groups: [entry([WREN])], setUpProduction: () => "busy" }),
+      'data-zerops-group="aaa"',
+    );
+    expect(html).toContain(PUT_LIVE_AFTER_CREATION);
+    expect(
+      section(
+        render({ groups: [entry([WREN])], setUpProduction: () => () => {} }),
+        'data-zerops-group="aaa"',
+      ),
+    ).not.toContain(PUT_LIVE_AFTER_CREATION);
   });
 });
 

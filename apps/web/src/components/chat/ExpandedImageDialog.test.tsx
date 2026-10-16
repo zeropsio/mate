@@ -30,6 +30,12 @@ vi.mock("../ui/button", () => ({
 }));
 import { ExpandedImageDialog } from "./ExpandedImageDialog";
 
+// The kit's dialog portals out of the tree this renderer draws: here it is its children.
+vi.mock("../ui/dialog", () => ({
+  Dialog: ({ children }: { children: ReactNode }) => children,
+  DialogMediaPopup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+
 afterEach(() => vi.unstubAllGlobals());
 it("a gallery reference zooms the original and downloads its authorized bytes with its retained name", () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

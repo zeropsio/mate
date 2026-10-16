@@ -527,10 +527,10 @@ describe("ConversationStripView", () => {
       renderer = create(drawn("rules"));
     });
     const seat = seatOf(renderer, "lead");
-    const face = seat.findByProps({ "data-mate-face-size": "sm" });
+    const face = seat.findByProps({ "data-mate-face-size": 20 });
     act(() => renderer.update(drawn("lead")));
     expect(seatOf(renderer, "lead")).toBe(seat);
-    expect(seatOf(renderer, "lead").findByProps({ "data-mate-face-size": "sm" })).toBe(face);
+    expect(seatOf(renderer, "lead").findByProps({ "data-mate-face-size": 20 })).toBe(face);
     expect(
       seat.find((node) => node.type === "button" && node.props["aria-current"] === "page").props[
         "data-conversation-crewmate"

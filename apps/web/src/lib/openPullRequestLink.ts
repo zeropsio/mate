@@ -182,7 +182,7 @@ export function useOpenChangeRequestLink(): (
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Unable to open pull request link",
+          title: "Unable to open the change's link",
           description: error instanceof Error ? error.message : "An error occurred.",
         }),
       );

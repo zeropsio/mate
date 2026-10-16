@@ -148,10 +148,18 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
       yield* fill("Its first Mate", "Nova");
     }),
     submitProject: click("Create Garden with Nova"),
-    /** Shop's card in the overview: its ··· holds Add Mate, Add stage and Add production. */
+    /** Shop's card in the overview: its ··· holds Add Mate and Add stage; its Production, Put it live. */
     openAdd: (role: "Mate" | "stage" | "production") =>
       Effect.gen(function* () {
         yield* Effect.promise(() => page.goto(`${s.web.origin}/zerops`));
+        // Production is put live from its sheet, opened from Shop's card; its own form — a name,
+        // an agent, a Git branch — is the sheet's quiet way out.
+        if (role === "production") {
+          yield* click("Put it live");
+          yield* text("Put Shop live");
+          yield* click("Set up production yourself…");
+          return;
+        }
         // The page's ··· for Shop — on its card, or its row among the projects without work —
         // never the menu heading's of the same name.
         yield* Effect.promise(async () => {
@@ -168,19 +176,13 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
         });
         yield* click(`Add ${role}`);
       }),
+    /** The sheet's quiet ways out: production's or a stage's own form, or a Git branch. */
     chooseDestination: (target: "zerops" | "git") =>
-      Effect.gen(function* () {
-        yield* text("Where does it go?");
-        yield* Effect.promise(() =>
-          page
-            .locator(
-              `::-p-text(${target === "zerops" ? "A Zerops project" : "A branch in your Git repository"})`,
-            )
-            .setTimeout(15_000)
-            .click(),
-        );
-        yield* click("Continue");
-      }),
+      click(
+        target === "zerops"
+          ? "Set it up yourself…"
+          : "Use a branch in your Git repository instead…",
+      ),
     withAgent: Effect.promise(() =>
       page
         .locator('[data-zerops-surface="environment-creation-form"] [role="switch"]')
@@ -226,7 +228,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
               );
               // A stage stands under its name; production as the project's Production, set up.
               return tag === "prod"
-                ? words.has("Production") && !words.has("Set up production")
+                ? words.has("Production") && !words.has("Put it live")
                 : words.has(name);
             },
             { timeout: 15_000, polling: "raf" },

@@ -2,7 +2,6 @@ import type { ContextMenuItem, ResolvedKeybindingsConfig } from "@t3tools/contra
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
-  ChevronDown,
   Cloud,
   Database,
   FileDiff,
@@ -45,13 +44,12 @@ import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
 import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "~/components/ui/menu";
-import { ScrollArea } from "~/components/ui/scroll-area";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { useTheme } from "~/hooks/useTheme";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./RightPanelShell";
-import { hiddenTabsLabel, tabsOutOfView } from "./RightPanelTabs.logic";
+import { Tab, TabStrip } from "./ui/tab-strip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 
 interface RightPanelTabsProps {
@@ -87,7 +85,7 @@ interface RightPanelTabsProps {
 }
 
 const SURFACE_DISABLED_REASONS = {
-  terminal: "Terminal surfaces are only available from a project thread.",
+  terminal: "The terminal is available from a project's chat.",
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
   agents: "Agents are only available from a thread.",
@@ -345,7 +343,7 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
       ref={focusOnMount}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      aria-label="Open a surface"
+      aria-label="Open a page"
       data-surface-launcher-keys={availableActions.map((action) => action.shortcut ?? "").join("")}
       className={cn(
         "flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 outline-none @container",
@@ -358,10 +356,8 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
           from its title instead of losing the top under the tab bar. */}
       <div className="m-auto w-full max-w-lg">
         <div className="mb-4 text-center">
-          <h3 className="font-medium text-foreground text-sm">Open a surface</h3>
-          <p className="mt-1 text-muted-foreground text-xs">
-            Choose what to show in the right panel.
-          </p>
+          <h3 className="font-medium text-foreground text-sm">Open a page</h3>
+          <p className="mt-1 text-muted-foreground text-xs">Choose what to show beside the chat.</p>
         </div>
         <div className="grid grid-cols-1 gap-2 @[24rem]:grid-cols-2">
           {props.actions.map((action) =>
@@ -488,7 +484,6 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
 export function RightPanelTabs(props: RightPanelTabsProps) {
   const ownsDesktopTitleBar = isElectron && props.mode === "inline";
   const { resolvedTheme } = useTheme();
-  const tabListRef = useRef<HTMLDivElement>(null);
   const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
   const addSurfaceTriggerRef = useRef<HTMLButtonElement>(null);
   const surfaceContentRef = useRef<HTMLDivElement>(null);
@@ -613,47 +608,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     [props],
   );
 
-  useEffect(() => {
-    const activeTab = tabListRef.current?.querySelector<HTMLElement>("[data-active-tab='true']");
-    activeTab?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [props.activeSurfaceId]);
-
-  // The tabs the strip's edges cut off, re-read as it scrolls or resizes: its overflow menu
-  // lists them, so a tab out of view is a click away and never only a sideways scroll.
-  const [hiddenTabIds, setHiddenTabIds] = useState<readonly string[]>([]);
-  useEffect(() => {
-    const viewport = tabListRef.current?.querySelector<HTMLElement>(
-      "[data-slot='scroll-area-viewport']",
-    );
-    if (!viewport) return;
-    const measure = () => {
-      const bounds = viewport.getBoundingClientRect();
-      const next = tabsOutOfView(
-        bounds,
-        Array.from(viewport.querySelectorAll<HTMLElement>("[data-tab-id]"), (tab) => {
-          const box = tab.getBoundingClientRect();
-          return { id: tab.dataset.tabId ?? "", left: box.left, right: box.right };
-        }),
-      );
-      setHiddenTabIds((current) =>
-        current.length === next.length && current.every((id, index) => id === next[index])
-          ? current
-          : next,
-      );
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(viewport);
-    if (viewport.firstElementChild) observer.observe(viewport.firstElementChild);
-    viewport.addEventListener("scroll", measure, { passive: true });
-    return () => {
-      observer.disconnect();
-      viewport.removeEventListener("scroll", measure);
-    };
-    // The strip's row resizes as tabs open and close, so the observer re-reads then too.
-  }, []);
-  const hiddenSurfaces = props.surfaces.filter((surface) => hiddenTabIds.includes(surface.id));
-
   return (
     <PreviewPanelShell
       mode={props.mode}
@@ -674,139 +628,103 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
         )}
         data-right-panel-tabbar
       >
-        <ScrollArea
-          radius="none"
-          ref={tabListRef}
-          hideScrollbars
-          scrollFade
-          // As wide as its tabs, and no wider than the bar leaves it: the add button follows them.
-          className={cn("w-auto min-w-0", ownsDesktopTitleBar && "drag-region")}
-          data-right-panel-tab-list
-        >
-          <div className="flex h-full w-max min-w-full items-center gap-1">
-            {props.surfaces.map((surface) => {
-              const active = surface.id === props.activeSurfaceId;
-              const pending = props.pendingSurfaceIds.has(surface.id);
-              const title = surfaceTitle(surface, props.terminalLabelsById);
-              return (
-                <div
-                  key={surface.id}
-                  data-tab-id={surface.id}
-                  data-active-tab={active}
-                  onMouseDown={handleTabMouseDown}
-                  onAuxClick={(event) => handleTabAuxClick(event, surface)}
-                  onContextMenu={(event) => void handleTabContextMenu(event, surface)}
-                  className={cn(
-                    "cursor-pointer group/tab flex h-6 max-w-36 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
-                    active
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                  )}
-                >
-                  <PanelTabCloseButton
-                    label={`Close ${title}`}
-                    onClick={() => props.onCloseSurface(surface)}
-                  >
-                    <SurfaceIcon surface={surface} theme={resolvedTheme} />
-                    {pending ? (
-                      <span
-                        className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-                        aria-hidden
-                      />
-                    ) : null}
-                  </PanelTabCloseButton>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <button
-                          type="button"
-                          className="cursor-pointer flex min-w-0 items-center"
-                          onClick={() => props.onActivate(surface)}
-                        >
-                          <span className="truncate">{title}</span>
-                        </button>
-                      }
+        <TabStrip
+          action={
+            hasSurfaces ? (
+              <Menu open={addSurfaceMenuOpen} onOpenChange={setAddSurfaceMenuOpen}>
+                <MenuTrigger
+                  render={
+                    <Button
+                      ref={addSurfaceTriggerRef}
+                      aria-label="Add a page"
+                      className="shrink-0"
+                      size="icon-sm"
+                      variant="ghost"
                     />
-                    <TooltipPopup>{title}</TooltipPopup>
-                  </Tooltip>
-                </div>
-              );
-            })}
-          </div>
-        </ScrollArea>
-        {/* Outside the strip that scrolls: however many tabs are open, another page is one press
-            away, and the tabs the strip cuts off are listed beside it. */}
-        <div
-          className={cn(
-            "flex flex-auto shrink-0 items-center gap-1",
-            ownsDesktopTitleBar && "drag-region",
-          )}
+                  }
+                >
+                  <Plus className="size-3.5" />
+                </MenuTrigger>
+                <MenuPopup
+                  align="start"
+                  side="bottom"
+                  sideOffset={6}
+                  onKeyDownCapture={handleAddSurfaceMenuKeyDown}
+                >
+                  {addSurfaceActions.map((action) => {
+                    const Icon = action.icon;
+                    return (
+                      <SurfaceMenuItem
+                        key={action.label}
+                        available={action.available}
+                        disabledReason={SURFACE_DISABLED_REASONS[action.kind]}
+                        shortcut={action.shortcut}
+                        onClick={action.onClick}
+                      >
+                        <Icon />
+                        {action.label}
+                      </SurfaceMenuItem>
+                    );
+                  })}
+                </MenuPopup>
+              </Menu>
+            ) : null
+          }
+          activeId={props.activeSurfaceId}
+          dragRegion={ownsDesktopTitleBar}
+          items={props.surfaces.map((surface) => ({
+            id: surface.id,
+            icon: <SurfaceIcon surface={surface} theme={resolvedTheme} />,
+            label: surfaceTitle(surface, props.terminalLabelsById),
+          }))}
+          onSelect={(id) => {
+            const surface = props.surfaces.find((candidate) => candidate.id === id);
+            if (surface !== undefined) props.onActivate(surface);
+          }}
         >
-          {hasSurfaces ? (
-            <Menu open={addSurfaceMenuOpen} onOpenChange={setAddSurfaceMenuOpen}>
-              <MenuTrigger
-                render={
-                  <Button
-                    ref={addSurfaceTriggerRef}
-                    aria-label="Add panel surface"
-                    className="shrink-0"
-                    size="icon-xs"
-                    variant="ghost-muted"
+          {props.surfaces.map((surface) => {
+            const active = surface.id === props.activeSurfaceId;
+            const pending = props.pendingSurfaceIds.has(surface.id);
+            const title = surfaceTitle(surface, props.terminalLabelsById);
+            return (
+              <Tab
+                active={active}
+                key={surface.id}
+                onAuxClick={(event) => handleTabAuxClick(event, surface)}
+                onContextMenu={(event) => void handleTabContextMenu(event, surface)}
+                onMouseDown={handleTabMouseDown}
+                tabId={surface.id}
+              >
+                <PanelTabCloseButton
+                  label={`Close ${title}`}
+                  onClick={() => props.onCloseSurface(surface)}
+                >
+                  <SurfaceIcon surface={surface} theme={resolvedTheme} />
+                  {pending ? (
+                    <span
+                      className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
+                      aria-hidden
+                    />
+                  ) : null}
+                </PanelTabCloseButton>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        className="cursor-pointer flex min-w-0 items-center"
+                        onClick={() => props.onActivate(surface)}
+                      >
+                        <span className="truncate">{title}</span>
+                      </button>
+                    }
                   />
-                }
-              >
-                <Plus className="size-3.5" />
-              </MenuTrigger>
-              <MenuPopup
-                align="start"
-                side="bottom"
-                sideOffset={6}
-                onKeyDownCapture={handleAddSurfaceMenuKeyDown}
-              >
-                {addSurfaceActions.map((action) => {
-                  const Icon = action.icon;
-                  return (
-                    <SurfaceMenuItem
-                      key={action.label}
-                      available={action.available}
-                      disabledReason={SURFACE_DISABLED_REASONS[action.kind]}
-                      shortcut={action.shortcut}
-                      onClick={action.onClick}
-                    >
-                      <Icon />
-                      {action.label}
-                    </SurfaceMenuItem>
-                  );
-                })}
-              </MenuPopup>
-            </Menu>
-          ) : null}
-          {hiddenSurfaces.length > 0 ? (
-            <Menu>
-              <MenuTrigger
-                render={
-                  <Button
-                    aria-label={hiddenTabsLabel(hiddenSurfaces.length)}
-                    className="shrink-0"
-                    data-right-panel-hidden-tabs
-                    size="icon-xs"
-                    variant="ghost-muted"
-                  />
-                }
-              >
-                <ChevronDown className="size-3.5" />
-              </MenuTrigger>
-              <MenuPopup align="end" side="bottom" sideOffset={6}>
-                {hiddenSurfaces.map((surface) => (
-                  <MenuItem key={surface.id} onClick={() => props.onActivate(surface)}>
-                    <SurfaceIcon surface={surface} theme={resolvedTheme} />
-                    {surfaceTitle(surface, props.terminalLabelsById)}
-                  </MenuItem>
-                ))}
-              </MenuPopup>
-            </Menu>
-          ) : null}
-        </div>
+                  <TooltipPopup>{title}</TooltipPopup>
+                </Tooltip>
+              </Tab>
+            );
+          })}
+        </TabStrip>
         {props.layoutControls}
       </div>
       <div

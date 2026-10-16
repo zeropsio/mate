@@ -1,6 +1,7 @@
 /**
- * The menu's top row as the menu mounts it: the person's Chief once it is listed, read as the
- * list's row would read it (`MenuMateLine`), else the same row with its setup's line. Its press
+ * The menu's top row as the menu mounts it (`chiefTopShown`): the person's Chief once it is listed,
+ * read as the list's row would read it (`MenuMateLine`), else the same row with its setup's line —
+ * one name and one face before and after it comes up. Its press
  * opens the Chief's conversation, or the Chief page while there is none to open (`chiefRowOpens`).
  * The closed menu's rail draws the same Chief as a tile.
  */
@@ -30,7 +31,6 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   onOpenPage,
   waiting,
   tile = false,
-  offer = false,
 }: {
   /** The person's own Chief among the listed Mates; undefined while it is not listed. */
   readonly chief: T | undefined;
@@ -50,7 +50,6 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   readonly waiting: SidebarChiefRowProps["waiting"];
   /** Drawn as the closed menu's rail draws it (`SidebarChiefTile`). */
   readonly tile?: boolean;
-  readonly offer?: boolean;
 }) {
   const Row = tile ? SidebarChiefTile : SidebarChiefRow;
   if (chief === undefined) {
@@ -58,14 +57,7 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
     return (
       <Row
         current={currentPage}
-        title={offer ? "Set up your Chief" : undefined}
-        line={
-          offer ? (
-            "Across this organization"
-          ) : line?.kind === "setup" ? (
-            <ChiefSetupRowLine state={line.state} />
-          ) : undefined
-        }
+        line={line?.kind === "setup" ? <ChiefSetupRowLine state={line.state} /> : undefined}
         onOpen={onOpenPage}
         waiting={waiting}
       />

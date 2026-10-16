@@ -54,7 +54,7 @@ describe("H: production surface demand", () => {
 
         yield* Effect.promise(async () => {
           await s.page.locator("::-p-aria(Toggle right panel)").click();
-          await s.page.locator('[aria-label="Open a surface"] ::-p-text(Helpers)').click();
+          await s.page.locator('[aria-label="Open a page"] ::-p-text(Helpers)').click();
           await s.page.waitForFunction(() => document.body.innerText.includes("No helpers yet"));
         });
         expect(requested.has(assets.helpers), "Opening Helpers must load its module").toBe(true);

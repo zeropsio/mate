@@ -126,8 +126,8 @@ function ExpandableHeaderSearch({
             render={
               <Button
                 type="button"
-                size="icon-micro"
-                variant="ghost-muted"
+                size="icon-sm"
+                variant="ghost"
                 onClick={() => onOpenChange(true)}
                 aria-label="Search keybindings"
               >
@@ -507,11 +507,11 @@ function WhenExpressionNodeEditor({
             <SelectItem value="or">or</SelectItem>
           </SelectContent>
         </Select>
-        <Button type="button" variant="outline" size="compact" onClick={addCondition}>
+        <Button type="button" variant="secondary" size="sm" onClick={addCondition}>
           <PlusIcon className="size-3.5" />
           Condition
         </Button>
-        <Button type="button" variant="outline" size="compact" onClick={addGroup}>
+        <Button type="button" variant="secondary" size="sm" onClick={addGroup}>
           <PlusIcon className="size-3.5" />
           Group
         </Button>
@@ -615,11 +615,11 @@ function WhenExpressionBuilder({
           <div className="text-sm font-medium text-foreground">When</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button type="button" variant="outline" size="compact" onClick={addRootCondition}>
+          <Button type="button" variant="secondary" size="sm" onClick={addRootCondition}>
             <PlusIcon className="size-3.5" />
             Condition
           </Button>
-          <Button type="button" variant="outline" size="compact" onClick={addRootGroup}>
+          <Button type="button" variant="secondary" size="sm" onClick={addRootGroup}>
             <PlusIcon className="size-3.5" />
             Group
           </Button>
@@ -662,11 +662,11 @@ function WhenExpressionBuilder({
         ) : (
           <div className="rounded-md border border-dashed border-border/80 bg-muted/15 p-3">
             <div className="flex flex-wrap gap-2">
-              <Button type="button" size="compact" onClick={addRootCondition}>
+              <Button type="button" size="sm" onClick={addRootCondition}>
                 <PlusIcon className="size-3.5" />
                 Condition
               </Button>
-              <Button type="button" variant="outline" size="compact" onClick={addRootGroup}>
+              <Button type="button" variant="secondary" size="sm" onClick={addRootGroup}>
                 <PlusIcon className="size-3.5" />
                 Group
               </Button>
@@ -817,7 +817,7 @@ function KeybindingTableRow({
         )}
         {isDirty ? (
           <Button
-            size="compact"
+            size="sm"
             disabled={isSaving || keyDraft.trim().length === 0 || !isWhenDraftValid}
             onClick={save}
           >
@@ -855,7 +855,7 @@ function KeybindingTableRow({
               render={
                 <Button
                   type="button"
-                  variant="ghost-muted"
+                  variant="ghost"
                   size="icon-sm"
                   className="size-7 sm:size-7"
                   disabled={isSaving}
@@ -976,7 +976,7 @@ function NewKeybindingTableRow({
           onKeyDown={captureKeybinding}
         />
         <Button
-          size="compact"
+          size="sm"
           disabled={isSaving || !commandDraft || keyDraft.trim().length === 0 || !isWhenDraftValid}
           onClick={save}
         >
@@ -1012,7 +1012,7 @@ function NewKeybindingTableRow({
             render={
               <Button
                 type="button"
-                variant="ghost-muted"
+                variant="ghost"
                 size="icon-sm"
                 className="size-7"
                 disabled={isSaving}
@@ -1195,8 +1195,8 @@ export function KeybindingsSettingsPanel() {
                 render={
                   <Button
                     type="button"
-                    size="icon-micro"
-                    variant="ghost-muted"
+                    size="icon-sm"
+                    variant="ghost"
                     onClick={() => setIsAddingBinding(true)}
                     aria-label="Add keybinding"
                   >
@@ -1211,8 +1211,8 @@ export function KeybindingsSettingsPanel() {
                 render={
                   <Button
                     type="button"
-                    size="icon-micro"
-                    variant="ghost-muted"
+                    size="icon-sm"
+                    variant="ghost"
                     disabled={!keybindingsConfigPath}
                     onClick={openKeybindingsFile}
                     aria-label="Open keybindings.json"

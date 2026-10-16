@@ -28,7 +28,7 @@ import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenReview } from "~/zerops/review";
 import { mainStageOf } from "../review/reviewReads";
 import { mateDecision } from "../mateDecision.logic";
-import { Avatar } from "../primitives";
+import { PersonAvatar } from "../primitives";
 import { SidebarMateAge } from "../SidebarMateAge";
 import type { MateRowSlot } from "../SidebarMateRow.logic";
 import { formatWorkingTime } from "../SidebarZeropsTree.logic";
@@ -58,6 +58,7 @@ import {
 } from "./projectCard.logic";
 import { CHANGES_UNKNOWN_LINE } from "./projectsView.logic";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
+import { Button } from "~/components/ui/button";
 
 /** What a card's places need of an environment: how its services stand and where they answer. */
 export interface PlaceItem {
@@ -220,18 +221,17 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
             delivery={gitEnvironment.git}
             repos={read?.repos}
           />
-          <button
-            className="ov-btn"
-            type="button"
+          <Button
             onClick={() => {
               void navigate({
                 to: "/group/$groupId/$projectId",
                 params: { groupId, projectId: gitEnvironment.id },
               });
             }}
+            variant="secondary"
           >
             Details and history
-          </button>
+          </Button>
         </div>
       );
     const item = itemOf(entry, line.projectId);
@@ -294,9 +294,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     const actions = line.trouble ? (
       <>
         {fixer === undefined ? null : (
-          <button
-            className="ov-btn"
-            data-main="true"
+          <Button
             onClick={() => {
               askToFix(
                 fixer.projectId,
@@ -306,42 +304,39 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
                 },
               );
             }}
-            type="button"
           >
             Ask {fixer.name} to fix it
-          </button>
+          </Button>
         )}
         {openStop === undefined ? null : (
-          <button className="ov-btn" onClick={openStop} type="button">
+          <Button onClick={openStop} variant="secondary">
             Open logs
-          </button>
+          </Button>
         )}
       </>
     ) : line.kind === "production" ? (
       <>
         {back === undefined ? null : (
-          <button
-            className="ov-btn"
+          <Button
             onClick={(event) => {
               openReview({ kind: "rollback", groupId, tag: back }, { from: event.currentTarget });
             }}
-            type="button"
+            variant="secondary"
           >
             Roll back to {back}
-          </button>
+          </Button>
         )}
         {/* Its releases, where it has any: nothing released has no history to open — and on the
             project's own page its history stands beside the card. */}
         {releases.length === 0 || input.onPage === true ? null : (
-          <button
-            className="ov-btn"
+          <Button
             onClick={() => {
               void navigate({ to: "/group/$groupId/flow", params: { groupId } });
             }}
-            type="button"
+            variant="secondary"
           >
             History
-          </button>
+          </Button>
         )}
       </>
     ) : null;
@@ -418,11 +413,11 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     return (
       <span className="ov-card-people">
         {owners.map((owner) => (
-          <Avatar
-            className="size-5 text-3xs"
-            initials={initialsOf(owner.name)}
+          <PersonAvatar
             key={owner.userId}
-            src={owner.avatarUrl ?? null}
+            name={owner.name}
+            picture={owner.avatarUrl ?? null}
+            size={20}
           />
         ))}
       </span>
@@ -430,15 +425,6 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   };
 
   return { cardPlaces, renderPlacePanel, renderChanges, renderCardPeople };
-}
-
-/** "Ada Lovelace" → "AL"; one name → its first letter. */
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/u);
-  return parts
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toLocaleUpperCase())
-    .join("");
 }
 
 /** A working Mate's clock, a step a second (R6). */

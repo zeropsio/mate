@@ -44,7 +44,7 @@ describe("the sign-in owned by the chat, picker and crew", () => {
       await act(() => root.render(<Owner revision={1} />));
       await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
       const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
-      expect(dialog.textContent).toContain("Sign in a coding agent");
+      expect(dialog.textContent).toContain("Sign this Mate in");
       await act(() => {
         if (method === "X")
           document.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click();

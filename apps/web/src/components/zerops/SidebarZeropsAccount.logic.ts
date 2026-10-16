@@ -10,10 +10,7 @@
  * moment later takes back.
  */
 
-import {
-  zeropsOrganizationRoleLabel,
-  type ZeropsOrganization,
-} from "@t3tools/client-runtime/zerops";
+import { zeropsRoleWords, type ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 
 export interface SidebarAccountLines {
   /** The person, as the bar already says them elsewhere. */
@@ -34,21 +31,18 @@ export function sidebarAccountLines(input: {
 }
 
 /**
- * What the viewer is in the organization the list shows — "Owner of
- * Northwind" — under their name at the top of the menu, as the approved
- * prototype drew it. A role that reads badly before "of" follows the name.
+ * What the viewer is in the organization the list shows — "Northwind · Owner" — under their name
+ * at the top of the menu, one shape for every role; the name alone while no role is known.
  */
 export function sidebarAccountRoleLine(organization: ZeropsOrganization | null): string | null {
   const name = organization?.name.trim();
   if (organization === null || name === undefined || name.length === 0) return null;
-  const role = zeropsOrganizationRoleLabel(organization);
-  return organization.roleCode === "OWNER" || organization.roleCode === "ADMIN"
-    ? `${role} of ${name}`
-    : `${name} · ${role}`;
+  const role = zeropsRoleWords(organization);
+  return role === undefined ? name : `${name} · ${role}`;
 }
 
 /**
- * The foot's line under the viewer's name — "Owner of Acme" — in parts, the organization's name
+ * The foot's line under the viewer's name — "Acme · Owner" — in parts, the organization's name
  * its own; the name alone where the role is not known yet.
  */
 export function sidebarAccountRoleParts(organization: ZeropsOrganization | null): {
@@ -58,11 +52,8 @@ export function sidebarAccountRoleParts(organization: ZeropsOrganization | null)
 } | null {
   const name = organization?.name.trim();
   if (organization === null || name === undefined || name.length === 0) return null;
-  if (organization.roleCode === undefined) return { before: "", organization: name, after: "" };
-  const role = zeropsOrganizationRoleLabel(organization);
-  return organization.roleCode === "OWNER" || organization.roleCode === "ADMIN"
-    ? { before: `${role} of `, organization: name, after: "" }
-    : { before: "", organization: name, after: ` · ${role}` };
+  const role = zeropsRoleWords(organization);
+  return { before: "", organization: name, after: role === undefined ? "" : ` · ${role}` };
 }
 
 /**

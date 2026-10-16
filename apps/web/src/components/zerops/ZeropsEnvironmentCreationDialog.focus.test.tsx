@@ -65,9 +65,8 @@ const addStage = (
   const destination = tree!.root.findByProps({
     "data-zerops-surface": "environment-destination-form",
   });
+  // The sheet adds it at once.
   act(() => destination.props.onSubmit({ preventDefault: () => undefined }));
-  const form = tree!.root.find((node) => node.type === "form");
-  act(() => form.props.onSubmit({ preventDefault: () => undefined }));
 };
 
 // Run 6's second review: the dialog dropped the focus whenever "Runs an agent" was on — a stage
@@ -112,12 +111,10 @@ it("A chosen Git target survives the recipe arriving after first paint", () => {
   });
   const choose = tree!.root.find(
     (node) =>
-      node.props["aria-label"] === "Where does it go?" &&
-      typeof node.props.onValueChange === "function",
+      node.type === "button" &&
+      node.props.children === "Use a branch in your Git repository instead…",
   );
-  act(() => choose.props.onValueChange("git"));
-  const chooser = tree!.root.findByProps({ "data-zerops-surface": "environment-destination-form" });
-  act(() => chooser.props.onSubmit({ preventDefault: () => undefined }));
+  act(() => choose.props.onClick());
   expect(tree!.root.findByProps({ "data-zerops-surface": "git-environment-form" })).toBeDefined();
   act(() =>
     tree!.update(

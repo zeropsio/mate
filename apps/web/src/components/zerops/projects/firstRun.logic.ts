@@ -13,7 +13,7 @@ export interface FirstRunWords {
 }
 
 const MATE_IS =
-  "A Mate is a coding agent with a dev environment of its own and one conversation you come back to.";
+  "A Mate is a coding agent with a workspace of its own and one conversation you come back to.";
 
 export function firstRunWords(input: {
   readonly create: boolean;
@@ -23,12 +23,12 @@ export function firstRunWords(input: {
     return input.reachesEveryProject
       ? {
           heading: "Start a project",
-          body: `${MATE_IS} Name a project and it is up in a few minutes, your team's HQ before it.`,
+          body: `${MATE_IS} Name a project and it is up in a few minutes.`,
           newProject: true,
         }
       : {
           heading: "Start a project",
-          body: `Projects your team gives you access to appear here. ${MATE_IS} Name a project of your own and it is up in a few minutes.`,
+          body: `You're a Developer: you start projects and join the ones you're added to. Projects your team gives you access to appear here. ${MATE_IS}`,
           newProject: true,
         };
   return input.reachesEveryProject
@@ -39,7 +39,7 @@ export function firstRunWords(input: {
       }
     : {
         heading: "Nothing is shared with you yet",
-        body: "Projects an owner or admin gives you access to appear here.",
+        body: "You're a Guest: you follow the projects you're added to. Projects an owner or admin gives you access to appear here.",
         newProject: false,
       };
 }

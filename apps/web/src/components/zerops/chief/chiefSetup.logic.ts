@@ -109,18 +109,20 @@ const STEPS: ReadonlyArray<{
   readonly label: string;
   readonly doing: string;
 }> = [
-  {
-    id: "project",
-    label: "Its project and container",
-    doing: "Making its project and container",
-  },
-  { id: "hq", label: "Your Chief, at HQ", doing: "Recording it as your Chief" },
+  { id: "project", label: "Its workspace", doing: "Making its workspace" },
+  { id: "hq", label: "Named your Chief", doing: "Registering it as your Chief" },
   {
     id: "variables",
     label: "Its view of your organization",
-    doing: "Handing it what you can see",
+    doing: "Giving it a view of what you can see",
   },
 ];
+
+/** Each step's words while it runs, in order: the progress row's steps. */
+export const CHIEF_SETUP_DOING: ReadonlyArray<string> = STEPS.map((step) => step.doing);
+
+/** The setup's own steps as measured (about two minutes): what its row promises. */
+export const CHIEF_SETUP_ESTIMATE_MS = 135_000;
 
 /** The dialog's steps, each waiting, active, done or failed with its reason. */
 export function chiefSetupSteps(setup: ChiefSetup): ReadonlyArray<BirthLineStep> {

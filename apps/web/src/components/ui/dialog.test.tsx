@@ -86,3 +86,46 @@ describe.each(["controlled", "fixture", "command"])("%s dialog dismissal", (fami
     },
   );
 });
+
+describe("a dialog while it is open", () => {
+  it("never shrinks: it holds the tallest its content made it, so its top and buttons stay put", async () => {
+    const observed: Array<() => void> = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private readonly callback: () => void) {}
+        observe() {
+          observed.push(() => this.callback());
+        }
+        disconnect() {}
+        unobserve() {}
+      },
+    );
+    let height = 420;
+    const offsetHeight = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockImplementation(() => height);
+    await act(() =>
+      root.render(
+        <Dialog defaultOpen>
+          <DialogPopup>
+            <DialogTitle>Sign in a coding agent</DialogTitle>
+          </DialogPopup>
+        </Dialog>,
+      ),
+    );
+    const popup = document.querySelector<HTMLElement>('[data-slot="dialog-popup"]')!;
+    const measure = () => act(() => observed.forEach((fire) => fire()));
+    await measure();
+    expect(popup.style.minHeight).toBe("min(420px, 100%)");
+    // The form gives way to a one-line success: the box keeps its height.
+    height = 180;
+    await measure();
+    expect(popup.style.minHeight).toBe("min(420px, 100%)");
+    // A longer step still grows it.
+    height = 520;
+    await measure();
+    expect(popup.style.minHeight).toBe("min(520px, 100%)");
+    offsetHeight.mockRestore();
+  });
+});

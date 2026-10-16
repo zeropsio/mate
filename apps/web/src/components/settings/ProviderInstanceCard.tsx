@@ -32,6 +32,15 @@ import {
 import { cn } from "../../lib/utils";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { normalizeProviderAccentColor } from "../../providerInstances";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -43,7 +52,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DriverOption } from "./providerDriverMeta";
-import { providerSettingsTabClassName } from "./providerSettingsTabs";
+import { Tab, TabStrip } from "../ui/tab-strip";
 import { ProviderSettingsForm } from "./ProviderSettingsForm";
 import { ProviderModelsSection } from "./ProviderModelsSection";
 import { ProviderInstanceIcon, providerInstanceInitials } from "../chat/ProviderInstanceIcon";
@@ -248,8 +257,7 @@ function ProviderEnvironmentSection(props: {
         <Button
           type="button"
           size="sm"
-          variant="outline"
-          className="h-7 gap-1.5 px-2 text-xs"
+          variant="secondary"
           onClick={() =>
             setRows([
               ...rows,
@@ -335,7 +343,7 @@ function ProviderEnvironmentSection(props: {
                       <Button
                         type="button"
                         size="icon-sm"
-                        variant="ghost-destructive"
+                        variant="ghost"
                         className="size-8"
                         onClick={() => removeVariable(variable.id)}
                         aria-label={`Remove environment variable ${variable.name || index + 1}`}
@@ -435,6 +443,7 @@ export function ProviderInstanceCard({
   isUpdating = false,
 }: ProviderInstanceCardProps) {
   const [activeTab, setActiveTab] = useState<"models" | "configuration">("configuration");
+  const [deleting, setDeleting] = useState(false);
   const enabled = resolveProviderInstanceEnabled(instance);
   // A locally disabled provider stays neutral even if its last server status
   // is stale. Enabled providers use the server status when one is available.
@@ -599,7 +608,7 @@ export function ProviderInstanceCard({
         </code>
       ) : null}
       {driverOption?.badgeLabel ? (
-        <Badge variant="warning" size="sm" className="shrink-0">
+        <Badge tone="warning" size="sm" className="shrink-0">
           {driverOption.badgeLabel}
         </Badge>
       ) : null}
@@ -619,9 +628,9 @@ export function ProviderInstanceCard({
             <TooltipTrigger
               render={
                 <Button
-                  size="icon-micro"
-                  variant="ghost-destructive"
-                  onClick={onDelete}
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={() => setDeleting(true)}
                   aria-label={`Delete provider instance ${instanceId}`}
                 >
                   <Trash2Icon className="size-3" />
@@ -630,6 +639,29 @@ export function ProviderInstanceCard({
             />
             <TooltipPopup side="top">Delete instance</TooltipPopup>
           </Tooltip>
+          {/* Its settings go with it — sign-in, environment, models — and nothing brings them back. */}
+          <AlertDialog open={deleting} onOpenChange={setDeleting}>
+            <AlertDialogPopup>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {displayName}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Its settings go with it, and it can't be brought back.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    setDeleting(false);
+                    onDelete();
+                  }}
+                >
+                  Delete instance
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogPopup>
+          </AlertDialog>
         </span>
       ) : null}
     </>
@@ -707,10 +739,9 @@ export function ProviderInstanceCard({
                   render={
                     <Button
                       type="button"
-                      size="icon-xs"
+                      size="icon-sm"
                       variant="ghost"
                       className={cn(
-                        "size-5 rounded-sm p-0",
                         versionAdvisory.emphasis === "strong"
                           ? "text-warning hover:text-warning"
                           : "text-update-foreground hover:text-update-foreground",
@@ -741,8 +772,8 @@ export function ProviderInstanceCard({
                     {onRunVersionAction ? (
                       <Button
                         type="button"
-                        size="xs"
-                        variant="default"
+                        size="sm"
+                        variant="primary"
                         className="w-full"
                         disabled={isUpdating}
                         onClick={onRunVersionAction}
@@ -770,9 +801,9 @@ export function ProviderInstanceCard({
                             render={
                               <Button
                                 type="button"
-                                size="icon-xs"
-                                variant="ghost-muted"
-                                className="size-6 shrink-0 rounded-sm p-0"
+                                size="icon-sm"
+                                variant="ghost"
+                                className="shrink-0"
                                 onClick={() =>
                                   copyToClipboard(updateCommand, {
                                     providerName: displayName,
@@ -803,25 +834,38 @@ export function ProviderInstanceCard({
         </div>
       </div>
 
-      <div className="flex h-11 shrink-0 border-b border-border/70 px-1">
-        {driverOption !== undefined ? (
-          <button
-            type="button"
-            aria-pressed={visibleTab === "models"}
-            className={providerSettingsTabClassName(visibleTab === "models")}
-            onClick={() => setActiveTab("models")}
-          >
-            Models
-          </button>
-        ) : null}
-        <button
-          type="button"
-          aria-pressed={visibleTab === "configuration"}
-          className={providerSettingsTabClassName(visibleTab === "configuration")}
-          onClick={() => setActiveTab("configuration")}
+      <div className="flex h-11 shrink-0 items-center border-b border-border/70 px-2">
+        <TabStrip
+          activeId={visibleTab}
+          items={[
+            ...(driverOption !== undefined ? [{ id: "models", label: "Models" }] : []),
+            { id: "configuration", label: "Configuration" },
+          ]}
+          onSelect={(id) => setActiveTab(id === "models" ? "models" : "configuration")}
         >
-          Configuration
-        </button>
+          {driverOption !== undefined ? (
+            <Tab
+              active={visibleTab === "models"}
+              aria-pressed={visibleTab === "models"}
+              onClick={() => setActiveTab("models")}
+              render={<button type="button" />}
+              size="md"
+              tabId="models"
+            >
+              Models
+            </Tab>
+          ) : null}
+          <Tab
+            active={visibleTab === "configuration"}
+            aria-pressed={visibleTab === "configuration"}
+            onClick={() => setActiveTab("configuration")}
+            render={<button type="button" />}
+            size="md"
+            tabId="configuration"
+          >
+            Configuration
+          </Tab>
+        </TabStrip>
       </div>
 
       <div
@@ -894,7 +938,7 @@ export function ProviderInstanceCard({
                 This instance uses a driver (
                 <code className="text-foreground">{String(instance.driver)}</code>) that is not
                 shipped with the current build. Configuration values are preserved but cannot be
-                edited from this surface.
+                edited here.
               </p>
             </div>
           ) : null}

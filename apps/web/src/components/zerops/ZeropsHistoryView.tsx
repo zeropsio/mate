@@ -27,9 +27,10 @@ import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { useNowMs } from "~/zerops/useNowMs";
 
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
-import { StatusDot } from "./primitives";
+
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
+import { Badge } from "~/components/ui/badge";
 
 /** What to call the things a history row names. */
 export interface HistoryNames {
@@ -207,7 +208,9 @@ function HistoryRow({
         </span>
         {runsHere ? (
           <span className="flex min-w-0 items-center gap-2 text-xs leading-4 text-muted-foreground">
-            <StatusDot className="shrink-0" label={RUNNING_HERE} sentence tone="ok" />
+            <Badge className="shrink-0" dot tone="success">
+              {RUNNING_HERE}
+            </Badge>
             {line === undefined ? null : <span className="truncate">{line}</span>}
           </span>
         ) : line === undefined ? null : (

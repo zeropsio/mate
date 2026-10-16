@@ -10,7 +10,7 @@ import { RELEASE_NOTHING_NEW_ON_MAIN, type ReleaseGate } from "./release.ts";
 /** HQ's rule refusing the person the release, in its words (`releasePermission`). */
 const NOT_A_RELEASER = {
   allowed: false,
-  reason: "You need at least Basic user access to this project's production to release it.",
+  reason: "You need more than Read access to this project's production to release it.",
 } as const;
 import {
   changeReview,
@@ -227,19 +227,19 @@ describe("changeReview: the button says what will happen (R5)", () => {
     [
       "one commit, a production downstream",
       {},
-      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+      "Adds this change to main. Production isn't touched until you release.",
       { enabled: true, safe: true },
     ],
     [
       "several commits, only a stage downstream",
       { commits: 3, downstream: { production: false, stage: true } },
-      "Squash-merges 3 commits into main as one. The stage picks it up from main.",
+      "Adds this change to main. The stage picks it up from main.",
       { enabled: true, safe: true },
     ],
     [
       "nothing downstream yet",
       { downstream: { production: false, stage: false } },
-      "Squash-merges 1 commit into main.",
+      "Adds this change to main.",
       { enabled: true, safe: true },
     ],
     [
@@ -258,7 +258,7 @@ describe("changeReview: the button says what will happen (R5)", () => {
       // Amber: still pressable, never pressed for the person — no focus, no ⌘↵.
       "behind main but clean",
       { pull: pull({ behind: true }) },
-      "Squash-merges 1 commit into main, on top of changes it wasn't checked with. Production isn't touched until you release.",
+      "Adds this change to main, on top of changes it wasn't checked with. Production isn't touched until you release.",
       { enabled: true, safe: false },
     ],
   ])("%s", (_name, over, consequence, primary) => {
@@ -409,7 +409,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     ],
   ])("%s", (_case, over, sentence, next) => {
     const before = changeReview(change({ pull: recipe(), recipe: reach(over), ...releasable }));
-    expect(before.consequence).toBe(`Squash-merges 1 commit into main. ${sentence}`);
+    expect(before.consequence).toBe(`Adds this change to main. ${sentence}`);
     expect(before.primary).toEqual({ label: "Merge", enabled: true, safe: true });
 
     const after = changeReview(change({ pull: merged, recipe: reach(over), ...releasable }));
@@ -433,7 +433,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     });
     const review = changeReview(change({ pull: recipe(), recipe: reached, ...releasable }));
     expect(review.consequence).toBe(
-      "Squash-merges 1 commit into main. The stage gets any service added to its recipe, created empty; the services it has stay as they are.",
+      "Adds this change to main. The stage gets any service added to its recipe, created empty; the services it has stay as they are.",
     );
     expect(review.primary).toEqual({ label: "Merge", enabled: true, safe: true });
     expect(
@@ -446,9 +446,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
 
   it("says what any recipe change does where its files could not be read", () => {
     const review = changeReview(change({ pull: recipe(), readout: "failed", ...releasable }));
-    expect(review.consequence).toBe(
-      `Squash-merges 1 commit into main without its files shown. ${UNREAD}`,
-    );
+    expect(review.consequence).toBe(`Adds this change to main without its files shown. ${UNREAD}`);
   });
 
   it("says it is on main, and what any recipe change does, until the files of one merged are read", () => {
@@ -516,7 +514,7 @@ describe("releaseReview", () => {
         state: "release-blocked",
         tone: "attention",
         title: "Only releasers can release",
-        why: "You need at least Basic user access to this project's production to release it",
+        why: "You need more than Read access to this project's production to release it",
       },
     ],
     [
@@ -735,7 +733,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         state: "rollback-blocked",
         tone: "attention",
         title: "Only releasers can roll back",
-        why: "You need at least Basic user access to this project's production to release it",
+        why: "You need more than Read access to this project's production to release it",
       },
       "Production keeps running v0.1.57.",
     ],
@@ -758,7 +756,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
         state: "rolling-back",
         tone: "busy",
         title: "Rolling back to v0.1.55",
-        why: "Tagging main as v0.1.58",
+        why: "Preparing v0.1.58",
       },
       "You can close this. The project's line in the menu follows the release.",
     ],
@@ -767,13 +765,13 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "tagged, on its way",
       {
         press: { kind: "done" },
-        outcome: { kind: "releasing", progress: "Production redeploys from v0.1.58 · 0:40" },
+        outcome: { kind: "releasing", progress: "Putting v0.1.58 live · 0:40" },
       },
       {
         state: "rolling-back",
         tone: "busy",
         title: "Rolling back to v0.1.55",
-        why: "Production redeploys from v0.1.58 · 0:40",
+        why: "Putting v0.1.58 live · 0:40",
       },
       "You can close this. The project's line in the menu follows the release.",
     ],
@@ -1078,7 +1076,7 @@ describe("changeReview: Merge, offered by HQ's rule (T8a)", () => {
     expect(review.verdict.state).toBe("ready");
     expect(review.primary).toBeUndefined();
     expect(review.consequence).toBe(
-      "You need at least Basic user access to one of this project's Zerops projects to do this.",
+      "You need more than Read access to one of this project's Zerops projects to do this.",
     );
   });
 
@@ -1087,7 +1085,7 @@ describe("changeReview: Merge, offered by HQ's rule (T8a)", () => {
     const review = changeReview(change({ offered: undefined }));
     expect(review.primary).toMatchObject({ label: "Merge", enabled: false, safe: false });
     expect(review.consequence).toBe(
-      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+      "Adds this change to main. Production isn't touched until you release.",
     );
   });
 });
@@ -1214,13 +1212,13 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
       "its files for this head could not be read",
       "failed",
       { enabled: true, safe: false },
-      "Squash-merges 1 commit into main without its files shown. Production isn't touched until you release.",
+      "Adds this change to main without its files shown. Production isn't touched until you release.",
     ],
     [
       "its files for this head read",
       "read",
       { enabled: true, safe: true },
-      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+      "Adds this change to main. Production isn't touched until you release.",
     ],
   ])("%s", (_case, readout, primary, consequence) => {
     const review = changeReview(change({ readout }));
@@ -1284,13 +1282,13 @@ describe("changeReview: where should it run (the one question)", () => {
       text: "Your code is on main. No stage or production runs it yet; Nova's preview is only for trying it out.",
       options: [
         { tier: "stage", label: "Add stage" },
-        { tier: "production", label: "Add production" },
+        { tier: "production", label: "Put it live" },
       ],
       dismiss: "Not now",
     });
   });
 
-  // The onboarding run: "Where should it run?" beside the Mate's "Your recipe box is online" and a
+  // The onboarding run: "Where should it run?" beside the Mate's "Your shop front is online" and a
   // service named appstage — as if nothing ran it, or the preview were the stage.
   it.each([
     [
@@ -1331,7 +1329,7 @@ describe("changeReview: where should it run (the one question)", () => {
 
   it.each<[string, ChangeReviewInput["addable"], ReadonlyArray<string>]>([
     ["only a stage may be added", { stage: true, production: false }, ["Add stage"]],
-    ["only a production may be added", { stage: false, production: true }, ["Add production"]],
+    ["only a production may be added", { stage: false, production: true }, ["Put it live"]],
   ])("offers just the tier left where %s", (_name, addable, labels) => {
     expect(
       changeReview(first({ addable })).question?.options.map((option) => option.label),

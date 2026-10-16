@@ -75,8 +75,7 @@ import {
   useServerConfigs,
   useThreadShells,
 } from "../../state/entities";
-import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../../zerops/waitLine.logic";
-import { PageWaitLine } from "../zerops/WaitLine";
+import { Loading } from "../ui/loading";
 import { projectEnvironment } from "../../state/projects";
 import { primaryServerProvidersAtom, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -285,7 +284,11 @@ export function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
     count: groups.length,
   });
   if (state === "reading") {
-    return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />;
+    return (
+      <div className="p-8">
+        <Loading label="Your projects" shape="page" />
+      </div>
+    );
   }
   if (!selected) {
     return (
@@ -831,8 +834,8 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   className="size-6"
                 />
                 <Button
-                  size="xs"
-                  variant="outline"
+                  size="sm"
+                  variant="secondary"
                   type="button"
                   aria-label="Choose a project icon file"
                   disabled={isSavingFavicon}
@@ -1056,8 +1059,8 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               description="Removes this checkout and its threads from the project group. Files on disk are not touched."
               control={
                 <Button
-                  size="xs"
-                  variant="destructive-outline"
+                  size="sm"
+                  variant="destructive"
                   onClick={() => void removeMembers([selectedCheckout])}
                 >
                   <Trash2Icon className="size-3.5" />
@@ -1078,7 +1081,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                 <Menu>
                   <MenuTrigger
                     render={
-                      <Button size="xs" variant="ghost" disabled={isSavingScripts} type="button" />
+                      <Button size="sm" variant="ghost" disabled={isSavingScripts} type="button" />
                     }
                   >
                     Import scripts
@@ -1110,8 +1113,8 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                 </Menu>
               ) : null}
               <Button
-                size="xs"
-                variant="outline"
+                size="sm"
+                variant="secondary"
                 disabled={isSavingScripts}
                 onClick={() =>
                   setEditorRequest({ scriptId: null, initial: EMPTY_PROJECT_SCRIPT_INPUT })
@@ -1159,7 +1162,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                         <span className="text-xs text-muted-foreground">{shortcutLabel}</span>
                       ) : null}
                       <Button
-                        size="icon-xs"
+                        size="icon-sm"
                         variant="ghost"
                         className="shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
                         aria-label={`Edit ${script.name}`}
@@ -1197,7 +1200,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
             }
             control={
               <Button
-                variant="destructive-outline"
+                variant="destructive"
                 onClick={() => void removeMembers(group.memberProjects)}
               >
                 <Trash2Icon />

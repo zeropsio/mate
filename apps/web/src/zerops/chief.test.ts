@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   chiefNames,
+  chiefOffered,
   chiefQuestion,
   chiefSetupLine,
   chiefSetupEntry,
@@ -161,5 +162,44 @@ describe("Chief setup entry", () => {
     ["Chief setup keeps its coming state", true, {}, "done", false],
   ] as const)("%s", (_title, read, facts, setup, expected) => {
     expect(chiefSetupEntry(hqOwnChief(facts, read), setup)).toBe(expected);
+  });
+});
+
+describe("the account menu's Chief offer", () => {
+  const app = (...projectIds: ReadonlyArray<string>) => ({
+    projects: projectIds.map((projectId) => ({ projectId })),
+  });
+  it.each<[string, Parameters<typeof chiefOffered>[0], boolean]>([
+    [
+      "is offered once the organization has a second project and the person may set one up",
+      { entry: true, apps: [app("shop-prod", "shop-mate"), app("blog-prod")], chiefs: new Set() },
+      true,
+    ],
+    [
+      "is not offered while the organization has one project: a Chief is not useful yet",
+      { entry: true, apps: [app("shop-prod", "shop-stage", "shop-mate")], chiefs: new Set() },
+      false,
+    ],
+    [
+      "does not count another person's Chief as a project",
+      {
+        entry: true,
+        apps: [app("shop-prod"), app("chief-of-ola")],
+        chiefs: new Set(["chief-of-ola"]),
+      },
+      false,
+    ],
+    [
+      "is not offered to a person who has one, may not make one, or while that is not known",
+      { entry: false, apps: [app("shop-prod"), app("blog-prod")], chiefs: new Set() },
+      false,
+    ],
+    [
+      "is not offered while the organization's projects are not read",
+      { entry: true, apps: undefined, chiefs: new Set() },
+      false,
+    ],
+  ])("%s", (_title, input, offered) => {
+    expect(chiefOffered(input)).toBe(offered);
   });
 });

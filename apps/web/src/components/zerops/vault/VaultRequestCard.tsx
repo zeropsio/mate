@@ -14,7 +14,7 @@ import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
 import { Input } from "../../ui/input";
 import { Spinner } from "../../ui/spinner";
-import { FlatCard } from "../primitives";
+import { Card } from "../../ui/card";
 import type { VaultWriteOutcome } from "./VaultPanel";
 import {
   type VaultAsk,
@@ -52,31 +52,29 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
 
   if (face !== "reading" && face !== "unplaced" && face !== "open" && face !== "reserved") {
     return (
-      <FlatCard
-        className="flex items-start gap-2 px-3.5 py-2 text-xs"
-        data-vault-request={ask.key}
-        data-vault-request-face={face}
-      >
-        <LockKeyholeIcon
-          aria-hidden="true"
-          className="mt-px size-3.5 shrink-0 text-muted-foreground"
-        />
-        <div className="grid min-w-0 gap-0.5">
-          <span className="min-w-0 truncate text-muted-foreground">
-            {face === "not-now" ? (
-              <>
-                {mateName} asked for <span className="font-mono text-foreground">{ask.key}</span> ·
-                Not now
-              </>
-            ) : (
-              <>
-                <span className="font-mono text-foreground">{ask.key}</span> is in the vault
-                {face === "put" ? ` — ${mateName} hears it with your next message` : ""}
-              </>
-            )}
-          </span>
+      <Card data-vault-request={ask.key} data-vault-request-face={face} size="sm" variant="flat">
+        <div className="flex items-start gap-2 text-xs">
+          <LockKeyholeIcon
+            aria-hidden="true"
+            className="mt-px size-3.5 shrink-0 text-muted-foreground"
+          />
+          <div className="grid min-w-0 gap-0.5">
+            <span className="min-w-0 truncate text-muted-foreground">
+              {face === "not-now" ? (
+                <>
+                  {mateName} asked for <span className="font-mono text-foreground">{ask.key}</span>{" "}
+                  · Not now
+                </>
+              ) : (
+                <>
+                  <span className="font-mono text-foreground">{ask.key}</span> is in the vault
+                  {face === "put" ? ` — ${mateName} hears it with your next message` : ""}
+                </>
+              )}
+            </span>
+          </div>
         </div>
-      </FlatCard>
+      </Card>
     );
   }
 
@@ -96,124 +94,122 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
   };
 
   return (
-    <FlatCard
-      className="flex min-w-0 items-start gap-2.5 px-3.5 py-3"
-      data-vault-request={ask.key}
-      data-vault-request-face={face}
-    >
-      <LockKeyholeIcon
-        aria-hidden="true"
-        className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-      />
-      <div className="grid min-w-0 flex-1 gap-2.5">
-        <div className="grid min-w-0 gap-0.5">
-          <p className="text-sm text-foreground">
-            {mateName} needs <span className="font-mono font-medium">{ask.key}</span>
-          </p>
-          <p className="text-xs text-muted-foreground" data-vault-request-where>
-            {vaultAskWhere(ask)}
-          </p>
-          {ask.reason === null ? null : (
-            <p className="text-xs leading-4.5 text-muted-foreground" data-vault-request-reason>
-              {mateName}: <q className="italic">{ask.reason}</q>
+    <Card data-vault-request={ask.key} data-vault-request-face={face} size="sm" variant="flat">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <LockKeyholeIcon
+          aria-hidden="true"
+          className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+        />
+        <div className="grid min-w-0 flex-1 gap-2.5">
+          <div className="grid min-w-0 gap-0.5">
+            <p className="text-sm text-foreground">
+              {mateName} needs <span className="font-mono font-medium">{ask.key}</span>
             </p>
-          )}
-          <p className="text-xs leading-4.5 text-muted-foreground" data-vault-request-reach>
-            {vaultAskReach(ask, mateName)}
-          </p>
-          {vaultAskLooksLikeZeropsSignIn(ask.key) ? (
-            <p
-              className="flex items-center gap-1.5 text-xs leading-4 text-destructive-foreground"
-              data-vault-request-own
-            >
-              <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
-              {ask.key} looks like a Zerops sign-in. {mateName} never needs yours.
+            <p className="text-xs text-muted-foreground" data-vault-request-where>
+              {vaultAskWhere(ask)}
             </p>
-          ) : null}
-        </div>
-        {face === "unplaced" ? (
-          <p className="text-xs text-muted-foreground" data-vault-request-unplaced>
-            {ask.scope.kind === "service" ? ask.scope.hostname : "This vault"} is not in this
-            project any more.
-          </p>
-        ) : face === "reserved" ? (
-          <>
-            <p className="text-xs text-muted-foreground" data-vault-request-reserved>
-              {ask.key} is a name {mateName} keeps for itself, so the vault never lists it: a value
-              kept under it could not be seen or removed. Decline, and {mateName} can ask for it
-              under another name.
-            </p>
-            <div className="flex items-center gap-2">
-              <Button onClick={props.onNotNow} size="xs" variant="ghost-muted">
-                Not now
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="flex min-w-0 items-center gap-1">
-              <Input
-                aria-label={PASTE_LABEL}
-                autoComplete="new-password"
-                data-1p-ignore=""
-                data-bwignore=""
-                data-form-type="other"
-                data-lpignore="true"
-                disabled={open === null || busy}
-                onChange={(event) => setValue(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void put();
-                }}
-                placeholder={PASTE_LABEL}
-                size="sm"
-                spellCheck={false}
-                type={shown ? "text" : "password"}
-                value={value}
-              />
-              <Button
-                aria-label={shown ? "Hide" : "Show"}
-                aria-pressed={shown}
-                disabled={open === null}
-                onClick={() => setShown((current) => !current)}
-                size="icon-sm"
-                variant="ghost-muted"
-              >
-                {shown ? <EyeOffIcon /> : <EyeIcon />}
-              </Button>
-            </div>
-            {refusal === null ? null : (
-              <p
-                className="flex items-center gap-1.5 text-xs leading-4 text-destructive-foreground"
-                data-vault-request-refusal
-                role="alert"
-              >
-                <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
-                {refusal}
+            {ask.reason === null ? null : (
+              <p className="text-xs leading-4.5 text-muted-foreground" data-vault-request-reason>
+                {mateName}: <q className="italic">{ask.reason}</q>
               </p>
             )}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Checkbox
-                aria-labelledby={secretLabel}
-                checked={secret}
-                disabled={heldSecret || open === null || busy}
-                onCheckedChange={(checked) => setSecret(checked === true)}
-              />
-              <span id={secretLabel}>
-                Keep it secret{heldSecret ? ": it is a secret already" : ""}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button disabled={!canPut} onClick={() => void put()} size="xs">
-                {busy ? <Spinner size="xs" /> : null}
-                Put in vault
-              </Button>
-              <Button disabled={busy} onClick={props.onNotNow} size="xs" variant="ghost-muted">
-                Not now
-              </Button>
-            </div>
-          </>
-        )}
+            <p className="text-xs leading-4.5 text-muted-foreground" data-vault-request-reach>
+              {vaultAskReach(ask, mateName)}
+            </p>
+            {vaultAskLooksLikeZeropsSignIn(ask.key) ? (
+              <p
+                className="flex items-center gap-1.5 text-xs leading-4 text-destructive-foreground"
+                data-vault-request-own
+              >
+                <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
+                {ask.key} looks like a Zerops sign-in. {mateName} never needs yours.
+              </p>
+            ) : null}
+          </div>
+          {face === "unplaced" ? (
+            <p className="text-xs text-muted-foreground" data-vault-request-unplaced>
+              {ask.scope.kind === "service" ? ask.scope.hostname : "This vault"} is not in this
+              project any more.
+            </p>
+          ) : face === "reserved" ? (
+            <>
+              <p className="text-xs text-muted-foreground" data-vault-request-reserved>
+                {ask.key} is a name {mateName} keeps for itself, so the vault never lists it: a
+                value kept under it could not be seen or removed. Decline, and {mateName} can ask
+                for it under another name.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button onClick={props.onNotNow} size="sm" variant="ghost">
+                  Not now
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex min-w-0 items-center gap-1">
+                <Input
+                  aria-label={PASTE_LABEL}
+                  autoComplete="new-password"
+                  data-1p-ignore=""
+                  data-bwignore=""
+                  data-form-type="other"
+                  data-lpignore="true"
+                  disabled={open === null || busy}
+                  onChange={(event) => setValue(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void put();
+                  }}
+                  placeholder={PASTE_LABEL}
+                  size="sm"
+                  spellCheck={false}
+                  type={shown ? "text" : "password"}
+                  value={value}
+                />
+                <Button
+                  aria-label={shown ? "Hide" : "Show"}
+                  aria-pressed={shown}
+                  disabled={open === null}
+                  onClick={() => setShown((current) => !current)}
+                  size="icon-sm"
+                  variant="ghost"
+                >
+                  {shown ? <EyeOffIcon /> : <EyeIcon />}
+                </Button>
+              </div>
+              {refusal === null ? null : (
+                <p
+                  className="flex items-center gap-1.5 text-xs leading-4 text-destructive-foreground"
+                  data-vault-request-refusal
+                  role="alert"
+                >
+                  <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
+                  {refusal}
+                </p>
+              )}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Checkbox
+                  aria-labelledby={secretLabel}
+                  checked={secret}
+                  disabled={heldSecret || open === null || busy}
+                  onCheckedChange={(checked) => setSecret(checked === true)}
+                />
+                <span id={secretLabel}>
+                  Keep it secret{heldSecret ? ": it is a secret already" : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button disabled={!canPut} onClick={() => void put()} size="sm">
+                  {busy ? <Spinner size="xs" /> : null}
+                  Put in vault
+                </Button>
+                <Button disabled={busy} onClick={props.onNotNow} size="sm" variant="ghost">
+                  Not now
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </FlatCard>
+    </Card>
   );
 }

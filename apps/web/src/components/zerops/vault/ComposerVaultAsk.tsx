@@ -9,7 +9,7 @@ import type { VaultScopeRef, VaultWrite } from "@t3tools/client-runtime/data";
 import { CircleAlertIcon, EyeIcon, EyeOffIcon } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 
-import { ComposerAsk, ComposerAskButton, ComposerAskMark } from "../../chat/ComposerAsk";
+import { ComposerAsk, ComposerAskMark } from "../../chat/ComposerAsk";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Spinner } from "../../ui/spinner";
@@ -74,17 +74,17 @@ export function ComposerVaultAsk(props: ComposerVaultAskProps) {
               onClick={props.onNotNow}
               size="sm"
               type="button"
-              variant="ghost-muted"
+              variant="ghost"
             >
               Not now
             </Button>
             {takes ? (
-              <ComposerAskButton disabled={!canSave} onClick={() => void save()}>
+              <Button disabled={!canSave} onClick={() => void save()}>
                 {busy ? <Spinner size="xs" /> : null}
                 Save to vault
-              </ComposerAskButton>
+              </Button>
             ) : state.kind === "filled" ? (
-              <ComposerAskButton onClick={props.onUseGiven}>Use that one</ComposerAskButton>
+              <Button onClick={props.onUseGiven}>Use that one</Button>
             ) : null}
           </>
         }
@@ -150,7 +150,7 @@ export function ComposerVaultAsk(props: ComposerVaultAskProps) {
                 onClick={() => setShown((current) => !current)}
                 size="icon-sm"
                 type="button"
-                variant="ghost-muted"
+                variant="ghost"
               >
                 {shown ? <EyeOffIcon /> : <EyeIcon />}
               </Button>

@@ -1,6 +1,6 @@
 /**
  * The addresses sheet over the window at the owner's size, from the board's sample world
- * (`addressesFixture.ts`): `?task=` opens it on a flow — `add` (Add your domain), `others`
+ * (`addressesFixture.ts`): `?task=` opens it on a flow — `add` (Put it on your domain), `others`
  * (someone else's change waits), `own` (the project has its own IPv4). Writes are taken after
  * 600 ms and shown under way for 3 s; `?fail=1` refuses each. `?theme=dark` for dark.
  *

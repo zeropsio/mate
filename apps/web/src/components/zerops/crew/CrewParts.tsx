@@ -6,6 +6,7 @@
 import { EllipsisIcon } from "lucide-react";
 import { useState, type ReactElement, type ReactNode } from "react";
 
+import { Button, InlineButton } from "../../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 
 /** A tooltip saying what a press does; nothing around it while there is nothing to say. */
@@ -28,14 +29,16 @@ export function CrewTip({
   );
 }
 
-export type CrewPressTone = "primary" | "quiet" | "muted" | "failed";
-
-/** One press: the first of a row's filled in the action blue, the rest its words. */
+/**
+ * One press with its line on hover: the system's Button, `primary` for a row's first, the rest
+ * `secondary`, Cancel `ghost`, and `destructive` for what takes a crewmate off. `sm` in a row,
+ * `md` in a view.
+ */
 export function CrewPress({
   label,
   line,
-  tone = "primary",
-  size = "row",
+  variant = "primary",
+  size = "sm",
   disabled = false,
   onPress,
   type = "button",
@@ -43,27 +46,24 @@ export function CrewPress({
   readonly label: string;
   /** What it does, on hover. */
   readonly line?: string | null | undefined;
-  readonly tone?: CrewPressTone;
-  /** A row's 28 px, or a view's 32. */
-  readonly size?: "row" | "view";
+  readonly variant?: "primary" | "secondary" | "ghost" | "destructive";
+  readonly size?: "sm" | "md";
   readonly disabled?: boolean;
   readonly onPress?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   readonly type?: "button" | "submit";
 }) {
   return (
     <CrewTip tip={line ?? null}>
-      <button
-        className="crew-press crew-row-above"
-        data-failed={tone === "failed" ? "" : undefined}
-        data-muted={tone === "muted" ? "" : undefined}
-        data-quiet={tone === "quiet" ? "" : undefined}
-        data-size={size === "view" ? "view" : undefined}
+      <Button
+        className="relative z-1"
         disabled={disabled}
         onClick={onPress}
+        size={size}
         type={type}
+        variant={variant}
       >
         {label}
-      </button>
+      </Button>
     </CrewTip>
   );
 }
@@ -72,17 +72,19 @@ export function CrewPress({
 export function CrewTextButton({
   label,
   line,
+  disabled,
   onPress,
 }: {
   readonly label: string;
   readonly line?: string | null | undefined;
+  readonly disabled?: boolean;
   readonly onPress: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <CrewTip tip={line ?? null}>
-      <button className="crew-textbtn crew-row-above" onClick={onPress} type="button">
+      <InlineButton className="relative z-1" disabled={disabled} onClick={onPress}>
         {label}
-      </button>
+      </InlineButton>
     </CrewTip>
   );
 }

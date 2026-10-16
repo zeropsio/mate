@@ -63,8 +63,19 @@ const input = (viewer?: TeamInput["viewer"], viewerUserId = "ada"): TeamInput =>
 });
 
 /** The page as a person reads it: the count, each card's parts and where it leads, Invite. */
-function drawn(viewer?: TeamInput["viewer"], viewerUserId?: string) {
-  const markup = renderToStaticMarkup(<TeamList view={teamPeople(input(viewer, viewerUserId))} />);
+function drawn(
+  viewer?: TeamInput["viewer"],
+  viewerUserId?: string,
+  list: TeamInput["members"]["list"] = TEAM,
+) {
+  const markup = renderToStaticMarkup(
+    <TeamList
+      view={teamPeople({
+        ...input(viewer, viewerUserId),
+        members: { known: true, status: "ready", refused: false, list },
+      })}
+    />,
+  );
   const body = new DOMParser().parseFromString(markup, "text/html").body;
   const part = (card: Element, name: string) =>
     card.querySelector(`[data-part="${name}"]`)?.textContent ?? null;
@@ -75,9 +86,11 @@ function drawn(viewer?: TeamInput["viewer"], viewerUserId?: string) {
       role: part(card, "role"),
       email: part(card, "email"),
       pending: card.hasAttribute("data-pending"),
+      waiting: part(card, "pending"),
       href: card.getAttribute("href"),
     })),
     invite: body.querySelector('[data-zerops-surface="invite-team"]') !== null,
+    alone: body.querySelector('[data-part="alone"]')?.textContent ?? null,
   };
 }
 
@@ -104,6 +117,33 @@ describe("the organization's team", () => {
 
   it("An invitation not joined yet is dimmed", () => {
     expect(drawn().cards.map(({ pending }) => pending)).toEqual([false, false, false, true]);
+  });
+
+  it("An invitation not joined yet says it waits for them to join", () => {
+    expect(drawn().cards.map(({ waiting }) => waiting)).toEqual([
+      null,
+      null,
+      null,
+      "Invited · waiting for them to join",
+    ]);
+  });
+
+  it.each([
+    {
+      sentence: "A team of one tells an owner who an invitation brings in",
+      viewer: "OWNER",
+      alone: "Only you so far. People you invite sign in with their own Zerops account.",
+    },
+    {
+      sentence: "A team of one says nothing to someone who can't invite",
+      viewer: "NO_ACCESS",
+      alone: null,
+    },
+  ])("$sentence", ({ viewer, alone }) => {
+    expect(drawn({ roleCode: viewer, membershipId: "cu-ada" }, "ada", [TEAM[0]!]).alone).toBe(
+      alone,
+    );
+    expect(drawn({ roleCode: viewer, membershipId: "cu-ada" }, "ada").alone).toBeNull();
   });
 
   it.each([

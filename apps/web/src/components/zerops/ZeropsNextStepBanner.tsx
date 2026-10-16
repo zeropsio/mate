@@ -24,7 +24,7 @@
  * the strip from here and hands it to the composer as its top.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { XIcon } from "lucide-react";
@@ -35,10 +35,14 @@ import {
   dismissedComposerReview,
 } from "../../zerops/composerReviewDismissal";
 import { useOpenReview, type ReviewTarget } from "../../zerops/review";
+import { usePutLive, type PutLiveAsk } from "../../zerops/putLive";
+import { putLiveMergeGate, type PutLiveMergePull } from "../../zerops/putLive.logic";
+import { useZeropsMate } from "../../zerops/useZeropsMates";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ComposerAskButton } from "../chat/ComposerAsk";
+import { Button } from "../ui/button";
 import { MateFace } from "./primitives";
+import { useConversationGroup, usePutLiveOffered, usePutLiveRow } from "./PutLiveTop";
 
 /** What waits on the person in the composer right now. */
 export interface ZeropsNextStepPending {
@@ -56,7 +60,7 @@ export interface ZeropsNextStepLine {
 }
 
 export interface ZeropsNextStepStripModel {
-  /** `Nova is waiting for your review of #2`, or `of 2 changes` */
+  /** `Nova is waiting for your review`, or `… of 2 changes` */
   readonly title: string;
   /** The change's own title — the newest's, where several wait. */
   readonly detail: string;
@@ -119,12 +123,24 @@ export function zeropsComposerTop(input: {
 export function ZeropsNextStepStrip({
   strip,
   onReview,
+  onPutLive,
+  putLiveHeld,
   onMore,
   onDismiss,
 }: {
   readonly strip: ZeropsNextStepStripModel;
   /** Opens the review, from the button that was pressed. */
   readonly onReview: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => void;
+  /**
+   * Where the project has no production yet and the person may add one: *Put it live* is the one
+   * blue button, and Review steps back to quiet words beside it (`putLive.logic.ts`).
+   */
+  readonly onPutLive?: (() => void) | undefined;
+  /**
+   * Why *Put it live* waits where it would be offered: the review's verdict on the change (a
+   * required check, HQ still judging it), said beside Review, the one button, where it moves on.
+   */
+  readonly putLiveHeld?: string | undefined;
   /** Opens the project's page, where every change waiting is listed. */
   readonly onMore?: ((groupId: string) => void) | undefined;
   /** Puts the strip away for this change, from the button that was pressed. */
@@ -141,7 +157,7 @@ export function ZeropsNextStepStrip({
         className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
         data-composer-top="review"
       >
-        <MateFace shape={strip.shape} size="md" state="needs" tint={strip.tint} />
+        <MateFace shape={strip.shape} size={24} state="needs" tint={strip.tint} />
         <p className="truncate font-medium text-foreground text-line leading-4.5">{strip.title}</p>
         {dismissButton(strip.target, onDismiss, "-my-1 justify-self-end")}
         {lines.map((line) => (
@@ -151,27 +167,29 @@ export function ZeropsNextStepStrip({
             key={`${line.target.repository}#${String(line.target.number)}`}
           >
             <p className="truncate text-muted-foreground text-line leading-4.5">{line.label}</p>
-            <button
-              className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            <Button
               onClick={(event) => {
                 onReview(line.target, event.currentTarget);
               }}
-              type="button"
+              size="sm"
+              variant="link"
             >
               Review
-            </button>
+            </Button>
           </div>
         ))}
         {strip.more === undefined || strip.more === 0 ? null : (
-          <button
-            className="col-start-2 cursor-pointer justify-self-start rounded-sm text-muted-foreground text-line leading-6 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => {
-              onMore?.(strip.target.groupId);
-            }}
-            type="button"
-          >
-            and {strip.more} more
-          </button>
+          <div className="col-start-2 -ms-2.5 justify-self-start">
+            <Button
+              onClick={() => {
+                onMore?.(strip.target.groupId);
+              }}
+              size="sm"
+              variant="ghost"
+            >
+              and {strip.more} more
+            </Button>
+          </div>
         )}
       </section>
     );
@@ -182,18 +200,39 @@ export function ZeropsNextStepStrip({
       className="grid grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-x-3 border-foreground/8 border-b pt-3 pe-2 pb-3 ps-4"
       data-composer-top="review"
     >
-      <MateFace shape={strip.shape} size="md" state="needs" tint={strip.tint} />
+      <MateFace shape={strip.shape} size={24} state="needs" tint={strip.tint} />
       <div className="min-w-0">
         <p className="truncate font-medium text-foreground text-line leading-4.5">{strip.title}</p>
         <p className="truncate text-muted-foreground text-line leading-4.5">{strip.detail}</p>
       </div>
-      <ComposerAskButton
-        onClick={(event) => {
-          onReview(strip.target, event.currentTarget);
-        }}
-      >
-        Review
-      </ComposerAskButton>
+      {onPutLive === undefined ? (
+        <div className="flex min-w-0 items-center gap-3">
+          {putLiveHeld === undefined ? null : (
+            <p className="max-w-56 truncate text-muted-foreground text-line" role="status">
+              {putLiveHeld}
+            </p>
+          )}
+          <Button
+            onClick={(event) => {
+              onReview(strip.target, event.currentTarget);
+            }}
+          >
+            Review
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={(event) => {
+              onReview(strip.target, event.currentTarget);
+            }}
+            variant="ghost"
+          >
+            Review
+          </Button>
+          <Button onClick={onPutLive}>Put it live</Button>
+        </div>
+      )}
       {dismissButton(strip.target, onDismiss)}
     </section>
   );
@@ -270,18 +309,55 @@ export function useZeropsNextStepStrip(
     },
     [threadKey],
   );
+  const nextStep = useZeropsMateNextStep(threadRef, yours);
   const { strip, reserved } = zeropsComposerTop({
-    nextStep: useZeropsMateNextStep(threadRef, yours),
+    nextStep,
     dismissed: threadKey === null ? undefined : dismissedComposerReview(threadKey),
     pending,
   });
+  // Put it live: offered on the person's own Mate's one change while the project has no
+  // production, and its run drawn here once pressed, in the change's place — read in a part of its
+  // own, once the conversation's project is known.
+  const groupId = useConversationGroup(threadRef);
+  const pull = nextStep.kind === "review" ? nextStep.step.pull : undefined;
+  const single = nextStep.kind === "review" && nextStep.step.lines.length === 0;
+  const change =
+    pull === undefined || !single
+      ? undefined
+      : JSON.stringify({
+          repository: pull.repository,
+          number: pull.number,
+          title: pull.title,
+          head: pull.headSha,
+          merged: false,
+          description: pull.description,
+        } satisfies PutLiveAsk["change"]);
+  // What the review's Merge would say of it now: Put it live merges only what it would.
+  const verdictPull =
+    pull === undefined || !single
+      ? undefined
+      : JSON.stringify({
+          number: pull.number,
+          headSha: pull.headSha,
+          pipeline: pull.pipeline,
+          kind: pull.kind,
+          baseBranch: pull.baseBranch,
+          mergeability: pull.mergeability,
+          merged: pull.merged,
+          mergedAt: pull.mergedAt,
+          state: pull.state,
+          behind: pull.behind,
+          ready: pull.ready,
+        } satisfies PutLiveMergePull);
+  const held = pending.question || pending.approval;
+  const environmentId = threadRef?.environmentId;
   // The composer is memoised: the strip keeps its identity while what it
   // says does — a remembered strip HQ confirms is the same node, so the
   // answer re-renders nothing — and a conversation's re-render never
   // re-renders the composer.
   const shown = strip === null ? null : JSON.stringify(strip);
-  return useMemo(
-    () =>
+  return useMemo(() => {
+    const top = (putLive?: PutLiveDoor) =>
       shown === null ? (
         // Its room is held for the viewer's own composer, which must not move when the change
         // comes; a colleague's read-along line holds none (HQ may never list that viewer the
@@ -294,13 +370,89 @@ export function useZeropsNextStepStrip(
           onMore={(groupId) => {
             void navigate({ to: "/group/$groupId/flow", params: { groupId } });
           }}
+          onPutLive={putLive?.kind === "press" ? putLive.onPress : undefined}
+          putLiveHeld={putLive?.kind === "held" ? putLive.words : undefined}
           onDismiss={dismiss}
           onReview={(target, from) => {
             openReview(target, { from });
           }}
           strip={JSON.parse(shown) as ZeropsNextStepStripModel}
         />
-      ),
-    [dismiss, navigate, openReview, reserved, shown, yours],
+      );
+    return groupId === undefined || environmentId === undefined ? (
+      top()
+    ) : (
+      <PutLiveComposerTop
+        change={change === undefined ? undefined : (JSON.parse(change) as PutLiveAsk["change"])}
+        environmentId={environmentId}
+        groupId={groupId}
+        held={held}
+        top={top}
+        verdictPull={
+          verdictPull === undefined ? undefined : (JSON.parse(verdictPull) as PutLiveMergePull)
+        }
+        yours={yours}
+      />
+    );
+  }, [
+    change,
+    dismiss,
+    environmentId,
+    groupId,
+    held,
+    navigate,
+    openReview,
+    reserved,
+    shown,
+    verdictPull,
+    yours,
+  ]);
+}
+
+/**
+ * The composer's top where the conversation's project is known: a *Put it live* run in the change's
+ * place — giving way only to what the Mate itself waits on, a question or an approval — else the
+ * strip, with *Put it live* as its one blue button while it is offered.
+ */
+function PutLiveComposerTop({
+  groupId,
+  environmentId,
+  change,
+  verdictPull,
+  held,
+  yours,
+  top,
+}: {
+  readonly groupId: string;
+  readonly environmentId: EnvironmentId;
+  readonly change: PutLiveAsk["change"] | undefined;
+  /** The change as its review judges it, where the strip carries one. */
+  readonly verdictPull: PutLiveMergePull | undefined;
+  readonly held: boolean;
+  readonly yours: boolean;
+  readonly top: (putLive?: PutLiveDoor) => ReactNode;
+}) {
+  const offered = usePutLiveOffered(yours ? groupId : undefined);
+  const ask = usePutLive((state) => state.ask);
+  const known = useZeropsMate(environmentId);
+  const mate = known.kind === "mate" ? known.mate : undefined;
+  const row = usePutLiveRow(groupId, { tint: mate?.tint ?? "slate", shape: mate?.shape });
+  if (row !== null && !held) return row;
+  if (!offered || change === undefined) return top();
+  const gate = putLiveMergeGate({ pull: verdictPull });
+  return top(
+    gate.kind === "held"
+      ? gate
+      : {
+          kind: "press",
+          onPress: () => {
+            ask({ groupId, change });
+          },
+        },
   );
 }
+
+/** *Put it live* on the strip: one press, or why it waits for the review. */
+type PutLiveDoor =
+  | { readonly kind: "press"; readonly onPress: () => void }
+  | { readonly kind: "held"; readonly words: string };

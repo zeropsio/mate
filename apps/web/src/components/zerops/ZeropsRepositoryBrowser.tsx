@@ -1,12 +1,12 @@
 import { FileIcon, FolderIcon } from "lucide-react";
+import { Card } from "../ui/card";
 import { useState } from "react";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
-import { FlatCard } from "./primitives";
 import { ZeropsGitChangeRow } from "./ZeropsGitChangeRow";
 import { GitTokenGuide } from "./GitTokenGuide";
 import { ZeropsGitCredentials } from "./ZeropsGitCredentials";
 import type { RepositorySource, RepositoryQuery } from "@t3tools/shared/hqGit";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { useRepositorySource } from "~/zerops/useRepositorySource";
 
 export function ZeropsRepositorySource({
@@ -122,21 +122,15 @@ export function ZeropsRepositoryBrowser({
   const heading = (
     <>
       <nav className="flex min-w-0 flex-wrap items-center gap-2 text-sm" aria-label="Repository">
-        <button
-          type="button"
-          className="cursor-pointer rounded-sm text-primary underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onBack}
-        >
-          Git
-        </button>
+        <InlineButton onClick={onBack}>Git</InlineButton>
         <span className="text-muted-foreground"> / {project} / </span>
         <span className="break-all font-medium text-foreground">{repo}</span>
-        {repo === "group" ? <span className="text-xs text-muted-foreground">Recipe</span> : null}
+        {repo === "group" ? <span className="text-xs text-muted-foreground">Setup</span> : null}
       </nav>
       <div>
         <h1 className="text-xl font-medium text-foreground">{repo}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {project}’s {repo === "group" ? "recipe repository" : "repository"}
+          {project}’s {repo === "group" ? "setup repository" : "repository"}
         </p>
       </div>
     </>
@@ -176,7 +170,7 @@ export function ZeropsRepositoryBrowser({
           <p className="text-sm text-muted-foreground">Showing the last read changes.</p>
         ) : null}
         {repository !== undefined && repository.changes.length > 0 ? (
-          <FlatCard>
+          <Card variant="flat">
             <div className="divide-y divide-border px-4 py-1">
               {repository.changes.map((change) => (
                 <ZeropsGitChangeRow
@@ -190,12 +184,12 @@ export function ZeropsRepositoryBrowser({
                 />
               ))}
             </div>
-          </FlatCard>
+          </Card>
         ) : repository?.coverage === "complete" ? (
           <p className="text-sm text-muted-foreground">No open changes.</p>
         ) : null}
       </section>
-      <FlatCard>
+      <Card variant="flat">
         <details className="px-4 py-3" onToggle={(event) => setCloneOpen(event.currentTarget.open)}>
           <summary className="cursor-pointer text-sm font-medium text-foreground">
             Clone with HTTPS
@@ -204,7 +198,7 @@ export function ZeropsRepositoryBrowser({
             {cloneOpen ? <ZeropsGitCredentials appId={appId} repo={repo} /> : null}
           </div>
         </details>
-      </FlatCard>
+      </Card>
       {repo === "group" ? null : <GitTokenGuide key={`${appId}:${repo}`} project={project} />}
       <section aria-label="Source" className="flex min-w-0 flex-col gap-3">
         <div>
@@ -213,7 +207,7 @@ export function ZeropsRepositoryBrowser({
             Browsing source does not switch a Mate’s checkout.
           </p>
         </div>
-        <FlatCard>
+        <Card variant="flat">
           <div className="flex min-w-0 flex-col gap-3 p-4">
             {source.state !== "known" ? (
               <>
@@ -300,7 +294,7 @@ export function ZeropsRepositoryBrowser({
               </>
             )}
           </div>
-        </FlatCard>
+        </Card>
       </section>
     </section>
   );

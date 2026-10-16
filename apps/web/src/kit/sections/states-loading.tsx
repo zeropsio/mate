@@ -4,7 +4,6 @@ import { DiffPanelHeaderSkeleton, DiffPanelLoadingState } from "~/components/Dif
 import { RefreshFilesButton } from "~/components/files/FileBrowserPanel";
 import { SourceControlSectionSkeleton } from "~/components/settings/SourceControlSettings";
 import { DesktopUpdateStatusIcon } from "~/components/sidebar/DesktopUpdateStatusIcon";
-import { SurfaceLoading } from "~/components/SurfaceLoading";
 import { UsageSummarySkeleton } from "~/components/usage/UsagePage";
 import { ConversationFooterStandIn } from "~/components/zerops/ConversationFooterStandIn";
 import { ReviewSkeleton } from "~/components/zerops/review/ZeropsReviewSurface";
@@ -15,6 +14,7 @@ import { ZeropsPanelPlaceholder } from "~/components/zerops/ZeropsPanel";
 import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
 import { CensusLook, StateCensus, StateFrame } from "../states/Census";
+import { ChosenLoading } from "../states/Chosen";
 
 const PATCH = `@@ -12,7 +12,7 @@
 -  const port = 3000;
@@ -23,32 +23,24 @@ const PATCH = `@@ -12,7 +12,7 @@
 function LoadingCensus() {
   return (
     <StateCensus
-      atom="Spinner for a wait with no end, Skeleton for content on its way"
-      count="7 looks: 17 own loading components in 13 files, the spin hand-rolled at 16 sites in 12 files, “Loading…”/“Reading…” words at 72 sites in 48 files; Spinner is imported in 22 files, Skeleton in 4."
+      atom="Loading, in the shape of what comes"
+      chosen={<ChosenLoading />}
+      count="7 looks: 15 own loading components in 12 files, the spin hand-rolled at 16 sites in 12 files, “Loading…”/“Reading…” words at about 60 sites in 42 files."
     >
       <CensusLook
         name="Spinner and a quiet line"
-        uses="about 50 sites in 30 files"
+        uses="3 sites in 3 files"
         places={[
           "apps/web/src/components/zerops/WaitLine.tsx:14 WaitLine",
-          "apps/web/src/components/zerops/WaitLine.tsx:29 PageWaitLine (19 uses)",
-          "apps/web/src/components/SurfaceLoading.tsx:10 SurfaceLoading (20 uses)",
-          "apps/web/src/components/SurfaceLoading.tsx:25 RoutePending",
+          "apps/web/src/components/usage/UsageLimits.tsx:613, :653 (under the cards)",
+          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:122 (a sign-in's return)",
           "apps/web/src/components/chat/ConversationPanelStandIn.tsx:28 useConversationPanelStandIn",
           "apps/web/src/components/zerops/landing/ZeropsDeviceLoginWait.tsx:36",
-          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:191",
           "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx:34",
-          "apps/web/src/routes/_chat.tsx:134 ChatRoutePending",
-          "apps/web/src/routes/_chat.$environmentId.$threadId.tsx:29 ChatThreadRoutePending",
         ]}
       >
-        <Specimen label='<WaitLine text="Reading your projects…" />'>
-          <WaitLine text="Reading your projects…" />
-        </Specimen>
-        <Specimen label="<SurfaceLoading />" source="apps/web/src/components/SurfaceLoading.tsx">
-          <StateFrame>
-            <SurfaceLoading />
-          </StateFrame>
+        <Specimen label='<WaitLine text="Reading subscription limits…" />'>
+          <WaitLine text="Reading subscription limits…" />
         </Specimen>
       </CensusLook>
 
@@ -86,19 +78,15 @@ function LoadingCensus() {
 
       <CensusLook
         name="Words alone, no motion"
-        uses="72 sites in 48 files"
+        uses="about 60 sites in 42 files"
         places={[
           "apps/web/src/components/zerops/ZeropsPanel.tsx:319 ZeropsPanelPlaceholder",
           "apps/web/src/components/chat/ReviewCommentDiffLoading.tsx:1 ReviewCommentDiffLoading",
-          "apps/web/src/components/settings/DiagnosticsSettings.tsx:158 EmptyRows (“Loading …”)",
-          "apps/web/src/components/zerops/addresses/AddressesSheetBits.tsx:120 SheetEmpty (“Reading…”)",
           "apps/web/src/components/AgentsPanel.tsx:339",
           "apps/web/src/components/zerops/ZeropsDataTree.tsx:115",
           "apps/web/src/components/files/FileBrowserPanelState.tsx:44",
           "apps/web/src/components/zerops/ZeropsGitPage.tsx:34",
           "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx:616",
-          "apps/web/src/components/settings/TeamSettings.tsx:82",
-          "apps/web/src/components/settings/TeamMemberPage.tsx:180, :325",
           "apps/web/src/components/chat/ProviderModelPicker.tsx:263",
           "apps/web/src/components/zerops/SidebarProjectSites.tsx:703",
         ]}
@@ -232,7 +220,7 @@ export default defineKitSection({
   id: "home-made-loading",
   title: "Loading",
   purpose:
-    "Every way the app says something is on its way, side by side, to pick one pattern from.",
+    "The chosen stand-in in every shape, then every way the app still says something is on its way.",
   group: "Home-made",
   kind: "Feedback",
   source: "apps/web/src/kit/sections/states-loading.tsx",

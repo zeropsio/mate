@@ -78,7 +78,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerClassName?: string;
   triggerAriaLabel?: string;
   /**
-   * Replaces the trigger's visible text (e.g. "Sign in an agent" when
+   * Replaces the trigger's visible text (e.g. "Sign this Mate in" when
    * nothing is selected because no agent is runnable, D6) without touching
    * the icon or badge, which already render nothing for an unmatched
    * `activeInstanceId`.
@@ -340,7 +340,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             <ZapIcon aria-label="Fast mode on" className="size-3.5 shrink-0 fill-current" />
           ) : null}
           {selectedModel?.isUnavailable ? (
-            <Badge variant="outline" size="sm">
+            <Badge tone="neutral" size="sm">
               Unavailable
             </Badge>
           ) : null}
@@ -419,7 +419,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
           </Tooltip>
           {selectedModel?.isUnavailable ? (
-            <Badge variant="outline" size="sm">
+            <Badge tone="neutral" size="sm">
               Unavailable
             </Badge>
           ) : null}

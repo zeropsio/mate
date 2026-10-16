@@ -48,7 +48,7 @@ describe("ZeropsHostedLanding entry action", () => {
 
     expect(markup).toContain("Sign in to Mate");
     expect(markup).not.toContain("Sign in to Zerops");
-    expect(markup).toContain("Sign in with your Zerops account to open your projects.");
+    expect(markup).toContain("Mates are coding agents that build and ship your apps on Zerops.");
     expect(markup).toContain("Continue with your Zerops account");
     expect(markup).toContain("Create one on Zerops");
     expect(markup).toContain("Mate by Zerops");

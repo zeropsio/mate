@@ -21,6 +21,7 @@ import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/a
  * then *Add another login* where the server keeps logins. Without `logins` the
  * card is exactly the two agent rows it always was.
  */
+import { Card } from "../ui/card";
 import type {
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
@@ -52,7 +53,8 @@ import {
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
-import { FlatCard, StatusDot } from "./primitives";
+import { STATUS_BADGE_TONE } from "./primitives";
+import { Badge } from "~/components/ui/badge";
 
 const AGENT_NAMES: Record<ZeropsAgentId, string> = {
   "claude-code": "Claude Code",
@@ -107,7 +109,7 @@ export function ZeropsAgentAuthCard({
   const own = snapshot.agents.find((agent) => agent.agentId === conversationAgentId);
   const ownSignedIn = !signInDemanded && own !== undefined && agentAuthAction(own) === "none";
   return (
-    <FlatCard className="@container overflow-hidden" data-zerops-agent-auth-card>
+    <Card className="@container overflow-hidden" data-zerops-agent-auth-card variant="flat">
       <header className="border-b border-border/60 px-4 py-2.5">
         <h3 className="text-sm font-semibold text-foreground">
           {signInDemanded ? "Authorize coding agents" : "Coding agents"}
@@ -131,7 +133,7 @@ export function ZeropsAgentAuthCard({
         viewerSubject={viewerSubject}
         {...loginProps}
       />
-    </FlatCard>
+    </Card>
   );
 }
 
@@ -265,7 +267,7 @@ export function ZeropsAgentAuthRows({
           data-zerops-agent-offer
         >
           <span>{AGENT_NAMES[agent.agentId]} isn’t signed in.</span>
-          <Button size="micro" variant="link" onClick={() => onSignIn(agent.agentId)}>
+          <Button size="sm" variant="link" onClick={() => onSignIn(agent.agentId)}>
             {AGENT_SIGN_IN_LABELS[agent.agentId]}
           </Button>
         </p>
@@ -328,7 +330,9 @@ function ZeropsAgentAuthRow({
             {AGENT_NAMES[agent.agentId]}
           </span>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-            <StatusDot label={status.label} tone={status.tone} />
+            <Badge dot tone={STATUS_BADGE_TONE[status.tone]}>
+              {status.label}
+            </Badge>
             {label === status.label ? null : (
               <span className="min-w-0 text-xs leading-4 text-muted-foreground">{label}</span>
             )}
@@ -356,17 +360,11 @@ function ZeropsAgentAuthRow({
             {agent.verification?.reason ?? agent.registration?.reason}
           </p>
         )}
-        {agent.registration?.process === undefined ? null : (
-          <p className="text-xs leading-4 text-muted-foreground">
-            Registration process {agent.registration.process.id}
-            {agent.registration.process.status ? ` · ${agent.registration.process.status}` : ""}
-          </p>
-        )}
         {(agentAuthAction(agent) === "check-again" ||
           agentAuthAction(agent) === "register-again") &&
         onRecheck !== undefined &&
         ownership !== "someone-else" ? (
-          <Button size="compact" variant="pill" onClick={() => onRecheck(agent.agentId)}>
+          <Button size="md" variant="primary" onClick={() => onRecheck(agent.agentId)}>
             {agentAuthAction(agent) === "check-again" ? "Check again" : "Register again"}
           </Button>
         ) : (
@@ -501,7 +499,9 @@ function ZeropsLoginRow({
         <div className="min-w-0">
           <span className="block leading-5 font-medium text-foreground">{login.title}</span>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-            <StatusDot label={presentation.label} tone={presentation.tone} />
+            <Badge dot tone={STATUS_BADGE_TONE[presentation.tone]}>
+              {presentation.label}
+            </Badge>
             {signer === presentation.label ? null : (
               <span className="min-w-0 text-xs leading-4 text-muted-foreground">{signer}</span>
             )}
@@ -525,8 +525,8 @@ function ZeropsLoginRow({
               onClick={() => {
                 onSignIn(login);
               }}
-              size="compact"
-              variant="pill"
+              size="md"
+              variant="primary"
             >
               Continue authorization
             </Button>
@@ -536,7 +536,7 @@ function ZeropsLoginRow({
               onClick={() => {
                 onCancel(login);
               }}
-              size="compact"
+              size="sm"
               variant="ghost"
             >
               Cancel
@@ -549,8 +549,8 @@ function ZeropsLoginRow({
           onRecheck !== undefined ? (
             <Button
               disabled={pending}
-              size="compact"
-              variant="pill"
+              size="md"
+              variant="primary"
               onClick={() => onRecheck(login.agent, login.id)}
             >
               Check again
@@ -568,8 +568,8 @@ function ZeropsLoginRow({
               onClick={() => {
                 onSignIn(login);
               }}
-              size="compact"
-              variant={someoneElses ? "link" : "pill"}
+              size="md"
+              variant={someoneElses ? "link" : "primary"}
             >
               {someoneElses ? AGENT_OWNERSHIP_RECOVERY_LABEL : "Sign in"}
             </Button>
@@ -585,7 +585,7 @@ function ZeropsLoginRow({
               onClick={() => {
                 onSignOut(login);
               }}
-              size="compact"
+              size="sm"
               variant="ghost"
             >
               Sign out
@@ -598,7 +598,7 @@ function ZeropsLoginRow({
               onClick={() => {
                 onRemove(login);
               }}
-              size="compact"
+              size="sm"
               variant="ghost"
             >
               {pending ? "Working…" : "Remove"}
@@ -653,7 +653,7 @@ function AddLoginControl({
           onClick={() => {
             setOpen(true);
           }}
-          size="compact"
+          size="sm"
           variant="ghost"
         >
           + Add another login
@@ -689,9 +689,9 @@ function AddLoginControl({
             onClick={() => {
               setKind("subscription");
             }}
-            size="compact"
+            size="sm"
             type="button"
-            variant={kind === "subscription" ? "pill" : "outline"}
+            variant={kind === "subscription" ? "primary" : "secondary"}
           >
             Another account
           </Button>
@@ -699,9 +699,9 @@ function AddLoginControl({
             onClick={() => {
               setKind("apiKey");
             }}
-            size="compact"
+            size="sm"
             type="button"
-            variant={kind === "apiKey" ? "pill" : "outline"}
+            variant={kind === "apiKey" ? "primary" : "secondary"}
           >
             API key
           </Button>
@@ -739,13 +739,13 @@ function AddLoginControl({
           onClick={() => {
             setOpen(false);
           }}
-          size="compact"
+          size="sm"
           type="button"
           variant="ghost"
         >
           Cancel
         </Button>
-        <Button disabled={!ready} size="compact" type="submit" variant="pill">
+        <Button disabled={!ready} size="md" type="submit" variant="primary">
           {needsKey ? "Add key" : "Add and sign in"}
         </Button>
       </div>
@@ -858,8 +858,8 @@ function ZeropsAgentAuthActionSlot({
             onClick={() => {
               onSignIn(agent.agentId);
             }}
-            size="compact"
-            variant="pill"
+            size="md"
+            variant="primary"
           >
             Continue authorization
           </Button>
@@ -875,8 +875,8 @@ function ZeropsAgentAuthActionSlot({
           onClick={() => {
             onSignIn(agent.agentId);
           }}
-          size="compact"
-          variant="pill"
+          size="md"
+          variant="primary"
         >
           Review authorization
         </Button>
@@ -896,7 +896,7 @@ function CancelLoginButton({
       onClick={() => {
         onCancel(agentId);
       }}
-      size="compact"
+      size="sm"
       variant="ghost"
     >
       Cancel
@@ -938,8 +938,8 @@ function ZeropsAgentAuthActionButton({
         onClick={() => {
           onSignIn(agent.agentId);
         }}
-        size="compact"
-        variant={ownership === "someone-else" ? "link" : "pill"}
+        size="md"
+        variant={ownership === "someone-else" ? "link" : "primary"}
       >
         {ownership === "someone-else"
           ? AGENT_OWNERSHIP_RECOVERY_LABEL
@@ -952,7 +952,7 @@ function ZeropsAgentAuthActionButton({
     // The watcher marks this within seconds of the credential artifact
     // appearing — there is nothing for the user to click while it does.
     return (
-      <Button disabled size="compact" variant="outline">
+      <Button disabled size="sm" variant="secondary">
         {agent.verification?.status === "checking" ? "Checking…" : "Registering…"}
       </Button>
     );
@@ -976,8 +976,8 @@ function ZeropsAgentAuthActionButton({
         onClick={() => {
           onSignIn(agent.agentId);
         }}
-        size="compact"
-        variant={ownership === "someone-else" ? "link" : "outline"}
+        size="sm"
+        variant={ownership === "someone-else" ? "link" : "secondary"}
       >
         {ownership === "mine" ? "Switch account" : AGENT_OWNERSHIP_RECOVERY_LABEL}
       </Button>
@@ -988,7 +988,7 @@ function ZeropsAgentAuthActionButton({
           onClick={() => {
             onSignOut(agent.agentId);
           }}
-          size="compact"
+          size="sm"
           variant="ghost"
         >
           {signOutPending ? "Signing out…" : "Sign out"}

@@ -14,6 +14,8 @@ import {
 import { cn } from "../../lib/utils";
 import { WorkspacePageContainer, type WorkspacePageWidth } from "../WorkspacePageContainer";
 import { Button } from "../ui/button";
+import { Row } from "../ui/row";
+import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 interface SettingsSearchTargetContextValue {
@@ -91,7 +93,7 @@ export function PolicyTooltip({ children }: { readonly children: string }) {
       <TooltipTrigger
         delay={200}
         render={
-          <Button size="icon-micro" variant="ghost-muted" aria-label="Background policy details">
+          <Button size="icon-sm" variant="ghost" aria-label="Background policy details">
             <InfoIcon className="size-3.5" />
           </Button>
         }
@@ -114,6 +116,7 @@ export function useRelativeTimeTick(intervalMs = 1_000) {
 export function SettingsSection({
   title,
   icon,
+  count,
   headerAction,
   children,
   className,
@@ -121,6 +124,8 @@ export function SettingsSection({
 }: ComponentPropsWithoutRef<"section"> & {
   title: string;
   icon?: ReactNode;
+  /** How many it holds, beside its title. */
+  count?: ReactNode;
   headerAction?: ReactNode;
   children: ReactNode;
 }) {
@@ -131,14 +136,19 @@ export function SettingsSection({
       {...sectionProps}
       ref={targetRef}
       tabIndex={sectionProps.id ? -1 : sectionProps.tabIndex}
-      className={cn("space-y-3", className)}
+      className={cn("flex flex-col gap-2", className)}
     >
-      <div className="flex min-h-8 items-center justify-between gap-4 px-3 sm:px-4">
-        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-foreground">
-          {icon}
-          {title}
-        </h2>
-        <div className="flex min-h-7 min-w-7 items-center justify-end">{headerAction}</div>
+      <div className="px-3">
+        <SectionHeader
+          action={headerAction}
+          count={count}
+          title={
+            <>
+              {icon}
+              {title}
+            </>
+          }
+        />
       </div>
       <div className="relative space-y-1 overflow-visible text-foreground">{children}</div>
     </section>
@@ -163,35 +173,38 @@ export function SettingsRow({
   children?: ReactNode;
 }) {
   const targetRef = useSettingsSearchTarget<HTMLDivElement>(rowProps.id);
+  const lined = Boolean(description) || Boolean(status);
 
   return (
     <div
       {...rowProps}
       ref={targetRef}
       tabIndex={rowProps.id ? -1 : rowProps.tabIndex}
-      className={cn("rounded-xl px-3 sm:px-4", children ? "pt-3 pb-1" : "py-3", className)}
+      className={cn("rounded-xl", children ? "pb-1" : undefined, className)}
     >
-      <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)] sm:items-center sm:gap-8">
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex min-h-5 items-center gap-1.5">
-            <h3 className="text-sm font-medium text-foreground">{title}</h3>
-            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
-              {resetAction}
-            </span>
-          </div>
-          {description ? (
-            <p className="max-w-xl text-xs leading-normal text-muted-foreground/80">
+      <Row
+        control={
+          resetAction || control ? (
+            <>
+              {/* Before the control, in the room it has: its line's height, so showing it never
+                  grows the row. */}
+              {resetAction ? <span className="-my-1 flex">{resetAction}</span> : null}
+              {control}
+            </>
+          ) : undefined
+        }
+        line={
+          lined ? (
+            <>
               {description}
-            </p>
-          ) : null}
-          {status ? <div className="pt-0.5 text-xs text-muted-foreground">{status}</div> : null}
-        </div>
-        {control ? (
-          <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
-            {control}
-          </div>
-        ) : null}
-      </div>
+              {status ? <span className="block pt-0.5 text-muted-foreground">{status}</span> : null}
+            </>
+          ) : undefined
+        }
+        lineWraps
+        size="sm"
+        title={title}
+      />
       {children}
     </div>
   );
@@ -211,8 +224,8 @@ export function SettingResetButton({
       <TooltipTrigger
         render={
           <Button
-            size="icon-micro"
-            variant="ghost-muted"
+            size="icon-sm"
+            variant="ghost"
             aria-label={`Reset ${label} to default`}
             disabled={disabled}
             onClick={(event) => {

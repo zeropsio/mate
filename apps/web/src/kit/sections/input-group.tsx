@@ -64,7 +64,7 @@ function InputGroupSpecimens() {
                   readOnly
                 />
                 <InputGroupAddon align="inline-end">
-                  <Button aria-label="Copy" size="icon-xs" variant="ghost">
+                  <Button aria-label="Copy" size="icon-sm" variant="ghost">
                     <CopyIcon />
                   </Button>
                 </InputGroupAddon>

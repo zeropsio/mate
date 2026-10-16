@@ -33,6 +33,7 @@ import {
 } from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
+import { Row } from "../../ui/row";
 import { Input } from "../../ui/input";
 import {
   Menu,
@@ -45,8 +46,9 @@ import {
 } from "../../ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
-import { Avatar } from "../primitives";
+import { PersonAvatar } from "../primitives";
 import {
+  ACCESS_LEVEL_LINES,
   asksFirst,
   BADGE_WORDS,
   personMenu,
@@ -57,6 +59,7 @@ import {
   type ProjectPeopleView,
   type ProjectPerson,
 } from "./projectPeople.logic";
+import { Badge, type BadgeTone } from "~/components/ui/badge";
 
 /**
  * A creation form's *Project access*: the host draws the draft (`ProjectAccessDraft`), which says
@@ -167,17 +170,23 @@ export function ProjectAccessChips({
 }
 
 /** The level a chip holds, as a small badge: an icon and a word. */
+const BADGE_TONE: Readonly<Record<BadgeLevel, BadgeTone>> = {
+  owner: "success",
+  full: "success",
+  basic: "info",
+  read: "neutral",
+  mixed: "neutral",
+  hidden: "neutral",
+};
+
+/** A person's access on a project, as a Badge: its mark and its word; Saving… while it changes. */
 export function AccessBadge({ level, busy = false }: { level: BadgeLevel; busy?: boolean }) {
   const Icon = BADGE_ICON[level];
   return (
-    <span
-      className="ov-chip-badge"
-      data-level={busy ? undefined : level === "owner" ? "full" : level}
-      data-part="badge"
-    >
-      {busy ? null : <Icon aria-hidden="true" className="size-3" />}
+    <Badge data-part="badge" tone={busy ? "neutral" : BADGE_TONE[level]}>
+      {busy ? null : <Icon aria-hidden="true" />}
       {busy ? "Saving…" : level === "owner" ? "Owner" : BADGE_WORDS[level]}
-    </span>
+    </Badge>
   );
 }
 
@@ -219,21 +228,14 @@ function AccessChip({
             )
           }
         >
-          <Avatar initials={person.initials} size="md" src={person.avatarUrl} />
+          <PersonAvatar name={person.name} picture={person.avatarUrl} size={32} />
           <span className="ov-chip-text">
             <span
               className="ov-chip-name"
               data-creator={person.creator || undefined}
               data-part="name"
             >
-              {person.creator ? (
-                <>
-                  <span aria-hidden="true">👉 </span>
-                  <em>You</em>
-                </>
-              ) : (
-                person.short
-              )}
+              {person.creator ? "You" : person.short}
             </span>
             <AccessBadge busy={busy} level={person.level} />
           </span>
@@ -258,7 +260,7 @@ function AccessChip({
               <AlertDialogDescription>{change.selfLower.description}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+              <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
               <Button
                 onClick={() => {
                   if (asking !== null) onChoose?.(asking);
@@ -326,7 +328,7 @@ function ChipMenu({
       <MenuTrigger
         aria-label={`Change ${name}'s access`}
         disabled={busy}
-        render={<Button size="icon-xs" variant="ghost" />}
+        render={<Button size="icon-sm" variant="ghost" />}
       >
         <MoreVerticalIcon aria-hidden="true" />
       </MenuTrigger>
@@ -458,19 +460,8 @@ export function AddAccessPicker({
       ) : (
         <ul aria-label="People in the organization" className="ov-pick-list">
           {shown.map((candidate) => (
-            <li
-              className="ov-pick-row"
-              data-ticked={ticked[candidate.clientUserId] !== undefined || undefined}
-              key={candidate.clientUserId}
-            >
-              <Avatar initials={candidate.initials} size="md" src={candidate.avatarUrl} />
-              <span className="ov-pick-text">
-                <span className="ov-pick-name">{candidate.name}</span>
-                <span className="ov-pick-role">
-                  {candidate.pending ? `${candidate.role} · invited` : candidate.role}
-                </span>
-              </span>
-              {(["read", "full"] as const).map((level) => (
+            <Row
+              control={(["read", "full"] as const).map((level) => (
                 <span className="ov-pick-level" key={level}>
                   <Checkbox
                     aria-label={`${level === "read" ? "Read" : "Full"} access for ${candidate.name}`}
@@ -480,10 +471,29 @@ export function AddAccessPicker({
                   <span aria-hidden="true">{level === "read" ? "Read" : "Full"}</span>
                 </span>
               ))}
-            </li>
+              data-ticked={ticked[candidate.clientUserId] !== undefined || undefined}
+              key={candidate.clientUserId}
+              lead={<PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={32} />}
+              line={candidate.pending ? `${candidate.role} · invited` : candidate.role}
+              render={<li />}
+              title={candidate.name}
+            />
           ))}
         </ul>
       )}
+      <dl
+        aria-label="What Read and Full give"
+        className="grid gap-1 px-3 pt-2 text-xs text-muted-foreground"
+      >
+        {(["read", "full"] as const).map((level) => (
+          <div key={level}>
+            <dt className="inline font-medium text-foreground">
+              {level === "read" ? "Read" : "Full"}:
+            </dt>{" "}
+            <dd className="inline">{ACCESS_LEVEL_LINES[level]}</dd>
+          </div>
+        ))}
+      </dl>
       <div className="ov-pick-foot">
         <Button disabled={picks.length === 0} onClick={() => onAdd(picks)} size="sm">
           {picks.length > 1 ? `Add ${picks.length} people` : "Add people"}

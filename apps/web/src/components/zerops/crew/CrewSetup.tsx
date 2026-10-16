@@ -218,7 +218,7 @@ export function CrewSetup(props: CrewSetupProps) {
             }}
             type="button"
           >
-            <MateFace shape={mate.shape} size="md" state="idle" tint={mate.tint ?? "amber"} />
+            <MateFace shape={mate.shape} size={24} state="idle" tint={mate.tint ?? "amber"} />
             <span className="flex min-w-0 flex-col">
               <span className="font-medium text-sm leading-5">{crewSuggestWord(mate.name)}</span>
               <span className="text-line leading-4.5 text-muted-foreground">
@@ -320,7 +320,7 @@ export function CrewSetup(props: CrewSetupProps) {
         )}
         {!drafted ? (
           <span className="flex items-center gap-1.5">
-            <CrewPress disabled label={CREW_SETUP_WORDS.start} size="view" />
+            <CrewPress disabled label={CREW_SETUP_WORDS.start} size="md" />
             {members === null ? null : (
               <span className="ms-1.5 text-line leading-4.5 text-muted-foreground">
                 {CREW_SETUP_WORDS.pickFirst}
@@ -349,13 +349,13 @@ export function CrewSetup(props: CrewSetupProps) {
                 }
                 label={CREW_SETUP_WORDS.start}
                 onPress={() => void start()}
-                size="view"
+                size="md"
               />
               <CrewPress
                 label={CREW_VIEW_WORDS.cancel}
                 onPress={props.onClose}
-                size="view"
-                tone="muted"
+                size="md"
+                variant="ghost"
               />
             </span>
           </>
@@ -376,13 +376,13 @@ function TrioFaces({ mateTint }: { readonly mateTint: MateTintId | undefined }) 
   return (
     <span className="relative block size-7" aria-hidden="true">
       <span className="absolute top-0 left-1.75">
-        <MateFace className="size-3.5" size="dot" state="idle" tint={tints[0] ?? "violet"} />
+        <MateFace size={16} state="idle" tint={tints[0] ?? "violet"} />
       </span>
       <span className="absolute top-3.25 left-0">
-        <MateFace className="size-3.5" size="dot" state="idle" tint={tints[1] ?? "sky"} />
+        <MateFace size={16} state="idle" tint={tints[1] ?? "sky"} />
       </span>
       <span className="absolute top-3.25 left-3.5">
-        <MateFace className="size-3.5" size="dot" state="idle" tint={tints[2] ?? "coral"} />
+        <MateFace size={16} state="idle" tint={tints[2] ?? "coral"} />
       </span>
     </span>
   );
@@ -413,7 +413,7 @@ function SetupRow({
       onClick={onOpen}
       type="button"
     >
-      <MateFace size="md" state={readying ? "working" : "idle"} tint={member.tint ?? "slate"} />
+      <MateFace size={24} state={readying ? "working" : "idle"} tint={member.tint ?? "slate"} />
       <span className="flex min-w-0 flex-col">
         <span className="flex h-5 items-center gap-2">
           <span className="truncate font-medium text-sm leading-5">{member.displayName}</span>

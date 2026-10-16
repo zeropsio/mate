@@ -18,14 +18,15 @@ import type {
   ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
+import { PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
-import { MateFace, Pill } from "../primitives";
+import { Button } from "../../ui/button";
+import { MateFace, type MateFaceSize } from "../primitives";
 import { firstRunWords } from "./firstRun.logic";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
-import { PageWaitLine } from "../WaitLine";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
+import { OverviewCardsStandIn } from "./OverviewStandIn";
 import { OtherContainers, OtherProjects } from "./ProjectList";
 import { ProjectCards, ProjectPage } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
@@ -116,7 +117,7 @@ export interface ZeropsProjectsFlowProps<T> {
     },
   ) => ReactNode;
   /** A Mate's face, beside its name in a row. */
-  readonly renderMateFace: (item: T, size: "sm" | "md") => ReactNode;
+  readonly renderMateFace: (item: T, size: MateFaceSize) => ReactNode;
   /**
    * How a Mate opens into its conversation, wherever the list names it;
    * `undefined` where it cannot open yet (coming up, busy), and the name is
@@ -198,13 +199,16 @@ function FirstRun({
       className="flex min-h-[60vh] max-w-xl flex-col items-start justify-center gap-6"
       data-zerops-surface="first-run"
     >
-      <MateFace className="size-20" size="lg" state="idle" tint="slate" />
+      <MateFace className="size-20" size={64} state="idle" tint="slate" />
       <div className="flex min-w-0 flex-col items-start gap-2">
         <h2 className="text-xl font-semibold tracking-tight text-foreground">{words.heading}</h2>
         <p className="text-sm leading-6 text-muted-foreground">{words.body}</p>
       </div>
       {words.newProject && onCreateProject !== undefined ? (
-        <Pill disabled={creating} label="New project" onClick={onCreateProject} />
+        <Button disabled={creating} onClick={onCreateProject}>
+          <PlusIcon aria-hidden="true" />
+          New project
+        </Button>
       ) : null}
     </section>
   );
@@ -266,7 +270,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
       role="region"
     >
       {!empty || props.placementNotice === undefined ? null : props.placementReading === true ? (
-        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={props.placementNotice} />
+        <OverviewCardsStandIn />
       ) : (
         <>
           <p role="status" className="text-sm text-muted-foreground">
