@@ -34,6 +34,7 @@ import {
   siteOf,
   sinceWords,
   soleSite,
+  releaseLineOpens,
 } from "./projectCard.logic";
 
 const NOW = Date.parse("2026-10-10T12:00:00Z");
@@ -548,6 +549,40 @@ describe("a release on its way", () => {
     if (production.kind === "releasing") expect(chipped?.words).toEqual(words);
     expect(line?.words).toEqual(words);
     expect(cardReady(flow)).toBeUndefined();
+  });
+});
+
+// With the "Putting v2.4.0 live" block gone, nothing on the card opened a release on its way:
+// production's line that says it now opens it, as the block's door did.
+describe("production's line while a release is on its way", () => {
+  const main = { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false };
+  const releasing = { kind: "releasing", stop: stop(), line: "", tag: "v2.4.1" } as const;
+  it.each([
+    { case: "opens the release's review", production: releasing, opens: { kind: "release" } },
+    {
+      case: "opens a roll back's review by the release it goes back to",
+      production: releasing,
+      rollsBackTo: "v2.3.0",
+      opens: { kind: "rollback", tag: "v2.3.0" },
+    },
+    { case: "opens nothing while none is on its way", production: LIVE, opens: undefined },
+    {
+      case: "opens nothing while production is down: its trouble is said, and its fix",
+      production: releasing,
+      chip: chip({ state: "down", next: "v2.4.1" }),
+      opens: undefined,
+    },
+  ] as const)("$case", ({ production, opens, ...rest }) => {
+    const rollsBackTo = "rollsBackTo" in rest ? rest.rollsBackTo : undefined;
+    const flow = { production, stages: [], main };
+    const [line] = placeLines({
+      flow,
+      rollsBackTo,
+      ...("chip" in rest ? { chip: rest.chip } : {}),
+      nowMs: 0,
+    });
+    if (line === undefined) throw new Error("production has a line");
+    expect(releaseLineOpens(line, production, rollsBackTo)).toEqual(opens);
   });
 });
 

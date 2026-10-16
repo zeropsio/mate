@@ -58,6 +58,7 @@ import {
   CARD_CHANGES,
   cardChanges,
   cardPeople,
+  releaseLineOpens,
   rollBackTarget,
   type CardMateReading,
   type CardStage,
@@ -385,8 +386,28 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         ) : null}
       </>
     ) : null;
+    // A release on its way is production's line alone: the line opens its review, as the card's
+    // own block of it did — a roll back's by the release it goes back to.
+    const opens = releaseLineOpens(line, entry.flow.production, places.rollsBackTo);
     return (
-      <PlacePanel actions={actions} groupId={groupId} model={model} roomy={input.onPage === true} />
+      <PlacePanel
+        actions={actions}
+        groupId={groupId}
+        model={model}
+        onOpenLine={
+          opens === undefined
+            ? undefined
+            : (from) => {
+                openReview(
+                  opens.kind === "release"
+                    ? { kind: "release", groupId }
+                    : { kind: "rollback", groupId, tag: opens.tag },
+                  { from },
+                );
+              }
+        }
+        roomy={input.onPage === true}
+      />
     );
   };
 

@@ -8381,6 +8381,23 @@ label.tm-advanced-row:not([data-disabled]) {
   line-height: 22px;
 }
 
+/* A line that opens what it says (production's "Releasing v0.1.0"): its words and its place. */
+button.ov-panel-state {
+  max-width: 100%;
+  text-align: left;
+}
+
+button.ov-panel-state:hover .ov-place-words {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+button.ov-panel-state:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 .ov-panel-services {
   display: flex;
   flex-wrap: wrap;

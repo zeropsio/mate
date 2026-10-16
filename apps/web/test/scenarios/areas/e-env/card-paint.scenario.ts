@@ -132,6 +132,16 @@ describe("owner-reported layout regressions", () => {
             new Set(after.map((frame) => frame.mates)).size,
             `Its Mates stay where they stood as it lands:\n${trace}`,
           ).toBe(1);
+          // Production's line opens the release on its way, as the block's door did: the words
+          // become a door where they stand, and stand there before, during and after.
+          expect(
+            going.every((frame) => frame.door),
+            `Production's line opens the release while it goes out:\n${trace}`,
+          ).toBe(true);
+          expect(
+            new Set(frames.map((frame) => frame.line)).size,
+            `Production's line keeps its place as it becomes a door and back:\n${trace}`,
+          ).toBe(1);
           const lefts = (frame: HeldFrame) =>
             new Map(
               frame.buttons
@@ -167,6 +177,10 @@ interface HeldFrame {
   readonly releasing: boolean;
   /** The ready release's block stands. */
   readonly ready: boolean;
+  /** Production's line is a door, opening the release on its way. */
+  readonly door: boolean;
+  /** Production's line's top, left and height, from the card's corner. */
+  readonly line: string;
 }
 
 function recordHeldCard(cardAt: string) {
@@ -176,11 +190,21 @@ function recordHeldCard(cardAt: string) {
     const card = document.querySelector(cardAt);
     const mates = card?.querySelector('[aria-label="Project Mates"]');
     const production = card?.querySelector('[data-zerops-place="production"]');
-    if (card instanceof HTMLElement && mates instanceof HTMLElement) {
+    const line = production?.querySelector(".ov-panel-state");
+    if (
+      card instanceof HTMLElement &&
+      mates instanceof HTMLElement &&
+      line instanceof HTMLElement
+    ) {
       const { top, left } = card.getBoundingClientRect();
+      const at = line.getBoundingClientRect();
       const frame: HeldFrame = {
         mates: Math.round(mates.getBoundingClientRect().top - top),
-        buttons: [...(production?.querySelectorAll("button") ?? [])]
+        buttons: [
+          ...(production?.querySelectorAll<HTMLButtonElement>(
+            "button:not([data-zerops-place-door])",
+          ) ?? []),
+        ]
           .map(
             (button) =>
               `${button.innerText}@${Math.round(button.getBoundingClientRect().left - left)}`,
@@ -189,6 +213,8 @@ function recordHeldCard(cardAt: string) {
         running: production?.textContent?.includes("Running") === true,
         releasing: production?.textContent?.includes("Releasing") === true,
         ready: card.querySelector("[data-zerops-card-ready]") !== null,
+        door: line instanceof HTMLButtonElement,
+        line: [at.top - top, at.left - left, at.height].map(Math.round).join(":"),
       };
       if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
     }
