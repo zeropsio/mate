@@ -219,7 +219,12 @@ export function environmentSheetSubmit(input: {
   /** The project's people as the access draft reads them; absent where the host sends none. */
   readonly people: DraftPeople | undefined;
 }):
-  | { readonly kind: "held"; readonly reason: string }
+  | {
+      readonly kind: "held";
+      readonly reason: string;
+      /** The one thing that moves it on: the setup change to merge, where none is merged. */
+      readonly action?: "setup-change" | undefined;
+    }
   | {
       readonly kind: "create";
       readonly choice: {
@@ -229,10 +234,21 @@ export function environmentSheetSubmit(input: {
         readonly userRoles?: ReadonlyArray<ProjectGrant>;
       };
     } {
-  const held = creationRecipeHold(input.recipe);
-  if (held !== undefined) return { kind: "held", reason: held };
   const option = input.options[0];
-  if (option === undefined) return { kind: "held", reason: "Choose what goes in the environment." };
+  // The form's own checks, on what the sheet decided: nothing empty is made with no one to fill it.
+  const errors = validateCreationForm(
+    { name: input.name, withAgent: input.withAgent, recipeId: option?.id ?? "" },
+    { options: input.options, recipe: input.recipe },
+  );
+  const reason = errors.recipe ?? errors.name;
+  if (reason !== undefined || option === undefined)
+    return {
+      kind: "held",
+      reason: reason ?? "Choose what goes in the environment.",
+      ...(input.recipe === "absent" && errors.recipe !== undefined
+        ? { action: "setup-change" as const }
+        : {}),
+    };
   const { people } = input;
   if (people?.kind === "reading") return { kind: "held", reason: READING_PEOPLE };
   if (people?.kind === "failed") return { kind: "held", reason: PEOPLE_UNREADABLE };

@@ -1049,6 +1049,42 @@ describe("environmentSheetSubmit — what a stage's or a production's one sheet 
 
   it.each([
     [
+      "with no setup merged and no Mate of its own, it waits for the setup change, saying so",
+      false,
+      {
+        kind: "held",
+        reason:
+          "This project has no setup files yet. Merge its setup change first, or give it its own Mate.",
+        action: "setup-change",
+      },
+    ],
+    [
+      "with no setup merged and a Mate of its own, it is made empty for the Mate to set up",
+      true,
+      {
+        kind: "create",
+        choice: { name: "Tea Shop - stage", withAgent: true, recipe: { kind: "none" } },
+      },
+    ],
+  ] as const)("runs the form's own checks: %s", (_case, withAgent, outcome) => {
+    expect(
+      environmentSheetSubmit({
+        name: "Tea Shop - stage",
+        withAgent,
+        options: recipeOptions({
+          roleLabel: "stage",
+          tier: undefined,
+          services: [],
+          recipe: "absent",
+        }),
+        recipe: "absent",
+        people: people(PROD_READ),
+      }),
+    ).toMatchObject(outcome);
+  });
+
+  it.each([
+    [
       "the project's people are read",
       { prod: { status: "loading" as const, grants: undefined } },
       {},

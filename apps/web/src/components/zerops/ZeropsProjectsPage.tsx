@@ -1,4 +1,5 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { overviewPaints, tiersAddable } from "./projects/projectsView.logic";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
@@ -174,7 +175,11 @@ import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
-import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+import {
+  creationRecipe,
+  newMateRecipeChange,
+  proposedEnvironmentName,
+} from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { GitMirrorDialog } from "./GitMirrorDialog";
@@ -1652,6 +1657,20 @@ export function ZeropsProjectsContent({
     });
   };
   const openReview = useOpenReview();
+  // The change that adds a project's setup files, where one waits: what moves on a stage or a
+  // production held for want of them.
+  const setupChangeOf = (groupId: string) => {
+    const change = newMateRecipeChange({
+      flow: projectFlow.flows.get(groupId),
+      mateName: () => undefined,
+    });
+    return change === undefined
+      ? undefined
+      : () => {
+          setCreationRequest(null);
+          openReview({ kind: "change", groupId, repository: RECIPE_REPO, number: change.number });
+        };
+  };
   const groupDeploys = projectFlow.flows;
   // A production just added is the intent to release (P7): the application whose production came
   // up waits here until HQ holds it and the gate says whether its first release is the person's to
@@ -2658,6 +2677,7 @@ export function ZeropsProjectsContent({
           {(people) => (
             <ZeropsEnvironmentCreationDialog
               people={people}
+              onSetupChange={setupChangeOf(creationRequest.groupId)}
               access={(onChange) => (
                 <ProjectAccessDraft
                   groupId={creationRequest.groupId}

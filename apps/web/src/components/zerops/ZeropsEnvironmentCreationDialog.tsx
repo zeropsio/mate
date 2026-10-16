@@ -107,6 +107,8 @@ export interface ZeropsEnvironmentCreationFormProps {
    * without asking (`useDraftPeople`); absent, it sends none.
    */
   readonly people?: DraftPeople | undefined;
+  /** Opens the change that adds the project's setup files, where one waits to be merged. */
+  readonly onSetupChange?: (() => void) | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
   readonly git?:
@@ -284,9 +286,16 @@ function EnvironmentSheet(
       </DialogPanel>
       <DialogFooter>
         {held === undefined ? null : (
-          <p className="me-auto self-center text-muted-foreground text-sm" role="status">
-            {held}
-          </p>
+          <div className="me-auto flex flex-col items-start self-center" role="status">
+            <p className="text-muted-foreground text-sm">{held}</p>
+            {submit.kind === "held" &&
+            submit.action === "setup-change" &&
+            props.onSetupChange !== undefined ? (
+              <Button className={SHEET_LINK} onClick={props.onSetupChange} size="sm" variant="link">
+                Review the setup change
+              </Button>
+            ) : null}
+          </div>
         )}
         <Button disabled={held !== undefined} type="submit">
           {role === "prod" ? "Set up production" : "Add stage"}
