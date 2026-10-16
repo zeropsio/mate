@@ -123,3 +123,30 @@ export function foldDraftBranches(
 }
 
 export const accountEntryStorage = createEntryStorage(accountLocalStorage);
+
+/**
+ * *Set up a crew*'s draft for one Mate (`crew/crewSetupDraft.ts`), under the signed-in account:
+ * what the person typed, as raw JSON for its owner to judge; `null` for none or an unreadable one.
+ * Storage can throw outright (a private window, blocked site data): a read that throws is none,
+ * a write that throws leaves the setup working without its draft kept.
+ */
+const crewSetupDraftKey = (environmentId: string) => `t3code:crew-setup-draft:v1:${environmentId}`;
+
+export function readCrewSetupDraft(environmentId: string): unknown {
+  try {
+    const raw = accountLocalStorage.getItem(crewSetupDraftKey(environmentId));
+    return raw === null ? null : JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps `draft` for the Mate, or forgets it with `null`. */
+export function writeCrewSetupDraft(environmentId: string, draft: unknown): void {
+  try {
+    if (draft === null) accountLocalStorage.removeItem(crewSetupDraftKey(environmentId));
+    else accountLocalStorage.setItem(crewSetupDraftKey(environmentId), JSON.stringify(draft));
+  } catch {
+    // The setup still works without its draft kept.
+  }
+}

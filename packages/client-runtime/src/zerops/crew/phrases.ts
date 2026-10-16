@@ -19,6 +19,7 @@ import type {
   CrewAttention,
   CrewHost,
   CrewLaneSummary,
+  CrewProposalFailure,
   CrewRefusalReason,
   CrewRun,
   CrewRunOptions,
@@ -739,11 +740,11 @@ export const crewGiveCrewLine = (mateName: string): string =>
 export const crewSetUpTitle = (mateName: string): string =>
   `Set up ${crewPossessive(mateName)} crew`;
 
-export const crewSetUpLine = (mateName: string): string =>
-  `A lead plans the work, and crewmates build its parts side by side, each in its own copy of ${crewPossessive(mateName)} code.`;
-
 export const CREW_SETUP_WORDS = {
-  cancel: "Cancel the setup",
+  /** Under the setup's title; where the crewmates work is the footer's to say, once. */
+  line: "A lead plans the work, and crewmates build its parts side by side.",
+  /** Closes the setup; its draft is kept. */
+  close: "Close the setup",
   goal: "The goal",
   goalLine: "What the whole crew works toward. Every crewmate reads it.",
   goalPlaceholder: "What should the crew build, and why?",
@@ -753,6 +754,14 @@ export const CREW_SETUP_WORDS = {
   addYourself: "Add someone yourself",
   start: "Start the crew",
   pickFirst: "Pick who's on it first.",
+  /** Why *Start the crew* and *Let Fen suggest a crew* wait. */
+  goalFirst: "Write the goal first.",
+  /** Throws the setup's goal and picks away; the crew home goes back to nobody. */
+  drop: "Drop the draft",
+  /** Stops a proposal on its way. */
+  stopProposing: "Cancel",
+  /** Asks again after a proposal failed. */
+  proposeAgain: "Try again",
 } as const;
 
 export const crewSuggestWord = (mateName: string): string => `Let ${mateName} suggest a crew`;
@@ -764,10 +773,52 @@ export const crewSuggestedLine = (mateName: string, suggested: boolean): string 
 export const crewSuggestLine = (mateName: string): string =>
   `${mateName} reads the goal and proposes who does what. You can change anyone.`;
 
-/** The setup's footer: where the builders' copies go. */
+/** The setup's footer — the one place it says where the crewmates work: their own copies. */
 export function crewSetUpFooter(mateName: string, hosts: ReadonlyArray<string>): string {
   const where = hosts.length === 0 ? "" : ` on ${hosts.join(" and ")}`;
-  return `Each builder gets its own copy of ${crewPossessive(mateName)} code${where}. Getting them ready takes a minute or two; each row shows how it's going.`;
+  const code = `${crewPossessive(mateName)} code`;
+  return `Each works in its own copy of ${code}${where}; nothing reaches ${code} until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.`;
+}
+
+/**
+ * Why *Let Fen suggest a crew* waits for this viewer: the Mate's agent is
+ * somebody else's sign-in, or nobody's on record (D6) — or the Mate has no
+ * conversation whose agent could propose.
+ */
+export function crewSuggestUnavailableWords(
+  mateName: string,
+  lock: "someone-else" | "unrecorded" | "no-chat",
+): string {
+  switch (lock) {
+    case "someone-else":
+      return `${mateName}'s agent was signed in by another project member\u00a0— only they can ask it.`;
+    case "unrecorded":
+      return `${mateName}'s agent sign-in was not recorded by Zerops Mate, so nobody can ask it.`;
+    case "no-chat":
+      return `${mateName} has no conversation to propose from yet.`;
+  }
+}
+
+/** The row that stands for *Let Fen suggest a crew* while the Mate proposes one. */
+export const crewProposingWord = (mateName: string): string => `${mateName} is proposing a crew…`;
+
+/**
+ * Why no crew was proposed, in the row that asked: the gate's or the agent's
+ * own words where it gave them; else what went wrong, plainly.
+ */
+export function crewProposalFailedWords(
+  mateName: string,
+  reason: CrewProposalFailure,
+  detail: string | null,
+): string {
+  switch (reason) {
+    case "refused":
+      return detail ?? `${mateName} can't propose a crew here.`;
+    case "failed":
+      return `${mateName} couldn't propose a crew this time.`;
+    case "malformed":
+      return `${mateName} answered with something that isn't a crew.`;
+  }
 }
 
 /** What each kind of crewmate does, at a setup row's right edge and in its job. */
@@ -978,10 +1029,6 @@ export function crewPortsAsk(host: string, ports: ReadonlyArray<number>): string
   }
   return `Add crew ports ${first}–${ports.at(-1)} (httpSupport) to ${host}'s dev setup in zerops.yaml, self-deploy ${host}, then make sure each new port is routed on the subdomain.`;
 }
-
-/** *Let Fen suggest a crew*: the goal as the person wrote it. */
-export const crewDescribeAsk = (goal: string): string =>
-  `Set up a crew for this project, from its goal: ${goal.trim()}`;
 
 /** `+214 −12`, with a true minus. */
 export const crewDiffStatWord = (stat: {

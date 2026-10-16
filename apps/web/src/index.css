@@ -13791,7 +13791,9 @@ button.rv-relrow:hover .rv-relrow-go {
     background: var(--background);
   }
 
-  /* A choice in a view — Start with a lead and two builders — a quiet card. */
+  /* A choice in a view — Start with a lead and two builders — a quiet card: its
+     edge at rest, the fill only under the pointer. One that waits sits back,
+     its reason under its title. */
   .crew-option {
     display: grid;
     grid-template-columns: 28px minmax(0, 1fr) 16px;
@@ -13799,16 +13801,11 @@ button.rv-relrow:hover .rv-relrow-go {
     align-items: center;
     padding: 12px 12px 12px 10px;
     border-radius: 14px;
-    background: var(--secondary);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
     text-align: start;
     cursor: pointer;
     outline: none;
     transition: background-color 150ms ease;
-  }
-
-  .dark .crew-option {
-    background: color-mix(in oklab, var(--background) 60%, var(--card));
   }
 
   .crew-option[data-more] {
@@ -13816,8 +13813,21 @@ button.rv-relrow:hover .rv-relrow-go {
     padding-left: 14px;
   }
 
-  .crew-option:hover {
-    background: var(--sidebar-row-hover);
+  /* A row standing in for a choice while it runs, or saying why it failed: its press at the end. */
+  .crew-option[data-live] {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    cursor: default;
+  }
+
+  .crew-option:disabled {
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  @media (hover: hover) {
+    .crew-option:enabled:hover {
+      background: var(--sidebar-row-hover);
+    }
   }
 
   .crew-option:focus-visible {

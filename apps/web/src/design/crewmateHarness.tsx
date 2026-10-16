@@ -645,6 +645,7 @@ function Panel({
           mate={FEN}
           onAskMate={noop}
           onSignIn={noop}
+          proposeWith={{ kind: "unavailable", words: "" }}
           treeCwd={null}
         />
       ) : (

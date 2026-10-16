@@ -79,6 +79,14 @@ const lockOf = (login: string): CrewLock | null =>
   CLOSED === null ? null : { login, agentId: "claude-code", ownership: CLOSED };
 
 const ENVIRONMENT = EnvironmentId.make("environment-crew-harness");
+/** The harness has no Mate to ask: a proposal from it fails, as one from an unreachable Mate would. */
+const PROPOSE_WITH = {
+  kind: "ready",
+  modelSelection: {
+    instanceId: ProviderInstanceId.make("claudeAgent"),
+    model: "claude-sonnet-4-5",
+  },
+} as const;
 const PROJECT = ProjectId.make("project-crew-harness");
 const FEN = { name: "Fen", tint: "amber" as MateTintId };
 
@@ -668,16 +676,9 @@ const DRAFT: CrewDefinition = {
   brief: parseBrief("Letopis — shared persistent world", `${GOAL.body.split("\n")[0]}\n`),
 };
 
-/**
- * Whether *Let Fen suggest a crew* was pressed: `setup-start` has the goal and
- * nobody on the crew, and after the press the next read brings Fen's draft,
- * as the Mate writing it would.
- */
-let suggested = false;
-
+/** `setup-start` has the goal and nobody on the crew; `setup-draft` the crew Fen suggested. */
 const homeOf = (): CrewFiles => {
-  if (STATE === "setup-start" && !suggested)
-    return { files: renderCrewHome({ ...DRAFT, members: [] }) };
+  if (STATE === "setup-start") return { files: renderCrewHome({ ...DRAFT, members: [] }) };
   return { files: renderCrewHome(STATE.startsWith("setup") ? DRAFT : DEFINITION) };
 };
 
@@ -782,11 +783,10 @@ function Tab() {
             crewmates={[]}
             devHosts={["appdev"]}
             hosts={[]}
+            environmentId={ENVIRONMENT}
             mate={FEN}
-            onAsk={() => {
-              suggested = true;
-            }}
             onAskPorts={noop}
+            proposeWith={PROPOSE_WITH}
             onClose={noop}
             onEditCrewmate={noop}
           />
@@ -815,6 +815,7 @@ function Column() {
       mate={FEN}
       onAskMate={noop}
       onSignIn={noop}
+      proposeWith={PROPOSE_WITH}
       treeCwd={null}
     />
   );
