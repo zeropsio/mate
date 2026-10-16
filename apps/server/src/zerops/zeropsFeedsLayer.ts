@@ -54,6 +54,7 @@ import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
 import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsStandUpRelayModule from "./ZeropsStandUpRelay.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
+import * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 
 /** One admission source for the auth boundary, the door, the watch and the linked HQ. */
 export const ZeropsProjectAccessLive = ZeropsProjectAccessModule.layer.pipe(
@@ -240,6 +241,8 @@ const liveLayer = Layer.mergeAll(
   ),
   ZeropsTurnAdmissionLive,
   ZeropsCrewLive,
+  // A crew proposed from the goal, on the Mate's agent, admitted through the same gate.
+  ZeropsCrewProposalsModule.layer.pipe(Layer.provide(ZeropsTurnAdmissionLive)),
   MateEngineLive,
   // A new Mate's setup, reported at `/setup.json`, and its stand-up started
   // here once its asker has an agent to run — admitted through the same gate.

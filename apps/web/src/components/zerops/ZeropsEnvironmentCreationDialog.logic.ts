@@ -488,6 +488,37 @@ export function newMateDoor(input: {
 }
 
 /**
+ * Why *Add a Mate* stands off before it is pressed, in the words the door says after the press —
+ * only where the project's setup files and changes are already read and the door is closed on
+ * them. Anything not known yet leaves Add on, as before; so do setup files that can't be read,
+ * whose way on (*Try again*) is behind the press. `null` while Add may be pressed.
+ */
+export function newMateGate(input: {
+  readonly groupName: string;
+  /** The project's setup files for a Mate as a held read says them; `undefined` while none is held. */
+  readonly recipe: NewMateRecipeRead | undefined;
+  readonly mates: ReadonlyArray<NewMateDoorMate>;
+  /** The project's changes as read; `undefined` while they are not. */
+  readonly changes: ReadonlyArray<FlowPullRequest> | undefined;
+  readonly mateName: (projectId: string) => string | undefined;
+}): string | null {
+  const { changes, mates } = input;
+  if (input.recipe !== "absent" || changes === undefined) return null;
+  const door = newMateDoor({
+    groupName: input.groupName,
+    recipe: "absent",
+    mates,
+    change: newMateRecipeChange({
+      flow: { changesKnown: true, pullRequests: changes },
+      mateName: (projectId) =>
+        mates.find((mate) => mate.projectId === projectId)?.name ?? input.mateName(projectId),
+    }),
+    rereading: false,
+  });
+  return door.kind === "closed" ? door.reason : null;
+}
+
+/**
  * The project's Mates, as the door counts and names them: the listed ones by their project, in the
  * tree's order, then the ones still coming up — a Mate the platform took and the listing does not
  * hold yet is setting the project up as surely as one it does.

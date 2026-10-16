@@ -1112,6 +1112,7 @@
         "apps/web/src/components/zerops/SidebarHeadingLine.logic.ts",
         "apps/web/src/components/zerops/SidebarProjects.logic.ts",
         "apps/web/src/components/zerops/SidebarMateMenu.tsx",
+        "apps/web/src/components/zerops/MenuItemWithWhy.tsx",
         "apps/web/src/components/zerops/mateDecision.logic.ts",
         "apps/web/src/components/zerops/SidebarWaiting.tsx",
         "apps/web/src/components/zerops/SidebarWaiting.logic.ts",

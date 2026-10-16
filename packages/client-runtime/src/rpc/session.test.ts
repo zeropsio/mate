@@ -690,6 +690,73 @@ describe("RpcSessionFactory", () => {
     }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 
+  describe("a page whose own throttling may hold pongs back", () => {
+    const connectWithVisibility = Effect.fn("TestRpcSessionFactory.connectWithVisibility")(
+      function* () {
+        const page = { hidden: false };
+        const { factory, sockets } = yield* makeFactory({
+          pingTimeoutPaused: () => page.hidden,
+        });
+        const session = yield* factory.connect(PREPARED);
+        const readyFiber = yield* Effect.forkChild(session.ready);
+        const closedFiber = yield* Effect.forkChild(Effect.flip(session.closed));
+        const socket = yield* awaitSocket(sockets);
+        socket.open();
+        yield* completeInitialConfig(socket);
+        yield* Fiber.join(readyFiber);
+        const pings = () => socket.sent.map((message) => decodeJson(message)).filter(isPing).length;
+        return { page, socket, closedFiber, pings };
+      },
+    );
+
+    it.effect("a hidden tab whose pongs are processed late keeps its socket", () =>
+      Effect.gen(function* () {
+        const { page, socket, closedFiber } = yield* connectWithVisibility();
+
+        page.hidden = true;
+        yield* TestClock.adjust("10 minutes");
+        expect(closedFiber.pollUnsafe()).toBeUndefined();
+
+        // The late pong is processed when the person comes back.
+        page.hidden = false;
+        socket.serverMessage(encodeJson({ _tag: "Pong" }));
+        yield* TestClock.adjust("15 seconds");
+        expect(closedFiber.pollUnsafe()).toBeUndefined();
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+    );
+
+    it.effect("a socket that stops answering is still closed within 20 s while visible", () =>
+      Effect.gen(function* () {
+        const { closedFiber } = yield* connectWithVisibility();
+
+        yield* TestClock.adjust("15 seconds");
+        expect(closedFiber.pollUnsafe()).toBeUndefined();
+        yield* TestClock.adjust("5 seconds");
+        const error = yield* Fiber.join(closedFiber);
+        expect(error).toMatchObject({ detail: "Test environment stopped responding." });
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+    );
+
+    it.effect("returning to a hidden tab checks the socket within 20 s", () =>
+      Effect.gen(function* () {
+        const { page, closedFiber, pings } = yield* connectWithVisibility();
+
+        page.hidden = true;
+        yield* TestClock.adjust("10 minutes");
+        const pingsWhileHidden = pings();
+
+        page.hidden = false;
+        yield* TestClock.adjust("5 seconds");
+        expect(pings()).toBe(pingsWhileHidden + 1);
+        yield* TestClock.adjust("10 seconds");
+        expect(closedFiber.pollUnsafe()).toBeUndefined();
+        yield* TestClock.adjust("5 seconds");
+        const error = yield* Fiber.join(closedFiber);
+        expect(error).toMatchObject({ detail: "Test environment stopped responding." });
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+    );
+  });
+
   it.effect("keeps reading replies after closing a stream with a full buffer", () =>
     Effect.gen(function* () {
       const { factory, sockets } = yield* makeFactory();

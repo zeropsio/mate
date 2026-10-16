@@ -426,6 +426,8 @@ export const EngineSendInput = Schema.Struct({
     Schema.Array(Schema.Union([ChatImageAttachment, ChatFileAttachment])),
   ),
   interactionMode: Schema.optionalKey(TolerantInteractionMode),
+  /** A press on a page sent it for the person: never the conversation's subject. */
+  fromPanel: Schema.optionalKey(Schema.Literal(true)),
 });
 export type EngineSendInput = typeof EngineSendInput.Type;
 

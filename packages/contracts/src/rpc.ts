@@ -226,6 +226,9 @@ import {
   CrewFiles,
   CrewTaskPage,
   CrewTaskPageInput,
+  CrewProposal,
+  CrewProposalError,
+  CrewProposalInput,
 } from "./zeropsCrew.ts";
 import {
   UsageLimitSourceError,
@@ -400,6 +403,7 @@ export const WS_METHODS = {
   zeropsCrewFilesPut: "zerops.crew.files.put",
   zeropsCrewCommand: "zerops.crew.command",
   zeropsCrewTaskPage: "zerops.crew.taskPage",
+  zeropsCrewPropose: "zerops.crew.propose",
   threadsFileWrites: "threads.fileWrites",
   threadsWrittenFile: "threads.writtenFile",
   engineGetArchivedShellSnapshot: "engine.getArchivedShellSnapshot",
@@ -1321,6 +1325,16 @@ const WsZeropsCrewCommandRpc = Rpc.make(WS_METHODS.zeropsCrewCommand, {
  * A crewmate's finished work past the board, a page at a time (the engine's crew bounds its
  * board); a V1 server's board holds every task and pages nothing.
  */
+/**
+ * *Let Fen suggest a crew*: a roster proposed from the goal by the Mate's own agent, once and
+ * without tools, outside every conversation. Interrupting the request stops the agent.
+ */
+const WsZeropsCrewProposeRpc = Rpc.make(WS_METHODS.zeropsCrewPropose, {
+  payload: CrewProposalInput,
+  success: CrewProposal,
+  error: Schema.Union([CrewProposalError, EnvironmentAuthorizationError]),
+});
+
 const WsZeropsCrewTaskPageRpc = Rpc.make(WS_METHODS.zeropsCrewTaskPage, {
   payload: CrewTaskPageInput,
   success: CrewTaskPage,
@@ -1574,6 +1588,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsCrewFilesPutRpc,
   WsZeropsCrewCommandRpc,
   WsZeropsCrewTaskPageRpc,
+  WsZeropsCrewProposeRpc,
   WsSubscribeEngineConversationRpc,
   WsSubscribeEngineRowsRpc,
   WsEngineReadEarlierRpc,

@@ -149,8 +149,15 @@ export const rowStateOf = (view: ConversationView): ConversationRowState => {
   if (asked !== undefined && waitsOn(asked.ask.kind)) {
     return { kind: "waiting", on: asked.ask.kind, words: askWords(asked) };
   }
+  // A person's Stop in force says so on the row, whichever control or device sent it.
+  const stopping = view.stopping === true ? { stopping: true as const } : {};
   if (active !== null && (active.state === "running" || active.state === "waiting")) {
-    return { kind: "working", since: active.startedAt ?? active.queuedAt, waitsOnHelpers: false };
+    return {
+      kind: "working",
+      since: active.startedAt ?? active.queuedAt,
+      waitsOnHelpers: false,
+      ...stopping,
+    };
   }
   const value = vaultAsk(view);
   if (value !== undefined) return { kind: "waiting", on: "vault", words: askWords(value) };
@@ -178,6 +185,7 @@ export const rowStateOf = (view: ConversationView): ConversationRowState => {
       since: view.lastEnded?.endedAt ?? view.updatedAt,
       waitsOnHelpers: true,
       ...(view.background !== "working" ? { turnDue: true as const } : {}),
+      ...stopping,
       work: workOf(view),
     };
   }
@@ -220,7 +228,7 @@ export const conversationRowOf = (
             endedAt: latest.endedAt,
             turnState: turnStateOf(latest),
           },
-    subject: view.lastPerson === null ? null : subjectOf(view.lastPerson),
+    subject: view.lastAsked === null ? null : subjectOf(view.lastAsked),
     snippet: rowText(view.lastAgent?.text),
     at: view.updatedAt,
     askedAt: asked?.at ?? null,

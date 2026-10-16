@@ -176,6 +176,30 @@ it.layer(CursorTextGenerationTestLayer)("CursorTextGeneration", (it) => {
     );
   });
 
+  it.effect("fails a proposal rather than run outside ask mode", () =>
+    withFakeAcpAgent(
+      {
+        T3_ACP_INITIAL_MODE: "code",
+        T3_ACP_FAIL_SET_CONFIG_OPTION: "1",
+        T3_ACP_PROMPT_RESPONSE_TEXT: JSON.stringify({
+          lead: { name: "Lead", part: "Plans it." },
+          builders: [{ name: "Checkout", part: "Builds it." }],
+        }),
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const error = yield* textGeneration
+            .generateCrewProposal({
+              cwd: process.cwd(),
+              goal: "A tea shop that ships weekly.",
+              modelSelection: createModelSelection(ProviderInstanceId.make("cursor"), "auto"),
+            })
+            .pipe(Effect.flip);
+          expect(error.detail).toBe("Cursor could not switch to ask mode for text generation.");
+        }),
+    ),
+  );
+
   it.effect("accepts json objects with extra assistant text around them", () =>
     withFakeAcpAgent(
       {

@@ -34,6 +34,7 @@ import {
   MenuShortcut,
   MenuTrigger,
 } from "../ui/menu";
+import { MenuItemWithWhy } from "./MenuItemWithWhy";
 import { CHANGE_FACE_VERB } from "./ZeropsChangeFaceDialog.logic";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import type { ZeropsMenuAction, ZeropsMenuEntry } from "./ZeropsProjectMenu";
@@ -321,14 +322,14 @@ function ProjectMenuItems({ entries }: { readonly entries: ReadonlyArray<Heading
     entry.kind === "separator" ? (
       <MenuSeparator key={`separator:${String(index)}`} />
     ) : (
-      <MenuItem
+      <MenuItemWithWhy
         data-zerops-project-menu={entry.label}
         disabled={entry.disabled}
         key={entry.label}
+        label={entry.label}
         onClick={entry.act}
-      >
-        {entry.label}
-      </MenuItem>
+        why={entry.why}
+      />
     ),
   );
 }

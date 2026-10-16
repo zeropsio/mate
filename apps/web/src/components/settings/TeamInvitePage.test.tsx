@@ -177,7 +177,7 @@ describe("inviting someone to the team", () => {
         { projectId: "snap-fen", roleCode: "READ_ONLY" },
       ],
     });
-    expect(page.onSent).toHaveBeenCalled();
+    expect(page.onSent).toHaveBeenCalledWith("petra.kralova@example.com");
   });
 
   it("An address with a Zerops account is asked no name", async () => {

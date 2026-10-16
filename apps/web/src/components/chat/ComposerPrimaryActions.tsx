@@ -31,6 +31,11 @@ interface ComposerPrimaryActionsProps {
   preserveComposerFocusOnPointerDown?: boolean;
   /** Work the turn started that runs on after it: its Stop stands here, the only one. */
   backgroundWork?: { readonly stopping: boolean; readonly onStop: () => void } | null;
+  /**
+   * A person's Stop is in force (`conversationStop`): the running turn's Stop says so; a press
+   * again asks harder (the engine closes the session).
+   */
+  stopping?: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -78,6 +83,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   hasSendableContent,
   preserveComposerFocusOnPointerDown = false,
   backgroundWork = null,
+  stopping = false,
   onPreviousPendingQuestion,
   onInterrupt,
   onImplementPlanInNewThread,
@@ -296,7 +302,10 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   // the send button stays next to Stop on every viewport.
   return (
     <>
-      {renderStopGenerationButton(false)}
+      {renderStopGenerationButton(
+        false,
+        stopping ? { label: "Stopping…", onClick: onInterrupt } : undefined,
+      )}
       {hasSendableContent ? sendButton : null}
     </>
   );

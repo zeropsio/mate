@@ -631,6 +631,17 @@ describe("a queued message's send receipt", () => {
     ]);
   });
 
+  it("a queued page ask goes as the page's and never becomes the menu's line", async () => {
+    const message = queue("Open crew ports on appdev", { fromPanel: true });
+    const account = accountReceipts();
+    const deps = makeDeps(endedThread, { receipts: account.receipts });
+
+    await sendQueuedMessageInBackground(threadKey, message.id, deps);
+
+    expect(deps.startTurn).toHaveBeenCalledWith(expect.objectContaining({ fromPanel: true }));
+    expect(account.operations()).toEqual([]);
+  });
+
   it("a crewmate's message records no turn send, as in its open conversation", async () => {
     const message = queue("@lead check this");
     const crewThread = makeThread({
@@ -657,5 +668,16 @@ describe("turnSendAsk", () => {
   ])("records %s as %j", (_label, prompt, text) => {
     const ask = turnSendAsk({ trimmedPrompt: prompt, messageId: "m", threadId: "t", at: now });
     expect(ask?.text ?? null).toBe(text);
+  });
+
+  it("never records a page's ask as the menu's line", () => {
+    const ask = turnSendAsk({
+      trimmedPrompt: "Open crew ports on appdev",
+      messageId: "m",
+      threadId: "t",
+      at: now,
+      fromPanel: true,
+    });
+    expect(ask).toBeNull();
   });
 });

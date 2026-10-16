@@ -281,3 +281,73 @@ describe("one Mate, one face, from the engine's records", () => {
     },
   );
 });
+
+// S21-02: after the person's second Stop closed the agent's session, the run read the Mate as
+// coming up, with no restart of the Mate in its log.
+describe("a Stop that closed the agent's session", () => {
+  const STOPPED_AT = Date.parse("2026-10-15T14:15:41.000Z");
+  const run12 = RunId.make("r>/r/12");
+  /** The menu's reading after the Stop: its row at rest, its V1 session as the close left it. */
+  const read = (driver: string, session: "stopped" | "ready" | "starting") => {
+    const thread = overlayEngineRow(
+      {
+        ...main,
+        session: {
+          threadId: MAIN,
+          status: session,
+          providerName: driver as never,
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: new Date(STOPPED_AT).toISOString(),
+        },
+      },
+      engineRow(FEN, MAIN, {
+        agent: {
+          instanceId: driver,
+          driver,
+          model: "m1",
+          profile: { kind: "mate" },
+        },
+        state: { kind: "idle" },
+        runStatus: "ready",
+        latestRun: {
+          id: run12,
+          end: { kind: "stopped", by: { kind: "person", subject: "zerops:nova" } },
+          endedAt: STOPPED_AT as never,
+          turnState: "interrupted",
+        },
+        subject: "Change the shop's checkout",
+        snippet: "I started on the checkout.",
+        at: STOPPED_AT as never,
+      }),
+    );
+    return threadAgentActivity({ ...thread, environmentId: FEN }, undefined, STOPPED_AT + 1_000);
+  };
+
+  it.each(
+    ["claudeAgent", "codex", "opencode", "cursor", "grok", "antigravity"].flatMap((driver) =>
+      (["stopped", "ready", "starting"] as const).map((session) => ({ driver, session })),
+    ),
+  )(
+    "after a Stop closes the agent's session, the Mate reads as stopped and ready, never as coming up ($driver, its session $session)",
+    ({ driver, session }) => {
+      const activity = read(driver, session);
+      const input = facts({ activity });
+      const view = mateRowReading({ ...input, name: "Nova" });
+      expect({
+        kind: activity.kind,
+        state: view.state,
+        face: view.face,
+        reply: view.reply,
+        top: topBar(input).state,
+      }).toEqual({
+        kind: "idle",
+        state: "idle",
+        face: "idle",
+        reply: { kind: "words", text: "I started on the checkout.", tone: "muted" },
+        top: "idle",
+      });
+    },
+  );
+});

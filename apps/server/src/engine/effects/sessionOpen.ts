@@ -184,6 +184,7 @@ export const makeSessionOpen = Effect.gen(function* () {
             // A native steer is the provider's own send: it carries pictures and files as a send does.
             steerAttachments: DRIVER_CAPABILITIES[driver].steer === "native",
             selfTurns: DRIVER_CAPABILITIES[driver].selfTurns,
+            stopClosesSession: DRIVER_CAPABILITIES[driver].interrupt.closesSession,
             inSessionOptions: yield* inSessionOptions(driver, payload.instanceId),
           },
           requestedModel: payload.model,

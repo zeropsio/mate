@@ -48,6 +48,26 @@ describe("a conversation's view", () => {
     ),
   );
 
+  it.effect("names the conversation by what the person typed, never by a page's request", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "Send", text: "Build the tea catalog" });
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.tell({ _tag: "Send", text: "Open crew ports on appdev", fromPanel: true });
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const view = yield* viewOf(w);
+        assert.strictEqual(view?.lastPerson?.text, "Open crew ports on appdev");
+        assert.strictEqual(view?.lastAsked?.text, "Build the tea catalog");
+        assert.strictEqual(
+          conversationRowOf(view!, { environmentId: "env", epoch: 1 }).subject,
+          "Build the tea catalog",
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("names the run on, the call it is on and the request it waits on", () =>
     Effect.scoped(
       Effect.gen(function* () {

@@ -58,6 +58,12 @@ export interface RpcSessionOptions {
   readonly usageLimitSources?: boolean;
   /** This client answers /usage-limits itself, so the server may advertise it. */
   readonly usageLimitsCommand?: boolean;
+  /**
+   * True while this client's own throttling may hold pongs back (a hidden browser tab runs its
+   * timers once a minute), so missed pongs then never close the socket. The person's return is
+   * checked by the next pings and the connection's visible-wake probe.
+   */
+  readonly pingTimeoutPaused?: () => boolean;
 }
 
 export class RpcSessionFactory extends Context.Service<
@@ -157,6 +163,7 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     const hooks = RpcClient.ConnectionHooks.of({
       onConnect: Deferred.succeed(connected, undefined).pipe(Effect.asVoid),
       onPingTimeout: Ref.set(pingTimedOut, true),
+      pingTimeoutPaused: options.pingTimeoutPaused,
       onDisconnect: Effect.all([Deferred.isDone(connected), Ref.get(pingTimedOut)]).pipe(
         Effect.flatMap(([wasConnected, timedOut]) =>
           Deferred.fail(

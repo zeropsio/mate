@@ -2,6 +2,7 @@ import { OpenCodeSettings, ProviderInstanceId, TextGenerationError } from "@t3to
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
@@ -31,6 +32,10 @@ const runtimeMock = {
     sessionCreateError: undefined as unknown,
     sessionResult: undefined as { data?: { id: string } } | undefined,
     promptRequestError: undefined as unknown,
+    /** The prompt never answers, as a model still working. */
+    promptHangs: false,
+    promptEntered: Promise.withResolvers<void>(),
+    aborted: [] as string[],
     promptResult: undefined as
       | { data?: { info?: { error?: unknown }; parts?: Array<unknown> } }
       | undefined,
@@ -44,6 +49,9 @@ const runtimeMock = {
     this.state.sessionCreateError = undefined;
     this.state.sessionResult = undefined;
     this.state.promptRequestError = undefined;
+    this.state.promptHangs = false;
+    this.state.promptEntered = Promise.withResolvers<void>();
+    this.state.aborted.length = 0;
     this.state.promptResult = undefined;
   },
 };
@@ -81,7 +89,13 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeCapability = {
           }
           return runtimeMock.state.sessionResult ?? { data: { id: `${baseUrl}/session` } };
         },
+        abort: async (input: { readonly sessionID: string }) => {
+          runtimeMock.state.aborted.push(input.sessionID);
+          return { data: true };
+        },
         prompt: async (input: { readonly parts: ReadonlyArray<unknown> }) => {
+          runtimeMock.state.promptEntered.resolve();
+          if (runtimeMock.state.promptHangs) return new Promise(() => {});
           runtimeMock.state.promptUrls.push(baseUrl);
           runtimeMock.state.promptParts.push(input.parts);
           runtimeMock.state.authHeaders.push(
@@ -211,6 +225,44 @@ it.layer(OpenCodeTextGenerationTestLayer)("OpenCodeTextGeneration", (it) => {
           expect.objectContaining({ type: "text" }),
           expect.objectContaining({ type: "file", filename: "screenshot.png" }),
         ]);
+      }),
+    ),
+  );
+
+  it.effect("stops the model on the shared server when a proposal is cancelled", () =>
+    withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (textGeneration) =>
+      Effect.gen(function* () {
+        runtimeMock.state.promptHangs = true;
+        const running = yield* textGeneration
+          .generateCrewProposal({
+            cwd: process.cwd(),
+            goal: "A tea shop that ships weekly.",
+            modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+          })
+          .pipe(Effect.forkChild);
+        yield* Effect.promise(() => runtimeMock.state.promptEntered.promise);
+        yield* Fiber.interrupt(running);
+        expect(runtimeMock.state.aborted).toEqual([`${LOCAL_SERVER_URL}/session`]);
+      }),
+    ),
+  );
+
+  it.effect("gives a proposal up after 180 seconds, and stops the model", () =>
+    withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (textGeneration) =>
+      Effect.gen(function* () {
+        runtimeMock.state.promptHangs = true;
+        const running = yield* textGeneration
+          .generateCrewProposal({
+            cwd: process.cwd(),
+            goal: "A tea shop that ships weekly.",
+            modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+          })
+          .pipe(Effect.flip, Effect.forkChild);
+        yield* Effect.promise(() => runtimeMock.state.promptEntered.promise);
+        yield* TestClock.adjust("181 seconds");
+        const error = yield* Fiber.join(running);
+        expect(error.detail).toBe("OpenCode request timed out.");
+        expect(runtimeMock.state.aborted).toEqual([`${LOCAL_SERVER_URL}/session`]);
       }),
     ),
   );

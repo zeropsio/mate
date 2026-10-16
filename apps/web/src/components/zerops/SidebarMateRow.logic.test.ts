@@ -482,6 +482,41 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: { kind: "live", words: "Final batched browser check" },
     },
+    // S21-02: "Finishing work it started" read on after the person's Stop.
+    {
+      case: "a Stop in force on its turn: it says it is stopping",
+      input: activity({
+        kind: "working",
+        face: "working",
+        stopping: true,
+        liveStep: { words: "Compile the gallery" },
+      }),
+      state: "working",
+      rowFace: "working",
+      slot: { kind: "age" },
+      dot: undefined,
+      strong: false,
+      reply: { kind: "live", words: "Stopping…" },
+    },
+    {
+      case: "a Stop in force on the work its turn left: it says it is stopping, never what still runs",
+      input: activity({
+        kind: "working",
+        face: "working",
+        waitsOnHelpers: true,
+        stopping: true,
+        backgroundWork: {
+          items: [{ title: "Final batched browser check", of: "mate", since: 1 }],
+          count: 1,
+        },
+      }),
+      state: "working",
+      rowFace: "working",
+      slot: { kind: "age" },
+      dot: undefined,
+      strong: false,
+      reply: { kind: "live", words: "Stopping…" },
+    },
     {
       case: "working, no step relayed",
       input: activity({ kind: "working", face: "working" }),

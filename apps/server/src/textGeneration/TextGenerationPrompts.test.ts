@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildCrewProposalPrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
@@ -270,6 +271,31 @@ describe("sanitizeThreadTitle", () => {
     const title = sanitizeThreadTitle(words);
     expect(title.length).toBeLessThanOrEqual(120);
     expect(title.endsWith("...")).toBe(true);
+  });
+});
+
+describe("buildCrewProposalPrompt", () => {
+  it("asks the Mate to suggest a crew from the goal", () => {
+    const { prompt } = buildCrewProposalPrompt({ goal: "  A tea shop that ships weekly.  " });
+
+    expect(prompt).toContain("Goal:\nA tea shop that ships weekly.");
+    expect(prompt).toContain("one lead");
+    expect(prompt).toContain("between 1 and 6 builders");
+  });
+
+  it("asks for a proposal only: no tools, no files, no commands", () => {
+    const { prompt } = buildCrewProposalPrompt({ goal: "A tea shop." });
+
+    expect(prompt).toContain("Do not use tools, read or write files, or run commands.");
+  });
+
+  it("asks for the lead and the builders as JSON", () => {
+    const { outputSchema } = buildCrewProposalPrompt({ goal: "A tea shop." });
+
+    expect(toJsonSchemaObject(outputSchema)).toMatchObject({
+      type: "object",
+      required: ["lead", "builders"],
+    });
   });
 });
 

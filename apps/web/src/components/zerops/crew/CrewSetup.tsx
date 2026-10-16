@@ -1,39 +1,42 @@
 /**
- * *Set up a crew*, as a view of the Crew tab (PRD §4.7, §5.1): the goal
- * first — the Mate can suggest the crew from it — then who's on it: *Let Fen
- * suggest a crew*, *Start with a lead and two builders*, or *Add someone
- * yourself*; once drafted, a row per crewmate exactly like the tab's, each
- * opening its job. *Start the crew* makes each builder its own copy of the
- * Mate's code, and each row says how that goes, until the crew stands and
- * the view becomes the tab.
+ * *Set up a crew*, as a view of the Crew tab (PRD §4.7, §5.1), read top to
+ * bottom: the goal, who's on it, *Start the crew*. Who's on it starts from
+ * *Let Fen suggest a crew* — a proposal from the goal, made in place by the
+ * Mate's own agent outside its conversation (`useCrewProposal`): the option
+ * becomes a row of the Mate proposing, with Cancel, and the crew it proposes
+ * fills the rows to edit — or from *Start with a lead and two builders*, or
+ * *Add someone yourself*. Once drafted, a row per crewmate exactly like the
+ * tab's, each opening its job. *Start the crew* makes each builder its own
+ * copy of the Mate's code, and each row says how that goes, until the crew
+ * stands and the view becomes the tab.
  *
- * The account samples the crew home while an editor demands it, so the
- * Mate's suggested crewmates arrive through the shared read.
- * A crew on a login the viewer may not run does not start (D6): *Start the
- * crew* waits, saying why.
+ * The draft is kept until the crew starts or the person drops it: the goal
+ * for this account (`useCrewSetupDraft`), the picks in the Mate's crew home
+ * as each is made. Both presses wait for the goal and say so.
+ *
+ * The account samples the crew home while an editor demands it. A crew on a
+ * login the viewer may not run does not start (D6): *Start the crew* waits,
+ * saying why.
  */
 import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_COPY_READYING,
-  CREW_KIND_WORDS,
   CREW_MENU,
   CREW_SETUP_WORDS,
-  CREW_VIEW_WORDS,
   crewAskMateWord,
   crewBrokenCopyWord,
-  crewDescribeAsk,
   crewJobSentence,
   crewLockWords,
   crewNoDevHostWord,
   crewPortsOfferWords,
+  crewProposingWord,
   crewSetUpFooter,
-  crewSetUpLine,
   crewSetUpTitle,
   crewSuggestLine,
   crewSuggestWord,
   crewSuggestedLine,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewHost, Crewmate } from "@t3tools/contracts";
+import type { CrewHost, Crewmate, EnvironmentId } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   CREW_BRIEF_FILE,
@@ -42,19 +45,32 @@ import {
   type CrewDefinition,
   type CrewMemberSpec,
 } from "@t3tools/shared/crewHome";
-import { crewFromTemplate, type CrewTemplateId } from "@t3tools/shared/crewTemplates";
+import {
+  crewFromProposal,
+  crewFromTemplate,
+  type CrewTemplateId,
+} from "@t3tools/shared/crewTemplates";
 import { ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { withBrief } from "../../../zerops/crew/crewHome";
+import { useCrewSetupDraft } from "../../../zerops/crew/crewSetupDraft";
 import type { UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome } from "../../../zerops/crew/useCrewHome";
+import { useCrewProposal } from "../../../zerops/crew/useCrewProposal";
 import { MateFace } from "../primitives";
 import { crewGoalFields, crewGoalMarkdown, crewGoalTitleOf } from "./CrewGoal.logic";
 import { CrewPress, CrewTextButton } from "./CrewParts";
+import {
+  crewProposalFailure,
+  crewStartState,
+  crewSuggestState,
+  type CrewProposeWith,
+} from "./CrewSetup.logic";
 import { CrewIssues, CrewTextArea, CrewView, CrewViewFoot } from "./CrewView";
 
 export interface CrewSetupProps {
+  readonly environmentId: EnvironmentId;
   readonly commands: UseCrewCommand;
   /** The crew stands: Start was pressed, and each row says how its copy goes. */
   readonly applied: boolean;
@@ -69,9 +85,9 @@ export interface CrewSetupProps {
     readonly tint: MateTintId | undefined;
     readonly shape?: MateShapeId | undefined;
   };
+  /** Where *Let Fen suggest a crew* runs, or why it can't for this viewer. */
+  readonly proposeWith: CrewProposeWith;
   readonly onClose: () => void;
-  /** Hands the Mate a draft, confirmed first: `what` says why. */
-  readonly onAsk: (ask: string, what: string) => void;
   /** Opens a crewmate's job; `null` adds one. */
   readonly onEditCrewmate: (handle: string | null) => void;
   /** Reserves an address for each builder on `host`, and asks the Mate to open them. */
@@ -84,10 +100,11 @@ export function CrewSetup(props: CrewSetupProps) {
   const { commands, mate } = props;
   const home = useCrewHome(commands);
   const definition = home.definition;
-  const [goal, setGoal] = useState<string | null>(null);
-  // The Mate was asked to suggest a crew, and nobody drafted one here since: its rows are the Mate's.
+  const draft = useCrewSetupDraft(props.environmentId);
+  const proposal = useCrewProposal(props.environmentId);
+  // The Mate proposed the rows, and nobody drafted others here since.
   const [asked, setAsked] = useState(false);
-  const shownGoal = goal ?? (definition === null ? "" : crewGoalFields(definition.brief).body);
+  const goal = draft.goal ?? (definition === null ? "" : crewGoalFields(definition.brief).body);
   /**
    * Who is on the crew, as its home reads: nobody while there is no crew home
    * yet; `null` while it is read, or while it doesn't read — its issues, in
@@ -100,7 +117,8 @@ export function CrewSetup(props: CrewSetupProps) {
         ? []
         : null;
   const drafted = members !== null && members.length > 0;
-  const busy = commands.isPending("filesPut") || commands.isPending("apply");
+  const proposing = proposal.state.kind === "proposing";
+  const busy = commands.isPending("filesPut") || commands.isPending("apply") || proposing;
 
   // Every copy made, the crew stands: the view becomes the tab.
   const ready =
@@ -114,7 +132,7 @@ export function CrewSetup(props: CrewSetupProps) {
 
   /** The definition with the goal as written, titled from its first sentence while it has no title. */
   const withGoal = (base: CrewDefinition): CrewDefinition => {
-    if (goal === null) return base;
+    if (goal.trim() === "") return base;
     const fields = crewGoalFields(base.brief);
     const markdown = crewGoalMarkdown({
       ...fields,
@@ -130,33 +148,61 @@ export function CrewSetup(props: CrewSetupProps) {
       renderCrewHome(next).map((file) => file.path),
     );
 
+  const mateTint = mate.tint === undefined ? {} : { mateTint: mate.tint };
+
   const startFrom = async (template: CrewTemplateId, then?: () => void) => {
     setAsked(false);
     const next = withGoal(
-      crewFromTemplate({
-        template,
-        crew: "crew",
-        devHosts: props.devHosts,
-        ...(mate.tint === undefined ? {} : { mateTint: mate.tint }),
-      }),
+      crewFromTemplate({ template, crew: "crew", devHosts: props.devHosts, ...mateTint }),
     );
     if (await saveAll(next)) then?.();
   };
 
+  const suggest = async () => {
+    if (props.proposeWith.kind !== "ready") return;
+    const proposed = await proposal.propose({
+      goal: goal.trim(),
+      modelSelection: props.proposeWith.modelSelection,
+    });
+    if (proposed === null) return;
+    const next = withGoal(
+      crewFromProposal({ proposal: proposed, crew: "crew", devHosts: props.devHosts, ...mateTint }),
+    );
+    if (await saveAll(next)) setAsked(true);
+  };
+
   const saveGoal = async () => {
-    if (definition === null || goal === null) return;
+    if (definition === null || draft.goal === null) return;
     await home.save(withGoal(definition), [CREW_HOME_FILE, CREW_BRIEF_FILE]);
   };
 
   const start = async () => {
     if (definition === null) return;
     if (
-      goal !== null &&
+      draft.goal !== null &&
       !(await home.save(withGoal(definition), [CREW_HOME_FILE, CREW_BRIEF_FILE]))
     ) {
       return;
     }
-    await commands.send({ _tag: "apply" });
+    if ((await commands.send({ _tag: "apply" })) !== null) draft.clear();
+  };
+
+  /** Drops the draft: the goal kept here, and whoever was picked. */
+  const drop = async () => {
+    proposal.cancel();
+    setAsked(false);
+    draft.clear();
+    // The crew home holds the picks and the goal as last saved: it goes back to nobody, no goal.
+    if (definition !== null) {
+      await saveAll(
+        crewFromTemplate({
+          template: "empty",
+          crew: "crew",
+          devHosts: props.devHosts,
+          ...mateTint,
+        }),
+      );
+    }
   };
 
   const startLock = members === null ? null : (props.startLock?.(members) ?? null);
@@ -169,6 +215,22 @@ export function CrewSetup(props: CrewSetupProps) {
           props.crewmates.some((row) => row.host === host.host && row.kind === "writer"),
       )
     : [];
+  const suggestPress = crewSuggestState({
+    goal,
+    busy: busy || props.proposeWith.kind === "reading",
+    unavailable: props.proposeWith.kind === "unavailable" ? props.proposeWith.words : null,
+  });
+  const startPress = crewStartState({
+    goal,
+    drafted,
+    blocked:
+      busy ||
+      props.applied ||
+      noDevHost ||
+      home.issues.some((issue) => issue.code !== "file-missing"),
+    lock: startLock === null ? null : crewLockWords(startLock.ownership),
+  });
+  const droppable = !props.applied && (drafted || goal.trim() !== "");
 
   return (
     <CrewView onBack={null}>
@@ -176,7 +238,7 @@ export function CrewSetup(props: CrewSetupProps) {
         <h2 className="font-semibold text-base leading-6">{crewSetUpTitle(mate.name)}</h2>
         <span className="grow" />
         <button
-          aria-label={CREW_SETUP_WORDS.cancel}
+          aria-label={CREW_SETUP_WORDS.close}
           className="crew-menu-btn -me-1.5"
           onClick={props.onClose}
           type="button"
@@ -184,9 +246,7 @@ export function CrewSetup(props: CrewSetupProps) {
           <XIcon aria-hidden="true" className="size-4" />
         </button>
       </div>
-      <p className="mt-0.5 text-line leading-4.5 text-muted-foreground">
-        {crewSetUpLine(mate.name)}
-      </p>
+      <p className="mt-0.5 text-line leading-4.5 text-muted-foreground">{CREW_SETUP_WORDS.line}</p>
 
       <span className="mt-6 font-medium text-sm leading-5">{CREW_SETUP_WORDS.goal}</span>
       {drafted ? null : (
@@ -200,33 +260,54 @@ export function CrewSetup(props: CrewSetupProps) {
           disabled={props.applied}
           {...(drafted ? {} : { lines: 4 as const })}
           onBlur={() => void saveGoal()}
-          onChange={(event) => setGoal(event.target.value)}
+          onChange={(event) => draft.setGoal(event.target.value)}
           placeholder={CREW_SETUP_WORDS.goalPlaceholder}
-          value={shownGoal}
+          value={goal}
         />
       </div>
 
       <span className="mt-7 font-medium text-sm leading-5">{CREW_SETUP_WORDS.whosOnIt}</span>
       {members === null ? null : members.length === 0 ? (
         <div className="mt-2 flex flex-col gap-2" data-crew-setup-start>
-          <button
-            className="crew-option"
-            disabled={busy || shownGoal.trim() === ""}
-            onClick={() => {
-              setAsked(true);
-              props.onAsk(crewDescribeAsk(shownGoal), crewSuggestLine(mate.name));
-            }}
-            type="button"
-          >
-            <MateFace shape={mate.shape} size={24} state="idle" tint={mate.tint ?? "amber"} />
-            <span className="flex min-w-0 flex-col">
-              <span className="font-medium text-sm leading-5">{crewSuggestWord(mate.name)}</span>
-              <span className="text-line leading-4.5 text-muted-foreground">
-                {crewSuggestLine(mate.name)}
+          {proposal.state.kind === "proposing" ? (
+            <div className="crew-option" data-crew-proposing data-live="" role="status">
+              <MateFace shape={mate.shape} size={24} state="working" tint={mate.tint ?? "amber"} />
+              <span className="font-medium text-sm leading-5">{crewProposingWord(mate.name)}</span>
+              <CrewTextButton label={CREW_SETUP_WORDS.stopProposing} onPress={proposal.cancel} />
+            </div>
+          ) : proposal.state.kind === "failed" ? (
+            <div className="crew-option" data-crew-proposal-failed data-live="" role="alert">
+              <MateFace shape={mate.shape} size={24} state="idle" tint={mate.tint ?? "amber"} />
+              <span className="text-line leading-4.5 text-status-failed-text">
+                {crewProposalFailure(proposal.state.cause, mate.name)}
               </span>
-            </span>
-            <ChevronRightIcon aria-hidden="true" className="size-4 text-muted-foreground" />
-          </button>
+              {suggestPress.disabled ? (
+                <span />
+              ) : (
+                <CrewTextButton
+                  label={CREW_SETUP_WORDS.proposeAgain}
+                  onPress={() => void suggest()}
+                />
+              )}
+            </div>
+          ) : (
+            <button
+              className="crew-option"
+              data-crew-suggest
+              disabled={suggestPress.disabled}
+              onClick={() => void suggest()}
+              type="button"
+            >
+              <MateFace shape={mate.shape} size={24} state="idle" tint={mate.tint ?? "amber"} />
+              <span className="flex min-w-0 flex-col">
+                <span className="font-medium text-sm leading-5">{crewSuggestWord(mate.name)}</span>
+                <span className="text-line leading-4.5 text-muted-foreground">
+                  {suggestPress.reason ?? crewSuggestLine(mate.name)}
+                </span>
+              </span>
+              <ChevronRightIcon aria-hidden="true" className="size-4 text-muted-foreground" />
+            </button>
+          )}
           <button
             className="crew-option"
             disabled={busy}
@@ -243,7 +324,7 @@ export function CrewSetup(props: CrewSetupProps) {
             <ChevronRightIcon aria-hidden="true" className="size-4 text-muted-foreground" />
           </button>
           <button
-            className="flex h-9 cursor-pointer items-center gap-3 rounded-lg ps-2.5 pe-3 font-medium text-line leading-4.5 text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex h-9 cursor-pointer items-center gap-3 rounded-lg ps-2.5 pe-3 font-medium text-line leading-4.5 text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
             disabled={busy}
             onClick={() => void startFrom("empty", () => props.onEditCrewmate(null))}
             type="button"
@@ -318,48 +399,41 @@ export function CrewSetup(props: CrewSetupProps) {
             {commands.error}
           </p>
         )}
-        {!drafted ? (
-          <span className="flex items-center gap-1.5">
-            <CrewPress disabled label={CREW_SETUP_WORDS.start} size="md" />
-            {members === null ? null : (
-              <span className="ms-1.5 text-line leading-4.5 text-muted-foreground">
-                {CREW_SETUP_WORDS.pickFirst}
-              </span>
-            )}
+        {drafted ? (
+          <span className="text-line leading-4.5 text-muted-foreground">
+            {crewSetUpFooter(mate.name, [
+              ...new Set(
+                writers.flatMap((member) => (member.host === undefined ? [] : [member.host])),
+              ),
+            ])}
           </span>
-        ) : (
-          <>
-            <span className="text-line leading-4.5 text-muted-foreground">
-              {startLock !== null
-                ? crewLockWords(startLock.ownership)
-                : crewSetUpFooter(mate.name, [
-                    ...new Set(
-                      writers.flatMap((member) => (member.host === undefined ? [] : [member.host])),
-                    ),
-                  ])}
+        ) : null}
+        <span className="flex items-center gap-1.5">
+          <CrewPress
+            disabled={startPress.disabled}
+            label={CREW_SETUP_WORDS.start}
+            onPress={() => void start()}
+            size="md"
+          />
+          {startPress.reason === null ? null : (
+            <span
+              className="ms-1.5 text-line leading-4.5 text-muted-foreground"
+              data-crew-start-reason
+            >
+              {startPress.reason}
             </span>
-            <span className="flex items-center gap-1.5">
-              <CrewPress
-                disabled={
-                  busy ||
-                  props.applied ||
-                  noDevHost ||
-                  startLock !== null ||
-                  home.issues.some((issue) => issue.code !== "file-missing")
-                }
-                label={CREW_SETUP_WORDS.start}
-                onPress={() => void start()}
-                size="md"
-              />
-              <CrewPress
-                label={CREW_VIEW_WORDS.cancel}
-                onPress={props.onClose}
-                size="md"
-                variant="ghost"
-              />
-            </span>
-          </>
-        )}
+          )}
+          <span className="grow" />
+          {droppable ? (
+            <CrewPress
+              disabled={commands.isPending("filesPut") || commands.isPending("apply")}
+              label={CREW_SETUP_WORDS.drop}
+              onPress={() => void drop()}
+              size="md"
+              variant="ghost"
+            />
+          ) : null}
+        </span>
       </CrewViewFoot>
     </CrewView>
   );
@@ -388,7 +462,7 @@ function TrioFaces({ mateTint }: { readonly mateTint: MateTintId | undefined }) 
   );
 }
 
-/** A crewmate being set up: the tab's row, what it does at its right edge, its copy's progress once it starts. */
+/** A crewmate being set up: the tab's row — its name, the first line of its job — and its copy's progress once it starts. */
 function SetupRow({
   member,
   crewmate,
@@ -415,13 +489,7 @@ function SetupRow({
     >
       <MateFace size={24} state={readying ? "working" : "idle"} tint={member.tint ?? "slate"} />
       <span className="flex min-w-0 flex-col">
-        <span className="flex h-5 items-center gap-2">
-          <span className="truncate font-medium text-sm leading-5">{member.displayName}</span>
-          <span className="grow" />
-          <span className="text-line leading-5 text-muted-foreground">
-            {CREW_KIND_WORDS[member.kind]}
-          </span>
-        </span>
+        <span className="truncate font-medium text-sm leading-5">{member.displayName}</span>
         <span className="mt-0.5 text-line leading-4.5 text-muted-foreground">
           {crewJobSentence(member.job.split("\n")[0] ?? "", member.displayName)}
         </span>

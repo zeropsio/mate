@@ -92,8 +92,10 @@ export interface TeamPerson {
   readonly userId: string | undefined;
   readonly name: string;
   readonly email: string | null;
-  /** Their role as a card's badge: a preset's name, else Zerops's role in words. */
+  /** Their role as a card's badge: a preset's name, else "Custom role". */
   readonly badge: string;
+  /** A custom role's reach in words, said on hover; null for one of Mate's four. */
+  readonly badgeHint: string | null;
   /** Their membership whole, as the person page edits it. */
   readonly membership: OrgMembership;
   readonly initials: string;
@@ -137,6 +139,9 @@ export const ROLE_CODE_WORDS = {
   READ_ONLY: "Read only",
   NO_ACCESS: "No access",
 } as const;
+
+/** A Zerops role none of Mate's four presets names, as a card's badge says it. */
+export const CUSTOM_ROLE = "Custom role";
 
 /** An invitation not joined yet, as its row says it. */
 export const INVITED_LINE = "Invited · waiting for them to join";
@@ -235,8 +240,8 @@ export function teamPeople(input: TeamInput): TeamView {
       userId,
       name,
       email: member.user?.email?.trim() || null,
-      badge:
-        preset === null ? ROLE_CODE_WORDS[asOrgRole(member.roleCode)] : TEAM_ROLE_WORDS[preset],
+      badge: preset === null ? CUSTOM_ROLE : TEAM_ROLE_WORDS[preset],
+      badgeHint: preset === null ? role : null,
       membership: membershipOf(member),
       initials: zeropsInitials(name),
       avatarUrl: memberPicture({
@@ -310,4 +315,38 @@ export function shownTeam(
   return found.toSorted(
     (a, b) => Number(a.pending) - Number(b.pending) || a.name.localeCompare(b.name),
   );
+}
+
+/** What the team says on return from sending an invitation to `address`. */
+export interface SentInvitation {
+  /** The quiet line above the list, for this visit. */
+  readonly line: string;
+  /** What a screen reader hears, politely. */
+  readonly announce: string;
+  /** The invitation's own row once Zerops lists it: it grows in, the only row that does. */
+  readonly arrivedKey: string | null;
+}
+
+export function sentInvitation(people: ReadonlyArray<TeamPerson>, address: string): SentInvitation {
+  const typed = address.trim();
+  const key = typed.toLocaleLowerCase();
+  const arrived = people.find(
+    (person) => person.pending && person.email?.toLocaleLowerCase() === key,
+  );
+  return {
+    line: `Invitation sent to ${typed}. They'll show here as joined once they accept.`,
+    announce: `Invitation sent to ${typed}`,
+    arrivedKey: arrived?.key ?? null,
+  };
+}
+
+/**
+ * The row that grows in now: the invitation's own, until its arrival has played once — a search
+ * that hides and re-shows it afterwards places it.
+ */
+export function arrivingRow(input: {
+  readonly arrivedKey: string | null;
+  readonly played: boolean;
+}): string | null {
+  return input.played ? null : input.arrivedKey;
 }

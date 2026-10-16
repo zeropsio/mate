@@ -14,6 +14,7 @@ import {
   EnvironmentAuthorizationError,
   ZeropsAgentLoginError,
   ZeropsMateUpdateError,
+  type CrewProposalInput,
   type WsRpcGroup,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
@@ -31,6 +32,7 @@ import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsMacStreamModule from "./ZeropsMacStream.ts";
 import { zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
+import type * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
@@ -60,6 +62,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsMateCheckUpdate
   | typeof WS_METHODS.zeropsDataConsoleCall
   | typeof WS_METHODS.zeropsGitProbeRemote
+  | typeof WS_METHODS.zeropsCrewPropose
   | typeof WS_METHODS.subscribeZeropsDataConsole;
 
 type ZeropsRpc = Extract<RpcGroup.Rpcs<typeof WsRpcGroup>, { readonly _tag: ZeropsRpcTag }>;
@@ -94,6 +97,8 @@ export interface RegisterZeropsRpcDeps {
   readonly serverVersion: string;
   readonly zeropsDataConsole: ZeropsDataConsoleModule.ZeropsDataConsole["Service"];
   readonly zeropsGitRemoteProbe: ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe["Service"];
+  /** *Let Fen suggest a crew*: a roster from the goal, on the Mate's own agent. */
+  readonly zeropsCrewProposals: ZeropsCrewProposalsModule.ZeropsCrewProposals["Service"];
   /**
    * The connecting session's subject — the Zerops user id the door put on the
    * grant. Taken from the authenticated session in `ws.ts`, never from RPC
@@ -358,6 +363,17 @@ export const runLoginRemove = (deps: LoginActionDeps, input: { readonly id: stri
     Effect.andThen(deps.zeropsSignOut.remove(input.id)),
   );
 
+/**
+ * `zerops.crew.propose`: a crew proposed from the goal, as the connecting
+ * session — never as anyone the input names. It changes nothing, yet it
+ * spends the Mate's agent, so it waits behind a pending update like any work.
+ */
+export const runCrewPropose = (
+  deps: Pick<RegisterZeropsRpcDeps, "zeropsCrewProposals" | "subject" | "admit">,
+  input: CrewProposalInput,
+) =>
+  deps.admit(WS_METHODS.zeropsCrewPropose, deps.zeropsCrewProposals.propose(input, deps.subject));
+
 /** Registers the Zerops feed RPCs. Called once from `ws.ts`. */
 export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandlers => {
   const {
@@ -463,6 +479,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     [WS_METHODS.zeropsMateCheckUpdate]: (_input) => runZeropsMateCheckUpdate(deps),
     [WS_METHODS.zeropsDataConsoleCall]: (input) => zeropsDataConsole.call(input),
     [WS_METHODS.zeropsGitProbeRemote]: (input) => zeropsGitRemoteProbe.probe(input),
+    [WS_METHODS.zeropsCrewPropose]: (input) => runCrewPropose(deps, input),
     [WS_METHODS.subscribeZeropsDataConsole]: (_input) => Stream.unwrap(zeropsDataConsole.subscribe),
   } satisfies ZeropsRpcHandlers;
 };

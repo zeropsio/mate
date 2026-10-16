@@ -56,6 +56,7 @@ import { CrewRunDialog, type CrewRunDialogAsk } from "./CrewRunDialog";
 import { CREW_ORIGIN } from "./CrewRows.logic";
 import { CrewSection, CrewSectionEmpty } from "./CrewSection";
 import { CrewSetup } from "./CrewSetup";
+import type { CrewProposeWith } from "./CrewSetup.logic";
 
 export interface CrewSectionHostProps {
   readonly environmentId: EnvironmentId;
@@ -78,6 +79,8 @@ export interface CrewSectionHostProps {
   readonly askLock: CrewLock | null;
   /** A closed crew's one way out: the viewer's own sign-in. */
   readonly onSignIn: (lock: CrewLock) => void;
+  /** Where the setup's *Let Fen suggest a crew* runs, or why it can't for this viewer. */
+  readonly proposeWith: CrewProposeWith;
 }
 
 /** Which of the tab's screens stands: its column, or a view. */
@@ -99,6 +102,7 @@ export function CrewSectionHost({
   access,
   askLock,
   onSignIn,
+  proposeWith,
 }: CrewSectionHostProps) {
   const commands = useCrewCommand(environmentId);
   const tell = useCrewCommand(environmentId);
@@ -229,9 +233,10 @@ export function CrewSectionHost({
           crewmates={snapshot.crewmates}
           devHosts={crewDevHosts(snapshot).map((host) => host.host)}
           hosts={snapshot.hosts}
+          environmentId={environmentId}
           mate={{ name: mateName, tint: mate?.tint, shape: mate?.shape }}
-          onAsk={(draft, what) => setAsk({ ask: draft, what })}
           onAskPorts={askPorts}
+          proposeWith={proposeWith}
           onClose={() => setView(null)}
           onEditCrewmate={(handle) => setView({ kind: "job", handle })}
           startLock={access.home}

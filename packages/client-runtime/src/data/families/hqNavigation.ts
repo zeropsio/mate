@@ -37,6 +37,17 @@ export interface HqOrganizationValue {
   readonly tools: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Core HQ runs. */
   readonly build: string;
+  /**
+   * The reader at this HQ: when they first signed in to it, and whether they were its first
+   * person — the one who set it up. Absent from an older HQ, or sent unreadably.
+   */
+  readonly viewer?: HqOrganizationViewer;
+}
+
+export interface HqOrganizationViewer {
+  /** ISO 8601; `null` where HQ holds no sign-in of theirs. */
+  readonly firstSignedInAt: string | null;
+  readonly founder: boolean;
 }
 
 /** How the organization's HQ stands (`HqNavigationStatus`): its check of Zerops, its parts. */
@@ -108,7 +119,23 @@ const Organization = Schema.Struct({
   build: Schema.String,
 });
 
-const decodeOrganization = Schema.decodeUnknownOption(Organization);
+const Viewer = Schema.Struct({
+  firstSignedInAt: Schema.NullOr(Schema.String),
+  founder: Schema.Boolean,
+});
+
+const decodeOrganizationRecord = Schema.decodeUnknownOption(Organization);
+const decodeViewer = Schema.decodeUnknownOption(Viewer);
+
+/** The record, its reader's first sign-in apart: one unreadable never loses the other. */
+const decodeOrganization = (raw: unknown): Option.Option<HqOrganizationValue> =>
+  Option.map(decodeOrganizationRecord(raw), (organization) => {
+    const viewer =
+      typeof raw === "object" && raw !== null && "viewer" in raw
+        ? Option.getOrUndefined(decodeViewer(raw.viewer))
+        : undefined;
+    return viewer === undefined ? organization : { ...organization, viewer };
+  });
 const decodeStatus = Schema.decodeUnknownOption(HqNavigationStatus);
 const decodeApp = Schema.decodeUnknownOption(App);
 const decodeProject = Schema.decodeUnknownOption(Project);

@@ -66,6 +66,8 @@ export interface GrokAcpSessionInput {
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly cwd: string;
   readonly clientInfo: AcpClientInfo;
+  /** `approval-required`: every edit and command waits on a permission request. Default: the CLI's. */
+  readonly runtimeMode?: "approval-required";
 }
 
 /** Spawns the Grok Build CLI in ACP mode and returns its session runtime. */

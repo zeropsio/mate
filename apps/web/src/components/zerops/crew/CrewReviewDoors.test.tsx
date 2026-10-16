@@ -69,6 +69,7 @@ it.each([
             access={access}
             askLock={null}
             onSignIn={vi.fn()}
+            proposeWith={{ kind: "unavailable", words: "" }}
           />
         </ReviewContext.Provider>,
       ),

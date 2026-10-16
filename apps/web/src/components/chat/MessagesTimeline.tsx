@@ -369,6 +369,8 @@ interface MessagesTimelineProps {
   isWorking: boolean;
   workingStepLabel?: string | null;
   isCompacting?: boolean;
+  /** A person's Stop is in force (`conversationStop`). */
+  isStopping?: boolean;
   activeTurnStartedAt: string | null;
   listRef: React.RefObject<LegendListRef | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
@@ -469,6 +471,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isWorking,
   workingStepLabel = null,
   isCompacting = false,
+  isStopping = false,
   activeTurnStartedAt,
   agentPanelModel,
   onOpenAgents = NOOP_OPEN_AGENTS,
@@ -1858,11 +1861,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => ({
       isWorking,
       isCompacting,
+      isStopping,
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
       workingStepLabel,
     }),
-    [isCompacting, isRevertingCheckpoint, isWorking, latestTurn?.turnId, workingStepLabel],
+    [
+      isCompacting,
+      isStopping,
+      isRevertingCheckpoint,
+      isWorking,
+      latestTurn?.turnId,
+      workingStepLabel,
+    ],
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
@@ -3137,6 +3148,7 @@ function cardRowsCarried(
 function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "after-work" }> }) {
   const ctx = use(TimelineRowCtx);
   const dock = use(TimelineWorkingCtx);
+  const { isStopping } = use(TimelineRowActivityCtx);
   return (
     <ConversationAfterWork
       dock={dock}
@@ -3144,6 +3156,7 @@ function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "afte
       onOpenAgents={ctx.onOpenAgents}
       speaker={ctx.speaker}
       state={row.state}
+      stopping={isStopping === true}
       threadRef={ctx.threadRef}
     />
   );

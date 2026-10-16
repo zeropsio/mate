@@ -1809,6 +1809,38 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
   });
 
+  /**
+   * Where a terminal starts: the folder asked for, else — where it is missing or unreadable, as a
+   * Mate's checkout is before zcp mounts it or after its mount breaks — the project's root the
+   * opener sent (`T3CODE_PROJECT_ROOT`), so a terminal always opens; its first line says why.
+   * With no root to fall back to, or a root missing too, the folder's own error stands.
+   */
+  const startFolder = Effect.fn("terminal.startFolder")(function* (
+    cwd: string,
+    env: Record<string, string> | undefined,
+  ) {
+    const root = env?.T3CODE_PROJECT_ROOT;
+    return yield* assertValidCwd(cwd).pipe(
+      Effect.as({ cwd, notice: null as string | null }),
+      Effect.catchTags({
+        TerminalCwdNotFoundError: (error) =>
+          root === undefined || root === cwd
+            ? Effect.fail(error)
+            : Effect.as(assertValidCwd(root), {
+                cwd: root,
+                notice: `Started in ${root}: ${cwd} isn't there yet\r\n`,
+              }).pipe(Effect.catch(() => Effect.fail(error))),
+        TerminalCwdStatError: (error) =>
+          root === undefined || root === cwd
+            ? Effect.fail(error)
+            : Effect.as(assertValidCwd(root), {
+                cwd: root,
+                notice: `Started in ${root}: ${cwd} can't be read\r\n`,
+              }).pipe(Effect.catch(() => Effect.fail(error))),
+      }),
+    );
+  });
+
   const getSession = Effect.fn("terminal.getSession")(function* (
     threadId: string,
     terminalId: string,
@@ -2369,16 +2401,18 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   );
 
   const openLocked = Effect.fn("terminal.openLocked")(function* (
-    input: TerminalOpenInput & TerminalOpener,
+    requested: TerminalOpenInput & TerminalOpener,
   ) {
+    const start = yield* startFolder(requested.cwd, requested.env);
+    const input = { ...requested, cwd: start.cwd };
     const terminalId = input.terminalId;
-    yield* assertValidCwd(input.cwd);
 
     const sessionKey = toSessionKey(input.threadId, terminalId);
     const existing = yield* getSession(input.threadId, terminalId);
     if (Option.isNone(existing)) {
       yield* flushPersist(input.threadId, terminalId);
       const history = yield* readHistory(input.threadId, terminalId);
+      if (start.notice !== null) history.append(start.notice);
       const cols = input.cols ?? DEFAULT_OPEN_COLS;
       const rows = input.rows ?? DEFAULT_OPEN_ROWS;
       const session: TerminalSessionState = {
@@ -2784,13 +2818,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       }),
     );
 
-  const restart: TerminalManager["Service"]["restart"] = (input) =>
+  const restart: TerminalManager["Service"]["restart"] = (requested) =>
     withThreadLock(
-      input.threadId,
+      requested.threadId,
       Effect.gen(function* () {
         yield* increment(terminalRestartsTotal, { scope: "thread" });
+        const start = yield* startFolder(requested.cwd, requested.env);
+        const input = { ...requested, cwd: start.cwd };
         const terminalId = input.terminalId;
-        yield* assertValidCwd(input.cwd);
 
         const sessionKey = toSessionKey(input.threadId, terminalId);
         const existingSession = yield* getSession(input.threadId, terminalId);
@@ -2844,6 +2879,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         const rows = input.rows ?? session.rows;
 
         session.history.clear();
+        if (start.notice !== null) session.history.append(start.notice);
         session.pendingHistoryControlSequence = "";
         session.pendingProcessEvents = [];
         session.pendingProcessEventIndex = 0;

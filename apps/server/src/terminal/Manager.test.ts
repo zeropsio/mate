@@ -566,6 +566,35 @@ it.layer(
     }),
   );
 
+  it.effect(
+    "A terminal asked to start in a service listed but not mounted yet opens at the project's root, saying so first",
+    () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const { manager, baseDir } = yield* createManager();
+        const cwd = path.join(baseDir, "app");
+        const snapshot = yield* manager.open(
+          openInput({ cwd, env: { T3CODE_PROJECT_ROOT: baseDir } }),
+        );
+        expect(snapshot.cwd).toBe(baseDir);
+        expect(snapshot.history.startsWith(`Started in ${baseDir}: ${cwd} isn't there yet`)).toBe(
+          true,
+        );
+      }),
+  );
+
+  it.effect("A terminal whose folder and project root are both missing reports the folder", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const { manager, baseDir } = yield* createManager();
+      const cwd = path.join(baseDir, "app");
+      const error = yield* Effect.flip(
+        manager.open(openInput({ cwd, env: { T3CODE_PROJECT_ROOT: path.join(baseDir, "gone") } })),
+      );
+      expect(error).toMatchObject({ _tag: "TerminalCwdNotFoundError", cwd });
+    }),
+  );
+
   it.effect("reports a cwd that is not a directory", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;

@@ -72,6 +72,8 @@ export type HeadingMenuEntry =
       readonly kind: "item";
       readonly label: string;
       readonly disabled: boolean;
+      /** Why an item stands off, said on it. */
+      readonly why?: string | undefined;
       readonly act: () => void;
     }
   | { readonly kind: "separator" };
@@ -100,6 +102,8 @@ export function projectHeadingMenu(input: {
   /** Absent where the heading does not fold. */
   readonly onToggle: (() => void) | undefined;
   readonly onAddMate: (() => void) | undefined;
+  /** Why the project takes no Mate now, known before the press (`newMateGate`); Add stands off. */
+  readonly addMateWhy?: string | null | undefined;
   readonly onOpen: () => void;
   /** Opens the addresses sheet for its place (`addressesPlace`); absent while it has none. */
   readonly onAddresses?: (() => void) | undefined;
@@ -128,7 +132,19 @@ export function projectHeadingMenu(input: {
     ...(input.onToggle === undefined
       ? []
       : [item(input.collapsed ? "Unfold" : "Fold", input.onToggle)]),
-    ...(input.onAddMate === undefined ? [] : [item("Add a project Mate", input.onAddMate)]),
+    ...(input.onAddMate === undefined
+      ? []
+      : input.addMateWhy == null
+        ? [item("Add a project Mate", input.onAddMate)]
+        : [
+            {
+              kind: "item" as const,
+              label: "Add a project Mate",
+              disabled: true,
+              why: input.addMateWhy,
+              act: input.onAddMate,
+            },
+          ]),
     item("Open project", input.onOpen),
     ...(input.onAddresses === undefined ? [] : [item("Addresses", input.onAddresses)]),
     ...(input.onInvite === undefined ? [] : [item("Invite people", input.onInvite)]),

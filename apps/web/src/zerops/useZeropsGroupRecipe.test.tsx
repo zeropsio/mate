@@ -7,7 +7,7 @@ import { act, createElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { useZeropsGroupRecipe, type GroupRecipe } from "./useZeropsGroupRecipe";
+import { heldRecipeState, useZeropsGroupRecipe, type GroupRecipe } from "./useZeropsGroupRecipe";
 
 const SHA = "a".repeat(40);
 const YAML = "services:\n  - hostname: api\n    type: nodejs@22\n";
@@ -92,5 +92,34 @@ describe("useZeropsGroupRecipe", () => {
   it("holds the application's detail only while the creation asks", async () => {
     await render(NOT_READ, false);
     expect(held.asked).toEqual([null]);
+  });
+});
+
+describe("a held read of the setup files, for a gate before the press", () => {
+  const READ: HqAppDetailRead = {
+    ...NOT_READ,
+    read: "read",
+    live: true,
+    recipes: { mate: { state: "absent" } },
+  };
+  it.each([
+    {
+      sentence: "A live read with no setup files on main says they are absent",
+      read: READ,
+      state: "absent",
+    },
+    {
+      sentence:
+        "A read paused since the setup was merged elsewhere answers nothing: Add a Mate stays on",
+      read: { ...READ, live: false },
+      state: "loading",
+    },
+    {
+      sentence: "A read catching up answers nothing until it is live again",
+      read: { ...READ, reconnecting: true },
+      state: "loading",
+    },
+  ] as const)("$sentence", ({ read, state }) => {
+    expect(heldRecipeState(read, "mate")).toBe(state);
   });
 });

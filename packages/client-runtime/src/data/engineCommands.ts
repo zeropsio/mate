@@ -160,6 +160,7 @@ export const engineStartTurn =
           ...context,
           attachments,
           ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
+          ...(input.fromPanel === true ? { fromPanel: true as const } : {}),
           commandId,
         });
       // Into the run that works, as V1 sends a message into its running turn, its pictures and files

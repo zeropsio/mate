@@ -21,6 +21,7 @@ import {
   newMateDoor,
   newMateDoorMates,
   newMateFace,
+  newMateGate,
   newMateRecipe,
   newMateRecipeChange,
   newMateSubmit,
@@ -720,6 +721,71 @@ function change(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
     ...overrides,
   };
 }
+
+describe("newMateGate — why Add a Mate is off before it is pressed", () => {
+  const NOVA = { projectId: "nova-project", name: "Nova" };
+  const TEA = { projectId: "tea-project", name: "Tea" };
+  it.each<{
+    readonly sentence: string;
+    readonly input: Partial<Parameters<typeof newMateGate>[0]>;
+    readonly reason: string | null;
+  }>([
+    {
+      sentence:
+        "A project whose only Mate is still setting it up offers no Add, and says why before the press",
+      input: {},
+      reason: "Nova is still setting Shop Front up. New Mates can join once it's done.",
+    },
+    {
+      sentence: "A project whose setup waits in a change offers no Add, and says where",
+      input: { changes: [change({ mateProjectId: "nova-project" })] },
+      reason:
+        "Shop Front's setup for new Mates is waiting in Nova's change. New Mates can join once it's merged.",
+    },
+    {
+      sentence: "A project whose Mates are all setting it up says so of them all",
+      input: { mates: [NOVA, TEA] },
+      reason:
+        "Shop Front's Mates are still setting it up. New Mates can join once one of them is done.",
+    },
+    {
+      sentence: "A project with setup files on main offers Add",
+      input: { recipe: "present" },
+      reason: null,
+    },
+    {
+      sentence: "A project with no Mate yet offers Add for its first",
+      input: { mates: [] },
+      reason: null,
+    },
+    {
+      sentence: "While the project's setup files are not read, Add stands as before",
+      input: { recipe: "loading" },
+      reason: null,
+    },
+    {
+      sentence: "While the project's changes are not read, Add stands as before",
+      input: { changes: undefined },
+      reason: null,
+    },
+    {
+      sentence: "Setup files that can't be read leave Add on: its Try again is behind the press",
+      input: { recipe: "unreadable" },
+      reason: null,
+    },
+  ])("$sentence", ({ input, reason }) => {
+    expect(
+      newMateGate({
+        groupName: "Shop Front",
+        recipe: "absent",
+        mates: [NOVA],
+        changes: [],
+        mateName: () => undefined,
+        ...input,
+      }),
+    ).toBe(reason);
+  });
+});
 
 describe("newMateRecipeChange — the change the recipe waits in", () => {
   const names: Readonly<Record<string, string>> = { "cleo-project": "Cleo" };

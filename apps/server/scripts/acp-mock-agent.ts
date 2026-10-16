@@ -82,7 +82,8 @@ const permissionRequestCount = Math.max(
 );
 const sessionId = "mock-session-1";
 
-let currentModeId = antigravityProfile ? "default" : "ask";
+/** The session's mode at start; `T3_ACP_INITIAL_MODE` starts it elsewhere (a Cursor in code mode). */
+let currentModeId = process.env.T3_ACP_INITIAL_MODE ?? (antigravityProfile ? "default" : "ask");
 let currentModelId = antigravityProfile ? "gemini-test-low" : "default";
 let parameterizedModelPicker = false;
 let currentReasoning = "medium";

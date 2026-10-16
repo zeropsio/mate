@@ -515,7 +515,7 @@ export const LEVEL_WORDS: Readonly<Record<GivenLevel, string>> = {
 /** A badge in words, for a hover card's list and for a screen reader. */
 export const BADGE_WORDS: Readonly<Record<ChipLevel, string>> = {
   full: "Full",
-  basic: "Basic",
+  basic: "More than Read",
   read: "Read",
   mixed: "Mixed",
   hidden: "Hidden",

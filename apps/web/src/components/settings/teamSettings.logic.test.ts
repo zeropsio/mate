@@ -2,6 +2,8 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  arrivingRow,
+  sentInvitation,
   shownTeam,
   teamSearchShown,
   teamGrantIds,
@@ -382,7 +384,7 @@ describe("finding someone on the team", () => {
     expect(teamSearchShown(people, query)).toBe(shown);
   });
 
-  it("A card's badge is the preset's name, else Zerops's role in words", () => {
+  it("A card's badge is the preset's name, else Custom role with the role's reach as its tooltip", () => {
     expect(
       people(
         teamPeople(
@@ -393,12 +395,79 @@ describe("finding someone on the team", () => {
             member("b", "B", "BASIC_USER"),
           ]),
         ),
-      ).map(({ name, badge }) => [name, badge]),
+      ).map(({ name, badge, badgeHint }) => [name, badge, badgeHint]),
     ).toEqual([
-      ["A", "Owner"],
-      ["B", "Basic user"],
-      ["D", "Developer"],
-      ["G", "Guest"],
+      ["A", "Owner", null],
+      ["B", "Custom role", "Works on every project"],
+      ["D", "Developer", null],
+      ["G", "Guest", null],
     ]);
+  });
+
+  it("A role none of Mate's four names is a custom role, what it reaches said on hover", () => {
+    expect(
+      people(
+        teamPeople(input([member("b", "B", "BASIC_USER"), member("r", "R", "READ_ONLY")])),
+      ).map(({ name, badge, badgeHint }) => [name, badge, badgeHint]),
+    ).toEqual([
+      ["B", "Custom role", "Works on every project"],
+      ["R", "Custom role", "Sees every project"],
+    ]);
+  });
+});
+
+describe("an invitation just sent", () => {
+  const nova = member("nova", "Nova", "NO_ACCESS", {
+    status: "WAITING_AUTHORIZATION",
+    user: { id: "nova", email: "nova@example.com" },
+  });
+  it.each([
+    {
+      sentence:
+        "An invitation just sent is said once above the list, and its row is the one that arrived",
+      list: [member("me", "Me", "OWNER"), nova],
+      arrived: "cu-nova",
+    },
+    {
+      sentence: "Before Zerops lists the invitation, the line stands and no row is marked",
+      list: [member("me", "Me", "OWNER")],
+      arrived: null,
+    },
+    {
+      sentence: "Someone already on the team with that address is never marked as just invited",
+      list: [member("me", "Me", "OWNER"), member("nova", "Nova", "NO_ACCESS")],
+      arrived: null,
+    },
+  ])("$sentence", ({ list, arrived }) => {
+    expect(sentInvitation(people(teamPeople(input(list))), " Nova@Example.com ")).toEqual({
+      line: "Invitation sent to Nova@Example.com. They'll show here as joined once they accept.",
+      announce: "Invitation sent to Nova@Example.com",
+      arrivedKey: arrived,
+    });
+  });
+});
+
+describe("the new row's arrival plays once", () => {
+  it.each([
+    {
+      sentence: "The invitation's row grows in on its first insertion",
+      arrivedKey: "cu-nova",
+      played: false,
+      arriving: "cu-nova",
+    },
+    {
+      sentence: "Once it has played, a search that hides and re-shows the row places it",
+      arrivedKey: "cu-nova",
+      played: true,
+      arriving: null,
+    },
+    {
+      sentence: "Before Zerops lists the invitation, no row arrives",
+      arrivedKey: null,
+      played: false,
+      arriving: null,
+    },
+  ])("$sentence", ({ arrivedKey, played, arriving }) => {
+    expect(arrivingRow({ arrivedKey, played })).toBe(arriving);
   });
 });

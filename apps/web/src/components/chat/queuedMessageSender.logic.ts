@@ -119,7 +119,8 @@ export type TurnSendReceipts = Pick<
 
 /**
  * What a turn send records in the account's turn receipts: the words the person typed, for a send
- * that starts a turn with words — never a slash command, never a send of pictures alone. The open
+ * that starts a turn with words — never a slash command, never a send of pictures alone, never
+ * words a page sent for them. The open
  * conversation and the root sender both record through it, so one message makes the same
  * `mate-send-turn` operation wherever it leaves.
  */
@@ -128,7 +129,10 @@ export function turnSendAsk(input: {
   readonly messageId: string;
   readonly threadId: string;
   readonly at: string;
+  /** A page asked for the send (`ComposerSendIds.fromPanel`): never the menu's line. */
+  readonly fromPanel?: boolean;
 }): SentAsk | null {
+  if (input.fromPanel === true) return null;
   if (input.trimmedPrompt.length === 0 || isSlashCommand(input.trimmedPrompt)) return null;
   return {
     messageId: input.messageId,
@@ -244,6 +248,7 @@ export async function sendQueuedMessageInBackground(
     given: undefined,
     stored: message.sendIds,
     mint: deps.mintIds,
+    fromPanel: message.fromPanel === true,
   });
   const abort = (failure: QueuedSendFailure) => {
     settleQueuedSend(threadKey, null);
@@ -317,7 +322,13 @@ export async function sendQueuedMessageInBackground(
   const threadId = current.id;
   // Recorded where the open conversation records its own send: words, never a crew message.
   const environmentId = current.environmentId;
-  const ask = turnSendAsk({ trimmedPrompt, messageId: ids.messageId, threadId, at: createdAt });
+  const ask = turnSendAsk({
+    trimmedPrompt,
+    messageId: ids.messageId,
+    threadId,
+    at: createdAt,
+    fromPanel: ids.fromPanel === true,
+  });
   if (ask !== null) deps.receipts?.requested(environmentId, ask);
   const modelChanged =
     settings.modelSelection.instanceId !== current.modelSelection.instanceId ||
@@ -355,6 +366,7 @@ export async function sendQueuedMessageInBackground(
     modelSelection: settings.modelSelection,
     runtimeMode: settings.runtimeMode,
     interactionMode: settings.interactionMode,
+    ...(ids.fromPanel === true ? { fromPanel: true as const } : {}),
     createdAt,
   });
   if (result._tag === "Failure") {

@@ -15,6 +15,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildCrewProposalPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -46,16 +47,20 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
     prompt,
     outputSchemaJson,
     modelSelection,
+    strictAsk = false,
   }: {
     operation:
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateCrewProposal";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
     modelSelection: ModelSelection;
+    /** Runs only in ask mode, failing where it cannot be set. */
+    strictAsk?: boolean;
   }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
     Effect.gen(function* () {
       const outputRef = yield* Ref.make("");
@@ -81,7 +86,20 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
 
       const promptResult = yield* Effect.gen(function* () {
         yield* runtime.start();
-        yield* Effect.ignore(runtime.setMode("ask"));
+        // Ask mode reads and answers; it edits nothing. A proposal must change nothing, so it
+        // never runs in another mode: where ask mode cannot be set, it fails instead.
+        if (strictAsk) {
+          yield* runtime.setMode("ask").pipe(
+            Effect.mapError(
+              (cause) =>
+                new TextGenerationError({
+                  operation,
+                  detail: "Cursor could not switch to ask mode for text generation.",
+                  cause,
+                }),
+            ),
+          );
+        } else yield* Effect.ignore(runtime.setMode("ask"));
         yield* applyCursorAcpModelSelection({
           runtime,
           model: modelSelection.model,
@@ -258,10 +276,24 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateCrewProposal: TextGeneration.TextGeneration["Service"]["generateCrewProposal"] =
+    Effect.fn("CursorTextGeneration.generateCrewProposal")(function* (input) {
+      const { prompt, outputSchema } = buildCrewProposalPrompt({ goal: input.goal });
+      return yield* runCursorJson({
+        operation: "generateCrewProposal",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+        strictAsk: true,
+      });
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateCrewProposal,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

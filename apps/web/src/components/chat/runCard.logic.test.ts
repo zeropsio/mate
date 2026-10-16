@@ -578,6 +578,27 @@ describe("the now line", () => {
     expect(nowLineWords(line)).toBe("Condensing the context");
   });
 
+  // S21-02: the person's Stop showed nothing for 10 s while the run went on.
+  it.each([
+    {
+      name: "a live run says it is stopping, whatever it was on",
+      live: true,
+      words: /^Stopping…$/u,
+    },
+    { name: "an ended run says what it came to", live: false, words: /^Nova worked / },
+  ])("a person's Stop in force: $name", ({ live, words }) => {
+    const line = nowLineOf({
+      status: status(live ? {} : { live: false, endedAt: status().startedAt }),
+      now: { kind: "step", step: read("w1", "a.ts") },
+      answering: false,
+      compacting: false,
+      speaker: "Nova",
+      effort: null,
+      stopping: true,
+    });
+    expect(nowLineWords(cardHeadLine(line))).toMatch(words);
+  });
+
   it("carries the latest of the thought it is thinking", () => {
     const line = nowLineOf({
       status: status(),

@@ -141,6 +141,7 @@ const opened = (
     steer?: boolean;
     steerAttachments?: boolean;
     selfTurns?: boolean;
+    stopClosesSession?: boolean;
     n?: number;
   } = {},
 ) =>
@@ -160,6 +161,9 @@ const opened = (
             ? {}
             : { steerAttachments: options.steerAttachments }),
           ...(options.selfTurns === undefined ? {} : { selfTurns: options.selfTurns }),
+          ...(options.stopClosesSession === undefined
+            ? {}
+            : { stopClosesSession: options.stopClosesSession }),
         },
       },
     },
@@ -2329,6 +2333,87 @@ describe("decide: helpers and jobs are items under their run", () => {
       rejection: { reason: "run-not-running" },
     });
   });
+
+  /** A turn running on a session whose driver's own Stop does, or does not, close it. */
+  const runningOn = (stopClosesSession: boolean): ReadonlyArray<Step> => [
+    send("go"),
+    prepared(1),
+    opened(1, { stopClosesSession }),
+    sentTurn(1),
+  ];
+  it.each([
+    {
+      driver: "a driver whose Stop leaves its session up (Codex, Grok, Antigravity)",
+      closes: false,
+      effects: ["provider.interrupt:control", "session.close:close"],
+    },
+    {
+      driver: "a driver whose own Stop closes its session (Claude)",
+      closes: true,
+      effects: ["provider.interrupt:control"],
+    },
+  ])("a Stop ends the turn and the helpers it started in one press, on $driver", (row) => {
+    const scene = play([...runningOn(row.closes), work("running"), stop()]);
+    expect(scene.decision).toMatchObject({ _tag: "Accept", step: { result: { runId: r(1) } } });
+    expect(scene.effects.map((effect) => `${effect.kind}:${effect.lane}`)).toEqual(row.effects);
+    expect(scene.state.runs[r(1)]?.stopAsked).not.toBeNull();
+  });
+  it("a Stop on a turn that started nothing leaves its session up for the next message", () => {
+    const scene = play([...runningOn(false), stop()]);
+    expect(scene.effects.map((effect) => effect.kind)).toEqual(["provider.interrupt"]);
+    expect(scene.state.closing).toBeNull();
+  });
+  it("a stop ends the turn and the helpers it started, and nothing restarts", () => {
+    const interruptLate = settled(r(1), "provider.interrupt", {
+      kind: "failed",
+      reason: "No live session to stop.",
+    });
+    const { log, state } = playAll([
+      ...runningOn(false),
+      work("running"),
+      stop(),
+      sessionClosed(),
+      interruptLate,
+    ]);
+    expect(ends(log)).toEqual(["1:stopped/inferred-from-close"]);
+    expect(workClosed(log)).toEqual([`${r(1)}:stopped`]);
+    expect(state.session).toBeNull();
+    expect(state.activeRunId).toBeNull();
+    expect(
+      Object.values(state.wakes).filter((wake) => wake.dueAt !== Number.MAX_SAFE_INTEGER),
+    ).toEqual([]);
+    expect(
+      log.filter(
+        (e) =>
+          e._tag === "RunNotContinued" ||
+          (e._tag === "RunEnded" && e.end.kind === "cut-by-restart"),
+      ),
+    ).toEqual([]);
+    expect(log.filter((e) => e._tag === "RunQueued")).toHaveLength(1);
+  });
+
+  it("once a Stop closed its session, the agent's own turn on its finished work is no longer awaited", () => {
+    const { state } = playAll([
+      ...selfTurning,
+      work("running"),
+      second("running"),
+      turnEnded,
+      work("completed"),
+      stop(),
+      sessionClosed(),
+    ]);
+    expect(state.session).toBeNull();
+    expect(turnDue(state)).toEqual([]);
+  });
+  it("a Stop while the agent's own turn on its finished work is awaited closes its session, so that turn never comes", () => {
+    const finished = [...selfTurning, work("running"), turnEnded, work("completed")];
+    expect(turnDue(playAll(finished).state)).toHaveLength(1);
+    const scene = play([...finished, stop()]);
+    expect(scene.decision).toMatchObject({ _tag: "Accept" });
+    expect(scene.effects).toMatchObject([
+      { kind: "session.close", payload: { sessionId: "s1", reason: "stop" } },
+    ]);
+  });
 });
 
 describe("decide: the conversation holds the agent it belongs to", () => {
@@ -3587,8 +3672,14 @@ describe("background work its session lost", () => {
     },
     {
       name: "a Stop on the running turn whose close took the work",
+      // The driver's own Stop takes the work (Claude's): the engine closes nothing beside it.
       steps: [
-        ...twoLive,
+        send(),
+        prepared(1),
+        opened(1, { stopClosesSession: true }),
+        sent(1),
+        work("w1", HELPER),
+        work("w2", JOB),
         stop(),
         stoppedSignals,
         ended(1, { kind: "interrupted" }, "stop-confirmed"),

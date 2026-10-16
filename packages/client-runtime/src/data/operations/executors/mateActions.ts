@@ -6,6 +6,7 @@ import { workspaceFailure } from "../../adapters/mateWorkspace.ts";
 import {
   WS_METHODS,
   CrewCommandError,
+  CrewProposalError,
   ZeropsAgentLoginError,
   TerminalError,
   type EnvironmentId,
@@ -23,6 +24,7 @@ import {
 import { EnvironmentRpcUnavailableError, request } from "../../../rpc/client.ts";
 import {
   MATE_ACTIONS,
+  MATE_ACTIONS_CANCELLED_ON_INTERRUPT,
   type MateAction,
   type MateActionInput,
   type MateActionResult,
@@ -39,6 +41,7 @@ export class MateActionUnavailable extends Schema.TaggedError<MateActionUnavaila
 const isUnavailable = Schema.is(EnvironmentRpcUnavailableError);
 const isUnregistered = Schema.is(EnvironmentNotRegisteredError);
 const isCrewCommandError = Schema.is(CrewCommandError);
+const isCrewProposalError = Schema.is(CrewProposalError);
 const isLoginError = Schema.is(ZeropsAgentLoginError);
 const isTerminalError = Schema.is(TerminalError);
 /** Values named here identify the action without retaining credentials or editor text. */
@@ -153,6 +156,24 @@ export function makeMateActions(options: {
       });
       const answer = yield* Effect.exit(
         options.registry.run(environmentId, request(MATE_ACTIONS[action], input)),
+      ).pipe(
+        Effect.onInterrupt(() =>
+          Effect.sync(() => {
+            if (closed || !MATE_ACTIONS_CANCELLED_ON_INTERRUPT.has(action)) return;
+            options.store.dispatch({
+              kind: "operation-receipt",
+              receipt: {
+                requestId,
+                operationId: requestId,
+                executor: "mate",
+                affected: [],
+                handles: [],
+                acceptance: { kind: "accepted" },
+                outcome: { kind: "cancelled", evidence: "Stopped before the Mate answered." },
+              },
+            });
+          }),
+        ),
       );
       if (closed)
         return yield* Effect.fail(
@@ -174,6 +195,7 @@ export function makeMateActions(options: {
         const refused =
           Option.isSome(sourceError) &&
           (isCrewCommandError(sourceError.value) ||
+            isCrewProposalError(sourceError.value) ||
             isLoginError(sourceError.value) ||
             isTerminalError(sourceError.value));
         const fault = refused
