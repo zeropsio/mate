@@ -31,7 +31,12 @@ import * as Schema from "effect/Schema";
 import { DoorRateLimit, PERSON_LIMIT, TooManyRequests } from "./rateLimit.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import type { Principal } from "./sessions.ts";
-import { ZeropsApi, type ZeropsError, ZeropsUnavailable } from "./zerops/api.ts";
+import {
+  ZeropsApi,
+  type ZeropsError,
+  ZeropsUnavailable,
+  type ZeropsUnexpectedAnswer,
+} from "./zerops/api.ts";
 
 /** The presented credential is no throwaway for this HQ; `rule` is for the log only. */
 export class DoorRefused extends Schema.TaggedError<DoorRefused>()("DoorRefused", {
@@ -45,7 +50,7 @@ export class Door extends Context.Service<
       presented: Redacted.Redacted,
     ) => Effect.Effect<
       Principal & { readonly doorTokenId: string },
-      DoorRefused | ZeropsUnavailable | TooManyRequests
+      DoorRefused | ZeropsUnavailable | ZeropsUnexpectedAnswer | TooManyRequests
     >;
   }
 >()("@t3tools/hq/door") {}

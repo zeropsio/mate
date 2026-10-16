@@ -47,6 +47,8 @@ export interface FakeAppVersion {
   archive: Uint8Array | undefined;
   zeropsYaml: string | undefined;
   setup: string | undefined;
+  /** When Zerops made it the service's running version (`activationDate`); none before. */
+  activatedAt?: string;
   /** When a build Zerops took shows, ms: it reads UPLOADING until then (`buildSeenAfter`). */
   buildSeenAtMs?: number;
 }
@@ -563,6 +565,6 @@ export const fakeZeropsObservation = (world: FakeWorld): ZeropsObservation["Serv
           status: 404,
           code: "appVersionNotFound",
         });
-      return { id: version.id, name: version.name };
+      return { id: version.id, activatedAt: version.activatedAt ?? null };
     }),
 });

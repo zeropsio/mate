@@ -352,7 +352,7 @@ describe("HQ's setup marker search", () => {
         ["absent on a bound container", { items: [], totalHits: 0 }, "zcp", false],
         ["complete absence on an unbound legacy record", { items: [], totalHits: 0 }, null, false],
         ["partial coverage", { items: [], totalHits: 1 }, "zcp", null],
-        ["corrupt answer", { items: [] }, "zcp", "ZeropsUnavailable"],
+        ["corrupt answer", { items: [] }, "zcp", "ZeropsUnexpectedAnswer"],
       ] as const,
       ([name, body, serviceId, want]) => ({ title: name, body, serviceId, want }),
     ),

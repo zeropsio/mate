@@ -7,7 +7,12 @@ export const ObservedEnvironment = Schema.Struct({
   tier: Schema.Literals(["stage", "production"]),
 });
 export type ObservedEnvironment = typeof ObservedEnvironment.Type;
-export const ActiveVersion = Schema.Struct({ id: Schema.String, name: Schema.String });
+/** A service's running version as Zerops' `GET /app-version/{id}` reads it: it carries no name. */
+export const ActiveVersion = Schema.Struct({
+  id: Schema.String,
+  activatedAt: Schema.NullOr(Schema.String),
+});
+export type ActiveVersion = typeof ActiveVersion.Type;
 export const EnvironmentStatus = Schema.Struct({
   environment: ObservedEnvironment,
   services: Schema.Array(

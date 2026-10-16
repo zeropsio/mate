@@ -1,4 +1,4 @@
-import type { ObservationLogEntry } from "@t3tools/shared/hqObservation";
+import type { ActiveVersion, ObservationLogEntry } from "@t3tools/shared/hqObservation";
 /**
  * The Zerops REST calls Core makes, and nothing else: the reads ({@link ZeropsApi}), and an
  * environment's deploy ({@link ZeropsDeploy}, SPEC §3.2b). Every call takes the credential it runs as
@@ -108,7 +108,13 @@ export class ZeropsUnavailable extends Schema.TaggedError<ZeropsUnavailable>()(
   { operation: Schema.String, message: Schema.String },
 ) {}
 
-export type ZeropsError = ZeropsRefused | ZeropsUnavailable;
+/** Zerops answered, in a shape HQ does not read: HQ's defect, which no retry outlives. */
+export class ZeropsUnexpectedAnswer extends Schema.TaggedError<ZeropsUnexpectedAnswer>()(
+  "ZeropsUnexpectedAnswer",
+  { operation: Schema.String, message: Schema.String },
+) {}
+
+export type ZeropsError = ZeropsRefused | ZeropsUnavailable | ZeropsUnexpectedAnswer;
 
 type Read<A> = (credential: Redacted.Redacted) => Effect.Effect<A, ZeropsError>;
 type Write<A> = Read<A>;
@@ -208,6 +214,6 @@ export class ZeropsObservation extends Context.Service<
       serviceId: string,
       limit: number,
     ) => Read<ReadonlyArray<ObservationLogEntry>>;
-    readonly activeVersion: (id: string) => Read<{ readonly id: string; readonly name: string }>;
+    readonly activeVersion: (id: string) => Read<ActiveVersion>;
   }
 >()("@t3tools/hq/zerops/api/ZeropsObservation") {}

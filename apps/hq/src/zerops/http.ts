@@ -31,6 +31,7 @@ import {
   ZeropsRefused,
   type ZeropsService,
   ZeropsUnavailable,
+  ZeropsUnexpectedAnswer,
 } from "./api.ts";
 import { parseEnvFile } from "./envFile.ts";
 
@@ -215,8 +216,8 @@ const reasonOf = (status: number, code: string): ZeropsRefused["reason"] => {
 
 /**
  * One request as the credential, answered within `timeout`: its body decoded, with the API's own
- * clock (`Date` header) of the answer — or a verdict, or no answer. `transient` codes of a `400`
- * are no verdict and read as unavailable.
+ * clock (`Date` header) of the answer — or a verdict, no answer, or an answer HQ cannot read.
+ * `transient` codes of a `400` are no verdict and read as unavailable.
  */
 const ask = <A>(
   client: HttpClient.HttpClient,
@@ -246,7 +247,13 @@ const ask = <A>(
     const status = response.status;
     if (status >= 200 && status < 300) {
       const value = yield* Schema.decodeUnknownEffect(schema)(body).pipe(
-        Effect.mapError(() => unavailable("The Zerops API answered an unexpected shape.")),
+        Effect.mapError(
+          () =>
+            new ZeropsUnexpectedAnswer({
+              operation,
+              message: "The Zerops API answered an unexpected shape.",
+            }),
+        ),
       );
       return { value, dateMs: epochMs(response.headers["date"]) };
     }
@@ -573,7 +580,15 @@ export const makeZeropsObservationHttp = (
             Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.mebibytes(1)),
             Effect.mapError(unavailable),
           );
-          const page = yield* decodeLogs(raw).pipe(Effect.mapError(unavailable));
+          const page = yield* decodeLogs(raw).pipe(
+            Effect.mapError(
+              () =>
+                new ZeropsUnexpectedAnswer({
+                  operation: "logs",
+                  message: "The log backend answered an unexpected shape.",
+                }),
+            ),
+          );
           return page.items.slice(0, limit).map((entry) => ({
             timestamp: entry.timestamp,
             severity: entry.severityLabel,
@@ -586,7 +601,7 @@ export const makeZeropsObservationHttp = (
           "activeVersion",
           credential,
           HttpClientRequest.get(`${baseUrl}/app-version/${encodeURIComponent(id)}`),
-          Schema.Struct({ id: Schema.String, name: Schema.String }),
-        ).pipe(Effect.map(({ value }) => value)),
+          Schema.Struct({ id: Schema.String, activationDate: Schema.NullOr(Schema.String) }),
+        ).pipe(Effect.map(({ value }) => ({ id: value.id, activatedAt: value.activationDate }))),
     };
   });

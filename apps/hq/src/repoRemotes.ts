@@ -325,6 +325,8 @@ export const repoRemotesLayer = Layer.effect(
             ZeropsRefused: () => Effect.fail(new RemoteRefused({ reason: "membership_unknown" })),
             ZeropsUnavailable: () =>
               Effect.fail(new RemoteRefused({ reason: "membership_unknown" })),
+            ZeropsUnexpectedAnswer: () =>
+              Effect.fail(new RemoteRefused({ reason: "membership_unknown" })),
           }),
         );
       }
@@ -437,6 +439,8 @@ export const repoRemotesLayer = Layer.effect(
                       ZeropsRefused: () =>
                         Effect.fail(new RemoteRefused({ reason: "membership_unknown" })),
                       ZeropsUnavailable: () =>
+                        Effect.fail(new RemoteRefused({ reason: "membership_unknown" })),
+                      ZeropsUnexpectedAnswer: () =>
                         Effect.fail(new RemoteRefused({ reason: "membership_unknown" })),
                     }),
                   );

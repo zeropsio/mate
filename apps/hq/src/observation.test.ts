@@ -61,6 +61,7 @@ const setup = (viewTtl = Duration.millis(200)) =>
         serviceId: `S-${tier}`,
         name: "serving-version",
         status: "ACTIVE",
+        activatedAt: "2026-10-16T08:43:10.000Z",
         archive: undefined,
         zeropsYaml: undefined,
         setup: undefined,
@@ -114,7 +115,7 @@ describe("a Mate's application observation", () => {
                 id: `S-${tier}`,
                 name: "web",
                 status: "ACTIVE",
-                activeVersion: { id: `OLD-${tier}`, name: "serving-version" },
+                activeVersion: { id: `OLD-${tier}`, activatedAt: "2026-10-16T08:43:10.000Z" },
               },
             ]);
             assert.include(fake.calls, `services:key-${tier}`);

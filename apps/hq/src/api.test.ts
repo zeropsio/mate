@@ -44,7 +44,7 @@ import { corsRoutes, failure } from "./api.ts";
 import { ProbeRefused } from "./githubProbes.ts";
 import { NotLeader } from "./leader.ts";
 import type { StructureRead } from "./structure.ts";
-import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
+import { ZeropsRefused, ZeropsUnavailable, ZeropsUnexpectedAnswer } from "./zerops/api.ts";
 
 // Existing value controls compare the outward Zerops address derived from its target.
 const withProjectAddresses = (
@@ -166,6 +166,25 @@ describe("HQ's failures", () => {
           reason,
         );
       }
+    }),
+  );
+
+  it.effect("answers a Zerops answer HQ cannot read as HQ's defect, never a 503 to try again", () =>
+    Effect.gen(function* () {
+      const response = yield* failure(
+        new ZeropsUnexpectedAnswer({
+          operation: "activeVersion",
+          message: "The Zerops API answered an unexpected shape.",
+        }),
+      );
+      assert.deepStrictEqual(
+        [
+          response.status,
+          response.headers["retry-after"],
+          yield* Effect.promise(() => HttpServerResponse.toWeb(response).json()),
+        ],
+        [502, undefined, { code: "zerops_unexpected_answer" }],
+      );
     }),
   );
 
