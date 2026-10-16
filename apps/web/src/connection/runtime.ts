@@ -36,8 +36,15 @@ type ConnectionLayerSource =
   | typeof backgroundActivityObserverLayer
   | typeof backgroundActivityReporterLayer;
 
+/** A hidden tab's timers run once a minute, so its sockets wait for the person before judging pongs. */
+const pageHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
+
 const providedClientConnectionLayer = Layer.merge(
-  Connection.layerWithOptions({ usageLimitSources: true, usageLimitsCommand: true }),
+  Connection.layerWithOptions({
+    usageLimitSources: true,
+    usageLimitsCommand: true,
+    pingTimeoutPaused: pageHidden,
+  }),
   snapshotLoaderLayer,
 ).pipe(
   Layer.provideMerge(
