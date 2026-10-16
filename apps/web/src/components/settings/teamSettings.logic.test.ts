@@ -421,28 +421,33 @@ describe("an invitation just sent", () => {
     status: "WAITING_AUTHORIZATION",
     user: { id: "nova", email: "nova@example.com" },
   });
+  const tea = member("tea", "Tea", "NO_ACCESS", {
+    status: "WAITING_AUTHORIZATION",
+    user: { id: "tea", email: "tea@example.com" },
+  });
   it.each([
     {
       sentence:
-        "An invitation just sent is said once above the list, and its row is the one that arrived",
-      list: [member("me", "Me", "OWNER"), nova],
-      arrived: "cu-nova",
+        "Invitations just sent are said once to a screen reader, and their rows are the ones that arrived",
+      list: [member("me", "Me", "OWNER"), nova, tea],
+      arrived: ["cu-nova", "cu-tea"],
     },
     {
-      sentence: "Before Zerops lists the invitation, the line stands and no row is marked",
+      sentence: "Before Zerops lists the invitation, no row is marked",
       list: [member("me", "Me", "OWNER")],
-      arrived: null,
+      arrived: [],
     },
     {
       sentence: "Someone already on the team with that address is never marked as just invited",
       list: [member("me", "Me", "OWNER"), member("nova", "Nova", "NO_ACCESS")],
-      arrived: null,
+      arrived: [],
     },
   ])("$sentence", ({ list, arrived }) => {
-    expect(sentInvitation(people(teamPeople(input(list))), " Nova@Example.com ")).toEqual({
-      line: "Invitation sent to Nova@Example.com. They'll show here as joined once they accept.",
-      announce: "Invitation sent to Nova@Example.com",
-      arrivedKey: arrived,
+    expect(
+      sentInvitation(people(teamPeople(input(list))), [" Nova@Example.com ", "tea@example.com"]),
+    ).toEqual({
+      announce: "Invitation sent to Nova@Example.com and tea@example.com",
+      arrivedKeys: arrived,
     });
   });
 });
@@ -451,23 +456,23 @@ describe("the new row's arrival plays once", () => {
   it.each([
     {
       sentence: "The invitation's row grows in on its first insertion",
-      arrivedKey: "cu-nova",
+      arrivedKeys: ["cu-nova"],
       played: false,
-      arriving: "cu-nova",
+      arriving: ["cu-nova"],
     },
     {
       sentence: "Once it has played, a search that hides and re-shows the row places it",
-      arrivedKey: "cu-nova",
+      arrivedKeys: ["cu-nova"],
       played: true,
-      arriving: null,
+      arriving: [],
     },
     {
       sentence: "Before Zerops lists the invitation, no row arrives",
-      arrivedKey: null,
+      arrivedKeys: [],
       played: false,
-      arriving: null,
+      arriving: [],
     },
-  ])("$sentence", ({ arrivedKey, played, arriving }) => {
-    expect(arrivingRow({ arrivedKey, played })).toBe(arriving);
+  ])("$sentence", ({ arrivedKeys, played, arriving }) => {
+    expect(arrivingRow({ arrivedKeys, played })).toEqual(arriving);
   });
 });

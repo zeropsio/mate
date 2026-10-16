@@ -325,36 +325,38 @@ export function shownTeam(
   );
 }
 
-/** What the team says on return from sending an invitation to `address`. */
+/** What the team says on return from sending invitations to `addresses`. */
 export interface SentInvitation {
-  /** The quiet line above the list, for this visit. */
-  readonly line: string;
-  /** What a screen reader hears, politely. */
+  /**
+   * What a screen reader hears, politely. Nothing is drawn: the invite page said it where it was
+   * sent, and a line here would push the team down from where it was last seen.
+   */
   readonly announce: string;
-  /** The invitation's own row once Zerops lists it: it grows in, the only row that does. */
-  readonly arrivedKey: string | null;
+  /** Each invitation's own row once Zerops lists it: they grow in, the only rows that do. */
+  readonly arrivedKeys: ReadonlyArray<string>;
 }
 
-export function sentInvitation(people: ReadonlyArray<TeamPerson>, address: string): SentInvitation {
-  const typed = address.trim();
-  const key = typed.toLocaleLowerCase();
-  const arrived = people.find(
-    (person) => person.pending && person.email?.toLocaleLowerCase() === key,
-  );
+export function sentInvitation(
+  people: ReadonlyArray<TeamPerson>,
+  addresses: ReadonlyArray<string>,
+): SentInvitation {
+  const typed = addresses.map((address) => address.trim());
+  const keys = new Set(typed.map((address) => address.toLocaleLowerCase()));
   return {
-    line: `Invitation sent to ${typed}. They'll show here as joined once they accept.`,
-    announce: `Invitation sent to ${typed}`,
-    arrivedKey: arrived?.key ?? null,
+    announce: `Invitation sent to ${listed(typed)}`,
+    arrivedKeys: people.flatMap((person) =>
+      person.pending && keys.has(person.email?.toLocaleLowerCase() ?? "") ? [person.key] : [],
+    ),
   };
 }
 
 /**
- * The row that grows in now: the invitation's own, until its arrival has played once — a search
- * that hides and re-shows it afterwards places it.
+ * The rows that grow in now: the invitations' own, until their arrival has played once — a search
+ * that hides and re-shows one afterwards places it.
  */
 export function arrivingRow(input: {
-  readonly arrivedKey: string | null;
+  readonly arrivedKeys: ReadonlyArray<string>;
   readonly played: boolean;
-}): string | null {
-  return input.played ? null : input.arrivedKey;
+}): ReadonlyArray<string> {
+  return input.played ? [] : input.arrivedKeys;
 }

@@ -227,14 +227,13 @@ describe("the organization's team", () => {
     await act(async () => {
       root.render(
         <TeamList
-          sent="iva@example.com"
+          sent={["iva@example.com"]}
           view={teamPeople(input({ roleCode: "OWNER", membershipId: "cu-ada" }))}
         />,
       );
     });
-    expect(host.querySelector('[data-part="sent"]')?.textContent).toBe(
-      "Invitation sent to iva@example.com. They'll show here as joined once they accept.",
-    );
+    // Said to a screen reader only: the invite page said it where it was sent.
+    expect(host.querySelector('[data-part="sent"]')).toBeNull();
     // The live region stands empty on the first paint, and is filled once focus has moved.
     expect(host.querySelector('[role="status"]')?.textContent).toBe("");
     await act(async () => {

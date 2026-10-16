@@ -7636,11 +7636,6 @@ a.ov-chip-who:focus-visible {
   white-space: nowrap;
 }
 
-.tm-sent {
-  color: var(--muted-foreground);
-  font-size: 14px;
-}
-
 /* An address cut in its middle: the name before the @ gives way, the domain always shows. */
 .tm-address {
   display: inline-flex;

@@ -558,3 +558,13 @@ export function inviteReachLine(membership: OrgMembership, projects: number): st
         : "They see only the projects you pick here.";
   }
 }
+
+/**
+ * What an invitation with no project picked says in place of its access: there is nothing to give
+ * access to, so nothing is asked — a Developer starts their own, and either can be added later.
+ */
+export function noPickLine(membership: OrgMembership): string {
+  return membership.canCreateProjects
+    ? "No project picked: they can start their own, and you can add them to one later."
+    : "No project picked: you can add them to one later.";
+}

@@ -42,17 +42,19 @@ export function TeamSettings() {
   );
 }
 
+const NOTHING_SENT: ReadonlyArray<string> = [];
+
 /** The team as drawn from what is known of it. */
 export function TeamList({
   view,
   initialQuery = "",
-  sent = null,
+  sent = NOTHING_SENT,
 }: {
   readonly view: TeamView;
   /** What the search starts with; a harness shows a search under way. */
   readonly initialQuery?: string;
-  /** The address an invitation was just sent to, on the way back from Invite. */
-  readonly sent?: string | null;
+  /** The addresses invitations were just sent to, on the way back from Invite. */
+  readonly sent?: ReadonlyArray<string>;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const shown = useMemo(
@@ -60,22 +62,22 @@ export function TeamList({
     [query, view],
   );
   const confirmed =
-    sent === null ? null : sentInvitation(view.kind === "people" ? view.people : [], sent);
+    sent.length === 0 ? null : sentInvitation(view.kind === "people" ? view.people : [], sent);
   const invite = useRef<HTMLElement | null>(null);
-  // The new row grows in on its first insertion only (`arrivingRow`).
+  // The new rows grow in on their first insertion only (`arrivingRow`).
   const [arrivalPlayed, setArrivalPlayed] = useState(false);
   const arriving = arrivingRow({
-    arrivedKey: confirmed?.arrivedKey ?? null,
+    arrivedKeys: confirmed?.arrivedKeys ?? [],
     played: arrivalPlayed,
   });
   // Focus goes back to Invite once, as soon as it is drawn: the team may still be reading.
   const inviteShown = view.kind === "people" && view.invite.length > 0;
   const focused = useRef(false);
   useEffect(() => {
-    if (sent === null || !inviteShown || focused.current || invite.current === null) return;
+    if (sent.length === 0 || !inviteShown || focused.current || invite.current === null) return;
     focused.current = true;
     invite.current.focus();
-  }, [sent, inviteShown]);
+  }, [sent.length, inviteShown]);
   // The live region stands empty from the page's first paint and is filled a tick later, once
   // focus has moved, so a screen reader hears the change rather than a region born full.
   const status = useRef<HTMLParagraphElement>(null);
@@ -131,11 +133,6 @@ export function TeamList({
     >
       <div className="tm-team px-3 sm:px-4">
         <p className="sr-only" ref={status} role="status" />
-        {confirmed === null ? null : (
-          <p className="tm-sent" data-part="sent">
-            {confirmed.line}
-          </p>
-        )}
         {view.kind === "reading" ? (
           <Loading count={4} label="Who is on the team" shape="rows" />
         ) : view.kind === "unreadable" ? (
@@ -148,10 +145,10 @@ export function TeamList({
               {shown.map((person) => (
                 <li
                   className="grid"
-                  data-arrived={person.key === arriving || undefined}
+                  data-arrived={arriving.includes(person.key) || undefined}
                   key={person.key}
                   onAnimationEnd={
-                    person.key === arriving
+                    arriving.includes(person.key)
                       ? () => {
                           setArrivalPlayed(true);
                         }
