@@ -326,6 +326,7 @@ function ProjectMenuItems({ entries }: { readonly entries: ReadonlyArray<Heading
         disabled={entry.disabled}
         key={entry.label}
         onClick={entry.act}
+        title={entry.why}
       >
         {entry.label}
       </MenuItem>

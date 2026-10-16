@@ -2710,6 +2710,36 @@ describe("a group of Mates folded to its row", () => {
     expect(browsed).toBe(0);
   });
 
+  it.each([
+    {
+      sentence: "A project whose setup is not ready shows Add a project Mate off, the reason on it",
+      why: "Nova is still setting Shop Front up. New Mates can join once it's done.",
+      shown: {
+        disabled: true,
+        why: "Nova is still setting Shop Front up. New Mates can join once it's done.",
+      },
+    },
+    {
+      sentence: "A project that takes a Mate shows Add a project Mate on, with nothing to explain",
+      why: null,
+      shown: { disabled: false, why: undefined },
+    },
+  ])("$sentence", ({ why, shown }) => {
+    const entry = projectHeadingMenu({
+      collapsed: false,
+      onToggle: () => {},
+      onAddMate: () => {},
+      addMateWhy: why,
+      onOpen: () => {},
+      reorder: undefined,
+      setUp: [],
+      onBrowseProjects: () => {},
+    }).find((item) => item.kind === "item" && item.label === "Add a project Mate");
+    expect(entry?.kind === "item" ? { disabled: entry.disabled, why: entry.why } : null).toEqual(
+      shown,
+    );
+  });
+
   it("collapses rather than opens the project from its name; the page is the menu's to open", () => {
     let opened = 0;
     const mounted = mount(

@@ -1,6 +1,7 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
+import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { overviewPaints, tiersAddable } from "./projects/projectsView.logic";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
 import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
@@ -1598,6 +1599,22 @@ export function ZeropsProjectsContent({
       : undefined;
   const gitSetupCan = gitSetupApp?.can;
   const hqOffers = useHqOffers();
+  // Why Add a Mate stands off, where that is known before the press (`newMateGate`): HQ refusing
+  // the person a Mate here, or the project's setup files not ready for another.
+  const addMateGate = useNewMateGate();
+  const addMateWhy = (groupId: string): string | null => {
+    const offer = addMateOffer(groupId);
+    if (offer.kind === "refused" || offer.kind === "unavailable")
+      return hqOffers.words(offer) ?? null;
+    const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
+    if (entry === undefined) return null;
+    return addMateGate({
+      group: entry.group,
+      environments: entry.environments.flatMap(({ item }) =>
+        item === undefined ? [] : [{ item }],
+      ),
+    });
+  };
   const gitSetupAdd = hqOffers.state(gitSetupCan, "add_git_environment");
   const gitSetupOffered = (verb: string) => hqOffers.state(gitSetupCan, verb).kind === "allowed";
   const requestedGroup = useMemo(
@@ -2377,6 +2394,7 @@ export function ZeropsProjectsContent({
       mate.previews.map((preview) => ({ mate: mate.name, ...preview })),
     );
     const oneMate = new Set(previews.map((preview) => preview.mate)).size <= 1;
+    const mateWhy = addMateWhy(group.groupId);
     return (
       <ZeropsProjectRenameMenu
         actions={[
@@ -2408,7 +2426,8 @@ export function ZeropsProjectsContent({
                 {
                   id: "add-mate",
                   label: "Add Mate",
-                  disabled: creationRunning,
+                  disabled: creationRunning || mateWhy !== null,
+                  ...(mateWhy === null ? {} : { why: mateWhy }),
                   onSelect: () => {
                     requestEnvironment(group.groupId, "dev");
                   },
@@ -2568,7 +2587,11 @@ export function ZeropsProjectsContent({
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
         groups={project === undefined ? keptGroups : flowGroups}
-        page={project}
+        page={
+          project === undefined
+            ? undefined
+            : { ...project, addMateWhy: addMateWhy(project.groupId) }
+        }
         isMate={hasMate}
         onCreateProject={noProjectYet && roleOffered.newProject ? askNewProject : undefined}
         noProjectYet={noProjectYet}

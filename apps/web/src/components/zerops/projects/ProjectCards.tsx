@@ -385,11 +385,14 @@ function CardMates<T>({
   props,
   all = false,
   onAdd,
+  addWhy = null,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly all?: boolean;
   readonly onAdd?: (() => void) | undefined;
+  /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
+  readonly addWhy?: string | null;
 }) {
   const [unfolded, setUnfolded] = useState(false);
   const mates = matesOf(entry);
@@ -432,12 +435,30 @@ function CardMates<T>({
           <span>{foldWords(folded.length)}</span>
         </button>
       ) : null}
-      {onAdd === undefined ? null : (
+      {onAdd === undefined ? null : addWhy === null ? (
         <button className="ov-add" data-zerops-surface="add-mate" onClick={onAdd} type="button">
           <span aria-hidden="true" className="ov-add-face">
             <PlusIcon className="size-4" />
           </span>
           <span>Add a Mate</span>
+        </button>
+      ) : (
+        <button
+          aria-describedby={`${entry.group.groupId}-add-why`}
+          className="ov-add"
+          data-zerops-surface="add-mate"
+          disabled
+          type="button"
+        >
+          <span aria-hidden="true" className="ov-add-face">
+            <PlusIcon className="size-4" />
+          </span>
+          <span className="ov-add-words">
+            <span>Add a Mate</span>
+            <span className="ov-add-why" data-part="why" id={`${entry.group.groupId}-add-why`}>
+              {addWhy}
+            </span>
+          </span>
         </button>
       )}
     </section>
@@ -479,7 +500,11 @@ function ProjectCard<T>({
   readonly focused: boolean;
   /** Drawn as its own page's card: every Mate unfolded, *Add a Mate* at their foot. */
   readonly page?:
-    | { readonly onAddMate?: (() => void) | undefined; readonly people?: ReactNode }
+    | {
+        readonly onAddMate?: (() => void) | undefined;
+        readonly addMateWhy?: string | null;
+        readonly people?: ReactNode;
+      }
     | undefined;
 }) {
   const nowMs = useNowMs();
@@ -559,7 +584,13 @@ function ProjectCard<T>({
           {drawn(releaseDoor) ? <div className="ov-acts">{releaseDoor}</div> : null}
         </section>
       )}
-      <CardMates all={page !== undefined} entry={entry} onAdd={page?.onAddMate} props={props} />
+      <CardMates
+        addWhy={page?.addMateWhy ?? null}
+        all={page !== undefined}
+        entry={entry}
+        onAdd={page?.onAddMate}
+        props={props}
+      />
       {page?.people}
       {/* Its changes say why they are unknown where the card draws them. */}
       {unknown.kind === "unread" && props.renderChanges === undefined ? (
@@ -585,18 +616,26 @@ export function ProjectPage<T>({
   props,
   aside,
   onAddMate,
+  addMateWhy = null,
   people,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly aside: ReactNode;
   readonly onAddMate?: (() => void) | undefined;
+  /** Why the project takes no Mate now, known before the press. */
+  readonly addMateWhy?: string | null;
   /** Who can work on it, under its Mates. */
   readonly people?: ReactNode;
 }) {
   return (
     <div className="ov-page" data-zerops-surface="project-page">
-      <ProjectCard entry={entry} focused={false} page={{ onAddMate, people }} props={props} />
+      <ProjectCard
+        entry={entry}
+        focused={false}
+        page={{ onAddMate, addMateWhy, people }}
+        props={props}
+      />
       <div className="ov-page-aside">{aside}</div>
     </div>
   );

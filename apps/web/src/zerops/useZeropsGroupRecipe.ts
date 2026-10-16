@@ -73,6 +73,17 @@ const answerOf = (read: RecipeTierResponse | undefined, tier: RecipeTier): Answe
       };
 };
 
+/**
+ * Where a held application detail leaves the recipe's `tier`: the same four answers the hook gives,
+ * for a surface that reads the details others hold and holds none (`useNewMateGates`).
+ */
+export function heldRecipeState(read: HqAppDetailRead, tier: RecipeTier): GroupRecipe["state"] {
+  if (read.failure !== null) return "unreadable";
+  const said = read.recipes[tier];
+  if (said === undefined && read.read !== "read") return "loading";
+  return answerOf(said, tier).state;
+}
+
 export function useZeropsGroupRecipe(input: {
   /** The application whose recipe it is — its group. */
   readonly appId: string | undefined;

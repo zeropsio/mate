@@ -1,5 +1,6 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
+import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { showProjectParts } from "~/zerops/projectPartsShown";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
@@ -846,6 +847,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // Whether *Add stage* and *Put it live* stand in a project's menu: HQ's offer of each.
   const environmentOffers = useEnvironmentOffers();
   const addMateOffer = useAddMateOffer();
+  const addMateGate = useNewMateGate();
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
@@ -2059,6 +2061,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               onAddMate?.(group.groupId);
             }
           : undefined,
+      addMateWhy: addMateGate({
+        group,
+        environments:
+          orderedGroups.find((entry) => entry.group.groupId === group.groupId)?.environments ?? [],
+      }),
       onOpen:
         onOpenGroup === undefined
           ? onBrowseProjects

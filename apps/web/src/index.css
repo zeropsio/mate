@@ -8016,6 +8016,27 @@ label.tm-advanced-row:not([data-disabled]) {
   color: var(--foreground);
 }
 
+/* Off before the press: the reason under the words, the row as tall as they need. */
+.ov-add:disabled {
+  height: auto;
+  min-height: 40px;
+  padding-block: 4px;
+  cursor: default;
+}
+
+.ov-add:disabled:hover {
+  background: none;
+  color: var(--muted-foreground);
+}
+
+.ov-add-words {
+  display: grid;
+}
+
+.ov-add-why {
+  font-size: 12px;
+}
+
 .ov-add:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
