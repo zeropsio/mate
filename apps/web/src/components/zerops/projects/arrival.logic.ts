@@ -157,8 +157,9 @@ export function arrivalWelcome(input: {
       return {
         line: `${welcome} You're a Guest on ${on}.`,
         // A Mate's live work is for whoever its door opens for (HQ's `observe_mate`); a read-only
-        // role reads the changes and the app, so that is what it is promised.
-        detail: "You can see the changes and open the app.",
+        // role reads the changes and the app, so that is what it is promised — the app once it is
+        // released, since a project may have none live yet when the person arrives.
+        detail: "You can see the changes and open the app once it is released.",
         action: null,
       };
     case null:
@@ -166,7 +167,7 @@ export function arrivalWelcome(input: {
         ? { line: `${welcome} You work on every project.`, detail: null, action }
         : {
             line: `${welcome} You see every project.`,
-            detail: "You can see the changes and open the app.",
+            detail: "You can see the changes and open the app once it is released.",
             action: null,
           };
   }

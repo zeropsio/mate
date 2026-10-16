@@ -31,7 +31,7 @@ describe("the first minute after an invitation", () => {
       viewer: { roleCode: "NO_ACCESS", canCreateProjects: false },
       apps: [{ ...SNAP, addMate: false }],
       line: "Welcome to Acme. You're a Guest on Snap.",
-      detail: "You can see the changes and open the app.",
+      detail: "You can see the changes and open the app once it is released.",
       action: null,
     },
     {
