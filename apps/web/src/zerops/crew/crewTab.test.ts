@@ -65,16 +65,22 @@ describe("useCrewView — one Mate's Crew tab view, as its tab holds it", () => 
   /** The view's setter, as each draw of the tab hands it out. */
   const setters: Array<(view: CrewTabView | null) => void> = [];
   const setSheet = (open: boolean) => setters.at(-1)?.(open ? { kind: "setup" } : null);
-  function Tab({ environmentId }: { readonly environmentId: EnvironmentId }) {
-    const [view, setView] = useCrewView(environmentId);
+  function Tab({
+    environmentId,
+    drafted = false,
+  }: {
+    readonly environmentId: EnvironmentId;
+    readonly drafted?: boolean;
+  }) {
+    const [view, setView] = useCrewView(environmentId, () => (drafted ? { kind: "setup" } : null));
     setters.push(setView);
     return h("span", null, String(view?.kind === "setup"));
   }
-  const mount = (environmentId: EnvironmentId) => {
+  const mount = (environmentId: EnvironmentId, drafted = false) => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     let tab: ReactTestRenderer | undefined;
     act(() => {
-      tab = create(h(Tab, { environmentId }));
+      tab = create(h(Tab, { environmentId, drafted }));
     });
     mounted.push(tab!);
     return {
@@ -129,6 +135,15 @@ describe("useCrewView — one Mate's Crew tab view, as its tab holds it", () => 
     });
     expect(tab.said()).toBe("true");
     expect(asked(JUNO)).toBe(true);
+  });
+
+  it("opens on the setup where a draft is kept, after a reload too, and closes like its own state", () => {
+    const tab = mount(FEN.environmentId, true);
+    expect(tab.said()).toBe("true");
+    act(() => {
+      setSheet(false);
+    });
+    expect(tab.said()).toBe("false");
   });
 
   it("never opens again by itself once its tab went away with it open", () => {

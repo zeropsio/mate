@@ -42,6 +42,7 @@ import { requestConfirmDialog } from "../../../confirmDialog";
 import { useServerConfigs } from "../../../state/entities";
 import { buildThreadRouteParams } from "../../../threadRoutes";
 import { useCrewView, type CrewTabView } from "../../../zerops/crew/crewTab";
+import { hasCrewSetupDraft } from "../../../zerops/crew/crewSetupDraft";
 import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useOpenReview } from "../../../zerops/review";
 import { ZeropsAskDialog } from "../ZeropsAskDialog";
@@ -110,7 +111,10 @@ export function CrewSectionHost({
   const navigate = useNavigate();
   const openReview = useOpenReview();
   const providers = useServerConfigs().get(environmentId)?.providers;
-  const [asked, setView] = useCrewView(environmentId);
+  // A draft kept from before (a reload, a closed tab) opens the setup it belongs to.
+  const [asked, setView] = useCrewView(environmentId, () =>
+    crew === null && hasCrewSetupDraft(environmentId) ? { kind: "setup" } : null,
+  );
   const view = asked === null || viewLock(access, asked) !== null ? null : asked;
   const [runDialog, setRunDialog] = useState<CrewRunDialogAsk | null>(null);
   const [ask, setAsk] = useState<{ readonly ask: string; readonly what: string } | null>(null);

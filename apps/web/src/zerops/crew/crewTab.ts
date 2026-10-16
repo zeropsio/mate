@@ -43,13 +43,16 @@ export const useCrewViewAskStore = create<CrewViewAskState>()((set) => ({
 
 /**
  * One Mate's Crew tab view: the tab's own state, which an ask from the left
- * menu or the conversation's line opens as the tab draws.
+ * menu or the conversation's line opens as the tab draws. `initial` is where
+ * the tab opens otherwise, resolved before its first paint: the setup, while
+ * a draft of it is kept.
  */
 export function useCrewView(
   environmentId: EnvironmentId,
+  initial: () => CrewTabView | null = () => null,
 ): readonly [CrewTabView | null, (view: CrewTabView | null) => void] {
   const asked = useCrewViewAskStore((state) => state.asked.get(environmentId) ?? null);
-  const [view, setView] = useState<CrewTabView | null>(null);
+  const [view, setView] = useState<CrewTabView | null>(initial);
   const [taken, setTaken] = useState<CrewTabView | null>(null);
   // Taken up while drawing, so the view opens with the tab rather than a
   // frame after it; spent once drawn.

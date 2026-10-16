@@ -27,6 +27,10 @@ export function crewSetupDraftOf(stored: unknown): CrewSetupDraft | null {
 const readDraft = (environmentId: EnvironmentId): CrewSetupDraft | null =>
   crewSetupDraftOf(readCrewSetupDraft(environmentId));
 
+/** A setup draft is kept for this Mate: its Crew tab opens on the setup. */
+export const hasCrewSetupDraft = (environmentId: EnvironmentId): boolean =>
+  readDraft(environmentId) !== null;
+
 export interface CrewSetupDraftState {
   /** The goal as written here; `null` while nothing was written in this draft. */
   readonly goal: string | null;
