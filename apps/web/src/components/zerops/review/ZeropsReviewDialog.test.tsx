@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { ZeropsReviewDialog } from "./ZeropsReviewDialog";
+import { REVIEW_HOLD_MS, useReviewHold, ZeropsReviewDialog } from "./ZeropsReviewDialog";
 
 let root: Root;
 let from: HTMLButtonElement;
@@ -86,5 +86,52 @@ describe("the review takes the focus itself, never its button", () => {
     expect(document.activeElement).toBe(dialog);
     await show(true);
     expect(document.activeElement).toBe(dialog);
+  });
+});
+describe("a review opens whole", () => {
+  function Reading({ reading }: { readonly reading: boolean }) {
+    useReviewHold(reading);
+    return <h2 id="review-title">{reading ? "" : "Review change"}</h2>;
+  }
+  const render = (reading: boolean) =>
+    act(() =>
+      root.render(
+        <ZeropsReviewDialog
+          open
+          onOpenChange={() => {}}
+          onClosed={() => {}}
+          from={from}
+          labelledBy="review-title"
+        >
+          <Reading reading={reading} />
+        </ZeropsReviewDialog>,
+      ),
+    );
+  const busy = () =>
+    document.querySelector<HTMLElement>('[role="dialog"]')?.getAttribute("aria-busy") === "true";
+
+  it("holds its entrance while what it shows is read, and shows once it is", async () => {
+    await render(true);
+    expect(busy()).toBe(true);
+    await render(false);
+    expect(busy()).toBe(false);
+  });
+
+  it("waits no longer than a moment for it", async () => {
+    vi.useFakeTimers();
+    try {
+      await render(true);
+      expect(busy()).toBe(true);
+      await act(() => vi.advanceTimersByTime(REVIEW_HOLD_MS));
+      expect(busy()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never hides again once shown, when it reads something anew", async () => {
+    await render(false);
+    await render(true);
+    expect(busy()).toBe(false);
   });
 });

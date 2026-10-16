@@ -13,6 +13,11 @@
  * back (`useReviewEscape`); the next one closes. A step set aside is `inert`: its button is never
  * the one ⌘↵ presses.
  *
+ * It opens whole: a review still reading what it shows holds its entrance (`useReviewHold`) — the
+ * scrim answers the press at once — and slides in once it is read, or after `REVIEW_HOLD_MS` at the
+ * longest, when what is still read stands in its own shape. It painted in three pieces before: an
+ * empty sheet, then a Merge that waited for the files, then the counts (a run 2 follow-up).
+ *
  * Base UI's dialog does the modal work — the focus trap, Esc, the scroll lock, what is inert
  * behind it; the look is the review's own (`index.css`, "Pass 16 · review"). What is typed in
  * it stays in it: nothing the conversation behind listens for acts while the review is open.
@@ -23,7 +28,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
+  useState,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
@@ -62,6 +69,32 @@ export function useReviewEscape(onEscape: ReviewEscape | undefined): void {
   }, [onEscape, take]);
 }
 
+/** The longest a review's entrance waits for what it shows to be read. */
+export const REVIEW_HOLD_MS = 600;
+
+/** Holds the entrance until the returned call lets it go. */
+type TakeHold = () => () => void;
+
+const ReviewHoldContext = createContext<TakeHold | null>(null);
+
+/**
+ * Holds the sheet's entrance while `reading`: it slides in whole once it is not, or once
+ * `REVIEW_HOLD_MS` have passed since it opened. A read that starts after the sheet showed holds
+ * nothing: what is on screen never leaves it.
+ */
+export function useReviewHold(reading: boolean): void {
+  const take = useContext(ReviewHoldContext);
+  // Once shown whole, it is shown: a later read holds nothing.
+  const [shown, setShown] = useState(!reading);
+  if (!reading && !shown) setShown(true);
+  const hold = reading && !shown;
+  // Before the first paint, so the sheet never shows a frame before it is held.
+  useLayoutEffect(() => {
+    if (take === null || !hold) return undefined;
+    return take();
+  }, [hold, take]);
+}
+
 export function ZeropsReviewDialog({
   open,
   onOpenChange,
@@ -87,6 +120,33 @@ export function ZeropsReviewDialog({
       if (escape.current === onEscape) escape.current = null;
     };
   }, []);
+  const [holds, setHolds] = useState(0);
+  const takeHold = useCallback<TakeHold>(() => {
+    setHolds((count) => count + 1);
+    return () => {
+      setHolds((count) => count - 1);
+    };
+  }, []);
+  // Each opening may be held, for a moment at most: the openings are counted as they happen, and
+  // the moment's end is kept for the opening it ended.
+  const [wasOpen, setWasOpen] = useState(open);
+  const [opening, setOpening] = useState(0);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setOpening((count) => count + 1);
+  }
+  const [heldUntil, setHeldUntil] = useState(-1);
+  useEffect(() => {
+    if (!open) return undefined;
+    const timer = setTimeout(() => {
+      setHeldUntil(opening);
+    }, REVIEW_HOLD_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [open, opening]);
+  const heldLongEnough = heldUntil === opening;
+  const holding = open && holds > 0 && !heldLongEnough;
 
   // Laid out, not yet painted: the scale's origin is set before the first frame moves.
   const place = useCallback(
@@ -159,9 +219,11 @@ export function ZeropsReviewDialog({
             // Modal, and said so: the composer behind takes letters typed outside any field
             // unless a modal dialog is open.
             aria-modal="true"
+            aria-busy={holding || undefined}
             className="rv"
             // A dialog to every layer check: the panel launcher's letters stand aside for it.
             data-slot="dialog-popup"
+            data-holding={holding ? "" : undefined}
             data-zerops-surface="review"
             finalFocus={() => (from?.isConnected === true ? from : true)}
             initialFocus={() => popup.current}
@@ -169,7 +231,7 @@ export function ZeropsReviewDialog({
             ref={place}
           >
             <ReviewEscapeContext.Provider value={takeEscape}>
-              {children}
+              <ReviewHoldContext.Provider value={takeHold}>{children}</ReviewHoldContext.Provider>
             </ReviewEscapeContext.Provider>
           </DialogPrimitive.Popup>
         </DialogPrimitive.Viewport>

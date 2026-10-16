@@ -11307,8 +11307,10 @@ a.message-file:focus-visible {
   width: min(520px, calc(100% - 24px));
   max-height: none;
 }
+/* Held while what it shows is read (`useReviewHold`): it slides in once, whole. */
 .rv[data-starting-style],
-.rv[data-ending-style] {
+.rv[data-ending-style],
+.rv[data-holding] {
   opacity: 0;
   scale: 0.99;
   translate: 24px 0;
@@ -11320,7 +11322,8 @@ a.message-file:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .rv,
   .rv[data-starting-style],
-  .rv[data-ending-style] {
+  .rv[data-ending-style],
+  .rv[data-holding] {
     scale: none;
     translate: none;
   }

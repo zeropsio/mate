@@ -80,6 +80,7 @@ import { ReviewCommits } from "./ReviewCommits";
 import { mainStageOf, useGroupName, useMatePreviews, type ReviewPreview } from "./reviewReads";
 import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
+import { useReviewHold } from "./ZeropsReviewDialog";
 import {
   ReviewFiles,
   ReviewSection,
@@ -165,6 +166,10 @@ export function ZeropsChangeReview({
   if (denied && held !== undefined) setHeld(undefined);
   else if (current !== undefined && current !== held) setHeld(current);
   const pull = denied ? undefined : (current ?? held);
+  // The change itself still read: the sheet waits a moment to show it whole.
+  useReviewHold(
+    pull === undefined && !denied && (landed.kind === "reading" || landed.kind === "idle"),
+  );
 
   if (pull === undefined) {
     return (
@@ -336,6 +341,13 @@ function ChangeReviewData({
     };
   }, [run.reading]);
   const runRef = run.threadRef;
+  // The sheet slides in once it can say all of it: its files and commits, how it merges, whether
+  // HQ offers Merge, and its words — or after a moment, each part still read standing in its shape.
+  useReviewHold(
+    detail.readout.kind === "reading" ||
+      reviewOffers === undefined ||
+      (pull.description === undefined && run.reading && !runGaveUp),
+  );
   const project = useGroupName(target.groupId);
   const previews = useMatePreviews(pull.mateProjectId, flow?.mateTier);
 
