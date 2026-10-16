@@ -18,6 +18,9 @@ const source = vi.hoisted(() => ({
   person: undefined as HqProjectPeople | undefined,
   addresses: undefined as PlaceAddresses | undefined,
   members: undefined as unknown,
+  projects: undefined as unknown,
+  placements: undefined as unknown,
+  unread: { projects: { complete: false, projects: [] }, placements: { complete: false } },
   decision: undefined as ProposalDecision | undefined,
   record: vi.fn(async (_next: ProposalDecision) => null),
   run: vi.fn(async (_intent: unknown) => ({ ok: true })),
@@ -41,11 +44,20 @@ vi.mock("~/zerops/ZeropsAccountData", async () => {
             ? source.addresses
             : projection.name === "organizationMembers"
               ? source.members
-              : source.person,
+              : projection.name === "organizationProjects"
+                ? (source.projects ?? source.unread.projects)
+                : projection.name === "inventoryPlacementStatus"
+                  ? (source.placements ?? source.unread.placements)
+                  : source.person,
       ),
     useDetailDemand: () => undefined,
   };
 });
+vi.mock("~/zerops/accountHq", () => ({
+  useAccountHq: () => ({
+    hq: { kind: "official", projectId: "hq", address: "https://hq.example" },
+  }),
+}));
 vi.mock("~/zerops/ownChief", () => ({ useOwnChief: () => "readers-chief" }));
 vi.mock("~/zerops/useZeropsEnvironmentProject", () => ({
   useZeropsEnvironmentProject: () => ({ orgId: "org", projectId: "source-mate" }),
@@ -70,6 +82,8 @@ afterEach(async () => {
   source.person = undefined;
   source.addresses = undefined;
   source.members = undefined;
+  source.projects = undefined;
+  source.placements = undefined;
   source.decision = undefined;
   useAddressesSheet.getState().close();
   source.run.mockClear();
@@ -355,6 +369,7 @@ describe("an access proposal's real card", () => {
     members: list.map(({ id, name, email }) => ({
       id,
       roleCode: "NO_ACCESS",
+      canCreateProjects: true,
       user: { id: `u-${id}`, fullName: name, firstName: name.split(" ")[0], email },
     })),
   });
@@ -368,9 +383,20 @@ describe("an access proposal's real card", () => {
   afterEach(() => {
     operation = first;
   });
+  const organization = () => {
+    source.projects = {
+      complete: true,
+      projects: [
+        { id: "pProd", name: "Contoso - production" },
+        { id: "pStage", name: "Contoso - stage" },
+      ],
+    };
+    source.placements = { complete: true };
+  };
 
   it("approving it gives each person their access as the person, on every project it names", async () => {
     operation = accessOffer;
+    organization();
     source.members = members([
       { id: "cu-dana", name: "Dana Developer", email: "dana@x.io" },
       { id: "cu-greta", name: "Greta Guest", email: "greta@x.io" },
@@ -393,10 +419,25 @@ describe("an access proposal's real card", () => {
   it("offers no Approve for a person nobody in the organization is, and says how to invite them", async () => {
     operation = accessOffer;
     source.members = members([{ id: "cu-dana", name: "Dana Developer", email: "dana@x.io" }]);
+    organization();
     await draw();
     expect(document.body.textContent).toContain(
       "No one in your organization is greta@x.io. Invite them from Team, then ask again.",
     );
+    await press("Approve");
+    expect(source.run).not.toHaveBeenCalled();
+  });
+
+  it("holds Approve until HQ says who owns these Mates, so nobody's own Mate is written over", async () => {
+    operation = accessOffer;
+    source.members = members([
+      { id: "cu-dana", name: "Dana Developer", email: "dana@x.io" },
+      { id: "cu-greta", name: "Greta Guest", email: "greta@x.io" },
+    ]);
+    organization();
+    source.placements = { complete: false };
+    await draw();
+    expect(document.body.textContent).toContain("Reading who owns these Mates…");
     await press("Approve");
     expect(source.run).not.toHaveBeenCalled();
   });

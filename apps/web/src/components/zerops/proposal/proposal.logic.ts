@@ -21,7 +21,9 @@ import type {
   ZeropsProposal,
 } from "@t3tools/client-runtime/zerops/model";
 
+import { isTokenMember } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ProjectAccessChange } from "@t3tools/client-runtime/zerops/projectAccess";
+import { asOrgRole } from "@t3tools/shared/zeropsRoles";
 
 import { recordsOf } from "../addresses/addresses.logic";
 import { accessChanges } from "../projects/projectPeople.logic";
@@ -418,6 +420,8 @@ export interface AccessMember {
   /** The membership (`clientUser`) id each grant is written on. */
   readonly id: string;
   readonly userId?: string | undefined;
+  readonly roleCode?: string | undefined;
+  readonly canCreateProjects?: boolean | undefined;
   readonly user?:
     | {
         readonly id?: string | undefined;
@@ -430,39 +434,75 @@ export interface AccessMember {
 
 /** What approving an access proposal writes, or why Approve waits. */
 export type AccessProposalPlan =
-  | { readonly kind: "ready"; readonly changes: ReadonlyArray<ProjectAccessChange> }
+  | {
+      readonly kind: "ready";
+      readonly changes: ReadonlyArray<ProjectAccessChange>;
+      /** The projects it names that are never written, each saying why. */
+      readonly dropped: ReadonlyArray<string>;
+    }
   | { readonly kind: "held"; readonly words: string };
 
 const folded = (text: string | undefined) => text?.trim().replace(/\s+/gu, " ").toLowerCase();
 
 /**
- * The members a name means: an address is one member's; a name is the members of that full name,
- * else of that first name.
+ * The members a name means — people only, never HQ's or anyone's token: an address is one
+ * member's; a name is the members of that full name, else of that first name.
  */
 function membersNamed(
-  list: ReadonlyArray<AccessMember>,
+  members: ReadonlyArray<AccessMember>,
   person: string,
 ): ReadonlyArray<AccessMember> {
+  const list = members.filter((member) => !isTokenMember(member));
   const wanted = folded(person);
   if (person.includes("@")) return list.filter((one) => folded(one.user?.email) === wanted);
   const full = list.filter((one) => folded(one.user?.fullName) === wanted);
   return full.length > 0 ? full : list.filter((one) => folded(one.user?.firstName) === wanted);
 }
 
+/** A Guest — no role of their own, creating nothing — only ever reads. */
+const isGuest = (member: AccessMember) =>
+  asOrgRole(member.roleCode) === "NO_ACCESS" && member.canCreateProjects !== true;
+
 /**
- * An access proposal against the organization's members: each person the Chief named found by
- * their address or name, and their level written on every project the proposal names but the
- * Mates they own (as an application's People write it). Approve waits while the members are read,
- * and for a name that finds nobody or several.
+ * An access proposal against the organization: each person the Chief named found by their address
+ * or name among its people, and their level written on every project the proposal names that the
+ * organization holds — never the Headquarters project, never a Mate they own (as an application's
+ * People write it), and a Guest at Read at most. Approve waits while the members, the projects or
+ * whose each Mate is are read, and for a name that finds nobody or several.
  */
 export function accessProposalPlan(input: {
   readonly proposal: AccessProposal;
   readonly members: { readonly known: boolean; readonly list: ReadonlyArray<AccessMember> };
-  /** Whose each project's Mate is, as HQ names its owner: projectId → their user id. */
-  readonly owners: Readonly<Record<string, string | undefined>>;
+  /**
+   * Whose each project's Mate is, as HQ names its owner: projectId → their user id, `null` for
+   * nobody's; `undefined` while HQ has not said.
+   */
+  readonly owners: Readonly<Record<string, string | null | undefined>>;
+  /** The organization's projects, id → name; `undefined` while they are read. */
+  readonly projects: ReadonlyMap<string, string> | undefined;
+  /** The Headquarters projects (`hqProjectsOf`): never given to anyone. */
+  readonly hq: ReadonlySet<string>;
 }): AccessProposalPlan {
   if (!input.members.known) return { kind: "held", words: "Reading your organization's members…" };
-  const projectIds = input.proposal.params.projects.map(({ id }) => id);
+  const inventory = input.projects;
+  if (inventory === undefined)
+    return { kind: "held", words: "Reading your organization's projects…" };
+  const dropped: Array<string> = [];
+  const projectIds = input.proposal.params.projects.flatMap(({ id, name }) => {
+    if (input.hq.has(id)) {
+      dropped.push(`${inventory.get(id) ?? name}: the Headquarters project is never given`);
+      return [];
+    }
+    if (!inventory.has(id)) {
+      dropped.push(`${name}: not a project in your organization`);
+      return [];
+    }
+    return [id];
+  });
+  if (projectIds.length === 0)
+    return { kind: "held", words: "None of these projects can be given from here." };
+  if (projectIds.some((id) => input.owners[id] === undefined))
+    return { kind: "held", words: "Reading who owns these Mates…" };
   const changes: Array<ProjectAccessChange> = [];
   for (const { person, level } of input.proposal.params.people) {
     const found = membersNamed(input.members.list, person);
@@ -483,9 +523,9 @@ export function accessProposalPlan(input: {
         clientUserId: member.id,
         projectIds,
         owned: projectIds.filter((id) => userId !== undefined && input.owners[id] === userId),
-        choice: level,
+        choice: level === "full" && isGuest(member) ? "read" : level,
       }),
     );
   }
-  return { kind: "ready", changes };
+  return { kind: "ready", changes, dropped };
 }

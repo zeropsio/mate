@@ -11,19 +11,23 @@
  */
 import { useTimelineRowReading } from "~/components/chat/timelineRowReads";
 import {
+  NOT_READ_PROJECTS,
   NOT_READ_VAULT,
   PROJECT_ROUTINGS_LISTING,
   addresses,
   vaultAtom,
   hqProjectPerson,
   initialStream,
+  inventoryPlacementStatus,
   organizationMembers,
+  organizationProjects,
   shownHqProjectPeopleAtom,
   type HqProjectPeople,
   type MembersRead,
   type PlaceAddresses,
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { hqProjectsOf } from "@t3tools/client-runtime/zerops/hq";
 import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -32,6 +36,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { sendOutcomeOf } from "~/hooks/useComposerSendRequests";
 import { newCommandId, newMessageId } from "~/lib/utils";
+import { useAccountHq } from "~/zerops/accountHq";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
@@ -72,6 +77,10 @@ const UNREAD_MEMBERS = Atom.make<MembersRead>({
   settled: false,
   refused: false,
 });
+
+const UNREAD_PROJECTS = Atom.make(NOT_READ_PROJECTS);
+
+const UNREAD_PLACEMENTS = Atom.make({ complete: false, live: false, reconnecting: false });
 
 const UNREAD_ADDRESSES = Atom.make<PlaceAddresses>({
   state: "reading",
@@ -181,6 +190,15 @@ function Proposal({
       : { orgId: home.orgId, clientId: home.orgId };
   useDetailDemand("organizationMembers", undefined, accessOrg?.clientId ?? null);
   const members = useProjection(organizationMembers, accessOrg, UNREAD_MEMBERS);
+  // The projects it may write — the organization's, never the Headquarters project — and whose
+  // each Mate is, which HQ says once its placements are read: before that, nobody's is no answer.
+  const roster = useProjection(organizationProjects, accessOrg?.orgId ?? null, UNREAD_PROJECTS);
+  const placements = useProjection(
+    inventoryPlacementStatus,
+    accessOrg?.orgId ?? null,
+    UNREAD_PLACEMENTS,
+  );
+  const { hq: officialHq } = useAccountHq(accessOrg?.clientId);
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
   const accessPlan = useMemo(
     () =>
@@ -190,10 +208,24 @@ function Proposal({
             proposal,
             members: { known: members.fact.kind === "known", list: members.members },
             owners: Object.fromEntries(
-              proposal.params.projects.map(({ id }) => [id, projectPeople[id]?.owner?.userId]),
+              proposal.params.projects.map(({ id }) => {
+                const people = projectPeople[id];
+                return [
+                  id,
+                  !placements.complete
+                    ? undefined
+                    : people?.owned === true
+                      ? people.owner?.userId
+                      : null,
+                ];
+              }),
             ),
+            projects: roster.complete
+              ? new Map(roster.projects.map(({ id, name }) => [id, name]))
+              : undefined,
+            hq: hqProjectsOf(officialHq),
           }),
-    [members, projectPeople, proposal],
+    [members, officialHq, placements.complete, projectPeople, proposal, roster],
   );
   const askMate = useAskMate();
   const openMate = useOpenMate();
