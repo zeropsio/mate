@@ -108,7 +108,13 @@ export class ZeropsUnavailable extends Schema.TaggedError<ZeropsUnavailable>()(
   { operation: Schema.String, message: Schema.String },
 ) {}
 
-export type ZeropsError = ZeropsRefused | ZeropsUnavailable;
+/** Zerops answered, in a shape HQ does not read: HQ's defect, which no retry outlives. */
+export class ZeropsUnexpectedAnswer extends Schema.TaggedError<ZeropsUnexpectedAnswer>()(
+  "ZeropsUnexpectedAnswer",
+  { operation: Schema.String, message: Schema.String },
+) {}
+
+export type ZeropsError = ZeropsRefused | ZeropsUnavailable | ZeropsUnexpectedAnswer;
 
 type Read<A> = (credential: Redacted.Redacted) => Effect.Effect<A, ZeropsError>;
 type Write<A> = Read<A>;

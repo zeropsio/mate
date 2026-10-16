@@ -64,6 +64,7 @@ import {
   type ZeropsMember,
   ZeropsRefused,
   ZeropsUnavailable,
+  ZeropsUnexpectedAnswer,
 } from "./zerops/api.ts";
 
 /** Where HQ serves the proxy, under its own address. */
@@ -244,7 +245,7 @@ export const chiefsLayer = (options: {
       const kept = (
         answer: UpstreamAnswer,
         keep: (body: unknown) => Option.Option<unknown>,
-      ): Effect.Effect<ProxyAnswer, ZeropsUnavailable> => {
+      ): Effect.Effect<ProxyAnswer, ZeropsUnexpectedAnswer> => {
         if (answer.status < 200 || answer.status >= 300) {
           return Effect.succeed({ kind: "raw", answer });
         }
@@ -252,7 +253,7 @@ export const chiefsLayer = (options: {
         return Option.isSome(body)
           ? Effect.succeed({ kind: "json", status: answer.status, body: body.value })
           : Effect.fail(
-              new ZeropsUnavailable({
+              new ZeropsUnexpectedAnswer({
                 operation: "chief",
                 message: "The Zerops API answered an unexpected shape.",
               }),

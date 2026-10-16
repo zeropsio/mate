@@ -415,9 +415,13 @@ const VERSION_FAILURES: ReadonlySet<string> = new Set([
   "CANCELLED",
 ]);
 
-/** How a Zerops failure ends a job: a no to the deploy itself is its failure; any other, refused. */
+/**
+ * How a Zerops failure ends a job: a no to the deploy itself is its failure; an answer HQ cannot
+ * read leaves what it did unknown; any other, refused.
+ */
 const zeropsEnd = (envName: string, error: ZeropsError): Ended => {
   if (error._tag === "ZeropsUnavailable") return refused(zeropsDidNotAnswer(error.message));
+  if (error._tag === "ZeropsUnexpectedAnswer") return unresolved(error.message);
   switch (error.reason) {
     case "invalid":
       return failed(`Zerops refused the deploy: ${error.code}`);
@@ -670,7 +674,9 @@ export const deploysLayer = (
       const detail = (error: ZeropsError) =>
         error._tag === "ZeropsUnavailable"
           ? zeropsDidNotAnswer(error.message)
-          : `Zerops refused: ${error.code}`;
+          : error._tag === "ZeropsUnexpectedAnswer"
+            ? error.message
+            : `Zerops refused: ${error.code}`;
 
       /**
        * A stage brought to its recipe's tier change (MODEL §9/8), with its environment's token, in
@@ -1456,7 +1462,9 @@ export const deploysLayer = (
               Effect.succeed(
                 error._tag === "ZeropsUnavailable"
                   ? refused(zeropsDidNotAnswer(error.message))
-                  : refused(`HQ could not read its org: ${error.code}`),
+                  : refused(
+                      `HQ could not read its org: ${error._tag === "ZeropsRefused" ? error.code : error.message}`,
+                    ),
               ),
             ),
           );
@@ -1538,7 +1546,7 @@ export const deploysLayer = (
               Effect.catch((error) =>
                 Effect.succeed({
                   reason: `its subdomain could not be verified: ${error._tag === "ZeropsRefused" ? error.code : error.message}`,
-                  unresolved: error._tag === "ZeropsUnavailable",
+                  unresolved: error._tag !== "ZeropsRefused",
                 }),
               ),
             );
@@ -1655,8 +1663,12 @@ export const deploysLayer = (
                 : unresolved("HQ can no longer observe the operation"),
             ),
             Effect.catch((error) =>
-              error._tag === "ZeropsRefused"
-                ? Effect.succeed(unresolved(`HQ cannot follow the operation: ${error.code}`))
+              error._tag === "ZeropsRefused" || error._tag === "ZeropsUnexpectedAnswer"
+                ? Effect.succeed(
+                    unresolved(
+                      `HQ cannot follow the operation: ${error._tag === "ZeropsRefused" ? error.code : error.message}`,
+                    ),
+                  )
                 : error._tag === "ZeropsUnavailable"
                   ? record(job, { phase: "recovering", processes: [], version: null }).pipe(
                       Effect.andThen(operationBackoff(retries++, error.retryAfterMs)),
@@ -1796,8 +1808,10 @@ export const deploysLayer = (
                 versionName(label, job.sha),
               )(token)
               .pipe(
+                // An answer HQ cannot read may still have made the version: as unknown as none.
                 Effect.catchTags({
                   ZeropsUnavailable: (error) => Effect.succeed({ lost: error.message }),
+                  ZeropsUnexpectedAnswer: (error) => Effect.succeed({ lost: error.message }),
                 }),
               );
             // Unanswered, no version is known: HQ makes no other.
@@ -1818,8 +1832,11 @@ export const deploysLayer = (
                 Effect.andThen(update(job, sql`uploaded_at = now()`)),
                 Effect.andThen(deploy.buildAndDeploy(version.id, commit.zeropsYaml, setup)(token)),
                 Effect.map(Option.some),
-                Effect.catchTags({
-                  ZeropsUnavailable: (error) =>
+                // An answer HQ cannot read may still have started it: as unknown as none.
+                Effect.catchIf(
+                  (error) =>
+                    error._tag === "ZeropsUnavailable" || error._tag === "ZeropsUnexpectedAnswer",
+                  (error) =>
                     Effect.as(
                       Effect.logWarning("a deploy's submission went unanswered", {
                         environment: job.env_name,
@@ -1828,7 +1845,7 @@ export const deploysLayer = (
                       }),
                       Option.none(),
                     ),
-                }),
+                ),
               );
             if (Option.isSome(started)) {
               yield* update(job, sql`state = 'building', process_id = ${started.value.processId}`);
@@ -1838,6 +1855,7 @@ export const deploysLayer = (
             Effect.catchTags({
               ZeropsRefused: (error) => Effect.succeed(zeropsEnd(job.env_name, error)),
               ZeropsUnavailable: (error) => Effect.succeed(zeropsEnd(job.env_name, error)),
+              ZeropsUnexpectedAnswer: (error) => Effect.succeed(zeropsEnd(job.env_name, error)),
               GitError: (error) => Effect.succeed(refused(`git: ${error.message}`)),
             }),
             Effect.catchIf(
@@ -1906,8 +1924,11 @@ export const deploysLayer = (
               )(key.token)
               .pipe(
                 Effect.map(Option.some),
-                Effect.catchTags({
-                  ZeropsUnavailable: (error) =>
+                // An answer HQ cannot read may still have started it: as unknown as none.
+                Effect.catchIf(
+                  (error) =>
+                    error._tag === "ZeropsUnavailable" || error._tag === "ZeropsUnexpectedAnswer",
+                  (error) =>
                     Effect.as(
                       Effect.logWarning("a delta's import went unanswered", {
                         environment: job.env_name,
@@ -1915,7 +1936,7 @@ export const deploysLayer = (
                       }),
                       Option.none(),
                     ),
-                }),
+                ),
               );
             if (Option.isSome(answered)) {
               const processes = answered.value.services.flatMap((service) => service.processes);
@@ -1930,6 +1951,7 @@ export const deploysLayer = (
             Effect.catchTags({
               ZeropsRefused: (error) => Effect.succeed(zeropsEnd(job.env_name, error)),
               ZeropsUnavailable: (error) => Effect.succeed(zeropsEnd(job.env_name, error)),
+              ZeropsUnexpectedAnswer: (error) => Effect.succeed(zeropsEnd(job.env_name, error)),
             }),
           );
           if (ended !== undefined) yield* end(job, ended);

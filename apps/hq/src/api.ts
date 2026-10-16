@@ -447,6 +447,12 @@ export const failure = (error: {
             : "zerops_unavailable",
         ),
       );
+    case "ZeropsUnexpectedAnswer":
+      // HQ's own defect: no retry outlives it, so nothing tells the caller to try again.
+      return Effect.as(
+        Effect.logError("zerops answer unreadable", error),
+        json({ code: "zerops_unexpected_answer" }, 502),
+      );
     case "ZeropsRefused":
       // Zerops said no: no outage, so nothing tells the caller to try again.
       return Effect.as(

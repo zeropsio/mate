@@ -130,4 +130,9 @@ describe("HQ's read of a service's active version", () => {
       });
     }),
   );
+  it.live("a Zerops answer HQ cannot read is HQ's defect, never an outage to wait out", () =>
+    Effect.gen(function* () {
+      assert.strictEqual(yield* answering({ id: 7 }), "ZeropsUnexpectedAnswer");
+    }),
+  );
 });
