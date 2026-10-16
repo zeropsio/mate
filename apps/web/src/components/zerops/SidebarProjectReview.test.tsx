@@ -97,7 +97,7 @@ describe("a project's Review tag", () => {
   it("one change says Review and opens that change's review at once", async () => {
     const { container } = await mount({ items: [change(4, "Add a due date")] });
     const review = tag(container, /^Review Add a due date$/u);
-    expect(review?.textContent).toBe("Review work");
+    expect(review?.textContent).toBe("Review");
     await press(review!);
     expect(effects.review).toHaveBeenCalledWith(
       { kind: "change", groupId: "orbit", repository: "appdev", number: 4 },
@@ -111,7 +111,7 @@ describe("a project's Review tag", () => {
       items: [change(4, "Add a due date"), change(5, "Sort by priority")],
     });
     const review = tag(container, /^2 to review in Orbit$/u)!;
-    expect(review.textContent).toBe("Review work2");
+    expect(review.textContent).toBe("Review2");
     await press(review);
     expect(effects.review).not.toHaveBeenCalled();
     expect(popover()?.textContent).toContain("2 changes in Orbit");

@@ -434,7 +434,7 @@ export type MateLift =
   | { readonly kind: "question" }
   /** Ask <Mate> to fix it */
   | { readonly kind: "fix" }
-  /** Review change */
+  /** Review */
   | { readonly kind: "review"; readonly pull: FlowPullRequest };
 
 /** A Mate nobody has asked anything, its conversations read: the menu row's words for it. */

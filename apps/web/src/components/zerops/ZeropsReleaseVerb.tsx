@@ -62,7 +62,7 @@ export function ZeropsReleaseVerb({
   );
   const release = useReleaseOffer(groupId, flows.get(groupId));
   if (!release.offered && !release.releasing && !offered) return null;
-  // A card's own solid button, as *Review change* is beside it: one look for what waits on you.
+  // A card's own solid button, as a change's *Review* is beside it: one look for what waits on you.
   return (
     <Button
       data-zerops-primary-action={REVIEW_RELEASE_LABEL}

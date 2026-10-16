@@ -29,7 +29,7 @@ import {
   type ReactNode,
 } from "react";
 
-import type { GroupFlowPreview } from "@t3tools/client-runtime/zerops";
+import { REVIEW_LABEL, type GroupFlowPreview } from "@t3tools/client-runtime/zerops";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
@@ -888,7 +888,7 @@ export interface CardMateChoice {
 
 /**
  * A lifted Mate's buttons: a plan's Approve plan and Change it…, a question's options and
- * Answer…, a failure's Ask <Mate> to fix it, a change's Review change. Change it… and Answer…
+ * Answer…, a failure's Ask <Mate> to fix it, a change's Review. Change it… and Answer…
  * open a reply in the card; Escape gives the buttons back. What its conversation answers in
  * place (`useMateWrite`) is the page's: `busy` while a send is on its way, `error` when it failed.
  */
@@ -997,7 +997,7 @@ export function CardMateLiftActions({
     case "fix":
       return <Button onClick={onFix}>Ask {name} to fix it</Button>;
     case "review":
-      return <Button onClick={(event) => onReview(event.currentTarget)}>Review change</Button>;
+      return <Button onClick={(event) => onReview(event.currentTarget)}>{REVIEW_LABEL}</Button>;
   }
 }
 
