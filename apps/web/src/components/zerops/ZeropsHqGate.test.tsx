@@ -41,6 +41,17 @@ describe("HqGateScreen", () => {
     expect(html).not.toContain("<button");
   });
 
+  it("a finished setup says HQ is ready once, and that Mate connects to it", () => {
+    const html = screen({ birth: { kind: "running", step: "done" } });
+    expect(html).toContain("HQ is ready for Acme");
+    expect(html).not.toContain("Setting up HQ");
+    expect(html).not.toContain("Keep this tab open");
+    expect(html).toContain("Connecting to your new HQ");
+    // Said once on the page; the bar's label names it for a screen reader.
+    expect(html.replaceAll(/<[^>]*>/gu, " ").split("HQ is ready").length - 1).toBe(1);
+    expect(reached(html)).toBe(100);
+  });
+
   it("names the step that stopped it, and offers Try again", () => {
     const html = screen({
       birth: { kind: "failed", step: "deploy", reason: "offline." },
