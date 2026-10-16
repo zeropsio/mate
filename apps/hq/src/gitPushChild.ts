@@ -99,6 +99,12 @@ async function supervise() {
       }
     }
   };
+  // A reader racing Git (recovery, the parent, a remote under test) sees a whole record or the
+  // previous one, never the empty file a truncating write leaves for a moment.
+  const record = async (value: object) => {
+    await fs.writeFile(`${request.witness}.tmp`, JSON.stringify(value), { mode: 0o600 });
+    await fs.rename(`${request.witness}.tmp`, request.witness);
+  };
   let secret = "";
   const safe = (value: string) =>
     (secret ? value.split(secret).join("[redacted]") : value)
@@ -165,16 +171,7 @@ async function supervise() {
       if (stderr.length + chunk.length > 16384) outputExceeded = true;
       else if (!outputExceeded) stderr += chunk.toString();
     });
-    await fs.writeFile(
-      request.witness,
-      JSON.stringify({
-        phase: "writing",
-        pid: lastPid,
-        supervisorPid: process.pid,
-        drained: false,
-      }),
-      { mode: 0o600 },
-    );
+    await record({ phase: "writing", pid: lastPid, supervisorPid: process.pid, drained: false });
     const code = await completion;
     // A helper that detached its output is still a writer. Stop only this captured group
     // before proving there are no live members, including on kernels retaining exited PIDs.
@@ -240,8 +237,7 @@ async function supervise() {
       }
     }
     // Atomic receipt comes only after the entire captured process group has stopped.
-    await fs.writeFile(`${request.witness}.tmp`, JSON.stringify(answer), { mode: 0o600 });
-    await fs.rename(`${request.witness}.tmp`, request.witness);
+    await record(answer);
     process.stdout.write(JSON.stringify(answer));
   } catch {
     kill();
