@@ -7,6 +7,7 @@
 import type {
   DomainFace,
   PlaceAddresses,
+  ProjectGrantsRead,
   VaultScopeRef,
   VaultView,
   VaultWrite,
@@ -16,6 +17,7 @@ import type {
   HqProposalDecisionWrite,
 } from "@t3tools/client-runtime/zerops/hq";
 import type {
+  ZeropsAccessLevel,
   ZeropsChiefMessageParams,
   ZeropsMessageProposalParams,
   ZeropsProposal,
@@ -23,7 +25,7 @@ import type {
 
 import { isTokenMember } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ProjectAccessChange } from "@t3tools/client-runtime/zerops/projectAccess";
-import { asOrgRole } from "@t3tools/shared/zeropsRoles";
+import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import { recordsOf } from "../addresses/addresses.logic";
 import { accessChanges } from "../projects/projectPeople.logic";
@@ -439,6 +441,8 @@ export type AccessProposalPlan =
       readonly changes: ReadonlyArray<ProjectAccessChange>;
       /** The projects it names that are never written, each saying why. */
       readonly dropped: ReadonlyArray<string>;
+      /** What it gives, one line per person and project, with what changes from today. */
+      readonly lines: ReadonlyArray<string>;
     }
   | { readonly kind: "held"; readonly words: string };
 
@@ -457,6 +461,45 @@ function membersNamed(
   if (person.includes("@")) return list.filter((one) => folded(one.user?.email) === wanted);
   const full = list.filter((one) => folded(one.user?.fullName) === wanted);
   return full.length > 0 ? full : list.filter((one) => folded(one.user?.firstName) === wanted);
+}
+
+/** A level as an access change's card says it. */
+const LEVEL_SAYS: Readonly<Record<ZeropsAccessLevel, string>> = {
+  full: "Full",
+  read: "Read",
+  none: "Hidden",
+  remove: "Their role's access",
+};
+
+/** Each person the Mate named at their level on each project, as it asked: while it is read. */
+export function accessAskLines(proposal: AccessProposal): ReadonlyArray<string> {
+  return proposal.params.people.flatMap(({ person, level }) =>
+    proposal.params.projects.map(({ name }) => `${person} · ${LEVEL_SAYS[level]} on ${name}`),
+  );
+}
+
+/** How much a role reaches on a project: hidden, reads, works, everything. */
+const reach = (role: string | undefined) =>
+  roleAtLeast(role, "ADMIN")
+    ? 3
+    : roleAtLeast(role, "BASIC_USER")
+      ? 2
+      : roleAtLeast(role, "READ_ONLY")
+        ? 1
+        : 0;
+
+const LEVEL_REACH: Readonly<Record<Exclude<ZeropsAccessLevel, "remove">, number>> = {
+  full: 3,
+  read: 1,
+  none: 0,
+};
+
+/** What a level changes from what the person reaches there today. */
+function changeWord(today: number, after: number): string {
+  if (today === after) return "unchanged";
+  if (today === 0) return "new";
+  if (after === 0) return "removed";
+  return after > today ? "raised" : "lowered";
 }
 
 /** A Guest — no role of their own, creating nothing — only ever reads. */
@@ -482,6 +525,8 @@ export function accessProposalPlan(input: {
   readonly projects: ReadonlyMap<string, string> | undefined;
   /** The Headquarters projects (`hqProjectsOf`): never given to anyone. */
   readonly hq: ReadonlySet<string>;
+  /** Each project's own grants as far as read: what each person reaches there today. */
+  readonly grants: Readonly<Record<string, ProjectGrantsRead | undefined>>;
 }): AccessProposalPlan {
   if (!input.members.known) return { kind: "held", words: "Reading your organization's members…" };
   const inventory = input.projects;
@@ -504,6 +549,7 @@ export function accessProposalPlan(input: {
   if (projectIds.some((id) => input.owners[id] === undefined))
     return { kind: "held", words: "Reading who owns these Mates…" };
   const changes: Array<ProjectAccessChange> = [];
+  const lines: Array<string> = [];
   for (const { person, level } of input.proposal.params.people) {
     const found = membersNamed(input.members.list, person);
     if (found.length === 0)
@@ -518,14 +564,34 @@ export function accessProposalPlan(input: {
       };
     const member = found[0]!;
     const userId = member.user?.id ?? member.userId;
-    changes.push(
-      ...accessChanges({
-        clientUserId: member.id,
-        projectIds,
-        owned: projectIds.filter((id) => userId !== undefined && input.owners[id] === userId),
-        choice: level === "full" && isGuest(member) ? "read" : level,
-      }),
-    );
+    const owned = projectIds.filter((id) => userId !== undefined && input.owners[id] === userId);
+    const capped = level === "full" && isGuest(member);
+    const given = capped ? "read" : level;
+    changes.push(...accessChanges({ clientUserId: member.id, projectIds, owned, choice: given }));
+    const who = member.user?.fullName?.trim() || person;
+    for (const projectId of projectIds) {
+      const project = inventory.get(projectId) ?? projectId;
+      if (owned.includes(projectId)) {
+        lines.push(`${who} · ${project} stays as it is: their own Mate`);
+        continue;
+      }
+      const read = input.grants[projectId];
+      const today =
+        read?.status === "ready"
+          ? reach(
+              read.grants?.find((grant) => grant.clientUserId === member.id)?.roleCode ??
+                member.roleCode,
+            )
+          : undefined;
+      const after = given === "remove" ? reach(member.roleCode) : LEVEL_REACH[given];
+      lines.push(
+        [
+          `${who} · ${LEVEL_SAYS[given]} on ${project}`,
+          ...(today === undefined ? [] : [changeWord(today, after)]),
+          ...(capped ? ["a guest only reads"] : []),
+        ].join(" · "),
+      );
+    }
   }
-  return { kind: "ready", changes, dropped };
+  return { kind: "ready", changes, dropped, lines };
 }

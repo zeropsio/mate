@@ -21,10 +21,13 @@ import {
   inventoryPlacementStatus,
   organizationMembers,
   organizationProjects,
+  projectsGrants,
+  accountReadsAtom,
   shownHqProjectPeopleAtom,
   type HqProjectPeople,
   type MembersRead,
   type PlaceAddresses,
+  type ProjectGrantsRead,
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { hqProjectsOf } from "@t3tools/client-runtime/zerops/hq";
@@ -32,7 +35,7 @@ import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/ze
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { sendOutcomeOf } from "~/hooks/useComposerSendRequests";
 import { newCommandId, newMessageId } from "~/lib/utils";
@@ -59,6 +62,7 @@ import {
   proposalMessage,
   proposalRecipient,
   proposalStage,
+  accessAskLines,
   accessProposalPlan,
   type ProposalDecision,
 } from "./proposal.logic";
@@ -79,6 +83,8 @@ const UNREAD_MEMBERS = Atom.make<MembersRead>({
 });
 
 const UNREAD_PROJECTS = Atom.make(NOT_READ_PROJECTS);
+
+const UNREAD_GRANTS = Atom.make<Readonly<Record<string, ProjectGrantsRead>>>({});
 
 const UNREAD_PLACEMENTS = Atom.make({ complete: false, live: false, reconnecting: false });
 
@@ -199,6 +205,28 @@ function Proposal({
     UNREAD_PLACEMENTS,
   );
   const { hq: officialHq } = useAccountHq(accessOrg?.clientId);
+  // What each person reaches on its projects today: each project's own row, held while it is read.
+  const accessProjectKey =
+    accessOrg === null || proposal.kind !== "access.set"
+      ? ""
+      : proposal.params.projects.map(({ id }) => id).join(",");
+  const demandDetail = useAtomValue(accountReadsAtom)?.demandDetail;
+  useEffect(() => {
+    if (demandDetail === undefined || accessProjectKey === "") return;
+    const releases = accessProjectKey
+      .split(",")
+      .map((ownerId) => demandDetail({ family: "project", listing: "project", ownerId }));
+    return () => {
+      for (const release of releases) release();
+    };
+  }, [demandDetail, accessProjectKey]);
+  const grants = useProjection(
+    projectsGrants,
+    accessOrg === null || accessProjectKey === ""
+      ? null
+      : { orgId: accessOrg.orgId, projectIds: accessProjectKey.split(",") },
+    UNREAD_GRANTS,
+  );
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
   const accessPlan = useMemo(
     () =>
@@ -224,8 +252,9 @@ function Proposal({
               ? new Map(roster.projects.map(({ id, name }) => [id, name]))
               : undefined,
             hq: hqProjectsOf(officialHq),
+            grants,
           }),
-    [members, officialHq, placements.complete, projectPeople, proposal, roster],
+    [grants, members, officialHq, placements.complete, projectPeople, proposal, roster],
   );
   const askMate = useAskMate();
   const openMate = useOpenMate();
@@ -407,6 +436,13 @@ function Proposal({
         proposal.kind === "domain.add" && domainPlace !== null
           ? () => useAddressesSheet.getState().open(domainPlace)
           : undefined
+      }
+      access={
+        proposal.kind !== "access.set"
+          ? undefined
+          : accessPlan?.kind === "ready"
+            ? { lines: accessPlan.lines, dropped: accessPlan.dropped }
+            : { lines: accessAskLines(proposal), dropped: [] }
       }
       chiefTarget={proposal.kind === "chief.message" ? chief : undefined}
       readOnlyReason={readOnlyReason}

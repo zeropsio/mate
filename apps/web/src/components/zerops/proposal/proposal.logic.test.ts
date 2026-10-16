@@ -1,11 +1,17 @@
-import type { AddressDomain, PlaceAddresses, VaultView } from "@t3tools/client-runtime/data";
-import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
+import type {
+  AddressDomain,
+  PlaceAddresses,
+  ProjectGrantsRead,
+  VaultView,
+} from "@t3tools/client-runtime/data";
+import type { ZeropsAccessLevel, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { HqProposalDecision } from "@t3tools/client-runtime/zerops/hq";
 
 import {
   PROPOSAL_DECISIONS_KEPT,
+  accessAskLines,
   chiefAsk,
   chiefMessageTarget,
   decisionFromHq,
@@ -748,7 +754,7 @@ describe("accessProposalPlan", () => {
     ["pProd", "Contoso - production"],
     ["pDana", "Contoso - Dana's Mate"],
   ]);
-  const read = { projects, hq: new Set<string>() };
+  const read = { projects, hq: new Set<string>(), grants: {} };
 
   it.each<
     [
@@ -927,6 +933,85 @@ describe("accessProposalPlan", () => {
         { clientUserId: "cu-greta", projectId: "pDana", roleCode: "READ_ONLY" },
       ],
     });
+  });
+
+  it("an access change's card says who gets which level on which project, and what changes from today", () => {
+    const plan = ready(
+      [
+        { person: "Dana", level: "read" },
+        { person: "greta@x.io", level: "full" },
+      ],
+      {
+        grants: {
+          pProd: {
+            status: "ready",
+            grants: [{ clientUserId: "cu-dana", roleCode: "ADMIN" }],
+          },
+          pDana: { status: "ready", grants: [] },
+        },
+      },
+    );
+    expect(plan.kind === "ready" ? plan.lines : plan).toEqual([
+      "Dana Developer · Read on Contoso - production · lowered",
+      "Dana Developer · Contoso - Dana's Mate stays as it is: their own Mate",
+      "Greta Guest · Read on Contoso - production · new · a guest only reads",
+      "Greta Guest · Read on Contoso - Dana's Mate · new · a guest only reads",
+    ]);
+  });
+
+  it.each<[string, ProjectGrantsRead | undefined, ZeropsAccessLevel, string]>([
+    [
+      "raised",
+      { status: "ready", grants: [{ clientUserId: "cu-dana", roleCode: "READ_ONLY" }] },
+      "full",
+      "Dana Developer · Full on Contoso - production · raised",
+    ],
+    [
+      "removed",
+      { status: "ready", grants: [{ clientUserId: "cu-dana", roleCode: "READ_ONLY" }] },
+      "none",
+      "Dana Developer · Hidden on Contoso - production · removed",
+    ],
+    [
+      "unchanged",
+      { status: "ready", grants: [{ clientUserId: "cu-dana", roleCode: "READ_ONLY" }] },
+      "read",
+      "Dana Developer · Read on Contoso - production · unchanged",
+    ],
+    [
+      "back to their role",
+      { status: "ready", grants: [{ clientUserId: "cu-dana", roleCode: "READ_ONLY" }] },
+      "remove",
+      "Dana Developer · Their role's access on Contoso - production · removed",
+    ],
+    [
+      "not said while today's access is read",
+      { status: "loading", grants: undefined },
+      "full",
+      "Dana Developer · Full on Contoso - production",
+    ],
+  ])("an access change's card says what changes from today: %s", (_title, today, level, line) => {
+    const plan = ready([{ person: "Dana", level }], {
+      grants: { pProd: today },
+      owners: { pProd: null, pDana: "u-dana" },
+    });
+    expect(plan.kind === "ready" ? plan.lines[0] : plan).toBe(line);
+  });
+
+  it("an access change's card says what the Mate asks while it is read", () => {
+    expect(
+      accessAskLines(
+        proposal([
+          { person: "Dana", level: "full" },
+          { person: "Greta", level: "remove" },
+        ]),
+      ),
+    ).toEqual([
+      "Dana · Full on Contoso - production",
+      "Dana · Full on Contoso - Dana's Mate",
+      "Greta · Their role's access on Contoso - production",
+      "Greta · Their role's access on Contoso - Dana's Mate",
+    ]);
   });
 
   it.each(["none", "remove", "read"] as const)(

@@ -20,7 +20,12 @@ const source = vi.hoisted(() => ({
   members: undefined as unknown,
   projects: undefined as unknown,
   placements: undefined as unknown,
-  unread: { projects: { complete: false, projects: [] }, placements: { complete: false } },
+  grants: undefined as unknown,
+  unread: {
+    projects: { complete: false, projects: [] },
+    placements: { complete: false },
+    grants: {},
+  },
   decision: undefined as ProposalDecision | undefined,
   record: vi.fn(async (_next: ProposalDecision) => null),
   run: vi.fn(async (_intent: unknown) => ({ ok: true })),
@@ -48,7 +53,9 @@ vi.mock("~/zerops/ZeropsAccountData", async () => {
                 ? (source.projects ?? source.unread.projects)
                 : projection.name === "inventoryPlacementStatus"
                   ? (source.placements ?? source.unread.placements)
-                  : source.person,
+                  : projection.name === "projectsGrants"
+                    ? (source.grants ?? source.unread.grants)
+                    : source.person,
       ),
     useDetailDemand: () => undefined,
   };
@@ -84,6 +91,7 @@ afterEach(async () => {
   source.members = undefined;
   source.projects = undefined;
   source.placements = undefined;
+  source.grants = undefined;
   source.decision = undefined;
   useAddressesSheet.getState().close();
   source.run.mockClear();
@@ -440,5 +448,31 @@ describe("an access proposal's real card", () => {
     expect(document.body.textContent).toContain("Reading who owns these Mates…");
     await press("Approve");
     expect(source.run).not.toHaveBeenCalled();
+  });
+
+  it("its card says who gets which level on which project, what changes from today, and what it leaves out", async () => {
+    operation = accessOffer;
+    source.members = members([
+      { id: "cu-dana", name: "Dana Developer", email: "dana@x.io" },
+      { id: "cu-greta", name: "Greta Guest", email: "greta@x.io" },
+    ]);
+    organization();
+    source.projects = {
+      complete: true,
+      projects: [{ id: "pProd", name: "Contoso - production" }],
+    };
+    source.grants = {
+      pProd: { status: "ready", grants: [{ clientUserId: "cu-greta", roleCode: "READ_ONLY" }] },
+    };
+    await draw();
+    const lines = (part: string) =>
+      [...document.querySelectorAll(`[data-proposal-${part}] li`)].map((li) => li.textContent);
+    expect(lines("access")).toEqual([
+      "Dana Developer · Full on Contoso - production · new",
+      "Greta Guest · Read on Contoso - production · unchanged",
+    ]);
+    expect(lines("left-out")).toEqual([
+      "Left out: Contoso - stage: not a project in your organization",
+    ]);
   });
 });

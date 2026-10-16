@@ -78,6 +78,13 @@ export interface ProposalCardProps {
   readonly domainRecords?: ReturnType<typeof domainProposalRecords> | undefined;
   /** `domain.add`, approved: opens the project's addresses. */
   readonly onOpenAddresses?: (() => void) | undefined;
+  /**
+   * `access.set`: who gets which level on which project, one line each with what changes from
+   * today, and the projects it never writes, each saying why.
+   */
+  readonly access?:
+    | { readonly lines: ReadonlyArray<string>; readonly dropped: ReadonlyArray<string> }
+    | undefined;
 }
 
 const KIND_ICON: Record<ZeropsProposal["kind"], LucideIcon> = {
@@ -135,6 +142,7 @@ export function ProposalCard(props: ProposalCardProps) {
             )}
           </div>
           <ProposalBody
+            access={props.access}
             proposal={proposal}
             recipient={props.recipient}
             chiefTarget={stage === "open" ? chiefTarget : undefined}
@@ -147,14 +155,39 @@ export function ProposalCard(props: ProposalCardProps) {
 }
 
 function ProposalBody({
+  access,
   proposal,
   recipient,
   chiefTarget,
 }: {
+  readonly access: ProposalCardProps["access"];
   readonly proposal: ZeropsProposal;
   readonly recipient: ProposalRecipient | undefined;
   readonly chiefTarget: ProposalCardProps["chiefTarget"];
 }) {
+  if (proposal.kind === "access.set") {
+    if (access === undefined) return null;
+    return (
+      <div className="grid min-w-0 gap-1.5 text-xs">
+        <ul className="grid min-w-0 gap-1 rounded-md bg-muted px-3 py-2" data-proposal-access>
+          {access.lines.map((line) => (
+            <li className="min-w-0 wrap-anywhere text-foreground" key={line}>
+              {line}
+            </li>
+          ))}
+        </ul>
+        {access.dropped.length === 0 ? null : (
+          <ul className="grid min-w-0 gap-0.5 text-muted-foreground" data-proposal-left-out>
+            {access.dropped.map((line) => (
+              <li className="min-w-0 wrap-anywhere" key={line}>
+                Left out: {line}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
   if (proposal.kind === "env.set") {
     const { key, value, secret } = proposal.params;
     return (
