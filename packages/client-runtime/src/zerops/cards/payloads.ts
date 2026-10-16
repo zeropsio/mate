@@ -158,7 +158,6 @@ export type ZeropsCardPayload =
       readonly pageErrorCount: number;
       readonly failedRequestCount: number;
       readonly hasScreenshot: boolean;
-      readonly forkRecoveryAttempted: boolean;
       readonly message?: string;
       readonly steps: ReadonlyArray<{
         readonly label: string;
@@ -598,7 +597,6 @@ function decodeBrowser(document: Record<string, unknown>): ZeropsCardPayload | u
     pageErrorCount: countArrayLike(document.errorsOutput),
     failedRequestCount: readRecordArray(document.networkOutput).length,
     hasScreenshot: readRecord(document.screenshot) !== undefined,
-    forkRecoveryAttempted: document.forkRecoveryAttempted === true,
     ...optional("message", readString(document.message)),
     steps: browserSteps(document.steps),
     ...(read !== undefined ? { read } : {}),
