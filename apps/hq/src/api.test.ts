@@ -2341,7 +2341,8 @@ describe("HQ API", () => {
           appId: null,
           appName: null,
           changes: [],
-          ownerUserId: "U1",
+          // Its maker's whoever signs it in.
+          ownerUserId: "owner",
         });
         assert.deepStrictEqual(yield* signers, { "claude-code": "U1" });
         // A later sign-in replaces the earlier one; a login that lost its signer keeps the record.

@@ -36,17 +36,22 @@ export const usageOwner = (input: {
   const owner = input.facts.projects
     .find((project) => project.id === input.projectId)
     ?.userRoles.find((role) => role.roleCode === "OWNER");
-  return owner !== undefined
-    ? (input.facts.members.find(
+  if (owner !== undefined)
+    return (
+      input.facts.members.find(
         (member) => member.kind === "person" && member.clientUserId === owner.clientUserId,
-      )?.userId ?? null)
-    : // Zerops makes a project's creator its OWNER only below Admin; an Admin's or Owner's Mate is
-      // still theirs from the moment they add it, the same for every role, until somebody signs
-      // its agent in.
-      (input.everSignedIn["claude-code"] ??
-        input.everSignedIn.codex ??
-        input.madeBy ??
-        input.standupRequestedBy);
+      )?.userId ?? null
+    );
+  // Zerops makes a project's creator its OWNER only below Admin; an Admin's or Owner's Mate is
+  // theirs from the moment they add it, the same for every role, and stays theirs whoever signs
+  // its agent in later. A Mate recorded before HQ kept its maker names whoever asked for its
+  // stand-up; one naming neither is its signer's. An integration token is nobody's maker.
+  const maker = [input.madeBy, input.standupRequestedBy].find(
+    (userId): userId is string =>
+      userId !== null &&
+      !input.facts.members.some((member) => member.kind === "token" && member.userId === userId),
+  );
+  return maker ?? input.everSignedIn["claude-code"] ?? input.everSignedIn.codex ?? null;
 };
 
 /** One owner derivation for navigation and a Mate's Chief authority. */

@@ -1489,7 +1489,8 @@ describe("revisioned HQ values", () => {
           };
           assert.deepStrictEqual(project.signedInNow, { github: "reader" });
           assert.deepStrictEqual(project.everSignedIn, { codex: "signer", github: "reader" });
-          assert.strictEqual(project.person.ownerUserId, "signer");
+          // A signer never takes the Mate from its maker.
+          assert.strictEqual(project.person.ownerUserId, "owner");
           assert.strictEqual(project.person.waitsOnViewer, false);
           assert.strictEqual(yield* Ref.get(f.reads), reads);
           assert.strictEqual(f.projections(), projections);
