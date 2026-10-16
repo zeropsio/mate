@@ -148,6 +148,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.zeropsCrewFilesGet]: AuthOrchestrationReadScope,
   [WS_METHODS.zeropsCrewFilesPut]: AuthOrchestrationOperateScope,
   [WS_METHODS.zeropsCrewCommand]: AuthOrchestrationOperateScope,
+  [WS_METHODS.zeropsCrewPropose]: AuthOrchestrationOperateScope,
   [WS_METHODS.zeropsCrewTaskPage]: AuthOrchestrationReadScope,
   // The Mate engine's conversation: reading it is the same read as a thread's; sending,
   // stopping, answering, dismissing and steering are the same authority as dispatching a V1 command.

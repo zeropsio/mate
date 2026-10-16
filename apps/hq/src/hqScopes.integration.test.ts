@@ -456,7 +456,9 @@ describe("HQ scoped socket", () => {
           process.stdout.write(
             `HQ five people / 30 Mates / cold roles: p50=${times[2]?.toFixed(1)}ms p95=${times[4]?.toFixed(1)}ms\n`,
           );
-          const sessionReadsPerPerson = 2; // Socket authentication and its initial session check.
+          // Socket authentication, its initial session check, and the person's first sign-in
+          // (read once per person: it never changes).
+          const sessionReadsPerPerson = 3;
           assert.strictEqual(sessionQueries.length, people.length * sessionReadsPerPerson);
           assert.strictEqual(
             seenQueries.length,

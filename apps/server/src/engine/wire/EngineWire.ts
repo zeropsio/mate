@@ -974,6 +974,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                         input.interactionMode === "unknown"
                           ? {}
                           : { interactionMode: input.interactionMode }),
+                        ...(input.fromPanel === true ? { fromPanel: true as const } : {}),
                       }),
                     ),
                   ),

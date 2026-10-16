@@ -8,15 +8,19 @@
  */
 import { Link } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PersonAvatar } from "../zerops/primitives";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
+import { forgetInvitationSent, invitationSentTo } from "./invitationSent";
 import {
+  arrivingRow,
   INVITED_LINE,
   reachWords,
+  sentInvitation,
   shownTeam,
   teamSearchShown,
   type TeamPerson,
@@ -28,9 +32,12 @@ import { useTeam } from "./useTeam";
 /** Settings → Team. */
 export function TeamSettings() {
   const { view } = useTeam();
+  // Taken once on arrival: the visit keeps it, nothing after it sees it again.
+  const [sent] = useState(invitationSentTo);
+  useEffect(forgetInvitationSent, []);
   return (
     <SettingsPageContainer width="wide">
-      <TeamList view={view} />
+      <TeamList sent={sent} view={view} />
     </SettingsPageContainer>
   );
 }
@@ -39,16 +46,47 @@ export function TeamSettings() {
 export function TeamList({
   view,
   initialQuery = "",
+  sent = null,
 }: {
   readonly view: TeamView;
   /** What the search starts with; a harness shows a search under way. */
   readonly initialQuery?: string;
+  /** The address an invitation was just sent to, on the way back from Invite. */
+  readonly sent?: string | null;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const shown = useMemo(
     () => (view.kind === "people" ? shownTeam(view.people, query) : []),
     [query, view],
   );
+  const confirmed =
+    sent === null ? null : sentInvitation(view.kind === "people" ? view.people : [], sent);
+  const invite = useRef<HTMLElement | null>(null);
+  // The new row grows in on its first insertion only (`arrivingRow`).
+  const [arrivalPlayed, setArrivalPlayed] = useState(false);
+  const arriving = arrivingRow({
+    arrivedKey: confirmed?.arrivedKey ?? null,
+    played: arrivalPlayed,
+  });
+  // Focus goes back to Invite once, as soon as it is drawn: the team may still be reading.
+  const inviteShown = view.kind === "people" && view.invite.length > 0;
+  const focused = useRef(false);
+  useEffect(() => {
+    if (sent === null || !inviteShown || focused.current || invite.current === null) return;
+    focused.current = true;
+    invite.current.focus();
+  }, [sent, inviteShown]);
+  // The live region stands empty from the page's first paint and is filled a tick later, once
+  // focus has moved, so a screen reader hears the change rather than a region born full.
+  const status = useRef<HTMLParagraphElement>(null);
+  const announce = confirmed?.announce ?? null;
+  useEffect(() => {
+    if (announce === null) return;
+    const tick = window.setTimeout(() => {
+      if (status.current !== null) status.current.textContent = announce;
+    }, 0);
+    return () => window.clearTimeout(tick);
+  }, [announce]);
   return (
     <SettingsSection
       count={view.kind === "people" ? view.count : undefined}
@@ -75,6 +113,9 @@ export function TeamList({
             {view.invite.length > 0 ? (
               <Button
                 data-zerops-surface="invite-team"
+                ref={(node: HTMLElement | null) => {
+                  invite.current = node;
+                }}
                 render={<Link to="/settings/team/invite" />}
                 size="sm"
               >
@@ -89,6 +130,12 @@ export function TeamList({
       title="Team"
     >
       <div className="tm-team px-3 sm:px-4">
+        <p className="sr-only" ref={status} role="status" />
+        {confirmed === null ? null : (
+          <p className="tm-sent" data-part="sent">
+            {confirmed.line}
+          </p>
+        )}
         {view.kind === "reading" ? (
           <Loading count={4} label="Who is on the team" shape="rows" />
         ) : view.kind === "unreadable" ? (
@@ -99,7 +146,18 @@ export function TeamList({
           <>
             <ul aria-label="People" className="tm-cards">
               {shown.map((person) => (
-                <li className="grid" key={person.key}>
+                <li
+                  className="grid"
+                  data-arrived={person.key === arriving || undefined}
+                  key={person.key}
+                  onAnimationEnd={
+                    person.key === arriving
+                      ? () => {
+                          setArrivalPlayed(true);
+                        }
+                      : undefined
+                  }
+                >
                   <PersonCard person={person} />
                 </li>
               ))}
@@ -134,9 +192,22 @@ function PersonCard({ person }: { readonly person: TeamPerson }) {
         {person.name}
       </span>
       <span className="tm-card-badges">
-        <span className="tm-badge" data-part="role">
-          {person.badge}
-        </span>
+        {person.badgeHint === null ? (
+          <span className="tm-badge" data-part="role">
+            {person.badge}
+          </span>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="tm-badge" data-part="role">
+                  {person.badge}
+                </span>
+              }
+            />
+            <TooltipPopup>{person.badgeHint}</TooltipPopup>
+          </Tooltip>
+        )}
         {person.you ? (
           <span className="tm-badge" data-part="you" data-tone="muted">
             You

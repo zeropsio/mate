@@ -197,6 +197,8 @@ export type Command =
       readonly interactionMode?: ProviderInteractionMode;
       /** What the agent hears with `text` that the person did not type (`toldWith`). */
       readonly context?: ReadonlyArray<string>;
+      /** A press on a page sent it for the person: never the conversation's subject. */
+      readonly fromPanel?: true;
     }
   | { readonly _tag: "Stop"; readonly runId?: RunId }
   /** The person asks the work a usage limit holds to try the provider now. */

@@ -309,6 +309,7 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
+    generateCrewProposal: () => Effect.die("generateCrewProposal is not part of git workflows"),
     ...overrides,
   };
 
@@ -357,6 +358,7 @@ function createTextGeneration(
             }),
         ),
       ),
+    generateCrewProposal: implementation.generateCrewProposal,
   };
 }
 

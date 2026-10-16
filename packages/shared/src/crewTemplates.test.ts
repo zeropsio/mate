@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import { parseCrewHome, renderCrewHome, validateCrewTopology } from "./crewHome.ts";
-import { crewFromTemplate } from "./crewTemplates.ts";
+import { crewFromProposal, crewFromTemplate } from "./crewTemplates.ts";
 
 describe("crewFromTemplate", () => {
   it.each([
@@ -71,8 +71,78 @@ describe("crewFromTemplate", () => {
     });
     expect(definition.members.map((member) => member.job.split("\n")[0])).toEqual([
       "Plans the work and splits it between the crew.",
-      "Builds its part of the work, in its own copy of the code.",
-      "Builds its part of the work, in its own copy of the code.",
+      "Builds its part of the work.",
+      "Builds its part of the work.",
     ]);
+  });
+});
+
+describe("crewFromProposal", () => {
+  const proposal = {
+    lead: { name: "Lead", part: "Plans the tea shop and splits the work." },
+    builders: [
+      { name: "Checkout", part: "Builds the checkout and its payment step." },
+      { name: "Catalog", part: "Builds the tea catalog and its search." },
+    ],
+  };
+
+  it("writes a proposed crew home that stands as it is", () => {
+    const definition = crewFromProposal({
+      proposal,
+      crew: "crew",
+      devHosts: ["appdev", "webdev"],
+      mateTint: "coral",
+    });
+
+    expect(definition.members.map((m) => [m.handle, m.displayName, m.kind, m.host])).toEqual([
+      ["lead", "Lead", "lead", undefined],
+      ["checkout", "Checkout", "writer", "appdev"],
+      ["catalog", "Catalog", "writer", "webdev"],
+    ]);
+    expect(parseCrewHome("crew", renderCrewHome(definition))).toEqual({ definition, issues: [] });
+    expect(
+      validateCrewTopology(definition, { devHosts: ["appdev", "webdev"], databaseHosts: [] }),
+    ).toEqual([]);
+  });
+
+  it("opens each proposed job with its part, the line the person reads", () => {
+    const definition = crewFromProposal({ proposal, crew: "crew", devHosts: [] });
+    expect(definition.members.map((member) => member.job.split("\n")[0])).toEqual([
+      "Plans the tea shop and splits the work.",
+      "Builds the checkout and its payment step.",
+      "Builds the tea catalog and its search.",
+    ]);
+    // What a lead and a builder are told past that line is the starting crew's.
+    expect(definition.members[0]?.job).toContain("You read and plan; you never change files.");
+    expect(definition.members[1]?.job).toContain("Build what your task asks.");
+  });
+
+  it.each([
+    [
+      ["Checkout & Payments", "Search"],
+      ["checkout-payments", "search"],
+    ],
+    [
+      ["Café Menu", "API"],
+      ["caf-menu", "api"],
+    ],
+    [
+      ["Front end", "Front-end!"],
+      ["front-end", "front-end-2"],
+    ],
+    [
+      ["★★★", "A very long name for one crewmate"],
+      ["crewmate", "a-very-long-name-for"],
+    ],
+  ])("gives %j handles %j, each once", (names, handles) => {
+    const definition = crewFromProposal({
+      proposal: {
+        lead: { name: "Lead", part: "Plans it." },
+        builders: names.map((name) => ({ name, part: "Builds it." })),
+      },
+      crew: "crew",
+      devHosts: [],
+    });
+    expect(definition.members.slice(1).map((member) => member.handle)).toEqual(handles);
   });
 });

@@ -26,6 +26,7 @@ import { mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 import { backgroundWorkWords, nowLineWords } from "../chat/runCard.logic";
+import { STOPPING_WORDS } from "~/zerops/conversationStop.logic";
 
 import { formatWorkingTime } from "./SidebarZeropsTree.logic";
 
@@ -481,6 +482,11 @@ export function mateRowView(
   }
   switch (state) {
     case "working":
+      // A person's Stop in force: that it is stopping, from the press on, never what still runs
+      // (S21-02: "Finishing work it started" read on after the Stop).
+      if (activity.stopping === true) {
+        return view({ kind: "live", words: STOPPING_WORDS });
+      }
       // Its turn over, its work running on: what that work is, where its row names it (Eli,
       // 2026-10-14: "Waiting for its helpers" over its own jobs); else its card's own words. Its
       // clock stopped with its turn.

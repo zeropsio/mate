@@ -1383,6 +1383,31 @@ describe("an engine conversation's row in the menu", () => {
     expect(turn.backgroundWork).toBeUndefined();
   });
 
+  it.each([
+    {
+      when: "a Stop is ending its run",
+      state: { kind: "working", since: 1, waitsOnHelpers: false, stopping: true },
+      stopping: true,
+    },
+    {
+      when: "a Stop is ending the helpers its turn left",
+      state: { kind: "working", since: 1, waitsOnHelpers: true, stopping: true },
+      stopping: true,
+    },
+    {
+      when: "it works with no Stop in force",
+      state: { kind: "working", since: 1, waitsOnHelpers: true },
+      stopping: false,
+    },
+    { when: "nothing runs", state: { kind: "idle" }, stopping: false },
+  ] as const)("says on its shell whether a person's Stop is in force: $when", (row) => {
+    const overlaid = overlayEngineRow(
+      shellThread,
+      engineRow(ENV, "thread-ada", { state: row.state as never }),
+    );
+    expect(overlaid.stopping === true).toBe(row.stopping);
+  });
+
   it("starts a working row's turn at its run's start, never at the row's last change", () => {
     const start = Date.parse("2026-10-10T08:27:44.600Z");
     const overlaid = overlayEngineRow(

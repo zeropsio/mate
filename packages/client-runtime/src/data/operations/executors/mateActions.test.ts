@@ -1,5 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
-import { EnvironmentId, ThreadId, ZeropsAgentLoginError } from "@t3tools/contracts";
+import {
+  CrewProposalError,
+  EnvironmentId,
+  ProviderInstanceId,
+  ThreadId,
+  ZeropsAgentLoginError,
+} from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -50,7 +56,44 @@ const rig = <E>(
     },
   };
 };
+const proposalInput = {
+  goal: "A private goal about the tea shop.",
+  modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "claude-sonnet-4-5" },
+};
+
 describe("Mate action receipts", () => {
+  it.effect("a crew the Mate could not propose is refused, never left uncertain", () =>
+    Effect.gen(function* () {
+      const r = rig(Effect.fail(new CrewProposalError({ reason: "malformed", detail: null })));
+      yield* Effect.exit(r.actions.execute("crewPropose", environmentId, proposalInput));
+      const record = r.store.state().operations.get("request-1");
+      expect(record?.receipt?.acceptance.kind).toBe("refused");
+      expect(record?.unresolved).toBeNull();
+      expect(record?.intent).toEqual({
+        kind: "mate-action",
+        environmentId,
+        action: "crewPropose",
+        target: {},
+      });
+      r.close();
+    }),
+  );
+  it.effect("cancelling a proposal ends its record cancelled, with nothing left to resolve", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const r = rig(Effect.andThen(Deferred.succeed(started, undefined), Effect.never));
+      const running = yield* Effect.forkChild(
+        r.actions.execute("crewPropose", environmentId, proposalInput),
+      );
+      yield* Deferred.await(started);
+      yield* Fiber.interrupt(running);
+      const record = r.store.state().operations.get("request-1");
+      expect(record?.receipt?.outcome.kind).toBe("cancelled");
+      expect(record?.unresolved).toBeNull();
+      expect(r.read()).toMatchObject([{ pending: false }]);
+      r.close();
+    }),
+  );
   it.effect("retains the login terminal after its initiating surface is gone", () =>
     Effect.gen(function* () {
       const r = rig(Effect.succeed({ terminalId: "login-terminal" }));

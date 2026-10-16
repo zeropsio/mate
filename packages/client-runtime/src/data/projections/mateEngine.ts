@@ -1432,6 +1432,8 @@ export function overlayEngineRow(
     // What that work is, by name, where the row names it.
     backgroundWork:
       row.state.kind === "working" && row.state.waitsOnHelpers ? row.state.work : undefined,
+    // A person's Stop in force, whichever control or device sent it.
+    stopping: row.state.kind === "working" && row.state.stopping === true,
     // A conversation the engine started never had a V1 session: the row is its session.
     session: {
       ...(thread.session ?? {

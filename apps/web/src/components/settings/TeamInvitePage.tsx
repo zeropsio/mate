@@ -5,7 +5,7 @@
  * projects they get — the one the invitation was opened from, or the organization's only one,
  * already picked — at Full or Read, each explained once here; then *Invite*. A press waits for
  * Zerops's answer and says a refusal beside it; once the invitation landed the team is shown, the
- * name typed kept for their row until they join.
+ * name typed kept for their row until they join and the team told the invitation went out.
  */
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { Invitee, InviteeCheck } from "@t3tools/client-runtime/data";
@@ -19,6 +19,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { PageHeader } from "../ui/page-header";
 import { ACCESS_LEVEL_LINES } from "../zerops/projects/projectPeople.logic";
+import { noteInvitationSent } from "./invitationSent";
 import { SettingsPageContainer } from "./settingsLayout";
 import { TeamRoleEditor } from "./TeamRoleEditor";
 import {
@@ -75,7 +76,8 @@ export function TeamInviteView({
   /** The project the invitation was opened from: picked to start with. */
   readonly from?: string | undefined;
   readonly actions: TeamInviteActions;
-  readonly onSent: () => void;
+  /** Called with the address once Zerops took the invitation. */
+  readonly onSent: (address: string) => void;
   /** Where the invitation starts; a harness shows it filled. */
   readonly initialEmail?: string;
   readonly initialMembership?: OrgMembership;
@@ -170,7 +172,7 @@ export function TeamInviteView({
         membership,
         grants: level === null ? [] : inviteGrants({ projects, picked, level }),
       });
-      onSent();
+      onSent(address);
     } catch (cause) {
       setTrouble(messageOf(cause));
     } finally {
@@ -355,7 +357,10 @@ export function TeamInvitePage() {
         <TeamInviteView
           actions={actions}
           from={from}
-          onSent={() => void navigate({ to: "/settings/team" })}
+          onSent={(address) => {
+            noteInvitationSent(address);
+            void navigate({ to: "/settings/team" });
+          }}
           organizationName={team.organizationName}
           projects={team.invitable}
           viewerRole={team.viewerRole}

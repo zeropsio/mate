@@ -112,6 +112,70 @@ it.layer(GrokTextGenerationTestLayer)("GrokTextGeneration", (it) => {
     );
   });
 
+  it.effect(
+    "proposes a crew with no MCP servers and every permission asked, keeping the user's sign-in",
+    () =>
+      Effect.gen(function* () {
+        const tempDir = NodeFS.mkdtempSync(
+          NodePath.join(NodeOS.tmpdir(), "t3code-grok-text-proposal-"),
+        );
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true })),
+        );
+        const userHome = NodePath.join(tempDir, "home");
+        NodeFS.mkdirSync(NodePath.join(userHome, ".grok"), { recursive: true });
+        NodeFS.writeFileSync(
+          NodePath.join(userHome, ".grok", "config.toml"),
+          '[mcp_servers.zerops]\ncommand = "zcp"\n',
+        );
+        NodeFS.writeFileSync(NodePath.join(userHome, ".grok", "auth.json"), '{"token":"t"}');
+        const seenPath = NodePath.join(tempDir, "seen.json");
+        const argvLogPath = NodePath.join(tempDir, "argv.log");
+        const binaryPath = writeFakeCli({
+          directory: NodePath.join(tempDir, "bin"),
+          name: "grok",
+          env: {
+            T3_ACP_PROMPT_RESPONSE_TEXT: JSON.stringify({
+              lead: { name: "Lead", part: "Plans the tea shop." },
+              builders: [{ name: "Checkout", part: "Builds the checkout." }],
+            }),
+          },
+          source: [
+            'import { existsSync as seenExists, readFileSync as seenRead, writeFileSync as seenWrite } from "node:fs";',
+            "const grokHome = `${process.env.HOME}/.grok`;",
+            `seenWrite(${JSON.stringify(seenPath)}, JSON.stringify({ home: process.env.HOME, config: seenRead(\`\${grokHome}/config.toml\`, "utf8"), signedIn: seenExists(\`\${grokHome}/auth.json\`) }));`,
+            execScriptSource({
+              scriptPath: mockAgentPath,
+              argvLogPath,
+              expectedArgs: ["--permission-mode", "default", "agent", "stdio"],
+            }),
+          ].join("\n"),
+        });
+        const textGeneration = yield* makeGrokTextGeneration(decodeGrokSettings({ binaryPath }), {
+          ...process.env,
+          HOME: userHome,
+        });
+        const generated = yield* textGeneration.generateCrewProposal({
+          cwd: process.cwd(),
+          goal: "A tea shop that ships weekly.",
+          modelSelection: createModelSelection(ProviderInstanceId.make("grok"), "grok-mock-alt"),
+        });
+        expect(generated.builders).toEqual([{ name: "Checkout", part: "Builds the checkout." }]);
+        const seen = JSON.parse(NodeFS.readFileSync(seenPath, "utf8")) as {
+          home: string;
+          config: string;
+          signedIn: boolean;
+        };
+        expect(seen.home).not.toBe(userHome);
+        expect(seen.config).toBe("");
+        expect(seen.signedIn).toBe(true);
+        expect(NodeFS.readFileSync(argvLogPath, "utf8")).toContain("--permission-mode\tdefault");
+        expect(
+          NodeFS.readFileSync(NodePath.join(userHome, ".grok", "config.toml"), "utf8"),
+        ).toContain("zerops");
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("extracts the JSON object when Grok wraps it in conversational text", () =>
     withFakeAcpGrok(
       {

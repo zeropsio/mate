@@ -22,13 +22,14 @@ import {
 } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
+import { useMateRepositories } from "../zerops/useMateRepositories";
+import { terminalStartCwd } from "../zerops/terminalCwd.logic";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOwners";
 import { useEngineRunCards } from "../zerops/useEngineCardPaging";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { agentContext } from "@t3tools/client-runtime/data";
 import { Loading } from "./ui/loading";
 import { crewCardOf, engineWorkRunsOn, timelineEntryTurnId } from "./chat/conversation.logic";
-import { type BackgroundStopPress, backgroundStopShows } from "./chat/backgroundStop.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { mateLimitAtom } from "@t3tools/client-runtime/data";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
@@ -352,6 +353,8 @@ import {
   useQueuedMessages,
   useQueuedMessageStore,
 } from "../queuedMessageStore";
+import { useStopConversation, useStopPress, useStopPressStore } from "../zerops/conversationStop";
+import { conversationStop, STOPPED_WORDS } from "../zerops/conversationStop.logic";
 import { appendReviewCommentsToPrompt, type ReviewCommentContext } from "../reviewCommentContext";
 import { environmentCatalog } from "../connection/catalog";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -530,6 +533,8 @@ const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_CONVERSATION_NOTICES: ReadonlyArray<ConversationNotice> = [];
+/** A Stop pressed here ended everything: the conversation's last row says so, calmly. */
+const STOPPED_NOTICE = { words: STOPPED_WORDS, calm: true } as const;
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
 function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
   const transitionGroupRef = useRef<HTMLDivElement | null>(null);
@@ -989,16 +994,19 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     }
     return worktreePath;
   }, [launchContext, worktreePath]);
+  // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden drawer reads none.
+  const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
   const cwd = useMemo(
     () =>
-      launchContext?.cwd ??
-      (project
-        ? projectScriptCwd({
-            project: { cwd: project.workspaceRoot },
+      project
+        ? terminalStartCwd({
+            launchCwd: launchContext?.cwd,
+            workspaceRoot: project.workspaceRoot,
             worktreePath: effectiveWorktreePath,
+            repositories,
           })
-        : null),
-    [effectiveWorktreePath, launchContext?.cwd, project],
+        : (launchContext?.cwd ?? null),
+    [effectiveWorktreePath, launchContext?.cwd, project, repositories],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -1258,17 +1266,19 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
       ?.state.summary ?? null;
   const worktreePath =
     launchContext?.worktreePath ?? activeSummary?.worktreePath ?? threadWorktreePath;
+  // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden panel reads none.
+  const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
   const cwd = useMemo(
     () =>
-      launchContext?.cwd ??
-      activeSummary?.cwd ??
-      (project
-        ? projectScriptCwd({
-            project: { cwd: project.workspaceRoot },
+      project
+        ? terminalStartCwd({
+            launchCwd: launchContext?.cwd ?? activeSummary?.cwd,
+            workspaceRoot: project.workspaceRoot,
             worktreePath,
+            repositories,
           })
-        : null),
-    [activeSummary?.cwd, launchContext?.cwd, project, worktreePath],
+        : (launchContext?.cwd ?? activeSummary?.cwd ?? null),
+    [activeSummary?.cwd, launchContext?.cwd, project, repositories, worktreePath],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -3149,6 +3159,16 @@ function ConversationView(props: ChatViewProps) {
       })
     : null;
   const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
+  // A Mate's new terminal starts in its code checkout, never its bare workspace (`terminalStartCwd`).
+  const mateRepositories = useMateRepositories(activeProject ? environmentId : null);
+  const terminalOpenCwd = activeProject
+    ? terminalStartCwd({
+        launchCwd: null,
+        workspaceRoot: activeProject.workspaceRoot,
+        worktreePath: activeThread?.worktreePath ?? null,
+        repositories: mateRepositories,
+      })
+    : null;
   const gitStatusQuery = useEnvironmentQuery(
     gitStatusCwd === null
       ? null
@@ -3442,16 +3462,21 @@ function ConversationView(props: ChatViewProps) {
     [activeServerThread, draftId, routeThreadKey, routeThreadRef],
   );
 
-  const interruptContextRef = useRef({ activeThread, phase, setThreadError });
-  interruptContextRef.current = { activeThread, phase, setThreadError };
+  // `afterTurn`: work its turn left runs on (set below, once the view knows it): a Stop then
+  // needs no running turn.
+  const interruptContextRef = useRef({ activeThread, phase, setThreadError, afterTurn: false });
+  interruptContextRef.current = { activeThread, phase, setThreadError, afterTurn: false };
   // Assigned once the composer queue helpers exist further down.
   const restoreQueuedMessagesRef = useRef<(messages: ReadonlyArray<QueuedComposerMessage>) => void>(
     () => {},
   );
+  // The one Stop (`useStopConversation`): the turn and everything it started — its helpers, its
+  // shells, the work it left running after it — whichever control or key pressed it.
+  const stopConversation = useStopConversation();
   const onInterrupt = useCallback(async () => {
-    const { activeThread, phase, setThreadError } = interruptContextRef.current;
-    const input = buildRunningThreadTurnInterruptInput(activeThread, phase);
-    if (!input || !activeThread) return;
+    const { activeThread, phase, setThreadError, afterTurn } = interruptContextRef.current;
+    if (!activeThread) return;
+    if (!afterTurn && buildRunningThreadTurnInterruptInput(activeThread, phase) === null) return;
     // Stop also cancels the queue: the messages return to the composer instead
     // of starting a new turn the moment the interrupted one settles.
     restoreQueuedMessagesRef.current(
@@ -3459,18 +3484,13 @@ function ConversationView(props: ChatViewProps) {
         .getState()
         .drain(scopedThreadKey(scopeThreadRef(activeThread.environmentId, activeThread.id))),
     );
-    const result = await interruptThreadTurn({
+    const answer = await stopConversation({
       environmentId: activeThread.environmentId,
-      input,
+      threadId: activeThread.id,
+      turnId: activeThread.latestTurn?.turnId ?? null,
     });
-    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-      const error = squashAtomCommandFailure(result);
-      setThreadError(
-        activeThread.id,
-        error instanceof Error ? error.message : "Failed to interrupt the current turn.",
-      );
-    }
-  }, [interruptThreadTurn]);
+    if (answer.kind === "refused") setThreadError(activeThread.id, answer.reason);
+  }, [stopConversation]);
   /** A held message withdrawn: the engine's Stop ends its queued run before any agent has it. */
   const onWithdrawHeldMessage = async (runId: string) => {
     if (!activeThread) return;
@@ -3517,7 +3537,7 @@ function ConversationView(props: ChatViewProps) {
       if (!activeThreadId || !activeProject) {
         return;
       }
-      const cwdForOpen = gitCwd ?? activeProject.workspaceRoot;
+      const cwdForOpen = terminalOpenCwd ?? activeProject.workspaceRoot;
       if (!cwdForOpen) {
         return;
       }
@@ -3546,7 +3566,7 @@ function ConversationView(props: ChatViewProps) {
     activeThreadWorktreePath,
     allocatableActiveTerminalIds,
     environmentId,
-    gitCwd,
+    terminalOpenCwd,
     openTerminal,
     setTerminalOpen,
     storeEnsureTerminal,
@@ -3558,7 +3578,7 @@ function ConversationView(props: ChatViewProps) {
       if (!activeThreadRef || hasReachedSplitLimit || !activeThreadId || !activeProject) {
         return;
       }
-      const cwdForOpen = gitCwd ?? activeProject.workspaceRoot;
+      const cwdForOpen = terminalOpenCwd ?? activeProject.workspaceRoot;
       if (!cwdForOpen) {
         return;
       }
@@ -3591,7 +3611,7 @@ function ConversationView(props: ChatViewProps) {
       openTerminal,
       activeThreadWorktreePath,
       environmentId,
-      gitCwd,
+      terminalOpenCwd,
       hasReachedSplitLimit,
       storeSplitTerminal,
       storeSplitTerminalVertical,
@@ -3601,7 +3621,7 @@ function ConversationView(props: ChatViewProps) {
     if (!activeThreadRef || !activeThreadId || !activeProject) {
       return;
     }
-    const cwdForOpen = gitCwd ?? activeProject.workspaceRoot;
+    const cwdForOpen = terminalOpenCwd ?? activeProject.workspaceRoot;
     if (!cwdForOpen) {
       return;
     }
@@ -3629,7 +3649,7 @@ function ConversationView(props: ChatViewProps) {
     openTerminal,
     activeThreadWorktreePath,
     environmentId,
-    gitCwd,
+    terminalOpenCwd,
     storeNewTerminal,
   ]);
   const closeTerminal = useCallback(
@@ -5146,49 +5166,6 @@ function ConversationView(props: ChatViewProps) {
     [shellTaskKey, shellLiveness, isWorking, engineConversation],
   );
   const liveJobs = useLiveJobs(liveJobsNow);
-  const [backgroundStopPress, setBackgroundStopPress] = useState<BackgroundStopPress | null>(null);
-  // "Stopping..." belongs to the turn the Stop was pressed under: a press as a wake took over
-  // never saw the liveness clear, and read "Stopping..." under a later turn's wait.
-  const isStoppingBackgroundWork = backgroundStopShows(
-    backgroundStopPress,
-    activeLatestTurn?.turnId ?? null,
-  );
-  useEffect(() => {
-    // "Stopping..." holds until the liveness clears; the interrupt command
-    // returning only means the request was accepted.
-    if (activeBackgroundLiveness === null) {
-      setBackgroundStopPress(null);
-    }
-  }, [activeBackgroundLiveness]);
-  useEffect(() => {
-    // Per-thread state: switching threads while A's stop is pending must not
-    // disable B's Stop button (review finding).
-    setBackgroundStopPress(null);
-  }, [activeThreadId]);
-  const handleStopBackgroundWork = useCallback(async () => {
-    if (!activeThread) return;
-    setBackgroundStopPress({ turnId: activeThread.latestTurn?.turnId ?? null });
-    const result = await interruptThreadTurn({
-      environmentId,
-      input: buildThreadTurnInterruptInput(activeThread),
-    });
-    if (result._tag === "Failure") {
-      // Every failure clears the pending state — an interrupted command
-      // never reached the server, so liveness would hold "Stopping..."
-      // forever. Only real failures toast.
-      setBackgroundStopPress(null);
-      if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        setThreadError(
-          activeThread.id,
-          error instanceof Error ? error.message : "Failed to stop background work.",
-        );
-      }
-    }
-  }, [activeThread, environmentId, interruptThreadTurn, setThreadError]);
-  const stopBackgroundWork = useCallback(() => {
-    void handleStopBackgroundWork();
-  }, [handleStopBackgroundWork]);
   // An engine conversation's cards say it from the change that ended the run; the row's word
   // comes a moment later (recheck on 0.15.41: the job's strip left at the turn's end, then came
   // back with the row's word 0.4 s later).
@@ -5196,10 +5173,29 @@ function ConversationView(props: ChatViewProps) {
     activeBackgroundLiveness ??
     (!isWorking && engineCards !== null && engineWorkRunsOn(engineCards) ? "working" : null);
   const backgroundRunsOn = afterTurnLiveness !== null;
+  interruptContextRef.current.afterTurn = backgroundRunsOn;
+  // One Stop for every control (`conversationStop`): the composer's, the menu row's, the
+  // keybinding's. "Stopping…" from the press, on every device once the Mate's row says a Stop is
+  // in force; "Stopped — nothing more will change." once nothing runs; given back, with why, when
+  // the Mate refused it.
+  const stopKey =
+    activeThread === undefined
+      ? null
+      : scopedThreadKey(scopeThreadRef(activeThread.environmentId, activeThread.id));
+  const stopPress = useStopPress(stopKey);
+  const stopNow = conversationStop({
+    press: stopPress,
+    stopping: activeThreadShell?.stopping === true,
+    working: isWorking || backgroundRunsOn,
+    turnId: activeLatestTurn?.turnId ?? null,
+  });
+  const isStopping = stopNow.kind === "stopping";
+  const stopBackgroundWork = useCallback(() => {
+    void onInterrupt();
+  }, [onInterrupt]);
   const composerBackgroundWork = useMemo(
-    () =>
-      backgroundRunsOn ? { stopping: isStoppingBackgroundWork, onStop: stopBackgroundWork } : null,
-    [backgroundRunsOn, isStoppingBackgroundWork, stopBackgroundWork],
+    () => (backgroundRunsOn ? { stopping: isStopping, onStop: stopBackgroundWork } : null),
+    [backgroundRunsOn, isStopping, stopBackgroundWork],
   );
   // An archived conversation reads as one and offers its way back: reopened from the chats menu it
   // drew a live composer that sent nothing, and Restore was gone with the archive's toast (engine
@@ -5355,7 +5351,7 @@ function ConversationView(props: ChatViewProps) {
   const endNoticeKey =
     shownThreadError === null ? null : threadErrorDismissalKey(routeThreadKey, shownThreadError);
   const endNoticeDismissed = endNoticeKey !== null && threadErrorDismissed(endNoticeKey);
-  const endNotice = useMemo(
+  const errorNotice = useMemo(
     () =>
       threadErrorNotice({
         error: shownThreadError,
@@ -5366,13 +5362,21 @@ function ConversationView(props: ChatViewProps) {
       }),
     [endNoticeDismissed, endNoticeDriver, endNoticeLimitShown, endNoticeMateName, shownThreadError],
   );
+  // A Stop pressed here that ended everything says so plainly, as the conversation's last row,
+  // until the next turn or its ×.
+  const stoppedShown = errorNotice === null && stopNow.kind === "stopped";
+  const endNotice = stoppedShown ? STOPPED_NOTICE : errorNotice;
   const activeThreadIdForNotice = activeThread?.id ?? null;
   const dismissEndNotice = useCallback(() => {
+    if (stoppedShown) {
+      if (stopKey !== null) useStopPressStore.getState().clear(stopKey);
+      return;
+    }
     if (endNoticeKey === null) return;
     dismissThreadError(endNoticeKey);
     setThreadError(activeThreadIdForNotice, null);
     setEndNoticeDismissals((count) => count + 1);
-  }, [activeThreadIdForNotice, endNoticeKey, setThreadError]);
+  }, [activeThreadIdForNotice, endNoticeKey, setThreadError, stopKey, stoppedShown]);
   // A crewmate's *Change its job*, and its composer's *Runs on*: its job in
   // the Crew tab; the lead's *Change the goal*: the crew's goal there.
   const editCrewmateJob = (handle: string) => {
@@ -5943,7 +5947,7 @@ function ConversationView(props: ChatViewProps) {
       if (command === "thread.stop") {
         // An unavailable command should not shadow contextual shortcuts such as Escape to close a dialog.
         // A read-only conversation has no stop, by button or by key.
-        if (!canInterruptRunningThread) return;
+        if (!canInterruptRunningThread && composerBackgroundWork === null) return;
         event.preventDefault();
         event.stopPropagation();
         if (event.repeat) return;
@@ -5968,6 +5972,7 @@ function ConversationView(props: ChatViewProps) {
     addTerminalSurface,
     activeThreadRef,
     canInterruptRunningThread,
+    composerBackgroundWork,
     activeThreadKey,
     terminalUiState.terminalOpen,
     terminalUiState.activeTerminalId,
@@ -6532,6 +6537,9 @@ function ConversationView(props: ChatViewProps) {
         agentNotes: [...agentNotes],
         vaultChanges: [...turnContext.vaultChanges],
         submissionIntent,
+        // A requested send keeps its ids, and with them whose it is (`ComposerSendIds.fromPanel`).
+        ...(sendIds === undefined ? {} : { sendIds }),
+        ...(sendIds?.fromPanel === true ? { fromPanel: true as const } : {}),
         // What it leaves with if its conversation is not on screen by then.
         sendSettings: {
           modelSelection: ctxSelectedModelSelection,
@@ -6654,6 +6662,7 @@ function ConversationView(props: ChatViewProps) {
         : queuedSendAttemptIds({
             given: sendIds,
             stored: queuedMessage.sendIds,
+            fromPanel: queuedMessage.fromPanel === true,
             mint: () => ({ commandId: newCommandId(), messageId: newMessageId() }),
           });
     // A queued send that did not go goes back to the head of the queue: unheld
@@ -6923,6 +6932,7 @@ function ConversationView(props: ChatViewProps) {
       messageId: messageIdForSend,
       threadId: threadIdForSend,
       at: messageCreatedAt,
+      fromPanel: attemptIds?.fromPanel === true,
     });
     if (sentAsk !== null) sendTurnReceipts?.requested(environmentId, sentAsk);
     if (!queuedMessage) {
@@ -6961,8 +6971,8 @@ function ConversationView(props: ChatViewProps) {
 
     let turnStartAttempted = false;
     let failure: AtomCommandResult<unknown, unknown> | null = null;
-    // Auto-title from first message
-    if (isFirstMessage && isServerThread) {
+    // Auto-title from the first message the person sends; a page's ask never names it.
+    if (isFirstMessage && isServerThread && attemptIds?.fromPanel !== true) {
       const titleResult = await updateThreadMetadata({
         environmentId,
         input: {
@@ -7070,6 +7080,8 @@ function ConversationView(props: ChatViewProps) {
           runtimeMode,
           interactionMode: sendInteractionMode,
           ...(bootstrap ? { bootstrap } : {}),
+          // A page's ask never names the conversation (`ComposerSendIds.fromPanel`).
+          ...(attemptIds?.fromPanel === true ? { fromPanel: true as const } : {}),
           createdAt: messageCreatedAt,
         },
       });
@@ -8400,6 +8412,7 @@ function ConversationView(props: ChatViewProps) {
                   isWorking,
                   workingStepLabel,
                   isCompacting,
+                  isStopping,
                   activeTurnStartedAt: activeWorkStartedAt,
                   listRef: legendListRef,
                   timelineEntries: conversationEntries,
@@ -8761,6 +8774,7 @@ function ConversationView(props: ChatViewProps) {
                               onSend={onSend}
                               onInterrupt={onInterrupt}
                               backgroundWork={composerBackgroundWork}
+                              stopping={isStopping}
                               onImplementPlanInNewThread={onImplementPlanInNewThread}
                               onRespondToApproval={onRespondToApproval}
                               onSelectActivePendingUserInputOption={

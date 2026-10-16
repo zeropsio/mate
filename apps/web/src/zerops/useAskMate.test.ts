@@ -1,8 +1,8 @@
-import { EnvironmentId } from "@t3tools/contracts";
+import { CommandId, EnvironmentId, MessageId } from "@t3tools/contracts";
 import type { CandidateLookup } from "@t3tools/client-runtime/zerops/projections";
 import { describe, expect, it } from "vite-plus/test";
 
-import { askMateTarget, askMateThread, askedDraft } from "./useAskMate";
+import { askMateTarget, askMateThread, askedDraft, pageSendIds } from "./useAskMate";
 
 const connected = EnvironmentId.make("environment-1");
 
@@ -100,5 +100,20 @@ describe("askedDraft: a request left unsent joins what the person had typed, nev
     ],
   ])("%s", (_case, draft, prompt) => {
     expect(askedDraft(draft, ASK)).toBe(prompt);
+  });
+});
+
+describe("pageSendIds", () => {
+  const given = { commandId: CommandId.make("command-1"), messageId: MessageId.make("message-1") };
+  const minted = { commandId: CommandId.make("command-2"), messageId: MessageId.make("message-2") };
+  it.each([
+    { name: "its asker's ids", ids: given, sent: { ...given, fromPanel: true } },
+    {
+      name: "new ids where its asker gave none",
+      ids: undefined,
+      sent: { ...minted, fromPanel: true },
+    },
+  ])("a page's ask goes out marked as the page's, never typed, with $name", ({ ids, sent }) => {
+    expect(pageSendIds(ids, () => minted)).toEqual(sent);
   });
 });

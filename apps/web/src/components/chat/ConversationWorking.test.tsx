@@ -612,6 +612,25 @@ describe("the Mate at work after its turn", () => {
   });
   const job = (title: string) => ({ title, of: "mate", since: Date.parse(at(1)) }) as const;
 
+  // S21-02: "Still working in the background" stood on after the person's Stop.
+  it.each([
+    { stopping: false, head: "Still working in the background" },
+    { stopping: true, head: "Stopping…" },
+  ])("says it is stopping once a person's Stop is in force: stopping $stopping", (row) => {
+    const markup = renderToStaticMarkup(
+      <ConversationAfterWork
+        dock={after({ items: [job("Final batched browser check")], count: 1 })}
+        environmentId={null}
+        onOpenAgents={() => undefined}
+        speaker={{ name: "Eli", tint: "sky" }}
+        state="working"
+        stopping={row.stopping}
+        threadRef={null}
+      />,
+    );
+    expect(markup).toContain(row.head);
+  });
+
   it("names what still runs under its head, and whose it is", () => {
     const markup = afterWork(
       after({

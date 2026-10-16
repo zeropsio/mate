@@ -3,6 +3,7 @@ import {
   CrewRefusalReason,
   type CrewAttention,
   type CrewLaneSummary,
+  type CrewProposalFailure,
   type CrewRun,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -28,7 +29,6 @@ import {
   crewClosedOutcome,
   crewCommitEditAsk,
   crewDeliverAsk,
-  crewDescribeAsk,
   crewDevHostDatabaseWord,
   crewDiffStatWord,
   crewEarlierStintNotice,
@@ -79,6 +79,11 @@ import {
   crewNotShippedWords,
   CREW_NOT_SHIPPED_SHORT,
   mateOwnChatWord,
+  CREW_SETUP_WORDS,
+  crewProposalFailedWords,
+  crewProposingWord,
+  crewSuggestLine,
+  crewSuggestUnavailableWords,
 } from "./phrases.ts";
 
 it.each([
@@ -516,7 +521,7 @@ describe("a row's words", () => {
 describe("the setup's and the job's words", () => {
   it("says where the builders' copies go", () => {
     expect(crewSetUpFooter("Fen", ["appdev"])).toBe(
-      "Each builder gets its own copy of Fen's code on appdev. Getting them ready takes a minute or two; each row shows how it's going.",
+      "Each builder works in its own copy of Fen's code on appdev; nothing reaches Fen's code until you review it. Getting the copies ready takes a minute or two; each row shows how it's going.",
     );
   });
 
@@ -645,10 +650,48 @@ describe("the drafts a crew surface hands the Mate", () => {
     );
   });
 
-  it("asks the Mate to suggest a crew from the goal", () => {
-    expect(crewDescribeAsk("  a persistent world  ")).toBe(
-      "Set up a crew for this project, from its goal: a persistent world",
-    );
+  it("says the Mate is proposing a crew, and why none came", () => {
+    expect(crewProposingWord("Fen")).toBe("Fen is proposing a crew…");
+    expect(
+      [
+        ["refused", "Claude's sign-in has expired."],
+        ["refused", null],
+        ["signed-out", null],
+        ["failed", null],
+        ["malformed", null],
+      ].map(([reason, detail]) =>
+        crewProposalFailedWords("Fen", reason as CrewProposalFailure, detail ?? null),
+      ),
+    ).toEqual([
+      "Claude's sign-in has expired.",
+      "Fen can't propose a crew here.",
+      "Fen's agent needs signing in again.",
+      "Fen couldn't propose a crew this time.",
+      "Fen answered with something that isn't a crew.",
+    ]);
+  });
+
+  it("says why the Mate can't be asked to suggest a crew", () => {
+    expect(
+      (["someone-else", "unrecorded", "no-chat", "update"] as const).map((lock) =>
+        crewSuggestUnavailableWords("Fen", lock),
+      ),
+    ).toEqual([
+      "Fen's agent was signed in by another project member\u00a0— only they can ask it.",
+      "Fen's agent sign-in was not recorded by Zerops Mate, so nobody can ask it.",
+      "Fen has no conversation to propose from yet.",
+      "Update Fen to get a proposal.",
+    ]);
+  });
+
+  it("says once, in the footer, that each crewmate works in its own copy", () => {
+    const said = [
+      CREW_SETUP_WORDS.line,
+      crewSuggestLine("Fen"),
+      CREW_SETUP_WORDS.leadAndTwoLine,
+      crewSetUpFooter("Fen", []),
+    ].filter((words) => words.includes("own copy"));
+    expect(said).toEqual([crewSetUpFooter("Fen", [])]);
   });
 });
 

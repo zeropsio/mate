@@ -896,6 +896,55 @@ const runAdmitted = (
     Effect.match({ onFailure: (error) => error.message, onSuccess: () => undefined }),
   );
 
+const generationAdmitted = (
+  world: World,
+  instanceId: string,
+  subject: string,
+): Effect.Effect<string | undefined> =>
+  admission(world).pipe(
+    Effect.flatMap((service) =>
+      service.admitGeneration({ instanceId, subject: `${ZEROPS_SUBJECT_PREFIX}${subject}` }),
+    ),
+    Effect.match({ onFailure: (error) => error.message, onSuccess: () => undefined }),
+  );
+
+describe("ZeropsTurnAdmission.admitGeneration", () => {
+  it.effect.each([
+    {
+      title: "lets the signer ask their own agent for text",
+      world: janSignedClaude,
+      subject: JAN,
+      expected: undefined,
+    },
+    {
+      title: "refuses text from an agent another member signed in",
+      world: janSignedClaude,
+      subject: EVA,
+      expected: SOMEONE_ELSE,
+    },
+    {
+      title: "refuses text from an agent that is not signed in",
+      world: {
+        agents: [
+          {
+            ...signedIn("claude-code"),
+            credPresent: false,
+            providerAuth: "unauthenticated",
+            state: "not-authorized",
+          },
+        ],
+        signers: { "claude-code": JAN },
+      } satisfies World,
+      subject: JAN,
+      expected: "Claude Code is not signed in on this project. Sign it in to use it.",
+    },
+  ] as const)("$title", ({ world, subject, expected }) =>
+    Effect.gen(function* () {
+      assert.strictEqual(yield* generationAdmitted(world, "claudeAgent", subject), expected);
+    }),
+  );
+});
+
 describe("ZeropsTurnAdmission.admitRun", () => {
   it.effect.each(
     Array.from(

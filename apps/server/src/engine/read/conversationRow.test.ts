@@ -45,7 +45,17 @@ const view = (patch: Partial<ConversationView> = {}): ConversationView => ({
   lastEnded: null,
   pausedUntil: null,
   openRequests: [],
-  lastPerson: { text: "Deploy the api\nthen tell me", at: 100 },
+  lastPerson:
+    patch.lastPerson === undefined
+      ? { text: "Deploy the api\nthen tell me", at: 100 }
+      : patch.lastPerson,
+  // What the person typed: their latest message, unless a test says a page sent it.
+  lastAsked:
+    patch.lastAsked === undefined
+      ? patch.lastPerson === undefined
+        ? { text: "Deploy the api\nthen tell me", at: 100 }
+        : patch.lastPerson
+      : patch.lastAsked,
   lastAgent: { text: `Deployed, pushed with ${token}.`, at: 400 },
   liveCall: null,
   background: null,
@@ -81,6 +91,17 @@ describe("the menu row", () => {
     expect(row.snippet).not.toContain(token);
     expect(row.revision).toEqual({ environmentId: "env-1", epoch: 7, seq: 42 });
     expect(row.at).toBe(900);
+  });
+
+  it("never names the conversation by a request a page sent for the person", () => {
+    const typed = { text: "Build the tea catalog", at: 100 };
+    const fromPanel = { text: "Open crew ports on appdev", at: 200 };
+    expect(
+      conversationRowOf(view({ lastPerson: fromPanel, lastAsked: typed }), revision).subject,
+    ).toBe("Build the tea catalog");
+    expect(
+      conversationRowOf(view({ lastPerson: fromPanel, lastAsked: null }), revision).subject,
+    ).toBeNull();
   });
 
   it.each([
@@ -232,6 +253,32 @@ describe("the menu row", () => {
     [
       "a stopped run: idle",
       { lastEnded: ended(1, { kind: "stopped", by: ana }) },
+      { kind: "idle" },
+    ],
+    [
+      "a person's Stop is ending the run on: working, and saying it is stopping",
+      { activeRun: run(1), stopping: true },
+      { kind: "working", since: 120, waitsOnHelpers: false, stopping: true },
+    ],
+    [
+      "a person's Stop is ending the helpers its turn left: working on helpers, and saying it is stopping",
+      {
+        lastEnded: ended(1, { kind: "stopped", by: ana }),
+        background: "working",
+        work: [helperWork],
+        stopping: true,
+      },
+      {
+        kind: "working",
+        since: 500,
+        waitsOnHelpers: true,
+        stopping: true,
+        work: { items: [helperWork], count: 1, helpers: 1 },
+      },
+    ],
+    [
+      "a Stop that has nothing left to end: idle, never stopping",
+      { lastEnded: ended(1, { kind: "stopped", by: ana }), stopping: true },
       { kind: "idle" },
     ],
   ])("%s", (_title, patch, state) => {

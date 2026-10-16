@@ -28,7 +28,7 @@ type DeviceLoginState =
   | { readonly kind: "idle" }
   | { readonly kind: "waiting"; readonly stage: ZeropsDeviceLoginStage }
   | { readonly kind: "adopting" }
-  | { readonly kind: "failed"; readonly message: string; readonly intent: Intent };
+  | { readonly kind: "failed"; readonly message: string };
 
 const DEVICE_LOGIN_ENDED: Record<"denied" | "expired", string> = {
   denied: "Sign-in was cancelled.",
@@ -107,14 +107,14 @@ export function ZeropsHostedLanding() {
         if (!current()) return;
         if (outcome.kind === "cancelled") return setDevice({ kind: "idle" });
         if (outcome.kind !== "approved")
-          return setDevice({ kind: "failed", message: DEVICE_LOGIN_ENDED[outcome.kind], intent });
+          return setDevice({ kind: "failed", message: DEVICE_LOGIN_ENDED[outcome.kind] });
         if (outcome.session === null)
           throw new Error("Zerops approved the sign-in without a session.");
         setDevice({ kind: "adopting" });
         await adoptDeviceLogin(outcome.session);
       })
       .catch((cause: unknown) => {
-        if (current()) setDevice({ kind: "failed", message: zeropsErrorMessage(cause), intent });
+        if (current()) setDevice({ kind: "failed", message: zeropsErrorMessage(cause) });
       });
   };
   if (device.kind === "adopting")
@@ -124,7 +124,9 @@ export function ZeropsHostedLanding() {
       <ZeropsHandoverFailed
         message={device.message}
         onBack={() => setDevice({ kind: "idle" })}
-        onRetry={() => startDeviceLogin(device.intent)}
+        // Sign-in, whatever was pressed: a sign-up may have made the account before the window
+        // ended, and Zerops's sign-in offers to create one to whoever has none.
+        onRetry={() => startDeviceLogin(undefined)}
       />
     );
   const start = (intent?: "register") => {

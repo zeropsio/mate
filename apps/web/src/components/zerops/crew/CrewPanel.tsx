@@ -38,6 +38,7 @@ import { useZeropsMate } from "~/zerops/useZeropsMates";
 
 import { ZeropsMateEmptyState } from "../ZeropsMateEmptyState";
 import { CrewSectionHost } from "./CrewSectionHost";
+import { crewProposeWith, type CrewProposeWith } from "./CrewSetup.logic";
 
 /** The Crew tab beside one conversation. */
 export function CrewPanel({
@@ -99,6 +100,13 @@ export function CrewPanel({
       // when it is a person chat, else the main one.
       onAskMate={(draft) => askMate(projectId, draft, { threadId })}
       onSignIn={(lock) => onSignIn(lock.agentId)}
+      // A proposal runs on the agent of that same chat, for the viewer who may run it.
+      proposeWith={crewProposeWith({
+        capabilities: serverConfig?.environment.capabilities,
+        modelSelection: askChat?.modelSelection,
+        lock: askLock,
+        mateName: mate?.name ?? "the Mate",
+      })}
       treeCwd={treeCwd}
     />
   );
@@ -122,6 +130,8 @@ export interface CrewPanelBodyProps {
   readonly askLock: CrewLock | null;
   /** A closed crew's one way out: the viewer's own sign-in on its login's agent. */
   readonly onSignIn: (lock: CrewLock) => void;
+  /** Where the setup's *Let Fen suggest a crew* runs, or why it can't for this viewer. */
+  readonly proposeWith: CrewProposeWith;
 }
 
 /** The tab's column for the crew it is handed — what a harness draws too. */
@@ -134,6 +144,7 @@ export function CrewPanelBody({
   access,
   askLock,
   onSignIn,
+  proposeWith,
 }: CrewPanelBodyProps) {
   if (crew.status === null) return null;
   if (!hasCrewSurface(crew.status) || crew.snapshot === null) {
@@ -153,6 +164,7 @@ export function CrewPanelBody({
         mate={mate}
         onAskMate={onAskMate}
         onSignIn={onSignIn}
+        proposeWith={proposeWith}
         snapshot={crew.snapshot}
         treeCwd={treeCwd}
         view={crew.status === "applied" ? crew.view : null}

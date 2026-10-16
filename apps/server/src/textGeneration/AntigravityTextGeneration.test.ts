@@ -87,6 +87,7 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
     nativeFilesAtClose: [] as Array<boolean>,
     cancellations: 0,
     stop: undefined as Effect.Effect<void> | undefined,
+    profiles: [] as Array<{ directory: string; mcp: string; signIn: boolean } | null>,
   };
   const outputs = [...(options.outputs ?? ['{"title":"Repair login"}'])];
   const incoming: Omit<PromptContext, "cwd" | "emit"> = {
@@ -120,10 +121,23 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
       );
     });
 
-  const makeRuntime: AntigravityTextGenerationOptions["makeRuntime"] = (cwd) =>
+  const makeRuntime: AntigravityTextGenerationOptions["makeRuntime"] = (cwd, profile) =>
     Effect.gen(function* () {
       const events = yield* Queue.unbounded<AcpSessionRuntimeEvent>();
       state.workspaces.push(cwd);
+      state.profiles.push(
+        profile === undefined
+          ? null
+          : {
+              directory: profile,
+              mcp: yield* fs
+                .readFileString(path.join(profile, "config", "mcp_config.json"))
+                .pipe(Effect.orDie),
+              signIn: yield* fs
+                .exists(path.join(profile, "antigravity-acp", "conversations", "user-session.db"))
+                .pipe(Effect.orDie),
+            },
+      );
       expect(yield* fs.readDirectory(cwd).pipe(Effect.orDie)).toEqual([]);
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
@@ -333,6 +347,49 @@ it.layer(NodeServices.layer)("AntigravityTextGeneration", (it) => {
         expect(fixture.state.prompts[0]?.prompt).toEqual([
           { type: "text", text: expect.stringContaining("+handleRemoteCallback()") },
         ]);
+        yield* fixture.assertCleaned;
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "proposes a crew where the profile names MCP servers, in a profile of its own with none",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({
+          outputs: [
+            '{"lead":{"name":"Lead","part":"Plans it."},"builders":[{"name":"Checkout","part":"Builds it."}]}',
+          ],
+        });
+        const config = fixture.path.join(fixture.profileDirectory, "config");
+        yield* fixture.fs.makeDirectory(config, { recursive: true });
+        yield* fixture.fs.writeFileString(
+          fixture.path.join(config, "mcp_config.json"),
+          '{"mcpServers":{"zerops":{"command":"zcp","args":["mcp"]}}}',
+        );
+        expect(
+          yield* fixture.textGeneration.generateCrewProposal({
+            cwd: fixture.projectDirectory,
+            goal: "A tea shop that ships weekly.",
+            modelSelection,
+          }),
+        ).toEqual({
+          lead: { name: "Lead", part: "Plans it." },
+          builders: [{ name: "Checkout", part: "Builds it." }],
+        });
+        const [profile] = fixture.state.profiles;
+        expect(profile?.directory).not.toBe(fixture.profileDirectory);
+        expect(JSON.parse(profile?.mcp ?? "null")).toEqual({ mcpServers: {} });
+        // The instance's own sign-in and session store reach the helper, linked, not copied.
+        expect(profile?.signIn).toBe(true);
+        expect(yield* fixture.fs.exists(profile?.directory ?? "")).toBe(false);
+        expect(
+          yield* fixture.fs.readFileString(fixture.path.join(config, "mcp_config.json")),
+        ).toContain("zerops");
+        // Other text still refuses a profile whose MCP servers could run.
+        const refused = yield* fixture.textGeneration
+          .generateThreadTitle(fixture.titleInput)
+          .pipe(Effect.flip);
+        expect(refused.detail).toContain("MCP configuration");
         yield* fixture.assertCleaned;
       }).pipe(Effect.scoped),
   );

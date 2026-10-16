@@ -1,6 +1,7 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
+import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { overviewPaints, tiersAddable } from "./projects/projectsView.logic";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
 import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
@@ -43,7 +44,7 @@ import { Spinner } from "../ui/spinner";
 import { shownHqPersonFactsAtom, shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
-import { hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
+import { hqDown, hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
 import {
   applyFirstBuildVerdict,
@@ -155,6 +156,7 @@ import { MateFace, STATUS_BADGE_TONE } from "./primitives";
 import { useOverviewSlots } from "./projects/overviewSlots";
 import { OverviewCardMate } from "./projects/OverviewCardMate";
 import { ArrivalWelcome } from "./projects/ArrivalWelcome";
+import { signInSettled } from "./projects/arrival.logic";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsHqCard } from "./ZeropsHqCard";
@@ -1598,6 +1600,22 @@ export function ZeropsProjectsContent({
       : undefined;
   const gitSetupCan = gitSetupApp?.can;
   const hqOffers = useHqOffers();
+  // Why Add a Mate stands off, where that is known before the press (`newMateGate`): HQ refusing
+  // the person a Mate here, or the project's setup files not ready for another.
+  const addMateGate = useNewMateGate();
+  const addMateWhy = (groupId: string): string | null => {
+    const offer = addMateOffer(groupId);
+    if (offer.kind === "refused" || offer.kind === "unavailable")
+      return hqOffers.words(offer) ?? null;
+    const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
+    if (entry === undefined) return null;
+    return addMateGate({
+      group: entry.group,
+      environments: entry.environments.flatMap(({ item }) =>
+        item === undefined ? [] : [{ item }],
+      ),
+    });
+  };
   const gitSetupAdd = hqOffers.state(gitSetupCan, "add_git_environment");
   const gitSetupOffered = (verb: string) => hqOffers.state(gitSetupCan, verb).kind === "allowed";
   const requestedGroup = useMemo(
@@ -2050,10 +2068,18 @@ export function ZeropsProjectsContent({
       })),
     [addMateOffer, filterFacts, flowGroups],
   );
+  // HQ's record of the person's first sign-in (`arrival.logic`'s `firstVisit`) comes with the
+  // organization's record: the welcome decides once that is read too.
+  const hqOrganization = hqStructure.organization;
   const arrivalSettled =
+    signInSettled({
+      recordRead: hqOrganization !== null,
+      hqUnavailable: hqStructure.refusal !== null || hqDown(hqStructure),
+    }) &&
     candidates.every(
       (candidate) => !hasMate(candidate) || personFacts[candidate.project.id] !== undefined,
-    ) && flowGroups.every((entry) => addMateOffer(entry.group.groupId).kind !== "unknown");
+    ) &&
+    flowGroups.every((entry) => addMateOffer(entry.group.groupId).kind !== "unknown");
   const keptGroups = flowGroups.filter((entry) =>
     overviewKeeps({
       show: search.show,
@@ -2377,6 +2403,7 @@ export function ZeropsProjectsContent({
       mate.previews.map((preview) => ({ mate: mate.name, ...preview })),
     );
     const oneMate = new Set(previews.map((preview) => preview.mate)).size <= 1;
+    const mateWhy = addMateWhy(group.groupId);
     return (
       <ZeropsProjectRenameMenu
         actions={[
@@ -2408,7 +2435,8 @@ export function ZeropsProjectsContent({
                 {
                   id: "add-mate",
                   label: "Add Mate",
-                  disabled: creationRunning,
+                  disabled: creationRunning || mateWhy !== null,
+                  ...(mateWhy === null ? {} : { why: mateWhy }),
                   onSelect: () => {
                     requestEnvironment(group.groupId, "dev");
                   },
@@ -2544,6 +2572,7 @@ export function ZeropsProjectsContent({
       {project === undefined && activeOrganization !== null ? (
         <ArrivalWelcome
           apps={arrivalApps}
+          signIn={hqOrganization?.viewer}
           onStart={addMate}
           orgId={activeOrganization.id}
           organizationName={activeOrganization.name}
@@ -2568,7 +2597,11 @@ export function ZeropsProjectsContent({
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
         groups={project === undefined ? keptGroups : flowGroups}
-        page={project}
+        page={
+          project === undefined
+            ? undefined
+            : { ...project, addMateWhy: addMateWhy(project.groupId) }
+        }
         isMate={hasMate}
         onCreateProject={noProjectYet && roleOffered.newProject ? askNewProject : undefined}
         noProjectYet={noProjectYet}

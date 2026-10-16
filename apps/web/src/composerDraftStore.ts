@@ -449,6 +449,11 @@ export type ComposerThreadTarget = ScopedThreadRef | DraftId;
 export interface ComposerSendIds {
   readonly commandId: CommandId;
   readonly messageId: MessageId;
+  /**
+   * A press on a page asked for this send (`useAskMate`), not the person's typing: it never names
+   * the conversation — neither its title nor its subject.
+   */
+  readonly fromPanel?: true;
 }
 
 /** What a surface asked the composer to send: its words, and its ids when it carries some. */

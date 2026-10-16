@@ -63,6 +63,7 @@ import { standupBar } from "./standupBar.logic";
 import { OperationDetail, PlanSteps, useHoldReading } from "./RunChat";
 import { drawerEase, stepHeight, type CarriedRow } from "./stepHeight";
 import { useEasedRoom } from "./runRoom";
+import { STOPPING_WORDS } from "../../zerops/conversationStop.logic";
 import {
   afterWorkLines,
   backgroundBand,
@@ -884,9 +885,12 @@ export function ConversationAfterWork({
   environmentId,
   threadRef,
   onOpenAgents,
+  stopping = false,
 }: {
   readonly speaker: ConversationSpeaker;
   readonly state: "working" | "monitoring";
+  /** A person's Stop is ending this work: it says so, never that the work goes on. */
+  readonly stopping?: boolean;
   readonly dock: DockModel | null;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
@@ -915,7 +919,11 @@ export function ConversationAfterWork({
         <MateFace shape={speaker.shape} size={24} state="working" tint={speaker.tint} />
         <span className="run-now-words run-now-head">
           <span className="run-now-verb">
-            {watching ? "Watching in the background" : "Still working in the background"}
+            {stopping
+              ? STOPPING_WORDS
+              : watching
+                ? "Watching in the background"
+                : "Still working in the background"}
           </span>
         </span>
       </div>

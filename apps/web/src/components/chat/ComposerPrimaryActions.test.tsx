@@ -133,6 +133,32 @@ describe("ComposerPrimaryActions", () => {
     },
   );
 
+  // S21-02: the person's Stop showed nothing for 10 s.
+  it("the running turn's Stop says it is stopping once a person's Stop is in force", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ComposerPrimaryActions, {
+        compact: true,
+        pendingAction: null,
+        isRunning: true,
+        showPlanFollowUpPrompt: false,
+        promptHasText: false,
+        isSendBusy: false,
+        sendDisabledReason: null,
+        isConnecting: false,
+        isEnvironmentUnavailable: false,
+        isPreparingWorktree: false,
+        hasSendableContent: false,
+        stopping: true,
+        onPreviousPendingQuestion: () => {},
+        onInterrupt: () => {},
+        onImplementPlanInNewThread: () => {},
+      }),
+    );
+
+    expect(markup).toContain('aria-label="Stopping…"');
+    expect(markup).not.toContain('aria-label="Stop generation"');
+  });
+
   it("keeps stop as the only action while running with an empty composer", () => {
     const markup = renderRunningActions(false);
 

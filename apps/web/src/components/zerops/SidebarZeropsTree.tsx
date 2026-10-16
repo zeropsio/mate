@@ -1,5 +1,6 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
+import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { showProjectParts } from "~/zerops/projectPartsShown";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
@@ -215,6 +216,8 @@ import { Kbd } from "../ui/kbd";
 import { MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
 import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
+import { useStopPress } from "~/zerops/conversationStop";
+import { withStopPress } from "~/zerops/conversationStop.logic";
 import {
   addressesPlace,
   formatWorkingTime,
@@ -846,6 +849,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // Whether *Add stage* and *Put it live* stand in a project's menu: HQ's offer of each.
   const environmentOffers = useEnvironmentOffers();
   const addMateOffer = useAddMateOffer();
+  const addMateGate = useNewMateGate();
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
@@ -2059,6 +2063,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               onAddMate?.(group.groupId);
             }
           : undefined,
+      addMateWhy: addMateGate({
+        group,
+        environments:
+          orderedGroups.find((entry) => entry.group.groupId === group.groupId)?.environments ?? [],
+      }),
       onOpen:
         onOpenGroup === undefined
           ? onBrowseProjects
@@ -3306,12 +3315,14 @@ function useMateRowState<T extends RosterCandidate>({
   const offlineSince = useMateOfflineSince(candidate.project.id, candidate.key);
   // Waking while it comes up and arrives (`mateFaceFor`).
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming));
+  // A Stop pressed in this tab reads as stopping at once, before the Mate's row says so.
+  const stopPress = useStopPress(activity?.threadKey);
   const read = mateRowReading({
     name,
     connected: up,
     offlineSince,
     timestampFormat,
-    activity,
+    activity: withStopPress(activity, stopPress),
     reviewWaits,
     mine: hqPeople?.waitsOnViewer === true,
     pose,

@@ -35,6 +35,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback } from "react";
 
+import { newCommandId, newMessageId } from "../lib/utils";
 import { useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useComposerDraftStore, type ComposerSendIds } from "../composerDraftStore";
@@ -106,6 +107,17 @@ export function askMateTarget(
 }
 
 /**
+ * The ids a page's ask is sent with: its asker's, or new ones — marked as the page's, so the
+ * conversation is never named by words the person did not type.
+ */
+export function pageSendIds(
+  ids: ComposerSendIds | undefined,
+  mint: () => ComposerSendIds,
+): ComposerSendIds {
+  return { ...(ids ?? mint()), fromPanel: true };
+}
+
+/**
  * Writes an ask in a conversation's composer: sent where the person already decided (spec §5.4
  * retired for those surfaces by the owner, 2026-09-19); a request left to be read joins what they
  * had typed.
@@ -119,7 +131,12 @@ function askIn(
   const drafts = useComposerDraftStore.getState();
   if (!send) {
     drafts.setPrompt(threadRef, askedDraft(drafts.getComposerDraft(threadRef)?.prompt, ask));
-  } else drafts.requestSend(threadRef, ask, ids);
+  } else
+    drafts.requestSend(
+      threadRef,
+      ask,
+      pageSendIds(ids, () => ({ commandId: newCommandId(), messageId: newMessageId() })),
+    );
 }
 
 export function useAskMate(

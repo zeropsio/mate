@@ -97,6 +97,7 @@ describe("engineAdapters", () => {
               ZeropsTurnAdmission.of({
                 admit: () => Effect.void,
                 admitOperator: () => Effect.void,
+                admitGeneration: () => Effect.void,
                 admitRun: () =>
                   Effect.fail(
                     new OrchestrationDispatchCommandError({

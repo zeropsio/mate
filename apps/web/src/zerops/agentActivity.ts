@@ -87,6 +87,7 @@ export type AgentActivityThread = Pick<
   | "interactionMode"
   | "backgroundLiveness"
   | "backgroundWork"
+  | "stopping"
   | "latestUserMessageAt"
   | "updatedAt"
 > & {
@@ -177,6 +178,13 @@ export interface ZeropsAgentActivity {
    * jobs apart from its helpers. Absent where nothing names it.
    */
   readonly backgroundWork?: BackgroundWork;
+  /** Its latest turn: a Stop pressed under it speaks for that turn alone (`conversationStop`). */
+  readonly turnId?: string;
+  /**
+   * A person's Stop is in force while it works — the Mate's row says so, or this tab's press
+   * (`withStopPress`): its row says it is stopping, never what still runs.
+   */
+  readonly stopping?: true;
   /**
    * The question the Mate waits on the person to answer, in its words: what a
    * needs-you row's third line says. The server relays it; absent while
@@ -479,6 +487,8 @@ export function threadAgentActivity(
     ...(thread.latestTurn !== null || thread.latestUserMessageAt !== null
       ? { hasWork: true as const }
       : {}),
+    ...(thread.latestTurn === null ? {} : { turnId: thread.latestTurn.turnId }),
+    ...(resolved.kind === "working" && thread.stopping === true ? { stopping: true as const } : {}),
     snippet: agentActivitySnippet(thread),
     ...(agentActivityAwaitsWords(thread) ? { awaitingWords: true as const } : {}),
     unread: hasUnseenCompletion({ latestTurn: thread.latestTurn, ...visited }),

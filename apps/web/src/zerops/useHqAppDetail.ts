@@ -83,7 +83,9 @@ export function useHqAppDetail(appId: string | null): HqAppDetailRead {
 }
 
 /** Each application's detail by its id, as far as a detail surface holds it; holds none. */
-function useHqAppDetails(appIds: ReadonlyArray<string>): Readonly<Record<string, HqAppDetailRead>> {
+export function useHqAppDetails(
+  appIds: ReadonlyArray<string>,
+): Readonly<Record<string, HqAppDetailRead>> {
   const orgId = useAccountOrgId();
   const key = useMemo(
     () => (orgId === null || appIds.length === 0 ? null : { orgId, appIds }),

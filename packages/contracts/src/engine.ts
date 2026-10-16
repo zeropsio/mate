@@ -482,6 +482,11 @@ const itemBodyFields = {
     /** Pictures by reference (their asset occurrence) and files by id, never bytes. */
     attachments: Schema.Array(PersonAttachment),
     sendId: CommandId,
+    /**
+     * Sent by a press on a page for the person (an ask a side panel wrote), not typed by them: it
+     * is never the conversation's subject. Absent: typed.
+     */
+    fromPanel: Schema.optionalKey(Schema.Literal(true)),
     delivery: Schema.Struct({
       /** `unknown`: a restart cut its send mid-flight; it may or may not have arrived. */
       state: forwardCompatibleLiterals(["queued", "delivered", "steered", "refused", "unknown"]),
@@ -745,6 +750,11 @@ export const ConversationRowState = forwardCompatibleUnion({
       turnDue: Schema.optionalKey(Schema.Literal(true)),
       /** What it waits on after its turn, by name (`waitsOnHelpers`); absent from an older server. */
       work: ForwardCompatibleOptional(BackgroundWork),
+      /**
+       * A person's Stop is in force: the run, and the work it started, are being ended. Absent
+       * from an older server, which says nothing until they have.
+       */
+      stopping: Schema.optionalKey(Schema.Literal(true)),
     }),
     Schema.Struct({
       kind: Schema.Literal("waiting"),
@@ -814,6 +824,11 @@ export const SessionCapabilities = Schema.Struct({
   steerAttachments: Schema.optionalKey(Schema.Boolean),
   /** The agent opens a turn of its own when its background work ends (Claude). Absent: never. */
   selfTurns: Schema.optionalKey(Schema.Boolean),
+  /**
+   * The driver's own Stop closes the session, and every helper and shell in it (Claude). Absent:
+   * its Stop ends the turn alone, and the engine closes the session to stop what the turn started.
+   */
+  stopClosesSession: Schema.optionalKey(Schema.Boolean),
   /**
    * The model options the session takes on its next send (`all`: every option goes per turn); a
    * change of any other needs a new session. Absent: none.

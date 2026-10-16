@@ -476,6 +476,7 @@ export const makeScriptedProvider = (
               generatePrContent: () => noText("generatePrContent"),
               generateBranchName: () => noText("generateBranchName"),
               generateThreadTitle: () => noText("generateThreadTitle"),
+              generateCrewProposal: () => noText("generateCrewProposal"),
             },
           };
         }),

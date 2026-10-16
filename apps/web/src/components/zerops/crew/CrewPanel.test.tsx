@@ -91,6 +91,7 @@ const render = (crew: CrewRead, viewer: "runs it" | "may not" = "runs it") =>
       mate={{ name: "Fen", tint: "amber" }}
       onAskMate={() => undefined}
       onSignIn={() => undefined}
+      proposeWith={{ kind: "unavailable", words: "" }}
       treeCwd="/var/www"
     />,
   );
