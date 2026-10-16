@@ -147,6 +147,8 @@ export interface PutLiveSheetModel {
   readonly button: string;
   /** Why the button waits, where it does: the setup files being read, or none to make it from. */
   readonly hold: string | undefined;
+  /** Pressed here: the run is under way and the button says so (`putLiveSheetUnderWay`). */
+  readonly busy?: true | undefined;
 }
 
 const MAX_LINES = 3;
@@ -255,6 +257,20 @@ export function putLiveSheet(input: {
               ? SETUP_MISSING
               : SETUP_UNREADABLE,
   };
+}
+
+/**
+ * The sheet while its project's run is under way: pressed here, its button says it is going live
+ * for the moment the sheet stays; a run somebody started before the sheet opened is already on its
+ * way, and its button waits.
+ */
+export function putLiveSheetUnderWay(
+  model: PutLiveSheetModel,
+  input: { readonly pressedHere: boolean },
+): PutLiveSheetModel {
+  return input.pressedHere
+    ? { ...model, button: "Putting it live…", busy: true, hold: undefined }
+    : { ...model, hold: "It's already on its way." };
 }
 
 // ---------------------------------------------------------------------------

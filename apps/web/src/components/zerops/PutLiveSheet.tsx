@@ -98,8 +98,8 @@ export function PutLiveSheet({
           </p>
         )}
         <Button
-          aria-busy={model.what === undefined || undefined}
-          disabled={model.hold !== undefined || model.what === undefined}
+          aria-busy={model.what === undefined || model.busy === true || undefined}
+          disabled={model.hold !== undefined || model.what === undefined || model.busy === true}
           onClick={onPutLive}
           ref={press}
         >

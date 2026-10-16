@@ -13,6 +13,7 @@ import {
   putLiveCreation,
   putLiveHoldsRelease,
   putLiveLines,
+  putLiveSheetUnderWay,
   putLiveMergeGate,
   putLiveDeadline,
   putLiveNext,
@@ -280,6 +281,25 @@ describe("the Put it live sheet", () => {
       ),
     ).toEqual(["Adds search to the box."]);
     expect(putLiveLines(undefined)).toEqual([]);
+  });
+});
+
+// A run 2 follow-up: right after the person's only press the sheet said "It's already on its
+// way.", as if somebody had pressed before them.
+describe("the Put it live sheet once a run is under way", () => {
+  const sheet = putLiveSheet({ project: "Tea Shop", changes: [{ title: "x" }], recipe: "present" });
+
+  it("says it is going live once pressed here, never that it was already on its way", () => {
+    const pressed = putLiveSheetUnderWay(sheet, { pressedHere: true });
+    expect(pressed.button).toBe("Putting it live…");
+    expect(pressed.busy).toBe(true);
+    expect(pressed.hold).toBeUndefined();
+  });
+
+  it("says a run somebody started before it opened is already on its way", () => {
+    const before = putLiveSheetUnderWay(sheet, { pressedHere: false });
+    expect(before.hold).toBe("It's already on its way.");
+    expect(before.button).toBe("Put it live");
   });
 });
 
