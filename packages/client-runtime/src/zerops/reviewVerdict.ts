@@ -1123,7 +1123,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
           tone: "done",
           title: `Released ${tag}`,
           // The age is the tag's: the landing's own moment is not read.
-          why: age === undefined ? "Production runs it" : `Production runs it · tagged ${age}`,
+          why: age === undefined ? "Production runs it" : `Production runs it · released ${age}`,
           fix: undefined,
         },
         consequence:

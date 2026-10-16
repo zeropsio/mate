@@ -198,7 +198,7 @@ describe("a finished release keeps the facts it was made with", () => {
     expect(released?.model.verdict).toMatchObject({
       state: "released",
       title: "Released v0.1.0",
-      why: "Production runs it · tagged just now",
+      why: "Production runs it · released just now",
     });
     expect(released?.model.consequence).toBe("Production runs v0.1.0.");
   });
@@ -459,7 +459,7 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
     expect(steps.at(-1)?.model.verdict).toMatchObject({
       state: "released",
       title: "Released v0.1.1",
-      why: "Production runs it · tagged 40 minutes ago",
+      why: "Production runs it · released 40 minutes ago",
     });
   });
 

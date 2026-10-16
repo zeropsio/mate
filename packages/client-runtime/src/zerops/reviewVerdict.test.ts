@@ -557,7 +557,7 @@ describe("releaseReview", () => {
         state: "released",
         tone: "done",
         title: "Released v0.1.57",
-        why: "Production runs it · tagged 3 minutes ago",
+        why: "Production runs it · released 3 minutes ago",
       },
     ],
     [
