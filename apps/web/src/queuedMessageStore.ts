@@ -76,6 +76,11 @@ export interface QueuedComposerMessage {
    * answer was lost, so the retry goes with the same ids and the server's receipts take it once.
    */
   sendIds?: ComposerSendIds;
+  /**
+   * A page asked for it (`ComposerSendIds.fromPanel`): it never names the conversation, whatever
+   * ids it goes with — a person's Retry included.
+   */
+  fromPanel?: true;
   createdAt: string;
 }
 
@@ -325,14 +330,17 @@ export function isQueuedMessageDue(input: {
 /**
  * The ids a queued send goes with: the caller's own, else those its interrupted attempt went
  * with — the server may have taken that command, and its receipts take a retry of it once —
- * else fresh ones, minted here so a failure knows which ids it was.
+ * else fresh ones, minted here so a failure knows which ids it was. A page's ask stays the page's.
  */
 export function queuedSendAttemptIds(input: {
   readonly given: ComposerSendIds | undefined;
   readonly stored: ComposerSendIds | undefined;
   readonly mint: () => ComposerSendIds;
+  /** The message is a page's ask: the ids say so, whichever they are. */
+  readonly fromPanel?: boolean;
 }): ComposerSendIds {
-  return input.given ?? input.stored ?? input.mint();
+  const ids = input.given ?? input.stored ?? input.mint();
+  return input.fromPanel === true ? { ...ids, fromPanel: true } : ids;
 }
 
 /** What a queued bubble says, and what its ↑ does. */

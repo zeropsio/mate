@@ -293,6 +293,23 @@ describe("the ids a queued send goes with", () => {
     expect(useQueuedMessageStore.getState().queuesByThreadKey.t?.[0]?.sendIds).toBeUndefined();
   });
 
+  it("a Retry of a page's held ask still goes as the page's", () => {
+    const store = useQueuedMessageStore.getState();
+    const first = store.enqueue("t", { ...makeMessage("first"), fromPanel: true });
+    const taken = store.take("t", first.id, null)!;
+    useQueuedMessageStore.getState().holdAtFront("t", taken, "Refused.");
+    const retried = useQueuedMessageStore.getState().release("t", first.id);
+    expect(retried?.sendIds).toBeUndefined();
+    expect(
+      queuedSendAttemptIds({
+        given: undefined,
+        stored: retried?.sendIds,
+        mint: () => fresh,
+        fromPanel: retried?.fromPanel === true,
+      }),
+    ).toEqual({ ...fresh, fromPanel: true });
+  });
+
   it.each([
     { name: "the caller's own ids first", given: ids, stored: fresh, expected: ids },
     {

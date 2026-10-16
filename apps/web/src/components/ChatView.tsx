@@ -6539,6 +6539,7 @@ function ConversationView(props: ChatViewProps) {
         submissionIntent,
         // A requested send keeps its ids, and with them whose it is (`ComposerSendIds.fromPanel`).
         ...(sendIds === undefined ? {} : { sendIds }),
+        ...(sendIds?.fromPanel === true ? { fromPanel: true as const } : {}),
         // What it leaves with if its conversation is not on screen by then.
         sendSettings: {
           modelSelection: ctxSelectedModelSelection,
@@ -6661,6 +6662,7 @@ function ConversationView(props: ChatViewProps) {
         : queuedSendAttemptIds({
             given: sendIds,
             stored: queuedMessage.sendIds,
+            fromPanel: queuedMessage.fromPanel === true,
             mint: () => ({ commandId: newCommandId(), messageId: newMessageId() }),
           });
     // A queued send that did not go goes back to the head of the queue: unheld
@@ -6930,6 +6932,7 @@ function ConversationView(props: ChatViewProps) {
       messageId: messageIdForSend,
       threadId: threadIdForSend,
       at: messageCreatedAt,
+      fromPanel: attemptIds?.fromPanel === true,
     });
     if (sentAsk !== null) sendTurnReceipts?.requested(environmentId, sentAsk);
     if (!queuedMessage) {
