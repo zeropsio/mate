@@ -40,6 +40,7 @@ import {
 import {
   cardMateReading,
   cardPeople,
+  releaseLineOpens,
   type CardChange,
 } from "~/components/zerops/projects/projectCard.logic";
 import {
@@ -725,6 +726,11 @@ function HarnessPage() {
                     </Button>
                   ))}
                   model={{ ...found.panel, line }}
+                  onOpenLine={
+                    releaseLineOpens(line, entry.flow.production, undefined) === undefined
+                      ? undefined
+                      : () => acted.push(`open-release:${entry.group.groupId}`)
+                  }
                 />,
               );
             }}
