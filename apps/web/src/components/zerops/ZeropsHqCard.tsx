@@ -271,7 +271,7 @@ export function ZeropsHqCardView({
       {open && view.opens ? (
         <div className="flex flex-col gap-1.5 border-t border-border/50 pt-2 pb-1 text-xs">
           {view.core === null ? null : (
-            <DetailRow label="Core">
+            <DetailRow label="Version">
               <span>{view.core}</span>
               {view.coreNote === null ? null : (
                 <span className="text-muted-foreground">{view.coreNote}</span>
