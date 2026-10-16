@@ -31,12 +31,20 @@ export const MATE_ACTIONS = {
   crewCommand: WS_METHODS.zeropsCrewCommand,
   crewFilesPut: WS_METHODS.zeropsCrewFilesPut,
   crewTaskPage: WS_METHODS.zeropsCrewTaskPage,
+  crewPropose: WS_METHODS.zeropsCrewPropose,
   terminalOpen: WS_METHODS.terminalOpen,
   terminalClear: WS_METHODS.terminalClear,
   terminalRestart: WS_METHODS.terminalRestart,
   terminalClose: WS_METHODS.terminalClose,
 } as const;
 export type MateAction = keyof typeof MATE_ACTIONS;
+/**
+ * Actions that change nothing on the Mate: interrupting one stops it there too (the RPC's
+ * interrupt), so its record ends cancelled rather than waiting on an answer that never comes.
+ */
+export const MATE_ACTIONS_CANCELLED_ON_INTERRUPT: ReadonlySet<MateAction> = new Set([
+  "crewPropose",
+]);
 export type MateActionInput<A extends MateAction> = EnvironmentRpcInput<(typeof MATE_ACTIONS)[A]>;
 export type MateActionResult<A extends MateAction> = EnvironmentRpcSuccess<
   (typeof MATE_ACTIONS)[A]
