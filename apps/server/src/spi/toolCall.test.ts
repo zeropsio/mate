@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { RuntimeItemId, TurnId, type SpiEvent } from "@t3tools/contracts";
 
 import { makeBrowserCallFrames } from "../zerops/ZeropsBrowserCallFrames.ts";
+import { projectZeropsToolCall } from "../zerops/zeropsActivityResult.ts";
 import { applyToolCall, readToolCall, sniffToolCallShape } from "./toolCall.ts";
 
 let idCounter = 0;
@@ -274,6 +275,57 @@ describe("readToolCall — Codex", () => {
       { mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 },
     ]);
   });
+
+  // Toby's live Codex session (2026-10-16): two zerops_browser calls came back
+  // with `item.result.content` as one JSON string, base64 included.
+  const screenshot = "A".repeat(60_000);
+  const textBlock = { type: "text", text: "## Screenshot\n1440 × 2587\n" };
+  const imageBlock = { type: "image", mimeType: "image/png", data: screenshot };
+  const browserCall = (content: unknown) =>
+    readToolCall(
+      itemEvent({
+        provider: "codex",
+        itemType: "mcp_tool_call",
+        data: codexToolCallData({ tool: "zerops_browser", content }),
+      }),
+    );
+
+  it.each([
+    ["a {content} document", JSON.stringify({ content: [textBlock, imageBlock] })],
+    ["a block list", JSON.stringify([textBlock, imageBlock])],
+  ])(
+    "a result delivered as one string holding %s still shows its text and screenshot",
+    (_, content) => {
+      const result = browserCall(content);
+      expect(result.kind).toBe("toolCall");
+      expect(projectZeropsToolCall(result.kind === "toolCall" ? result.call : undefined)).toEqual({
+        toolName: "zerops_browser",
+        resultText: "## Screenshot\n1440 × 2587\n",
+        images: [{ mimeType: "image/png", data: screenshot }],
+      });
+    },
+  );
+
+  it("a result delivered as one string drops an over-cap screenshot and says so, keeping its text", () => {
+    const oversized = { ...imageBlock, data: "A".repeat(1024 * 1024 + 1) };
+    const result = browserCall(JSON.stringify({ content: [textBlock, oversized] }));
+    expect(projectZeropsToolCall(result.kind === "toolCall" ? result.call : undefined)).toEqual({
+      toolName: "zerops_browser",
+      resultText: "## Screenshot\n1440 × 2587\n",
+      imagesDropped: true,
+    });
+  });
+
+  it.each([["plain text"], ['{"status":"ok"}'], ["{not json"]])(
+    "a result string that holds no content blocks stays its text: %s",
+    (content) => {
+      const result = browserCall(content);
+      expect(result.kind === "toolCall" && result.call.result).toEqual({
+        text: content,
+        failed: false,
+      });
+    },
+  );
 
   it("reads a started call, which carries no result", () => {
     const result = readToolCall(
