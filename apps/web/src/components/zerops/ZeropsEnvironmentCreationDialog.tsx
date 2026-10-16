@@ -519,6 +519,8 @@ export function ZeropsEnvironmentCreationDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup
         className="max-w-lg"
+        // Refused, the footer's Close is its one way out: never a second one in its corner.
+        showCloseButton={form.closed === undefined}
         finalFocus={() => {
           if (added.current) return false;
           if (opener.current?.isConnected && opener.current !== document.body) return true;
