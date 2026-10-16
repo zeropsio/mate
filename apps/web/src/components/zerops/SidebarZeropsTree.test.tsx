@@ -807,6 +807,22 @@ describe("SidebarZeropsTree", () => {
     for (const text of hides) expect(html).not.toContain(text);
   });
 
+  it("says nothing at all when the organization holds only its HQ: HQ is no project to set a Mate up in", () => {
+    const official = vi.spyOn(accountHq, "useAccountHq").mockReturnValue({
+      status: "ready",
+      hq: { kind: "official", projectId: "unplaced", address: "https://hq.invalid" },
+      admins: [],
+      reread: () => {},
+    });
+    try {
+      const html = render([candidate("unplaced", {}, "ready", false)]);
+      expect(html).not.toContain("sidebar-environments-empty");
+      expect(html).not.toContain("Set up Mate");
+    } finally {
+      official.mockRestore();
+    }
+  });
+
   it("marks the active Mate", () => {
     const html = render([CRM_DEV, LOOSE], { activeProjectId: "loose" });
     expect(html).toContain('aria-current="true"');

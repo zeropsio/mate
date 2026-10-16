@@ -321,6 +321,7 @@ import {
   groupFlowInputOf,
   groupMemberFactsOf,
   tiersAddable,
+  withoutOfficialHq,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
@@ -752,9 +753,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       : structureView.structure.apps.filter(
           (app) => (getFlow?.(app.id)?.pullRequests.length ?? 0) > 0,
         );
+  // HQ's own project is never a project to set a Mate up in: an organization holding only HQ has
+  // no project yet, and its one way on is New project, not "Set up Mate".
   const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
     ? undefined
-    : mateEnvironmentsEmptyReason(candidates);
+    : mateEnvironmentsEmptyReason(withoutOfficialHq(candidates, accountHq.hq));
   const hqMates = useAtomValue(menuHqPresenceAtom);
   // Which projects a build or deploy runs on now, as Zerops says: the headings' indicator.
   const building = useBuildsUnderWay(

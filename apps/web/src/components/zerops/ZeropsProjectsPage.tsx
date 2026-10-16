@@ -378,12 +378,17 @@ export function hasNoZeropsProject(input: {
    * invitation in that gap is the flash the roster then takes back.
    */
   readonly creationPending?: boolean;
+  /** The organization's official HQ's project (`withoutOfficialHq`), where the anchor names it. */
+  readonly hqProjectId?: string | undefined;
 }): boolean {
   if (input.creationPending === true) return false;
-  // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`).
+  // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`). Nor is HQ's
+  // own project: an organization holding only HQ has nothing of its own to start in yet.
   return listsNoProject(
     input.listing,
-    (candidate) => readZeropsToolKind(candidate.project) === undefined,
+    (candidate) =>
+      readZeropsToolKind(candidate.project) === undefined &&
+      candidate.project.id !== input.hqProjectId,
   );
 }
 
@@ -974,7 +979,12 @@ export function ZeropsProjectsContent({
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
-  const noProjectYet = hasNoZeropsProject({ listing, creationPending: activeBirths });
+  const accountHq = useAccountHq(activeOrganization?.id);
+  const noProjectYet = hasNoZeropsProject({
+    listing,
+    creationPending: activeBirths,
+    hqProjectId: accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined,
+  });
   // What the viewer's role makes and reaches here: an empty first screen says it (`firstRunWords`).
   const capabilities = usePlatformCapabilities(null);
   const roleOffered = roleOffers(capabilities);
@@ -1000,7 +1010,6 @@ export function ZeropsProjectsContent({
   };
 
   // The organization's HQ, where the registry lives: its project is no project of the page's.
-  const accountHq = useAccountHq(activeOrganization?.id);
   // What says a project is its person's own, for Set up Mate on it (`plainEvidenceOf`): HQ's
   // records of every kind, its presses, its anchor, and what this tab is making. None while HQ's
   // structure is not known, so nothing is plain then.
@@ -2849,11 +2858,13 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
   // over nothing frames emptiness as a failed list.
   const presses = useMatePresses();
   const made = useCreations();
+  const accountHq = useAccountHq(activeOrganization?.id);
   const firstRun = hasNoZeropsProject({
     listing,
     creationPending: [...presses, ...made].some(
       (birth) => birth.organizationId === activeOrganization?.id,
     ),
+    hqProjectId: accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined,
   });
 
   return (
