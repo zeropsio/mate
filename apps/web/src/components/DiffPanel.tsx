@@ -37,6 +37,7 @@ import { openDiffFilePrimaryAction } from "../diffFileActions";
 import { useCheckpointDiff } from "~/lib/checkpointDiffState";
 import { cn } from "~/lib/utils";
 import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../diffPanelStore";
+import { useRightPanelStore } from "../rightPanelStore";
 import { useTheme } from "../hooks/useTheme";
 import {
   buildFileDiffRenderKey,
@@ -970,6 +971,15 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
             Diff shows the code each turn of this conversation changes. Merged changes are on the
             Git page.
           </p>
+          {routeThreadRef ? (
+            <Button
+              size="sm"
+              variant="link"
+              onClick={() => useRightPanelStore.getState().open(routeThreadRef, "git")}
+            >
+              Open Git
+            </Button>
+          ) : null}
         </div>
       ) : checkpointDiffAvailability.showNotRepository ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
