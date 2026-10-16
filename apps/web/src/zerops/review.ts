@@ -52,6 +52,17 @@ export function useOpenReview(): OpenReview {
   return useContext(ReviewContext);
 }
 
+/** Whether a review stands open over the page. */
+export const ReviewShownContext = createContext(false);
+
+/**
+ * Whether a review stands open over the page: what stands behind it keeps its shape until it
+ * closes (`useHeldBehindReview`).
+ */
+export function useReviewShown(): boolean {
+  return useContext(ReviewShownContext);
+}
+
 /** One key per thing under review, so two doors to it open one review. */
 export function reviewTargetKey(target: ReviewTarget): string {
   switch (target.kind) {

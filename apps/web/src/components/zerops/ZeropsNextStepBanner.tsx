@@ -28,12 +28,21 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { XIcon } from "lucide-react";
-import { useCallback, useMemo, useReducer, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   dismissComposerReview,
   dismissedComposerReview,
 } from "../../zerops/composerReviewDismissal";
+import { useHeldBehindReview } from "../../zerops/heldBehindReview";
 import { useOpenReview, type ReviewTarget } from "../../zerops/review";
 import { usePutLive, type PutLiveAsk } from "../../zerops/putLive";
 import { putLiveMergeGate, type PutLiveMergePull } from "../../zerops/putLive.logic";
@@ -355,17 +364,22 @@ export function useZeropsNextStepStrip(
   // says does — a remembered strip HQ confirms is the same node, so the
   // answer re-renders nothing — and a conversation's re-render never
   // re-renders the composer.
-  const shown = strip === null ? null : JSON.stringify(strip);
+  // A review open over the conversation holds the strip's room until it closes, invisible: a merge
+  // pressed there never shrinks the composer under the conversation. Once it closes, the room
+  // folds away.
+  const behind = useHeldBehindReview(strip === null ? null : JSON.stringify(strip));
+  const [heldStrip, setHeldStrip] = useState<string | null>(null);
+  if (behind.held && heldStrip !== behind.value) setHeldStrip(behind.value);
+  if (!behind.held && behind.value !== null && heldStrip !== null) setHeldStrip(null);
+  const folding = !behind.held && behind.value === null ? heldStrip : null;
+  const shown = behind.value ?? folding;
+  const hidden = behind.held || folding !== null;
+  const folded = useCallback(() => {
+    setHeldStrip(null);
+  }, []);
   return useMemo(() => {
-    const top = (putLive?: PutLiveDoor) =>
-      shown === null ? (
-        // Its room is held for the viewer's own composer, which must not move when the change
-        // comes; a colleague's read-along line holds none (HQ may never list that viewer the
-        // changes, and the blank would stand for good).
-        reserved && yours ? (
-          <div aria-label="Reading review" data-composer-top="unread" className="h-[61px]" />
-        ) : null
-      ) : (
+    const drawn = (putLive?: PutLiveDoor) =>
+      shown === null ? null : (
         <ZeropsNextStepStrip
           onMore={(groupId) => {
             void navigate({ to: "/group/$groupId/flow", params: { groupId } });
@@ -378,6 +392,21 @@ export function useZeropsNextStepStrip(
           }}
           strip={JSON.parse(shown) as ZeropsNextStepStripModel}
         />
+      );
+    const top = (putLive?: PutLiveDoor) =>
+      hidden ? (
+        <HeldComposerTop folding={folding !== null} onFolded={folded}>
+          {drawn(putLive)}
+        </HeldComposerTop>
+      ) : shown === null ? (
+        // Its room is held for the viewer's own composer, which must not move when the change
+        // comes; a colleague's read-along line holds none (HQ may never list that viewer the
+        // changes, and the blank would stand for good).
+        reserved && yours ? (
+          <div aria-label="Reading review" data-composer-top="unread" className="h-[61px]" />
+        ) : null
+      ) : (
+        drawn(putLive)
       );
     return groupId === undefined || environmentId === undefined ? (
       top()
@@ -398,8 +427,11 @@ export function useZeropsNextStepStrip(
     change,
     dismiss,
     environmentId,
+    folded,
+    folding,
     groupId,
     held,
+    hidden,
     navigate,
     openReview,
     reserved,
@@ -407,6 +439,30 @@ export function useZeropsNextStepStrip(
     verdictPull,
     yours,
   ]);
+}
+
+/**
+ * The strip held behind an open review: invisible and out of reach in its own room, then, once the
+ * review closes, folded away like a dismissed strip.
+ */
+function HeldComposerTop({
+  folding,
+  onFolded,
+  children,
+}: {
+  readonly folding: boolean;
+  readonly onFolded: () => void;
+  readonly children: ReactNode;
+}) {
+  const room = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (folding) foldAway(room.current, onFolded);
+  }, [folding, onFolded]);
+  return (
+    <div aria-hidden="true" className="invisible" data-composer-top="held" inert ref={room}>
+      {children}
+    </div>
+  );
 }
 
 /**

@@ -186,6 +186,57 @@ describe("owner-reported layout regressions", () => {
       }),
     );
 
+    // A run 2 follow-up: Merge took the composer's review strip and the header's Review tag away at
+    // once, so the composer shrank 61 px under the conversation and the goal slid 143 px left.
+    it.effect(
+      "merge moves nothing behind the review: the composer and the header's goal stay",
+      () =>
+        Effect.gen(function* () {
+          const { s, r, area } = yield* setup;
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.signedIn;
+          yield* r.open;
+          yield* r.mergeEnabled;
+          yield* sheetSettled(s);
+          const behind = Effect.promise(() =>
+            s.page.evaluate(() => {
+              const shown = (selector: string) =>
+                [...document.querySelectorAll<HTMLElement>(selector)].find(
+                  (node) => node.getBoundingClientRect().height > 0,
+                );
+              return {
+                strip: shown('[data-composer-top="review"]') !== undefined,
+                composer:
+                  shown('[data-slot="composer-shell"]')?.getBoundingClientRect().top ?? null,
+                // The Review tag's room: what follows it in the header starts where it ends.
+                tag:
+                  document.querySelector(".chat-header-review")?.getBoundingClientRect().right ??
+                  null,
+              };
+            }),
+          );
+          const before = yield* behind;
+          // What the press could move: the strip in the composer and the goal after the Review tag.
+          expect(before.strip).toBe(true);
+          expect(before.composer).not.toBeNull();
+          expect(before.tag).not.toBeNull();
+          area.merge.hold();
+          yield* r.merge;
+          yield* Effect.promise(() => area.merge.received());
+          yield* r.text("Merging into main");
+          const merging = yield* behind;
+          area.merge.resume();
+          yield* r.text("Merged into main");
+          yield* r.text("Not now");
+          const merged = yield* behind;
+          for (const after of [merging, merged]) {
+            expect(Math.abs(after.composer! - before.composer!)).toBeLessThan(0.5);
+            expect(after.tag).not.toBeNull();
+            expect(Math.abs(after.tag! - before.tag!)).toBeLessThan(0.5);
+          }
+        }),
+    );
+
     // A run 2 follow-up: the review painted in three pieces — an empty sheet, then Merge greyed with
     // "Merging waits until its files are read.", then the counts and Merge.
     it.effect("the review shows whole: Merge is ready in its first painted frame", () =>
