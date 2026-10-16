@@ -6532,6 +6532,8 @@ function ConversationView(props: ChatViewProps) {
         agentNotes: [...agentNotes],
         vaultChanges: [...turnContext.vaultChanges],
         submissionIntent,
+        // A requested send keeps its ids, and with them whose it is (`ComposerSendIds.fromPanel`).
+        ...(sendIds === undefined ? {} : { sendIds }),
         // What it leaves with if its conversation is not on screen by then.
         sendSettings: {
           modelSelection: ctxSelectedModelSelection,
@@ -6961,8 +6963,8 @@ function ConversationView(props: ChatViewProps) {
 
     let turnStartAttempted = false;
     let failure: AtomCommandResult<unknown, unknown> | null = null;
-    // Auto-title from first message
-    if (isFirstMessage && isServerThread) {
+    // Auto-title from the first message the person sends; a page's ask never names it.
+    if (isFirstMessage && isServerThread && attemptIds?.fromPanel !== true) {
       const titleResult = await updateThreadMetadata({
         environmentId,
         input: {
@@ -7070,6 +7072,8 @@ function ConversationView(props: ChatViewProps) {
           runtimeMode,
           interactionMode: sendInteractionMode,
           ...(bootstrap ? { bootstrap } : {}),
+          // A page's ask never names the conversation (`ComposerSendIds.fromPanel`).
+          ...(attemptIds?.fromPanel === true ? { fromPanel: true as const } : {}),
           createdAt: messageCreatedAt,
         },
       });

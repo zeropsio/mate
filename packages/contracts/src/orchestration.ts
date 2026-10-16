@@ -1257,6 +1257,8 @@ export const ThreadTurnStartCommand = Schema.Struct({
   ),
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  /** A press on a page sent it for the person (an ask a side panel wrote): never the chat's subject. */
+  fromPanel: Schema.optional(Schema.Literal(true)),
   createdAt: IsoDateTime,
 });
 
@@ -1277,6 +1279,8 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  /** A press on a page sent it for the person (an ask a side panel wrote): never the chat's subject. */
+  fromPanel: Schema.optional(Schema.Literal(true)),
   createdAt: IsoDateTime,
 });
 

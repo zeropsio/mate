@@ -552,6 +552,18 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       }),
   );
 
+  it.effect("a request a page sent goes to the engine marked as the page's, never typed", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+      r.runs([], SESSION(true, false));
+      yield* r.run(
+        viaEngine(r.registry, ENV, engineStartTurn(ENV, { ...turn(), fromPanel: true } as never)),
+      );
+      expect(r.calls).toMatchObject([{ kind: "send", text: "And the worker", fromPanel: true }]);
+    }),
+  );
+
   it.effect("with plan mode on, a message sent in plan mode goes to the agent as a plan", () =>
     Effect.gen(function* () {
       for (const state of ["idle", "running", "waiting"] as const) {

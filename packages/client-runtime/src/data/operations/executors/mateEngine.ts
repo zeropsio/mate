@@ -79,6 +79,8 @@ export interface EngineCallWire {
           readonly context?: ReadonlyArray<string>;
           readonly attachments: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
           readonly interactionMode?: ProviderInteractionMode;
+          /** A press on a page sent it for the person: never the conversation's subject. */
+          readonly fromPanel?: true;
         }
       | {
           readonly kind: "stop";
@@ -174,6 +176,7 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
               ...(command.interactionMode === undefined
                 ? {}
                 : { interactionMode: command.interactionMode }),
+              ...(command.fromPanel === true ? { fromPanel: true as const } : {}),
             }),
           );
         case "stop":
@@ -483,6 +486,8 @@ export function makeMateEngineOperations(options: {
         readonly interactionMode?: ProviderInteractionMode;
         /** The send's own id where its caller already gave it one (the message's id). */
         readonly commandId?: string;
+        /** A press on a page sent it for the person: never the conversation's subject. */
+        readonly fromPanel?: true;
       },
     ) =>
       execute(
@@ -503,6 +508,7 @@ export function makeMateEngineOperations(options: {
           ...(target.interactionMode === undefined
             ? {}
             : { interactionMode: target.interactionMode }),
+          ...(target.fromPanel === true ? { fromPanel: true as const } : {}),
         }),
         target.commandId,
       ),

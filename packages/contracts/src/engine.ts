@@ -482,6 +482,11 @@ const itemBodyFields = {
     /** Pictures by reference (their asset occurrence) and files by id, never bytes. */
     attachments: Schema.Array(PersonAttachment),
     sendId: CommandId,
+    /**
+     * Sent by a press on a page for the person (an ask a side panel wrote), not typed by them: it
+     * is never the conversation's subject. Absent: typed.
+     */
+    fromPanel: Schema.optionalKey(Schema.Literal(true)),
     delivery: Schema.Struct({
       /** `unknown`: a restart cut its send mid-flight; it may or may not have arrived. */
       state: forwardCompatibleLiterals(["queued", "delivered", "steered", "refused", "unknown"]),

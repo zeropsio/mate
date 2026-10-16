@@ -326,6 +326,7 @@ const engineView = (id: string): ConversationView => ({
   pausedUntil: null,
   openRequests: [],
   lastPerson: null,
+  lastAsked: null,
   lastAgent: null,
   liveCall: null,
   background: null,

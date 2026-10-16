@@ -94,6 +94,11 @@ export interface ConversationView {
     readonly at: number;
     readonly attachments?: ReadonlyArray<{ readonly type: string; readonly mimeType?: string }>;
   } | null;
+  /**
+   * The same, among the messages the person typed: a request a page sent for them (`fromPanel`)
+   * is a word on the conversation, never its subject — what the menu row and the header name it by.
+   */
+  readonly lastAsked: ConversationView["lastPerson"];
   /** The agent's latest words, once said whole. */
   readonly lastAgent: { readonly text: string; readonly at: number } | null;
   /** The newest call of the run on, while it runs. */
@@ -210,6 +215,8 @@ export const readConversationView = (conversationId: ConversationId) =>
       readonly by?: string;
       /** Leave out a person's message steered into a running run. */
       readonly opening?: true;
+      /** Leave out a message a page sent for the person. */
+      readonly typed?: true;
     }) =>
       sql<{ readonly body_json: string; readonly at: number; readonly run_id: string | null }>`
         SELECT body_json, at, run_id FROM engine_item
@@ -217,6 +224,7 @@ export const readConversationView = (conversationId: ConversationId) =>
           ${where.open === undefined ? sql`` : sql`AND state = ${where.open ? "open" : "closed"}`}
           ${where.by === undefined ? sql`` : sql`AND json_extract(by_json, '$.kind') = ${where.by}`}
           ${where.opening === undefined ? sql`` : sql`AND json_extract(body_json, '$.delivery.state') IS NOT 'steered'`}
+          ${where.typed === undefined ? sql`` : sql`AND json_extract(body_json, '$.fromPanel') IS NULL`}
         ORDER BY opened_seq DESC LIMIT 1
       `.pipe(Effect.map((rows) => rows[0]));
     const textOf = (row: { readonly body_json: string; readonly at: number } | undefined) =>
@@ -290,6 +298,7 @@ export const readConversationView = (conversationId: ConversationId) =>
         })),
       ),
       lastPerson: yield* textOf(yield* items({ kind: "person", opening: true })),
+      lastAsked: yield* textOf(yield* items({ kind: "person", opening: true, typed: true })),
       lastAgent: yield* textOf(yield* items({ kind: "note", open: false, by: "mate" })),
       liveCall:
         callBody?.kind === "call" && call !== undefined

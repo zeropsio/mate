@@ -220,7 +220,7 @@ export const conversationRowOf = (
             endedAt: latest.endedAt,
             turnState: turnStateOf(latest),
           },
-    subject: view.lastPerson === null ? null : subjectOf(view.lastPerson),
+    subject: view.lastAsked === null ? null : subjectOf(view.lastAsked),
     snippet: rowText(view.lastAgent?.text),
     at: view.updatedAt,
     askedAt: asked?.at ?? null,

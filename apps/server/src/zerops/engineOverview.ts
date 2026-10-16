@@ -145,7 +145,8 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
       : undefined;
   const person = view.lastPerson;
   const agent = view.lastAgent;
-  const personLine = titleOf(person?.text);
+  // Its title, from what the person typed: a page's request for them never names it.
+  const personLine = titleOf(view.lastAsked?.text);
   // Each message as V1's shell previews it (`threadMessagePreviewFromSource`).
   const agentText = agent === null ? null : messagePreviewText(agent.text);
   const personText = person === null ? null : userAskPreviewText(person);

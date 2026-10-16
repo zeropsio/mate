@@ -71,7 +71,17 @@ const view = (patch: Partial<ConversationView> = {}): ConversationView => ({
   lastEnded: null,
   pausedUntil: null,
   openRequests: [],
-  lastPerson: { text: "Deploy the api", at: T("2026-10-07T10:00:00.000Z") },
+  lastPerson:
+    patch.lastPerson === undefined
+      ? { text: "Deploy the api", at: T("2026-10-07T10:00:00.000Z") }
+      : patch.lastPerson,
+  // What the person typed: their latest message, unless a test says a page sent it.
+  lastAsked:
+    patch.lastAsked === undefined
+      ? patch.lastPerson === undefined
+        ? { text: "Deploy the api", at: T("2026-10-07T10:00:00.000Z") }
+        : patch.lastPerson
+      : patch.lastAsked,
   lastAgent: { text: "On it.", at: T("2026-10-07T10:04:00.000Z") },
   liveCall: null,
   background: null,
@@ -284,6 +294,13 @@ describe("HQ's overview of a Mate on the engine", () => {
     };
     const main = overviewOf([engineShellOf(view({ lastPerson }))]).main;
     assert.strictEqual(main?.title, "Start two helpers (sleep 25 && echo done and exit 4)");
+  });
+
+  it("titles the conversation by what the person typed, never by a page's request", () => {
+    const lastPerson = { text: "Open crew ports on appdev", at: T("2026-10-07T10:05:00.000Z") };
+    const lastAsked = { text: "Build the tea catalog", at: T("2026-10-07T10:00:00.000Z") };
+    const main = overviewOf([engineShellOf(view({ lastPerson, lastAsked }))]).main;
+    assert.strictEqual(main?.title, "Build the tea catalog");
   });
 
   it("previews the agent's last words as V1's shell does, its markdown read", () => {
