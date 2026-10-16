@@ -149,9 +149,11 @@ async function supervise() {
     const sql = (query: string) =>
       run("psql", [urlOf(port, "postgres"), "-X", "-v", "ON_ERROR_STOP=1", "-Atc", query]);
     /**
-     * Whether a database's last backend left. A client's close returns before its backend exits
-     * (PostgreSQL's own CREATE DATABASE … TEMPLATE waits for such backends too), so a closed pool
-     * still shows for a moment; a connection held open is still there once the wait ends.
+     * Whether a database's last client backend left. A client's close returns before its backend
+     * exits (PostgreSQL's own CREATE DATABASE … TEMPLATE waits for such backends too), so a closed
+     * pool still shows for a moment; a connection held open is still there once the wait ends.
+     * Autovacuum workers are no connections: they enter databases that refuse connections, may
+     * outlast any bound on a busy host, and the clone's CREATE DATABASE stops them itself.
      */
     const drained = async (name: string) => {
       // Sample and decide on the server: a psql completion delayed on the host must not
@@ -165,7 +167,8 @@ async function supervise() {
         `DO $$ DECLARE deadline timestamptz := clock_timestamp() + interval '2 seconds';
         BEGIN LOOP
           PERFORM pg_stat_clear_snapshot();
-          IF NOT EXISTS (SELECT FROM pg_stat_activity WHERE datname = '${name}') THEN
+          IF NOT EXISTS (SELECT FROM pg_stat_activity
+            WHERE datname = '${name}' AND backend_type = 'client backend') THEN
             RETURN;
           END IF;
           IF clock_timestamp() >= deadline THEN
