@@ -14,7 +14,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import { captureAccountLifetime } from "../accountLifetime";
+import { captureAccountLifetime, onAccountLifetimeClose } from "../accountLifetime";
 
 export type CrewProposalState =
   | { readonly kind: "idle" }
@@ -48,8 +48,13 @@ export function useCrewProposal(environmentId: EnvironmentId): UseCrewProposal {
       running.current = fiber;
       const exit = await Effect.runPromise(Fiber.await(fiber));
       // Cancelled: `cancel` already let go of it and said so.
-      if (running.current !== fiber || !alive()) return null;
+      if (running.current !== fiber) return null;
       running.current = null;
+      // The account closed while it ran: nothing of it is shown, and the row is free again.
+      if (!alive()) {
+        setState({ kind: "idle" });
+        return null;
+      }
       if (Exit.isSuccess(exit)) {
         setState({ kind: "idle" });
         return exit.value;
@@ -66,6 +71,9 @@ export function useCrewProposal(environmentId: EnvironmentId): UseCrewProposal {
     setState({ kind: "idle" });
     if (fiber !== null) Effect.runFork(Fiber.interrupt(fiber));
   }, []);
+
+  // The account closing stops a proposal on its way, as closing the setup does.
+  useEffect(() => onAccountLifetimeClose(cancel), [cancel]);
 
   // Closing the setup stops a proposal on its way.
   useEffect(
