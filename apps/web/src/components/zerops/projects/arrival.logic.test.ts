@@ -27,11 +27,11 @@ describe("the first minute after an invitation", () => {
     },
     {
       sentence:
-        "A Guest is told they can follow the work and open the app, and offered nothing to create",
+        "A Guest is told they can see the changes and open the app, and offered nothing to create",
       viewer: { roleCode: "NO_ACCESS", canCreateProjects: false },
       apps: [{ ...SNAP, addMate: false }],
       line: "Welcome to Acme. You're a Guest on Snap.",
-      detail: "You can follow the work and open the app.",
+      detail: "You can see the changes and open the app.",
       action: null,
     },
     {
