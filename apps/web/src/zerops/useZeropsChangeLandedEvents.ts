@@ -18,6 +18,7 @@
 import {
   changeLandedEvents,
   linkedChanges,
+  productionRelease,
   readZeropsMembership,
   type ChangeLandedEvent,
   type FlowPullRequest,
@@ -110,10 +111,8 @@ export function useZeropsProductionLive(
   const mate = rows.find((row) => String(row.environmentId) === environmentId);
   const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
   const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
-  const flow = useCompactProjectFlows(appIds).flows.get(groupId ?? "");
-  const live = flow?.releases.find((release) => release.standing === "live");
-  const production = flow?.environments.find((entry) => entry.tier === "production")?.projectId;
-  const address = useProductionAddresses(live === undefined ? undefined : production)[0]?.url;
+  const live = productionRelease(useCompactProjectFlows(appIds).flows.get(groupId ?? ""));
+  const address = useProductionAddresses(live?.projectId)[0]?.url;
   const tag = live?.tag;
   const taggedAt = live?.taggedAt;
   return useMemo(

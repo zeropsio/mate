@@ -173,3 +173,47 @@ it("a service that wasn't there when the turn began shows its whole code as new,
   expect(html.split(reason)).toHaveLength(2);
   expect(query.mock.calls[0]?.[1]).toEqual({ enabled: true });
 });
+
+// The live check of 0.15.144: every open section of a turn's changes offered "Retry", though
+// nothing had failed.
+it("offers Retry only once a service's changes could not be read", () => {
+  query.mockReset();
+  query.mockReturnValue({
+    data: {
+      diff: "diff --git a/api/a.txt b/api/a.txt\n--- a/api/a.txt\n+++ b/api/a.txt\n@@ -1 +1 @@\n-old\n+new\n",
+      coverage: "complete",
+      roots: [{ rootId: "api", label: "API service", pathPrefix: "api/", status: "available" }],
+    },
+    error: null,
+    isPending: false,
+    refresh: () => {},
+  });
+  expect(renderToStaticMarkup(<CheckpointHistoryDiff {...props} />)).not.toContain("Retry");
+  query.mockReturnValue({ data: null, error: null, isPending: true, refresh: () => {} });
+  expect(renderToStaticMarkup(<CheckpointHistoryDiff {...props} />)).not.toContain("Retry");
+});
+
+// The live check of 0.15.144: the Mate's own code read as its service's hostname.
+it("names the Mate's own service its workspace, by the Mate's name", () => {
+  query.mockReset();
+  query.mockReturnValue({ data: null, error: null, isPending: true, refresh: () => {} });
+  const own = { rootId: "app", label: "appdev", remotePath: "/var/www", pathPrefix: "" };
+  const html = renderToStaticMarkup(
+    <CheckpointHistoryDiff
+      {...props}
+      mate={{ projectId: "mate-project", name: "Nova" }}
+      history={{
+        ...history,
+        roots: [
+          {
+            root: { ...own, projectId: "mate-project", serviceId: "s-app" },
+            before: snapshot,
+            after: snapshot,
+          },
+        ],
+      }}
+    />,
+  );
+  expect(html).toContain("Nova&#x27;s workspace");
+  expect(html).not.toContain("appdev");
+});

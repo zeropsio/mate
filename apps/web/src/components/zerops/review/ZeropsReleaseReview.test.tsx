@@ -145,6 +145,36 @@ describe("ReleaseReviewView", () => {
     ).toEqual(["Change"]);
   });
 
+  // The live check of 0.15.144: released v0.1.1, the review still said "Production now: Runs
+  // v0.1.0 since 21:44" — the old release, at the new one's time.
+  it("says what production ran before the release only until production runs the release", () => {
+    const production = {
+      at: "2026-10-16T09:16:00Z",
+      parts: [{ hostname: "app", version: "v0.1.56" }],
+      addresses: [{ service: "app", url: "https://app-abcd-3000.prg1.zerops.app" }],
+    };
+    expect(render({ production })).toContain("Production now");
+    expect(render({ production, outcome: { kind: "releasing" } })).toContain("Production now");
+    expect(
+      render({ production, outcome: { kind: "released", at: "2026-10-16T19:46:00Z" } }),
+    ).not.toContain("Production now");
+  });
+
+  // The live check of 0.15.144: a later release offered "Use v1.0.0 · Set in the code, in
+  // package.json".
+  it("names a later release's suggested version in plain words, never a file", () => {
+    const version = {
+      value: "0.1.57",
+      onChange: () => {},
+      tags: ["v0.1.56"],
+      suggestions: [{ tag: "v1.0.0", source: "app/package.json" }],
+      nextPatch: "v0.1.57",
+    };
+    const markup = render({ version });
+    expect(markup).toContain("Use v1.0.0");
+    expect(markup).not.toContain("package.json");
+  });
+
   // The onboarding run: at the press the Version block went and the foot rose 110 px under the
   // pointer, then Where came and it dropped 76 px.
   it("keeps its Version, not to be changed, from the press until Where takes its place", () => {

@@ -236,6 +236,26 @@ describe("ZeropsBrowserPanel", () => {
     );
   });
 
+  // The live check of 0.15.144: the page's heading read "Agent's browser" beside "Pages Wren
+  // checked".
+  it("names the browser and who drives it by the Mate's name", () => {
+    feedState.browserStream = { status: "live", url: "https://weatherdash.example/", frame: FRAME };
+    feedState.lifecycle = knownLifecycle([
+      { toolName: "zerops_browser", status: "inProgress", at: new Date() },
+    ]);
+    hooks.beginRender();
+    const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF, mateName: "Fen" });
+    expect(findByAttribute(tree, "data-zerops-browser-panel")?.props["aria-label"]).toBe(
+      "Fen's browser",
+    );
+    expect(
+      visitElements(tree, (element) => element.props.children === "Fen's browser"),
+    ).not.toBeNull();
+    expect(findByAttribute(tree, "data-zerops-browser-driving")?.props.children).toBe(
+      "Fen is driving · verifying https://weatherdash.example/",
+    );
+  });
+
   it("an unread lifecycle never renders as nobody driving: the driving line checks", () => {
     feedState.browserStream = { status: "live", frame: FRAME };
     feedState.lifecycle = { state: "unread", waitingFor: null };

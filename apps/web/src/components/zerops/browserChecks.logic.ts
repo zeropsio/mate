@@ -8,7 +8,7 @@ import type { ZeropsOperation, ZeropsTimelineEntry } from "@t3tools/client-runti
 import {
   browserCheckCaption,
   browserCheckDevice,
-  browserCheckPage,
+  browserCheckUrl,
   browserTakeState,
   type BrowserDevice,
 } from "../chat/conversation.logic";
@@ -26,7 +26,7 @@ export interface CheckedPage {
   readonly key: string;
   /** The check whose picture stands for the page on its screen. */
   readonly take: ZeropsOperation;
-  /** "Home page", "/teas/new". */
+  /** "Home page", "/teas/new", "Search: green". */
   readonly page: string;
   /** The screen it was seen on: "iPhone 14", "Desktop 1280 × 577". */
   readonly screen: string;
@@ -34,6 +34,41 @@ export interface CheckedPage {
   readonly at: string;
   /** It failed and no later check of the page passed. */
   readonly failed: boolean;
+}
+
+/** The query words a page is searched by. */
+const SEARCH_KEYS = new Set(["q", "query", "search", "s"]);
+
+function decoded(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * The page a check looked at, as a person names it: its path — a hash route's own, where the app
+ * routes by one — the front page by name, and what its query asks in words ("Search: green").
+ */
+function pageWords(take: ZeropsOperation): string {
+  const url = browserCheckUrl(take);
+  if (url === null) {
+    const caption = browserCheckCaption(take);
+    return caption === "/" ? "Home page" : caption;
+  }
+  const routed = url.hash.startsWith("#/");
+  const [routePath = "", routeQuery = ""] = routed ? url.hash.slice(1).split("?", 2) : [];
+  const path = decoded(routed ? routePath : url.pathname) || "/";
+  const params = [...new URLSearchParams(routed ? routeQuery : url.search)].filter(
+    ([, value]) => value.trim() !== "",
+  );
+  const asked = params.map(([key, value]) =>
+    SEARCH_KEYS.has(key.toLowerCase()) ? `Search: ${value}` : `${key}: ${value}`,
+  );
+  const searched = params.some(([key]) => SEARCH_KEYS.has(key.toLowerCase()));
+  const page = path === "/" ? (searched ? undefined : "Home page") : path;
+  return [page, ...asked].filter((part) => part !== undefined).join(" · ");
 }
 
 function screenWords(take: ZeropsOperation): string {
@@ -55,7 +90,7 @@ export function checkedPages(entries: ReadonlyArray<ZeropsTimelineEntry>): Check
   const lastByView = new Map<string, ZeropsOperation>();
   for (const check of checks) {
     if (check.phase === "running" || check.screenshot === undefined) continue;
-    const view = `${browserCheckPage(check)} on ${screenWords(check)}`;
+    const view = `${browserCheckUrl(check)?.host ?? ""}${pageWords(check)} on ${screenWords(check)}`;
     lastByView.delete(view);
     lastByView.set(view, check);
   }
@@ -63,11 +98,10 @@ export function checkedPages(entries: ReadonlyArray<ZeropsTimelineEntry>): Check
     .toReversed()
     .slice(0, CHECKED_PAGES_SHOWN)
     .map((take) => {
-      const caption = browserCheckCaption(take);
       return {
         key: take.key,
         take,
-        page: caption === "/" ? "Home page" : caption,
+        page: pageWords(take),
         screen: screenWords(take),
         at: take.settledAt ?? take.anchorAt,
         failed: browserTakeState(take, checks) === "failed",

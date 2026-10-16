@@ -19,7 +19,6 @@ import { GitDeliveryStatus, gitWhereLine } from "../GitDeliveryStatus";
  */
 import {
   cannotTellWhatRuns,
-  deployedVersion,
   type GroupFlowAddress,
   servicesDeploying,
   changesCountWords,
@@ -76,6 +75,7 @@ import { ZeropsChangeReview } from "./ZeropsChangeReview";
 import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
 import { mainStageOf, useGroupName, useProductionAddresses } from "./reviewReads";
 import {
+  productionBefore,
   productionNow,
   releaseChangeRows,
   releaseFoot,
@@ -424,13 +424,13 @@ function ReleaseData({
       fixer={fixer?.name}
       gate={flow.release.gate}
       production={{
-        at: flow.releases.find((entry) => entry.standing === "live")?.taggedAt,
+        ...productionBefore({
+          replaces: facts.replaces,
+          releases: flow.releases,
+          services: production?.services ?? [],
+          releasing: outcome.kind === "releasing",
+        }),
         addresses: productionAddresses,
-        parts:
-          production?.services.map((service) => ({
-            hostname: service.hostname,
-            version: deployedVersion(service.appVersionName).label,
-          })) ?? [],
       }}
       stage={
         mainStage === undefined
@@ -771,7 +771,10 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
             : null}
         </ReviewSection>
       )}
-      {props.git !== undefined || props.replaces.kind === "first" ? null : (
+      {/* What ran before it, until production runs it: then the head says so, and since when. */}
+      {props.git !== undefined ||
+      props.replaces.kind === "first" ||
+      props.outcome.kind === "released" ? null : (
         <ReviewSection title="Production now">
           <p className="rv-words">{now.line}</p>
           {now.rows.map((row) => (
@@ -829,7 +832,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
                 >
                   Use {suggestion.tag}
                 </Button>
-                <span>Set in the code, in {suggestion.source.split("/").at(-1)}</span>
+                <span>The version your code names</span>
               </div>
             ))}
           </div>

@@ -3275,6 +3275,17 @@ function ConversationView(props: ChatViewProps) {
   });
   // Whose Mate it is, as HQ records it: a colleague's is read along, never written to.
   const admissionMate = zeropsMateAt(zeropsMates, environmentId);
+  // The Mate by its project: the Diff page names its own service its workspace.
+  const diffMateProjectId =
+    admissionMate.kind === "mate" ? admissionMate.mate.projectId : undefined;
+  const diffMateName = admissionMate.kind === "mate" ? admissionMate.mate.name : undefined;
+  const diffMate = useMemo(
+    () =>
+      diffMateProjectId === undefined || diffMateName === undefined
+        ? undefined
+        : { projectId: diffMateProjectId, name: diffMateName },
+    [diffMateName, diffMateProjectId],
+  );
   // Its descriptor places a new Mate before HQ's overview can name its environment.
   const admissionProject = useEnvironmentProjectRef(environmentId);
   const nativeCapabilities = usePlatformCapabilities(environmentId);
@@ -8185,6 +8196,7 @@ function ConversationView(props: ChatViewProps) {
                     key={activeThreadKey}
                     mode="embedded"
                     composerDraftTarget={composerDraftTarget}
+                    mate={diffMate}
                   />
                 </Suspense>
               );

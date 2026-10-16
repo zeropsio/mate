@@ -154,6 +154,7 @@ import {
   firstDeployLine,
   type FirstDeploy,
   matePoseOf,
+  zeropsProjectOf,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
@@ -1764,7 +1765,7 @@ export function ZeropsProjectsContent({
     const verdict = creationHandoff({
       // The project this press made, never another production that comes up later.
       hasProduction: flow.environments.some(
-        (entry) => entry.tier === "production" && entry.projectId === handoffTo.projectId,
+        (entry) => entry.tier === "production" && zeropsProjectOf(entry) === handoffTo.projectId,
       ),
       gate: flow.release.gate,
     });

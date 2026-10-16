@@ -313,7 +313,31 @@ function environmentRowDisplay(input: {
   };
 }
 
-export type CanonicalEnvironmentRow = Omit<EnvironmentRow, "projectId"> & HqEnvironmentIdentity;
+/**
+ * A row keyed by HQ's environment identity. It carries no `projectId`: a Zerops project is its
+ * target's, and an environment delivered to Git has none (`zeropsProjectOf`).
+ */
+export type CanonicalEnvironmentRow = Omit<EnvironmentRow, "projectId"> &
+  Omit<HqEnvironmentIdentity, "projectId">;
+
+/** What places an environment: its tier, and where HQ delivers it. */
+export type EnvironmentPlace = Pick<HqEnvironmentIdentity, "target"> & {
+  readonly tier: GroupEnvironmentTier;
+};
+
+/** The Zerops project an environment runs in; none for one HQ delivers to a Git branch. */
+export function zeropsProjectOf(
+  environment: Pick<HqEnvironmentIdentity, "target"> | undefined,
+): string | undefined {
+  return environment?.target.kind === "zerops" ? environment.target.projectId : undefined;
+}
+
+/** The Zerops project an application's production runs in; none before it has one there. */
+export function productionProjectOf(
+  environments: ReadonlyArray<EnvironmentPlace>,
+): string | undefined {
+  return zeropsProjectOf(environments.find((entry) => entry.tier === "production"));
+}
 export function canonicalEnvironmentRow(
   input: Parameters<typeof environmentRowDisplay>[0] &
     HqEnvironmentIdentity & { readonly git?: GitDelivery | undefined },

@@ -5,7 +5,7 @@
  * says — its name after the project, its recipe, no agent — and releases to it once HQ holds it;
  * the conversation draws where it got (`PutLiveTop`).
  */
-import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
+import { buildZeropsGroupTree, productionProjectOf } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -216,7 +216,7 @@ function PutLiveSheetContainer({
 /** What a run reads of its project's flow. */
 function factsOf(flow: ZeropsProjectFlow) {
   return {
-    production: flow.environments.find((entry) => entry.tier === "production")?.projectId,
+    production: productionProjectOf(flow.environments),
     gate: flow.release.gate,
     releases: flow.releases,
   };

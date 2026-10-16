@@ -11,7 +11,11 @@ import type { MouseEvent } from "react";
 import { cn } from "~/lib/utils";
 import type { MateAddress } from "~/zerops/mateAddresses.logic";
 import { useRightPanelStore } from "../../rightPanelStore";
-import { mateAddressOpenTarget, mateAddressRoleWord } from "./MateAddresses.logic";
+import {
+  mateAddressNameWords,
+  mateAddressOpenTarget,
+  mateAddressRoleWord,
+} from "./MateAddresses.logic";
 
 /** Opens the address where the gesture asks; a click on the row's own arrow is the arrow's. */
 export function openMateAddress(
@@ -31,9 +35,9 @@ export function openMateAddress(
 }
 
 /**
- * What the address is, then its service's name, and — where there is room — where it answers: a
- * row leads with "Preview" or "Stage", so a preview's `appstage` and the stage's `app` never read
- * as two spellings of one place.
+ * What the address is, then — where there is room — where it answers: a row leads with "Preview"
+ * or "Stage", so a preview's `appstage` and the stage's `app` never read as two spellings of one
+ * place. Beside the role stands only what tells two of one role apart (`mateAddressNameWords`).
  */
 export function MateAddressLabel({
   address,
@@ -43,12 +47,18 @@ export function MateAddressLabel({
   readonly showHost?: boolean;
 }) {
   const role = mateAddressRoleWord(address.role);
+  // A hostname beside the role says the site twice; the address names it below.
+  const words = showHost
+    ? mateAddressNameWords(address)
+    : role === undefined
+      ? undefined
+      : address.name;
   return (
     <span className="flex min-w-0 flex-1 flex-col">
       <span className="flex min-w-0 items-baseline gap-2">
         <span className="shrink-0 text-foreground">{role ?? address.name}</span>
-        {role === undefined ? null : (
-          <span className="truncate text-muted-foreground text-xs">{address.name}</span>
+        {words === undefined ? null : (
+          <span className="truncate text-muted-foreground text-xs">{words}</span>
         )}
       </span>
       {showHost ? (

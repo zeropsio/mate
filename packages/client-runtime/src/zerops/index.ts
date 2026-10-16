@@ -516,6 +516,7 @@ export {
   agentNotesFor,
   agentTurnNotes,
   productionTurnNotes,
+  productionRelease,
   changeLandedEvents,
   type ChangeLandedEvent,
   type ProductionLive,
@@ -595,6 +596,8 @@ export {
   type EnvironmentRow,
   type EnvironmentServiceState,
   type GroupRowTone,
+  productionProjectOf,
+  zeropsProjectOf,
 } from "./groupRows.ts";
 export {
   parseVersionName,

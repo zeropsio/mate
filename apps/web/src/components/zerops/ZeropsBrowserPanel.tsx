@@ -144,12 +144,15 @@ export function ZeropsBrowserPanel({
     );
   };
 
+  // Who drives it and whose it is, by the Mate's name where the page knows it.
+  const driver = mateName ?? "Agent";
+  const title = mateName === undefined ? "The agent's browser" : `${mateName}'s browser`;
   const drivingLine = driving.agentDriving
     ? {
         text:
           read !== undefined && read !== "unavailable" && read.url !== undefined
-            ? `Agent is driving · verifying ${read.url}`
-            : "Agent is driving",
+            ? `${driver} is driving · verifying ${read.url}`
+            : `${driver} is driving`,
         afterMs: 0,
       }
     : driving.userDriving
@@ -157,13 +160,9 @@ export function ZeropsBrowserPanel({
       : driving.agentUnknown;
 
   return (
-    <section
-      aria-label="The agent's browser"
-      className="flex flex-col gap-1.5"
-      data-zerops-browser-panel
-    >
+    <section aria-label={title} className="flex flex-col gap-1.5" data-zerops-browser-panel>
       <div className="flex min-h-6 items-center justify-between gap-2 px-1">
-        <MicroLabel>Agent's browser</MicroLabel>
+        <MicroLabel>{mateName === undefined ? "Agent's browser" : title}</MicroLabel>
         {driving.agentDriving ? (
           <button
             className="text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2"
@@ -171,7 +170,7 @@ export function ZeropsBrowserPanel({
             onClick={() => setTakeOver((current) => !current)}
             type="button"
           >
-            {takeOver ? "Let the agent drive" : "Take over"}
+            {takeOver ? `Let ${mateName ?? "the agent"} drive` : "Take over"}
           </button>
         ) : null}
       </div>
