@@ -781,22 +781,18 @@ export const crewSuggestLine = (mateName: string): string =>
 
 /**
  * The setup's footer — the one place it says where the crewmates work: their own copies, and,
- * where builders share their service's database (`sharedDatabases`), that they do.
+ * where builders share their service's database (`sharedDatabases`, how many), that they do —
+ * never by a service's hostname (run 2: "on appdev").
  */
-export function crewSetUpFooter(
-  mateName: string,
-  hosts: ReadonlyArray<string>,
-  sharedDatabases: ReadonlyArray<string> = [],
-): string {
-  const where = hosts.length === 0 ? "" : ` on ${hosts.join(" and ")}`;
+export function crewSetUpFooter(mateName: string, sharedDatabases = 0): string {
   const code = `${crewPossessive(mateName)} code`;
   const database =
-    sharedDatabases.length === 0
+    sharedDatabases === 0
       ? ""
-      : sharedDatabases.length === 1
-        ? ` The builders share ${crewPossessive(sharedDatabases[0]!)} database.`
-        : ` The builders share the databases of ${sharedDatabases.join(" and ")}.`;
-  return `Each builder works in its own copy of ${code}${where}; nothing reaches ${code} until you review it.${database} Getting the copies ready takes a minute or two; each row shows how it's going.`;
+      : sharedDatabases === 1
+        ? " The builders share one database."
+        : ` The builders share ${crewPossessive(mateName)} databases.`;
+  return `Each builder works in its own copy of ${code}; nothing reaches ${code} until you review it.${database} Getting the copies ready takes a minute or two; each row shows how it's going.`;
 }
 
 /**

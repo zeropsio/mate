@@ -218,16 +218,16 @@ export function CrewSetup(props: CrewSetupProps) {
   const startLock = members === null ? null : (props.startLock?.(members) ?? null);
   const writers = members === null ? [] : members.filter((member) => member.kind === "writer");
   const noDevHost = writers.length > 0 && props.devHosts.length === 0;
-  const writerHosts = (shared: boolean) => [
-    ...new Set(
-      writers.flatMap((member) =>
-        member.host === undefined ||
-        (shared && (member.database !== "shared" || !databaseHosts.includes(member.host)))
-          ? []
-          : [member.host],
-      ),
+  // The services whose database its builders share: the footer says how many, never their names.
+  const sharedDatabases = new Set(
+    writers.flatMap((member) =>
+      member.host === undefined ||
+      member.database !== "shared" ||
+      !databaseHosts.includes(member.host)
+        ? []
+        : [member.host],
     ),
-  ];
+  ).size;
   const portless = props.applied
     ? props.hosts.filter(
         (host) =>
@@ -426,7 +426,7 @@ export function CrewSetup(props: CrewSetupProps) {
         {/* Said from the start, under a Start still waiting too: a roster landing fills who's
             on it and adds no note above Start. */}
         <span className="text-line leading-4.5 text-muted-foreground">
-          {crewSetUpFooter(mate.name, writerHosts(false), writerHosts(true))}
+          {crewSetUpFooter(mate.name, sharedDatabases)}
         </span>
         {startFailure === null ? null : (
           <div className="flex flex-col gap-1" data-crew-start-failure>

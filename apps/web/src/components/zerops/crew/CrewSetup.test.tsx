@@ -161,7 +161,7 @@ describe("CrewSetup", () => {
     const words = text(render(withGoal(proposed, "A tea shop.")));
     expect(count(words, "own copy")).toBe(1);
     expect(words).toContain(
-      "Each builder works in its own copy of Nova's code on appdev; nothing reaches Nova's code until you review it.",
+      "Each builder works in its own copy of Nova's code; nothing reaches Nova's code until you review it.",
     );
   });
 
@@ -173,7 +173,7 @@ describe("CrewSetup", () => {
       databaseHosts: ["appdev"],
     });
     expect(text(render(withGoal(sharing, "A tea shop."), READY, true))).toContain(
-      "until you review it. The builders share appdev's database.",
+      "until you review it. The builders share one database.",
     );
     expect(text(render(withGoal(proposed, "A tea shop."), READY, false))).not.toContain("database");
     // Not known yet: never said, and never "no".
