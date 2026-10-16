@@ -10,6 +10,7 @@ import { accountLocalStorage } from "./accountLifetime";
 
 const KEY = "mate:identities:v1";
 const CHIEF_KEY = "mate:chief:v1";
+const OVERVIEW_CARDS_KEY = "mate:overview-cards:v1";
 
 /** What a Mate's name and face need, by its environment. */
 export type MateMemory = Readonly<Record<string, HqMateIdentity>>;
@@ -135,6 +136,31 @@ export function writeChiefMemory(
     const parsed: unknown = raw == null ? {} : JSON.parse(raw);
     const held = typeof parsed === "object" && parsed !== null ? parsed : {};
     storage?.setItem(CHIEF_KEY, JSON.stringify({ ...held, [orgId]: chief }));
+  } catch {
+    /* A storage policy can make this visit forget. */
+  }
+}
+
+/**
+ * How many project cards the last visit's overview drew: what its stand-in draws on the next
+ * load's first frame, so it promises no card it takes back. `null` when nothing is remembered.
+ */
+export function readOverviewCardsMemory(
+  storage: Pick<Storage, "getItem"> | undefined = accountStorage(),
+): string | null {
+  try {
+    return storage?.getItem(OVERVIEW_CARDS_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeOverviewCardsMemory(
+  count: number,
+  storage: Pick<Storage, "setItem"> | undefined = accountStorage(),
+): void {
+  try {
+    storage?.setItem(OVERVIEW_CARDS_KEY, String(count));
   } catch {
     /* A storage policy can make this visit forget. */
   }

@@ -1,10 +1,10 @@
 /**
  * How many project cards this browser's overview drew last: what its stand-in draws while the
  * overview is read, so a one-project account is not promised three cards it takes back (the
- * onboarding run's first loads, for every role). A per-viewer convenience in this browser's
- * `localStorage`, never sent anywhere; without it the stand-in draws one card.
+ * onboarding run's first loads, for every role). Remembered beside the Mates' names for the
+ * first frame (`mateIdentityMemory`); without it the stand-in draws one card.
  */
-const OVERVIEW_CARDS_STORAGE_KEY = "mate:overview-cards";
+import { readOverviewCardsMemory, writeOverviewCardsMemory } from "./mateIdentityMemory";
 
 /** As many as a first screen holds at the reference width: more stand past its edge. */
 const MOST_CARDS = 3;
@@ -17,17 +17,9 @@ export function standInCards(remembered: string | null): number {
 }
 
 export function rememberedOverviewCards(): number {
-  try {
-    return standInCards(window.localStorage.getItem(OVERVIEW_CARDS_STORAGE_KEY));
-  } catch {
-    return standInCards(null);
-  }
+  return standInCards(readOverviewCardsMemory());
 }
 
 export function rememberOverviewCards(count: number): void {
-  try {
-    window.localStorage.setItem(OVERVIEW_CARDS_STORAGE_KEY, String(count));
-  } catch {
-    // A private window or blocked storage: the next stand-in draws one card.
-  }
+  writeOverviewCardsMemory(count);
 }
