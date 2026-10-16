@@ -6,6 +6,7 @@ import {
   signInSettled,
   welcomeOwed,
   welcomeStep,
+  welcomeStart,
   type ArrivalApp,
 } from "./arrival.logic";
 
@@ -269,5 +270,17 @@ describe("the welcome never waits on an HQ that does not answer", () => {
     },
   ])("$sentence", ({ recordRead, hqUnavailable, settled }) => {
     expect(signInSettled({ recordRead, hqUnavailable })).toBe(settled);
+  });
+});
+
+// Run 2 (2026-10-16): the welcome offered "Start your own Mate" while the project's first Mate was
+// still setting it up; the press opened a dialog that refused, and the button came back unchanged.
+describe("the welcome's way to start a Mate, while the project takes none yet", () => {
+  const action = { label: "Start your own Mate on Snap", groupId: "g-snap" };
+  it("says why in the button's place while the project takes no Mate, and offers it once it does", () => {
+    const waiting = "Ada is still setting Snap up. New Mates can join once it's done.";
+    expect(welcomeStart(action, () => waiting)).toEqual({ kind: "waits", line: waiting });
+    expect(welcomeStart(action, () => null)).toEqual({ kind: "start", ...action });
+    expect(welcomeStart(null, () => waiting)).toBeNull();
   });
 });

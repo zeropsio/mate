@@ -624,6 +624,7 @@ function HarnessPage() {
                 addMate: ARRIVAL.canCreateProjects !== false,
               }))}
               onStart={() => {}}
+              gateOf={() => null}
               orgId="harness"
               organizationName="Acme"
               painted

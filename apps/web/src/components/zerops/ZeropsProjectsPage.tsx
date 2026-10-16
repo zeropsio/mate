@@ -2574,6 +2574,7 @@ export function ZeropsProjectsContent({
           apps={arrivalApps}
           signIn={hqOrganization?.viewer}
           onStart={addMate}
+          gateOf={addMateWhy}
           orgId={activeOrganization.id}
           organizationName={activeOrganization.name}
           painted={painted}
