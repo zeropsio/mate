@@ -263,6 +263,44 @@ describe("an application's sources", () => {
     r.close();
   });
 
+  it.each([
+    { write: { kind: "slack-disconnect" } as const, secrets: undefined },
+    {
+      write: { kind: "slack-connect" } as const,
+      secrets: { botToken: BOT_TOKEN, signingSecret: SIGNING },
+    },
+  ])(
+    "reads each application's Slack channel again after Slack is changed ($write.kind): HQ may have dropped them",
+    async ({ write, secrets }) => {
+      let held: HqChannelView | null = { appId: "shop", channelId: "C042", channel: "support" };
+      const r = rig({
+        slack: async () => connected,
+        connectSlack: async () => {
+          held = null;
+          return connected;
+        },
+        disconnectSlack: async () => {
+          held = null;
+        },
+        appChannel: async () => held,
+      });
+      const release = r.host.demandApp("hqAppSlack", SHOP);
+      await waitFor(r.store, () =>
+        JSON.stringify(r.read("hqAppSlack", "shop").setting).includes("support"),
+      );
+      await r.host.write(ORG, write, secrets);
+      await waitFor(
+        r.store,
+        () =>
+          r.read("hqAppSlack", "shop").setting.state === "known" &&
+          !JSON.stringify(r.read("hqAppSlack", "shop").setting).includes("support"),
+      );
+      expect(r.read("hqAppSlack", "shop").setting).toMatchObject({ held: { channel: null } });
+      release();
+      r.close();
+    },
+  );
+
   it("shows a webhook's secret while the screen that made it is open, never in its list, and forgets it once closed", async () => {
     const made: HqWebhookView = {
       id: "w1",

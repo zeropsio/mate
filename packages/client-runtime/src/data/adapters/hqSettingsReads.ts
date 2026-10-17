@@ -44,6 +44,7 @@ export interface SettingRead<F extends Family> {
 }
 
 interface Reading {
+  readonly spec: SettingRead<Family>;
   count: number;
   /** Read again at the next turn: set by `again`, cleared as a read starts. */
   again: boolean;
@@ -76,7 +77,12 @@ export function makeSettingsReads(store: AccountStore) {
     let entry = readings.get(key);
     if (entry !== undefined) entry.count++;
     else {
-      const made: Reading = { count: 1, again: true, started: committed(spec) };
+      const made: Reading = {
+        spec: spec as SettingRead<Family>,
+        count: 1,
+        again: true,
+        started: committed(spec),
+      };
       made.fiber = Effect.runFork(
         Effect.scoped(
           Effect.gen(function* () {
@@ -196,6 +202,11 @@ export function makeSettingsReads(store: AccountStore) {
   return {
     demand,
     again,
+    /** Reads again every setting of a family read now whose id `matches`. */
+    againEvery: (family: Family, matches: (id: string) => boolean) => {
+      for (const entry of readings.values())
+        if (entry.spec.family === family && matches(entry.spec.id)) again(entry.spec);
+    },
     /**
      * The last read started of a setting: one that lands with a greater number started after
      * now. Taken before `readAfterWrite`, it names the reads a write's answer may predate.

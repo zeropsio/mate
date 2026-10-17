@@ -184,6 +184,13 @@ export function makeTaskSourceSettings(options: {
             after: reads.started(spec),
           });
         reads.readAfterWrite(spec);
+        // HQ drops every application's Slack channel as Slack is disconnected or moved to
+        // another workspace (`apps/hq/src/slack.ts`); Discord keeps its channels.
+        if (change.kind === "slack-connect" || change.kind === "slack-disconnect")
+          reads.againEvery("hqAppSlack", (held) => {
+            const [orgId] = JSON.parse(held) as [string, string];
+            return orgId === key.orgId;
+          });
       }
     }
   };
