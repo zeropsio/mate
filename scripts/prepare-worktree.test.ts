@@ -4,8 +4,12 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeEvents from "node:events";
-import { expect, it } from "vite-plus/test";
+import { afterEach, expect, it, vi } from "vite-plus/test";
 import { acquireWorktree, nodeVersionMatches, worktreeEntries } from "./prepare-worktree.ts";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 it.each([
   ["v24.19.0", "^24.13.1", true],
   ["v24.13.1", "^24.13.1", true],
@@ -26,6 +30,7 @@ it("acquires an idle lane without replacing dependencies; skips dirty, unmerged 
     return result.stdout.trim();
   };
   let live: NodeChildProcess.ChildProcess | undefined;
+  vi.stubEnv("WT_ROOT", undefined);
   try {
     NodeFS.mkdirSync(main);
     git(main, "init", "-q");
@@ -78,6 +83,42 @@ it("acquires an idle lane without replacing dependencies; skips dirty, unmerged 
       live.stdin?.end();
       await exited;
     }
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it.each([
+  { name: "WT_ROOT set creates it under $WT_ROOT/<repo>", wtRoot: "wt", created: "wt/z3/next-job" },
+  { name: "WT_ROOT unset creates it in ../z3-wt", wtRoot: undefined, created: "z3-wt/next-job" },
+])("reuses an idle lane in ../z3-wt; a new lane with $name", ({ wtRoot, created }) => {
+  const root = NodeFS.realpathSync(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pool-root-")),
+  );
+  const main = NodePath.join(root, "z3");
+  const git = (cwd: string, ...args: string[]) => {
+    const result = NodeChildProcess.spawnSync("git", args, { cwd, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+    return result.stdout.trim();
+  };
+  vi.stubEnv("WT_ROOT", wtRoot && NodePath.join(root, wtRoot));
+  try {
+    NodeFS.mkdirSync(main);
+    git(main, "init", "-q");
+    git(main, "config", "user.name", "Pool fixture");
+    git(main, "config", "user.email", "pool@example.test");
+    NodeFS.writeFileSync(NodePath.join(main, "file"), "base");
+    git(main, "add", ".");
+    git(main, "commit", "-qm", "base");
+    git(main, "update-ref", "refs/remotes/origin/main", "HEAD");
+    const idle = NodePath.join(root, "z3-wt", "idle");
+    git(main, "worktree", "add", "-qb", "idle", idle);
+    expect(acquireWorktree(main, "new-job")).toMatchObject({ path: idle, reused: true });
+    NodeFS.writeFileSync(NodePath.join(idle, "file"), "in progress");
+    expect(acquireWorktree(main, "next-job")).toMatchObject({
+      path: NodePath.join(root, created),
+      reused: false,
+    });
+  } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });

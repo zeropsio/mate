@@ -3,14 +3,19 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { expect, it } from "vite-plus/test";
+import { afterEach, expect, it, vi } from "vite-plus/test";
 import {
   idleDecision,
   lsofBlockers,
   parseCwds,
   parseWorktrees,
   pruneDecision,
+  worktreeLayout,
 } from "./prune-worktrees.ts";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const candidate = { path: "/repo/z3-wt/done", branch: "refs/heads/done", locked: false };
 const evidence = {
@@ -150,6 +155,7 @@ it("dry-run keeps eligible worktrees; apply removes only an unassigned clean mer
       NodeChildProcess.spawnSync(process.execPath, [script, ...args], {
         cwd: main,
         encoding: "utf8",
+        env: { ...process.env, WT_ROOT: undefined },
       });
     const preview = run();
     expect(preview.status, preview.stderr).toBe(0);
@@ -164,6 +170,32 @@ it("dry-run keeps eligible worktrees; apply removes only an unassigned clean mer
     expect(NodeFS.existsSync(dirty)).toBe(true);
     expect(NodeFS.existsSync(unmerged)).toBe(true);
     expect(NodeFS.existsSync(main)).toBe(true);
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it.each([
+  {
+    name: "WT_ROOT set: new lanes go to $WT_ROOT/<repo>; ../z3-wt and .claude/worktrees stay managed",
+    wtRoot: "wt",
+    roots: ["wt/z3", "z3-wt", "z3/.claude/worktrees"],
+  },
+  {
+    name: "WT_ROOT unset: new lanes go to ../z3-wt as before",
+    wtRoot: undefined,
+    roots: ["z3-wt", "z3/.claude/worktrees"],
+  },
+])("worktree pool roots: $name", ({ wtRoot, roots }) => {
+  const root = NodeFS.realpathSync(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-layout-")),
+  );
+  const main = NodePath.join(root, "z3");
+  try {
+    NodeFS.mkdirSync(main);
+    NodeChildProcess.spawnSync("git", ["init", "-q"], { cwd: main });
+    vi.stubEnv("WT_ROOT", wtRoot && NodePath.join(root, wtRoot));
+    expect(worktreeLayout(main).roots).toEqual(roots.map((path) => NodePath.join(root, path)));
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
