@@ -125,16 +125,70 @@ describe("a task's chain: where its conversation's task stands now", () => {
       line: { status: null, pullRequest: null },
     },
     {
-      case: "says it ended once its Mate is on no task",
+      case: "holds its line once its Mate is on no task HQ names",
       current: null,
       working: false,
-      line: { status: "Ended", pullRequest: null },
+      line: { status: null, pullRequest: null },
     },
     {
-      case: "says it ended once its Mate is on another task",
+      case: "holds its line once its Mate is on another task",
       current: { ...onIt, id: "t2", number: 13, title: "Another" },
       working: false,
-      line: { status: "Ended", pullRequest: null },
+      line: { status: null, pullRequest: null },
+    },
+    {
+      case: "names its pull request merged, once the task ended with it",
+      current: {
+        ...onIt,
+        ended: "merged" as const,
+        pullRequest: { ...pr, state: "merged" as const },
+      },
+      working: false,
+      line: { status: null, pullRequest: { words: "PR #14 · merged", url: pr.url } },
+    },
+    {
+      case: "names its pull request closed, once the task ended with it",
+      current: {
+        ...onIt,
+        ended: "closed" as const,
+        pullRequest: { ...pr, state: "closed" as const },
+      },
+      working: false,
+      line: { status: null, pullRequest: { words: "PR #14 · closed", url: pr.url } },
+    },
+    {
+      case: "says it was stopped, with the pull request it left",
+      current: {
+        ...onIt,
+        ended: "stopped" as const,
+        pullRequest: { ...pr, state: "closed" as const },
+      },
+      working: false,
+      line: { status: "Stopped", pullRequest: { words: "PR #14 · closed", url: pr.url } },
+    },
+    {
+      case: "says it failed",
+      current: { ...onIt, ended: "failed" as const },
+      working: false,
+      line: { status: "Failed", pullRequest: null },
+    },
+    {
+      case: "says it is done",
+      current: { ...onIt, ended: "done" as const },
+      working: false,
+      line: { status: "Done", pullRequest: null },
+    },
+    {
+      case: "says it merged where no pull request carried it",
+      current: { ...onIt, ended: "merged" as const },
+      working: false,
+      line: { status: "Merged", pullRequest: null },
+    },
+    {
+      case: "says how it ended, never that its Mate works on it, once it ended",
+      current: { ...onIt, ended: "done" as const },
+      working: true,
+      line: { status: "Done", pullRequest: null },
     },
     {
       case: "says its Mate works on it",
@@ -203,9 +257,9 @@ describe("a task's chain: where its conversation's task stands now", () => {
     const schedule = { kind: "schedule", name: "Weekly", title: "Update dependencies" } as const;
     const nav = (over: object) => ({ id: "t", title: "Other", url: null, ...over });
     expect(taskChain(slack, nav({ url: slack.url }), true).kind).toBe("working");
-    expect(taskChain(slack, nav({ url: "https://acme.slack.com/x" }), true).kind).toBe("ended");
+    expect(taskChain(slack, nav({ url: "https://acme.slack.com/x" }), true).kind).toBe("earlier");
     expect(taskChain(schedule, nav({ title: "Update dependencies" }), true).kind).toBe("working");
-    expect(taskChain(schedule, nav({}), true).kind).toBe("ended");
+    expect(taskChain(schedule, nav({}), true).kind).toBe("earlier");
   });
 });
 

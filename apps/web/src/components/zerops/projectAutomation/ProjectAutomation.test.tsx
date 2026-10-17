@@ -42,11 +42,16 @@ const ROWS: ReadonlyArray<SourceRow> = [
   },
 ];
 
-function controls(): AutomationControls & Record<string, ReturnType<typeof vi.fn>> {
+function controls(
+  press: AutomationControls["pressOf"] = () => ({ kind: "idle" }),
+): AutomationControls & Record<string, ReturnType<typeof vi.fn>> {
   return {
     onAddMate: vi.fn(),
     onTakeFrom: vi.fn(),
     onEdit: vi.fn(),
+    onAskStop: vi.fn(),
+    onKeep: vi.fn(),
+    pressOf: press as never,
     onStop: vi.fn(),
     onReadAgain: vi.fn(),
     onOpenSettings: vi.fn(),
@@ -83,7 +88,7 @@ describe("a project's Automation section", () => {
         admin={admin}
         onOpenMate={vi.fn()}
         pool={[NOVA, JUNO]}
-        sources={{ rows: [], reading: false }}
+        sources={{ rows: [], reading: false, withheld: false }}
         workingOf={(projectId) => projectId === "p-nova"}
       />,
     );
@@ -102,7 +107,7 @@ describe("a project's Automation section", () => {
       <ProjectAutomationView
         onOpenMate={onOpenMate}
         pool={[NOVA]}
-        sources={{ rows: [], reading: false }}
+        sources={{ rows: [], reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -120,7 +125,7 @@ describe("a project's Automation section", () => {
         admin={controls()}
         onOpenMate={vi.fn()}
         pool={[]}
-        sources={{ rows: [], reading: false }}
+        sources={{ rows: [], reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -135,7 +140,7 @@ describe("a project's Automation section", () => {
         admin={admin}
         onOpenMate={vi.fn()}
         pool={[]}
-        sources={{ rows: ROWS, reading: false }}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -146,10 +151,59 @@ describe("a project's Automation section", () => {
       buttons(github, "Stop")[0]?.props.onClick();
     });
     expect(admin.onEdit).toHaveBeenCalledWith(ROWS[0]);
-    expect(admin.onStop).toHaveBeenCalledWith(ROWS[0]);
+    // Stop asks before it stops.
+    expect(admin.onAskStop).toHaveBeenCalledWith(ROWS[0]);
+    expect(admin.onStop).not.toHaveBeenCalled();
     // A schedule is removed; webhooks are each deleted in their form, never all at once.
     expect(buttons(sourceRow(root, "schedule"), "Remove")).toHaveLength(1);
     expect(buttons(sourceRow(root, "webhook"), "Stop")).toHaveLength(0);
+  });
+
+  it("asks on the row before it stops a source, and stops it only once confirmed", () => {
+    const admin = controls((row) =>
+      row.key === "schedule:s1" ? { kind: "asking" } : { kind: "idle" },
+    );
+    const root = rendered(
+      <ProjectAutomationView
+        admin={admin}
+        onOpenMate={vi.fn()}
+        pool={[]}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    const schedule = sourceRow(root, "schedule");
+    expect(words(schedule)).toContain("Remove this schedule and its brief?");
+    act(() => {
+      buttons(schedule, "Keep")[0]?.props.onClick();
+    });
+    expect(admin.onKeep).toHaveBeenCalledOnce();
+    act(() => {
+      buttons(schedule, "Remove")[0]?.props.onClick();
+    });
+    expect(admin.onStop).toHaveBeenCalledWith(ROWS[3]);
+  });
+
+  it("shows a stop under way on its row, and HQ's refusal there", () => {
+    const root = rendered(
+      <ProjectAutomationView
+        admin={controls((row) =>
+          row.key === "github"
+            ? { kind: "working" }
+            : row.key === "slack"
+              ? { kind: "refused", words: "HQ refused it." }
+              : { kind: "idle" },
+        )}
+        onOpenMate={vi.fn()}
+        pool={[]}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    const stopping = buttons(sourceRow(root, "github"), "Stopping…");
+    expect(stopping).toHaveLength(1);
+    expect(stopping[0]?.props.disabled).toBe(true);
+    expect(words(sourceRow(root, "slack"))).toContain("HQ refused it.");
   });
 
   it("says a channel takes no tasks while its app isn't connected, with the way to connect it", () => {
@@ -159,7 +213,7 @@ describe("a project's Automation section", () => {
         admin={admin}
         onOpenMate={vi.fn()}
         pool={[]}
-        sources={{ rows: ROWS, reading: false }}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -177,7 +231,7 @@ describe("a project's Automation section", () => {
         admin={controls()}
         onOpenMate={vi.fn()}
         pool={[]}
-        sources={{ rows: [], reading: false }}
+        sources={{ rows: [], reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -189,7 +243,7 @@ describe("a project's Automation section", () => {
       <ProjectAutomationView
         onOpenMate={vi.fn()}
         pool={[NOVA]}
-        sources={{ rows: ROWS, reading: false }}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -200,12 +254,54 @@ describe("a project's Automation section", () => {
     expect(text).not.toContain("Take tasks from…");
   });
 
+  it("never says a project takes tasks from nowhere while some of its sources are refused to the reader", () => {
+    const root = rendered(
+      <ProjectAutomationView
+        onOpenMate={vi.fn()}
+        pool={[NOVA]}
+        sources={{ rows: [], reading: false, withheld: true }}
+        workingOf={() => false}
+      />,
+    );
+    expect(words(root)).not.toContain("Nowhere yet.");
+    expect(words(root)).toContain("Owners and admins see every source.");
+  });
+
+  it("shows the sources the reader may see, and says Owners and admins see the rest", () => {
+    const root = rendered(
+      <ProjectAutomationView
+        onOpenMate={vi.fn()}
+        pool={[NOVA]}
+        sources={{ rows: ROWS.slice(0, 1), reading: false, withheld: true }}
+        workingOf={() => false}
+      />,
+    );
+    expect(words(root)).toContain("GitHub issues labelled “mate” · acme/tea-shop");
+    expect(words(root)).toContain("Owners and admins see every source.");
+  });
+
+  it("keeps its place where HQ predates automated Mates, saying HQ needs updating", () => {
+    const root = rendered(
+      <ProjectAutomationView
+        admin={controls()}
+        onOpenMate={vi.fn()}
+        pool={[]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        update
+        workingOf={() => false}
+      />,
+    );
+    expect(words(root)).toContain("Update HQ to set up automated Mates.");
+    expect(words(root)).not.toContain("Take tasks from…");
+    expect(words(root)).not.toContain("Add an automated Mate");
+  });
+
   it("says it reads its sources until they are read", () => {
     const root = rendered(
       <ProjectAutomationView
         onOpenMate={vi.fn()}
         pool={[]}
-        sources={{ rows: [], reading: true }}
+        sources={{ rows: [], reading: true, withheld: false }}
         workingOf={() => false}
       />,
     );

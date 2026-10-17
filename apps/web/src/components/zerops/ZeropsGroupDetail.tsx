@@ -705,7 +705,7 @@ export function ZeropsGroupPane({
   readonly firstDeployOf?: (projectId: string) => FirstDeploy | undefined;
   /** *Mirror code to GitHub or GitLab…*, as the overview card's ··· opens it. */
   readonly onMirror?: (() => void) | undefined;
-  /** Its Automation section (`ProjectAutomation`), between its repositories and its history. */
+  /** Its Automation section (`ProjectAutomation`), above its repositories. */
   readonly automation?: React.ReactNode;
 }) {
   const deployed = useMemo(
@@ -840,6 +840,7 @@ export function ZeropsGroupPane({
         </SideSection>
       )}
 
+      {automation}
       {/* Where its code mirrors, and the way to mirror it: once it has a repository. */}
       {(codeRepos ?? repos ?? []).length === 0 ||
       (onMirror === undefined && connectedRepos(codeRepos ?? repos).length === 0) ? null : (
@@ -856,7 +857,6 @@ export function ZeropsGroupPane({
           )}
         </SideSection>
       )}
-      {automation}
       <SideSection title="History">
         {repo === undefined ? (
           <EmptyState

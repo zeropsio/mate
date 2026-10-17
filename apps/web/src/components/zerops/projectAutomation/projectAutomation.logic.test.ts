@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  automationShown,
+  automationSection,
   connectionMissing,
   poolMateLine,
   scheduleWhen,
+  sourceRowPress,
   sourceRows,
+  stopWords,
   type SourceReads,
 } from "./projectAutomation.logic";
 
@@ -129,6 +131,16 @@ describe("a project's sources of tasks", () => {
   });
 });
 
+describe("sources refused to the reader", () => {
+  it.each([
+    ["a source refused to the reader", { ...NONE, slack: { state: "withheld" as const } }, true],
+    ["every source read", NONE, false],
+    ["a source this HQ predates", { ...NONE, slack: { state: "unsupported" as const } }, false],
+  ] as const)("are said where %s", (_case, reads, withheld) => {
+    expect(sourceRows(reads).withheld).toBe(withheld);
+  });
+});
+
 describe("when a schedule runs", () => {
   it.each([
     [{ every: "day", at: "07:30", timeZone: "UTC" }, "Every day 07:30"],
@@ -154,20 +166,82 @@ describe("a channel's form where its app is not connected", () => {
 
 describe("whether a project's page shows its Automation section", () => {
   it.each([
-    ["to an Admin with nothing set up", { admin: true, key: "set", pool: 0, sources: 0 }, true],
-    ["to a member with nothing set up", { admin: false, key: "set", pool: 0, sources: 0 }, false],
-    ["to a member once it has a pool", { admin: false, key: "set", pool: 1, sources: 0 }, true],
+    ["to an Admin with nothing set up", { admin: true, key: "set", pool: 0, sources: 0 }, "shown"],
+    [
+      "to a member with nothing set up",
+      { admin: false, key: "set", pool: 0, sources: 0 },
+      "hidden",
+    ],
+    ["to a member once it has a pool", { admin: false, key: "set", pool: 1, sources: 0 }, "shown"],
     [
       "to a member once it has a source",
       { admin: false, key: "missing", pool: 0, sources: 1 },
-      true,
+      "shown",
     ],
     [
-      "never where HQ predates automated Mates",
-      { admin: true, key: "unsupported", pool: 1, sources: 1 },
-      false,
+      "to an Admin while the key is not read yet",
+      { admin: true, key: "unknown", pool: 0, sources: 0 },
+      "shown",
     ],
-  ] as const)("%s", (_case, input, shown) => {
-    expect(automationShown(input)).toBe(shown);
+    [
+      "to an Admin where HQ predates automated Mates: in its place, that HQ needs updating",
+      { admin: true, key: "unsupported", pool: 0, sources: 0 },
+      "update",
+    ],
+    [
+      "to a member where HQ predates automated Mates: nothing",
+      { admin: false, key: "unsupported", pool: 0, sources: 0 },
+      "hidden",
+    ],
+  ] as const)("%s", (_case, input, section) => {
+    expect(automationSection(input)).toBe(section);
+  });
+});
+
+describe("Stop and Remove on a source's row", () => {
+  it.each([
+    [
+      "rests while nothing was pressed on it",
+      { asking: null, pressed: null, action: { kind: "idle" } },
+      { kind: "idle" },
+    ],
+    [
+      "asks first, once pressed",
+      { asking: "slack", pressed: null, action: { kind: "idle" } },
+      { kind: "asking" },
+    ],
+    [
+      "shows its stop under way",
+      { asking: null, pressed: "slack", action: { kind: "working", verb: "channel-stop" } },
+      { kind: "working" },
+    ],
+    [
+      "says HQ's refusal on it",
+      { asking: null, pressed: "slack", action: { kind: "failed", words: "HQ refused it." } },
+      { kind: "refused", words: "HQ refused it." },
+    ],
+    [
+      "rests once its stop is done",
+      { asking: null, pressed: "slack", action: { kind: "done", verb: "channel-stop" } },
+      { kind: "idle" },
+    ],
+    [
+      "never wears another row's press",
+      { asking: null, pressed: "github", action: { kind: "working", verb: "stop" } },
+      { kind: "idle" },
+    ],
+  ] as const)("%s", (_case, input, press) => {
+    expect(sourceRowPress({ key: "slack", ...input })).toEqual(press);
+  });
+
+  it.each([
+    ["github", { ask: "Stop taking GitHub issues?", verb: "Stop", working: "Stopping…" }],
+    ["slack", { ask: "Stop taking tasks from this channel?", verb: "Stop", working: "Stopping…" }],
+    [
+      "schedule",
+      { ask: "Remove this schedule and its brief?", verb: "Remove", working: "Removing…" },
+    ],
+  ] as const)("a %s row asks and works in its own words", (kind, words) => {
+    expect(stopWords(kind)).toEqual(words);
   });
 });

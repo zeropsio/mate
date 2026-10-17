@@ -15,6 +15,7 @@ import { useOrgAiKeys } from "~/zerops/useAutomationSettings";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { AutomatedMatesUnsupported, OrganizationKeyView } from "./AutomatedMatesSettings";
+import type { GithubReturn } from "./automationSettings.logic";
 import { GithubAppSettings } from "./GithubAppSettings";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { DiscordMark, IntegrationList, IntegrationRow, SlackMark } from "./IntegrationRow";
@@ -23,7 +24,12 @@ import { TaskLimitsSettings, TaskSourcesSettings } from "./TaskSourcesSettings";
 const NEBIUS = OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === "nebius");
 const ADMINS_ONLY = "Only the organization's Owner and Admins see and change this.";
 
-export function AutomationSettings({ returned = false }: { readonly returned?: boolean }) {
+export function AutomationSettings({
+  returned = null,
+}: {
+  /** How GitHub brought the person back here, if it did. */
+  readonly returned?: GithubReturn;
+}) {
   const { activeOrganization } = useZeropsSession();
   const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
   return (
@@ -76,7 +82,7 @@ export function AutomationSettings({ returned = false }: { readonly returned?: b
   );
 }
 
-function AdminParts({ returned }: { readonly returned: boolean }) {
+function AdminParts({ returned }: { readonly returned: GithubReturn }) {
   const { read, setKey, removeKey, again } = useOrgAiKeys(true);
   // An HQ that keeps no organization keys predates automated Mates: one line, nothing to set.
   if (automatedKeyState(read.keys) === "unsupported") return <AutomatedMatesUnsupported />;

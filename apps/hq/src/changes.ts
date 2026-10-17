@@ -308,12 +308,15 @@ export class Changes extends Context.Service<
      * The change merged by a merge made elsewhere — on the GitHub its repository mirrors to — whose
      * commit `mergedSha` HQ's `main` already holds (`githubMirror.ts` imported it): what a squash
      * here records, with `main` left as the import moved it. One merged already stays as it is.
+     * `mergedHead` is the head GitHub merged, landed as it — a push since is not merged; the
+     * change's head now where none is known.
      */
     readonly landImported: (
       appId: string,
       repo: string,
       number: number,
       mergedSha: string,
+      mergedHead?: string,
     ) => Effect.Effect<HqChange, ReadError | NotLeader | GitError>;
     /**
      * Whether the person may merge or close the application's changes, as `mergeChange` and
@@ -461,6 +464,10 @@ const CHANGE_COLUMNS = [
       'checks', pr.checks) FROM hq_pull_request pr
     WHERE pr.app_id = hq_change.app_id AND pr.repo = hq_change.repo
       AND pr.number = hq_change.number) AS pull_request`,
+  // Its branch on GitHub diverged (`githubMirror.ts`): since when.
+  `(SELECT to_char(m.diverged_since AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    FROM hq_change_mirror m WHERE m.app_id = hq_change.app_id AND m.repo = hq_change.repo
+      AND m.number = hq_change.number) AS mirror_diverged_since`,
 ].join(", ");
 
 /** A change's pull request as `CHANGE_COLUMNS` reads it. */
@@ -501,6 +508,7 @@ interface ChangeRow {
   readonly ready: boolean;
   readonly comments: number;
   readonly pull_request: PullRequestRow | null;
+  readonly mirror_diverged_since: string | null;
 }
 
 const COMMENT_COLUMNS = [
@@ -551,6 +559,7 @@ const changeOf = (row: ChangeRow): HqChange => ({
   ready: row.ready,
   comments: row.comments,
   ...(row.pull_request === null ? {} : { pullRequest: pullRequestOf(row.pull_request) }),
+  ...(row.mirror_diverged_since === null ? {} : { mirrorDivergedSince: row.mirror_diverged_since }),
   receipt: row.receipt,
 });
 
@@ -1564,7 +1573,7 @@ export const changesLayer: Layer.Layer<
           const change = yield* changeIn(appId, repo, number);
           return yield* land(change, expectedHead, { userId }, asItIs);
         }),
-      landImported: (appId, repo, number, mergedSha) =>
+      landImported: (appId, repo, number, mergedSha, mergedHead) =>
         Effect.gen(function* () {
           const git = yield* gitHost.git;
           const at = { appId, id: repo };
@@ -1587,7 +1596,8 @@ export const changesLayer: Layer.Layer<
                 const first = yield* firstCodeMergeOf(sql, { appId, repo, number });
                 const [merged] = yield* sql<ChangeRow>`
                   UPDATE hq_change
-                  SET state = 'merged', merged_sha = ${mergedSha}, landed_head = head,
+                  SET state = 'merged', merged_sha = ${mergedSha},
+                      landed_head = COALESCE(${mergedHead ?? null}, head),
                       merged_at = now(), updated_at = now(),
                       mergeability = 'already_merged', behind = false,
                       first_code_merge = ${first}::boolean
@@ -1599,7 +1609,7 @@ export const changesLayer: Layer.Layer<
                   appId,
                   repo,
                   number,
-                  data: { mergedSha, landedHead: row.head, by: "github" },
+                  data: { mergedSha, landedHead: mergedHead ?? row.head, by: "github" },
                 });
                 return changeOf(merged!);
               }),
