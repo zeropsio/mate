@@ -44,6 +44,7 @@ import {
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
+import type { HqNavigationIntake, HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -113,6 +114,13 @@ export interface HqMate extends Partial<HqMateRecord> {
   readonly logins?: OverviewLogins;
   /** A ready agent outside Mate's sign-in flow, relayed in its overview. */
   readonly runsWithoutSignIn?: boolean;
+  /**
+   * It takes tasks from outside and runs on the organization's API key, never on a person's
+   * sign-in (`HqNavigationMate.automated`); absent from an older HQ: not one.
+   */
+  readonly automated?: boolean | undefined;
+  /** The task an automated Mate is on, or none; absent from an older HQ. */
+  readonly task?: HqNavigationMateTask | null | undefined;
 }
 
 /**
@@ -177,6 +185,11 @@ export interface HqStructure {
     readonly environments?: ReadonlyArray<HqEnvironment> | { readonly refused: string };
     /** The Mates on their way into it whose attach has not landed; absent from an older HQ. */
     readonly births?: ReadonlyArray<HqBirth>;
+    /**
+     * Where its automated Mates take tasks from, and how many wait for one to be free; null:
+     * nowhere; absent from an older HQ.
+     */
+    readonly intake?: HqNavigationIntake | null;
   }>;
 }
 

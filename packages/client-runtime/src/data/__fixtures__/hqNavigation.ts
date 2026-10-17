@@ -139,6 +139,8 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     setupMarker: mate.setupMarker ?? null,
     keyWider: mate.keyWider ?? false,
     ...(mate.birthId == null ? {} : { birthId: mate.birthId }),
+    ...(mate.automated === undefined ? {} : { automated: mate.automated }),
+    ...(mate.task === undefined ? {} : { task: mate.task }),
   });
   const rows: Row[] = [
     ...(seed.lifecycle ?? []).map((record): Row => ({
@@ -179,6 +181,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           contents: app.contents ?? { empty: app.projects.length === 0, deletingProjectIds: [] },
           projectIds: app.projects.map(({ projectId }) => projectId),
           births: app.births ?? [],
+          ...(app.intake === undefined ? {} : { intake: app.intake }),
           environments: (app.environments !== undefined && "refused" in app.environments
             ? app.environments
             : canonicalEnvironmentsOf(app.environments ?? [])) as HqAppValue["environments"],

@@ -325,6 +325,109 @@ describe("hqNavigation", () => {
     ).toBeUndefined();
   });
 
+  it.each([
+    {
+      name: "on a task, with tasks waiting",
+      mate: {
+        automated: true,
+        task: {
+          id: "t1",
+          repo: "acme/tea-shop",
+          number: 12,
+          title: "Fix the checkout total",
+          url: "https://github.com/acme/tea-shop/issues/12",
+        },
+      },
+      intake: { repo: "acme/tea-shop", label: "mate", waiting: 3 },
+      expected: {
+        mate: {
+          automated: true,
+          task: {
+            id: "t1",
+            repo: "acme/tea-shop",
+            number: 12,
+            title: "Fix the checkout total",
+            url: "https://github.com/acme/tea-shop/issues/12",
+          },
+        },
+        intake: { repo: "acme/tea-shop", label: "mate", waiting: 3 },
+      },
+    },
+    {
+      name: "waiting for a task, nowhere to take one from",
+      mate: { automated: true, task: null },
+      intake: null,
+      expected: { mate: { automated: true, task: null }, intake: null },
+    },
+    {
+      name: "from an HQ that says nothing of either",
+      mate: {},
+      intake: undefined,
+      expected: { mate: {}, intake: undefined },
+    },
+  ])(
+    "an automated Mate, the task it is on and its application's waiting tasks reach the menu: $name",
+    ({ mate: automation, intake, expected }) => {
+      const placed = placementFamily.hq!.decode(
+        {
+          projectId: "ada",
+          appId: "shop",
+          name: "Ada",
+          kind: "mate",
+          mate: { ...mate, ...automation },
+          person,
+          signedInNow: {},
+          everSignedIn: {},
+        },
+        "project:ada",
+      )!;
+      const app = hqAppFamily.hq!.decode(
+        {
+          id: "shop",
+          name: "Shop",
+          can: {},
+          contents: { empty: false, deletingProjectIds: [] },
+          environments: [],
+          changes: [],
+          releaseOffer: null,
+          projectIds: ["ada", "stage"],
+          births: [],
+          ...(intake === undefined ? {} : { intake }),
+        },
+        "app:shop",
+      )!;
+      const next = apply(read, [
+        {
+          kind: "delivery",
+          via: "hq-stream",
+          scopes: generations,
+          reset: false,
+          rows: [
+            { family: "hqApp", id: "shop", value: app, revision: { ...revision, revision: 2 } },
+            {
+              family: "placement",
+              id: "ada",
+              value: placed,
+              revision: { ...revision, revision: 2 },
+            },
+          ],
+          removals: [],
+        },
+      ]);
+      const shop = navigation(next).structure?.apps[0];
+      const ada = shop?.projects.find((project) => project.projectId === "ada")?.mate;
+      expect({
+        automated: ada?.automated,
+        task: ada?.task,
+        intake: shop?.intake,
+      }).toEqual({
+        automated: "automated" in expected.mate ? expected.mate.automated : undefined,
+        task: "task" in expected.mate ? expected.mate.task : undefined,
+        intake: expected.intake,
+      });
+    },
+  );
+
   it("keeps the placement when Mate metadata is unknown without claiming there is no Mate", () => {
     const placed = placementFamily.hq!.decode(
       { projectId: "ada", appId: "shop", name: "Ada", kind: "mate", mate: 42 },
