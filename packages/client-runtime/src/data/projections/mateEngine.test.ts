@@ -1785,6 +1785,33 @@ describe("the crew on an engine conversation's record", () => {
     links: [{ kind: "crewmate", handle: "backend" }],
   } as const;
 
+  it("a task's first message carries the issue it brings, for its card; a typed one carries none", () => {
+    const issue = {
+      kind: "github-issue",
+      repo: "acme/tea-shop",
+      number: 12,
+      url: "https://github.com/acme/tea-shop/issues/12",
+      title: "Fix the checkout total",
+      author: "nova-dev",
+    } as const;
+    const drawn = thread(
+      held({
+        runs: [engineRun("thread-ada", 1)],
+        items: [
+          personItem(run1, 1, "Work issue #12 in the project, then open a change.", {
+            task: issue,
+          }),
+          personItem(run1, 2, "Also check the tax line"),
+        ],
+      }),
+    );
+    expect(drawn?.messages).toMatchObject([
+      { role: "user", task: issue },
+      { role: "user", text: "Also check the tax line" },
+    ]);
+    expect(drawn?.messages[1]).not.toHaveProperty("task");
+  });
+
   it("draws a crew card as its run's opening card, typed, never as the agent's answer", () => {
     const drawn = thread(
       held({

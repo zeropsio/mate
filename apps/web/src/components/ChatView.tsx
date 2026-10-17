@@ -220,7 +220,7 @@ import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
-import { automatedMateEntries } from "../zerops/automatedMate.logic";
+import { automatedMateEntries, conversationTask } from "../zerops/automatedMate.logic";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
@@ -2538,6 +2538,12 @@ function ConversationView(props: ChatViewProps) {
     handleReconnectActiveEnvironment,
     zeropsMates,
   ]);
+  // The task this conversation works, on an automated Mate: the header names it.
+  const activeThreadMessages = activeThread?.messages;
+  const activeThreadTask = useMemo(
+    () => conversationTask(activeThreadMessages ?? []),
+    [activeThreadMessages],
+  );
   // An automated Mate runs on the organization's key: no agent a person signs in is offered.
   const automatedHere =
     activeThreadEnvironmentId !== null &&
@@ -8415,6 +8421,7 @@ function ConversationView(props: ChatViewProps) {
             activeThreadId={activeThread.id}
             {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
+            activeThreadTask={activeThreadTask ?? undefined}
             conversationLoading={threadDetailLoading}
             isServerThread={isServerThread}
             activeProjectName={activeProjectDisplayName}

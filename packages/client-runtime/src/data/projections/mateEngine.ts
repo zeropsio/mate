@@ -21,6 +21,7 @@ import {
   type ChatAttachment,
   type ConversationRow,
   type CrewCard,
+  type MateTaskSource,
   type CrewSeam,
   type ConversationHeader,
   type Item,
@@ -133,6 +134,8 @@ type CardOf = (runId: string | null) => string | null;
  */
 export interface EngineMessage extends OrchestrationMessage {
   readonly crewCard?: CrewCard;
+  /** A task's first message on an automated Mate: the issue it brings, drawn as its card. */
+  readonly task?: MateTaskSource;
   /** The person's message waits in the engine's queue: no run has taken it yet. */
   readonly queued?: true;
   /** A person's message whose run is still queued: no agent has it, and the person may withdraw it. */
@@ -167,6 +170,7 @@ function messageOf(
         id: MessageId.make(personMessageId(item)),
         role: "user",
         text: item.text,
+        ...(item.task === undefined ? {} : { task: item.task }),
         attachments: item.attachments.filter(
           (attachment): attachment is Extract<ChatAttachment, { type: "image" | "file" }> =>
             attachment.type === "image" || attachment.type === "file",
