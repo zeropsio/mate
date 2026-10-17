@@ -42,8 +42,10 @@ const CheckRuns = Schema.Struct({
   total_count: Schema.Number,
   check_runs: Schema.Array(
     Schema.Struct({
+      id: Schema.Number,
       name: Schema.String,
       status: Schema.String,
+      started_at: Schema.NullOr(Schema.String),
       conclusion: Schema.NullOr(Schema.String),
       html_url: Schema.optionalKey(Schema.NullOr(Schema.String)),
       details_url: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -103,6 +105,22 @@ interface Check {
   readonly url: string | null;
 }
 
+const newer = (a: CheckRun, b: CheckRun) =>
+  a.started_at === b.started_at ? a.id > b.id : (a.started_at ?? "") > (b.started_at ?? "");
+
+/**
+ * Check runs belong to the commit, not a ref: a fast-forward of another branch to an already
+ * checked commit, or a re-run, reports the same check again, and the newest run decides it.
+ */
+const newestRuns = (runs: ReadonlyArray<CheckRun>): ReadonlyArray<CheckRun> => {
+  const byName = new Map<string, CheckRun>();
+  for (const run of runs) {
+    const seen = byName.get(run.name);
+    if (seen === undefined || newer(run, seen)) byName.set(run.name, run);
+  }
+  return [...byName.values()];
+};
+
 /**
  * One read's verdict. Where the branch rules require checks only those count, and one not reported
  * yet is still running; otherwise every check run and commit status counts.
@@ -113,7 +131,7 @@ export const ciVerdict = (
   required: ReadonlyArray<string> | null,
 ): Pick<HqPushCi, "verdict" | "done" | "total" | "failed"> => {
   const checks: ReadonlyArray<Check> = [
-    ...runs.map((run) => ({
+    ...newestRuns(runs).map((run) => ({
       name: run.name,
       done: run.status === "completed",
       passed: run.conclusion !== null && PASSING.has(run.conclusion),
