@@ -47,6 +47,7 @@
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { HqPullRequest } from "./hqGithub.ts";
 import { HqDirectGitTarget, HqGitBranch, HqTargetTimestamp } from "./hqEnvironment.ts";
 
 /** An id the git layer takes for an application or a repository (`@t3tools/hq-git`, mirrored). */
@@ -210,6 +211,11 @@ export const HqChange = Schema.Struct({
     Schema.withDecodingDefaultKey(Effect.succeed(null)),
   ),
   /**
+   * The pull request it is mirrored to on GitHub, through the organization's GitHub app; absent
+   * where its repository mirrors through no app.
+   */
+  pullRequest: Schema.optionalKey(HqPullRequest),
+  /**
    * The last receipt zcp wrote on it, whole; `null` for a single-part application's change. Added
    * after the rest: an older HQ's change has no key.
    */
@@ -262,6 +268,11 @@ export const HqRepoRemote = Schema.Struct({
   keptBy: Schema.String,
   expiresAt: Schema.NullOr(HqTargetTimestamp),
   invalidSince: Schema.NullOr(HqTargetTimestamp),
+  /**
+   * How HQ reaches it: the organization's GitHub app (no token kept) or a person's token. Absent
+   * from an older HQ: a token.
+   */
+  via: Schema.optionalKey(Schema.Literals(["app", "token"])),
 });
 export type HqRepoRemote = typeof HqRepoRemote.Type;
 
