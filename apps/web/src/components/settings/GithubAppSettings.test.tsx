@@ -61,6 +61,7 @@ async function render(props: Partial<ComponentProps<typeof GithubAppView>> = {})
   const controls = {
     read: read(known({ state: "none" })),
     disconnect: vi.fn(),
+    again: vi.fn(),
     manifest: vi.fn(async () => MANIFEST as HqGithubManifestView | null),
     ...props.controls,
   };
@@ -127,6 +128,7 @@ describe("the GitHub section where no app is connected", () => {
           words: "Only the organization's Owner and Admins connect GitHub.",
         }),
         disconnect: vi.fn(),
+        again: vi.fn(),
         manifest: vi.fn(async () => null),
       },
     });
@@ -153,6 +155,7 @@ describe("the GitHub section where no app is connected", () => {
       controls: {
         read: read({ state: "unsupported" }),
         disconnect: vi.fn(),
+        again: vi.fn(),
         manifest: vi.fn(),
       },
     });
@@ -165,6 +168,7 @@ describe("the GitHub section once the app is connected", () => {
   const connected = {
     read: read(known(CONNECTED)),
     disconnect: vi.fn(),
+    again: vi.fn(),
     manifest: vi.fn(),
   };
 
@@ -221,6 +225,7 @@ it("says GitHub asked an owner to approve the app when it brings the person back
         controls={{
           read: read(known({ ...CONNECTED, installations: [] })),
           disconnect: vi.fn(),
+          again: vi.fn(),
           manifest: vi.fn(),
         }}
         onPost={vi.fn()}
@@ -233,5 +238,35 @@ it("says GitHub asked an owner to approve the app when it brings the person back
   expect(host.querySelector('[role="status"]')?.textContent).toBe(
     "GitHub asked an owner of acme to approve the app; it's installed once they do.",
   );
+  await act(async () => root.unmount());
+});
+
+it("offers Read again where HQ's answer about the app failed, and reads it again on the press", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const again = vi.fn();
+  await act(async () =>
+    root.render(
+      <GithubAppView
+        admin
+        controls={{
+          read: read({ state: "failed", words: "HQ isn't answering." }),
+          again,
+          disconnect: vi.fn(),
+          manifest: vi.fn(),
+        }}
+        onPost={vi.fn()}
+        organization="Acme"
+        returnTo={RETURN_TO}
+        returned={null}
+      />,
+    ),
+  );
+  expect(host.textContent).toContain("HQ isn't answering.");
+  await act(async () =>
+    [...host.querySelectorAll("button")].find((node) => node.textContent === "Read again")!.click(),
+  );
+  expect(again).toHaveBeenCalledTimes(1);
   await act(async () => root.unmount());
 });

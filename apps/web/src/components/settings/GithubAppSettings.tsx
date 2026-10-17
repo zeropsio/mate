@@ -38,6 +38,8 @@ import { taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
 export interface GithubAppControls {
   readonly read: TaskSourceSettingValue<"hqGithub">;
   readonly disconnect: () => void;
+  /** Reads the app again, where HQ's answer failed. */
+  readonly again: () => void;
   readonly manifest: (request: HqGithubManifestRequest) => Promise<HqGithubManifestView | null>;
 }
 
@@ -49,7 +51,7 @@ export function GithubAppSettings({
   /** How GitHub brought the person back here, if it did. */
   readonly returned: GithubReturn;
 }) {
-  const { read, write, manifest } = useGithubApp();
+  const { read, write, manifest, again } = useGithubApp();
   const { activeOrganization } = useZeropsSession();
   return (
     <GithubAppView
@@ -57,6 +59,7 @@ export function GithubAppSettings({
       controls={{
         read,
         manifest,
+        again,
         disconnect: () => {
           write({ kind: "github-disconnect" });
         },
@@ -139,6 +142,10 @@ export function GithubAppView({
           <IntegrationAction closeWords="Close" onToggle={toggle} open={open} primary={false}>
             Manage
           </IntegrationAction>
+        ) : section.kind === "failed" ? (
+          <Button onClick={controls.again} size="sm" variant="secondary">
+            Read again
+          </Button>
         ) : undefined
       }
       id={searchableSetting("automation-github").id}

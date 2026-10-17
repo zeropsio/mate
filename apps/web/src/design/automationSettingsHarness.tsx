@@ -111,6 +111,7 @@ function Automation({
         read: controls(checking ? { state: "reading" } : github)
           .read as TaskSourceSettingValue<"hqGithub">,
         disconnect: nothing,
+        again: nothing,
         manifest: async () => null,
       }}
       defaultOpen={open}
