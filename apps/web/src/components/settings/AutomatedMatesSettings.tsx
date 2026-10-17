@@ -20,6 +20,7 @@ import { automatedKeyState } from "~/zerops/automatedMate.logic";
 import { useAppIntake, useOrgAiKeys } from "~/zerops/useAutomationSettings";
 
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -31,6 +32,7 @@ import {
 } from "./automatedMatesSettings.logic";
 import { tasksWaitingWords } from "../zerops/SidebarMateRow.logic";
 import { SettingsRow } from "./settingsLayout";
+import { TaskSourcesSettings } from "./TaskSourcesSettings";
 
 const NEBIUS = OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === "nebius");
 
@@ -53,6 +55,7 @@ export function AutomatedMatesSettings() {
         />
       )}
       <TasksFromGithub />
+      <TaskSourcesSettings />
     </>
   );
 }
@@ -233,7 +236,7 @@ function TasksFromGithub() {
         <ul className="grid gap-3 px-3 pb-3 sm:px-4">
           <li className="grid gap-2">
             <p className="text-sm font-medium text-muted-foreground">Reading…</p>
-            <IntakeRoom>{null}</IntakeRoom>
+            <IntakeRoom choice>{null}</IntakeRoom>
           </li>
         </ul>
       ) : (
@@ -302,12 +305,15 @@ export function AppIntakeView({
   readonly reposFailure?: string | undefined;
   readonly onReadAgain?: (() => void) | undefined;
   readonly read: AppIntakeRead;
-  readonly onSet: (repo: string, label: string) => void;
+  /** `takesPublic`: it takes a public repository's issues too. */
+  readonly onSet: (repo: string, label: string, takesPublic: boolean) => void;
   readonly onStop: () => void;
 }) {
   const [repo, setRepo] = useState<string | null>(null);
   const [label, setLabel] = useState(DEFAULT_INTAKE_LABEL);
+  const [takesPublic, setTakesPublic] = useState(false);
   const labelId = useId();
+  const publicId = useId();
   const chosen = repo ?? choices[0] ?? null;
   const working = read.action.kind === "working";
   const problem =
@@ -316,11 +322,11 @@ export function AppIntakeView({
     <li className="grid gap-2" data-zerops-intake-app={appId}>
       <p className="text-sm font-medium text-foreground">{name}</p>
       {read.intake === undefined ? (
-        <IntakeRoom>
+        <IntakeRoom choice>
           <p className="text-xs text-muted-foreground">Reading…</p>
         </IntakeRoom>
       ) : read.intake !== null ? (
-        <IntakeRoom>
+        <IntakeRoom choice>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
               {[intakeLine(read.intake), tasksWaitingWords(read.intake.waiting)]
@@ -333,7 +339,7 @@ export function AppIntakeView({
           </div>
         </IntakeRoom>
       ) : !reposRead && reposFailure !== undefined ? (
-        <IntakeRoom>
+        <IntakeRoom choice>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground" role="alert">
               {reposFailure}
@@ -346,60 +352,64 @@ export function AppIntakeView({
           </div>
         </IntakeRoom>
       ) : !reposRead ? (
-        <IntakeRoom>
+        <IntakeRoom choice>
           <p className="text-xs text-muted-foreground">Reading its repositories…</p>
         </IntakeRoom>
       ) : chosen === null ? (
-        <IntakeRoom>
+        <IntakeRoom choice>
           <p className="text-xs text-muted-foreground">
             Mirror its code to GitHub to take tasks from its issues.
           </p>
         </IntakeRoom>
       ) : (
         <form
-          className="flex flex-wrap items-end gap-2"
+          className="grid gap-2"
           onSubmit={(event) => {
             event.preventDefault();
             const typed = label.trim();
             if (typed.length === 0) return;
-            onSet(chosen, typed);
+            onSet(chosen, typed, takesPublic);
           }}
         >
-          <div className="grid min-w-56 gap-1.5">
-            <Label>Repository</Label>
-            <Select
-              onValueChange={(next) => {
-                if (typeof next === "string") setRepo(next);
-              }}
-              value={chosen}
-            >
-              <SelectTrigger aria-label={`${name}'s GitHub repository`} size="sm">
-                <SelectValue>{chosen}</SelectValue>
-              </SelectTrigger>
-              <SelectPopup>
-                {choices.map((choice) => (
-                  <SelectItem key={choice} value={choice}>
-                    {choice}
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </Select>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="grid min-w-56 gap-1.5">
+              <Label>Repository</Label>
+              <Select
+                onValueChange={(next) => {
+                  if (typeof next === "string") setRepo(next);
+                }}
+                value={chosen}
+              >
+                <SelectTrigger aria-label={`${name}'s GitHub repository`} size="sm">
+                  <SelectValue>{chosen}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup>
+                  {choices.map((choice) => (
+                    <SelectItem key={choice} value={choice}>
+                      {choice}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+            </div>
+            <div className="grid w-32 gap-1.5">
+              <Label htmlFor={labelId}>Label</Label>
+              <Input
+                id={labelId}
+                onChange={(event) => {
+                  setLabel(event.target.value);
+                }}
+                size="sm"
+                spellCheck={false}
+                value={label}
+              />
+            </div>
+            <Button disabled={working || label.trim().length === 0} size="sm" type="submit">
+              Take tasks
+            </Button>
           </div>
-          <div className="grid w-32 gap-1.5">
-            <Label htmlFor={labelId}>Label</Label>
-            <Input
-              id={labelId}
-              onChange={(event) => {
-                setLabel(event.target.value);
-              }}
-              size="sm"
-              spellCheck={false}
-              value={label}
-            />
-          </div>
-          <Button disabled={working || label.trim().length === 0} size="sm" type="submit">
-            Take tasks
-          </Button>
+          {/* Off unless asked: anyone can write a public repository's issues. */}
+          <PublicChoice checked={takesPublic} id={publicId} onChange={setTakesPublic} />
         </form>
       )}
       {read.answer === null ? null : <IntakeAnswer answer={read.answer} />}
@@ -417,18 +427,62 @@ export function AppIntakeView({
  * tasks, nothing to take them from — so the row paints in its final shape from the first frame
  * and never grows as what it reads lands (the cardinal sin).
  */
-function IntakeRoom({ children }: { readonly children: ReactNode }) {
+export function IntakeRoom({
+  children,
+  choice = false,
+}: {
+  readonly children: ReactNode;
+  /** The intake's form, whose public-repository choice sits under its fields. */
+  readonly choice?: boolean;
+}) {
   return (
     <div className="grid">
       <div
         aria-hidden
-        className="invisible col-start-1 row-start-1 grid gap-1.5"
+        className="invisible col-start-1 row-start-1 grid gap-2"
         data-zerops-intake-room=""
       >
-        <Label>Repository</Label>
-        <Input readOnly size="sm" tabIndex={-1} />
+        <div className="grid gap-1.5">
+          <Label>Repository</Label>
+          <Input readOnly size="sm" tabIndex={-1} />
+        </div>
+        {choice ? <PublicChoice checked={false} onChange={() => {}} /> : null}
       </div>
       <div className="col-start-1 row-start-1 self-start">{children}</div>
+    </div>
+  );
+}
+
+/** Whether an intake takes a public repository's issues too, and why it is off unless asked. */
+function PublicChoice({
+  id,
+  checked,
+  onChange,
+}: {
+  readonly id?: string;
+  readonly checked: boolean;
+  readonly onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(next) => {
+          onChange(next === true);
+        }}
+        {...(id === undefined ? { tabIndex: -1 } : { id, "aria-describedby": `${id}-why` })}
+      />
+      <div className="grid gap-0.5">
+        <Label {...(id === undefined ? {} : { htmlFor: id })}>
+          Take issues from a public repository
+        </Label>
+        <p
+          className="text-xs text-muted-foreground"
+          {...(id === undefined ? {} : { id: `${id}-why` })}
+        >
+          Anyone can write a public repository's issues, and their words reach the agent.
+        </p>
+      </div>
     </div>
   );
 }
@@ -449,7 +503,7 @@ function IntakeAnswer({ answer }: { readonly answer: HqIntakeView }) {
   );
 }
 
-function CopyLine({
+export function CopyLine({
   label,
   copy,
   value,
