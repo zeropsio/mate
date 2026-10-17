@@ -208,6 +208,42 @@ describe("tasks for automated Mates", () => {
         }),
     );
 
+    it.effect("a change the Mate opens while on a task is that task's change", () =>
+      Effect.gen(function* () {
+        const core = yield* withPool();
+        const opened = (title: string) =>
+          core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "appdev", title },
+          });
+        yield* core.call("POST", "/api/mate/repos", {
+          headers: core.robot.auth,
+          body: { name: "appdev" },
+        });
+        // Off any task, a change is no task's.
+        assert.strictEqual((yield* opened("Before")).status, 200);
+        yield* core.issue(1);
+        const task = yield* toldTask(core.robot.link, 1);
+        yield* core.robot.link.send({
+          type: "task-state",
+          report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+        });
+        yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+        const change = yield* opened("Hotter tea");
+        assert.strictEqual(change.status, 200);
+        assert.notProperty(change.body, "task");
+        const [row] = yield* rowsWhere(
+          core.url,
+          "SELECT change_repo, change_number FROM hq_task",
+          (rows) => rows[0]?.["change_number"] != null,
+        );
+        assert.deepStrictEqual(row, {
+          change_repo: "appdev",
+          change_number: (change.body as { change: { number: number } }).change.number,
+        });
+      }),
+    );
+
     it.effect("a Mate's word on a task not its own is passed by", () =>
       Effect.gen(function* () {
         const core = yield* withPool({ busy: true });

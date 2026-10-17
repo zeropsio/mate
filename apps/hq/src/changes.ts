@@ -60,6 +60,7 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -302,6 +303,11 @@ export class Changes extends Context.Service<
     /** Ticks after any change's record moved, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
     /**
+     * The tasks a change was recorded on as their Mate opened it (`openChange`, `mateTasks.ts`),
+     * by id, as they are.
+     */
+    readonly taskChanges: Stream.Stream<string>;
+    /**
      * Where each application's releases and its repositories' `main` last moved, by id
      * (`releaseRevisions`): what the structure socket carries, beside each application's changes.
      */
@@ -467,6 +473,7 @@ export const changesLayer: Layer.Layer<
     // One repository is made at a time: two first deliveries of one name meet here, not in git.
     const making = yield* Semaphore.make(1);
     const ticks = yield* SubscriptionRef.make(0);
+    const taskChanged = yield* PubSub.unbounded<string>();
     /** After a write that changed a change's record has committed. */
     const touched = <A, E, R>(write: Effect.Effect<A, E, R>) =>
       Effect.tap(write, () => SubscriptionRef.update(ticks, (n) => n + 1));
@@ -996,11 +1003,28 @@ export const changesLayer: Layer.Layer<
                   });
                   return { change: null, created: false, reason: "nothing_to_deliver" } as const;
                 }
+                /**
+                 * A change its Mate opens while on a task is the task's (one task at a time), in
+                 * the write that answers it: the first it opens on it.
+                 */
+                const onTask = (change: { readonly number: number }) =>
+                  Effect.map(
+                    sql<{ readonly id: string }>`
+                    UPDATE hq_task SET change_repo = ${repo}, change_number = ${change.number},
+                      updated_at = now()
+                    WHERE mate_project_id = ${projectId} AND state IN ('assigned', 'working')
+                      AND change_number IS NULL
+                    RETURNING id::text AS id`,
+                    (rows) => rows[0]?.id,
+                  );
                 const [open] = yield* sql<ChangeRow>`
                 SELECT ${columns} FROM hq_change
                 WHERE app_id = ${appId}::uuid AND repo = ${repo}
                   AND mate_project_id = ${projectId} AND state = 'open'`;
-                if (open !== undefined) return { change: changeOf(open), created: false };
+                if (open !== undefined) {
+                  const change = changeOf(open);
+                  return { change, created: false, task: yield* onTask(change) };
+                }
                 // Past every change branch too, recorded or not: a branch a restore's records
                 // lack is never a new change's.
                 const branched = (yield* git.changeRefs({ appId, id: repo })).reduce(
@@ -1022,9 +1046,21 @@ export const changesLayer: Layer.Layer<
                   number: change.number,
                   data: { mateProjectId: projectId },
                 });
-                return { change, created: true };
+                return { change, created: true, task: yield* onTask(change) };
               }),
             ),
+          ).pipe(
+            Effect.tap((opened) =>
+              "task" in opened && opened.task !== undefined
+                ? PubSub.publish(taskChanged, opened.task)
+                : Effect.void,
+            ),
+            // The task is HQ's to know; the Mate's answer stays the wire's.
+            Effect.map((opened): OpenChangeResponse => {
+              if (!("task" in opened)) return opened;
+              const { task: _task, ...answer } = opened;
+              return answer;
+            }),
           );
         }),
       mateChanges: (projectId) =>
@@ -1137,6 +1173,7 @@ export const changesLayer: Layer.Layer<
           return { id, path: attachmentPath(appId, repo, number, id) };
         }),
       changes: Stream.merge(SubscriptionRef.changes(ticks), gitHost.recorded),
+      taskChanges: Stream.fromPubSub(taskChanged),
       navigation: readChangeNavigationSource(sql),
       releaseRevisions: Effect.provideService(releaseRevisions, SqlClient.SqlClient, sql),
       readable: (userId) =>
