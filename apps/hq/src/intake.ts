@@ -13,7 +13,8 @@
  * repository gets new ones, and the webhook HQ made on the old one goes.
  *
  * A delivery is taken only once its `X-Hub-Signature-256` holds — an HMAC-SHA256 of its bytes under
- * the secret, compared in constant time — before a byte of it is parsed (`receive`). An issue opened,
+ * the secret, compared in constant time — before a byte of it is parsed (`receive`); JSON, or
+ * form-encoded as a webhook pasted with GitHub's defaults sends it. An issue opened,
  * labelled or reopened carrying the label, in any case, waits as a task (`hq_task`, `queued`): once
  * per delivery and once per issue while it is live. One closed or unlabelled while it still waits is
  * dropped; one a Mate took stays its Mate's.
@@ -52,15 +53,15 @@ const GITHUB_REPO = /^[\w.-]{1,100}\/[\w.-]{1,100}$/u;
 /** A GitHub label: at most 50 characters, none of them a control character. */
 const LABEL = /^[^\p{Cc}]{1,50}$/u;
 
-/** Why the person pastes the webhook, in their words. */
+/** How the person sets up the webhook they paste: GitHub's form defaults to neither. */
+const PASTE_AS = "Content type: application/json; events: Issues.";
+
+/** Why the person pastes the webhook, in their words, and how. */
 const WHY = {
-  refused:
-    "The repository's token may not make webhooks. Give it Webhooks: Read and write, or add this webhook in the repository's settings.",
-  exists:
-    "GitHub refused the webhook; one to this address may be there already. Check the repository's webhooks, or add this one.",
-  noToken:
-    "Mate holds no working token for this repository. Add this webhook in the repository's settings.",
-  unreachable: "GitHub couldn't be reached. Add this webhook in the repository's settings.",
+  refused: `The repository's token may not make webhooks. Give it Webhooks: Read and write, or add this webhook in the repository's settings. ${PASTE_AS}`,
+  exists: `GitHub refused the webhook; one to this address may be there already. Check the repository's webhooks, or add this one. ${PASTE_AS}`,
+  noToken: `Mate holds no working token for this repository. Add this webhook in the repository's settings. ${PASTE_AS}`,
+  unreachable: `GitHub couldn't be reached. Add this webhook in the repository's settings. ${PASTE_AS}`,
 } as const;
 
 type IntakeError = AutomationRefused | NotLeader | SqlError | ZeropsError;
@@ -68,6 +69,8 @@ type IntakeError = AutomationRefused | NotLeader | SqlError | ZeropsError;
 /** A delivery as GitHub sends it: its headers HQ reads, and its bytes as they came. */
 export interface Delivery {
   readonly event: string | undefined;
+  /** JSON, or form-encoded with the JSON in `payload` (GitHub's form default). */
+  readonly contentType: string | undefined;
   readonly id: string | undefined;
   readonly signature: string | undefined;
   readonly body: Uint8Array;
@@ -96,6 +99,13 @@ const IssuesEvent = Schema.Struct({
   repository: Schema.Struct({ full_name: Schema.String }),
 });
 const decodeIssuesEvent = Schema.decodeUnknownOption(Schema.fromJsonString(IssuesEvent));
+
+/** A delivery's JSON: its body, or a form-encoded body's `payload`. */
+const deliveredJson = (delivery: Delivery) => {
+  const text = new TextDecoder().decode(delivery.body);
+  const form = /^application\/x-www-form-urlencoded\b/iu.test(delivery.contentType ?? "");
+  return form ? (new URLSearchParams(text).get("payload") ?? "") : text;
+};
 
 /** Whether `signature` (`sha256=<hex>`) is the HMAC-SHA256 of `body` under `secret`. */
 export const signatureHolds = (
@@ -283,7 +293,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
             if (delivery.event === "ping") return { kind: "ping" } as const;
             if (delivery.event !== "issues")
               return { kind: "taken", appId: row.app_id, moved: false } as const;
-            const read = decodeIssuesEvent(new TextDecoder().decode(delivery.body));
+            const read = decodeIssuesEvent(deliveredJson(delivery));
             if (Option.isNone(read) || delivery.id === undefined || delivery.id === "")
               return { kind: "invalid" } as const;
             const event = read.value;

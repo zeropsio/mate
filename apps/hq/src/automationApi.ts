@@ -141,6 +141,7 @@ export const automationRoutes = Layer.mergeAll(
         const publicId = (yield* HttpRouter.params)["publicId"] ?? "";
         const received = yield* (yield* Intake).receive(publicId, {
           event: request.headers["x-github-event"],
+          contentType: request.headers["content-type"],
           id: request.headers["x-github-delivery"],
           signature: request.headers["x-hub-signature-256"],
           body,

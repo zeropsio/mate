@@ -125,6 +125,30 @@ describe("GitHub's webhook of an intake", () => {
         }),
     );
 
+    it.effect(
+      "a delivery GitHub sends form-encoded, as a webhook pasted with its defaults does, waits as a task too",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withIntake;
+          const opened = issueEvent("opened", { number: 1, labels: ["mate"] });
+          const taken = yield* deliver(core, core.hook, "issues", opened, { form: true });
+          assert.strictEqual(taken.status, 202);
+          const forged = yield* deliver(
+            core,
+            { ...core.hook, secret: "not-the-secret" },
+            "issues",
+            issueEvent("opened", { number: 2, labels: ["mate"] }),
+            { form: true },
+          );
+          assert.strictEqual(forged.status, 401);
+          const rows = yield* core.tasks((found) => found.length > 0);
+          assert.deepStrictEqual(
+            rows.map((row) => [row["number"], row["state"]]),
+            [[1, "queued"]],
+          );
+        }),
+    );
+
     it.effect("the same delivery twice, or another event of an issue that waits, is one task", () =>
       Effect.gen(function* () {
         const core = yield* withIntake;

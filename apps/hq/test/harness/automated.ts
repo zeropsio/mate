@@ -112,15 +112,25 @@ export const intakeOn = (
 
 let deliveries = 0;
 
-/** GitHub's delivery of `event`, signed with `secret` unless a signature is given. */
+/**
+ * GitHub's delivery of `event`, signed with `secret` unless a signature is given: JSON, or
+ * form-encoded (`payload=`) as a webhook pasted with GitHub's defaults sends it.
+ */
 export const deliver = (
   core: Core,
   hook: { readonly path: string; readonly secret: string },
   event: string,
   payload: unknown,
-  options: { readonly delivery?: string; readonly signature?: string | null } = {},
+  options: {
+    readonly delivery?: string;
+    readonly signature?: string | null;
+    readonly form?: boolean;
+  } = {},
 ) => {
-  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  const json = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(
+    options.form === true ? new URLSearchParams({ payload: json }).toString() : json,
+  );
   const signature =
     options.signature === undefined
       ? `sha256=${NodeCrypto.createHmac("sha256", hook.secret).update(bytes).digest("hex")}`
@@ -128,7 +138,8 @@ export const deliver = (
   return core.call("POST", hook.path, {
     body: bytes,
     headers: {
-      "content-type": "application/json",
+      "content-type":
+        options.form === true ? "application/x-www-form-urlencoded" : "application/json",
       "x-github-event": event,
       "x-github-delivery": options.delivery ?? `delivery-${String((deliveries += 1))}`,
       ...(signature === null ? {} : { "x-hub-signature-256": signature }),

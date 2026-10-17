@@ -93,6 +93,8 @@ describe("an application's intake", () => {
           if (hook.kind !== "paste") return;
           assert.isAtLeast(hook.secret.length, 32);
           assert.include(hook.why, "Webhooks");
+          // GitHub's form defaults to a form-encoded push event; HQ reads issues, as JSON.
+          assert.include(hook.why, "Content type: application/json; events: Issues");
           const structure = yield* call("GET", "/api/structure", { session: owner });
           assert.notInclude(new TextDecoder().decode(structure.bytes), hook.secret);
         }),
