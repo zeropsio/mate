@@ -97,14 +97,17 @@ describe("the GitHub section where no app is connected", () => {
   it("offers the Owner and Admins the app's GitHub organization and name, named after the organization, and one press to make it", async () => {
     const { host, button, field } = await render();
     expect(host.textContent).toContain("Not connected");
-    expect(host.textContent).toContain("appear as its bot, never as a person");
+    expect(field("App name")).toBeNull();
+    await act(async () => button("Connect")!.click());
+    expect(host.textContent).toContain("appear as your organization's bot, never a person");
     expect(field("GitHub organization")?.placeholder).toBe("Your own account");
     expect(field("App name")?.value).toBe("Acme Mate");
     expect(button("Create GitHub app")).toBeDefined();
   });
 
   it("asks HQ for the manifest and hands it to GitHub's page, for the person's own account when no organization is typed", async () => {
-    const { controls, onPost, host } = await render();
+    const { controls, onPost, host, button } = await render();
+    await act(async () => button("Connect")!.click());
     await act(async () => {
       host.querySelector("form")!.requestSubmit();
     });
@@ -127,6 +130,7 @@ describe("the GitHub section where no app is connected", () => {
         manifest: vi.fn(async () => null),
       },
     });
+    await act(async () => button("Connect")!.click());
     await act(async () => {
       host.querySelector("form")!.requestSubmit();
     });
@@ -139,9 +143,8 @@ describe("the GitHub section where no app is connected", () => {
 
   it("shows a member that no app is connected, and nothing to press", async () => {
     const { host } = await render({ admin: false });
-    expect(host.textContent).toContain(
-      "Not connected · The organization's Owner and Admins connect it.",
-    );
+    expect(host.textContent).toContain("Not connected");
+    expect(host.textContent).toContain("The organization's Owner and Admins connect it.");
     expect(host.querySelector("button, input")).toBeNull();
   });
 
@@ -166,9 +169,10 @@ describe("the GitHub section once the app is connected", () => {
   };
 
   it("names the bot it writes as and where it is installed, each with its page on GitHub", async () => {
-    const { host } = await render({ controls: connected });
+    const { host, button } = await render({ controls: connected });
     expect(host.textContent).toContain("Connected as acme-mate[bot]");
     expect(host.textContent).toContain("acme · 3 repositories");
+    await act(async () => button("Manage")!.click());
     const links = [...host.querySelectorAll("a")].map((a) => [a.textContent, a.href]);
     expect(links).toEqual([
       ["Manage on GitHub", "https://github.com/organizations/acme/settings/installations/1"],
@@ -179,6 +183,7 @@ describe("the GitHub section once the app is connected", () => {
   it("asks before disconnecting, saying the app stays on GitHub to delete there", async () => {
     const controls = { ...connected, disconnect: vi.fn() };
     const { host, button } = await render({ controls });
+    await act(async () => button("Manage")!.click());
     await act(async () => button("Disconnect")!.click());
     expect(controls.disconnect).not.toHaveBeenCalled();
     expect(host.textContent).toContain("The app stays on GitHub: delete it in its settings there.");
@@ -189,6 +194,7 @@ describe("the GitHub section once the app is connected", () => {
   it("shows a member where it is installed, with nothing to install or disconnect", async () => {
     const { host, button } = await render({ admin: false, controls: connected });
     expect(host.textContent).toContain("acme · 3 repositories");
+    await act(async () => button("Manage")!.click());
     expect(button("Disconnect")).toBeUndefined();
     expect(host.textContent).not.toContain("Install on more repositories");
   });

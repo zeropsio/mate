@@ -14,7 +14,7 @@ import type {
 export const APP_NAME_MAX = 34;
 
 export const GITHUB_ONE_LINE =
-  "Mate acts on GitHub as your organization's own app: comments, branches and pull requests appear as its bot, never as a person.";
+  "Comments, branches and pull requests appear as your organization's bot, never a person.";
 export const GITHUB_OLDER_HQ = "Update HQ to connect GitHub";
 const WITHHELD = "Only the organization's Owner and Admins see this.";
 

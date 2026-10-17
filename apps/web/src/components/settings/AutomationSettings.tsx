@@ -6,6 +6,7 @@
  * The Owner and Admins see each part's state and its controls; anyone else sees the GitHub app's
  * state, and that the rest is theirs to set.
  */
+import { KeyRoundIcon } from "lucide-react";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 
@@ -16,8 +17,8 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { AutomatedMatesUnsupported, OrganizationKeyView } from "./AutomatedMatesSettings";
 import { GithubAppSettings } from "./GithubAppSettings";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
-import { TaskSourcesSettings } from "./TaskSourcesSettings";
+import { DiscordMark, IntegrationList, IntegrationRow, SlackMark } from "./IntegrationRow";
+import { TaskLimitsSettings, TaskSourcesSettings } from "./TaskSourcesSettings";
 
 const NEBIUS = OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === "nebius");
 const ADMINS_ONLY = "Only the organization's Owner and Admins see and change this.";
@@ -36,17 +37,37 @@ export function AutomationSettings({ returned = false }: { readonly returned?: b
           <AdminParts returned={returned} />
         ) : (
           <>
+            <IntegrationList>
+              <IntegrationRow
+                line={ADMINS_ONLY}
+                mark={<KeyRoundIcon className="size-5" />}
+                name="Model key"
+                open={false}
+                state={{ kind: "none" }}
+                surface="settings-org-ai-key"
+              />
+              <GithubAppSettings admin={false} returned={returned} />
+              <IntegrationRow
+                line={ADMINS_ONLY}
+                mark={<SlackMark />}
+                name="Slack"
+                open={false}
+                state={{ kind: "none" }}
+                surface="settings-slack"
+              />
+              <IntegrationRow
+                line={ADMINS_ONLY}
+                mark={<DiscordMark />}
+                name="Discord"
+                open={false}
+                state={{ kind: "none" }}
+                surface="settings-discord"
+              />
+            </IntegrationList>
             <SettingsRow
-              description="Pays for the open models automated Mates run on."
-              id={searchableSetting("automation-model-key").id}
+              description="A task that reaches either stops, and says where it got to."
               status={ADMINS_ONLY}
-              title="Model key"
-            />
-            <GithubAppSettings admin={false} returned={returned} />
-            <SettingsRow
-              description="Where people hand automated Mates tasks, and how long each may run."
-              status={ADMINS_ONLY}
-              title="Slack, Discord and limits per task"
+              title="Limits per task"
             />
           </>
         )}
@@ -61,17 +82,20 @@ function AdminParts({ returned }: { readonly returned: boolean }) {
   if (automatedKeyState(read.keys) === "unsupported") return <AutomatedMatesUnsupported />;
   return (
     <>
-      {NEBIUS === undefined ? null : (
-        <OrganizationKeyView
-          onAgain={again}
-          onRemove={removeKey}
-          onSet={setKey}
-          provider={NEBIUS}
-          read={read}
-        />
-      )}
-      <GithubAppSettings admin returned={returned} />
-      <TaskSourcesSettings />
+      <IntegrationList>
+        {NEBIUS === undefined ? null : (
+          <OrganizationKeyView
+            onAgain={again}
+            onRemove={removeKey}
+            onSet={setKey}
+            provider={NEBIUS}
+            read={read}
+          />
+        )}
+        <GithubAppSettings admin returned={returned} />
+        <TaskSourcesSettings />
+      </IntegrationList>
+      <TaskLimitsSettings />
     </>
   );
 }

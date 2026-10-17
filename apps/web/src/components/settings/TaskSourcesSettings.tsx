@@ -34,12 +34,19 @@ import {
   type TaskSourceControls,
 } from "~/zerops/useTaskSourceSettings";
 
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { CopyLine, HeldRoom, IntakeRoom, OutLink } from "./automationParts";
+import {
+  DiscordMark,
+  IntegrationAction,
+  IntegrationRow,
+  SlackMark,
+  type IntegrationState,
+} from "./IntegrationRow";
 import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import {
@@ -55,20 +62,6 @@ import {
   taskSourcesUnsupported,
   workingWords,
 } from "./taskSourcesSettings.logic";
-
-/** Controls over nothing, for a part drawn unseen as the room its final shape takes. */
-const UNSEEN = {
-  read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
-  write: () => {},
-  again: () => {},
-} as TaskSourceControls<never>;
-/** How HQ answers an organization with no Discord application: no address until connected. */
-const DISCORD_OFF: HqDiscordView = {
-  connected: false,
-  interactionsUrl: "",
-  inviteUrl: null,
-  allowed: [],
-};
 
 const SLACK_NEW_APP = "https://api.slack.com/apps?new_app=1";
 const DISCORD_PORTAL = "https://discord.com/developers/applications";
@@ -86,25 +79,34 @@ interface App {
  * is set on that project's page.
  */
 export function TaskSourcesSettings() {
-  const limits = useOrgTaskSource("hqTaskLimits");
   const slack = useOrgTaskSource("hqSlack");
   const discord = useOrgTaskSource("hqDiscord");
-  if (taskSourcesUnsupported([limits.read.setting, slack.read.setting, discord.read.setting]))
-    return <TaskSourcesUnsupported />;
+  if (taskSourcesUnsupported([slack.read.setting, discord.read.setting]))
+    return (
+      <li className="px-4 py-3">
+        <TaskSourcesUnsupported />
+      </li>
+    );
   return (
     <>
       <SlackSettingsView controls={slack} />
       <DiscordSettingsView controls={discord} />
-      <TaskLimitsView controls={limits} />
     </>
   );
+}
+
+/** Settings › Automation's limits on each task, under its list. */
+export function TaskLimitsSettings() {
+  const limits = useOrgTaskSource("hqTaskLimits");
+  if (limits.read.setting.state === "unsupported") return null;
+  return <TaskLimitsView controls={limits} />;
 }
 
 /** In these settings' place, where this HQ predates them. */
 export function TaskSourcesUnsupported() {
   return (
     <p
-      className="px-3 pb-3 text-sm text-muted-foreground sm:px-4"
+      className="text-sm text-muted-foreground"
       data-zerops-surface="settings-task-sources-unsupported"
     >
       Update HQ to take tasks from Slack, Discord, webhooks and schedules.
@@ -115,6 +117,7 @@ export function TaskSourcesUnsupported() {
 // ── the parts every section shares ──────────────────────────────────────────────────────────
 
 const WITHHELD = "Only the organization's Owner and Admins see this.";
+const TASK_SOURCES_UPDATE = "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
 
 /**
  * What a section's status line says of its setting: its own line once known, else that it is
@@ -187,6 +190,109 @@ function Problem({
     <p className="text-xs text-destructive-foreground" role="alert">
       {problem}
     </p>
+  );
+}
+
+/**
+ * A connection's row opened by its press, folded again once it connects or disconnects: what the
+ * press opened was for the state that just ended.
+ */
+function useOpenUntil(connected: boolean | null, defaultOpen: boolean) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [seen, setSeen] = useState(connected);
+  if (seen !== connected) {
+    setSeen(connected);
+    if (seen !== null) setOpen(false);
+  }
+  return [open, setOpen] as const;
+}
+
+/** A connection's pill, from what is read: *Checking…* until HQ answers. */
+function sourceState<T>(
+  setting: SettingValue<T>,
+  connected: (held: T) => boolean,
+): IntegrationState {
+  switch (setting.state) {
+    case "known":
+      return connected(setting.held)
+        ? { kind: "on", words: "Connected" }
+        : { kind: "off", words: "Not connected" };
+    case "unread":
+    case "reading":
+      return { kind: "checking" };
+    default:
+      return { kind: "none" };
+  }
+}
+
+/** A connection's one line: a refusal, HQ's failure, or where it stands; its purpose until known. */
+function sourceLine<T>(
+  read: { readonly action: Parameters<typeof taskSourceProblem>[0] },
+  setting: SettingValue<T>,
+  purpose: string,
+  connected: (held: T) => string,
+): ReactNode {
+  const problem = taskSourceProblem(read.action);
+  if (problem !== null)
+    return (
+      <span className="text-destructive-foreground" role="alert">
+        {problem}
+      </span>
+    );
+  if (setting.state === "known") {
+    const said = connected(setting.held);
+    return said === "Not connected" ? purpose : said;
+  }
+  if (setting.state === "failed") return setting.words;
+  if (setting.state === "withheld") return WITHHELD;
+  if (setting.state === "unsupported") return TASK_SOURCES_UPDATE;
+  return purpose;
+}
+
+/**
+ * A connection's one press: *Connect* while it is not, *Manage* once it is, *Read again* where HQ
+ * failed — and while it is read, *Connect*'s room, held unseen so nothing moves as it lands.
+ */
+function SourceAction({
+  setting,
+  connected,
+  open,
+  onToggle,
+  again,
+}: {
+  readonly setting: SettingValue<unknown>;
+  readonly connected: boolean | null;
+  readonly open: boolean;
+  readonly onToggle: () => void;
+  readonly again: () => void;
+}) {
+  if (setting.state === "failed")
+    return (
+      <Button onClick={again} size="sm" variant="secondary">
+        Read again
+      </Button>
+    );
+  if (connected === null)
+    return setting.state === "unread" || setting.state === "reading" ? (
+      <HeldRoom
+        template={
+          <Button size="sm" tabIndex={-1}>
+            Connect
+          </Button>
+        }
+      >
+        {null}
+      </HeldRoom>
+    ) : null;
+  return (
+    <IntegrationAction
+      closeWords={connected ? "Close" : "Cancel"}
+      onToggle={onToggle}
+      open={open}
+      primary={!connected}
+    >
+      {connected ? "Manage" : "Connect"}
+    </IntegrationAction>
   );
 }
 
@@ -305,53 +411,63 @@ function AppRows({
 export function SlackSettingsView({
   controls,
   manifest,
+  defaultOpen = false,
 }: {
   readonly controls: Controls<"hqSlack">;
   /** The manifest's read, where the harness hands it; else read while the steps show. */
   readonly manifest?: Controls<"hqSlackManifest">;
+  /** Its press's part opened from the start: the harness's and a test's. */
+  readonly defaultOpen?: boolean;
 }) {
   const { read, write, again } = controls;
   const setting = read.setting;
   const view = setting.state === "known" ? setting.held : null;
+  const [open, setOpen] = useOpenUntil(view?.connected ?? null, defaultOpen);
   return (
-    <SettingsRow
-      control={
-        view?.connected === true ? (
-          <Button
+    <IntegrationRow
+      action={
+        <SourceAction
+          again={again}
+          connected={view?.connected ?? null}
+          onToggle={() => setOpen(!open)}
+          open={open}
+          setting={setting}
+        />
+      }
+      id={searchableSetting("automation-slack").id}
+      line={sourceLine(
+        read,
+        setting,
+        "Mention Mate in a project's channel: the thread becomes the task, and Mate answers there.",
+        slackLine,
+      )}
+      mark={<SlackMark />}
+      name="Slack"
+      open={open && view !== null}
+      state={sourceState(setting, (held) => held.connected)}
+      surface="settings-slack"
+    >
+      {view === null ? null : view.connected ? (
+        <div className="flex items-center gap-4 text-xs">
+          <span className="text-muted-foreground">
+            Disconnecting stops every project taking tasks from Slack.
+          </span>
+          <InlineButton
             disabled={working(read.action)}
             onClick={() => {
               write({ kind: "slack-disconnect" });
             }}
-            size="sm"
-            variant="ghost"
+            tone="destructive"
           >
             {pressWords(read.action, ["slack-disconnect"], "Disconnect")}
-          </Button>
-        ) : undefined
-      }
-      data-zerops-surface="settings-slack"
-      description="Mention Mate in a project's channel: the thread becomes the task's conversation, and Mate answers there."
-      id={searchableSetting("automation-slack").id}
-      status={statusOf(setting, slackLine)}
-      title="Slack"
-    >
-      <div className="grid gap-3 px-3 pb-3 empty:hidden">
-        {view === null ? (
-          <NotKnown
-            onAgain={again}
-            quiet
-            setting={setting}
-            // An unconnected organization's steps: the shape most land in.
-            template={<SlackSteps controls={UNSEEN} manifest={UNSEEN} />}
-          />
-        ) : view.connected ? null : manifest === undefined ? (
-          <SlackStepsWithManifest controls={controls} />
-        ) : (
-          <SlackSteps controls={controls} manifest={manifest} />
-        )}
-        <Problem read={read} />
-      </div>
-    </SettingsRow>
+          </InlineButton>
+        </div>
+      ) : manifest === undefined ? (
+        <SlackStepsWithManifest controls={controls} />
+      ) : (
+        <SlackSteps controls={controls} manifest={manifest} />
+      )}
+    </IntegrationRow>
   );
 }
 
@@ -510,48 +626,66 @@ export function AppChannelView({
 
 // ── Discord ─────────────────────────────────────────────────────────────────────────────────
 
-export function DiscordSettingsView({ controls }: { readonly controls: Controls<"hqDiscord"> }) {
+export function DiscordSettingsView({
+  controls,
+  defaultOpen = false,
+}: {
+  readonly controls: Controls<"hqDiscord">;
+  /** Its press's part opened from the start: the harness's and a test's. */
+  readonly defaultOpen?: boolean;
+}) {
   const { read, write, again } = controls;
   const setting = read.setting;
   const view = setting.state === "known" ? setting.held : null;
+  const [open, setOpen] = useOpenUntil(view?.connected ?? null, defaultOpen);
   return (
-    <SettingsRow
-      control={
-        view?.connected === true ? (
-          <Button
-            disabled={working(read.action)}
-            onClick={() => {
-              write({ kind: "discord-disconnect" });
-            }}
-            size="sm"
-            variant="ghost"
-          >
-            {pressWords(read.action, ["discord-disconnect"], "Disconnect")}
-          </Button>
-        ) : undefined
+    <IntegrationRow
+      action={
+        <SourceAction
+          again={again}
+          connected={view?.connected ?? null}
+          onToggle={() => setOpen(!open)}
+          open={open}
+          setting={setting}
+        />
       }
-      data-zerops-surface="settings-discord"
-      description="Allowed people type /mate task in a project's channel: Mate opens a thread for it, and /mate reply there steers it."
       id={searchableSetting("automation-discord").id}
-      status={statusOf(setting, (known) => (known.connected ? "Connected" : "Not connected"))}
-      title="Discord"
+      line={sourceLine(
+        read,
+        setting,
+        "Allowed people type /mate task in a project's channel, and /mate reply in its thread.",
+        (held) =>
+          !held.connected
+            ? "Not connected"
+            : held.allowed.length === 0
+              ? "Connected · nobody may start a task yet"
+              : `Connected · ${held.allowed.length} ${held.allowed.length === 1 ? "person may" : "people may"} start tasks`,
+      )}
+      mark={<DiscordMark />}
+      name="Discord"
+      open={open && view !== null}
+      state={sourceState(setting, (held) => held.connected)}
+      surface="settings-discord"
     >
-      <div className="grid gap-3 px-3 pb-3">
-        {view === null ? (
-          <NotKnown
-            onAgain={again}
-            quiet
-            setting={setting}
-            template={<DiscordSteps controls={UNSEEN} view={DISCORD_OFF} />}
-          />
-        ) : view.connected ? (
+      {view === null ? null : view.connected ? (
+        <>
           <DiscordConnected controls={controls} view={view} />
-        ) : (
-          <DiscordSteps controls={controls} view={view} />
-        )}
-        <Problem read={read} />
-      </div>
-    </SettingsRow>
+          <div className="text-xs">
+            <InlineButton
+              disabled={working(read.action)}
+              onClick={() => {
+                write({ kind: "discord-disconnect" });
+              }}
+              tone="destructive"
+            >
+              {pressWords(read.action, ["discord-disconnect"], "Disconnect")}
+            </InlineButton>
+          </div>
+        </>
+      ) : (
+        <DiscordSteps controls={controls} view={view} />
+      )}
+    </IntegrationRow>
   );
 }
 
@@ -1148,18 +1282,17 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
   const shownCost = cost ?? (held?.costUsd == null ? "" : String(held.costUsd));
   return (
     <SettingsRow
-      data-zerops-surface="settings-task-limits"
-      description="A task that reaches either stops, and says where it got to."
-      id={searchableSetting("automation-limits").id}
-      status={statusOf(setting, limitsLine)}
-      title="Limits per task"
-    >
-      <div className="grid gap-2 px-3 pb-3">
-        {held === null ? (
-          <NotKnown onAgain={again} quiet setting={setting} />
+      control={
+        held === null ? (
+          setting.state === "failed" ? (
+            <Button onClick={again} size="sm" variant="secondary">
+              Read again
+            </Button>
+          ) : (
+            <HeldRoom template={<LimitsFields cost="" minutes="" />}>{null}</HeldRoom>
+          )
         ) : (
           <form
-            className="flex flex-wrap items-end gap-2"
             onSubmit={(event) => {
               event.preventDefault();
               const typed = readLimits(shownMinutes, shownCost);
@@ -1172,40 +1305,32 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
               write({ kind: "task-limits", limits: typed.limits });
             }}
           >
-            <div className="grid w-28 gap-1.5">
-              <Label htmlFor={minutesId}>Minutes</Label>
-              <Input
-                id={minutesId}
-                inputMode="numeric"
-                onChange={(event) => {
-                  setMinutes(event.target.value);
-                }}
-                size="sm"
-                value={shownMinutes}
-              />
-            </div>
-            <div className="grid w-28 gap-1.5">
-              <Label htmlFor={costId}>Cost (USD)</Label>
-              <Input
-                id={costId}
-                inputMode="decimal"
-                onChange={(event) => {
-                  setCost(event.target.value);
-                }}
-                placeholder="No limit"
-                size="sm"
-                value={shownCost}
-              />
-            </div>
-            <Button
-              disabled={sent || working(read.action) || (minutes === null && cost === null)}
-              size="sm"
-              type="submit"
+            <LimitsFields
+              cost={shownCost}
+              costId={costId}
+              minutes={shownMinutes}
+              minutesId={minutesId}
+              onCost={setCost}
+              onMinutes={setMinutes}
             >
-              {pressWords(read.action, ["task-limits"], "Save")}
-            </Button>
+              <Button
+                disabled={sent || working(read.action) || (minutes === null && cost === null)}
+                size="sm"
+                type="submit"
+              >
+                {pressWords(read.action, ["task-limits"], "Save")}
+              </Button>
+            </LimitsFields>
           </form>
-        )}
+        )
+      }
+      data-zerops-surface="settings-task-limits"
+      description="A task that reaches either stops, and says where it got to."
+      id={searchableSetting("automation-limits").id}
+      status={statusOf(setting, limitsLine)}
+      title="Limits per task"
+    >
+      <div className="grid gap-2 px-3 pb-3 empty:hidden">
         {refusal === null ? null : (
           <p className="text-xs text-destructive-foreground" role="alert">
             {refusal}
@@ -1214,5 +1339,55 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
         <Problem read={read} />
       </div>
     </SettingsRow>
+  );
+}
+
+/** The limits' two fields side by side, each labelled beside it, and the press after them. */
+function LimitsFields({
+  minutes,
+  cost,
+  minutesId,
+  costId,
+  onMinutes,
+  onCost,
+  children,
+}: {
+  readonly minutes: string;
+  readonly cost: string;
+  readonly minutesId?: string;
+  readonly costId?: string;
+  readonly onMinutes?: (value: string) => void;
+  readonly onCost?: (value: string) => void;
+  readonly children?: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Label htmlFor={minutesId}>Minutes</Label>
+      <div className="w-16">
+        <Input
+          id={minutesId}
+          inputMode="numeric"
+          onChange={(event) => {
+            onMinutes?.(event.target.value);
+          }}
+          size="sm"
+          value={minutes}
+        />
+      </div>
+      <Label htmlFor={costId}>Cost, USD</Label>
+      <div className="w-24">
+        <Input
+          id={costId}
+          inputMode="decimal"
+          onChange={(event) => {
+            onCost?.(event.target.value);
+          }}
+          placeholder="No limit"
+          size="sm"
+          value={cost}
+        />
+      </div>
+      {children ?? <Button size="sm">Save</Button>}
+    </div>
   );
 }

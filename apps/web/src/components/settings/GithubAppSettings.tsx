@@ -8,13 +8,14 @@
  */
 import type { TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
+import { GithubIcon } from "lucide-react";
 import { useId, useState } from "react";
 
 import { appBasePath } from "~/basePath";
 import { useGithubApp } from "~/zerops/useTaskSourceSettings";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { OutLink } from "./automationParts";
@@ -28,7 +29,7 @@ import {
   githubStatus,
   postManifest,
 } from "./automationSettings.logic";
-import { SettingsRow } from "./settingsLayout";
+import { IntegrationAction, IntegrationRow } from "./IntegrationRow";
 import { searchableSetting } from "./settingsSearch";
 import { taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
 
@@ -75,8 +76,11 @@ export function GithubAppView({
   returnTo,
   returned,
   onPost,
+  defaultOpen = false,
 }: {
   readonly controls: GithubAppControls;
+  /** Its press's part opened from the start: the harness's. */
+  readonly defaultOpen?: boolean;
   readonly admin: boolean;
   /** The Zerops organization's name: the app's first name. */
   readonly organization: string | null;
@@ -87,41 +91,74 @@ export function GithubAppView({
 }) {
   const { read } = controls;
   const section = githubSection(read.setting, admin);
+  const [open, setOpen] = useState(defaultOpen);
   const [confirming, setConfirming] = useState(false);
   const working = read.action.kind === "working";
   const problem = taskSourceProblem(read.action);
+  const toggle = () => {
+    setOpen((was) => !was);
+    setConfirming(false);
+  };
+  // One line, whatever lands: a refusal, the return from GitHub, or where it stands.
+  const line =
+    problem !== null ? (
+      <span className="text-destructive-foreground" role="alert">
+        {problem}
+      </span>
+    ) : section.kind === "connected" ? (
+      returned ? (
+        <span role="status">
+          GitHub is connected. Mate acts there as {section.botLogin} from now on.
+        </span>
+      ) : (
+        <>
+          Connected as <span className="font-mono text-foreground">{section.botLogin}</span>
+          {section.installations.length === 0
+            ? " · installed nowhere yet"
+            : ` · ${section.installations.map((installation) => installation.line).join(", ")}`}
+        </>
+      )
+    ) : section.kind === "none" ? (
+      section.connect ? (
+        GITHUB_ONE_LINE
+      ) : (
+        "The organization's Owner and Admins connect it."
+      )
+    ) : section.kind === "reading" ? (
+      GITHUB_ONE_LINE
+    ) : (
+      githubStatus(section)
+    );
   return (
-    <SettingsRow
-      {...searchableSetting("automation-github")}
-      control={
-        section.kind === "connected" && section.manage && !confirming ? (
-          <Button
-            disabled={working}
-            onClick={() => {
-              setConfirming(true);
-            }}
-            size="sm"
-            variant="ghost"
-          >
-            {working && read.action.kind === "working" && read.action.verb === "github-disconnect"
-              ? workingWords("github-disconnect")
-              : "Disconnect"}
-          </Button>
+    <IntegrationRow
+      action={
+        section.kind === "none" && section.connect ? (
+          <IntegrationAction onToggle={toggle} open={open} primary>
+            Connect
+          </IntegrationAction>
+        ) : section.kind === "connected" ? (
+          <IntegrationAction closeWords="Close" onToggle={toggle} open={open} primary={false}>
+            Manage
+          </IntegrationAction>
         ) : undefined
       }
-      data-zerops-surface="settings-github"
-      description={GITHUB_ONE_LINE}
-      status={
-        section.kind === "connected" ? (
-          <span>
-            Connected as <span className="font-mono text-foreground">{section.botLogin}</span>
-          </span>
-        ) : (
-          githubStatus(section)
-        )
+      id={searchableSetting("automation-github").id}
+      line={line}
+      mark={<GithubIcon className="size-5" />}
+      name="GitHub"
+      open={open && (section.kind === "connected" || (section.kind === "none" && section.connect))}
+      state={
+        section.kind === "reading"
+          ? { kind: "checking" }
+          : section.kind === "connected"
+            ? { kind: "on", words: "Connected" }
+            : section.kind === "none"
+              ? { kind: "off", words: "Not connected" }
+              : { kind: "none" }
       }
+      surface="settings-github"
     >
-      {section.kind === "none" && section.connect ? (
+      {section.kind === "none" ? (
         <CreateApp
           busy={working}
           onCreate={async (request) => {
@@ -133,31 +170,40 @@ export function GithubAppView({
           returnTo={returnTo}
         />
       ) : section.kind === "connected" ? (
-        <div className="grid gap-2 px-3 pb-3">
-          {returned ? (
-            <p className="text-xs text-foreground" role="status">
-              GitHub is connected. Mate acts there as {section.botLogin} from now on.
-            </p>
-          ) : null}
-          <ul className="grid gap-1" data-zerops-surface="settings-github-installations">
+        <>
+          <ul className="grid gap-1.5" data-zerops-surface="settings-github-installations">
             {section.installations.map((installation) => (
-              <li className="flex items-center justify-between gap-3 text-xs" key={installation.id}>
+              <li className="flex items-center gap-1.5 text-xs" key={installation.id}>
                 <span className="text-foreground">{installation.line}</span>
+                <span className="text-muted-foreground">·</span>
                 <OutLink href={installation.manageUrl}>Manage on GitHub</OutLink>
               </li>
             ))}
           </ul>
           {section.manage ? (
-            <p className="text-xs">
+            <div className="flex items-center gap-4 text-xs">
               <OutLink href={section.installUrl}>
                 {section.installations.length === 0
                   ? "Install it on repositories"
                   : "Install on more repositories"}
               </OutLink>
-            </p>
+              {confirming ? null : (
+                <InlineButton
+                  disabled={working}
+                  onClick={() => {
+                    setConfirming(true);
+                  }}
+                  tone="destructive"
+                >
+                  {read.action.kind === "working" && read.action.verb === "github-disconnect"
+                    ? workingWords("github-disconnect")
+                    : "Disconnect"}
+                </InlineButton>
+              )}
+            </div>
           ) : null}
           {confirming ? (
-            <div className="grid gap-2 rounded-lg border border-border p-3" role="group">
+            <div className="grid gap-2" role="group">
               <p className="text-xs text-foreground">
                 HQ forgets the app, and Mate stops acting on GitHub through it. The app stays on
                 GitHub: delete it in its settings there.
@@ -166,6 +212,7 @@ export function GithubAppView({
                 <Button
                   onClick={() => {
                     setConfirming(false);
+                    setOpen(false);
                     controls.disconnect();
                   }}
                   size="sm"
@@ -185,14 +232,9 @@ export function GithubAppView({
               </div>
             </div>
           ) : null}
-        </div>
+        </>
       ) : null}
-      {problem === null ? null : (
-        <p className="px-3 pb-3 text-xs text-destructive-foreground" role="alert">
-          {problem}
-        </p>
-      )}
-    </SettingsRow>
+    </IntegrationRow>
   );
 }
 
@@ -217,7 +259,7 @@ function CreateApp({
   const nameId = useId();
   return (
     <form
-      className="grid gap-2 px-3 pb-3"
+      className="grid gap-2"
       onSubmit={(event) => {
         event.preventDefault();
         const problem = appNameProblem(name);

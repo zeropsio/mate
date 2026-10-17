@@ -86,6 +86,7 @@ describe("Slack in Settings", () => {
     const html = renderToStaticMarkup(
       <SlackSettingsView
         controls={controls(known(slackOff))}
+        defaultOpen
         manifest={controls(known('{"display_information":{}}'))}
       />,
     );
@@ -99,7 +100,9 @@ describe("Slack in Settings", () => {
 
   it("connects with the bot token and signing secret typed, and clears both fields", () => {
     const slack = controls(known(slackOff));
-    const view = rendered(<SlackSettingsView controls={slack} manifest={controls(known("{}"))} />);
+    const view = rendered(
+      <SlackSettingsView controls={slack} defaultOpen manifest={controls(known("{}"))} />,
+    );
     const [token, signing] = view.root
       .findAllByType(Input)
       .filter((node) => node.props.type === "password");
@@ -121,6 +124,7 @@ describe("Slack in Settings", () => {
       <>
         <SlackSettingsView
           controls={controls(known({ ...slackOff, connected: true, workspace: "Acme" }))}
+          defaultOpen
         />
         <AppChannelView
           controls={controls(
@@ -161,19 +165,19 @@ describe("Slack in Settings", () => {
       <SlackSettingsView controls={controls({ state: "reading" })} />,
     );
     expect(html).toContain("data-zerops-intake-room");
-    expect(shown(html)).toContain("Reading…");
+    expect(shown(html)).toContain("Checking…");
   });
 
   it.each([
     {
       case: "Slack, as its unconnected steps",
       part: <SlackSettingsView controls={controls({ state: "reading" })} />,
-      room: "Create a Slack app from this manifest.",
+      room: "Connect",
     },
     {
       case: "Discord, as its unconnected steps",
       part: <DiscordSettingsView controls={controls({ state: "reading" })} />,
-      room: "Make an application in the Discord Developer Portal.",
+      room: "Connect",
     },
     {
       case: "an application's schedules, as its form",
@@ -202,7 +206,9 @@ describe("Discord in Settings", () => {
   };
 
   it("walks an organization with no Discord application through connecting one, with its endpoint URL", () => {
-    const html = renderToStaticMarkup(<DiscordSettingsView controls={controls(known(off))} />);
+    const html = renderToStaticMarkup(
+      <DiscordSettingsView controls={controls(known(off))} defaultOpen />,
+    );
     expect(html).toContain('href="https://discord.com/developers/applications"');
     expect(shown(html)).toContain("Application ID");
     expect(shown(html)).toContain("Public key");
@@ -212,7 +218,10 @@ describe("Discord in Settings", () => {
 
   it("says the endpoint address appears once connected, with nothing to copy before HQ names it", () => {
     const html = renderToStaticMarkup(
-      <DiscordSettingsView controls={controls(known({ ...off, interactionsUrl: "" }))} />,
+      <DiscordSettingsView
+        controls={controls(known({ ...off, interactionsUrl: "" }))}
+        defaultOpen
+      />,
     );
     expect(shown(html)).toContain("the address that appears here once it is connected");
     expect(shown(html)).not.toContain("Copy URL");
@@ -221,6 +230,7 @@ describe("Discord in Settings", () => {
   it("shows a connected application's invite link and who may use it", () => {
     const html = renderToStaticMarkup(
       <DiscordSettingsView
+        defaultOpen
         controls={controls(
           known({
             ...off,
@@ -238,7 +248,7 @@ describe("Discord in Settings", () => {
 
   it("says nobody may start a task while the allowlist is empty", () => {
     const html = renderToStaticMarkup(
-      <DiscordSettingsView controls={controls(known({ ...off, connected: true }))} />,
+      <DiscordSettingsView defaultOpen controls={controls(known({ ...off, connected: true }))} />,
     );
     expect(shown(html)).toContain("Nobody may start a task yet");
   });

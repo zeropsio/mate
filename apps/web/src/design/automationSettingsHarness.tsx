@@ -2,8 +2,9 @@
  * Settings › Automation and the mirror dialog, in each of their states, from fixtures.
  *
  * Served by the dev server at `/design-automation.html` (`?theme=dark`). Open it at the owner's
- * 1786 × 1000. `?view=` picks one state: `none` (an Owner, no GitHub app), `connected`, `older`
- * (an HQ older than the app), `member`, `dialog` (the mirror dialog's repositories, each state).
+ * 1786 × 1000. `?view=` picks one state: `none` (an Owner, no GitHub app), `open` (GitHub's and
+ * Slack's Connect pressed), `checking` (every read under way), `connected`, `older` (an HQ older
+ * than the app), `member`, `dialog` (the mirror dialog's repositories, each state).
  *
  * Fixtures only. Nothing here ships — `design-automation.html` is not `index.html`, and no route
  * imports this module.
@@ -16,7 +17,8 @@ import { createRoot } from "react-dom/client";
 
 import { OrganizationKeyView } from "~/components/settings/AutomatedMatesSettings";
 import { GithubAppView } from "~/components/settings/GithubAppSettings";
-import { SettingsRow, SettingsSection } from "~/components/settings/settingsLayout";
+import { IntegrationList } from "~/components/settings/IntegrationRow";
+import { SettingsSection } from "~/components/settings/settingsLayout";
 import {
   DiscordSettingsView,
   SlackSettingsView,
@@ -90,15 +92,28 @@ function Page({ children }: { readonly children: ReactNode }) {
   );
 }
 
-function Automation({ github, admin }: { readonly github: unknown; readonly admin: boolean }) {
+function Automation({
+  github,
+  admin,
+  open = false,
+  checking = false,
+}: {
+  readonly github: unknown;
+  readonly admin: boolean;
+  readonly open?: boolean;
+  readonly checking?: boolean;
+}) {
+  const at = (value: unknown) => controls(checking ? { state: "reading" } : known(value));
   const app = (
     <GithubAppView
       admin={admin}
       controls={{
-        read: controls(github).read as TaskSourceSettingValue<"hqGithub">,
+        read: controls(checking ? { state: "reading" } : github)
+          .read as TaskSourceSettingValue<"hqGithub">,
         disconnect: nothing,
         manifest: async () => null,
       }}
+      defaultOpen={open}
       onPost={nothing}
       organization="Acme"
       returnTo="https://acme.example/mate/settings/automation?github=connected"
@@ -110,27 +125,26 @@ function Automation({ github, admin }: { readonly github: unknown; readonly admi
       <SettingsSection title="Automation">
         {admin ? (
           <>
-            <OrganizationKeyView
-              onAgain={nothing}
-              onRemove={nothing}
-              onSet={nothing}
-              provider={NEBIUS}
-              read={KEY_SET}
-            />
-            {app}
-            <SlackSettingsView controls={controls(known(SLACK))} />
-            <DiscordSettingsView controls={controls(known(DISCORD_OFF))} />
-            <TaskLimitsView controls={controls(known({ minutes: 60, costUsd: 5 }))} />
+            <IntegrationList>
+              <OrganizationKeyView
+                onAgain={nothing}
+                onRemove={nothing}
+                onSet={nothing}
+                provider={NEBIUS}
+                read={checking ? { keys: { state: "reading" }, action: { kind: "idle" } } : KEY_SET}
+              />
+              {app}
+              <SlackSettingsView
+                controls={at(open ? { ...SLACK, connected: false, workspace: null } : SLACK)}
+                defaultOpen={open}
+                manifest={controls(known("{}"))}
+              />
+              <DiscordSettingsView controls={at(DISCORD_OFF)} />
+            </IntegrationList>
+            <TaskLimitsView controls={at({ minutes: 60, costUsd: 5 })} />
           </>
         ) : (
-          <>
-            <SettingsRow
-              description="Pays for the open models automated Mates run on."
-              status="Only the organization's Owner and Admins see and change this."
-              title="Model key"
-            />
-            {app}
-          </>
+          <IntegrationList>{app}</IntegrationList>
         )}
       </SettingsSection>
     </Page>
@@ -246,8 +260,10 @@ if (host) {
       ) : (
         <Automation
           admin={view !== "member"}
+          checking={view === "checking"}
+          open={view === "open"}
           github={
-            view === "none"
+            view === "none" || view === "open"
               ? known({ state: "none" })
               : view === "older"
                 ? { state: "unsupported" }
