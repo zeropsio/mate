@@ -55,6 +55,7 @@ import { OrgAiKeys } from "./orgAiKeys.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { Roles } from "./roles.ts";
 import { Structure } from "./structure.ts";
+import { sourceOfRow } from "./taskSources.ts";
 
 /** How many times a task is handed out before it fails untaken. */
 export const TASK_TRIES = 3;
@@ -89,34 +90,27 @@ export class MateTasks extends Context.Service<
   }
 >()("@t3tools/hq/mateTasks") {}
 
+const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
+
 interface TaskRow {
   readonly id: string;
   readonly app_id: string;
-  readonly repo: string;
-  readonly number: number;
-  readonly title: string;
+  readonly source: unknown;
   readonly body: string;
-  readonly url: string;
-  readonly author: string | null;
 }
 
-const TASK_COLUMNS =
-  "id::text AS id, app_id::text AS app_id, repo, number, title, body, url, author";
+const TASK_COLUMNS = "id::text AS id, app_id::text AS app_id, source, body";
 
-const taskOf = (row: TaskRow): MateTask => ({
-  id: row.id,
-  source: {
-    kind: "github-issue",
-    repo: row.repo,
-    number: row.number,
-    url: row.url,
-    title: row.title,
-    author: row.author,
-  },
-  body: row.body,
-});
-
-const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
+/** A task as its Mate is told it; none where its row's source does not read. */
+const taskOf = (row: TaskRow): MateTask | undefined => {
+  const source = sourceOfRow(row.source);
+  return source === undefined ? undefined : { id: row.id, source, body: row.body };
+};
+/** Its `task` frame, or none (`taskOf`). */
+const taskFrame = (row: TaskRow) => {
+  const task = taskOf(row);
+  return task === undefined ? undefined : encodeDown({ type: "task", task });
+};
 
 export interface MateTasksOptions {
   /** How long a Mate has to take a task it was handed; 60 s. */
@@ -301,7 +295,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           const waiting = yield* sql<TaskRow>`
             SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task t
             WHERE app_id::text = ${appId} AND state = 'queued'
-              AND EXISTS (SELECT 1 FROM hq_intake i WHERE i.app_id = t.app_id AND i.repo = t.repo)
+              AND (t.source_kind <> 'github-issue'
+                OR EXISTS (SELECT 1 FROM hq_intake i WHERE i.app_id = t.app_id AND i.repo = t.repo))
             ORDER BY seq LIMIT ${free.length}`;
           for (const [index, task] of waiting.entries()) {
             const projectId = free[index]!;
@@ -321,10 +316,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 }),
               );
             if (handed.length === 0) continue;
-            yield* PubSub.publish(told, {
-              projectId,
-              frame: encodeDown({ type: "task", task: taskOf(task) }),
-            });
+            const frame = taskFrame(task);
+            if (frame !== undefined) yield* PubSub.publish(told, { projectId, frame });
             yield* structure.mateTouched(projectId);
           }
         }
@@ -589,9 +582,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task
                 WHERE mate_project_id = ${projectId} AND state = 'assigned'`;
               return Stream.concat(
-                Stream.fromIterable(
-                  handed.map((row) => encodeDown({ type: "task", task: taskOf(row) })),
-                ),
+                Stream.fromIterable(handed.flatMap((row) => taskFrame(row) ?? [])),
                 Stream.fromSubscription(live).pipe(
                   Stream.filter((message) => message.projectId === projectId),
                   Stream.map((message) => message.frame),

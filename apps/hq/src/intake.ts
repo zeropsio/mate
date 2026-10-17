@@ -46,6 +46,7 @@ import { can } from "./permissions.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { Structure } from "./structure.ts";
+import { encodeSource } from "./taskSources.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
 /** Where GitHub delivers an intake's webhooks, below HQ's own address. */
@@ -254,11 +255,23 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
           const { issue } = event;
           const title =
             issue.title.trim().slice(0, MATE_TASK_TITLE_MAX) || `Issue #${String(issue.number)}`;
+          const repo = event.repository.full_name.toLowerCase();
+          const author = issue.user?.login ?? null;
+          const source = encodeSource({
+            kind: "github-issue",
+            repo,
+            number: issue.number,
+            url: issue.html_url,
+            title,
+            author,
+          });
           const rows = yield* leader.write(sql`
-            INSERT INTO hq_task (app_id, repo, number, title, body, url, author, delivery_id, state)
-            VALUES (${appId}::uuid, ${event.repository.full_name.toLowerCase()}, ${issue.number},
+            INSERT INTO hq_task (app_id, repo, number, title, body, url, author, delivery_id, state,
+              source_kind, source, source_key)
+            VALUES (${appId}::uuid, ${repo}, ${issue.number},
               ${title}, ${(issue.body ?? "").slice(0, MATE_TASK_BODY_MAX)}, ${issue.html_url},
-              ${issue.user?.login ?? null}, ${deliveryId}, 'queued')
+              ${author}, ${deliveryId}, 'queued', 'github-issue', ${source}::jsonb,
+              ${`github:${repo}#${String(issue.number)}`})
             ON CONFLICT DO NOTHING
             RETURNING 1`);
           return rows.length > 0;

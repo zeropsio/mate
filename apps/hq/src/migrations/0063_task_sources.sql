@@ -1,0 +1,55 @@
+-- Tasks from every source (`@t3tools/contracts` `MateTaskSource`): a GitHub issue, a Slack thread, a
+-- Discord thread, a signed webhook's call, a schedule's run (`taskSources.ts`). `source` is the
+-- task's source as its card draws it; `source_key` the work item it is about, one live task per
+-- application and key (`github:acme/tea-shop#12`); `requested_by` the Zerops user its source's gate
+-- mapped, where it maps one; `status_ref` where its one status line lives on the source (a GitHub
+-- comment's id, a Slack message's ts, a Discord message's id). `repo`/`number` stay a GitHub
+-- issue's alone. A task may wait for a person's answer (`waiting`, since `waiting_since`, asking
+-- `question`, reminded once at `reminded_at`) and be stopped by people (`stop_reason`, asked at
+-- `stop_requested_at`, ended `stopped` once its Mate says so). `told_position` is the place in its
+-- application's queue its status line last said.
+ALTER TABLE hq_task
+  ADD COLUMN source_kind text NOT NULL DEFAULT 'github-issue',
+  ADD COLUMN source jsonb,
+  ADD COLUMN source_key text,
+  ADD COLUMN requested_by text,
+  ADD COLUMN status_ref text,
+  ADD COLUMN waiting_since timestamptz,
+  ADD COLUMN question text,
+  ADD COLUMN reminded_at timestamptz,
+  ADD COLUMN stop_reason text,
+  ADD COLUMN stop_requested_at timestamptz,
+  ADD COLUMN told_position integer;
+UPDATE hq_task SET
+  source = jsonb_build_object('kind', 'github-issue', 'repo', repo, 'number', number, 'url', url,
+    'title', title, 'author', author),
+  source_key = 'github:' || repo || '#' || number::text;
+ALTER TABLE hq_task
+  ALTER COLUMN source_kind DROP DEFAULT,
+  ALTER COLUMN source SET NOT NULL,
+  ALTER COLUMN source_key SET NOT NULL,
+  ALTER COLUMN repo DROP NOT NULL,
+  ALTER COLUMN number DROP NOT NULL,
+  ALTER COLUMN url DROP NOT NULL,
+  ADD CONSTRAINT hq_task_source_kind CHECK (source_kind IN ('github-issue', 'slack-thread', 'discord-thread', 'webhook', 'schedule')),
+  ADD CONSTRAINT hq_task_issue CHECK ((source_kind = 'github-issue') = (repo IS NOT NULL AND number IS NOT NULL)),
+  ADD CONSTRAINT hq_task_source_key CHECK (length(source_key) BETWEEN 1 AND 500);
+
+ALTER TABLE hq_task DROP CONSTRAINT hq_task_state_check;
+ALTER TABLE hq_task ADD CONSTRAINT hq_task_state_check CHECK (state IN
+  ('queued', 'assigned', 'working', 'waiting', 'done', 'failed', 'dropped', 'stopped'));
+ALTER TABLE hq_task DROP CONSTRAINT hq_task_check;
+ALTER TABLE hq_task ADD CONSTRAINT hq_task_check CHECK (
+  (state IN ('assigned', 'working', 'waiting')) = (mate_project_id IS NOT NULL AND assigned_at IS NOT NULL)
+  OR state IN ('done', 'failed', 'stopped'));
+
+DROP INDEX hq_task_live_issue;
+CREATE UNIQUE INDEX hq_task_live_source ON hq_task (app_id, source_key)
+  WHERE state IN ('queued', 'assigned', 'working', 'waiting');
+CREATE INDEX hq_task_live_key ON hq_task (source_key)
+  WHERE state IN ('queued', 'assigned', 'working', 'waiting');
+DROP INDEX hq_task_live_mate;
+CREATE UNIQUE INDEX hq_task_live_mate ON hq_task (mate_project_id)
+  WHERE state IN ('assigned', 'working', 'waiting');
+CREATE INDEX hq_task_change ON hq_task (app_id, change_repo, change_number)
+  WHERE change_number IS NOT NULL;

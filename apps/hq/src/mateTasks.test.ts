@@ -143,6 +143,7 @@ describe("tasks for automated Mates", () => {
             number: 1,
             title: "Issue 1",
             url: "https://github.com/acme/tea-shop/issues/1",
+            label: "acme/tea-shop#1",
           });
           const app = yield* nextScopeValue<HqNavigationApp>(
             watching,
@@ -630,11 +631,17 @@ describe("tasks for automated Mates", () => {
           ]);
           // A task of the repository the intake left, however it came to wait, is handed to no
           // one: the Mate gets the newer task of the intake's repository instead.
-          const waiting = (number: number, repo: string) => core.sql`
-            INSERT INTO hq_task (app_id, repo, number, title, body, url, delivery_id, state)
-            VALUES (${core.appId}::uuid, ${repo}, ${number}, ${`Issue ${String(number)}`}, '',
-              ${`https://github.com/${repo}/issues/${String(number)}`}, ${`waiting-${String(number)}`},
-              'queued')`;
+          const waiting = (number: number, repo: string) => {
+            const url = `https://github.com/${repo}/issues/${String(number)}`;
+            const title = `Issue ${String(number)}`;
+            const source = { kind: "github-issue", repo, number, url, title, author: null };
+            return core.sql`
+              INSERT INTO hq_task (app_id, repo, number, title, body, url, delivery_id, state,
+                source_kind, source, source_key)
+              VALUES (${core.appId}::uuid, ${repo}, ${number}, ${title}, '', ${url},
+                ${`waiting-${String(number)}`}, 'queued', 'github-issue',
+                ${JSON.stringify(source)}::jsonb, ${`github:${repo}#${String(number)}`})`;
+          };
           yield* waiting(3, "acme/tea-shop");
           yield* waiting(4, "acme/coffee-shop");
           yield* core.robot.link.send(attention(0));
