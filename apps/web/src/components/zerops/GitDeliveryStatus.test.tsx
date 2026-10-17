@@ -4,6 +4,7 @@ import { HqGitNavigationEnvironment as GitEnvironmentSchema } from "@t3tools/sha
 import { appEnvironments, environmentById, readsOfState } from "@t3tools/client-runtime/data";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import type { HqPushNavigationJob, HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
+import type { HqPushCi } from "@t3tools/shared/hqDeploys";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { gitDeliveryOf } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -519,4 +520,195 @@ it("the mounted compact flow joins delayed navigation evidence before menus and 
   expect(host.querySelector("[data-standing]")?.getAttribute("data-standing")).toBe("pushing");
   await act(async () => root.unmount());
   registry.dispose();
+});
+
+const ci = (record: Partial<HqPushCi>): HqPushCi => ({
+  sha: SHA,
+  verdict: "running",
+  done: 0,
+  total: 0,
+  failed: [],
+  required: null,
+  reason: null,
+  watch: "watching",
+  readAt: AT,
+  until: "2026-10-13T11:00:00Z",
+  ...record,
+});
+const withCi = (pushed: HqPushNavigationJob, record: HqPushCi): HqPushNavigationJob => ({
+  ...pushed,
+  evidence: { ...pushed.evidence!, ci: record },
+});
+const ciLines = (record: HqPushCi) => {
+  const env = environment([withCi(job("pushed"), record), job("pushed", "web")]);
+  const host = document.createElement("div");
+  host.innerHTML = renderToStaticMarkup(
+    <GitDeliveryStatus
+      environment={env}
+      repos={repos}
+      delivery={gitDeliveryOf(env, { releases: [release()], repos })}
+    />,
+  );
+  return [...host.querySelectorAll("[data-git-ci]")].map((line) => ({
+    words: line.textContent,
+    links: [...line.querySelectorAll("a")].map((link) => [link.textContent, link.href]),
+  }));
+};
+describe("the origin's CI on a Git environment's last push", () => {
+  it.each([
+    [
+      "a push whose CI still runs says how many of its checks are done",
+      ci({ verdict: "running", done: 12, total: 14 }),
+      "CI running · 12 of 14 done",
+    ],
+    [
+      "a push whose CI passed says CI passed",
+      ci({ verdict: "passed", done: 14, total: 14, watch: "finished" }),
+      "CI passed",
+    ],
+    [
+      "a push no CI reported on says No CI reported",
+      ci({ verdict: "none", watch: "finished" }),
+      "No CI reported",
+    ],
+    [
+      "a push whose CI has not reported yet says so",
+      ci({ verdict: "none" }),
+      "CI not reported yet",
+    ],
+    [
+      "a push whose CI HQ cannot read says why",
+      ci({
+        verdict: "unreadable",
+        watch: "stopped",
+        reason: "The token can't read check runs. Add Checks: Read to the token to show CI.",
+      }),
+      "CI unreadable: The token can't read check runs. Add Checks: Read to the token to show CI.",
+    ],
+    [
+      "a push HQ stopped watching keeps its last count and says why it stopped",
+      ci({
+        verdict: "running",
+        done: 3,
+        total: 4,
+        watch: "stopped",
+        reason: "Mate stopped watching CI 60 minutes after the push.",
+      }),
+      "CI running · 3 of 4 done · Mate stopped watching CI 60 minutes after the push.",
+    ],
+  ] as const)("%s", (_title, record, words) => {
+    expect(ciLines(record)).toEqual([{ words, links: [] }]);
+  });
+  it("a push whose CI failed names each failed check and links its run", () => {
+    expect(
+      ciLines(
+        ci({
+          verdict: "failed",
+          done: 13,
+          total: 14,
+          failed: [
+            { name: "check_types", url: "https://github.com/acme/api/runs/1" },
+            { name: "lint", url: null },
+          ],
+        }),
+      ),
+    ).toEqual([
+      {
+        words: "CI failed: check_types, lint · 13 of 14 done",
+        links: [["check_types", "https://github.com/acme/api/runs/1"]],
+      },
+    ]);
+  });
+  it("a push HQ does not read CI for shows no CI line", () => {
+    const env = environment([job("pushed"), job("pushed", "web")]);
+    const html = renderToStaticMarkup(
+      <GitDeliveryStatus
+        environment={env}
+        repos={repos}
+        delivery={gitDeliveryOf(env, { releases: [release()], repos })}
+      />,
+    );
+    expect(html).not.toContain("data-git-ci");
+  });
+  it("the CI line follows HQ's rewritten push record as it arrives", async () => {
+    const registry = AtomRegistry.make();
+    const zerops = {
+      ...environment([]),
+      id: HqEnvironmentId.make("zerops-stage"),
+      tier: "stage" as const,
+      target: { kind: "zerops" as const, projectId: ProjectId.make("real-stage") },
+      jobs: [],
+      order: 2,
+    };
+    const { store } = mountHqNavigation(registry, "org", {
+      structure: {
+        apps: [
+          {
+            id: "shop",
+            name: "Shop",
+            projects: [],
+            environments: [{ ...environment([]), jobs: [] }, zerops],
+          },
+        ],
+        ungrouped: [],
+      },
+    });
+    const app = readsOfState(store.state()).fact("hqApp", "shop");
+    if (app.kind !== "known") throw new Error("Source app must already be admitted");
+    let revision = 10000;
+    const hqWrites = (record: HqPushCi) =>
+      store.dispatch({
+        kind: "delivery",
+        via: "hq-stream",
+        reset: false,
+        scopes: [
+          {
+            scope: "hq:org:hq-apps",
+            generation: store.state().streams.get("hq:org:hq-apps")!.generation,
+          },
+        ],
+        rows: [
+          {
+            family: "hqApp",
+            id: "shop",
+            revision: { kind: "hq", incarnation: "seed", revision: revision++ },
+            value: {
+              ...app.value,
+              environments: [
+                Schema.decodeSync(GitEnvironmentSchema)(
+                  environment([withCi(job("pushed"), record), job("pushed", "web")]),
+                ),
+                zerops,
+              ],
+            },
+          },
+        ],
+        removals: [],
+      });
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    const show = () => {
+      const env = environmentById.derive(readsOfState(store.state()), {
+        orgId: "org",
+        appId: "shop",
+        id: attachment.environmentId,
+      });
+      if (env?.target.kind !== "git") throw new Error("The Git environment must be admitted");
+      return root.render(
+        <GitDeliveryStatus
+          environment={{ target: env.target, tier: env.tier }}
+          delivery={gitDeliveryOf(env, { releases: [release()], repos })}
+        />,
+      );
+    };
+    const words = () => [...host.querySelectorAll("[data-git-ci]")].map((line) => line.textContent);
+    hqWrites(ci({ verdict: "running", done: 1, total: 2 }));
+    await act(async () => show());
+    expect(words()).toEqual(["CI running · 1 of 2 done"]);
+    hqWrites(ci({ verdict: "passed", done: 2, total: 2, watch: "finished" }));
+    await act(async () => show());
+    expect(words()).toEqual(["CI passed"]);
+    await act(async () => root.unmount());
+    registry.dispose();
+  });
 });

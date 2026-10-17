@@ -1,4 +1,10 @@
-import { gitRemoteExpiry, type GitDelivery } from "@t3tools/client-runtime/zerops";
+import { Fragment } from "react";
+import {
+  gitCiLine,
+  gitRemoteExpiry,
+  type GitDelivery,
+  type GitRepositoryDelivery,
+} from "@t3tools/client-runtime/zerops";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
@@ -34,6 +40,31 @@ export function GitCommitLink({ remote, sha }: { readonly remote: string; readon
     <a href={`${url}${path}${sha}`} rel="noreferrer" target="_blank">
       Open {new URL(remote).host}
     </a>
+  );
+}
+
+/** The origin's CI for a repository's last push, as HQ last wrote it on the push record. */
+function GitCiStatus({ repo }: { readonly repo: GitRepositoryDelivery }) {
+  const line = gitCiLine(repo);
+  if (line === undefined) return null;
+  return (
+    <p className="rv-note" data-git-ci>
+      {line.words}
+      {line.failed.length === 0 ? null : ": "}
+      {line.failed.map((check, index) => (
+        <Fragment key={check.name}>
+          {index === 0 ? null : ", "}
+          {check.url === null ? (
+            check.name
+          ) : (
+            <a href={check.url} rel="noreferrer" target="_blank">
+              {check.name}
+            </a>
+          )}
+        </Fragment>
+      ))}
+      {line.notes.map((note) => ` · ${note}`).join("")}
+    </p>
   );
 }
 
@@ -84,16 +115,19 @@ export function GitDeliveryStatus({
         <p className="rv-note">Previous hand-over: {delivery.previousVersion}</p>
       )}
       {delivery?.repositories.map((repo) => (
-        <p className="rv-note" key={repo.repo}>
-          {repo.repo} · {repo.sha.slice(0, 7)} ·{" "}
-          {repo.confirmed === undefined ? (repo.reason ?? repo.state) : "Pushed"}
-          {repo.confirmed === undefined ? null : (
-            <>
-              {" "}
-              · <GitCommitLink remote={repo.confirmed.remote.url} sha={repo.confirmed.after} />
-            </>
-          )}
-        </p>
+        <Fragment key={repo.repo}>
+          <p className="rv-note">
+            {repo.repo} · {repo.sha.slice(0, 7)} ·{" "}
+            {repo.confirmed === undefined ? (repo.reason ?? repo.state) : "Pushed"}
+            {repo.confirmed === undefined ? null : (
+              <>
+                {" "}
+                · <GitCommitLink remote={repo.confirmed.remote.url} sha={repo.confirmed.after} />
+              </>
+            )}
+          </p>
+          <GitCiStatus repo={repo} />
+        </Fragment>
       ))}
       {delivery?.nextAction ? (
         <p className="rv-note">
