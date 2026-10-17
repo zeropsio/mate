@@ -6,7 +6,7 @@ import {
   mateAwaySettling,
   mateUnreachableWords,
 } from "../../zerops/lastKnownMate.logic";
-import type { AutomatedKeyState } from "../../zerops/automatedMate.logic";
+import { pullRequestName, type AutomatedKeyState } from "../../zerops/automatedMate.logic";
 import { mateStatus } from "../../zerops/mateStatus.logic";
 import { mateFailureWords, usageLimitWords } from "../../zerops/noticeWords";
 /**
@@ -1027,7 +1027,7 @@ export function pullRequestWords(
   working: boolean,
 ): string | null {
   if (pullRequest === undefined) return null;
-  const pr = `PR #${String(pullRequest.number)}`;
+  const pr = pullRequestName(pullRequest);
   if (pullRequest.state === "merged") return `${pr} merged`;
   if (pullRequest.state === "closed") return `${pr} closed`;
   if (working) return `${pr} open`;

@@ -35,6 +35,21 @@ export function conversationTask(
   return first?.task ?? null;
 }
 
+/**
+ * What a pull request on GitHub is called on every surface: "PR #14", GitHub's own name for it.
+ * One place, so the word is changed in one place (design-system.md §2 says "change" for Mate's own).
+ */
+export function pullRequestName(pullRequest: { readonly number: number }): string {
+  return `PR #${String(pullRequest.number)}`;
+}
+
+/** The link to a change's pull request: "PR #14 on GitHub · open · checks passing". */
+export function pullRequestLinkWords(
+  pullRequest: Pick<HqPullRequest, "number" | "state" | "checks">,
+): string {
+  return `${pullRequestName(pullRequest)} on GitHub · ${pullRequestStateWords(pullRequest)}`;
+}
+
 /** A pull request's state in words, its checks while it is open: "open · checks passing". */
 export function pullRequestStateWords(
   pullRequest: Pick<HqPullRequest, "state" | "checks">,
@@ -95,7 +110,7 @@ export function taskChainLine(chain: TaskChain): {
     pullRequest === undefined
       ? null
       : {
-          words: `PR #${String(pullRequest.number)} · ${pullRequestStateWords(pullRequest)}`,
+          words: `${pullRequestName(pullRequest)} · ${pullRequestStateWords(pullRequest)}`,
           url: pullRequest.url,
         };
   switch (chain.kind) {

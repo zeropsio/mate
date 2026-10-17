@@ -46,7 +46,7 @@ import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
-import { pullRequestStateWords } from "~/zerops/automatedMate.logic";
+import { pullRequestLinkWords } from "~/zerops/automatedMate.logic";
 import { useAddEnvironment, useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
 import { usePutLive } from "~/zerops/putLive";
 import { type ZeropsChangeOffers, useChangeOffers } from "~/zerops/useChangeOffers";
@@ -703,7 +703,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             data-zerops-surface="change-pull-request"
             render={<a href={pull.pullRequest.url} rel="noreferrer" target="_blank" />}
           >
-            {`PR #${String(pull.pullRequest.number)} on GitHub · ${pullRequestStateWords(pull.pullRequest)}`}
+            {pullRequestLinkWords(pull.pullRequest)}
             <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
           </InlineButton>
         )
