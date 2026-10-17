@@ -677,11 +677,14 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             readonly heard: boolean;
             readonly mate_project_id: string | null;
           }>`
+            -- The task's row held while the message is kept: a pickup at the same moment either
+            -- sees it (and tells it), or is seen here as taken (and it is told now).
             WITH task AS (
               SELECT t.id, t.mate_project_id, ${hears(sql`t`)} AS heard FROM hq_task t
               WHERE t.id::text = ${taskId}
                 AND (SELECT count(*) FROM hq_task_message WHERE task_id::text = ${taskId})
-                  < ${TASK_MESSAGES_MAX}),
+                  < ${TASK_MESSAGES_MAX}
+              FOR UPDATE OF t),
             kept AS (
               INSERT INTO hq_task_message (task_id, id, source, author, text)
               SELECT id, ${message.id}, ${message.from}, ${message.author}, ${message.text}
