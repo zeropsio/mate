@@ -226,7 +226,7 @@ describe("an automated Mate takes a task from outside", () => {
       const { delivered, link, sent } = yield* rig(options);
       yield* link.receive(task("task-1"));
       assert.strictEqual(delivered.length, 0);
-      assert.deepStrictEqual(sent, [{ taskId: "task-1", state: "failed", detail }]);
+      assert.deepStrictEqual(sent, [{ taskId: "task-1", state: "declined", detail }]);
     }),
   );
 
@@ -238,9 +238,31 @@ describe("an automated Mate takes a task from outside", () => {
       assert.strictEqual(delivered.length, 1);
       assert.deepStrictEqual(sent.at(-1), {
         taskId: "task-2",
-        state: "failed",
-        detail: "This Mate is still working on another task.",
+        state: "declined",
+        detail: "This Mate is still at work on something else.",
       });
+    }),
+  );
+
+  it.effect("declines a task while its stand-up is still at work, never failing it", () =>
+    Effect.gen(function* () {
+      const { delivered, link, move, sent } = yield* rig();
+      const standUp = ConversationId.make("standup-conversation");
+      yield* move(
+        standUp,
+        view(standUp, {
+          activeRun: run(standUp, { kind: "standup", startedBy: "zerops-user:ana" }, "running"),
+        }),
+      );
+      yield* link.receive(task("task-1"));
+      assert.strictEqual(delivered.length, 0);
+      assert.deepStrictEqual(sent, [
+        {
+          taskId: "task-1",
+          state: "declined",
+          detail: "This Mate is still at work on something else.",
+        },
+      ]);
     }),
   );
 

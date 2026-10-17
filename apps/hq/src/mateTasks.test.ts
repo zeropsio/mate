@@ -161,6 +161,25 @@ describe("tasks for automated Mates", () => {
         }),
     );
 
+    it.effect(
+      "a task its Mate declines waits again with no try against it, and is offered once the Mate has rested",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool({ taskAcceptWithin: Duration.millis(400) });
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "declined", detail: "Still standing up." },
+          });
+          const [waiting] = yield* core.tasks((rows) => rows[0]?.["state"] === "queued");
+          assert.deepInclude(waiting, { attempts: 0, mate_project_id: null, detail: null });
+          assert.strictEqual((yield* toldTask(core.robot.link, 1)).id, task.id);
+          const [again] = yield* core.tasks((rows) => rows[0]?.["state"] === "assigned");
+          assert.deepInclude(again, { attempts: 0, mate_project_id: "P_ROBOT" });
+        }),
+    );
+
     it.effect("a Mate whose link drops before it takes its task gives it back", () =>
       Effect.gen(function* () {
         const core = yield* withPool();

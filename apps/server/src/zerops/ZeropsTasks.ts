@@ -6,9 +6,10 @@
  * - **One conversation per task.** Its id is the task's (`taskConversationId`), so a frame told
  *   again finds it and re-reports, and never opens a second one; the engine's receipt for the
  *   brief's command id holds the same line underneath.
- * - **Refused** — reported `failed` with why — on a Mate that is not automated, while no
- *   organization key is set for its agents, and while another task is still at work (one task per
- *   Mate at a time: a change it opens is the task's).
+ * - **Declined** — handed back with why, never a try against it — on a Mate that is not
+ *   automated, while no organization key is set for its agents, and while any of its conversations
+ *   has a run on or waiting (its stand-up, another task: one task per Mate at a time, so a change
+ *   it opens is the task's).
  * - **Taken:** the conversation gets the automated agent (OpenCode on the organization's key,
  *   `AUTOMATED_MODEL_SELECTION`) and its first message, for the task's principal: the brief the agent
  *   works from, its person item carrying the issue as `task`, so every client draws its card.
@@ -80,7 +81,7 @@ export const taskBrief = (task: MateTask): string => {
 const REFUSALS = {
   notAutomated: "This Mate is not automated, so it takes no tasks.",
   noKey: "No organization API key has reached this Mate yet, so its agents cannot run the task.",
-  busy: "This Mate is still working on another task.",
+  busy: "This Mate is still at work on something else.",
 } as const;
 
 /** Why a task's run ended without finishing, in words a person reads on the issue. */
@@ -182,16 +183,17 @@ export const make = Effect.gen(function* () {
       // Taken before: said again. One whose brief never went out is sent on below.
       if (held !== undefined && hasRuns(held)) return Option.some(taskReportOf(task.id, held));
       const refused = (detail: string) =>
-        Option.some<MateTaskReport>({ taskId: task.id, state: "failed", detail });
+        Option.some<MateTaskReport>({ taskId: task.id, state: "declined", detail });
       if (!(yield* automation.automated)) return refused(REFUSALS.notAutomated);
       if (!(yield* automation.keySet)) return refused(REFUSALS.noKey);
-      const others = yield* taskViews;
-      if (Option.isNone(others)) return Option.none();
-      const busy = others.value.some(({ taskId, view }) => {
-        if (taskId === task.id || !hasRuns(view)) return false;
-        const state = taskReportOf(taskId, view).state;
-        return state === "accepted" || state === "working";
-      });
+      // One desk: its stand-up, another task or anything else with a run on or waiting.
+      const desk = yield* engine.conversations;
+      if (!desk.complete) return Option.none();
+      const busy = desk.views.some(
+        (view) =>
+          view.conversationId !== conversationId &&
+          (view.activeRun !== null || view.queued.length > 0),
+      );
       if (busy) return refused(REFUSALS.busy);
 
       const agent: ConversationAgent = {

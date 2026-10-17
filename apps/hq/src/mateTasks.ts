@@ -23,6 +23,7 @@ import type { MateTask, MateTaskReport } from "@t3tools/contracts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import type { MateLinkDown } from "@t3tools/shared/mateLink";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -125,13 +126,18 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const leading = Effect.map(leader.status, (status) => status.state === "active");
 
       /** A Mate HQ may hand a task to now, of those its records name free. */
+      // A Mate that declined a task is not offered one again until this passes: it said it was busy.
+      const declinedUntil = new Map<string, number>();
       const freeNow = (projectIds: ReadonlyArray<string>) =>
-        Effect.map(overviews.all, (all) =>
-          projectIds.filter((projectId) => {
+        Effect.gen(function* () {
+          const all = yield* overviews.all;
+          const now = yield* Clock.currentTimeMillis;
+          return projectIds.filter((projectId) => {
             const entry = all.get(projectId);
-            return entry?.presence.online === true && entry.attention?.working === 0;
-          }),
-        );
+            const cooled = (declinedUntil.get(projectId) ?? 0) <= now;
+            return cooled && entry?.presence.online === true && entry.attention?.working === 0;
+          });
+        });
 
       /**
        * A comment on the task's issue, from its Mate by name, with the repository's token: beside
@@ -387,7 +393,15 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               taskId: word.taskId,
               state: word.state,
             });
-          if (word.state === "accepted" || word.state === "working") {
+          if (word.state === "declined") {
+            // Not taken: back to wait for a free Mate, no try against it, this one left alone a while.
+            yield* leader.write(sql`
+              UPDATE hq_task SET state = 'queued', mate_project_id = NULL, assigned_at = NULL,
+                updated_at = now()
+              WHERE id::text = ${word.taskId} AND state = 'assigned'`);
+            declinedUntil.set(projectId, (yield* Clock.currentTimeMillis) + acceptMs);
+            yield* wake;
+          } else if (word.state === "accepted" || word.state === "working") {
             yield* leader.write(sql`
               UPDATE hq_task SET state = 'working', updated_at = now(),
                 conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id)

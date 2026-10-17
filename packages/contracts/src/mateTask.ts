@@ -39,10 +39,18 @@ export type MateTask = typeof MateTask.Type;
 
 /**
  * How a task stands, as its Mate says: taken (`accepted`), worked on (`working`), finished
- * (`done`) or not (`failed`). A change the Mate opens while on a task is the task's change: HQ
- * links them, since a Mate works one task at a time.
+ * (`done`) or not (`failed`) — or not taken now (`declined`: it is busy, or its key has not come
+ * yet), which hands the task back to wait for a free Mate and never counts as a try. A change the
+ * Mate opens while on a task is the task's change: HQ links them, since a Mate works one task at
+ * a time.
  */
-export const MateTaskStateKind = Schema.Literals(["accepted", "working", "done", "failed"]);
+export const MateTaskStateKind = Schema.Literals([
+  "accepted",
+  "working",
+  "done",
+  "failed",
+  "declined",
+]);
 export type MateTaskStateKind = typeof MateTaskStateKind.Type;
 
 export const MateTaskReport = Schema.Struct({
