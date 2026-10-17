@@ -946,7 +946,8 @@ describe("a Mate with no owner, or nobody signed in", () => {
         title: "Fix the checkout total",
         url: "https://github.com/acme/tea-shop/issues/12",
       },
-      says: "#12 Fix the checkout total",
+      // At rest on it: HQ keeps it on its task while the task's change waits for review.
+      says: "#12 Fix the checkout total · waiting for review",
     },
   ])(
     "an automated Mate wears its mark, names its task and never asks for a sign-in: $case",

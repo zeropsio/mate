@@ -2071,7 +2071,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
       line: { kind: "task", text: "Waiting for a task", on: false },
     },
     {
-      case: "an automated Mate on a task names the task, whatever step it is on",
+      case: "an automated Mate at work says its step, as any Mate",
       over: {
         automated: { task },
         view: view(
@@ -2083,12 +2083,50 @@ describe("mateRowSecond — an automated Mate's line", () => {
           },
         ),
       },
+      line: { kind: "reply", tone: undefined },
+    },
+    {
+      case: "an automated Mate at work without a step names its task, never its brief's words",
+      over: { automated: { task }, view: view("working", { kind: "pending" }) },
       line: { kind: "task", text: "#12 Fix the checkout total", on: true },
     },
     {
-      case: "an automated Mate on a task names the task, never its brief's words",
-      over: { automated: { task }, view: view("working", { kind: "pending" }) },
-      line: { kind: "task", text: "#12 Fix the checkout total", on: true },
+      case: "an automated Mate at work without a task says its step, never that it waits for one",
+      over: {
+        view: view(
+          "working",
+          { kind: "live", words: "Standing up the project" },
+          {
+            kind: "clock",
+            since: "2026-10-17T10:00:00Z",
+          },
+        ),
+      },
+      line: { kind: "reply", tone: undefined },
+    },
+    {
+      case: "an automated Mate asking something says the question, as any Mate",
+      over: {
+        automated: { task },
+        asks: true,
+        view: view("needs", { kind: "words", text: "Which currency?", tone: "muted" }),
+      },
+      line: { kind: "reply", tone: "ink" },
+    },
+    {
+      case: "an automated Mate at rest on a task says the task waits for review",
+      over: { automated: { task } },
+      line: { kind: "task", text: "#12 Fix the checkout total · waiting for review", on: false },
+    },
+    {
+      case: "an automated Mate whose task's change waits on the viewer says so in ink",
+      over: { automated: { task }, view: view("needs") },
+      line: { kind: "task", text: "#12 Fix the checkout total · waiting for review", on: true },
+    },
+    {
+      case: "an automated Mate never offers a sign-in on its line",
+      over: { askLine: { kind: "sign-in" } },
+      line: { kind: "task", text: "Waiting for a task", on: false },
     },
     {
       case: "an automated Mate that stopped on an error says the error",

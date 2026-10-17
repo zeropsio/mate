@@ -970,7 +970,10 @@ export type MateRowSecond =
   | { readonly kind: "waits-on"; readonly text: string }
   | { readonly kind: "paused"; readonly until: string }
   | { readonly kind: "change"; readonly title: string; readonly mine: boolean }
-  /** An automated Mate's line (`mateTaskLine`): the task it is on, else that it waits for one. */
+  /**
+   * An automated Mate's line where it says nothing of its own (`mateAutomatedLine`): the task it is
+   * on, its change waiting for review, or what it waits for; in ink where `on`.
+   */
   | { readonly kind: "task"; readonly text: string; readonly on: boolean }
   /**
    * The person's line (`MateRowAskLine`) where the Mate has no words of its own yet: a draft, what
@@ -995,14 +998,36 @@ export function mateRowHeldLines(input: {
   return !input.read && input.second.kind === "none" ? 1 : 0;
 }
 
-/** What an automated Mate's line says of the task it is on (`HqNavigationMateTask`), or of none. */
-export function mateTaskLine(
-  task: { readonly number: number; readonly title: string } | null,
-): string {
-  return task === null ? WAITING_FOR_A_TASK : `#${String(task.number)} ${task.title}`;
+/** What an automated Mate's line calls the task it is on (`HqNavigationMateTask`). */
+export function mateTaskLine(task: { readonly number: number; readonly title: string }): string {
+  return `#${String(task.number)} ${task.title}`;
 }
 
 const WAITING_FOR_A_TASK = "Waiting for a task";
+
+/** An automated Mate's input to `mateRowSecond` (`mateAutomation`). */
+export interface MateAutomationLine {
+  readonly task: { readonly number: number; readonly title: string } | null;
+}
+
+/**
+ * An automated Mate's line where it says nothing of its own: at work, the task it is on; at rest
+ * on a task — HQ keeps it on its task while the task's change is open, and hands it no other —
+ * that task waiting for review; at rest with none, that it waits for one.
+ */
+export function mateAutomatedLine(
+  automated: MateAutomationLine,
+  state: MateRowState,
+): Extract<MateRowSecond, { kind: "task" }> {
+  const { task } = automated;
+  if (task === null) return { kind: "task", text: WAITING_FOR_A_TASK, on: false };
+  if (state === "working") return { kind: "task", text: mateTaskLine(task), on: true };
+  return {
+    kind: "task",
+    text: `${mateTaskLine(task)} · waiting for review`,
+    on: state === "needs" || state === "unread",
+  };
+}
 
 /** Where an application's Mates are listed: how many tasks wait for one of them; none at 0. */
 export function tasksWaitingWords(waiting: number): string | undefined {
@@ -1022,7 +1047,7 @@ export function mateAutomation(
       }
     | null
     | undefined,
-): { readonly task: { readonly number: number; readonly title: string } | null } | undefined {
+): MateAutomationLine | undefined {
   if (mate?.automated !== true) return undefined;
   const task = mate.task ?? null;
   return { task: task === null ? null : { number: task.number, title: task.title } };
@@ -1043,45 +1068,45 @@ export function mateRowSecond(input: {
   /** Its open change: `mine` where it waits on the viewer's review (`mateReviewWaits`). */
   readonly change: { readonly title: string; readonly mine: boolean } | undefined;
   /**
-   * An automated Mate, and the task HQ says it is on: its line names the task, or that it waits
-   * for one — never its brief's words, which nobody typed. One line either way, so nothing moves
-   * when a task starts or ends. Absent: an ordinary Mate.
+   * An automated Mate, and the task HQ says it is on: at work, asking, stopped or at its limit it
+   * reads as any Mate; where it says nothing of its own, and at rest, its line is the task's
+   * (`mateAutomatedLine`) — never its brief's words, which nobody typed, nor a sign-in, which it
+   * never takes. Absent: an ordinary Mate.
    */
-  readonly automated?:
-    | { readonly task: { readonly number: number; readonly title: string } | null }
-    | undefined;
+  readonly automated?: MateAutomationLine | undefined;
 }): MateRowSecond {
-  const { view, askLine, change } = input;
+  const { view, askLine, change, automated } = input;
   if (view.coming !== undefined) return { kind: "coming" };
   if (input.deleting) return { kind: "deleting" };
   if (input.finishing) return { kind: "finishing" };
   if (input.outsideHq) return { kind: "outside" };
-  // Stopped on an error or at its key's limit, it says that as any Mate does; else its task.
-  if (
-    input.automated !== undefined &&
-    view.state !== "failed" &&
-    !(view.state === "paused" && view.slot.kind === "paused")
-  ) {
-    const { task } = input.automated;
-    return { kind: "task", text: mateTaskLine(task), on: task !== null };
-  }
   const reply = view.reply;
-  const asked = askLine !== undefined && askLine.kind !== "sign-in";
-  const said = (tone: "muted" | "ink" | "failed" | undefined): MateRowSecond =>
-    reply === undefined
-      ? asked
-        ? { kind: "ask", pending: false }
-        : { kind: "none" }
-      : reply.kind === "pending" && asked
-        ? { kind: "ask", pending: true }
-        : { kind: "reply", tone: reply.kind === "words" ? tone : undefined };
+  const asked = automated === undefined && askLine !== undefined && askLine.kind !== "sign-in";
+  const said = (tone: "muted" | "ink" | "failed" | undefined): MateRowSecond => {
+    const line: MateRowSecond =
+      reply === undefined
+        ? asked
+          ? { kind: "ask", pending: false }
+          : { kind: "none" }
+        : reply.kind === "pending" && asked
+          ? { kind: "ask", pending: true }
+          : reply.kind === "pending" && automated !== undefined
+            ? { kind: "none" }
+            : { kind: "reply", tone: reply.kind === "words" ? tone : undefined };
+    return automated !== undefined && line.kind === "none"
+      ? mateAutomatedLine(automated, view.state)
+      : line;
+  };
   if (view.state === "working") return said(undefined);
   if (reply?.kind === "words" && reply.lastKnown === true)
     return said(reply.tone === "failed" ? "failed" : "muted");
   if (input.waitsOn !== undefined && view.state !== "failed") {
     return { kind: "waits-on", text: `Waits on ${input.waitsOn}` };
   }
-  if (view.state === "needs" && (input.asks === true || input.change?.mine !== true)) {
+  if (
+    view.state === "needs" &&
+    (input.asks === true || (automated === undefined && input.change?.mine !== true))
+  ) {
     return said("ink");
   }
   if (view.state === "failed") {
@@ -1091,6 +1116,7 @@ export function mateRowSecond(input: {
   if (view.state === "paused" && view.slot.kind === "paused") {
     return { kind: "paused", until: view.slot.until };
   }
+  if (automated !== undefined) return mateAutomatedLine(automated, view.state);
   if (change?.mine === true) return { kind: "change", title: change.title, mine: true };
   if (askLine?.kind === "sign-in") return { kind: "sign-in" };
   if (askLine?.kind === "draft") return { kind: "ask", pending: false };
