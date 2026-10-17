@@ -124,6 +124,7 @@ const withSlack = Effect.gen(function* () {
   const slack = yield* slackFake;
   const url = yield* (yield* TempPostgres).createMigratedDatabase;
   const intake = yield* fakeIntake;
+  const world = acme();
   const registered: Array<TaskSourceChannel> = [];
   const logged: Array<string> = [];
   const services = slackLayer({ hqProjectId: "HQ" }).pipe(
@@ -137,7 +138,7 @@ const withSlack = Effect.gen(function* () {
         }),
         deployKeysLayer(keySecretOf(Option.some(Redacted.make(TEST_KEY_SECRET)))),
         rolesLayer({ hqProjectId: "HQ", credential: Option.some(Redacted.make("t")) }).pipe(
-          Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(acme()))),
+          Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world))),
         ),
         doorRateLimitLayer,
       ),
@@ -233,6 +234,7 @@ const withSlack = Effect.gen(function* () {
 
   return {
     slack,
+    world,
     url,
     intake,
     registered,
@@ -548,6 +550,57 @@ describe("Slack", () => {
     );
 
     it.effect(
+      "a Slack user with a member's email is no member while Slack has not confirmed it, the user is deleted, a stranger or of another workspace",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          const lookalikes = {
+            U0UNCONFIRMED: { emailConfirmed: false },
+            U0DELETED: { deleted: true },
+            U0STRANGER: { stranger: true },
+            U0PARTNER: { teamId: "T0PARTNER" },
+          };
+          for (const [user, odd] of Object.entries(lookalikes)) {
+            hq.slack.state.users.set(user, { email: "nova@acme.test", name: "Nova?", ...odd });
+            yield* hq.post(hq.event(mention("<@U0MATE> deploy everything", { user })));
+          }
+          yield* hq.service.drained;
+          assert.strictEqual(yield* Queue.size(hq.intake.enqueued), 0);
+          assert.deepStrictEqual(
+            (yield* hq.slack.callsOf("chat.postMessage")).map((call) => call.params["text"]),
+            Array.from({ length: 4 }, () => REPLIES.notMember),
+          );
+        }),
+    );
+
+    it.effect(
+      "a Slack user no member's email names makes HQ read the organization afresh at most once in ten minutes",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          const reads = () => hq.world.calls.filter((call) => call.startsWith("members:")).length;
+          hq.slack.state.users.set("U0PAT", { email: "pat@acme.test", name: "Pat" });
+          hq.slack.state.users.set("U0KIM", { email: "kim@acme.test", name: "Kim" });
+          const ask = (user: string) =>
+            Effect.andThen(
+              hq.post(hq.event(mention("<@U0MATE> deploy everything", { user }))),
+              hq.service.drained,
+            );
+          const before = reads();
+          yield* ask("U0PAT");
+          assert.strictEqual(reads(), before + 1);
+          yield* ask("U0PAT");
+          yield* ask("U0PAT");
+          assert.strictEqual(reads(), before + 1);
+          yield* ask("U0KIM");
+          assert.strictEqual(reads(), before + 2);
+          assert.strictEqual(yield* Queue.size(hq.intake.enqueued), 0);
+        }),
+    );
+
+    it.effect(
       "a mention in a channel no application takes tasks from is answered so and asks for nothing",
       () =>
         Effect.gen(function* () {
@@ -609,26 +662,53 @@ describe("Slack", () => {
         }),
     );
 
-    it.effect("the thread's first message deleted stops its task", () =>
-      Effect.gen(function* () {
-        const hq = yield* withSlack;
-        yield* hq.connected;
-        yield* hq.post(hq.event(mention("<@U0MATE> brew more tea")));
-        yield* Queue.take(hq.intake.enqueued);
-        yield* hq.post(
-          hq.event({
-            type: "message",
-            subtype: "message_deleted",
-            channel: "C0SUPPORT",
-            deleted_ts: "1700000000.000100",
-            ts: "1700000000.000900",
-          }),
-        );
-        assert.deepStrictEqual(yield* Queue.take(hq.intake.stops), {
-          sourceKey: "slack:T0TEA/C0SUPPORT/1700000000.000100",
-          reason: "The Slack thread was deleted.",
-        });
-      }),
+    it.effect(
+      "a task stops when its ask is deleted, never when someone else's message it answered is",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          const deletion = (ts: string) =>
+            hq.event({
+              type: "message",
+              subtype: "message_deleted",
+              channel: "C0SUPPORT",
+              deleted_ts: ts,
+              ts: "1700000000.000900",
+            });
+          // Nova asks in a thread someone else began.
+          yield* hq.post(
+            hq.event(
+              mention("<@U0MATE> brew more tea", {
+                ts: "1700000000.000200",
+                thread_ts: "1700000000.000100",
+              }),
+            ),
+          );
+          const asked = yield* Queue.take(hq.intake.enqueued);
+          yield* hq.post(deletion("1700000000.000100"));
+          yield* hq.post(
+            hq.event({
+              type: "message",
+              subtype: "message_changed",
+              channel: "C0SUPPORT",
+              message: { ts: "1700000000.000100", subtype: "tombstone" },
+              ts: "1700000000.000901",
+            }),
+          );
+          yield* hq.service.drained;
+          assert.strictEqual(yield* Queue.size(hq.intake.stops), 0);
+          yield* hq.post(deletion("1700000000.000200"));
+          assert.deepStrictEqual(yield* Queue.take(hq.intake.stops), {
+            sourceKey: asked.sourceKey,
+            reason: "The Slack thread was deleted.",
+          });
+          // Where the thread's first message is the ask, deleting it stops the task too.
+          yield* hq.post(hq.event(mention("<@U0MATE> fix the menu", { ts: "1700000000.000300" })));
+          const second = yield* Queue.take(hq.intake.enqueued);
+          yield* hq.post(deletion("1700000000.000300"));
+          assert.strictEqual((yield* Queue.take(hq.intake.stops)).sourceKey, second.sourceKey);
+        }),
     );
 
     it.effect(

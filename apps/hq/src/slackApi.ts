@@ -45,10 +45,15 @@ export interface SlackIdentity {
 }
 
 export interface SlackUser {
+  /** Their email, only once Slack confirmed it is theirs. */
   readonly email: string | null;
   /** As people see them: the display name, else the real name. */
   readonly name: string | null;
   readonly bot: boolean;
+  /** Deactivated, or of a workspace that shares only a channel with this one (Slack Connect). */
+  readonly away: boolean;
+  /** The workspaces the user belongs to. */
+  readonly teams: ReadonlyArray<string>;
 }
 
 type Call<A> = Effect.Effect<SlackAnswer<A>, SlackUnreachable>;
@@ -91,9 +96,17 @@ const answers = {
     user: Schema.Struct({
       name: Schema.optionalKey(Schema.String),
       real_name: Schema.optionalKey(Schema.String),
+      team_id: Schema.optionalKey(Schema.String),
       is_bot: Schema.optionalKey(Schema.Boolean),
+      is_email_confirmed: Schema.optionalKey(Schema.Boolean),
+      is_stranger: Schema.optionalKey(Schema.Boolean),
+      deleted: Schema.optionalKey(Schema.Boolean),
+      enterprise_user: Schema.optionalKey(
+        Schema.Struct({ teams: Schema.optionalKey(Schema.Array(Schema.String)) }),
+      ),
       profile: Schema.optionalKey(
         Schema.Struct({
+          team: Schema.optionalKey(Schema.String),
           email: Schema.optionalKey(Schema.String),
           display_name: Schema.optionalKey(Schema.String),
           real_name: Schema.optionalKey(Schema.String),
@@ -164,7 +177,7 @@ export const slackApiLayer = (api: string = SLACK_API) =>
           })),
         user: (token, user) =>
           call("users.info", token, { user }, answers.user, ({ user: found }) => ({
-            email: firstNamed(found.profile?.email),
+            email: found.is_email_confirmed === true ? firstNamed(found.profile?.email) : null,
             name: firstNamed(
               found.profile?.display_name,
               found.profile?.real_name,
@@ -172,6 +185,16 @@ export const slackApiLayer = (api: string = SLACK_API) =>
               found.name,
             ),
             bot: found.is_bot === true,
+            away: found.deleted === true || found.is_stranger === true,
+            teams: [
+              ...new Set(
+                [
+                  found.team_id,
+                  found.profile?.team,
+                  ...(found.enterprise_user?.teams ?? []),
+                ].filter((team): team is string => team !== undefined && team !== ""),
+              ),
+            ],
           })),
         permalink: (token, channel, ts) =>
           call(

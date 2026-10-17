@@ -22,7 +22,7 @@
  *   its thread (`slack:<team>/<channel>/<thread ts>`). Anyone else is told only members can ask.
  *   A reply or a mention in a thread whose task lives, by a member, is told to it
  *   (`TaskIntake.message`) and marked 👀; the bot's own words and other bots' never are. The
- *   thread's first message deleted stops its task (`TaskIntake.stop`).
+ *   ask deleted stops its task (`TaskIntake.stop`); anyone else's message deleted, nothing.
  * - Its channel (`TaskSourceChannels`): 👀 on the ask, and one status message in the thread, posted
  *   for a task the first time and edited after; a question is put to the person who asked.
  *
@@ -83,6 +83,11 @@ const BOT_TOKEN = /^xoxb-[\x21-\x7e]{1,1000}$/u;
 const SIGNING_SECRET = /^[\x21-\x7e]{1,256}$/u;
 /** A channel's id: public `C…`, private `G…` (older) or `C…`. */
 const CHANNEL_ID = /^[CG][A-Z0-9]{2,40}$/u;
+
+/** How often a Slack user no member's email names may make HQ read the organization afresh. */
+const FRESH_READ_EVERY_MS = 10 * 60 * 1000;
+/** More Slack users than this remembered at once is a flood: the memory starts over. */
+const FRESH_READ_USERS = 10_000;
 
 /** The reaction that says HQ heard an ask or a reply. */
 const HEARD = "eyes";
@@ -263,6 +268,8 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
       const intake = yield* TaskIntake;
       const channels = yield* TaskSourceChannels;
       const work = yield* FiberSet.make();
+      /** When HQ last read the organization afresh for a Slack user its view did not name. */
+      const freshReads = new Map<string, number>();
       // One status message per task: two moves of it never both post one.
       const statusLock = yield* Semaphore.make(1);
 
@@ -405,6 +412,10 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
           const answer = yield* api.user(link.token, user);
           if (!answer.ok) return { kind: "unchecked" } as const;
           if (answer.value.bot) return { kind: "bot" } as const;
+          // A member's email counts only as Slack confirmed it, on a person of this workspace:
+          // never on a deactivated user or a Slack Connect partner's.
+          if (answer.value.away || !answer.value.teams.includes(link.teamId))
+            return { kind: "stranger" } as const;
           const email = answer.value.email?.toLowerCase();
           if (email === undefined) return { kind: "stranger" } as const;
           const named = (members: ReadonlyArray<ZeropsMember>) =>
@@ -414,10 +425,17 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
                 member.status === ZEROPS_ACTIVE_MEMBER_STATUS &&
                 member.email?.trim().toLowerCase() === email,
             );
-          // One the view kept does not list may have joined since: read now before saying no.
+          // One the view kept does not list may have joined since: read now before saying no —
+          // once per Slack user in ten minutes, so nobody's mentions make HQ read Zerops at will.
+          const now = yield* Clock.currentTimeMillis;
+          const readFresh = (freshReads.get(user) ?? -Infinity) <= now - FRESH_READ_EVERY_MS;
+          if (readFresh) {
+            if (freshReads.size >= FRESH_READ_USERS) freshReads.clear();
+            freshReads.set(user, now);
+          }
           const member =
             named((yield* roles.view).members) ??
-            named((yield* roles.readSince(yield* Clock.currentTimeMillis)).members);
+            (readFresh ? named((yield* roles.readSince(now)).members) : undefined);
           return member === undefined
             ? ({ kind: "stranger" } as const)
             : ({ kind: "member", userId: member.userId, name: answer.value.name } as const);
@@ -527,13 +545,14 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
             yield* heard(link, channel, ts);
         });
 
-      /** A thread's first message deleted: its task stops. */
-      const deleted = (link: Connection, channel: string | undefined, ts: string | undefined) =>
+      /** A task's ask deleted: its task stops. Anyone else's message deleted stops nothing. */
+      const deleted = (channel: string | undefined, ts: string | undefined) =>
         Effect.gen(function* () {
           if (channel === undefined || ts === undefined) return;
-          const sourceKey = slackSourceKey(link.teamId, channel, ts);
-          if ((yield* threadRow(sourceKey)) === undefined) return;
-          yield* intake.stop(sourceKey, "The Slack thread was deleted.");
+          const asks = yield* sql<{ readonly source_key: string }>`
+            SELECT source_key FROM hq_slack_thread WHERE channel_id = ${channel} AND ask_ts = ${ts}`;
+          for (const { source_key } of asks)
+            yield* intake.stop(source_key, "The Slack thread was deleted.");
         });
 
       const worked = (link: Connection, eventId: string, raw: unknown) =>
@@ -544,9 +563,9 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
           if (event.type === "app_mention") return yield* mentioned(link, event, eventId);
           if (event.type !== "message") return;
           if (event.subtype === "message_deleted")
-            return yield* deleted(link, event.channel, event.deleted_ts);
+            return yield* deleted(event.channel, event.deleted_ts);
           if (event.subtype === "message_changed" && event.message?.subtype === "tombstone")
-            return yield* deleted(link, event.channel, event.message.ts);
+            return yield* deleted(event.channel, event.message.ts);
           return yield* replied(link, event);
         }).pipe(
           Effect.catchCause((cause) =>
