@@ -56,9 +56,24 @@ const ADMIN: AutomationControls = {
   onAddMate: nothing,
   onTakeFrom: nothing,
   onEdit: nothing,
+  onAskStop: nothing,
+  onKeep: nothing,
+  pressOf: () => ({ kind: "idle" }),
   onStop: nothing,
   onReadAgain: nothing,
   onOpenSettings: nothing,
+};
+/** A schedule's Remove asking, GitHub's Stop under way, Slack's refused. */
+const PRESSING: AutomationControls = {
+  ...ADMIN,
+  pressOf: (row) =>
+    row.kind === "schedule"
+      ? { kind: "asking" }
+      : row.kind === "github"
+        ? { kind: "working" }
+        : row.kind === "slack"
+          ? { kind: "refused", words: "HQ is not answering right now." }
+          : { kind: "idle" },
 };
 
 const POOL: ReadonlyArray<PoolMate> = [
@@ -134,9 +149,13 @@ const CHAINS: ReadonlyArray<readonly [string, TaskChain]> = [
     "Working on review comments",
     { kind: "working", pullRequest: { ...PR, state: "open", checks: "failing" } },
   ],
-  ["PR merged", { kind: "pull-request", pullRequest: { ...PR, state: "merged" } }],
   ["PR closed", { kind: "pull-request", pullRequest: { ...PR, state: "closed" } }],
-  ["Ended", { kind: "ended" }],
+  [
+    "Merged on GitHub (ended)",
+    { kind: "ended", ended: "merged", pullRequest: { ...PR, state: "merged" } },
+  ],
+  ["Stopped (ended)", { kind: "ended", ended: "stopped", pullRequest: undefined }],
+  ["A task before its Mate's most recent", { kind: "earlier" }],
 ];
 
 const INTAKE: AppIntakeRead = {
@@ -208,12 +227,21 @@ function Harness() {
             workingOf={(id) => WORKING.has(id)}
           />
         </Panel>
+        <Panel title="Remove asking, Stop under way, Stop refused">
+          <ProjectAutomationView
+            admin={PRESSING}
+            onOpenMate={nothing}
+            pool={[]}
+            sources={SOURCES}
+            workingOf={() => false}
+          />
+        </Panel>
         <Panel title="Nothing set up yet">
           <ProjectAutomationView
             admin={ADMIN}
             onOpenMate={nothing}
             pool={[]}
-            sources={{ rows: [], reading: false }}
+            sources={{ rows: [], reading: false, withheld: false }}
             workingOf={() => false}
           />
         </Panel>
@@ -226,11 +254,19 @@ function Harness() {
             workingOf={() => false}
           />
         </Panel>
+        <Panel title="An HQ older than automated Mates">
+          <ProjectAutomationView
+            onOpenMate={nothing}
+            pool={[]}
+            sources={{ rows: [], reading: false, withheld: false }}
+            update
+          />
+        </Panel>
         <Panel title="A member reads it">
           <ProjectAutomationView
             onOpenMate={nothing}
             pool={POOL}
-            sources={{ rows: SOURCES.rows.slice(0, 1), reading: false }}
+            sources={{ rows: SOURCES.rows.slice(0, 1), reading: false, withheld: true }}
             workingOf={(id) => WORKING.has(id)}
           />
         </Panel>

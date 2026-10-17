@@ -1109,6 +1109,7 @@ export function mateAutomation(
               readonly title: string;
               readonly waiting?: true | undefined;
               readonly pullRequest?: MateTaskPullRequest | undefined;
+              readonly ended?: string | undefined;
             }
           | null
           | undefined;
@@ -1119,7 +1120,8 @@ export function mateAutomation(
   key?: AutomatedKeyState,
 ): MateAutomationLine | undefined {
   if (mate?.automated !== true) return undefined;
-  const task = mate.task ?? null;
+  // A task that ended is HQ's record of the Mate's last one: the Mate is free for the next.
+  const task = mate.task?.ended === undefined ? (mate.task ?? null) : null;
   return {
     task:
       task === null

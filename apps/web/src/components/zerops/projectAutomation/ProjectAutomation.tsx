@@ -23,7 +23,7 @@ import { useMemo, useState, type ReactNode } from "react";
 
 import { automatedKeyState } from "~/zerops/automatedMate.logic";
 import { useAppIntake, useAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
-import { useAppTaskSource, useOrgTaskSource } from "~/zerops/useTaskSourceSettings";
+import { useAppTaskSource, useGithubApp, useOrgTaskSource } from "~/zerops/useTaskSourceSettings";
 import { useNewMateDialog } from "~/zerops/newMate";
 import { useAddMateOffer } from "~/zerops/useHqOffers";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -46,11 +46,14 @@ import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { MateFace } from "../primitives";
 import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
-  automationShown,
+  automationSection,
   connectionMissing,
   poolMateLine,
   SOURCE_KINDS,
+  sourceRowPress,
   sourceRows,
+  stopWords,
+  type RowPress,
   type SourceKind,
   type SourceRow,
 } from "./projectAutomation.logic";
@@ -100,9 +103,9 @@ export function ProjectAutomation({
   const onOpenMate = (projectId: string) => {
     openMate({ projectId });
   };
-  if (key === "unsupported") return null;
   if (!admin) {
-    const { rows } = sourceRows({
+    if (key === "unsupported") return null;
+    const { rows, withheld } = sourceRows({
       intake: intake.read.intake,
       slack: WITHHELD,
       discord: WITHHELD,
@@ -111,15 +114,25 @@ export function ProjectAutomation({
       slackConnected: undefined,
       discordConnected: undefined,
     });
-    if (!automationShown({ admin, key, pool: pool.length, sources: rows.length })) return null;
+    if (automationSection({ admin, key, pool: pool.length, sources: rows.length }) === "hidden")
+      return null;
     return (
       <ProjectAutomationView
         onOpenMate={onOpenMate}
         pool={pool}
-        sources={{ rows, reading: intake.read.intake === undefined }}
+        sources={{ rows, reading: intake.read.intake === undefined, withheld }}
       />
     );
   }
+  if (automationSection({ admin, key, pool: 0, sources: 0 }) === "update")
+    return (
+      <ProjectAutomationView
+        onOpenMate={onOpenMate}
+        pool={[]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        update
+      />
+    );
   return (
     <AdminAutomation
       addMate={addMate}
@@ -196,10 +209,28 @@ function AdminAutomation({
   const discord = useAppTaskSource("hqAppDiscord", groupId);
   const webhooks = useAppTaskSource("hqAppWebhooks", groupId);
   const schedules = useAppTaskSource("hqAppSchedules", groupId);
+  const github = useGithubApp();
+  const githubApp =
+    github.read.setting.state === "known" && github.read.setting.held.state === "connected"
+      ? github.read.setting.held.slug
+      : undefined;
   const orgSlack = useOrgTaskSource("hqSlack");
   const orgDiscord = useOrgTaskSource("hqDiscord");
   const navigate = useNavigate();
   const [open, setOpen] = useState<SourceKind | null>(null);
+  // The row whose Stop asks now, and the one whose Stop was confirmed last.
+  const [asking, setAsking] = useState<string | null>(null);
+  const [pressed, setPressed] = useState<string | null>(null);
+  const actionOf = (row: SourceRow) =>
+    row.kind === "github"
+      ? intake.read.action
+      : row.kind === "slack"
+        ? slack.read.action
+        : row.kind === "discord"
+          ? discord.read.action
+          : row.kind === "schedule"
+            ? schedules.read.action
+            : { kind: "idle" as const };
   const connected = {
     slack:
       orgSlack.read.setting.state === "known" ? orgSlack.read.setting.held.connected : undefined,
@@ -229,9 +260,21 @@ function AdminAutomation({
           onAddMate: addMate,
           onTakeFrom: setOpen,
           onEdit: (row) => {
+            setAsking(null);
+            setPressed(null);
             setOpen(row.kind === "failed" ? row.source : row.kind);
           },
+          onAskStop: (row) => {
+            setAsking(row.key);
+          },
+          onKeep: () => {
+            setAsking(null);
+          },
+          pressOf: (row) =>
+            sourceRowPress({ key: row.key, asking, pressed, action: actionOf(row) }),
           onStop: (row) => {
+            setAsking(null);
+            setPressed(row.key);
             if (row.kind === "github") intake.stop();
             else if (row.kind === "slack") slack.write({ kind: "channel-stop", source: "slack" });
             else if (row.kind === "discord")
@@ -278,6 +321,7 @@ function AdminAutomation({
                     <AppIntakeView
                       appId={groupId}
                       choices={choices}
+                      githubApp={githubApp}
                       name={name}
                       onSet={intake.set}
                       onStop={intake.stop}
@@ -410,7 +454,14 @@ export interface AutomationControls {
   readonly onAddMate: (() => void) | undefined;
   readonly onTakeFrom: (kind: SourceKind) => void;
   readonly onEdit: (row: SourceRow) => void;
+  /** Stop (or a schedule's Remove), pressed: the row asks before anything stops. */
+  readonly onAskStop: (row: SourceRow) => void;
+  /** *Keep*, answered on a row that asks. */
+  readonly onKeep: () => void;
+  /** Stop, confirmed on its row. */
   readonly onStop: (row: SourceRow) => void;
+  /** Where a row's Stop stands (`sourceRowPress`). */
+  readonly pressOf: (row: SourceRow) => RowPress;
   readonly onReadAgain: (source: Exclude<SourceKind, "github">) => void;
   readonly onOpenSettings: () => void;
 }
@@ -425,9 +476,17 @@ export function ProjectAutomationView({
   admin,
   onOpenMate,
   workingOf,
+  update = false,
 }: {
+  /** HQ predates automated Mates: the section keeps its place, saying HQ needs updating. */
+  readonly update?: boolean;
   readonly pool: ReadonlyArray<PoolMate>;
-  readonly sources: { readonly rows: ReadonlyArray<SourceRow>; readonly reading: boolean };
+  readonly sources: {
+    readonly rows: ReadonlyArray<SourceRow>;
+    readonly reading: boolean;
+    /** Some sources are refused to the reader: what is shown is not every source. */
+    readonly withheld: boolean;
+  };
   readonly admin?: AutomationControls | undefined;
   readonly onOpenMate: (projectId: string) => void;
   readonly workingOf?: ((projectId: string) => boolean) | undefined;
@@ -435,6 +494,30 @@ export function ProjectAutomationView({
   return (
     <section aria-label="Automation" className="ov-side" data-zerops-surface="project-automation">
       <h2 className="ov-side-name">Automation</h2>
+      {update ? (
+        <p className="px-2 text-sm text-muted-foreground">Update HQ to set up automated Mates.</p>
+      ) : (
+        <AutomationBody
+          admin={admin}
+          onOpenMate={onOpenMate}
+          pool={pool}
+          sources={sources}
+          workingOf={workingOf}
+        />
+      )}
+    </section>
+  );
+}
+
+function AutomationBody({
+  pool,
+  sources,
+  admin,
+  onOpenMate,
+  workingOf,
+}: Omit<Parameters<typeof ProjectAutomationView>[0], "update">) {
+  return (
+    <>
       {pool.length === 0 ? (
         <p className="px-2 text-sm text-muted-foreground">
           No automated Mates yet. They take tasks from the sources below and open a change for each.
@@ -464,17 +547,20 @@ export function ProjectAutomationView({
         </div>
       )}
       <h3 className="px-2 pt-2 text-xs font-medium text-muted-foreground">Takes tasks from</h3>
-      {sources.rows.length === 0 ? (
-        <p className="px-2 text-sm text-muted-foreground">
-          {sources.reading ? "Reading…" : "Nowhere yet."}
-        </p>
-      ) : (
+      {sources.rows.length > 0 ? (
         <ul className="grid" data-zerops-surface="project-automation-sources">
           {sources.rows.map((row) => (
             <SourceRowView admin={admin} key={row.key} row={row} />
           ))}
         </ul>
+      ) : sources.reading ? (
+        <p className="px-2 text-sm text-muted-foreground">Reading…</p>
+      ) : sources.withheld ? null : (
+        <p className="px-2 text-sm text-muted-foreground">Nowhere yet.</p>
       )}
+      {sources.withheld ? (
+        <p className="px-2 text-xs text-muted-foreground">Owners and admins see every source.</p>
+      ) : null}
       {admin === undefined ? null : (
         <div className="px-2">
           <Menu>
@@ -497,7 +583,7 @@ export function ProjectAutomationView({
           </Menu>
         </div>
       )}
-    </section>
+    </>
   );
 }
 
@@ -509,6 +595,7 @@ function SourceRowView({
   readonly admin: AutomationControls | undefined;
 }) {
   const disconnected = (row.kind === "slack" || row.kind === "discord") && row.disconnected;
+  const press: RowPress = admin === undefined ? { kind: "idle" } : admin.pressOf(row);
   return (
     <li
       className="flex min-h-8 min-w-0 items-center gap-1 px-2 py-0.5"
@@ -528,6 +615,11 @@ function SourceRowView({
         {disconnected ? (
           <span className="truncate text-xs text-muted-foreground">
             {row.kind === "slack" ? "Slack" : "Discord"} isn't connected: no tasks come in.
+          </span>
+        ) : null}
+        {press.kind === "refused" ? (
+          <span className="text-xs text-destructive-foreground" role="alert">
+            {press.words}
           </span>
         ) : null}
       </span>
@@ -557,19 +649,56 @@ function SourceRowView({
           >
             Edit
           </Button>
-          {row.kind === "webhook" ? null : (
-            <Button
-              onClick={() => {
-                admin.onStop(row);
-              }}
-              size="sm"
-              variant="ghost"
-            >
-              {row.kind === "schedule" ? "Remove" : "Stop"}
-            </Button>
-          )}
+          {row.kind === "webhook" ? null : <StopControl admin={admin} kind={row.kind} row={row} />}
         </>
       )}
     </li>
+  );
+}
+
+/**
+ * A row's Stop, or a schedule's Remove: it asks on the row first — stopping a source ends its
+ * tasks coming in, removing a schedule deletes its brief — then says it works, held while it does.
+ */
+function StopControl({
+  row,
+  kind,
+  admin,
+}: {
+  readonly row: SourceRow;
+  readonly kind: "github" | "slack" | "discord" | "schedule";
+  readonly admin: AutomationControls;
+}) {
+  const words = stopWords(kind);
+  const press = admin.pressOf(row);
+  if (press.kind === "asking")
+    return (
+      <span className="flex items-center gap-1">
+        <span className="text-xs text-muted-foreground">{words.ask}</span>
+        <Button onClick={admin.onKeep} size="sm" variant="ghost">
+          Keep
+        </Button>
+        <Button
+          onClick={() => {
+            admin.onStop(row);
+          }}
+          size="sm"
+          variant="destructive"
+        >
+          {words.verb}
+        </Button>
+      </span>
+    );
+  return (
+    <Button
+      disabled={press.kind === "working"}
+      onClick={() => {
+        admin.onAskStop(row);
+      }}
+      size="sm"
+      variant="ghost"
+    >
+      {press.kind === "working" ? words.working : words.verb}
+    </Button>
   );
 }

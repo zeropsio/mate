@@ -87,12 +87,14 @@ export interface SourceReads {
 const NOT_YET = new Set(["unread", "reading"]);
 
 /**
- * The sources a project takes tasks from, one row each, and whether any is still being read. A
+ * The sources a project takes tasks from, one row each, whether any is still being read, and
+ * whether any is refused to the reader (`withheld`): then what is shown is not every source. A
  * source refused to the reader, or one this HQ predates, has no row; one whose read failed says so.
  */
 export function sourceRows(reads: SourceReads): {
   readonly rows: ReadonlyArray<SourceRow>;
   readonly reading: boolean;
+  readonly withheld: boolean;
 } {
   const rows: Array<SourceRow> = [];
   const { intake } = reads;
@@ -158,7 +160,10 @@ export function sourceRows(reads: SourceReads): {
     [reads.slack, reads.discord, reads.webhooks, reads.schedules].some((setting) =>
       NOT_YET.has(setting.state),
     );
-  return { rows, reading };
+  const withheld = [reads.slack, reads.discord, reads.webhooks, reads.schedules].some(
+    (setting) => setting.state === "withheld",
+  );
+  return { rows, reading, withheld };
 }
 
 /**
@@ -177,16 +182,61 @@ export function connectionMissing(
 }
 
 /**
- * Whether a project's page shows its Automation section: never where HQ predates automated Mates;
- * to an Owner or Admin always — they set it up there — and to anyone else once it holds something
- * to read: an automated Mate, or a source.
+ * How a project's page shows its Automation section: to an Owner or Admin always — they set it up
+ * there — and where HQ predates automated Mates, in its place, that HQ needs updating (never
+ * painted, then taken away); to anyone else once it holds something to read: an automated Mate,
+ * or a source.
  */
-export function automationShown(input: {
+export function automationSection(input: {
   readonly admin: boolean;
   readonly key: AutomatedKeyState;
   readonly pool: number;
   readonly sources: number;
-}): boolean {
-  if (input.key === "unsupported") return false;
-  return input.admin || input.pool > 0 || input.sources > 0;
+}): "shown" | "update" | "hidden" {
+  if (input.admin) return input.key === "unsupported" ? "update" : "shown";
+  if (input.key === "unsupported") return "hidden";
+  return input.pool > 0 || input.sources > 0 ? "shown" : "hidden";
+}
+
+/**
+ * Where a source row's Stop (or a schedule's Remove) stands: at rest; asking whether to, on the
+ * row; under way; or refused, in HQ's words, on the row it was pressed on.
+ */
+export type RowPress =
+  | { readonly kind: "idle" }
+  | { readonly kind: "asking" }
+  | { readonly kind: "working" }
+  | { readonly kind: "refused"; readonly words: string };
+
+export function sourceRowPress(input: {
+  readonly key: string;
+  /** The row whose Stop asks now; `null`: none. */
+  readonly asking: string | null;
+  /** The row whose Stop was confirmed last; `null`: none. */
+  readonly pressed: string | null;
+  /** Where the write of that row's source stands. */
+  readonly action:
+    | { readonly kind: "idle" | "working" | "done" }
+    | { readonly kind: "failed" | "unresolved"; readonly words: string };
+}): RowPress {
+  if (input.asking === input.key) return { kind: "asking" };
+  if (input.pressed !== input.key) return { kind: "idle" };
+  const { action } = input;
+  if (action.kind === "working") return { kind: "working" };
+  if (action.kind === "failed" || action.kind === "unresolved")
+    return { kind: "refused", words: action.words };
+  return { kind: "idle" };
+}
+
+/** What a row's Stop asks, says on its press, and says while it works. */
+export function stopWords(kind: "github" | "slack" | "discord" | "schedule"): {
+  readonly ask: string;
+  readonly verb: string;
+  readonly working: string;
+} {
+  if (kind === "schedule")
+    return { ask: "Remove this schedule and its brief?", verb: "Remove", working: "Removing…" };
+  if (kind === "github")
+    return { ask: "Stop taking GitHub issues?", verb: "Stop", working: "Stopping…" };
+  return { ask: "Stop taking tasks from this channel?", verb: "Stop", working: "Stopping…" };
 }
