@@ -117,7 +117,7 @@ it("guides direct GitHub delivery from the code repository URL without connectin
     await enter(host, "https://github.com/acme/widgets");
     const link = host.querySelector<HTMLAnchorElement>('a[href*="personal-access-tokens/new"]');
     expect(link?.getAttribute("href")).toBe(
-      "https://github.com/settings/personal-access-tokens/new?name=Mate+Shop+%26+Tools&target_name=acme&expires_in=366&contents=write&workflows=write&checks=read&statuses=read&actions=read",
+      "https://github.com/settings/personal-access-tokens/new?name=Mate+Shop+%26+Tools&target_name=acme&expires_in=366&contents=write&workflows=write&checks=read&statuses=read&actions=read&issues=write&repository_hooks=write",
     );
     expect(host.textContent).toContain("Only select repositories");
     expect(host.textContent).toContain("acme/widgets");
@@ -125,7 +125,7 @@ it("guides direct GitHub delivery from the code repository URL without connectin
     expect(host.textContent).toContain("Direct push to a branch only");
     expect(host.textContent).toContain("This guide does not connect a repository or check access.");
     expect(host.querySelector('input[type="password"]')).toBeNull();
-    expect(host.textContent).toContain("Contents: Read and write");
+    expect(host.textContent).toContain("Contents, Issues and Webhooks: Read and write");
     expect(host.textContent).toContain("Workflows: Read and write is optional");
     expect(host.textContent).not.toContain("Pull requests:");
     expect(host.textContent).toContain("Clone with HTTPS");

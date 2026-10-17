@@ -10,9 +10,9 @@ describe("direct token instructions", () => {
       hostLabel: "GitHub",
       owner: "acme",
       repository: "acme/widgets",
-      permission: "Contents: Read and write",
+      permission: "Contents, Issues and Webhooks: Read and write",
       tokenUrl:
-        "https://github.com/settings/personal-access-tokens/new?name=Mate+Shop+%26+Tools&target_name=acme&expires_in=366&contents=write&workflows=write&checks=read&statuses=read&actions=read",
+        "https://github.com/settings/personal-access-tokens/new?name=Mate+Shop+%26+Tools&target_name=acme&expires_in=366&contents=write&workflows=write&checks=read&statuses=read&actions=read&issues=write&repository_hooks=write",
     });
   });
   it.each(["&".repeat(60), "😀".repeat(60)])(
