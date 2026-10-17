@@ -42,8 +42,12 @@ declare module "../model.ts" {
   interface FamilyValues {
     readonly hqAiKeys: ReadonlyArray<HqAiKeyView>;
     readonly hqIntakeReveal: IntakeReveal;
-    /** The latest key write of this account's, by its request. */
-    readonly hqAiKeyRequest: { readonly requestId: string };
+    /**
+     * The latest key write of this account's, by its request, and the keys' read it was made
+     * after (its revision's sequence; `null` before any): the write's answer stands for the key
+     * until a later read says what HQ holds.
+     */
+    readonly hqAiKeyRequest: { readonly requestId: string; readonly after: number | null };
   }
 }
 

@@ -15,7 +15,7 @@ import {
   type AiKeysKey,
   type IntakeKey,
 } from "../families/hqAutomation.ts";
-import type { OperationRecord } from "../model.ts";
+import { operationResult, type OperationRecord } from "../model.ts";
 import { navigationIntake } from "../operations/hqAutomation.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
@@ -75,6 +75,34 @@ const keysOf = (read: ProjectionReads, key: AiKeysKey): OrgAiKeysRead["keys"] =>
   };
 };
 
+/**
+ * The keys with this account's accepted write in them, until a read after it says what HQ holds:
+ * HQ's answer to a key saved is the key's view, and a key removed is not set.
+ */
+function answered(
+  read: ProjectionReads,
+  key: AiKeysKey,
+  keys: OrgAiKeysRead["keys"],
+  record: OperationRecord | undefined,
+  after: number | null,
+): OrgAiKeysRead["keys"] {
+  if (keys.state !== "known" || record?.receipt?.acceptance.kind !== "accepted") return keys;
+  const fact = read.fact("hqAiKeys", aiKeysId(key));
+  const sequence =
+    fact.kind === "known" && fact.revision.kind === "mate-link" ? fact.revision.sequence : null;
+  if (sequence !== after) return keys;
+  const { intent } = record;
+  const view: HqAiKeyView | undefined =
+    intent.kind === "remove-ai-key"
+      ? { provider: intent.provider, set: false, setAt: null }
+      : operationResult(record, "set-ai-key");
+  if (view === undefined) return keys;
+  return {
+    ...keys,
+    keys: [...keys.keys.filter((held) => held.provider !== view.provider), view],
+  };
+}
+
 export const orgAiKeys: Projection<AiKeysKey, OrgAiKeysRead> = {
   name: "orgAiKeys",
   keyOf: aiKeysId,
@@ -83,10 +111,11 @@ export const orgAiKeys: Projection<AiKeysKey, OrgAiKeysRead> = {
     // This account's own record of its last key write: one never published is none made here.
     const request = read.fact("hqAiKeyRequest", aiKeysId(key));
     if (request.kind !== "known") return { keys, action: { kind: "idle" } };
+    const record = read.operation(request.value.requestId);
     return {
-      keys,
+      keys: answered(read, key, keys, record, request.value.after),
       action: actionOf(
-        read.operation(request.value.requestId),
+        record,
         (kind) => (kind === "remove-ai-key" ? "remove" : "set"),
         "HQ may have taken this change. The key list shows what HQ holds once it is read again.",
       ),

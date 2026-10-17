@@ -189,7 +189,10 @@ export function makeAutomationSettings(options: {
     entry.again = true;
     entry.wake?.();
   };
-  /** Our own write's effect is read from HQ: the list is held and read again until it answers. */
+  /**
+   * Our own write's effect is read from HQ: the list is held and read again until it answers. The
+   * write's answer stands for the key meanwhile (`orgAiKeys`), so it never reads as before.
+   */
   const readAfterWrite = (key: AiKeysKey) => {
     const release = demandKeys(key);
     againKeys(key);
@@ -200,6 +203,12 @@ export function makeAutomationSettings(options: {
       stop();
       release();
     });
+  };
+
+  /** The keys' read a write is made after: its revision's sequence, `null` before any. */
+  const keysSequence = (key: AiKeysKey): number | null => {
+    const revision = store.state().facts.get(`hqAiKeys:${aiKeysId(key)}`)?.revision;
+    return revision?.kind === "mate-link" ? revision.sequence : null;
   };
 
   // ── an intake's answer, held while its screen is open ─────────────────────────────────────
@@ -273,7 +282,10 @@ export function makeAutomationSettings(options: {
     setKey: async (key: AiKeysKey, provider: string, value: string): Promise<string> => {
       const requestId = options.makeId();
       values.set(requestId, value);
-      commit("hqAiKeyRequest", aiKeyRequestScope(key), aiKeysId(key), { requestId });
+      commit("hqAiKeyRequest", aiKeyRequestScope(key), aiKeysId(key), {
+        requestId,
+        after: keysSequence(key),
+      });
       try {
         return await run({ kind: "set-ai-key", orgId: key.orgId, provider }, requestId);
       } finally {
@@ -283,7 +295,10 @@ export function makeAutomationSettings(options: {
     },
     removeKey: async (key: AiKeysKey, provider: string): Promise<string> => {
       const requestId = options.makeId();
-      commit("hqAiKeyRequest", aiKeyRequestScope(key), aiKeysId(key), { requestId });
+      commit("hqAiKeyRequest", aiKeyRequestScope(key), aiKeysId(key), {
+        requestId,
+        after: keysSequence(key),
+      });
       try {
         return await run({ kind: "remove-ai-key", orgId: key.orgId, provider }, requestId);
       } finally {

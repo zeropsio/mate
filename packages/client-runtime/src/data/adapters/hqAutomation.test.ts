@@ -76,6 +76,56 @@ describe("the organization's API keys", () => {
     r.close();
   });
 
+  it.each([
+    {
+      case: "a key saved reads as set at once, before the list is read again",
+      before: unset,
+      write: "set" as const,
+      after: set,
+    },
+    {
+      case: "a key removed reads as not set at once, before the list is read again",
+      before: set,
+      write: "remove" as const,
+      after: { provider: "nebius", set: false, setAt: null },
+    },
+  ])("$case", async ({ before, write, after }) => {
+    let reads = 0;
+    let answerReread: (keys: ReadonlyArray<HqAiKeyView>) => void = () => {};
+    let rereadAsked: () => void = () => {};
+    const reread = new Promise<void>((resolve) => {
+      rereadAsked = resolve;
+    });
+    const r = rig({
+      aiKeys: () => {
+        reads++;
+        if (reads === 1) return Promise.resolve([before]);
+        rereadAsked();
+        return new Promise((resolve) => {
+          answerReread = resolve;
+        });
+      },
+      setAiKey: async () => set,
+      removeAiKey: async () => {},
+    });
+    const read = waitFor(r.store, () => r.keys().keys.state === "known");
+    const release = r.host.demandKeys(ORG);
+    await read;
+    if (write === "set") await r.host.setKey(ORG, "nebius", KEY);
+    else await r.host.removeKey(ORG, "nebius");
+    expect(r.keys().keys).toMatchObject({ state: "known", keys: [after] });
+    // The list read again confirms it, and says what HQ holds from then on.
+    await reread;
+    expect(r.keys().keys).toMatchObject({ state: "known", keys: [after] });
+    const later = { provider: "nebius", set: true, setAt: "2026-10-18T09:00:00.000Z" };
+    const settled = waitFor(r.store, () => JSON.stringify(r.keys().keys).includes("10-18"));
+    answerReread([later]);
+    await settled;
+    expect(r.keys().keys).toMatchObject({ state: "known", keys: [later] });
+    release();
+    r.close();
+  });
+
   it("says HQ's refusal of a key, never the key itself", async () => {
     const r = rig({
       aiKeys: async () => [unset],
