@@ -12,7 +12,7 @@ import { rowsWhere } from "../test/harness/mates.ts";
 import { ticketFor } from "../test/harness/runningCore.ts";
 import { nextScopeValue, scopeReset } from "../test/harness/scopes.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { GithubMirror } from "./githubMirror.ts";
+import { GithubMirror, GithubMirrorUnavailable } from "./githubMirror.ts";
 import { mateTaskLink } from "./mateTasks.ts";
 import {
   CHECKS_GIVEN_UP,
@@ -40,7 +40,7 @@ const NAV = { kind: "navigation" } as const;
  * GitHub moves nothing (the fake GitHub has no git).
  */
 const mirroredPool = Effect.gen(function* () {
-  const mirrored = { pushes: [] as Array<number>, syncs: 0 };
+  const mirrored = { pushes: [] as Array<number>, syncs: 0, unreachable: false };
   const mirror = Layer.effect(
     GithubMirror,
     Effect.gen(function* () {
@@ -60,9 +60,11 @@ const mirroredPool = Effect.gen(function* () {
           }).pipe(Effect.orDie),
         // HQ's main holds GitHub's squash already (`githubMergeOnMain`): following it moves nothing.
         sync: () =>
-          Effect.sync(() => {
+          Effect.suspend(() => {
             mirrored.syncs += 1;
-            return { kind: "same", sha: "f".repeat(40) } as const;
+            return mirrored.unreachable
+              ? Effect.fail(new GithubMirrorUnavailable({ reason: "unreachable" }))
+              : Effect.succeed({ kind: "same", sha: "f".repeat(40) } as const);
           }),
         follow: () => Effect.void,
       });
@@ -123,7 +125,7 @@ const mirroredPool = Effect.gen(function* () {
 type Pool = Effect.Success<typeof mirroredPool>;
 
 /** The robot on issue 1, its change `web` 1 described at `head`; the task. */
-const describedChange = (core: Pool, head = HEAD) =>
+const describedChange = (core: Pool, head = HEAD, described = true) =>
   Effect.gen(function* () {
     yield* core.call("POST", "/api/mate/repos", {
       headers: core.robot.auth,
@@ -146,11 +148,12 @@ const describedChange = (core: Pool, head = HEAD) =>
       body: { repo: "web", title: "Hotter tea" },
     });
     yield* core.sql`UPDATE hq_change SET head = ${head} WHERE repo = 'web' AND number = 1`;
-    const described = yield* core.call("PATCH", "/api/mate/changes/web/1", {
+    if (!described) return task;
+    const words = yield* core.call("PATCH", "/api/mate/changes/web/1", {
       headers: core.robot.auth,
       body: { body: "Boils the water twice.\n\nAnd pours it slowly." },
     });
-    assert.strictEqual(described.status, 200);
+    assert.strictEqual(words.status, 200);
     return task;
   });
 
@@ -531,6 +534,46 @@ describe("a change's pull request", () => {
           assert.strictEqual(refused.status, 409);
           assert.strictEqual((refused.body as { reason: string }).reason, "github_wrong_base");
           assert.isFalse(core.github.state.seen.some((request) => request.method === "PUT"));
+        }),
+    );
+
+    it.effect(
+      "Merge in Mate never squashes a mirrored change in HQ: before its pull request is open, it refuses",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* describedChange(core, HEAD, false);
+          const refused = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
+          assert.strictEqual(refused.status, 409);
+          assert.strictEqual((refused.body as { reason: string }).reason, "github_no_pull");
+          assert.strictEqual((yield* changeOf(core)).state, "open");
+        }),
+    );
+
+    it.effect(
+      "a merge GitHub made that HQ could not follow yet answers so, and the sweep finishes it",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          yield* squashOnMain(core);
+          core.mirrored.unreachable = true;
+          const answer = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
+          assert.strictEqual(answer.status, 409);
+          assert.strictEqual((answer.body as { reason: string }).reason, "github_landing");
+          assert.strictEqual(core.github.state.pulls.get(2)?.merged, true);
+          core.mirrored.unreachable = false;
+          yield* rowsWhere(
+            core.url,
+            "SELECT state FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "merged",
+          );
         }),
     );
 

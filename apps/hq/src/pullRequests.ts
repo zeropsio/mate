@@ -1127,18 +1127,37 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           }
           // The head GitHub merged is the one it was asked to: `sha` holds it to it.
           yield* mergedOnGithub(row, merged.sha, expectedHead);
-          return yield* changes.change(appId, repo, number);
+          return yield* answered(appId, repo, number);
+        });
+
+      /**
+       * A mirrored change as a merge on GitHub left it: merged here, or — HQ not having followed
+       * GitHub yet — refused as such, for the sweep to finish.
+       */
+      const answered = (appId: string, repo: string, number: number) =>
+        Effect.gen(function* () {
+          const change = yield* changes.change(appId, repo, number);
+          if (change.state !== "merged") return yield* refuse("github_landing");
+          return change;
         });
 
       return PullRequests.of({
         merge: (userId, appId, repo, number, expectedHead) =>
           Effect.gen(function* () {
-            const row = yield* pullOf(appId, repo, number);
-            const repository =
-              row?.state === "open" ? yield* mirror.repositoryOf(appId, repo) : undefined;
-            if (row === undefined || repository === undefined)
+            // A change mirrored to GitHub merges there and only there: never by HQ's own squash.
+            const repository = yield* mirror.repositoryOf(appId, repo);
+            if (repository === undefined)
               return yield* changes.mergeChange(userId, appId, repo, number, expectedHead);
-            return yield* mergeOnGithub(userId, row, expectedHead).pipe(working.withPermits(1));
+            return yield* Effect.gen(function* () {
+              yield* changes.personMay(userId, appId, "merge_change");
+              const row = yield* pullOf(appId, repo, number);
+              if (row === undefined) return yield* refuse("github_no_pull");
+              if (row.state === "closed") return yield* refuse("github_closed");
+              if (row.state === "open") return yield* mergeOnGithub(userId, row, expectedHead);
+              // Merged on GitHub already: followed now, if it was not.
+              if (row.merged_sha !== null) yield* landed(row, row.merged_sha, row.merged_head);
+              return yield* answered(appId, repo, number);
+            }).pipe(working.withPermits(1));
           }),
         close: (userId, appId, repo, number, expectedHead) =>
           Effect.gen(function* () {
