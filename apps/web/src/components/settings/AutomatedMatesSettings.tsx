@@ -5,6 +5,7 @@
  * what HQ answered as it was set: the webhook it made, or the URL and secret to paste, the secret
  * shown this once.
  */
+import type { AppIntakeRead, OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import type { HqIntakeView } from "@t3tools/shared/hqIntake";
 import { DEFAULT_INTAKE_LABEL } from "@t3tools/shared/hqIntake";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
@@ -26,6 +27,7 @@ import {
   intakeLine,
   intakeRepoChoices,
 } from "./automatedMatesSettings.logic";
+import { tasksWaitingWords } from "../zerops/SidebarMateRow.logic";
 import { SettingsRow } from "./settingsLayout";
 
 const NEBIUS = OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === "nebius");
@@ -48,6 +50,31 @@ function OrganizationKeyRow({
   readonly provider: (typeof OPENCODE_KEY_PROVIDERS)[number];
 }) {
   const { read, setKey, removeKey, again } = useOrgAiKeys(true);
+  return (
+    <OrganizationKeyView
+      onAgain={again}
+      onRemove={removeKey}
+      onSet={setKey}
+      provider={provider}
+      read={read}
+    />
+  );
+}
+
+/** The organization's key for one provider: its line and its presses, from what is read. */
+export function OrganizationKeyView({
+  provider,
+  read,
+  onSet,
+  onRemove,
+  onAgain,
+}: {
+  readonly provider: (typeof OPENCODE_KEY_PROVIDERS)[number];
+  readonly read: OrgAiKeysRead;
+  readonly onSet: (provider: string, value: string) => void;
+  readonly onRemove: (provider: string) => void;
+  readonly onAgain: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
   const keyId = useId();
@@ -77,7 +104,7 @@ function OrganizationKeyRow({
       control={
         editing ? undefined : !known ? (
           read.keys.state === "failed" ? (
-            <Button onClick={again} size="sm" variant="secondary">
+            <Button onClick={onAgain} size="sm" variant="secondary">
               Read again
             </Button>
           ) : undefined
@@ -96,7 +123,7 @@ function OrganizationKeyRow({
             <Button
               disabled={working}
               onClick={() => {
-                removeKey(provider.id);
+                onRemove(provider.id);
               }}
               size="sm"
               variant="ghost"
@@ -136,7 +163,7 @@ function OrganizationKeyRow({
             if (typed.length === 0) return;
             setEditing(false);
             setValue("");
-            setKey(provider.id, typed);
+            onSet(provider.id, typed);
           }}
         >
           <Label htmlFor={keyId}>{provider.name} API key</Label>
@@ -202,18 +229,34 @@ function TasksFromGithub() {
   );
 }
 
-function AppIntakeRow({
-  appId,
-  name,
-  choices,
-  reposRead,
-}: {
+function AppIntakeRow(props: {
   readonly appId: string;
   readonly name: string;
   readonly choices: ReadonlyArray<string>;
   readonly reposRead: boolean;
 }) {
-  const { read, set, stop } = useAppIntake(appId);
+  const { read, set, stop } = useAppIntake(props.appId);
+  return <AppIntakeView {...props} onSet={set} onStop={stop} read={read} />;
+}
+
+/** One application's intake: where it takes tasks from, or the choice of where, from what is read. */
+export function AppIntakeView({
+  appId,
+  name,
+  choices,
+  reposRead,
+  read,
+  onSet,
+  onStop,
+}: {
+  readonly appId: string;
+  readonly name: string;
+  readonly choices: ReadonlyArray<string>;
+  readonly reposRead: boolean;
+  readonly read: AppIntakeRead;
+  readonly onSet: (repo: string, label: string) => void;
+  readonly onStop: () => void;
+}) {
   const [repo, setRepo] = useState<string | null>(null);
   const [label, setLabel] = useState(DEFAULT_INTAKE_LABEL);
   const labelId = useId();
@@ -228,8 +271,12 @@ function AppIntakeRow({
         <p className="text-xs text-muted-foreground">Reading…</p>
       ) : read.intake !== null ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">{intakeLine(read.intake)}</p>
-          <Button disabled={working} onClick={stop} size="sm" variant="ghost">
+          <p className="text-xs text-muted-foreground">
+            {[intakeLine(read.intake), tasksWaitingWords(read.intake.waiting)]
+              .filter((part) => part !== undefined)
+              .join(" · ")}
+          </p>
+          <Button disabled={working} onClick={onStop} size="sm" variant="ghost">
             Stop taking tasks
           </Button>
         </div>
@@ -246,7 +293,7 @@ function AppIntakeRow({
             event.preventDefault();
             const typed = label.trim();
             if (typed.length === 0) return;
-            set(chosen, typed);
+            onSet(chosen, typed);
           }}
         >
           <div className="grid min-w-56 gap-1.5">
@@ -303,8 +350,8 @@ function IntakeAnswer({ answer }: { readonly answer: HqIntakeView }) {
       <p className="text-xs text-foreground">{intakeAnswerLine(answer)}</p>
       {answer.hook.kind === "paste" ? (
         <>
-          <CopyLine label="Payload URL" value={answer.webhookUrl} />
-          <CopyLine label="Secret" value={answer.hook.secret} />
+          <CopyLine copy="Copy URL" label="Payload URL" value={answer.webhookUrl} />
+          <CopyLine copy="Copy secret" label="Secret" value={answer.hook.secret} />
           <p className="text-xs text-muted-foreground">{answer.hook.why}</p>
         </>
       ) : null}
@@ -312,7 +359,16 @@ function IntakeAnswer({ answer }: { readonly answer: HqIntakeView }) {
   );
 }
 
-function CopyLine({ label, value }: { readonly label: string; readonly value: string }) {
+function CopyLine({
+  label,
+  copy,
+  value,
+}: {
+  readonly label: string;
+  /** The press's words: what it copies. */
+  readonly copy: string;
+  readonly value: string;
+}) {
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: label });
   return (
     <div className="flex min-w-0 items-center gap-2">
@@ -325,7 +381,7 @@ function CopyLine({ label, value }: { readonly label: string; readonly value: st
         size="sm"
         variant="ghost"
       >
-        {isCopied ? "Copied" : `Copy ${label.toLowerCase()}`}
+        {isCopied ? "Copied" : copy}
       </Button>
     </div>
   );

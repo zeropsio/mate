@@ -18,6 +18,9 @@
  * `window.__newMateHarness.read()` answers the recipe the moment it is asked
  * to, so a press made while it was being read can be watched going through.
  *
+ * `&automated=set` offers the Automated choice, `&automated=missing` with the organization holding
+ * no API key for it yet.
+ *
  * Fixtures only. Nothing here ships — `design-newmate.html` is not
  * `index.html`, and no route imports this module.
  */
@@ -40,6 +43,11 @@ const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const STATE = params.get("state") ?? "recipe";
 const NAME = params.get("name") ?? "Quinn";
+const AUTOMATED = params.get("automated");
+const AUTOMATION =
+  AUTOMATED === "set" || AUTOMATED === "missing"
+    ? { key: AUTOMATED as "set" | "missing" }
+    : undefined;
 /** What the repo holds once read: its recipe, or none. */
 const RESOLVES = STATE === "none" || params.get("resolves") === "none" ? "none" : "recipe";
 
@@ -147,6 +155,8 @@ function Harness() {
         }
         defaultTintFor={(name) => newMateTint(MATES, name)}
         defaultWithAgent={role === "dev"}
+        automation={AUTOMATION}
+        onOpenKeySettings={() => setLanded("/settings/zerops")}
         groupName="Acme Docs"
         // As the app's host: Add lands on the new Mate's page, which takes the focus.
         landsElsewhere
