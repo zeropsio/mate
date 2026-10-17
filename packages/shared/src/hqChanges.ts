@@ -273,6 +273,11 @@ export const HqRepoRemote = Schema.Struct({
    * from an older HQ: a token.
    */
   via: Schema.optionalKey(Schema.Literals(["app", "token"])),
+  /**
+   * Since when HQ's `main` and the default branch there hold histories neither contains, so the
+   * mirror moves neither (`githubMirror.ts`); absent while they follow each other.
+   */
+  divergedSince: Schema.optionalKey(HqTargetTimestamp),
 });
 export type HqRepoRemote = typeof HqRepoRemote.Type;
 
