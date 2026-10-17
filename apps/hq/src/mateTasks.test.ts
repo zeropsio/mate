@@ -22,7 +22,7 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import { GITHUB_TOKEN } from "../test/harness/automated.ts";
-import { DECLINED_FOR, UNTAKEN } from "./mateTasks.ts";
+import { DECLINED_FOR, MATE_AWAY, UNTAKEN } from "./mateTasks.ts";
 
 const NAV = { kind: "navigation" } as const;
 
@@ -36,6 +36,7 @@ const NEBIUS_KEY = ["v1", "fake", "nebius", "key", "0123456789"].join(".");
 const withPool = (
   given: {
     readonly taskAcceptWithin?: Duration.Duration;
+    readonly taskGoneAfter?: Duration.Duration;
     readonly busy?: boolean;
     /** The organization keeps no key for its automated Mates' provider. */
     readonly keyless?: boolean;
@@ -45,9 +46,11 @@ const withPool = (
     const github = yield* githubFake;
     const core = yield* startCore(true, {
       githubApi: github.url,
-      ...(given.taskAcceptWithin === undefined
+      ...(given.taskAcceptWithin === undefined && given.taskGoneAfter === undefined
         ? {}
-        : { taskAcceptWithin: given.taskAcceptWithin, taskSweepEvery: Duration.millis(50) }),
+        : { taskSweepEvery: Duration.millis(50) }),
+      ...(given.taskAcceptWithin === undefined ? {} : { taskAcceptWithin: given.taskAcceptWithin }),
+      ...(given.taskGoneAfter === undefined ? {} : { taskGoneAfter: given.taskGoneAfter }),
     });
     yield* untilHealth(core.call, "active");
     const owner = yield* sessionFor(core.call, "door-owner");
@@ -459,8 +462,38 @@ describe("tasks for automated Mates", () => {
         yield* core.github.seenWhere("the failure's comment", (seen) =>
           seen.some((request) => request.path.endsWith("/comments")),
         );
+        // No Mate took it: none is named.
         assert.deepStrictEqual(yield* core.github.comments, [
-          ["/repos/acme/tea-shop/issues/1/comments", `P_ROBOT couldn't finish this: ${UNTAKEN}`],
+          [
+            "/repos/acme/tea-shop/issues/1/comments",
+            `No automated Mate could take this up: ${UNTAKEN}`,
+          ],
+        ]);
+        const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "failed");
+        assert.strictEqual(row!["mate_project_id"], null);
+      }),
+    );
+
+    it.effect("a task whose Mate went away mid-task for two hours fails, saying why", () =>
+      Effect.gen(function* () {
+        const core = yield* withPool({ taskGoneAfter: Duration.millis(300) });
+        yield* core.issue(1);
+        const task = yield* toldTask(core.robot.link, 1);
+        yield* core.robot.link.send({
+          type: "task-state",
+          report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+        });
+        yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+        yield* core.robot.link.close;
+        const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "failed");
+        assert.deepInclude(row, { mate_project_id: "P_ROBOT", detail: MATE_AWAY });
+        yield* core.github.seenWhere(
+          "the failure's comment",
+          (seen) => seen.filter((request) => request.path.endsWith("/comments")).length === 2,
+        );
+        assert.deepStrictEqual((yield* core.github.comments).at(-1), [
+          "/repos/acme/tea-shop/issues/1/comments",
+          `P_ROBOT couldn't finish this: ${MATE_AWAY}`,
         ]);
       }),
     );

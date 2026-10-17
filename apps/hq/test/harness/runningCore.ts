@@ -215,6 +215,8 @@ export const startCore = (
     /** How long a Mate has to take a task, and how often HQ looks; 60 s and 5 s. */
     readonly taskAcceptWithin?: Duration.Duration;
     readonly taskSweepEvery?: Duration.Duration;
+    /** How long a working task's Mate may be offline before it fails; 2 hours. */
+    readonly taskGoneAfter?: Duration.Duration;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -261,6 +263,7 @@ export const startCore = (
       githubApi: given.githubApi ?? "http://127.0.0.1:9",
       ...(given.taskAcceptWithin === undefined ? {} : { taskAcceptWithin: given.taskAcceptWithin }),
       ...(given.taskSweepEvery === undefined ? {} : { taskSweepEvery: given.taskSweepEvery }),
+      ...(given.taskGoneAfter === undefined ? {} : { taskGoneAfter: given.taskGoneAfter }),
     };
     const scope = yield* Scope.make();
     const platform =

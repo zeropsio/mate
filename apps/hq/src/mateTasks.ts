@@ -17,7 +17,8 @@
  * - The Mate's word moves its task (`task-state`): taken (`working`, in the conversation it names),
  *   then done or failed — its Mate free again. A word of a task not its own — never handed to it,
  *   or handed to another since — is passed by.
- * - A task whose Mate's record went is given back, or failed where the Mate had taken it.
+ * - A task whose Mate's record went is given back, or failed where the Mate had taken it; one whose
+ *   Mate has been offline for 2 hours while on it fails, saying so.
  * - GitHub hears from the Mate by name, on the issue, with the repository's token: once it takes
  *   the issue up, once it opens its change for review (with the change's address in Mate), and
  *   once it could not finish, with why. A comment GitHub refuses is tried once more, then logged;
@@ -56,10 +57,12 @@ import { Structure } from "./structure.ts";
 /** How many times a task is handed out before it fails untaken. */
 export const TASK_TRIES = 3;
 
-/** Why a task failed that no Mate took, in a person's words. */
-export const UNTAKEN = "No automated Mate took it up in time, three times over.";
+/** Why a task failed that no Mate took, in a person's words, after "No automated Mate could take this up:". */
+export const UNTAKEN = "it was handed out three times and never taken in time.";
 /** Why a task failed whose Mate is gone. */
 export const MATE_GONE = "Its Mate is gone.";
+/** Why a task failed whose Mate went offline while on it and stayed away. */
+export const MATE_AWAY = "Its Mate went away mid-task.";
 /** How long a task's Mates may turn it down before it fails. */
 export const DECLINED_FOR = Duration.minutes(30);
 /** Why a task failed that its Mates kept turning down, with the last one's reason. */
@@ -118,6 +121,8 @@ export interface MateTasksOptions {
   readonly acceptWithin?: Duration.Duration;
   /** How often HQ looks for tasks handed out too long ago; 5 s. */
   readonly sweepEvery?: Duration.Duration;
+  /** How long a working task's Mate may be offline before the task fails; 2 hours. */
+  readonly goneAfter?: Duration.Duration;
 }
 
 export const mateTasksLayer = (options: MateTasksOptions = {}) =>
@@ -314,19 +319,49 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             UPDATE hq_task t SET attempts = t.attempts + 1, updated_at = now(),
               state = CASE WHEN t.attempts + 1 >= ${TASK_TRIES} THEN 'failed' ELSE 'queued' END,
               detail = CASE WHEN t.attempts + 1 >= ${TASK_TRIES} THEN ${UNTAKEN} ELSE t.detail END,
-              mate_project_id = CASE WHEN t.attempts + 1 >= ${TASK_TRIES} THEN t.mate_project_id END,
+              mate_project_id = NULL,
               assigned_at = CASE WHEN t.attempts + 1 >= ${TASK_TRIES} THEN t.assigned_at END
             FROM back WHERE t.id = back.id
             RETURNING t.id::text AS id, back.was AS mate_project_id, t.state`);
           for (const row of moved) {
             if (row.mate_project_id !== null) yield* structure.mateTouched(row.mate_project_id);
-            if (row.state === "failed") yield* couldNotFinish(row.id);
+            if (row.state === "failed") yield* untaken(row.id);
           }
           if (moved.length > 0) yield* structure.touched;
           return moved.length;
         });
 
-      /** Tasks handed out longer ago than a Mate has to take them, and those of Mates gone. */
+      const goneMs = Duration.toMillis(options.goneAfter ?? Duration.hours(2));
+      /** Since when HQ has seen each working task's Mate offline, where its presence says not. */
+      const awaySince = new Map<string, number>();
+      /** The working tasks whose Mates have been offline past `goneAfter`. */
+      const awayTooLong = Effect.gen(function* () {
+        const working = yield* sql<{ readonly id: string; readonly mate_project_id: string }>`
+          SELECT id::text AS id, mate_project_id FROM hq_task WHERE state = 'working'`;
+        const all = yield* overviews.all;
+        const now = yield* Clock.currentTimeMillis;
+        const seen = new Set<string>();
+        const away = working.filter((task) => {
+          const presence = all.get(task.mate_project_id)?.presence;
+          if (presence?.online === true) return false;
+          seen.add(task.mate_project_id);
+          // Offline since its presence says, or — one this HQ never saw — since it first looked.
+          const since =
+            presence === undefined
+              ? (awaySince.get(task.mate_project_id) ?? now)
+              : Date.parse(presence.since);
+          awaySince.set(task.mate_project_id, since);
+          return now - since >= goneMs;
+        });
+        for (const projectId of awaySince.keys())
+          if (!seen.has(projectId)) awaySince.delete(projectId);
+        return away.map((task) => task.id);
+      });
+
+      /**
+       * Tasks handed out longer ago than a Mate has to take them, those of Mates gone, and those
+       * whose Mates went away mid-task.
+       */
       const sweep = Effect.gen(function* () {
         if (!(yield* leading)) return;
         yield* giveBack("overdue");
@@ -336,7 +371,16 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           WHERE state = 'working'
             AND NOT EXISTS (SELECT 1 FROM hq_mate m WHERE m.project_id = hq_task.mate_project_id)
           RETURNING id::text AS id`);
-        for (const row of failed) yield* couldNotFinish(row.id);
+        const away = yield* awayTooLong;
+        const left =
+          away.length === 0
+            ? []
+            : yield* leader.write(sql<{ readonly id: string; readonly mate_project_id: string }>`
+                UPDATE hq_task SET state = 'failed', detail = ${MATE_AWAY}, updated_at = now()
+                WHERE state = 'working' AND id::text IN ${sql.in(away)}
+                RETURNING id::text AS id, mate_project_id`);
+        for (const row of [...failed, ...left]) yield* couldNotFinish(row.id);
+        for (const row of left) yield* structure.mateTouched(row.mate_project_id);
         // Whatever a wake missed waits at most one sweep.
         yield* wake;
       });
@@ -498,12 +542,12 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             Effect.gen(function* () {
               // Subscribed before its task is read: a task handed in between is in one or both.
               const live = yield* PubSub.subscribe(told);
-              const untaken = yield* sql<TaskRow>`
+              const handed = yield* sql<TaskRow>`
                 SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task
                 WHERE mate_project_id = ${projectId} AND state = 'assigned'`;
               return Stream.concat(
                 Stream.fromIterable(
-                  untaken.map((row) => encodeDown({ type: "task", task: taskOf(row) })),
+                  handed.map((row) => encodeDown({ type: "task", task: taskOf(row) })),
                 ),
                 Stream.fromSubscription(live).pipe(
                   Stream.filter((message) => message.projectId === projectId),

@@ -89,9 +89,13 @@ export interface CoreOptions {
   readonly drainFor?: Duration.Duration;
   /** GitHub's REST API for issues and webhooks, for tests; GitHub's own by default. */
   readonly githubApi?: string;
-  /** How long a Mate has to take a task, and how often HQ looks (`mateTasks.ts`); for tests. */
+  /**
+   * How long a Mate has to take a task, how often HQ looks, and how long a working task's Mate
+   * may be offline (`mateTasks.ts`); for tests.
+   */
   readonly taskAcceptWithin?: Duration.Duration;
   readonly taskSweepEvery?: Duration.Duration;
+  readonly taskGoneAfter?: Duration.Duration;
   /** Shorter intervals, for tests. */
   readonly heartbeat?: Duration.Duration;
   readonly retryAfter?: Duration.Duration;
@@ -154,6 +158,7 @@ const services = (options: CoreOptions) => {
     mateTasksLayer({
       ...(options.taskAcceptWithin === undefined ? {} : { acceptWithin: options.taskAcceptWithin }),
       ...(options.taskSweepEvery === undefined ? {} : { sweepEvery: options.taskSweepEvery }),
+      ...(options.taskGoneAfter === undefined ? {} : { goneAfter: options.taskGoneAfter }),
     }).pipe(Layer.provide(remotes), Layer.provide(github), Layer.provide(orgAiKeysLayer)),
     intakeLayer({ hqProjectId: options.hqProjectId }).pipe(
       Layer.provide(remotes),
