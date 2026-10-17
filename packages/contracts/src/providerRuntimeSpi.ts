@@ -104,6 +104,11 @@
  *   floats round to decimal nanodollars; pricing basis changes preserve cumulative deltas.
  *   The Claude replay goldens change from individual-response to final-turn facts;
  *   the fresh live baseline replies are constructed, not captured provider evidence.
+ * - (no version bump, 2026-10-17): OpenCode emits `turn.usage.completed` too, before
+ *   each turn's end (completed, failed, aborted or exited): its step-finish meters
+ *   since the previous end, the session's and its subagents', one line per
+ *   `provider/model`, with OpenCode's own cost estimate when it is above zero.
+ *   Additive; the payload shape is unchanged.
  *
  * @module providerRuntimeSpi
  */
