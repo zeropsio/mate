@@ -26,7 +26,13 @@ import {
   type RuntimeMode,
 } from "@t3tools/contracts";
 
+import { userAskOf } from "@t3tools/shared/userAsk";
+
 import { Conversations } from "../Conversations.ts";
+
+/** How many of the person's newest messages the last ask looks through: past this many commands
+ * in a row it is none. */
+const ASK_WINDOW = 20;
 
 /** A run as a view reads it. */
 export interface ViewRun {
@@ -85,9 +91,10 @@ export interface ConversationView {
   readonly pausedUntil: number | "unknown" | null;
   readonly openRequests: ReadonlyArray<ViewRequest>;
   /**
-   * The person's latest message that opened a run, as they wrote it, with what it carried (a
-   * picture's label is in its text): one steered into a running run is a word on that run, never
-   * the conversation's subject (Milo's second stress run read the steer as its title).
+   * The person's latest message that opened a run and asks something, as they wrote it, with what
+   * it carried (a picture's label is in its text): one steered into a running run is a word on
+   * that run, never the conversation's subject (Milo's second stress run read the steer as its
+   * title), and a slash command or the server's resume prompt is no ask of theirs.
    */
   readonly lastPerson: {
     readonly text: string;
@@ -211,15 +218,18 @@ export const readConversationView = (conversationId: ConversationId) =>
       SELECT request_id, run_id, at, ask_json, answerable FROM engine_request
       WHERE conversation_id = ${conversationId} AND state = 'open' ORDER BY seq
     `;
-    const items = (where: {
-      readonly kind: string;
-      readonly open?: boolean;
-      readonly by?: string;
-      /** Leave out a person's message steered into a running run. */
-      readonly opening?: true;
-      /** Leave out a message a page sent for the person. */
-      readonly typed?: true;
-    }) =>
+    const items = (
+      where: {
+        readonly kind: string;
+        readonly open?: boolean;
+        readonly by?: string;
+        /** Leave out a person's message steered into a running run. */
+        readonly opening?: true;
+        /** Leave out a message a page sent for the person. */
+        readonly typed?: true;
+      },
+      limit = 1,
+    ) =>
       sql<{ readonly body_json: string; readonly at: number; readonly run_id: string | null }>`
         SELECT body_json, at, run_id FROM engine_item
         WHERE conversation_id = ${conversationId} AND kind = ${where.kind}
@@ -227,8 +237,10 @@ export const readConversationView = (conversationId: ConversationId) =>
           ${where.by === undefined ? sql`` : sql`AND json_extract(by_json, '$.kind') = ${where.by}`}
           ${where.opening === undefined ? sql`` : sql`AND json_extract(body_json, '$.delivery.state') IS NOT 'steered'`}
           ${where.typed === undefined ? sql`` : sql`AND json_extract(body_json, '$.fromPanel') IS NULL`}
-        ORDER BY opened_seq DESC LIMIT 1
-      `.pipe(Effect.map((rows) => rows[0]));
+        ORDER BY opened_seq DESC LIMIT ${limit}
+      `;
+    const item = (where: Parameters<typeof items>[0]) =>
+      Effect.map(items(where), (rows) => rows[0]);
     const textOf = (row: { readonly body_json: string; readonly at: number } | undefined) =>
       row === undefined
         ? Effect.succeed(null)
@@ -241,7 +253,19 @@ export const readConversationView = (conversationId: ConversationId) =>
                 }
               : null,
           );
-    const call = activeRun === null ? undefined : yield* items({ kind: "call", open: true });
+    // The person's newest message that asks something (`userAskOf`): a slash command, the
+    // usage-limit resume or a crew card after their ask is no word of theirs, and the ask stays
+    // what the conversation is about (a `/compact` left Mates' rows reading "Nothing asked yet").
+    const lastAskOf = (where: { readonly typed?: true }) =>
+      Effect.gen(function* () {
+        const rows = yield* items({ kind: "person", opening: true, ...where }, ASK_WINDOW);
+        for (const row of rows) {
+          const said = yield* textOf(row);
+          if (said !== null && userAskOf(said) !== null) return said;
+        }
+        return null;
+      });
+    const call = activeRun === null ? undefined : yield* item({ kind: "call", open: true });
     const callBody =
       call === undefined || call.run_id !== activeRun?.id
         ? undefined
@@ -299,9 +323,9 @@ export const readConversationView = (conversationId: ConversationId) =>
           answerable: row.answerable === 1,
         })),
       ),
-      lastPerson: yield* textOf(yield* items({ kind: "person", opening: true })),
-      lastAsked: yield* textOf(yield* items({ kind: "person", opening: true, typed: true })),
-      lastAgent: yield* textOf(yield* items({ kind: "note", open: false, by: "mate" })),
+      lastPerson: yield* lastAskOf({}),
+      lastAsked: yield* lastAskOf({ typed: true }),
+      lastAgent: yield* textOf(yield* item({ kind: "note", open: false, by: "mate" })),
       liveCall:
         callBody?.kind === "call" && call !== undefined
           ? { step: callBody.step, tool: callBody.tool.name, words: callBody.words, at: call.at }
