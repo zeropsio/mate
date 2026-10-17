@@ -381,6 +381,56 @@ describe("tasks for automated Mates", () => {
         }),
     );
 
+    it.effect(
+      "a task no Mate took goes when its application's intake stops or moves to another repository; only the intake's own repository's tasks are handed out",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          const states = (found: ReadonlyArray<Record<string, unknown>>) =>
+            found.map((row) => [row["number"], row["state"], row["mate_project_id"]]);
+          yield* core.issue(1);
+          yield* toldTask(core.robot.link, 1);
+          yield* core.call("DELETE", `/api/apps/${core.appId}/intake`, { session: core.owner });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "dropped");
+          // Pointed back at it, then moved to another repository while the next is handed out.
+          const hook = yield* intakeOn(core, core.github, core.owner, core.appId);
+          yield* deliver(
+            core,
+            hook,
+            "issues",
+            issueEvent("opened", { number: 2, labels: ["mate"] }),
+          );
+          yield* toldTask(core.robot.link, 2);
+          yield* connectedRepo(core, core.appId, "api", "acme/coffee-shop");
+          const moved = yield* core.call("PUT", `/api/apps/${core.appId}/intake`, {
+            session: core.owner,
+            body: { repo: "acme/coffee-shop", label: "mate" },
+          });
+          assert.strictEqual(moved.status, 200);
+          const rows = yield* core.tasks((found) => found[1]?.["state"] === "dropped");
+          assert.deepStrictEqual(states(rows), [
+            [1, "dropped", null],
+            [2, "dropped", null],
+          ]);
+          // A task of the repository the intake left, however it came to wait, is handed to no
+          // one: the Mate gets the newer task of the intake's repository instead.
+          const waiting = (number: number, repo: string) => core.sql`
+            INSERT INTO hq_task (app_id, repo, number, title, body, url, delivery_id, state)
+            VALUES (${core.appId}::uuid, ${repo}, ${number}, ${`Issue ${String(number)}`}, '',
+              ${`https://github.com/${repo}/issues/${String(number)}`}, ${`waiting-${String(number)}`},
+              'queued')`;
+          yield* waiting(3, "acme/tea-shop");
+          yield* waiting(4, "acme/coffee-shop");
+          yield* core.robot.link.send(attention(0));
+          yield* toldTask(core.robot.link, 4);
+          const after = yield* core.tasks((found) => found[3]?.["state"] === "assigned");
+          assert.deepStrictEqual(states(after).slice(2), [
+            [3, "queued", null],
+            [4, "assigned", "P_ROBOT"],
+          ]);
+        }),
+    );
+
     it.effect("a Mate's word on a task not its own is passed by", () =>
       Effect.gen(function* () {
         const core = yield* withPool({ busy: true });

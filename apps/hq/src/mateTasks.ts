@@ -226,9 +226,12 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             ORDER BY m.seq`;
           const free = yield* freeNow(idle.map((row) => row.project_id));
           if (free.length === 0) continue;
+          // Only the intake's own repository's: one it left or stopped gives nobody work.
           const waiting = yield* sql<TaskRow>`
-            SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task
-            WHERE app_id::text = ${appId} AND state = 'queued' ORDER BY seq LIMIT ${free.length}`;
+            SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task t
+            WHERE app_id::text = ${appId} AND state = 'queued'
+              AND EXISTS (SELECT 1 FROM hq_intake i WHERE i.app_id = t.app_id AND i.repo = t.repo)
+            ORDER BY seq LIMIT ${free.length}`;
           for (const [index, task] of waiting.entries()) {
             const projectId = free[index]!;
             const handed = yield* leader

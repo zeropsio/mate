@@ -81,7 +81,7 @@ export const connectedRepo = (
     yield* core.sql`
       INSERT INTO hq_repo_remote (app_id, repo, url, url_key, host, host_repo_id, sealed, key_id, kept_by, kept_at)
       VALUES (${appId}::uuid, ${repo}, ${`https://github.com/${path}.git`}, ${`github.com/${path}`},
-        'github.com', '1', ${sealed.sealed}, ${sealed.keyId}, ${keptBy}, clock_timestamp())`;
+        'github.com', ${path}, ${sealed.sealed}, ${sealed.keyId}, ${keptBy}, clock_timestamp())`;
   }).pipe(Effect.orDie);
 
 type Github = Effect.Success<typeof githubFake>;

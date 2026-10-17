@@ -10,7 +10,8 @@
  * repository's token where the token may (Webhooks: Read and write); else the person pastes the
  * address and the secret into the repository's settings, and HQ says why. Setting the same
  * repository again keeps its address and secret, so a pasted webhook goes on working; another
- * repository gets new ones, and the webhook HQ made on the old one goes.
+ * repository gets new ones, and the webhook HQ made on the old one goes. Stopped or moved, the
+ * tasks no Mate took yet from the repository it leaves are dropped.
  *
  * A delivery is taken only once its `X-Hub-Signature-256` holds — an HMAC-SHA256 of its bytes under
  * the secret, compared in constant time — before a byte of it is parsed (`receive`); JSON, or
@@ -33,6 +34,7 @@ import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import type * as Statement from "effect/sql/Statement";
 import type { SqlError } from "effect/sql/SqlError";
 
 import { AutomationRefused } from "./automationRefused.ts";
@@ -263,24 +265,34 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
         });
 
       /**
-       * The issue's task no Mate took yet, dropped — waiting, or handed out and not taken: its
-       * issue closed or lost the label. The Mate it was handed to is free again.
+       * The tasks `where` names that no Mate took yet, dropped — waiting, or handed out and not
+       * taken — saying why; the Mates they were handed to, free again. A statement of a write.
        */
-      const drop = (appId: string, repo: string, number: number, why: string) =>
+      const dropping = (where: Statement.Fragment, why: string) =>
+        sql<{ readonly was: string | null }>`
+          WITH gone AS (
+            SELECT id, mate_project_id AS was FROM hq_task
+            WHERE ${where} AND state IN ('queued', 'assigned')
+            FOR UPDATE)
+          UPDATE hq_task t SET state = 'dropped', detail = ${why}, mate_project_id = NULL,
+            assigned_at = NULL, updated_at = now()
+          FROM gone WHERE t.id = gone.id
+          RETURNING gone.was`;
+      /** Every reader of the dropped tasks' Mates told; whether any was dropped. */
+      const dropped = (rows: ReadonlyArray<{ readonly was: string | null }>) =>
         Effect.gen(function* () {
-          const rows = yield* leader.write(sql<{ readonly was: string | null }>`
-            WITH gone AS (
-              SELECT id, mate_project_id AS was FROM hq_task
-              WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}
-                AND state IN ('queued', 'assigned')
-              FOR UPDATE)
-            UPDATE hq_task t SET state = 'dropped', detail = ${why}, mate_project_id = NULL,
-              assigned_at = NULL, updated_at = now()
-            FROM gone WHERE t.id = gone.id
-            RETURNING gone.was`);
           for (const { was } of rows) if (was !== null) yield* structure.mateTouched(was);
           return rows.length > 0;
         });
+
+      /** The issue's task no Mate took yet, dropped: its issue closed or lost the label. */
+      const drop = (appId: string, repo: string, number: number, why: string) =>
+        Effect.flatMap(
+          leader.write(
+            dropping(sql`app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`, why),
+          ),
+          dropped,
+        );
 
       return Intake.of({
         receive: (publicId, delivery) =>
@@ -357,13 +369,25 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               const url = yield* webhookUrl(publicId);
               const heldHook =
                 kept !== undefined && before?.hook_id != null ? before.hook_id : null;
-              yield* leader.write(sql`
-                INSERT INTO hq_intake (app_id, repo, hq_repo, label, public_id, sealed, key_id, hook_id, created_by)
-                VALUES (${appId}::uuid, ${repo}, ${hqRepo}, ${label}, ${publicId}, ${sealed.sealed},
-                  ${sealed.keyId}, ${heldHook}::bigint, ${userId})
-                ON CONFLICT (app_id) DO UPDATE SET repo = EXCLUDED.repo, hq_repo = EXCLUDED.hq_repo,
-                  label = EXCLUDED.label, public_id = EXCLUDED.public_id, sealed = EXCLUDED.sealed,
-                  key_id = EXCLUDED.key_id, hook_id = EXCLUDED.hook_id, updated_at = now()`);
+              const left = yield* leader.write(
+                Effect.gen(function* () {
+                  yield* sql`
+                    INSERT INTO hq_intake (app_id, repo, hq_repo, label, public_id, sealed, key_id, hook_id, created_by)
+                    VALUES (${appId}::uuid, ${repo}, ${hqRepo}, ${label}, ${publicId}, ${sealed.sealed},
+                      ${sealed.keyId}, ${heldHook}::bigint, ${userId})
+                    ON CONFLICT (app_id) DO UPDATE SET repo = EXCLUDED.repo, hq_repo = EXCLUDED.hq_repo,
+                      label = EXCLUDED.label, public_id = EXCLUDED.public_id, sealed = EXCLUDED.sealed,
+                      key_id = EXCLUDED.key_id, hook_id = EXCLUDED.hook_id, updated_at = now()`;
+                  // What came from the repository it leaves: nobody takes it now.
+                  return before === undefined || before.repo === repo
+                    ? []
+                    : yield* dropping(
+                        sql`app_id::text = ${appId} AND repo = ${before.repo}`,
+                        "intake moved",
+                      );
+                }),
+              );
+              yield* dropped(left);
               yield* structure.touched;
               // The old repository's webhook goes once nothing delivers to it any more.
               if (before?.hook_id != null && heldHook === null)
@@ -392,15 +416,14 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               yield* authorized(userId, appId);
               const before = yield* rowOf(appId);
               if (before === undefined) return;
-              yield* leader.write(
+              const left = yield* leader.write(
                 Effect.gen(function* () {
                   yield* sql`DELETE FROM hq_intake WHERE app_id::text = ${appId}`;
-                  // What still waits came from it: nobody takes it now.
-                  yield* sql`
-                    UPDATE hq_task SET state = 'dropped', detail = 'intake stopped', updated_at = now()
-                    WHERE app_id::text = ${appId} AND state = 'queued'`;
+                  // What no Mate took yet came from it: nobody takes it now.
+                  return yield* dropping(sql`app_id::text = ${appId}`, "intake stopped");
                 }),
               );
+              yield* dropped(left);
               yield* structure.touched;
               if (before.hook_id !== null)
                 yield* removeHook(appId, before.hq_repo, Number(before.hook_id));
