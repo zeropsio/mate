@@ -1,5 +1,6 @@
 /**
- * What HQ asks of GitHub's REST API for automated Mates, with a repository's own token: a webhook
+ * What HQ asks of GitHub's REST API for automated Mates, with the token it is handed — the
+ * organization's GitHub app's where it reaches the repository, else the repository's own: a webhook
  * on its issues and their comments made, refreshed or removed (`intake.ts`); an issue's reaction,
  * comments (made and edited) and labels (`githubChannel.ts`); and whether a person may steer
  * Mate there — their permission on the repository, and the email their profile shows

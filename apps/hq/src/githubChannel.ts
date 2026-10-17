@@ -1,6 +1,7 @@
 /**
- * How a GitHub issue's task hears back (`TaskSourceChannel` of `github-issue`), with the token of
- * the application's repository whose remote the issue's repository is:
+ * How a GitHub issue's task hears back (`TaskSourceChannel` of `github-issue`), as the
+ * organization's GitHub app where it reaches the issue's repository, else with the token of the
+ * application's repository whose remote it is (`Remotes.tokenOf`):
  *
  * - at intake, 👀 on the issue;
  * - ONE status comment, made once and edited as the task moves (its id is the task's

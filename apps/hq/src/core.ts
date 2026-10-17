@@ -42,6 +42,10 @@ import { type MateTasksOptions, mateTasksLayer } from "./mateTasks.ts";
 import { githubIssuesLayer } from "./githubIssues.ts";
 import { githubChannelLayer } from "./githubChannel.ts";
 import { githubGateLayer } from "./githubGate.ts";
+import { githubAppLayer } from "./githubApp.ts";
+import { githubAppRoutes } from "./githubAppRoutes.ts";
+import { githubEventsLayer } from "./githubEvents.ts";
+import { githubMirrorAbsentLayer } from "./githubMirror.ts";
 import { taskIntakeLayer, taskSourceChannelsLayer } from "./taskIntake.ts";
 import { taskLimitsLayer } from "./taskLimits.ts";
 import { webhooksLayer } from "./webhooks.ts";
@@ -126,6 +130,7 @@ const routes = (options: CoreOptions) =>
     automationRoutes,
     discordRoutes,
     slackRoutes,
+    githubAppRoutes,
     apiRoutes({
       build: options.build,
       hqProjectId: options.hqProjectId,
@@ -140,12 +145,18 @@ const routes = (options: CoreOptions) =>
 
 const services = (options: CoreOptions) => {
   const keySecret = keySecretOf(options.keySecret);
+  // The organization's GitHub app: its tokens (`GithubAuth`) and its webhook's events, one of each.
+  const githubApp = githubAppLayer({
+    hqProjectId: options.hqProjectId,
+    ...(options.githubApi === undefined ? {} : { api: options.githubApi }),
+  }).pipe(Layer.provide(NodeHttpClient.layerNodeHttp), Layer.provideMerge(githubEventsLayer));
   const remotes = repoRemotesLayer.pipe(
     Layer.provide(
       githubProbesLayer.pipe(
         Layer.provide(gitTransportLayer.pipe(Layer.provide(NodeHttpClient.layerNodeHttp))),
       ),
     ),
+    Layer.provide(githubApp),
   );
   const leader = leaderLayer({
     databaseUrl: options.databaseUrl,
@@ -196,6 +207,7 @@ const services = (options: CoreOptions) => {
     ),
   ).pipe(
     Layer.provide(remotes),
+    Layer.provide(githubApp),
     Layer.provideMerge(github),
     Layer.provideMerge(taskSourceChannelsLayer),
   );
@@ -204,6 +216,8 @@ const services = (options: CoreOptions) => {
     orgAiKeysLayer,
     taskLimitsLayer,
     sources,
+    githubApp,
+    githubMirrorAbsentLayer,
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,
@@ -227,6 +241,7 @@ const services = (options: CoreOptions) => {
         deploysLayer().pipe(
           Layer.provideMerge(gitReleasesLayer.pipe(Layer.provide(remotes))),
           Layer.provide(recipeTiersLayer),
+          Layer.provide(githubApp),
         ),
       ),
     ),
