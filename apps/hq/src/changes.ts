@@ -13,6 +13,7 @@
  * @module changes
  */
 import { rasterContentType, type RasterContentType } from "@t3tools/shared/hqAttachments";
+import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { GitError, HqGit, Repo } from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
@@ -115,6 +116,14 @@ export type MateVerb = "ensure_repo" | "open_change";
 type MateError = ChangeRefused | NotLeader | SqlError | ZeropsError;
 
 type ReadError = ChangeRefused | SqlError | ZeropsError;
+
+/** A comment said on a change's pull request on GitHub, as `githubComment` keeps it. */
+export interface GithubComment {
+  /** Where GitHub keeps it (`review:<id>`, `review_comment:<id>`, `issue_comment:<id>`). */
+  readonly key: string;
+  readonly login: string;
+  readonly body: string;
+}
 
 /** A person's comment on a change, as it was kept. */
 export interface ChangeCommented {
@@ -295,6 +304,57 @@ export class Changes extends Context.Service<
       number: number,
       expectedHead: string,
     ) => Effect.Effect<HqChange, ReadError | NotLeader | GitError>;
+    /**
+     * The change merged by a merge made elsewhere — on the GitHub its repository mirrors to — whose
+     * commit `mergedSha` HQ's `main` already holds (`githubMirror.ts` imported it): what a squash
+     * here records, with `main` left as the import moved it. One merged already stays as it is.
+     * `mergedHead` is the head GitHub merged, landed as it — a push since is not merged; the
+     * change's head now where none is known.
+     */
+    readonly landImported: (
+      appId: string,
+      repo: string,
+      number: number,
+      mergedSha: string,
+      mergedHead?: string,
+    ) => Effect.Effect<HqChange, ReadError | NotLeader | GitError>;
+    /**
+     * Whether the person may merge or close the application's changes, as `mergeChange` and
+     * `closeChange` decide it: for a change that merges elsewhere (its pull request on GitHub).
+     */
+    readonly personMay: (
+      userId: string,
+      appId: string,
+      verb: "merge_change" | "close_change",
+    ) => Effect.Effect<void, ReadError>;
+    /** The change as its record is, whoever asks: for a service that decided who may already. */
+    readonly change: (
+      appId: string,
+      repo: string,
+      number: number,
+    ) => Effect.Effect<HqChange, ChangeRefused | SqlError>;
+    /**
+     * The change closed without merging because its pull request was closed on GitHub, whatever
+     * its head; `undefined` where it is not open.
+     */
+    readonly closeOnGithub: (
+      appId: string,
+      repo: string,
+      number: number,
+      by: object,
+    ) => Effect.Effect<HqChange | undefined, SqlError | NotLeader>;
+    /**
+     * A comment said on the change's pull request on GitHub, kept in its conversation as its
+     * author's; `false` where GitHub's comment was kept already (a delivery repeated).
+     */
+    readonly githubComment: (
+      appId: string,
+      repo: string,
+      number: number,
+      comment: GithubComment,
+    ) => Effect.Effect<boolean, SqlError | NotLeader>;
+    /** A change's record moved outside this service (its pull request): its readers read again. */
+    readonly touch: Effect.Effect<void>;
     /** The change closed without merging; its branch stays. */
     readonly closeChange: (
       userId: string,
@@ -399,7 +459,32 @@ const CHANGE_COLUMNS = [
   `(SELECT count(*)::int FROM hq_change_comment c
     WHERE c.app_id = hq_change.app_id AND c.repo = hq_change.repo
       AND c.number = hq_change.number) AS comments`,
+  // Its pull request on GitHub (`pullRequests.ts`), one row by its key.
+  `(SELECT jsonb_build_object('number', pr.pr_number, 'url', pr.url, 'state', pr.state,
+      'checks', pr.checks) FROM hq_pull_request pr
+    WHERE pr.app_id = hq_change.app_id AND pr.repo = hq_change.repo
+      AND pr.number = hq_change.number) AS pull_request`,
+  // Its branch on GitHub diverged (`githubMirror.ts`): since when.
+  `(SELECT to_char(m.diverged_since AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    FROM hq_change_mirror m WHERE m.app_id = hq_change.app_id AND m.repo = hq_change.repo
+      AND m.number = hq_change.number) AS mirror_diverged_since`,
 ].join(", ");
+
+/** A change's pull request as `CHANGE_COLUMNS` reads it. */
+interface PullRequestRow {
+  readonly number: number;
+  readonly url: string;
+  readonly state: HqPullRequest["state"];
+  readonly checks: HqPullRequest["checks"] | null;
+}
+
+/** The pull request the wire carries: its checks only once GitHub reported some. */
+export const pullRequestOf = (row: PullRequestRow): HqPullRequest => ({
+  number: row.number,
+  url: row.url,
+  state: row.state,
+  ...(row.checks === null || row.checks === undefined ? {} : { checks: row.checks }),
+});
 
 interface ChangeRow {
   readonly app_id: string;
@@ -422,12 +507,15 @@ interface ChangeRow {
   readonly receipt: ChangeReceipt | null;
   readonly ready: boolean;
   readonly comments: number;
+  readonly pull_request: PullRequestRow | null;
+  readonly mirror_diverged_since: string | null;
 }
 
 const COMMENT_COLUMNS = [
   "id::text AS id",
   "author_user_id",
   "author_mate_project_id",
+  "author_github_login",
   "body",
   instant("created_at"),
 ].join(", ");
@@ -436,6 +524,7 @@ interface CommentRow {
   readonly id: string;
   readonly author_user_id: string | null;
   readonly author_mate_project_id: string | null;
+  readonly author_github_login: string | null;
   readonly body: string;
   readonly created_at: string;
 }
@@ -444,6 +533,7 @@ const commentOf = (row: CommentRow): HqChangeComment => ({
   id: row.id,
   authorUserId: row.author_user_id,
   authorMateProjectId: row.author_mate_project_id,
+  ...(row.author_github_login === null ? {} : { authorGithubLogin: row.author_github_login }),
   body: row.body,
   createdAt: row.created_at,
 });
@@ -468,6 +558,8 @@ const changeOf = (row: ChangeRow): HqChange => ({
   ...(row.first_code_merge === null ? {} : { firstCodeMerge: row.first_code_merge }),
   ready: row.ready,
   comments: row.comments,
+  ...(row.pull_request === null ? {} : { pullRequest: pullRequestOf(row.pull_request) }),
+  ...(row.mirror_diverged_since === null ? {} : { mirrorDivergedSince: row.mirror_diverged_since }),
   receipt: row.receipt,
 });
 
@@ -1481,6 +1573,96 @@ export const changesLayer: Layer.Layer<
           const change = yield* changeIn(appId, repo, number);
           return yield* land(change, expectedHead, { userId }, asItIs);
         }),
+      landImported: (appId, repo, number, mergedSha, mergedHead) =>
+        Effect.gen(function* () {
+          const git = yield* gitHost.git;
+          const at = { appId, id: repo };
+          return yield* touched(
+            leader.write(
+              Effect.gen(function* () {
+                yield* sql`
+                  SELECT 1 FROM hq_repo WHERE app_id::text = ${appId} AND name = ${repo}
+                  FOR UPDATE`;
+                const [row] = yield* sql<ChangeRow>`
+                  SELECT ${sql.literal(CHANGE_COLUMNS)} FROM hq_change
+                  WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}
+                  FOR UPDATE`;
+                if (row === undefined) return yield* refuse("change_not_found", "change_not_found");
+                if (row.state === "merged") return changeOf(row);
+                if (row.state !== "open") return yield* refuse("conflict", "change_not_open");
+                // Only a merge HQ's main holds: never a commit named by someone else's word alone.
+                if (!(yield* git.onMain(at, mergedSha)))
+                  return yield* refuse("commit_not_found", "commit_not_found");
+                const first = yield* firstCodeMergeOf(sql, { appId, repo, number });
+                const [merged] = yield* sql<ChangeRow>`
+                  UPDATE hq_change
+                  SET state = 'merged', merged_sha = ${mergedSha},
+                      landed_head = COALESCE(${mergedHead ?? null}, head),
+                      merged_at = now(), updated_at = now(),
+                      mergeability = 'already_merged', behind = false,
+                      first_code_merge = ${first}::boolean
+                  WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}
+                  RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
+                yield* addRollout(sql, { cause: "merge", appId, repo, sha: mergedSha });
+                yield* appendEvent(sql, {
+                  kind: "merged",
+                  appId,
+                  repo,
+                  number,
+                  data: { mergedSha, landedHead: mergedHead ?? row.head, by: "github" },
+                });
+                return changeOf(merged!);
+              }),
+            ),
+          );
+        }),
+      personMay: (userId, appId, verb) => personApp(userId, appId, verb),
+      change: (appId, repo, number) => changeIn(appId, repo, number),
+      closeOnGithub: (appId, repo, number, by) =>
+        touched(
+          leader.write(
+            Effect.gen(function* () {
+              const [open] = yield* sql<{ readonly state: string }>`
+                SELECT state FROM hq_change
+                WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}
+                FOR UPDATE`;
+              if (open?.state !== "open") return undefined;
+              return yield* closeLocked(
+                yield* changeIn(appId, repo, number).pipe(Effect.orDie),
+                by,
+              );
+            }),
+          ),
+        ),
+      githubComment: (appId, repo, number, comment) =>
+        touched(
+          leader.write(
+            Effect.gen(function* () {
+              const kept = yield* sql<{ readonly id: string }>`
+                INSERT INTO hq_change_comment
+                  (app_id, repo, number, author_github_login, github_key, body)
+                VALUES (${appId}::uuid, ${repo}, ${number}, ${comment.login}, ${comment.key},
+                  ${comment.body})
+                ON CONFLICT (app_id, repo, number, github_key) WHERE github_key IS NOT NULL
+                DO NOTHING
+                RETURNING id::text AS id`;
+              if (kept.length === 0) return false;
+              // A comment moves the change.
+              yield* sql`
+                UPDATE hq_change SET updated_at = now()
+                WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}`;
+              yield* appendEvent(sql, {
+                kind: "commented",
+                appId,
+                repo,
+                number,
+                data: { commentId: kept[0]!.id, githubLogin: comment.login },
+              });
+              return true;
+            }),
+          ),
+        ),
+      touch: SubscriptionRef.update(ticks, (n) => n + 1),
       closeChange: (userId, appId, repo, number, expectedHead) =>
         Effect.andThen(
           personApp(userId, appId, "close_change"),

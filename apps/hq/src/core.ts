@@ -22,6 +22,7 @@ import * as PgClient from "@effect/sql-pg/PgClient";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import type * as SqlClient from "effect/sql/SqlClient";
 import type * as Option from "effect/Option";
 import type * as Redacted from "effect/Redacted";
 import * as HttpRouter from "effect/http/HttpRouter";
@@ -42,6 +43,11 @@ import { type MateTasksOptions, mateTasksLayer } from "./mateTasks.ts";
 import { githubIssuesLayer } from "./githubIssues.ts";
 import { githubChannelLayer } from "./githubChannel.ts";
 import { githubGateLayer } from "./githubGate.ts";
+import { githubAppLayer } from "./githubApp.ts";
+import { githubAppRoutes } from "./githubAppRoutes.ts";
+import { githubEventsLayer } from "./githubEvents.ts";
+import { type GithubMirror, githubMirrorLayer } from "./githubMirror.ts";
+import { type PullRequestsOptions, pullRequestsLayer } from "./pullRequests.ts";
 import { taskIntakeLayer, taskSourceChannelsLayer } from "./taskIntake.ts";
 import { taskLimitsLayer } from "./taskLimits.ts";
 import { webhooksLayer } from "./webhooks.ts";
@@ -101,6 +107,13 @@ export interface CoreOptions {
   readonly drainFor?: Duration.Duration;
   /** GitHub's REST API for issues and webhooks, for tests; GitHub's own by default. */
   readonly githubApi?: string;
+  /**
+   * The git mirror to GitHub as a test stands it in, for a test of what is built on it without
+   * git on the fake GitHub's side; the real one (`githubMirrorLayer`) by default.
+   */
+  readonly githubMirror?: Layer.Layer<GithubMirror, never, SqlClient.SqlClient>;
+  /** How often every open change's pull request is looked at (`pullRequests.ts`); for tests. */
+  readonly pullRequests?: PullRequestsOptions;
   /** Discord's REST API, for tests; Discord's own by default. */
   readonly discordApi?: string;
   /** Slack's Web API, for tests; Slack's own by default. */
@@ -126,6 +139,7 @@ const routes = (options: CoreOptions) =>
     automationRoutes,
     discordRoutes,
     slackRoutes,
+    githubAppRoutes,
     apiRoutes({
       build: options.build,
       hqProjectId: options.hqProjectId,
@@ -140,12 +154,18 @@ const routes = (options: CoreOptions) =>
 
 const services = (options: CoreOptions) => {
   const keySecret = keySecretOf(options.keySecret);
+  // The organization's GitHub app: its tokens (`GithubAuth`) and its webhook's events, one of each.
+  const githubApp = githubAppLayer({
+    hqProjectId: options.hqProjectId,
+    ...(options.githubApi === undefined ? {} : { api: options.githubApi }),
+  }).pipe(Layer.provide(NodeHttpClient.layerNodeHttp), Layer.provideMerge(githubEventsLayer));
   const remotes = repoRemotesLayer.pipe(
     Layer.provide(
       githubProbesLayer.pipe(
         Layer.provide(gitTransportLayer.pipe(Layer.provide(NodeHttpClient.layerNodeHttp))),
       ),
     ),
+    Layer.provide(githubApp),
   );
   const leader = leaderLayer({
     databaseUrl: options.databaseUrl,
@@ -169,8 +189,16 @@ const services = (options: CoreOptions) => {
   );
   // Tasks from every source come in through one door (`taskIntake.ts`); each source's channel
   // registers itself (`githubChannel.ts`), and `mateTasks.ts` says through it how a task moves.
-  const tasks = mateTasksLayer(options.tasks).pipe(Layer.provide(orgAiKeysLayer));
+  const tasks = mateTasksLayer(options.tasks).pipe(
+    Layer.provide(orgAiKeysLayer),
+    Layer.provide(taskSourceChannelsLayer),
+  );
   const door = taskIntakeLayer.pipe(Layer.provideMerge(tasks));
+  // GitHub's default branch upstream for repositories mirrored through the app: one, as the app;
+  // it tells a task's Mate what people added to its change on GitHub.
+  const mirror =
+    options.githubMirror ??
+    githubMirrorLayer().pipe(Layer.provide(githubApp), Layer.provide(tasks));
   const sources = Layer.mergeAll(
     door,
     intakeLayer({ hqProjectId: options.hqProjectId }).pipe(
@@ -178,6 +206,10 @@ const services = (options: CoreOptions) => {
       Layer.provide(githubGateLayer),
     ),
     githubChannelLayer,
+    pullRequestsLayer(options.pullRequests).pipe(
+      Layer.provide(door),
+      Layer.provide(githubGateLayer),
+    ),
     webhooksLayer({ hqProjectId: options.hqProjectId }).pipe(Layer.provide(door)),
     schedulesLayer(
       options.scheduleEvery === undefined ? {} : { every: options.scheduleEvery },
@@ -196,6 +228,8 @@ const services = (options: CoreOptions) => {
     ),
   ).pipe(
     Layer.provide(remotes),
+    Layer.provide(githubApp),
+    Layer.provide(mirror),
     Layer.provideMerge(github),
     Layer.provideMerge(taskSourceChannelsLayer),
   );
@@ -204,6 +238,8 @@ const services = (options: CoreOptions) => {
     orgAiKeysLayer,
     taskLimitsLayer,
     sources,
+    githubApp,
+    mirror,
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,
@@ -227,6 +263,7 @@ const services = (options: CoreOptions) => {
         deploysLayer().pipe(
           Layer.provideMerge(gitReleasesLayer.pipe(Layer.provide(remotes))),
           Layer.provide(recipeTiersLayer),
+          Layer.provide(githubApp),
         ),
       ),
     ),

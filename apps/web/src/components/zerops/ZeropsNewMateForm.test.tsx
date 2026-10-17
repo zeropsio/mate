@@ -609,7 +609,7 @@ describe("the New Mate dialog's Automated choice", () => {
     expect(spoken(tree.root).includes("Your organization has no API key for it yet.")).toBe(says);
     if (!says) return;
     act(() => {
-      button(tree, "Set it in Settings › Zerops").props.onClick();
+      button(tree, "Set it in Settings › Automation").props.onClick();
     });
     expect(onOpenKeySettings).toHaveBeenCalledOnce();
   });
@@ -620,7 +620,7 @@ describe("the New Mate dialog's Automated choice", () => {
     expect(spoken(tree.root)).toContain(
       "Your organization has no API key for it yet. An Owner or Admin of your organization sets it.",
     );
-    expect(buttons(tree)).not.toContain("Set it in Settings › Zerops");
+    expect(buttons(tree)).not.toContain("Set it in Settings › Automation");
   });
 
   // The owner's cardinal sin: the key's note must land in room the first frame already held.

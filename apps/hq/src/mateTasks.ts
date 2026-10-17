@@ -61,9 +61,11 @@ import { Structure } from "./structure.ts";
 import { DEFAULT_TASK_LIMITS, readTaskLimits } from "./taskLimits.ts";
 import {
   type TaskOnSource,
+  type TaskPullRequest,
   TaskSourceChannels,
   type TaskStatus,
   authorOf,
+  mateNameIn,
   cleanTaskText,
   sourceOfRow,
 } from "./taskSources.ts";
@@ -105,12 +107,23 @@ const declinedTooLong = (reason: string | undefined) =>
  */
 const AUTOMATED_PROVIDER = OPENCODE_KEY_PROVIDERS[0]!;
 
+/**
+ * Where a task is followed in Mate: its Mate's page, which opens on its conversation. The one
+ * place a status line, a pull request's footer and a merge's trailer take it from.
+ */
+export const mateTaskLink = (mateProjectId: string) =>
+  `${DEFAULT_HOSTED_APP_URL}/mate/${encodeURIComponent(mateProjectId)}`;
+
 /** What a status line may name of its task. */
 export interface TaskFacts {
-  /** Its Mate's name, where one took it (or was last handed it). */
+  /** Its Mate's name, where one took it (or was last handed it): its own, not its project's. */
   readonly mate: string | null;
+  /** Where it is followed in Mate (`mateTaskLink`), where a Mate took it. */
+  readonly link: string | null;
   /** Its change's address in Mate, once it has one. */
   readonly change: string | null;
+  /** Its change's pull request on GitHub, once it has one. */
+  readonly pullRequest: TaskPullRequest | null;
   readonly detail: string | null;
   readonly question: string | null;
 }
@@ -131,8 +144,19 @@ export class MateTasks extends Context.Service<
       taskId: string,
       message: MateTaskMessage,
     ) => Effect.Effect<void, SqlError | NotLeader>;
-    /** People stopped the task: dropped while no Mate took it, else its Mate told to stop. */
+    /**
+     * People stopped the task: dropped while no Mate took it, else its Mate told to stop; one done
+     * whose change was closed unmerged (its pull request closed) ends stopped.
+     */
     readonly stop: (taskId: string, reason: string) => Effect.Effect<void, SqlError | NotLeader>;
+    /**
+     * The task's status line said anew, with what `status` makes of its facts now (its change's
+     * pull request moved): in order with every other line, never failing anything.
+     */
+    readonly tell: (
+      taskId: string,
+      status: (facts: TaskFacts) => TaskStatus | undefined,
+    ) => Effect.Effect<void>;
     /**
      * Tasks dropped outside this service (an intake stopped or moved): their status lines say so,
      * and the queue they left moves up.
@@ -289,10 +313,19 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             readonly change_number: number | null;
             readonly detail: string | null;
             readonly question: string | null;
+            readonly app_name: string | null;
+            readonly pr_number: number | null;
+            readonly pr_url: string | null;
           }>`
-            SELECT app_id::text AS app_id, source, source_key, status_ref,
-              COALESCE(mate_project_id, last_mate_project_id) AS mate, change_repo, change_number,
-              detail, question FROM hq_task WHERE id::text = ${taskId}`;
+            SELECT t.app_id::text AS app_id, t.source, t.source_key, t.status_ref,
+              COALESCE(t.mate_project_id, t.last_mate_project_id) AS mate, t.change_repo,
+              t.change_number, t.detail, t.question, a.name AS app_name, pr.pr_number,
+              pr.url AS pr_url
+            FROM hq_task t
+            LEFT JOIN hq_app a ON a.id = t.app_id
+            LEFT JOIN hq_pull_request pr ON pr.app_id = t.app_id AND pr.repo = t.change_repo
+              AND pr.number = t.change_number
+            WHERE t.id::text = ${taskId}`;
           const source = sourceOfRow(task?.source);
           if (task === undefined || source === undefined) return;
           const channel = yield* channels.of(source.kind);
@@ -305,15 +338,21 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             task.mate === null
               ? null
               : yield* Effect.orElseSucceed(
-                  Effect.map(
-                    roles.view,
-                    (view) =>
-                      view.projects.find((project) => project.id === task.mate)?.name || "Mate",
-                  ),
+                  Effect.map(roles.view, (view) => {
+                    const project = view.projects.find((found) => found.id === task.mate);
+                    return project === undefined
+                      ? "Mate"
+                      : mateNameIn(project.name, task.app_name) || "Mate";
+                  }),
                   () => "Mate",
                 );
           const said = status({
             mate: name,
+            link: task.mate === null ? null : mateTaskLink(task.mate),
+            pullRequest:
+              task.pr_number === null || task.pr_url === null
+                ? null
+                : { number: task.pr_number, url: task.pr_url },
             change:
               task.change_repo === null || task.change_number === null
                 ? null
@@ -386,7 +425,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const why = (detail: string | null) =>
         (detail ?? "").trim().slice(0, 2000) || "no reason given.";
       const pickedUp = (taskId: string) =>
-        say(taskId, ({ mate }) => ({ kind: "picked", mate: mate ?? "Mate" }));
+        say(taskId, ({ mate, link }) => ({
+          kind: "picked",
+          mate: mate ?? "Mate",
+          ...(link === null ? {} : { link }),
+        }));
       const couldNotFinish = (taskId: string) =>
         say(taskId, ({ mate, detail }) => ({ kind: "failed", mate, why: why(detail) }));
       /** A task no Mate took, failed on its source too: no Mate's name, since none took it. */
@@ -736,10 +779,24 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             WHERE id::text = ${taskId} AND state IN ('working', 'waiting')
             RETURNING mate_project_id, stop_reason`);
           if (taken !== undefined)
-            yield* tellMate(
+            return yield* tellMate(
               taken.mate_project_id,
               encodeDown({ type: "task-stop", taskId, reason: taken.stop_reason }),
             );
+          // Done, its change closed without merging: the work went nowhere, so the task ends
+          // stopped, and its Mate, on nothing, hears nothing.
+          const ended = yield* leader.write(sql<{ readonly mate_project_id: string | null }>`
+            UPDATE hq_task t SET state = 'stopped', detail = ${reason}, updated_at = now(),
+              stop_heard_at = now()
+            WHERE t.id::text = ${taskId} AND t.state = 'done' AND EXISTS (
+              SELECT 1 FROM hq_change c WHERE c.app_id = t.app_id AND c.repo = t.change_repo
+                AND c.number = t.change_number AND c.state = 'closed')
+            RETURNING t.mate_project_id`);
+          for (const row of ended) {
+            yield* stoppedSaid(taskId, true);
+            if (row.mate_project_id !== null) yield* structure.mateTouched(row.mate_project_id);
+            yield* wake;
+          }
         });
 
       // A person's comment on a task's change: said to the task, for its Mate to hear.
@@ -773,8 +830,15 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       );
       yield* Effect.forkScoped(
         Stream.runForEach(changes.taskChanges, (taskId) =>
-          say(taskId, ({ mate, change }) =>
-            change === null ? undefined : { kind: "change", mate: mate ?? "Mate", link: change },
+          say(taskId, ({ mate, change, pullRequest }) =>
+            change === null
+              ? undefined
+              : {
+                  kind: "change",
+                  mate: mate ?? "Mate",
+                  link: change,
+                  ...(pullRequest === null ? {} : { pullRequest }),
+                },
           ),
         ),
       );
@@ -969,10 +1033,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             if (ended.length > 0 && word.state === "failed") yield* couldNotFinish(word.taskId);
             if (ended.length > 0 && word.state === "stopped") yield* stoppedSaid(word.taskId, true);
             if (ended.length > 0 && word.state === "done" && task.state !== "done")
-              yield* say(word.taskId, ({ mate, change }) => ({
+              yield* say(word.taskId, ({ mate, change, pullRequest }) => ({
                 kind: "done",
                 mate: mate ?? "Mate",
                 link: change,
+                ...(pullRequest === null ? {} : { pullRequest }),
               }));
             if (ended.length > 0 && task.state === "queued") {
               yield* structure.touched;
@@ -1025,6 +1090,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           }).pipe(logged("a task's arrival not told")),
         message: (taskId, message) => messageTask(taskId, message),
         stop: (taskId, reason) => stopTask(taskId, reason),
+        tell: (taskId, status) => say(taskId, status),
         linkFrames: (projectId) =>
           Stream.unwrap(
             Effect.gen(function* () {

@@ -35,6 +35,7 @@ import { Roles, type OrgView } from "./roles.ts";
 import { rolloutsLayer } from "./rollouts.ts";
 import { Structure, structureLayer } from "./structure.ts";
 import { ZeropsApi, ZeropsDeploy } from "./zerops/api.ts";
+import { githubAuthAbsentLayer } from "./githubAuth.ts";
 
 const author = { name: "HQ", email: "hq@hq.invalid" };
 const gitAt = (dir: string, args: string[], input = "") =>
@@ -111,6 +112,7 @@ const fixture = Effect.gen(function* () {
     mateRepos: () => Effect.die("Repository reads are outside this fixture"),
     write: () => Effect.die("Remote writes are outside this fixture"),
     tokenOf: () => Effect.die("Remote tokens are outside this fixture"),
+    connectViaApp: () => Effect.die("Remotes through the GitHub app are outside this fixture"),
     receipt: () => Effect.succeed(null),
     get: (ref) => Effect.sync(() => remoteRows.get(ref.repo)),
     connect: () => Effect.die("not used"),
@@ -134,6 +136,7 @@ const fixture = Effect.gen(function* () {
       }).pipe(Layer.provideMerge(releasesLayer)),
     ).pipe(
       Layer.provide(deployKeysLayer(testKey())),
+      Layer.provide(githubAuthAbsentLayer),
       Layer.provideMerge(gitHostLayer({ rootDir: NodePath.join(root, "hq") })),
       Layer.provideMerge(rolloutsLayer),
       Layer.provideMerge(activeCoreLayer(url)),

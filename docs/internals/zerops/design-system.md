@@ -43,6 +43,8 @@ One word for each thing:
 - **change** — never pull request or PR. Name a change by its title rather than its number. A merged change is
   **merged**, never landed. Its merge says **Adds this change to main**; squash and commit counts stay in the
   Commits fold.
+- **PR #n** — only for the GitHub pull request a change is mirrored to, linked to it ("PR #2 on GitHub"); Mate's
+  own object stays a **change**.
 - **release** — "Putting {version} live", "{service} gets {version}". No commit hash stands on a surface.
 - **setup**, **setup files** — never recipe or import files.
 - **Read access**, **Full access** — sentence case, each explained once where it is chosen.

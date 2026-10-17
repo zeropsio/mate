@@ -28,6 +28,7 @@ import { Leader } from "./leader.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import { ZeropsUnavailable } from "./zerops/api.ts";
 import { Remotes, repoRemotesLayer } from "./repoRemotes.ts";
+import { githubAuthAbsentLayer } from "./githubAuth.ts";
 
 const APP = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
@@ -225,6 +226,7 @@ const fixture = Effect.gen(function* () {
       Layer.provideMerge(PgClient.layer({ url: Redacted.make(url) })),
       Layer.provide(roles),
       Layer.provide(leader),
+      Layer.provide(githubAuthAbsentLayer),
       Layer.provide(
         githubProbesLayer.pipe(Layer.provide(gitTransportLayer), Layer.provide(client)),
       ),
@@ -824,6 +826,23 @@ describe("repository credential custody", () => {
             assert.strictEqual(disconnected.find((repo) => repo.name === "web")?.remote, null);
           }),
         ),
+    );
+    it.effect("A repository whose mirror diverged from GitHub's says since when", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { remotes, sql } = yield* fixture;
+          yield* remotes.connect("custodian", input);
+          const following = yield* remotes.listRepos("custodian", APP);
+          assert.isUndefined(following.find((repo) => repo.name === "web")?.remote?.divergedSince);
+          yield* sql`INSERT INTO hq_repo_mirror(app_id,repo,branch,diverged_since)
+            VALUES (${APP}::uuid,'web','main','2026-10-17T09:30:00Z')`;
+          const diverged = yield* remotes.listRepos("custodian", APP);
+          assert.strictEqual(
+            diverged.find((repo) => repo.name === "web")?.remote?.divergedSince,
+            "2026-10-17T09:30:00.000Z",
+          );
+        }),
+      ),
     );
     it.effect(
       "Decision L2b: disconnect refuses stage or production dependencies and deletes only HQ's seal and metadata, never host refs or tokens.",

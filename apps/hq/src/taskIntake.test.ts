@@ -8,7 +8,7 @@ import { attention, automatedPool, mateLinked, overviewAt } from "../test/harnes
 import { addProject } from "../test/harness/mates.ts";
 import { rowsWhere } from "../test/harness/mates.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { TASK_SOURCES_SINCE } from "./mateTasks.ts";
+import { TASK_SOURCES_SINCE, mateTaskLink } from "./mateTasks.ts";
 import type { TaskStatus } from "./taskSources.ts";
 
 type Pool = Effect.Success<ReturnType<typeof automatedPool>>;
@@ -263,7 +263,7 @@ describe("HQ's one door for tasks from every source", () => {
           yield* lines.until("the first done", () => lines.of(first).length === 3);
           assert.deepStrictEqual(lines.of(first), [
             { kind: "queued", position: 1 },
-            { kind: "picked", mate: "P_ROBOT" },
+            { kind: "picked", mate: "P_ROBOT", link: mateTaskLink("P_ROBOT") },
             { kind: "done", mate: "P_ROBOT", link: null },
           ]);
           assert.deepStrictEqual(lines.of(second).at(-1), {

@@ -2041,6 +2041,42 @@ describe("mateAutomation — an automated Mate as its HQ record says it", () => 
       },
       expected: { task: { title: "Update the price list", waiting: true } },
     },
+    {
+      case: "automated, on a task whose change is a pull request on GitHub",
+      mate: {
+        automated: true,
+        task: {
+          id: "t3",
+          repo: "acme/tea-shop",
+          number: 1,
+          title: "Add a search box",
+          url: "u",
+          pullRequest: { number: 2, url: "p", state: "open" as const, checks: "failing" as const },
+        },
+      },
+      expected: {
+        task: {
+          number: 1,
+          title: "Add a search box",
+          pullRequest: { number: 2, state: "open", checks: "failing" },
+        },
+      },
+    },
+    {
+      case: "automated, its most recent task ended: free for the next",
+      mate: {
+        automated: true,
+        task: {
+          id: "t4",
+          number: 1,
+          title: "Add a search box",
+          url: "u",
+          ended: "merged" as const,
+          pullRequest: { number: 2, url: "p", state: "merged" as const },
+        },
+      },
+      expected: { task: null },
+    },
   ])("$case", ({ mate, expected }) => {
     expect(mateAutomation(mate)).toEqual(expected);
   });
@@ -2156,6 +2192,66 @@ describe("mateRowSecond — an automated Mate's line", () => {
         view: view("working", { kind: "pending" }),
       },
       line: { kind: "task", text: "#12 Fix the checkout total", on: true },
+    },
+    {
+      case: "an automated Mate at rest on a task whose pull request is open says it waits for review",
+      over: { automated: { task: { ...task, pullRequest: { number: 14, state: "open" } } } },
+      line: {
+        kind: "task",
+        text: "#12 Fix the checkout total · PR #14 waiting for review",
+        on: false,
+      },
+    },
+    {
+      case: "an automated Mate whose pull request waits on the viewer says so in ink",
+      over: {
+        automated: {
+          task: { ...task, pullRequest: { number: 14, state: "open", checks: "passing" } },
+        },
+        view: view("needs"),
+      },
+      line: {
+        kind: "task",
+        text: "#12 Fix the checkout total · PR #14 waiting for review",
+        on: true,
+      },
+    },
+    {
+      case: "an automated Mate at rest whose pull request's checks fail says they fail, in ink",
+      over: {
+        automated: {
+          task: { ...task, pullRequest: { number: 14, state: "open", checks: "failing" } },
+        },
+      },
+      line: { kind: "task", text: "#12 Fix the checkout total · PR #14 checks failing", on: true },
+    },
+    {
+      case: "an automated Mate at work on a task with an open pull request names both, never review",
+      over: {
+        automated: { task: { ...task, pullRequest: { number: 14, state: "open" } } },
+        view: view("working", { kind: "pending" }),
+      },
+      line: { kind: "task", text: "#12 Fix the checkout total · PR #14 open", on: true },
+    },
+    {
+      case: "an automated Mate whose pull request merged says it merged",
+      over: { automated: { task: { ...task, pullRequest: { number: 14, state: "merged" } } } },
+      line: { kind: "task", text: "#12 Fix the checkout total · PR #14 merged", on: false },
+    },
+    {
+      case: "an automated Mate whose pull request was closed unmerged says it closed",
+      over: { automated: { task: { ...task, pullRequest: { number: 14, state: "closed" } } } },
+      line: { kind: "task", text: "#12 Fix the checkout total · PR #14 closed", on: false },
+    },
+    {
+      case: "an automated Mate whose task waits for an answer says so over its pull request",
+      over: {
+        automated: {
+          task: { ...task, waiting: true, pullRequest: { number: 14, state: "open" } },
+        },
+        view: view("needs", { kind: "words", text: "Which currency?", tone: "muted" }),
+      },
+      line: { kind: "task", text: "#12 Fix the checkout total · waiting for you", on: true },
     },
     {
       case: "an automated Mate on a task from elsewhere names it by its title",

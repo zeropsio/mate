@@ -123,6 +123,7 @@ import { GitCi, gitCiLayer } from "./gitCi.ts";
 import { GitPush, gitPushLayer, type PushEvidence, pushEvidenceForWire } from "./gitPush.ts";
 import { changesLayer } from "./changes.ts";
 import { repoRemotesLayer } from "./repoRemotes.ts";
+import type { GithubAuth } from "./githubAuth.ts";
 import { githubProbesLayer } from "./githubProbes.ts";
 import { gitTransportLayer } from "./gitTransport.ts";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
@@ -486,6 +487,7 @@ export const deploysLayer = (
   | RecipeTiers
   | Releases
   | Rollouts
+  | GithubAuth
 > =>
   Layer.effect(
     Deploys,

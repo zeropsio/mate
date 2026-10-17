@@ -63,6 +63,20 @@ describe("changeRemarks", () => {
     expect(remark?.speaker).toBe("somebody");
   });
 
+  it("names words said on GitHub by their GitHub login, linked to them there", () => {
+    const [remark] = changeRemarks({
+      comments: [comment({ authorUserId: null, authorGithubLogin: "nova-dev" })],
+      nameOf,
+      mateNameOf,
+      me: "u-ales",
+    });
+    expect(remark).toMatchObject({
+      speaker: "nova-dev on GitHub",
+      url: "https://github.com/nova-dev",
+      mine: false,
+    });
+  });
+
   it("names a Mate's words by the Mate, never as the reader's own", () => {
     const [remark] = changeRemarks({
       comments: [comment({ authorUserId: null, authorMateProjectId: "P_ADA" })],

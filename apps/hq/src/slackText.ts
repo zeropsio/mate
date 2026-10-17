@@ -74,6 +74,8 @@ export const statusText = (status: TaskStatus): string => {
         : `${escaped(status.mate)} couldn't finish this: ${escaped(status.why)}`;
     case "stopped":
       return `Stopped: ${escaped(status.why)}`;
+    case "merged":
+      return `Merged: ${link(status.pullRequest.url)}`;
   }
 };
 

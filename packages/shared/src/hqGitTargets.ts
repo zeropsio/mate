@@ -32,6 +32,8 @@ export const HqRemoteRefusalReason = Schema.Literals([
   "bad_repo",
   "bad_branch",
   "key_unavailable",
+  "app_not_installed",
+  "app_unavailable",
 ]);
 export type HqRemoteRefusalReason = typeof HqRemoteRefusalReason.Type;
 export const HqGitEnvironmentRefusalReason = Schema.Literals([
@@ -104,6 +106,10 @@ const REMOTE_WORDS: Record<HqRemoteRefusalReason, string> = {
   bad_repo: "This repository name is not valid. Choose a code repository with a valid name.",
   bad_branch: "This branch name is not valid. Enter a valid Git branch name.",
   key_unavailable: "HQ cannot open the saved token. Replace it with a new token.",
+  app_not_installed:
+    "The organization's GitHub app isn't installed on this repository. Add the repository to the app on GitHub, then try again.",
+  app_unavailable:
+    "GitHub didn't let the organization's GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
 };
 /** The same explanation reaches HTTP clients and internal Git consumers. */
 export function remoteRefusalWords(

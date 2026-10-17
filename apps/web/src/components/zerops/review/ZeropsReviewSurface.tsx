@@ -88,6 +88,8 @@ export interface ZeropsReviewSurfaceProps {
   readonly titleId?: string | undefined;
   /** The line under the title, before the verdict's words: "#12". */
   readonly meta?: ReactNode;
+  /** After the meta: where else it lives — the pull request it is on GitHub, linked. */
+  readonly elsewhere?: ReactNode;
   /** The line's last words, after the verdict's: "✓ checks passed". */
   readonly status?: ReactNode;
   readonly verdict: ReviewVerdict;
@@ -134,6 +136,7 @@ export function ZeropsReviewSurface({
   title,
   titleId,
   meta,
+  elsewhere,
   status,
   verdict,
   verdictInLine = true,
@@ -154,6 +157,8 @@ export function ZeropsReviewSurface({
   const Title = frame === "page" ? "h1" : "h2";
   const line: Array<{ readonly key: string; readonly node: ReactNode }> = [];
   if (meta !== undefined && meta !== null) line.push({ key: "meta", node: meta });
+  if (elsewhere !== undefined && elsewhere !== null)
+    line.push({ key: "elsewhere", node: elsewhere });
   if (verdictInLine) {
     line.push({
       key: "verdict",

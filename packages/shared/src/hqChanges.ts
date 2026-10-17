@@ -47,6 +47,7 @@
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { HqPullRequest } from "./hqGithub.ts";
 import { HqDirectGitTarget, HqGitBranch, HqTargetTimestamp } from "./hqEnvironment.ts";
 
 /** An id the git layer takes for an application or a repository (`@t3tools/hq-git`, mirrored). */
@@ -210,6 +211,16 @@ export const HqChange = Schema.Struct({
     Schema.withDecodingDefaultKey(Effect.succeed(null)),
   ),
   /**
+   * The pull request it is mirrored to on GitHub, through the organization's GitHub app; absent
+   * where its repository mirrors through no app.
+   */
+  pullRequest: Schema.optionalKey(HqPullRequest),
+  /**
+   * Since when its branch on GitHub holds commits its head here does not, and its head commits
+   * GitHub's does not: nothing is pushed there until either side moves. Absent while they follow.
+   */
+  mirrorDivergedSince: Schema.optionalKey(HqTargetTimestamp),
+  /**
    * The last receipt zcp wrote on it, whole; `null` for a single-part application's change. Added
    * after the rest: an older HQ's change has no key.
    */
@@ -262,6 +273,16 @@ export const HqRepoRemote = Schema.Struct({
   keptBy: Schema.String,
   expiresAt: Schema.NullOr(HqTargetTimestamp),
   invalidSince: Schema.NullOr(HqTargetTimestamp),
+  /**
+   * How HQ reaches it: the organization's GitHub app (no token kept) or a person's token. Absent
+   * from an older HQ: a token.
+   */
+  via: Schema.optionalKey(Schema.Literals(["app", "token"])),
+  /**
+   * Since when HQ's `main` and the default branch there hold histories neither contains, so the
+   * mirror moves neither (`githubMirror.ts`); absent while they follow each other.
+   */
+  divergedSince: Schema.optionalKey(HqTargetTimestamp),
 });
 export type HqRepoRemote = typeof HqRepoRemote.Type;
 
@@ -609,6 +630,11 @@ export const HqChangeComment = Schema.Struct({
   authorMateProjectId: Schema.NullOr(Schema.String).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(null)),
   ),
+  /**
+   * The GitHub login of one said on the change's pull request on GitHub, for one said there; then
+   * neither of the others is set.
+   */
+  authorGithubLogin: Schema.optionalKey(Schema.String),
   body: CommentBody,
   createdAt: Instant,
 });
@@ -638,7 +664,10 @@ export const CloseChangeRequest = Schema.Struct({ expectedHead: Schema.NullOr(Sh
 /**
  * Why HQ does not merge: the head moved since it was shown; the change conflicts with `main`, would
  * change nothing, is on `main` already, shares no history with it, has nothing pushed; `main` kept
- * moving; or the change is merged or closed.
+ * moving; or the change is merged or closed. A change mirrored to a pull request merges on GitHub:
+ * GitHub's rules (branch protection, required checks) held it back, GitHub refused it otherwise, or
+ * did not answer; its pull request was moved to merge into another branch, is not open yet, or was
+ * closed there; or GitHub merged it and HQ has not followed yet.
  */
 export const MERGE_REFUSALS = [
   "head_moved",
@@ -649,6 +678,13 @@ export const MERGE_REFUSALS = [
   "no_change",
   "main_moved",
   "change_not_open",
+  "github_blocked",
+  "github_refused",
+  "github_unreachable",
+  "github_wrong_base",
+  "github_no_pull",
+  "github_closed",
+  "github_landing",
 ] as const;
 
 /** A merge's subject on `main`, as Gitea's squash wrote it: what a release reads as the task. */

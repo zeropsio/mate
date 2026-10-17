@@ -742,6 +742,15 @@ describe("an automated Mate says how its task stands", () => {
     }
   });
 
+  it("the brief asks for what changed and how it was checked, never which buttons to press or a review link", () => {
+    // The pull request and its links are Mate's and GitHub's to show; an agent's "press Review at
+    // <HQ address>" read as noise on the issue and in the conversation.
+    const brief = ZeropsTasksModule.taskBrief(task("task-1"));
+    assert.include(brief, "what changed and how you checked it");
+    assert.include(brief, "Never tell anyone which buttons to press and never paste review links");
+    assert.include(brief, "A reviewer's comment on your change comes to you the same way");
+  });
+
   it("a task's conversation is named by its task, whatever HQ's id holds", () => {
     const named = taskConversationId("task/1 ü");
     assert.notInclude(named, "/");

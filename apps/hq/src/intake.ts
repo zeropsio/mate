@@ -11,7 +11,10 @@
  * address and the secret into the repository's settings, and HQ says why. Setting the same
  * repository again keeps its address and secret, so a pasted webhook goes on working; another
  * repository gets new ones, and the webhook HQ made on the old one goes. Stopped or moved, the
- * tasks no Mate took yet from the repository it leaves are dropped.
+ * tasks no Mate took yet from the repository it leaves are dropped. Where the organization's
+ * GitHub app (`githubApp.ts`) reaches the repository, its own webhook delivers the repository's
+ * issues (`GithubEvents`): HQ makes no webhook there and removes the one it made, and a delivery
+ * to the intake's own address is passed by. Either way an event is worked the same.
  *
  * A delivery is taken only once its `X-Hub-Signature-256` holds — an HMAC-SHA256 of its bytes under
  * the secret, compared in constant time — before a byte of it is parsed (`receive`); JSON, or
@@ -43,6 +46,8 @@ import type { SqlError } from "effect/sql/SqlError";
 
 import { AutomationRefused } from "./automationRefused.ts";
 import { DeployKeys } from "./deployKeys.ts";
+import { GithubAuth } from "./githubAuth.ts";
+import { type GithubEvent, GithubEvents } from "./githubEvents.ts";
 import { GithubIssues } from "./githubIssues.ts";
 import { type RemoteIdentity, remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
@@ -153,12 +158,16 @@ const IssuesEvent = Schema.Struct({
     }),
   ),
 });
-const decodeIssuesEvent = Schema.decodeUnknownOption(Schema.fromJsonString(IssuesEvent));
+const decodeIssuesEvent = Schema.decodeUnknownOption(IssuesEvent);
 
 /** What HQ reads of an `issue_comment` event. */
 const CommentEvent = Schema.Struct({
   action: Schema.String,
-  issue: Issue,
+  /** `pull_request` set: a pull request's conversation, never an issue's (`pullRequests.ts`). */
+  issue: Schema.Struct({
+    ...Issue.fields,
+    pull_request: Schema.optionalKey(Schema.NullOr(Schema.Unknown)),
+  }),
   comment: Schema.Struct({
     id: Schema.Number,
     body: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -168,7 +177,38 @@ const CommentEvent = Schema.Struct({
   repository: Repository,
   sender: Schema.optionalKey(Actor),
 });
-const decodeCommentEvent = Schema.decodeUnknownOption(Schema.fromJsonString(CommentEvent));
+const decodeCommentEvent = Schema.decodeUnknownOption(CommentEvent);
+
+const decodeUnknownJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
+const decodeJson = (text: string) => Option.getOrUndefined(decodeUnknownJson(text));
+
+/** An issue's event as HQ reads it, whichever webhook delivered it. */
+type IssueEventRead =
+  | { readonly kind: "issues"; readonly event: typeof IssuesEvent.Type }
+  | { readonly kind: "comment"; readonly event: typeof CommentEvent.Type };
+
+/** `payload` read as the event `name` (`issues`, `issue_comment`); anything else is none. */
+const readEvent = (name: string | undefined, payload: unknown): IssueEventRead | undefined =>
+  name === "issues"
+    ? Option.match(decodeIssuesEvent(payload), {
+        onNone: () => undefined,
+        onSome: (event) => ({ kind: "issues", event }),
+      })
+    : name === "issue_comment"
+      ? Option.match(decodeCommentEvent(payload), {
+          onNone: () => undefined,
+          onSome: (event) => ({ kind: "comment", event }),
+        })
+      : undefined;
+
+/** An intake as an event is worked for it. */
+interface IntakeTarget {
+  readonly app_id: string;
+  readonly repo: string;
+  readonly hq_repo: string;
+  readonly label: string;
+  readonly public: boolean;
+}
 
 /** Why a public repository's issue was not taken, said on it. */
 export const PUBLIC_REFUSED =
@@ -236,6 +276,15 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
       const intake = yield* TaskIntake;
       const tasks = yield* MateTasks;
       const gate = yield* GithubGate;
+      const auth = yield* GithubAuth;
+      const events = yield* GithubEvents;
+
+      /** Whether the organization's GitHub app reaches `repository`, so its webhook delivers. */
+      const appDelivers = (repository: string) =>
+        auth.tokenFor(repository).pipe(
+          Effect.map((token) => token !== undefined),
+          Effect.orElseSucceed(() => false),
+        );
 
       const refuse = (code: AutomationRefused["code"], reason: string) =>
         Effect.fail(new AutomationRefused({ code, reason }));
@@ -293,7 +342,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
         secret: Redacted.Redacted,
       ) =>
         Effect.gen(function* () {
-          const { token } = yield* remotes.tokenOf({ appId, repo: hqRepo });
+          const { token } = yield* remotes.tokenOf({ appId, repo: hqRepo }, "kept");
           const reply = yield* github.makeHook(remote, token, { url, secret });
           if (reply.status === 201 && reply.id !== undefined) return { id: reply.id } as const;
           yield* Effect.logInfo("intake webhook not made", { appId, status: reply.status });
@@ -309,7 +358,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
       /** The webhook HQ made on `hqRepo`, removed; one it cannot remove now is left, logged. */
       const removeHook = (appId: string, hqRepo: string, hookId: number) =>
         Effect.gen(function* () {
-          const { token, remote } = yield* remotes.tokenOf({ appId, repo: hqRepo });
+          const { token, remote } = yield* remotes.tokenOf({ appId, repo: hqRepo }, "kept");
           const identity = remoteIdentity(remote.url);
           if (identity === undefined) return;
           const status = yield* github.removeHook(identity, token, hookId);
@@ -409,6 +458,158 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
           Effect.catchCause((cause) => Effect.logWarning("an issue's refusal not posted", cause)),
         );
 
+      /** An issue's event, from the intake's own webhook or the app's, worked for the intake `row`. */
+      const handled = (row: IntakeTarget, read: IssueEventRead, deliveryId: string) =>
+        Effect.gen(function* () {
+          const passed = { kind: "taken", appId: row.app_id, moved: false } as const;
+          const { event } = read;
+          const repo = event.repository.full_name.toLowerCase();
+          const number = event.issue.number;
+          if (repo !== row.repo || number < 1) return passed;
+          const key = issueKey(repo, number);
+          const target = { appId: row.app_id, hqRepo: row.hq_repo };
+
+          if (read.kind === "comment") {
+            const { comment } = read.event;
+            const author = comment.user ?? read.event.sender;
+            const text = comment.body ?? "";
+            // A bot's, an app's or HQ's own comment is nobody's word to its task, and one on a
+            // pull request is the pull request's.
+            if (
+              read.event.action !== "created" ||
+              read.event.issue.pull_request != null ||
+              author == null ||
+              comment.performed_via_github_app != null ||
+              text.includes(HQ_MARK) ||
+              !(yield* liveTask(row.app_id, key))
+            )
+              return passed;
+            const verdict = yield* verdictOf(target, author);
+            if (verdict.kind !== "writer") return passed;
+            yield* intake.message(key, {
+              id: `github-comment:${String(comment.id)}`,
+              from: "comment",
+              author: author.login,
+              text,
+            });
+            return passed;
+          }
+
+          const issues = read.event;
+          const actor = issues.sender ?? issues.issue.user ?? undefined;
+          const label = row.label.toLowerCase();
+          const carries = (issues.issue.labels ?? []).some(
+            (candidate) => candidate.name.toLowerCase() === label,
+          );
+          const named = issues.label?.name.toLowerCase() === label;
+          // A closed issue is no task, whatever else its event says.
+          const open = (issues.issue.state ?? "open") === "open";
+          switch (issues.action) {
+            case "opened":
+            case "reopened":
+            case "labeled": {
+              const asked = issues.action === "labeled" ? named : carries;
+              if (!open || !asked || actor === undefined) return passed;
+              if (issues.repository.private === false && !row.public) {
+                yield* decline(target, number, PUBLIC_REFUSED);
+                return passed;
+              }
+              const verdict = yield* verdictOf(target, actor);
+              if (verdict.kind === "bot") return passed;
+              if (verdict.kind === "refused") {
+                yield* decline(target, number, verdict.why);
+                return passed;
+              }
+              const taken = yield* intake.enqueue({
+                appId: row.app_id,
+                source: issueSource(repo, issues.issue),
+                body: issues.issue.body ?? "",
+                sourceKey: key,
+                deliveryId,
+                requestedBy: verdict.userId,
+              });
+              return { ...passed, moved: taken.kind === "queued" };
+            }
+            case "closed": {
+              // Its opener withdrawing it, or one who may steer it; anyone else's close is
+              // nobody's word to its task.
+              const opener = issues.issue.user?.login;
+              const closer = actor?.login;
+              const own = closer !== undefined && closer.toLowerCase() === opener?.toLowerCase();
+              const may =
+                own ||
+                (actor !== undefined &&
+                  (yield* liveTask(row.app_id, key)) &&
+                  (yield* verdictOf(target, actor)).kind === "writer");
+              if (!may) {
+                yield* Effect.logInfo("an issue's close passed by: its closer may not steer it", {
+                  appId: row.app_id,
+                });
+                return passed;
+              }
+              yield* intake.stop(key, ISSUE_CLOSED);
+              return { ...passed, moved: true };
+            }
+            case "unlabeled":
+              if (!named) return passed;
+              yield* intake.stop(key, LABEL_REMOVED);
+              return { ...passed, moved: true };
+            case "edited": {
+              if (actor === undefined || !(yield* liveTask(row.app_id, key))) return passed;
+              const verdict = yield* verdictOf(target, actor);
+              if (verdict.kind !== "writer") return passed;
+              // Only what the edit changed is taken: the rest of the issue may read as someone
+              // nobody let steer the task left it.
+              const titled = issues.changes?.title !== undefined;
+              const bodied = issues.changes?.body !== undefined;
+              if (!titled && !bodied) return passed;
+              const title = issueSource(repo, issues.issue).title;
+              const body = cleanTaskText(issues.issue.body ?? "");
+              // Before any Mate took it, the task reads as the edit left it.
+              const rewritten = yield* leader.write(sql`
+                  UPDATE hq_task SET
+                    title = ${titled ? title : sql`title`},
+                    source = ${titled ? sql`jsonb_set(source, '{title}', to_jsonb(${title}::text))` : sql`source`},
+                    body = ${bodied ? body : sql`body`}, updated_at = now()
+                  WHERE app_id::text = ${row.app_id} AND source_key = ${key} AND state = 'queued'
+                  RETURNING 1`);
+              if (rewritten.length === 0)
+                yield* intake.message(key, {
+                  id: `github-edit:${deliveryId}`,
+                  from: "edit",
+                  author: actor.login,
+                  text: bodied
+                    ? `The issue now reads:\n\n${title}\n\n${body}`
+                    : `The issue's title now reads: ${title}`,
+                });
+              return passed;
+            }
+            default:
+              return passed;
+          }
+        });
+
+      /** The app's event of an issue, worked for every intake of its repository. */
+      const fromApp = (event: GithubEvent) =>
+        Effect.gen(function* () {
+          const read = readEvent(event.name, event.payload);
+          if (read === undefined) return;
+          const repo = read.event.repository.full_name.toLowerCase();
+          const rows = yield* sql<IntakeTarget>`
+            SELECT app_id::text AS app_id, repo, hq_repo, label, public FROM hq_intake
+            WHERE repo = ${repo}`;
+          for (const row of rows) yield* handled(row, read, event.deliveryId);
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("an issue's event from the GitHub app not taken", {
+              deliveryId: event.deliveryId,
+              cause,
+            }),
+          ),
+        );
+      yield* events.on("issues", fromApp);
+      yield* events.on("issue_comment", fromApp);
+
       return Intake.of({
         receive: (publicId, delivery) =>
           Effect.gen(function* () {
@@ -436,144 +637,11 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
             if (delivery.id === undefined || delivery.id === "")
               return { kind: "invalid" } as const;
             const deliveryId = delivery.id;
-            const json = deliveredJson(delivery);
-            type Read =
-              | { readonly kind: "issues"; readonly event: typeof IssuesEvent.Type }
-              | { readonly kind: "comment"; readonly event: typeof CommentEvent.Type };
-            const read: Read | undefined =
-              delivery.event === "issues"
-                ? Option.match(decodeIssuesEvent(json), {
-                    onNone: () => undefined,
-                    onSome: (event) => ({ kind: "issues", event }),
-                  })
-                : Option.match(decodeCommentEvent(json), {
-                    onNone: () => undefined,
-                    onSome: (event) => ({ kind: "comment", event }),
-                  });
+            const read = readEvent(delivery.event, decodeJson(deliveredJson(delivery)));
             if (read === undefined) return { kind: "invalid" } as const;
-            const { event } = read;
-            const repo = event.repository.full_name.toLowerCase();
-            const number = event.issue.number;
-            if (repo !== row.repo || number < 1) return passed;
-            const key = issueKey(repo, number);
-            const target = { appId: row.app_id, hqRepo: row.hq_repo };
-
-            if (read.kind === "comment") {
-              const { comment } = read.event;
-              const author = comment.user ?? read.event.sender;
-              const text = comment.body ?? "";
-              // A bot's, an app's or HQ's own comment is nobody's word to its task.
-              if (
-                read.event.action !== "created" ||
-                author == null ||
-                comment.performed_via_github_app != null ||
-                text.includes(HQ_MARK) ||
-                !(yield* liveTask(row.app_id, key))
-              )
-                return passed;
-              const verdict = yield* verdictOf(target, author);
-              if (verdict.kind !== "writer") return passed;
-              yield* intake.message(key, {
-                id: `github-comment:${String(comment.id)}`,
-                from: "comment",
-                author: author.login,
-                text,
-              });
-              return passed;
-            }
-
-            const issues = read.event;
-            const actor = issues.sender ?? issues.issue.user ?? undefined;
-            const label = row.label.toLowerCase();
-            const carries = (issues.issue.labels ?? []).some(
-              (candidate) => candidate.name.toLowerCase() === label,
-            );
-            const named = issues.label?.name.toLowerCase() === label;
-            // A closed issue is no task, whatever else its event says.
-            const open = (issues.issue.state ?? "open") === "open";
-            switch (issues.action) {
-              case "opened":
-              case "reopened":
-              case "labeled": {
-                const asked = issues.action === "labeled" ? named : carries;
-                if (!open || !asked || actor === undefined) return passed;
-                if (issues.repository.private === false && !row.public) {
-                  yield* decline(target, number, PUBLIC_REFUSED);
-                  return passed;
-                }
-                const verdict = yield* verdictOf(target, actor);
-                if (verdict.kind === "bot") return passed;
-                if (verdict.kind === "refused") {
-                  yield* decline(target, number, verdict.why);
-                  return passed;
-                }
-                const taken = yield* intake.enqueue({
-                  appId: row.app_id,
-                  source: issueSource(repo, issues.issue),
-                  body: issues.issue.body ?? "",
-                  sourceKey: key,
-                  deliveryId,
-                  requestedBy: verdict.userId,
-                });
-                return { ...passed, moved: taken.kind === "queued" };
-              }
-              case "closed": {
-                // Its opener withdrawing it, or one who may steer it; anyone else's close is
-                // nobody's word to its task.
-                const opener = issues.issue.user?.login;
-                const closer = actor?.login;
-                const own = closer !== undefined && closer.toLowerCase() === opener?.toLowerCase();
-                const may =
-                  own ||
-                  (actor !== undefined &&
-                    (yield* liveTask(row.app_id, key)) &&
-                    (yield* verdictOf(target, actor)).kind === "writer");
-                if (!may) {
-                  yield* Effect.logInfo("an issue's close passed by: its closer may not steer it", {
-                    appId: row.app_id,
-                  });
-                  return passed;
-                }
-                yield* intake.stop(key, ISSUE_CLOSED);
-                return { ...passed, moved: true };
-              }
-              case "unlabeled":
-                if (!named) return passed;
-                yield* intake.stop(key, LABEL_REMOVED);
-                return { ...passed, moved: true };
-              case "edited": {
-                if (actor === undefined || !(yield* liveTask(row.app_id, key))) return passed;
-                const verdict = yield* verdictOf(target, actor);
-                if (verdict.kind !== "writer") return passed;
-                // Only what the edit changed is taken: the rest of the issue may read as someone
-                // nobody let steer the task left it.
-                const titled = issues.changes?.title !== undefined;
-                const bodied = issues.changes?.body !== undefined;
-                if (!titled && !bodied) return passed;
-                const title = issueSource(repo, issues.issue).title;
-                const body = cleanTaskText(issues.issue.body ?? "");
-                // Before any Mate took it, the task reads as the edit left it.
-                const rewritten = yield* leader.write(sql`
-                  UPDATE hq_task SET
-                    title = ${titled ? title : sql`title`},
-                    source = ${titled ? sql`jsonb_set(source, '{title}', to_jsonb(${title}::text))` : sql`source`},
-                    body = ${bodied ? body : sql`body`}, updated_at = now()
-                  WHERE app_id::text = ${row.app_id} AND source_key = ${key} AND state = 'queued'
-                  RETURNING 1`);
-                if (rewritten.length === 0)
-                  yield* intake.message(key, {
-                    id: `github-edit:${deliveryId}`,
-                    from: "edit",
-                    author: actor.login,
-                    text: bodied
-                      ? `The issue now reads:\n\n${title}\n\n${body}`
-                      : `The issue's title now reads: ${title}`,
-                  });
-                return passed;
-              }
-              default:
-                return passed;
-            }
+            // Where the organization's GitHub app reaches the repository, its webhook delivers.
+            if (yield* appDelivers(read.event.repository.full_name)) return passed;
+            return yield* handled(row, read, deliveryId);
           }),
         keep: (userId, appId, request) =>
           confirmingRefusal(
@@ -600,8 +668,20 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               const sealed = keys.sealIntake(appId, publicId, secret);
               if (sealed === undefined) return yield* refuse("conflict", "no_key_secret");
               const url = yield* webhookUrl(publicId);
+              // The app's own webhook delivers where it reaches the repository: no hook of HQ's.
+              const viaApp = yield* remotes.tokenOf({ appId, repo: hqRepo }).pipe(
+                Effect.map((use) => use.as === "app"),
+                // The repository connected through the app is gone from GitHub: no intake on it.
+                Effect.catchTags({
+                  RemoteRefused: (error) =>
+                    error.reason === "repository_changed"
+                      ? refuse("conflict", "repository_changed")
+                      : Effect.succeed(false),
+                  ProbeRefused: () => Effect.succeed(false),
+                }),
+              );
               const heldHook =
-                kept !== undefined && before?.hook_id != null ? before.hook_id : null;
+                !viaApp && kept !== undefined && before?.hook_id != null ? before.hook_id : null;
               const left = yield* leader.write(
                 Effect.gen(function* () {
                   yield* sql`
@@ -627,10 +707,19 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               // The old repository's webhook goes once nothing delivers to it any more.
               if (before?.hook_id != null && heldHook === null)
                 yield* removeHook(appId, before.hq_repo, Number(before.hook_id));
+              if (viaApp)
+                return {
+                  appId,
+                  repo,
+                  label,
+                  public: takesPublic,
+                  webhookUrl: url,
+                  hook: { kind: "app" },
+                } as const;
               if (heldHook !== null) {
                 // A webhook HQ made before it heard issues' comments hears them from now on.
                 yield* Effect.gen(function* () {
-                  const { token } = yield* remotes.tokenOf({ appId, repo: hqRepo });
+                  const { token } = yield* remotes.tokenOf({ appId, repo: hqRepo }, "kept");
                   const status = yield* github.refreshHook(remote, token, Number(heldHook));
                   if (status !== 200)
                     yield* Effect.logInfo("intake webhook not refreshed", { appId, status });

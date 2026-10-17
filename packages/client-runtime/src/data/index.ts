@@ -477,6 +477,7 @@ export {
 export {
   makeTaskSourceSettings,
   TASK_SOURCES_UNSUPPORTED,
+  GITHUB_UNSUPPORTED,
   type TaskSourceSettings,
 } from "./adapters/hqTaskSources.ts";
 export type {

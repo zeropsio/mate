@@ -4,7 +4,8 @@
  * manifest a Slack app is made from, the limits on each task; and, per application, the channel
  * it takes tasks from on each, its signed webhooks (never a secret) and its schedules. Each is read
  * while a screen demands it. A webhook's secret, which HQ shows only as it is made, is held only
- * while the screen that made it stays open (`hqWebhookReveal`).
+ * while the screen that made it stays open (`hqWebhookReveal`). The organization's GitHub app
+ * (connected or not, never its key) is read the same way, beside them in Settings › Automation.
  */
 import type {
   HqChannelView,
@@ -14,6 +15,7 @@ import type {
   HqTaskLimitsView,
   HqWebhookView,
 } from "@t3tools/shared/hqIntake";
+import type { HqGithubView } from "@t3tools/shared/hqGithub";
 import type { LinkKey, ScopeKey } from "../model.ts";
 import type { FamilySpec } from "./spec.ts";
 
@@ -24,6 +26,8 @@ declare module "../model.ts" {
     readonly hqSlackManifest: string;
     readonly hqDiscord: HqDiscordView;
     readonly hqTaskLimits: HqTaskLimitsView;
+    /** The organization's GitHub app: where it is installed, never its key. */
+    readonly hqGithub: HqGithubView;
     readonly hqAppSlack: { readonly channel: HqChannelView | null };
     readonly hqAppDiscord: { readonly channel: HqChannelView | null };
     /** Never with a secret: HQ shows one only as the webhook is made. */
@@ -49,7 +53,13 @@ export interface AppSettingKey {
 }
 
 /** What is read per organization, and per application. */
-export const ORG_SETTINGS = ["hqSlack", "hqSlackManifest", "hqDiscord", "hqTaskLimits"] as const;
+export const ORG_SETTINGS = [
+  "hqSlack",
+  "hqSlackManifest",
+  "hqDiscord",
+  "hqTaskLimits",
+  "hqGithub",
+] as const;
 export const APP_SETTINGS = [
   "hqAppSlack",
   "hqAppDiscord",
@@ -68,6 +78,7 @@ const SUFFIX: Readonly<Record<TaskSourceSetting, string>> = {
   hqSlackManifest: "slack-manifest",
   hqDiscord: "discord",
   hqTaskLimits: "task-limits",
+  hqGithub: "github",
   hqAppSlack: "app-slack",
   hqAppDiscord: "app-discord",
   hqAppWebhooks: "app-webhooks",
@@ -107,6 +118,7 @@ export const hqSlackFamily = detail("hqSlack", SUFFIX.hqSlack);
 export const hqSlackManifestFamily = detail("hqSlackManifest", SUFFIX.hqSlackManifest);
 export const hqDiscordFamily = detail("hqDiscord", SUFFIX.hqDiscord);
 export const hqTaskLimitsFamily = detail("hqTaskLimits", SUFFIX.hqTaskLimits);
+export const hqGithubFamily = detail("hqGithub", SUFFIX.hqGithub);
 export const hqAppSlackFamily = detail("hqAppSlack", SUFFIX.hqAppSlack);
 export const hqAppDiscordFamily = detail("hqAppDiscord", SUFFIX.hqAppDiscord);
 export const hqAppWebhooksFamily = detail("hqAppWebhooks", SUFFIX.hqAppWebhooks);

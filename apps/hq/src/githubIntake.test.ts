@@ -19,7 +19,7 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { HQ_MARK } from "./githubChannel.ts";
 import { notWriter } from "./githubGate.ts";
 import { PUBLIC_REFUSED } from "./intake.ts";
-import { NO_ANSWER } from "./mateTasks.ts";
+import { NO_ANSWER, mateTaskLink } from "./mateTasks.ts";
 
 const NAV = { kind: "navigation" } as const;
 
@@ -165,6 +165,37 @@ describe("who may hand an issue to automated Mates, and steer its task", () => {
           yield* labelled(core, 2, { public: true });
           const [row] = yield* taskRows(core, (rows) => rows.length === 1);
           assert.deepInclude(row, { number: 2, state: "queued" });
+        }),
+    );
+
+    it.effect(
+      "a comment on the pull request of the same number never reaches the issue's task: it is the pull request's",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool();
+          yield* labelled(core, 1);
+          const task = yield* working(core, 1);
+          const onPull = commentEvent(1, "Rename the kettle.");
+          yield* deliver(core, core.hook, "issue_comment", {
+            ...onPull,
+            issue: {
+              ...onPull.issue,
+              pull_request: { url: "https://api.github.com/repos/acme/tea-shop/pulls/1" },
+            },
+          });
+          yield* deliver(core, core.hook, "issue_comment", commentEvent(1, "Use the blue kettle."));
+          const message = yield* core.robot.link.take("task-message");
+          assert.deepInclude(message, { taskId: task.id });
+          assert.deepInclude(message["message"] as object, { text: "Use the blue kettle." });
+          const kept = yield* rowsWhere(
+            core.url,
+            "SELECT text FROM hq_task_message",
+            (rows) => rows.length >= 1,
+          );
+          assert.deepStrictEqual(
+            kept.map((row) => row["text"]),
+            ["Use the blue kettle."],
+          );
         }),
     );
 
@@ -352,7 +383,7 @@ describe("who may hand an issue to automated Mates, and steer its task", () => {
           assert.strictEqual(
             (lines.findLast((request) => request.method === "PATCH")!.body as { body: string })
               .body,
-            `P_ROBOT picked this up.\n\n${HQ_MARK}`,
+            `**P_ROBOT** is on it — [follow along](${mateTaskLink("P_ROBOT")}).\n\n${HQ_MARK}`,
           );
         }),
     );

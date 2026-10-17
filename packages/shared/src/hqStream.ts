@@ -10,6 +10,7 @@ import { MateOverview } from "./mateLink.ts";
 import { RecipeTierResponse } from "./hqRecipe.ts";
 import { HqDecision } from "./hqOffers.ts";
 import { AppReadValue } from "./hqAppReads.ts";
+import { HqPullRequest } from "./hqGithub.ts";
 import { CompareQuery, CompareResponse, RepoName, HqChange } from "./hqChanges.ts";
 import { EnvironmentBirth, HqDeployOutcome, HqPushOutcome } from "./hqDeploys.ts";
 import { ReleaseRollout, HqReleaseTarget, TierStop } from "./hqRelease.ts";
@@ -306,6 +307,13 @@ export const HqNavigationMateTask = Schema.Struct({
   label: Schema.optionalKey(Schema.String),
   /** It waits for a person's answer (`MateTaskReport.question`); absent: it works or rests. */
   waiting: Schema.optionalKey(Schema.Literal(true)),
+  /** The pull request its change is mirrored to on GitHub; absent where none. */
+  pullRequest: Schema.optionalKey(HqPullRequest),
+  /**
+   * How it ended, for the Mate's most recent task while no other is live: the Mate is free and
+   * its row says so, while the task's own conversation still shows where it got to. Absent: live.
+   */
+  ended: Schema.optionalKey(Schema.Literals(["merged", "closed", "done", "failed", "stopped"])),
 });
 export type HqNavigationMateTask = typeof HqNavigationMateTask.Type;
 export const HqNavigationMate = Schema.Struct({
@@ -440,6 +448,8 @@ export const HqNavigationChange = Schema.Struct({
   updatedAt: HqChange.fields.updatedAt,
   mergeability: HqChange.fields.mergeability,
   ready: Schema.Boolean,
+  /** The pull request it is mirrored to on GitHub; absent where none. */
+  pullRequest: HqChange.fields.pullRequest,
 });
 export type HqNavigationChange = typeof HqNavigationChange.Type;
 export const HqNavigationChanges = Schema.Union([

@@ -1103,6 +1103,60 @@ it.live(
 );
 
 it.live(
+  "a mirror's token reaches git only through askpass: never its arguments, environment or config",
+  () => {
+    const token = ["mirror", "fixture", "token"].join("-");
+    const authorization = `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+    const requests: string[] = [];
+    const started: string[] = [];
+    const spy = vi.spyOn(GitRunner.prototype, "start");
+    return fixture(
+      Effect.gen(function* () {
+        const repo = { appId: "app", id: "repo" };
+        const github = { appId: "app", id: "github" };
+        yield* git.create(repo);
+        yield* git.create(github);
+        const author = { name: "HQ", email: "hq@hq.invalid" };
+        const main = yield* git.commitFiles(repo, "refs/heads/main", {
+          files: { app: "1" },
+          message: "Seed",
+          expectedHead: null,
+          author,
+        });
+        if (!("sha" in main)) throw new Error("seed refused");
+        yield* Effect.promise(startServer);
+        const remote = { url: `${origin}/git/app/github.git`, token: Redacted.make(token) };
+        expect(yield* git.remoteHead(repo, remote)).toEqual({ branch: "main", sha: null });
+        expect(yield* git.pushRef(repo, remote, "mate/1-seed", main.sha, null)).toEqual({
+          kind: "pushed",
+        });
+        expect(yield* git.fetchTip(repo, remote, "mate/1-seed")).toBe(main.sha);
+        for (const [args, options] of spy.mock.calls) {
+          started.push(...args, ...Object.values(options?.env ?? {}));
+        }
+        expect(requests.some((header) => header === authorization)).toBe(true);
+        expect(requests.every((header) => header === "" || header === authorization)).toBe(true);
+        expect(started.some((part) => part.includes(token))).toBe(false);
+        expect(started.some((part) => part.includes(authorization.slice("Basic ".length)))).toBe(
+          false,
+        );
+        const config = yield* Effect.promise(() =>
+          NodeFSP.readFile(NodePath.join(repoDir(), "config"), "utf8"),
+        );
+        expect(config).not.toContain(token);
+      }).pipe(Effect.ensuring(Effect.sync(() => spy.mockRestore()))),
+      {
+        authenticate: (req) => {
+          const header = req.headers.authorization ?? "";
+          requests.push(header);
+          return header === authorization ? { kind: "core" } : null;
+        },
+      },
+    );
+  },
+);
+
+it.live(
   "authenticates adoption fetches without importing remote tags or writing credentials to repository config",
   () => {
     const token = "private-fixture-token";

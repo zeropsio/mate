@@ -1,76 +1,60 @@
 /**
- * Settings › Zerops › HQ, below Tasks from GitHub, for the organization's Owner and Admins: where
- * automated Mates take tasks from besides GitHub. The organization's Slack app — made from the
- * manifest HQ gives, its tokens pasted here and never shown back — and its Discord application
- * with who may use it; per application, the channel it takes tasks from on each, its signed
- * webhooks (the secret shown once, as it is made) and its schedules; and the limits on each task.
- * An HQ older than these says so in one line, and none of them is drawn.
+ * Where automated Mates take tasks from besides GitHub. In Settings › Automation, for the
+ * organization's Owner and Admins: its Slack app — made from the manifest HQ gives, its tokens
+ * pasted here and never shown back — its Discord application with who may use it, and the limits
+ * on each task. Per application (a project's page shows them): the channel it takes tasks from
+ * on each, its signed webhooks (the secret shown once, as it is made) and its schedules. An HQ
+ * older than these says so in one line, and none of them is drawn.
  *
  * Each part paints in its final shape while it is read (`IntakeRoom`): nothing it reads moves what
  * the person is about to press.
  */
-import type {
-  AppSetting,
-  OrgSetting,
-  SettingValue,
-  TaskSourceSettingValue,
-  TaskSourceWrite,
-} from "@t3tools/client-runtime/data";
-import type {
-  HqScheduleRequest,
-  HqChannelView,
-  HqDiscordView,
-  HqScheduleRule,
-  HqScheduleView,
-  HqTaskLimitsView,
-  HqWebhookView,
-} from "@t3tools/shared/hqIntake";
-import { useAtomValue } from "@effect/atom-react";
-import { ArrowUpRightIcon } from "lucide-react";
-import { useId, useMemo, useState, type ReactNode } from "react";
+import type { AppSetting, OrgSetting, SettingValue } from "@t3tools/client-runtime/data";
+import type { HqDiscordView, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import { useId, useState, type ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import { hqNavigationAtom } from "~/state/zerops";
-import {
-  useAppTaskSource,
-  useOrgTaskSource,
-  type TaskSourceControls,
-} from "~/zerops/useTaskSourceSettings";
+import { useOrgTaskSource, type TaskSourceControls } from "~/zerops/useTaskSourceSettings";
 
 import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { Textarea } from "../ui/textarea";
-import { CopyLine, HeldRoom, IntakeRoom } from "./automationParts";
+import {
+  CopyLine,
+  HeldRoom,
+  IntakeRoom,
+  OutLink,
+  pressWords,
+  Problem,
+  TextField,
+  WITHHELD,
+  working,
+} from "./automationParts";
+import {
+  AppChannelView,
+  AppSchedulesView,
+  AppWebhooksView,
+} from "../zerops/projectAutomation/sourceForms";
+
+// A project's sources' forms live on its page (`projectAutomation/sourceForms`); importable from here.
+export { AppChannelView, AppSchedulesView, AppWebhooksView };
+import {
+  DiscordMark,
+  IntegrationAction,
+  IntegrationRow,
+  SlackMark,
+  type IntegrationState,
+} from "./IntegrationRow";
 import { SettingsRow } from "./settingsLayout";
+import { searchableSetting } from "./settingsSearch";
 import {
   allowlistAfter,
-  channelLine,
   limitsLine,
   readLimits,
-  scheduleLine,
-  scheduleNextLine,
-  sectionState,
   slackLine,
   taskSourceProblem,
   taskSourcesUnsupported,
-  workingWords,
 } from "./taskSourcesSettings.logic";
-
-/** Controls over nothing, for a part drawn unseen as the room its final shape takes. */
-const UNSEEN = {
-  read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
-  write: () => {},
-  again: () => {},
-} as TaskSourceControls<never>;
-/** How HQ answers an organization with no Discord application: no address until connected. */
-const DISCORD_OFF: HqDiscordView = {
-  connected: false,
-  interactionsUrl: "",
-  inviteUrl: null,
-  allowed: [],
-};
 
 const SLACK_NEW_APP = "https://api.slack.com/apps?new_app=1";
 const DISCORD_PORTAL = "https://discord.com/developers/applications";
@@ -82,35 +66,40 @@ interface App {
   readonly name: string;
 }
 
+/**
+ * Settings › Automation's organization-wide sources: its Slack app, its Discord application and
+ * the limits on each task. Which channel, webhooks and schedules feed a project's automated Mates
+ * is set on that project's page.
+ */
 export function TaskSourcesSettings() {
-  const limits = useOrgTaskSource("hqTaskLimits");
   const slack = useOrgTaskSource("hqSlack");
   const discord = useOrgTaskSource("hqDiscord");
-  const navigation = useAtomValue(hqNavigationAtom);
-  const structure = navigation.structure;
-  const apps = useMemo(
-    () =>
-      structure === null ? null : structure.apps.map((app) => ({ id: app.id, name: app.name })),
-    [structure],
-  );
-  if (taskSourcesUnsupported([limits.read.setting, slack.read.setting, discord.read.setting]))
-    return <TaskSourcesUnsupported />;
+  if (taskSourcesUnsupported([slack.read.setting, discord.read.setting]))
+    return (
+      <li className="px-4 py-3">
+        <TaskSourcesUnsupported />
+      </li>
+    );
   return (
     <>
-      <SlackSettingsView apps={apps} controls={slack} />
-      <DiscordSettingsView apps={apps} controls={discord} />
-      <WebhooksSettings apps={apps} />
-      <SchedulesSettings apps={apps} />
-      <TaskLimitsView controls={limits} />
+      <SlackSettingsView controls={slack} />
+      <DiscordSettingsView controls={discord} />
     </>
   );
+}
+
+/** Settings › Automation's limits on each task, under its list. */
+export function TaskLimitsSettings() {
+  const limits = useOrgTaskSource("hqTaskLimits");
+  if (limits.read.setting.state === "unsupported") return null;
+  return <TaskLimitsView controls={limits} />;
 }
 
 /** In these settings' place, where this HQ predates them. */
 export function TaskSourcesUnsupported() {
   return (
     <p
-      className="px-3 pb-3 text-sm text-muted-foreground sm:px-4"
+      className="text-sm text-muted-foreground"
       data-zerops-surface="settings-task-sources-unsupported"
     >
       Update HQ to take tasks from Slack, Discord, webhooks and schedules.
@@ -120,7 +109,7 @@ export function TaskSourcesUnsupported() {
 
 // ── the parts every section shares ──────────────────────────────────────────────────────────
 
-const WITHHELD = "Only the organization's Owner and Admins see this.";
+const TASK_SOURCES_UPDATE = "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
 
 /**
  * What a section's status line says of its setting: its own line once known, else that it is
@@ -140,74 +129,107 @@ function statusOf<T>(setting: SettingValue<T>, line: (value: T) => string): stri
 }
 
 /**
- * What a part says while its setting is not known — reading, refused, or HQ's failure with *Read
- * again* — in the room its form takes. `quiet`: its section's status line says it already.
+ * A connection's row opened by its press, folded again once it connects or disconnects: what the
+ * press opened was for the state that just ended.
  */
-function NotKnown({
+function useOpenUntil(connected: boolean | null, defaultOpen: boolean) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [seen, setSeen] = useState(connected);
+  if (seen !== connected) {
+    setSeen(connected);
+    if (seen !== null) setOpen(false);
+  }
+  return [open, setOpen] as const;
+}
+
+/** A connection's pill, from what is read: *Checking…* until HQ answers. */
+function sourceState<T>(
+  setting: SettingValue<T>,
+  connected: (held: T) => boolean,
+): IntegrationState {
+  switch (setting.state) {
+    case "known":
+      return connected(setting.held)
+        ? { kind: "on", words: "Connected" }
+        : { kind: "off", words: "Not connected" };
+    case "unread":
+    case "reading":
+      return { kind: "checking" };
+    default:
+      return { kind: "none" };
+  }
+}
+
+/** A connection's one line: a refusal, HQ's failure, or where it stands; its purpose until known. */
+function sourceLine<T>(
+  read: { readonly action: Parameters<typeof taskSourceProblem>[0] },
+  setting: SettingValue<T>,
+  purpose: string,
+  connected: (held: T) => string,
+): ReactNode {
+  const problem = taskSourceProblem(read.action);
+  if (problem !== null)
+    return (
+      <span className="text-destructive-foreground" role="alert">
+        {problem}
+      </span>
+    );
+  if (setting.state === "known") {
+    const said = connected(setting.held);
+    return said === "Not connected" ? purpose : said;
+  }
+  if (setting.state === "failed") return setting.words;
+  if (setting.state === "withheld") return WITHHELD;
+  if (setting.state === "unsupported") return TASK_SOURCES_UPDATE;
+  return purpose;
+}
+
+/**
+ * A connection's one press: *Connect* while it is not, *Manage* once it is, *Read again* where HQ
+ * failed — and while it is read, *Connect*'s room, held unseen so nothing moves as it lands.
+ */
+function SourceAction({
   setting,
-  onAgain,
-  quiet = false,
-  template,
+  connected,
+  open,
+  onToggle,
+  again,
 }: {
   readonly setting: SettingValue<unknown>;
-  readonly onAgain: () => void;
-  readonly quiet?: boolean;
-  /** The part's final shape, whose room is held; absent: one field's. */
-  readonly template?: ReactNode;
+  readonly connected: boolean | null;
+  readonly open: boolean;
+  readonly onToggle: () => void;
+  readonly again: () => void;
 }) {
-  const state = sectionState(setting);
-  const said =
-    state === "failed" && setting.state === "failed" ? (
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        {quiet ? (
-          <span />
-        ) : (
-          <p className="text-xs text-muted-foreground" role="alert">
-            {setting.words}
-          </p>
-        )}
-        <Button onClick={onAgain} size="sm" variant="secondary">
-          Read again
-        </Button>
-      </div>
-    ) : quiet ? null : state === "withheld" ? (
-      <p className="text-xs text-muted-foreground">{WITHHELD}</p>
-    ) : (
-      <p className="text-xs text-muted-foreground">Reading…</p>
+  if (setting.state === "failed")
+    return (
+      <Button onClick={again} size="sm" variant="secondary">
+        Read again
+      </Button>
     );
-  return template === undefined ? (
-    <IntakeRoom>{said}</IntakeRoom>
-  ) : (
-    <HeldRoom template={template}>{said}</HeldRoom>
+  if (connected === null)
+    return setting.state === "unread" || setting.state === "reading" ? (
+      <HeldRoom
+        template={
+          <Button size="sm" tabIndex={-1}>
+            Connect
+          </Button>
+        }
+      >
+        {null}
+      </HeldRoom>
+    ) : null;
+  return (
+    <IntegrationAction
+      closeWords={connected ? "Close" : "Cancel"}
+      onToggle={onToggle}
+      open={open}
+      primary={!connected}
+    >
+      {connected ? "Manage" : "Connect"}
+    </IntegrationAction>
   );
 }
-
-/** A write's refusal or lost answer, under the part it was made from. */
-function Problem({
-  read,
-}: {
-  readonly read: { readonly action: Parameters<typeof taskSourceProblem>[0] };
-}) {
-  const problem = taskSourceProblem(read.action);
-  return problem === null ? null : (
-    <p className="text-xs text-destructive-foreground" role="alert">
-      {problem}
-    </p>
-  );
-}
-
-/** A press's words: what it does, or the write it started, while that is under way. */
-function pressWords(
-  action: TaskSourceSettingValue<"hqSlack">["action"],
-  verbs: ReadonlyArray<TaskSourceWrite["kind"]>,
-  words: string,
-): string {
-  return action.kind === "working" && verbs.includes(action.verb)
-    ? workingWords(action.verb)
-    : words;
-}
-
-const working = (action: TaskSourceSettingValue<"hqSlack">["action"]) => action.kind === "working";
 
 function Step({ n, children }: { readonly n: number; readonly children: ReactNode }) {
   return (
@@ -215,15 +237,6 @@ function Step({ n, children }: { readonly n: number; readonly children: ReactNod
       <span className="w-4 shrink-0 text-muted-foreground tabular-nums">{n}.</span>
       <div className="grid min-w-0 flex-1 gap-1.5">{children}</div>
     </li>
-  );
-}
-
-function OutLink({ href, children }: { readonly href: string; readonly children: ReactNode }) {
-  return (
-    <InlineButton render={<a href={href} rel="noreferrer" target="_blank" />}>
-      {children}
-      <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
-    </InlineButton>
   );
 }
 
@@ -249,39 +262,6 @@ function SecretField({
         size="sm"
         spellCheck={false}
         type="password"
-        value={value}
-      />
-    </div>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  describedBy,
-  width = "min-w-40 flex-1",
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-  /** The line under the form that explains the field. */
-  readonly describedBy?: string;
-  readonly width?: string;
-}) {
-  const id = useId();
-  return (
-    <div className={`grid gap-1.5 ${width}`}>
-      <Label htmlFor={id}>{label}</Label>
-      <Input
-        {...(describedBy === undefined ? {} : { "aria-describedby": describedBy })}
-        autoComplete="off"
-        id={id}
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
-        size="sm"
-        spellCheck={false}
         value={value}
       />
     </div>
@@ -319,68 +299,64 @@ function AppRows({
 
 export function SlackSettingsView({
   controls,
-  apps,
   manifest,
-  channel,
+  defaultOpen = false,
 }: {
   readonly controls: Controls<"hqSlack">;
-  readonly apps: ReadonlyArray<App> | null;
   /** The manifest's read, where the harness hands it; else read while the steps show. */
   readonly manifest?: Controls<"hqSlackManifest">;
-  /** Each application's channel, where the harness hands it; else read per row. */
-  readonly channel?: (appId: string) => Controls<"hqAppSlack">;
+  /** Its press's part opened from the start: the harness's and a test's. */
+  readonly defaultOpen?: boolean;
 }) {
   const { read, write, again } = controls;
   const setting = read.setting;
   const view = setting.state === "known" ? setting.held : null;
+  const [open, setOpen] = useOpenUntil(view?.connected ?? null, defaultOpen);
   return (
-    <SettingsRow
-      control={
-        view?.connected === true ? (
-          <Button
+    <IntegrationRow
+      action={
+        <SourceAction
+          again={again}
+          connected={view?.connected ?? null}
+          onToggle={() => setOpen(!open)}
+          open={open}
+          setting={setting}
+        />
+      }
+      id={searchableSetting("automation-slack").id}
+      line={sourceLine(
+        read,
+        setting,
+        "Mention Mate in a project's channel: the thread becomes the task, and Mate answers there.",
+        slackLine,
+      )}
+      mark={<SlackMark />}
+      name="Slack"
+      open={open && view !== null}
+      state={sourceState(setting, (held) => held.connected)}
+      surface="settings-slack"
+    >
+      {view === null ? null : view.connected ? (
+        <div className="flex items-center gap-4 text-xs">
+          <span className="text-muted-foreground">
+            Disconnecting stops every project taking tasks from Slack.
+          </span>
+          <InlineButton
             disabled={working(read.action)}
             onClick={() => {
               write({ kind: "slack-disconnect" });
             }}
-            size="sm"
-            variant="ghost"
+            tone="destructive"
           >
             {pressWords(read.action, ["slack-disconnect"], "Disconnect")}
-          </Button>
-        ) : undefined
-      }
-      data-zerops-surface="settings-slack"
-      description="Mention Mate in a channel an application takes tasks from: the thread becomes the task's conversation, and Mate answers there."
-      status={statusOf(setting, slackLine)}
-      title="Slack"
-    >
-      <div className="grid gap-3 px-3 pb-3 sm:px-4">
-        {view === null ? (
-          <NotKnown
-            onAgain={again}
-            quiet
-            setting={setting}
-            // An unconnected organization's steps: the shape most land in.
-            template={<SlackSteps controls={UNSEEN} manifest={UNSEEN} />}
-          />
-        ) : view.connected ? (
-          <AppRows apps={apps}>
-            {(app) =>
-              channel === undefined ? (
-                <AppChannelRow appId={app.id} family="hqAppSlack" source="slack" />
-              ) : (
-                <AppChannelView controls={channel(app.id)} source="slack" />
-              )
-            }
-          </AppRows>
-        ) : manifest === undefined ? (
-          <SlackStepsWithManifest controls={controls} />
-        ) : (
-          <SlackSteps controls={controls} manifest={manifest} />
-        )}
-        <Problem read={read} />
-      </div>
-    </SettingsRow>
+          </InlineButton>
+        </div>
+      ) : manifest === undefined ? (
+        <SlackStepsWithManifest controls={controls} />
+      ) : (
+        <SlackSteps controls={controls} manifest={manifest} />
+      )}
+    </IntegrationRow>
   );
 }
 
@@ -456,149 +432,68 @@ function SlackSteps({
   );
 }
 
-// ── an application's channel, on Slack or Discord ───────────────────────────────────────────
-
-function AppChannelRow({
-  appId,
-  family,
-  source,
-}: {
-  readonly appId: string;
-  readonly family: "hqAppSlack" | "hqAppDiscord";
-  readonly source: "slack" | "discord";
-}) {
-  const controls = useAppTaskSource(family, appId);
-  return <AppChannelView controls={controls} source={source} />;
-}
-
-export function AppChannelView({
-  controls,
-  source,
-}: {
-  readonly controls: Controls<"hqAppSlack" | "hqAppDiscord">;
-  readonly source: "slack" | "discord";
-}) {
-  const { read, write, again } = controls;
-  const [channelId, setChannelId] = useState("");
-  const setting = read.setting;
-  if (setting.state !== "known")
-    return (
-      <>
-        <NotKnown onAgain={again} setting={setting} />
-        <Problem read={read} />
-      </>
-    );
-  const held: HqChannelView | null = setting.held.channel;
-  return (
-    <>
-      {held !== null ? (
-        <IntakeRoom>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">{channelLine(held)}</p>
-            <Button
-              disabled={working(read.action)}
-              onClick={() => {
-                write({ kind: "channel-stop", source });
-              }}
-              size="sm"
-              variant="ghost"
-            >
-              {pressWords(read.action, ["channel-stop"], "Stop")}
-            </Button>
-          </div>
-        </IntakeRoom>
-      ) : (
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const typed = channelId.trim();
-            if (typed.length === 0) return;
-            write({ kind: "channel", source, channelId: typed });
-          }}
-        >
-          <TextField
-            label="Channel ID, from the channel's details"
-            onChange={setChannelId}
-            value={channelId}
-            width="w-72"
-          />
-          <Button
-            disabled={working(read.action) || channelId.trim().length === 0}
-            size="sm"
-            type="submit"
-          >
-            {pressWords(read.action, ["channel"], "Take tasks")}
-          </Button>
-        </form>
-      )}
-      <Problem read={read} />
-    </>
-  );
-}
-
 // ── Discord ─────────────────────────────────────────────────────────────────────────────────
 
 export function DiscordSettingsView({
   controls,
-  apps,
-  channel,
+  defaultOpen = false,
 }: {
   readonly controls: Controls<"hqDiscord">;
-  readonly apps: ReadonlyArray<App> | null;
-  readonly channel?: (appId: string) => Controls<"hqAppDiscord">;
+  /** Its press's part opened from the start: the harness's and a test's. */
+  readonly defaultOpen?: boolean;
 }) {
   const { read, write, again } = controls;
   const setting = read.setting;
   const view = setting.state === "known" ? setting.held : null;
+  const [open, setOpen] = useOpenUntil(view?.connected ?? null, defaultOpen);
   return (
-    <SettingsRow
-      control={
-        view?.connected === true ? (
-          <Button
-            disabled={working(read.action)}
-            onClick={() => {
-              write({ kind: "discord-disconnect" });
-            }}
-            size="sm"
-            variant="ghost"
-          >
-            {pressWords(read.action, ["discord-disconnect"], "Disconnect")}
-          </Button>
-        ) : undefined
+    <IntegrationRow
+      action={
+        <SourceAction
+          again={again}
+          connected={view?.connected ?? null}
+          onToggle={() => setOpen(!open)}
+          open={open}
+          setting={setting}
+        />
       }
-      data-zerops-surface="settings-discord"
-      description="Allowed people type /mate task in a channel an application takes tasks from: Mate opens a thread for it, and /mate reply there steers it."
-      status={statusOf(setting, (known) => (known.connected ? "Connected" : "Not connected"))}
-      title="Discord"
+      id={searchableSetting("automation-discord").id}
+      line={sourceLine(
+        read,
+        setting,
+        "Allowed people type /mate task in a project's channel, and /mate reply in its thread.",
+        (held) =>
+          !held.connected
+            ? "Not connected"
+            : held.allowed.length === 0
+              ? "Connected · nobody may start a task yet"
+              : `Connected · ${held.allowed.length} ${held.allowed.length === 1 ? "person may" : "people may"} start tasks`,
+      )}
+      mark={<DiscordMark />}
+      name="Discord"
+      open={open && view !== null}
+      state={sourceState(setting, (held) => held.connected)}
+      surface="settings-discord"
     >
-      <div className="grid gap-3 px-3 pb-3 sm:px-4">
-        {view === null ? (
-          <NotKnown
-            onAgain={again}
-            quiet
-            setting={setting}
-            template={<DiscordSteps controls={UNSEEN} view={DISCORD_OFF} />}
-          />
-        ) : view.connected ? (
-          <>
-            <DiscordConnected controls={controls} view={view} />
-            <AppRows apps={apps}>
-              {(app) =>
-                channel === undefined ? (
-                  <AppChannelRow appId={app.id} family="hqAppDiscord" source="discord" />
-                ) : (
-                  <AppChannelView controls={channel(app.id)} source="discord" />
-                )
-              }
-            </AppRows>
-          </>
-        ) : (
-          <DiscordSteps controls={controls} view={view} />
-        )}
-        <Problem read={read} />
-      </div>
-    </SettingsRow>
+      {view === null ? null : view.connected ? (
+        <>
+          <DiscordConnected controls={controls} view={view} />
+          <div className="text-xs">
+            <InlineButton
+              disabled={working(read.action)}
+              onClick={() => {
+                write({ kind: "discord-disconnect" });
+              }}
+              tone="destructive"
+            >
+              {pressWords(read.action, ["discord-disconnect"], "Disconnect")}
+            </InlineButton>
+          </div>
+        </>
+      ) : (
+        <DiscordSteps controls={controls} view={view} />
+      )}
+    </IntegrationRow>
   );
 }
 
@@ -753,14 +648,6 @@ function DiscordConnected({
 
 // ── webhooks ────────────────────────────────────────────────────────────────────────────────
 
-function WebhooksSettings({ apps }: { readonly apps: ReadonlyArray<App> | null }) {
-  return (
-    <WebhooksSettingsView apps={apps}>
-      {(app) => <AppWebhooksRow appId={app.id} name={app.name} />}
-    </WebhooksSettingsView>
-  );
-}
-
 export function WebhooksSettingsView({
   apps,
   children,
@@ -781,132 +668,14 @@ export function WebhooksSettingsView({
       }
       title="Webhooks"
     >
-      <div className="px-3 pb-3 sm:px-4">
+      <div className="px-3 pb-3">
         <AppRows apps={apps}>{children}</AppRows>
       </div>
     </SettingsRow>
   );
 }
 
-function AppWebhooksRow({ appId, name }: { readonly appId: string; readonly name: string }) {
-  const controls = useAppTaskSource("hqAppWebhooks", appId);
-  return <AppWebhooksView controls={controls} name={name} />;
-}
-
-export function AppWebhooksView({
-  controls,
-  name,
-}: {
-  readonly controls: Controls<"hqAppWebhooks">;
-  readonly name: string;
-}) {
-  const { read, write, again } = controls;
-  const [hookName, setHookName] = useState("");
-  const setting = read.setting;
-  const busy = working(read.action);
-  return (
-    <>
-      {setting.state !== "known" ? (
-        <NotKnown onAgain={again} setting={setting} />
-      ) : (
-        <>
-          <form
-            className="flex flex-wrap items-end gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const typed = hookName.trim();
-              if (typed.length === 0) return;
-              write({ kind: "webhook-make", name: typed });
-              setHookName("");
-            }}
-          >
-            <TextField
-              label={`${name}'s new webhook`}
-              onChange={setHookName}
-              value={hookName}
-              width="w-56"
-            />
-            <Button disabled={busy || hookName.trim().length === 0} size="sm" type="submit">
-              {pressWords(read.action, ["webhook-make"], "Make webhook")}
-            </Button>
-          </form>
-          {read.revealed === null ? null : <WebhookMade view={read.revealed} />}
-          {setting.held.length === 0 ? null : (
-            <ul className="grid gap-1.5" data-zerops-surface="settings-webhooks-list">
-              {setting.held.map((hook) => (
-                <WebhookLine
-                  busy={busy}
-                  hook={hook}
-                  key={hook.id}
-                  onDelete={() => {
-                    write({ kind: "webhook-delete", webhookId: hook.id });
-                  }}
-                />
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-      <Problem read={read} />
-    </>
-  );
-}
-
-function WebhookMade({ view }: { readonly view: HqWebhookView }) {
-  return (
-    <div className="grid gap-1.5" data-zerops-surface="settings-webhook-made">
-      <p className="text-xs text-foreground">
-        {`${view.name} is made. Its secret is shown once: keep it where the caller signs with it.`}
-      </p>
-      <CopyLine copy="Copy URL" label="URL" value={view.url} />
-      {view.secret === undefined ? null : (
-        <CopyLine copy="Copy secret" label="Secret" value={view.secret} />
-      )}
-    </div>
-  );
-}
-
-function WebhookLine({
-  hook,
-  busy,
-  onDelete,
-}: {
-  readonly hook: HqWebhookView;
-  readonly busy: boolean;
-  readonly onDelete: () => void;
-}) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: hook.name });
-  return (
-    <li className="flex min-w-0 items-center gap-2">
-      <span className="w-24 shrink-0 truncate text-xs text-foreground">{hook.name}</span>
-      <code className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-        {hook.url}
-      </code>
-      <Button
-        onClick={() => {
-          copyToClipboard(hook.url, undefined);
-        }}
-        size="sm"
-        variant="ghost"
-      >
-        {isCopied ? "Copied" : "Copy URL"}
-      </Button>
-      <Button disabled={busy} onClick={onDelete} size="sm" variant="ghost">
-        Delete
-      </Button>
-    </li>
-  );
-}
-
 // ── schedules ───────────────────────────────────────────────────────────────────────────────
-
-function SchedulesSettings({ apps }: { readonly apps: ReadonlyArray<App> | null }) {
-  return (
-    <SchedulesSettingsView apps={apps}>
-      {(app) => <AppSchedulesRow appId={app.id} name={app.name} />}
-    </SchedulesSettingsView>
-  );
-}
 
 export function SchedulesSettingsView({
   apps,
@@ -921,262 +690,10 @@ export function SchedulesSettingsView({
       description="A brief an application's automated Mates get as a task each time it is due, such as updating dependencies every Monday morning."
       title="Schedules"
     >
-      <div className="px-3 pb-3 sm:px-4">
+      <div className="px-3 pb-3">
         <AppRows apps={apps}>{children}</AppRows>
       </div>
     </SettingsRow>
-  );
-}
-
-function AppSchedulesRow({ appId, name }: { readonly appId: string; readonly name: string }) {
-  const controls = useAppTaskSource("hqAppSchedules", appId);
-  return <AppSchedulesView controls={controls} name={name} />;
-}
-
-const DAY_CHOICES = [
-  [1, "Monday"],
-  [2, "Tuesday"],
-  [3, "Wednesday"],
-  [4, "Thursday"],
-  [5, "Friday"],
-  [6, "Saturday"],
-  [0, "Sunday"],
-] as const;
-const EVERY_CHOICES = [
-  ["day", "Every day"],
-  ["weekday", "Every weekday"],
-  ["week", "Every week"],
-] as const;
-
-const browserTimeZone = () => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return "UTC";
-  }
-};
-
-const moment = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-export function AppSchedulesView({
-  controls,
-  name,
-}: {
-  readonly controls: Controls<"hqAppSchedules">;
-  readonly name: string;
-}) {
-  const { read, write, again } = controls;
-  const setting = read.setting;
-  const busy = working(read.action);
-  const make = (request: HqScheduleRequest) => {
-    write({ kind: "schedule-make", request });
-  };
-  return (
-    <>
-      {setting.state !== "known" ? (
-        <NotKnown
-          onAgain={again}
-          setting={setting}
-          template={<ScheduleForm action={{ kind: "idle" }} name={name} onMake={() => {}} />}
-        />
-      ) : (
-        <>
-          <ScheduleForm action={read.action} name={name} onMake={make} />
-          {setting.held.length === 0 ? null : (
-            <ul className="grid gap-1.5" data-zerops-surface="settings-schedules-list">
-              {setting.held.map((schedule) => (
-                <ScheduleLine
-                  busy={busy}
-                  key={schedule.id}
-                  onDelete={() => {
-                    write({ kind: "schedule-delete", scheduleId: schedule.id });
-                  }}
-                  schedule={schedule}
-                />
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-      <Problem read={read} />
-    </>
-  );
-}
-
-/** A new schedule's form: its name, how often and when, in which time zone, and its brief. */
-function ScheduleForm({
-  name,
-  action,
-  onMake,
-}: {
-  readonly name: string;
-  readonly action: TaskSourceSettingValue<"hqAppSchedules">["action"];
-  readonly onMake: (request: HqScheduleRequest) => void;
-}) {
-  const [title, setTitle] = useState("");
-  const [brief, setBrief] = useState("");
-  const [every, setEvery] = useState<HqScheduleRule["every"]>("week");
-  const [day, setDay] = useState(1);
-  const [at, setAt] = useState("09:00");
-  const [timeZone, setTimeZone] = useState(browserTimeZone);
-  const briefId = useId();
-  const busy = working(action);
-  const ready =
-    title.trim().length > 0 &&
-    brief.trim().length > 0 &&
-    /^([01]\d|2[0-3]):[0-5]\d$/u.test(at) &&
-    timeZone.trim().length > 0;
-  return (
-    <form
-      className="grid gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!ready) return;
-        onMake({
-          name: title.trim(),
-          brief: brief.trim(),
-          rule: {
-            every,
-            ...(every === "week" ? { day } : {}),
-            at,
-            timeZone: timeZone.trim(),
-          },
-        });
-        setTitle("");
-        setBrief("");
-      }}
-    >
-      <div className="flex flex-wrap items-end gap-2">
-        <TextField
-          label={`${name}'s new schedule`}
-          onChange={setTitle}
-          value={title}
-          width="w-48"
-        />
-        <div className="grid w-36 gap-1.5">
-          <Label>Repeats</Label>
-          <Select
-            onValueChange={(next) => {
-              if (next === "day" || next === "weekday" || next === "week") setEvery(next);
-            }}
-            value={every}
-          >
-            <SelectTrigger aria-label="Repeats" size="sm">
-              <SelectValue>{EVERY_CHOICES.find(([value]) => value === every)?.[1]}</SelectValue>
-            </SelectTrigger>
-            <SelectPopup>
-              {EVERY_CHOICES.map(([value, words]) => (
-                <SelectItem key={value} value={value}>
-                  {words}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
-        </div>
-        {/* Always in its place: choosing how often never moves the fields after it. */}
-        <div className="grid w-32 gap-1.5">
-          <Label>On</Label>
-          <Select
-            disabled={every !== "week"}
-            onValueChange={(next) => {
-              if (typeof next === "number") setDay(next);
-            }}
-            value={day}
-          >
-            <SelectTrigger aria-label="On" size="sm">
-              <SelectValue>
-                {every === "week"
-                  ? DAY_CHOICES.find(([value]) => value === day)?.[1]
-                  : every === "day"
-                    ? "Each day"
-                    : "Mon–Fri"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectPopup>
-              {DAY_CHOICES.map(([value, words]) => (
-                <SelectItem key={value} value={value}>
-                  {words}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
-        </div>
-        <TimeField onChange={setAt} value={at} />
-        <TextField label="Time zone" onChange={setTimeZone} value={timeZone} width="w-40" />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor={briefId}>Brief</Label>
-        <Textarea
-          id={briefId}
-          onChange={(event) => {
-            setBrief(event.target.value);
-          }}
-          placeholder="Update the dependencies, check the build, and open a change."
-          size="sm"
-          value={brief}
-        />
-      </div>
-      <div className="flex justify-end">
-        <Button disabled={busy || !ready} size="sm" type="submit">
-          {pressWords(action, ["schedule-make"], "Add schedule")}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function TimeField({
-  value,
-  onChange,
-}: {
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-}) {
-  const id = useId();
-  return (
-    <div className="grid w-28 gap-1.5">
-      <Label htmlFor={id}>At</Label>
-      <Input
-        id={id}
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
-        size="sm"
-        type="time"
-        value={value}
-      />
-    </div>
-  );
-}
-
-function ScheduleLine({
-  schedule,
-  busy,
-  onDelete,
-}: {
-  readonly schedule: HqScheduleView;
-  readonly busy: boolean;
-  readonly onDelete: () => void;
-}) {
-  return (
-    <li className="flex min-w-0 items-center gap-2">
-      <div className="grid min-w-0 flex-1">
-        <p className="truncate text-xs text-foreground">{schedule.name}</p>
-        <p className="truncate text-xs text-muted-foreground">
-          {`${scheduleLine(schedule.rule)} · ${scheduleNextLine(schedule.nextAt, moment)}`}
-        </p>
-      </div>
-      <Button disabled={busy} onClick={onDelete} size="sm" variant="ghost">
-        Delete
-      </Button>
-    </li>
   );
 }
 
@@ -1205,17 +722,17 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
   const shownCost = cost ?? (held?.costUsd == null ? "" : String(held.costUsd));
   return (
     <SettingsRow
-      data-zerops-surface="settings-task-limits"
-      description="A task that reaches either stops, and says where it got to."
-      status={statusOf(setting, limitsLine)}
-      title="Limits per task"
-    >
-      <div className="grid gap-2 px-3 pb-3 sm:px-4">
-        {held === null ? (
-          <NotKnown onAgain={again} quiet setting={setting} />
+      control={
+        held === null ? (
+          setting.state === "failed" ? (
+            <Button onClick={again} size="sm" variant="secondary">
+              Read again
+            </Button>
+          ) : (
+            <HeldRoom template={<LimitsFields cost="" minutes="" />}>{null}</HeldRoom>
+          )
         ) : (
           <form
-            className="flex flex-wrap items-end gap-2"
             onSubmit={(event) => {
               event.preventDefault();
               const typed = readLimits(shownMinutes, shownCost);
@@ -1228,40 +745,32 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
               write({ kind: "task-limits", limits: typed.limits });
             }}
           >
-            <div className="grid w-28 gap-1.5">
-              <Label htmlFor={minutesId}>Minutes</Label>
-              <Input
-                id={minutesId}
-                inputMode="numeric"
-                onChange={(event) => {
-                  setMinutes(event.target.value);
-                }}
-                size="sm"
-                value={shownMinutes}
-              />
-            </div>
-            <div className="grid w-28 gap-1.5">
-              <Label htmlFor={costId}>Cost (USD)</Label>
-              <Input
-                id={costId}
-                inputMode="decimal"
-                onChange={(event) => {
-                  setCost(event.target.value);
-                }}
-                placeholder="No limit"
-                size="sm"
-                value={shownCost}
-              />
-            </div>
-            <Button
-              disabled={sent || working(read.action) || (minutes === null && cost === null)}
-              size="sm"
-              type="submit"
+            <LimitsFields
+              cost={shownCost}
+              costId={costId}
+              minutes={shownMinutes}
+              minutesId={minutesId}
+              onCost={setCost}
+              onMinutes={setMinutes}
             >
-              {pressWords(read.action, ["task-limits"], "Save")}
-            </Button>
+              <Button
+                disabled={sent || working(read.action) || (minutes === null && cost === null)}
+                size="sm"
+                type="submit"
+              >
+                {pressWords(read.action, ["task-limits"], "Save")}
+              </Button>
+            </LimitsFields>
           </form>
-        )}
+        )
+      }
+      data-zerops-surface="settings-task-limits"
+      description="A task that reaches either stops, and says where it got to."
+      id={searchableSetting("automation-limits").id}
+      status={statusOf(setting, limitsLine)}
+      title="Limits per task"
+    >
+      <div className="grid gap-2 px-3 pb-3 empty:hidden">
         {refusal === null ? null : (
           <p className="text-xs text-destructive-foreground" role="alert">
             {refusal}
@@ -1270,5 +779,55 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
         <Problem read={read} />
       </div>
     </SettingsRow>
+  );
+}
+
+/** The limits' two fields side by side, each labelled beside it, and the press after them. */
+function LimitsFields({
+  minutes,
+  cost,
+  minutesId,
+  costId,
+  onMinutes,
+  onCost,
+  children,
+}: {
+  readonly minutes: string;
+  readonly cost: string;
+  readonly minutesId?: string;
+  readonly costId?: string;
+  readonly onMinutes?: (value: string) => void;
+  readonly onCost?: (value: string) => void;
+  readonly children?: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Label htmlFor={minutesId}>Minutes</Label>
+      <div className="w-16">
+        <Input
+          id={minutesId}
+          inputMode="numeric"
+          onChange={(event) => {
+            onMinutes?.(event.target.value);
+          }}
+          size="sm"
+          value={minutes}
+        />
+      </div>
+      <Label htmlFor={costId}>Cost, USD</Label>
+      <div className="w-24">
+        <Input
+          id={costId}
+          inputMode="decimal"
+          onChange={(event) => {
+            onCost?.(event.target.value);
+          }}
+          placeholder="No limit"
+          size="sm"
+          value={cost}
+        />
+      </div>
+      {children ?? <Button size="sm">Save</Button>}
+    </div>
   );
 }

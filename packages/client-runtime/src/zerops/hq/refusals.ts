@@ -73,6 +73,16 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
   no_change: "Nothing was pushed to it yet.",
   main_moved: "Other changes kept landing on main meanwhile. Try again.",
   change_not_open: "This change is merged or closed already.",
+  github_blocked:
+    "GitHub won't merge its PR yet: the repository's rules or required checks hold it back. See its PR on GitHub.",
+  github_refused: "GitHub refused to merge its PR. See its PR on GitHub.",
+  github_unreachable: "GitHub did not answer, so nothing was merged. Try again.",
+  github_no_pull: "Its pull request on GitHub isn't open yet. Try again in a minute.",
+  github_closed: "Its pull request was closed on GitHub.",
+  github_landing:
+    "It was merged on GitHub; Mate is still bringing main up to date. It shows as merged shortly.",
+  github_wrong_base:
+    "Its pull request on GitHub now merges into another branch, not the repository's default one, so Mate won't merge it. See the pull request on GitHub.",
 };
 
 /** HQ's code for a call Zerops refused HQ outright (`apps/hq/src/api.ts`): never retried. */
@@ -171,8 +181,9 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
 
 /**
  * Why HQ refused a setting of automated Mates' sources — an intake, the organization's Slack app or
- * Discord application, an application's channel, webhooks and schedules, the limits on each task
- * (`AutomationRefused` in `apps/hq/src/{intake,slack,discord,webhooks,schedules,taskLimits}.ts`) —
+ * Discord application, its GitHub app, an application's channel, webhooks and schedules, the limits
+ * on each task (`AutomationRefused` in
+ * `apps/hq/src/{intake,githubApp,slack,discord,webhooks,schedules,taskLimits}.ts`) —
  * in words: what is wrong, and what the person does.
  */
 const AUTOMATION_WORDS = {
@@ -182,6 +193,10 @@ const AUTOMATION_WORDS = {
   label: "A label has 1 to 50 characters.",
   hq_address_unknown:
     "HQ does not know its own public address yet. Give HQ's service a public address, then try again.",
+  repository_changed:
+    "The repository on GitHub is no longer the one connected. Connect it again under Repositories.",
+  // The organization's GitHub app (`apps/hq/src/githubApp.ts`).
+  github_unavailable: "HQ could not set the GitHub app up just now. Try again.",
   // Slack.
   slack_unavailable: "HQ could not set Slack up just now. Try again.",
   bot_token: "That is not a bot token. Copy it again from the app's settings.",

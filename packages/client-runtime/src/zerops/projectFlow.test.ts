@@ -99,6 +99,16 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     },
   );
 
+  it("carries the pull request its change is mirrored to on GitHub into review", () => {
+    const pullRequest = {
+      number: 14,
+      url: "https://github.com/acme/tea-shop/pull/14",
+      state: "merged",
+    } as const;
+    expect(flowChange(change({ pullRequest }), HQ).pullRequest).toEqual(pullRequest);
+    expect(flowChange(change(), HQ)).not.toHaveProperty("pullRequest");
+  });
+
   // SPEC §3.2c: the recipe repository's change is a recipe change; its row wears the tag, so its
   // line is its number alone, and the one zcp titles is the Mate's proposal of the recipe.
   it("draws a change in the recipe repository as a recipe change, its proposal known by title", () => {
@@ -216,6 +226,22 @@ describe("an application's changes: the menu's rows, and its detail while a surf
     mergeability: "clean",
     ready: true,
     ...over,
+  });
+
+  it("carries the pull request a change is mirrored to on GitHub, from navigation or its detail", () => {
+    const pullRequest = {
+      number: 14,
+      url: "https://github.com/acme/tea-shop/pull/14",
+      state: "open",
+      checks: "passing",
+    } as const;
+    const listed = flowAppChanges({
+      appId: "g1",
+      open: [menuRow({ pullRequest }), menuRow({ number: 5 })],
+      detail: undefined,
+      hqAddress: `${HQ}/`,
+    }).pullRequests;
+    expect(listed.map((pull) => pull.pullRequest)).toEqual([pullRequest, undefined]);
   });
 
   it("draws each open change navigation lists that a push reached, without the detail", () => {

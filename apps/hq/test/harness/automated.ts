@@ -13,6 +13,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
+import type { CoreOptions } from "../../src/core.ts";
 import { sealRemoteToken } from "../../src/deployKeys.ts";
 import { type MateTasksOptions, TASK_SOURCES_SINCE } from "../../src/mateTasks.ts";
 import { testKey } from "./deployKeys.ts";
@@ -265,6 +266,12 @@ export const automatedPool = (
     readonly scheduleEvery?: Duration.Duration;
     /** The robot's version, as its overview says; one that reads tasks from every source. */
     readonly version?: string;
+    /** The git mirror to GitHub as the test stands it in. */
+    readonly githubMirror?: CoreOptions["githubMirror"];
+    /** The robot's Zerops project name; `P_ROBOT` by default. */
+    readonly robotName?: string;
+    /** How often HQ looks at every open change's pull request. */
+    readonly pullRequestsEvery?: Duration.Duration;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -277,6 +284,10 @@ export const automatedPool = (
     const core = yield* startCore(true, {
       githubApi: github.url,
       ...(given.scheduleEvery === undefined ? {} : { scheduleEvery: given.scheduleEvery }),
+      ...(given.githubMirror === undefined ? {} : { githubMirror: given.githubMirror }),
+      ...(given.pullRequestsEvery === undefined
+        ? {}
+        : { pullRequests: { sweepEvery: given.pullRequestsEvery } }),
       ...(Object.keys(times).length === 0
         ? {}
         : { tasks: { sweepEvery: Duration.millis(50), ...times } }),
@@ -294,6 +305,9 @@ export const automatedPool = (
     yield* connectedRepo(core, appId, "web", "acme/tea-shop");
     const hook = yield* intakeOn(core, github, owner, appId);
     addProject(core.fake, "P_ROBOT");
+    const robotAt = core.fake.projects.length - 1;
+    if (given.robotName !== undefined)
+      core.fake.projects[robotAt] = { ...core.fake.projects[robotAt]!, name: given.robotName };
     const robot = yield* mateLinked(core, owner, "P_ROBOT", { appId });
     yield* robot.link.send(overviewAt(given.version ?? TASK_SOURCES_SINCE));
     yield* robot.link.send(attention(given.busy === true ? 1 : 0));

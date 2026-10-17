@@ -10,7 +10,8 @@
  * HQ keeps a change's conversation (SPEC §3.2a): what people said on it, each
  * comment by the Zerops user who wrote it, who is named as the organization's
  * members name them — never by an id. A Mate's words on main's Gitea, brought
- * over (T13), are the Mate's, named as the application names it.
+ * over (T13), are the Mate's, named as the application names it. Words said on the change's pull
+ * request on GitHub are their GitHub login's, linked to them there.
  *
  * Pure: who said it, what the sentence handed to a Mate says, and nothing
  * about how any of it is drawn (R5).
@@ -22,6 +23,8 @@ import type { HqChangeComment } from "@t3tools/shared/hqChanges";
 export interface ChangeRemark {
   readonly id: string;
   readonly speaker: string;
+  /** Where the speaker is, linked: a GitHub user's profile, for words said on GitHub. */
+  readonly url?: string;
   /** `true` where the speaker is the person reading — their own words. */
   readonly mine: boolean;
   readonly body: string;
@@ -43,13 +46,30 @@ export function changeRemarks(input: {
     if (comment.authorMateProjectId !== null) return input.mateNameOf(comment.authorMateProjectId);
     return undefined;
   };
-  return input.comments.map((comment) => ({
-    id: comment.id,
-    speaker: nameOf(comment) ?? "somebody",
-    mine: comment.authorUserId === input.me,
-    body: comment.body,
-    at: comment.createdAt,
-  }));
+  return input.comments.map((comment) => {
+    const login = comment.authorGithubLogin;
+    // Said on the change's pull request on GitHub: its GitHub login, linked to them there.
+    if (
+      login !== undefined &&
+      comment.authorUserId === null &&
+      comment.authorMateProjectId === null
+    )
+      return {
+        id: comment.id,
+        speaker: `${login} on GitHub`,
+        url: `https://github.com/${encodeURIComponent(login)}`,
+        mine: false,
+        body: comment.body,
+        at: comment.createdAt,
+      };
+    return {
+      id: comment.id,
+      speaker: nameOf(comment) ?? "somebody",
+      mine: comment.authorUserId === input.me,
+      body: comment.body,
+      at: comment.createdAt,
+    };
+  });
 }
 
 /** `Nothing said yet` / `1 comment` / `4 comments` — the section's own count. */
