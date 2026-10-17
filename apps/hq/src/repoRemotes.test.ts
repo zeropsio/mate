@@ -545,7 +545,7 @@ describe("repository credential custody", () => {
           assert.strictEqual(error.reason, "push_not_granted");
           assert.strictEqual(
             error.message,
-            "This token can't push to krls2020/tst123: under Repository access choose Only select repositories → krls2020/tst123 with Contents: Read and write. If krls2020 approves tokens, it may still be pending.",
+            "This token can't push to krls2020/tst123: under Repository access choose Only select repositories → krls2020/tst123 with Contents: Read and write (and Issues and Webhooks: Read and write for automated Mates to take its issues). If krls2020 approves tokens, it may still be pending.",
           );
           assert.deepStrictEqual(yield* sql`SELECT 1 FROM hq_repo_remote`, []);
           assert.deepStrictEqual(state.seen, [

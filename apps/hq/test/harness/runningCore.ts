@@ -210,6 +210,8 @@ export const startCore = (
      * given, else an address nothing answers on.
      */
     readonly chiefUpstream?: string;
+    /** GitHub's REST API HQ calls for issues and webhooks (`githubFake.ts`); none answers by default. */
+    readonly githubApi?: string;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -253,6 +255,7 @@ export const startCore = (
       streamRecheck: given.streamRecheck ?? Duration.millis(200),
       pingEvery: given.pingEvery ?? Duration.millis(300),
       ...(given.officialRecheck === undefined ? {} : { officialRecheck: given.officialRecheck }),
+      githubApi: given.githubApi ?? "http://127.0.0.1:9",
     };
     const scope = yield* Scope.make();
     const platform =

@@ -50,7 +50,7 @@ export class ProbeRefused extends Schema.TaggedError<ProbeRefused>()("ProbeRefus
       push_not_granted: () => {
         if (this.hostKind !== "github")
           return `This token can't push to ${this.remote}: the host did not grant write access.${this.hostKind === "gitlab" ? " GitLab's push scope is write_repository." : ""} Check repository write access in ${tokenSettings}.`;
-        return `This token can't push to ${this.remote}: under Repository access choose Only select repositories → ${this.remote} with Contents: Read and write. If ${this.remote.split("/")[0]} approves tokens, it may still be pending.`;
+        return `This token can't push to ${this.remote}: under Repository access choose Only select repositories → ${this.remote} with Contents: Read and write (and Issues and Webhooks: Read and write for automated Mates to take its issues). If ${this.remote.split("/")[0]} approves tokens, it may still be pending.`;
       },
       not_visible: () => {
         return `${this.remote} doesn't exist, or your account can't see it. Check the repository address and this token's repository access in ${tokenSettings}.`;

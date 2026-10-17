@@ -31,6 +31,8 @@ import { chiefsLayer } from "./chief.ts";
 import { chiefRoutes } from "./chiefApi.ts";
 import { automationRoutes } from "./automationApi.ts";
 import { orgAiKeysLayer } from "./orgAiKeys.ts";
+import { intakeLayer } from "./intake.ts";
+import { githubIssuesLayer } from "./githubIssues.ts";
 import { proposalDecisionsLayer } from "./proposals.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
@@ -84,6 +86,8 @@ export interface CoreOptions {
   readonly observeHealth?: HealthObserver;
   /** How long the server still answers after the lead is given up on shutdown; 10 s. */
   readonly drainFor?: Duration.Duration;
+  /** GitHub's REST API for issues and webhooks, for tests; GitHub's own by default. */
+  readonly githubApi?: string;
   /** Shorter intervals, for tests. */
   readonly heartbeat?: Duration.Duration;
   readonly retryAfter?: Duration.Duration;
@@ -137,9 +141,16 @@ const services = (options: CoreOptions) => {
       }),
     ),
   );
+  const github = githubIssuesLayer(options.githubApi).pipe(
+    Layer.provide(NodeHttpClient.layerNodeHttp),
+  );
   return Layer.mergeAll(
     autoUpdatePolicyLayer,
     orgAiKeysLayer,
+    intakeLayer({ hqProjectId: options.hqProjectId }).pipe(
+      Layer.provide(remotes),
+      Layer.provide(github),
+    ),
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,

@@ -507,6 +507,7 @@ describe("HQ API", () => {
                 ],
                 environments: [],
                 births: [],
+                intake: null,
               },
             ],
           });

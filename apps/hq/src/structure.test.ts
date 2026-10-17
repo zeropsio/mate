@@ -1345,6 +1345,7 @@ describe("structure", () => {
                   environmentRow("P_STAGE", "stage", "name-of-p-stage", 2),
                 ],
                 births: [],
+                intake: null,
                 contents: { empty: false, deletingProjectIds: [] },
               },
               {
@@ -1361,6 +1362,7 @@ describe("structure", () => {
                 ],
                 environments: [environmentRow("P_TEAM", "stage", "name-of-p-team", 1)],
                 births: [],
+                intake: null,
                 contents: { empty: false, deletingProjectIds: [] },
               },
             ]);

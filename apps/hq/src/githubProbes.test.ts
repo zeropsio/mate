@@ -390,7 +390,7 @@ describe("token refusal guidance", () => {
     archived:
       "owner/repo is archived, so nothing can be pushed to it. Unarchive it in repository settings before testing again.",
     push_not_granted:
-      "This token can't push to owner/repo: under Repository access choose Only select repositories → owner/repo with Contents: Read and write. If owner approves tokens, it may still be pending.",
+      "This token can't push to owner/repo: under Repository access choose Only select repositories → owner/repo with Contents: Read and write (and Issues and Webhooks: Read and write for automated Mates to take its issues). If owner approves tokens, it may still be pending.",
     not_visible:
       "owner/repo doesn't exist, or your account can't see it. Check the repository address and this token's repository access in GitHub token settings.",
     classic_scope:

@@ -394,6 +394,15 @@ export interface StructureRead {
       | { readonly refused: Reason };
     /** The Mates on their way into it whose attach has not landed yet, oldest first. */
     readonly births: ReadonlyArray<BirthIntent>;
+    /**
+     * Where its automated Mates take tasks from (`intake.ts`), and how many wait for one of them;
+     * none: nowhere.
+     */
+    readonly intake?: {
+      readonly repo: string;
+      readonly label: string;
+      readonly waiting: number;
+    } | null;
   }>;
 }
 
@@ -539,6 +548,11 @@ export class Structure extends Context.Service<
      * (`MateCredentials.keyWider`): every reader is told.
      */
     readonly mateTouched: (projectId: string) => Effect.Effect<void>;
+    /**
+     * What the structure shows changed outside its own writes — an application's intake, a task
+     * that moved (`intake.ts`, `mateTasks.ts`): every reader is told.
+     */
+    readonly touched: Effect.Effect<void>;
     /**
      * Keeps the deploy token of the application's environment `name` (SPEC §3.2b): handed over
      * by whoever may attach its project (`keep_deploy_token`), and kept only once Zerops says it
@@ -1016,8 +1030,13 @@ export const structureLayer = (options: {
                 readonly name: string;
                 readonly empty: boolean;
                 readonly created_by: string;
+                readonly intake: NonNullable<StructureRead["apps"][number]["intake"]> | null;
               }>`
-              SELECT a.id::text AS id, a.name, a.created_by, NOT (${appHeld}) AS empty FROM hq_app a ORDER BY a.seq`;
+              SELECT a.id::text AS id, a.name, a.created_by, NOT (${appHeld}) AS empty,
+                CASE WHEN i.app_id IS NULL THEN NULL ELSE jsonb_build_object('repo', i.repo,
+                  'label', i.label, 'waiting', (SELECT count(*) FROM hq_task t
+                    WHERE t.app_id = a.id AND t.state = 'queued')) END AS intake
+              FROM hq_app a LEFT JOIN hq_intake i ON i.app_id = a.id ORDER BY a.seq`;
               const births = yield* sql<BirthIntent & { readonly app_id: string }>`
               SELECT id::text AS id, app_id::text AS app_id, face, project_id AS "projectId"
               FROM hq_birth_intent ORDER BY seq`;
@@ -1255,6 +1274,7 @@ export const structureLayer = (options: {
                               face,
                               ...(projectId == null ? {} : { projectId }),
                             })),
+                          intake: app.intake,
                         };
                       }),
                   };
@@ -1547,6 +1567,7 @@ export const structureLayer = (options: {
           }),
         mateTouched: (projectId) =>
           Effect.andThen(changed, PubSub.publish(mateChanged, projectId)).pipe(Effect.asVoid),
+        touched: Effect.asVoid(changed),
         // A project Zerops made seconds ago may not be in the recent view yet: a refusal of its
         // facts is confirmed over a fresh read, as every write's is (F22).
         holdPress: confirmed((userId, projectId, press) =>
