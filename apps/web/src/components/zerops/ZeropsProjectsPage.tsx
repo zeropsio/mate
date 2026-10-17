@@ -4,9 +4,7 @@ import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { placementNotice } from "./projects/placementNotice.logic";
 import { overviewPaints, tiersAddable } from "./projects/projectsView.logic";
-import { hqProjectIdOf } from "~/zerops/hqWrites";
-import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
-import { useHqAppDetail } from "~/zerops/useHqAppDetail";
+import { useGitEnvironmentFormInputs } from "~/zerops/useGitEnvironmentFormInputs";
 import { isChief } from "~/zerops/chief";
 import { roleOffers } from "@t3tools/client-runtime/data";
 import { usePlatformCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
@@ -1641,19 +1639,10 @@ export function ZeropsProjectsContent({
     readonly groupId: string;
     readonly role: ZeropsEnvironmentRole;
   } | null>(null);
-  const gitSetupDetail = useHqAppDetail(creationRequest?.groupId ?? null);
-  const gitSetupHq =
-    activeOrganization === null || activeOrganization === undefined
-      ? null
-      : hqProjectIdOf(activeOrganization.id);
-  const gitSetupApp = hqStructure.structure?.apps.find(
-    (app) => app.id === creationRequest?.groupId,
+  const gitSetup = useGitEnvironmentFormInputs(
+    activeOrganization?.id,
+    creationRequest?.groupId ?? null,
   );
-  const gitSetupNames =
-    hqStructure.live && Array.isArray(gitSetupApp?.environments)
-      ? gitSetupApp.environments.map((environment) => environment.name)
-      : undefined;
-  const gitSetupCan = gitSetupApp?.can;
   const hqOffers = useHqOffers();
   // Why Add a Mate stands off, where that is known before the press (`newMateGate`): HQ refusing
   // the person a Mate here, or the project's setup files not ready for another.
@@ -1671,8 +1660,6 @@ export function ZeropsProjectsContent({
       ),
     });
   };
-  const gitSetupAdd = hqOffers.state(gitSetupCan, "add_git_environment");
-  const gitSetupOffered = (verb: string) => hqOffers.state(gitSetupCan, verb).kind === "allowed";
   const requestedGroup = useMemo(
     () =>
       creationRequest === null
@@ -2826,25 +2813,10 @@ export function ZeropsProjectsContent({
                   ?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]') ?? null
               }
               git={
-                activeOrganization === null ||
-                activeOrganization === undefined ||
-                gitSetupHq === null
+                gitSetup === undefined
                   ? undefined
                   : {
-                      takenNames: gitSetupNames,
-                      repos: gitSetupDetail.live ? gitSetupDetail.repos : undefined,
-                      offered: {
-                        add: gitSetupAdd.kind === "allowed",
-                        connect: gitSetupOffered("connect_remote"),
-                        replace: gitSetupOffered("replace_remote_token"),
-                      },
-                      unavailableReason: hqOffers.words(gitSetupAdd),
-                      setup: gitEnvironmentSetup({
-                        orgId: activeOrganization.id,
-                        appId: creationRequest.groupId,
-                        hqProjectId: gitSetupHq,
-                        operations,
-                      }),
+                      ...gitSetup,
                       onAdded: () => {
                         setCreationRequest(null);
                       },
