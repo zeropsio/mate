@@ -142,6 +142,15 @@ describe("buildComposerPromptHistoryEntries", () => {
     ).toEqual(["first"]);
   });
 
+  it("leaves out a follow-up told to a task's Mate: someone else said it, the viewer never typed it", () => {
+    expect(
+      buildComposerPromptHistoryEntries([
+        { id: "m1", role: "user", text: "first" },
+        { id: "m2", role: "user", text: "ida-ops (comment): Keep it.", taskMessage: {} },
+      ]).map((entry) => entry.prompt),
+    ).toEqual(["first"]);
+  });
+
   it("collapses consecutive duplicates onto the newest message id", () => {
     const collapsed = buildComposerPromptHistoryEntries([
       { id: "m1", role: "user", text: "same" },
