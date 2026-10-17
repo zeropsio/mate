@@ -61,7 +61,7 @@ const withPool = (
         "SELECT id::text AS id, number, state, mate_project_id, attempts, detail, conversation_id FROM hq_task ORDER BY seq",
         matches,
       );
-    return { ...core, github, owner, appId, robot, issue, tasks };
+    return { ...core, github, owner, appId, hook, robot, issue, tasks };
   });
 
 type Link = Effect.Success<ReturnType<typeof withPool>>["robot"]["link"];
@@ -346,6 +346,39 @@ describe("tasks for automated Mates", () => {
           ["/repos/acme/tea-shop/issues/1/comments", `P_ROBOT couldn't finish this: ${UNTAKEN}`],
         ]);
       }),
+    );
+
+    it.effect(
+      "an issue closed while its task is handed out is dropped and its Mate is free; one its Mate works on carries on",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          const closed = (number: number) =>
+            deliver(core, core.hook, "issues", issueEvent("closed", { number, labels: ["mate"] }));
+          yield* core.issue(1);
+          yield* toldTask(core.robot.link, 1);
+          yield* closed(1);
+          yield* core.tasks((rows) =>
+            rows.some((row) => row["number"] === 1 && row["state"] === "dropped"),
+          );
+          yield* core.issue(2);
+          const second = yield* toldTask(core.robot.link, 2);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: second.id, state: "accepted", conversationId: "conversation-2" },
+          });
+          yield* core.tasks((rows) => rows[1]?.["state"] === "working");
+          yield* closed(2);
+          // A closed issue is no task to take; the Mate already on it carries on.
+          const rows = yield* core.tasks((found) => found.length === 2);
+          assert.deepStrictEqual(
+            rows.map((row) => [row["number"], row["state"], row["mate_project_id"]]),
+            [
+              [1, "dropped", null],
+              [2, "working", "P_ROBOT"],
+            ],
+          );
+        }),
     );
 
     it.effect("a Mate's word on a task not its own is passed by", () =>

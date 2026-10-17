@@ -199,6 +199,29 @@ describe("GitHub's webhook of an intake", () => {
       }),
     );
 
+    it.effect("an event of an issue that is closed makes no task", () =>
+      Effect.gen(function* () {
+        const core = yield* withIntake;
+        yield* deliver(
+          core,
+          core.hook,
+          "issues",
+          issueEvent("labeled", { number: 1, labels: ["mate"], state: "closed" }, "mate"),
+        );
+        yield* deliver(
+          core,
+          core.hook,
+          "issues",
+          issueEvent("opened", { number: 2, labels: ["mate"] }),
+        );
+        const rows = yield* core.tasks((found) => found.length > 0);
+        assert.deepStrictEqual(
+          rows.map((row) => row["number"]),
+          [2],
+        );
+      }),
+    );
+
     it.effect("a delivery past 1 MiB is refused unread", () =>
       Effect.gen(function* () {
         const core = yield* withIntake;

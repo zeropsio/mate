@@ -16,8 +16,9 @@
  * the secret, compared in constant time — before a byte of it is parsed (`receive`); JSON, or
  * form-encoded as a webhook pasted with GitHub's defaults sends it. An issue opened,
  * labelled or reopened carrying the label, in any case, waits as a task (`hq_task`, `queued`): once
- * per delivery and once per issue while it is live. One closed or unlabelled while it still waits is
- * dropped; one a Mate took stays its Mate's.
+ * per delivery and once per issue while it is live; an event of a closed issue makes none. One closed
+ * or unlabelled before a Mate took it — waiting, or handed out — is dropped; one a Mate took stays
+ * its Mate's.
  *
  * @module intake
  */
@@ -92,6 +93,7 @@ const IssuesEvent = Schema.Struct({
     title: Schema.String,
     body: Schema.optionalKey(Schema.NullOr(Schema.String)),
     html_url: Schema.String,
+    state: Schema.optionalKey(Schema.String),
     user: Schema.optionalKey(Schema.NullOr(Schema.Struct({ login: Schema.String }))),
     labels: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String }))),
   }),
@@ -260,16 +262,25 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
           return rows.length > 0;
         });
 
-      /** The issue's task that still waits, dropped: its issue closed or lost the label. */
+      /**
+       * The issue's task no Mate took yet, dropped — waiting, or handed out and not taken: its
+       * issue closed or lost the label. The Mate it was handed to is free again.
+       */
       const drop = (appId: string, repo: string, number: number, why: string) =>
-        Effect.map(
-          leader.write(sql`
-            UPDATE hq_task SET state = 'dropped', detail = ${why}, updated_at = now()
-            WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}
-              AND state = 'queued'
-            RETURNING 1`),
-          (rows) => rows.length > 0,
-        );
+        Effect.gen(function* () {
+          const rows = yield* leader.write(sql<{ readonly was: string | null }>`
+            WITH gone AS (
+              SELECT id, mate_project_id AS was FROM hq_task
+              WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}
+                AND state IN ('queued', 'assigned')
+              FOR UPDATE)
+            UPDATE hq_task t SET state = 'dropped', detail = ${why}, mate_project_id = NULL,
+              assigned_at = NULL, updated_at = now()
+            FROM gone WHERE t.id = gone.id
+            RETURNING gone.was`);
+          for (const { was } of rows) if (was !== null) yield* structure.mateTouched(was);
+          return rows.length > 0;
+        });
 
       return Intake.of({
         receive: (publicId, delivery) =>
@@ -305,11 +316,13 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               (candidate) => candidate.name.toLowerCase() === label,
             );
             const named = event.label?.name.toLowerCase() === label;
+            // A closed issue is no task, whatever else its event says.
+            const open = (event.issue.state ?? "open") === "open";
             const moved =
               event.action === "opened" || event.action === "reopened"
-                ? carries && (yield* queue(row.app_id, delivery.id, event))
+                ? open && carries && (yield* queue(row.app_id, delivery.id, event))
                 : event.action === "labeled"
-                  ? named && (yield* queue(row.app_id, delivery.id, event))
+                  ? open && named && (yield* queue(row.app_id, delivery.id, event))
                   : event.action === "closed"
                     ? yield* drop(row.app_id, repo, event.issue.number, "issue closed")
                     : event.action === "unlabeled" && named

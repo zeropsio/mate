@@ -155,6 +155,8 @@ export const issueEvent = (
     readonly title?: string;
     readonly body?: string | null;
     readonly labels?: ReadonlyArray<string>;
+    /** Open, unless the event closes it. */
+    readonly state?: "open" | "closed";
   },
   label?: string,
 ) => ({
@@ -164,7 +166,7 @@ export const issueEvent = (
     title: issue.title ?? `Issue ${String(issue.number)}`,
     body: issue.body === undefined ? "Make the tea hotter." : issue.body,
     html_url: `https://github.com/acme/tea-shop/issues/${String(issue.number)}`,
-    state: action === "closed" ? "closed" : "open",
+    state: issue.state ?? (action === "closed" ? "closed" : "open"),
     user: { login: "nova" },
     labels: (issue.labels ?? []).map((name) => ({ name })),
   },
