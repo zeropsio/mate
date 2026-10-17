@@ -9,6 +9,7 @@
  * A token or a signing secret typed to connect Slack or Discord goes to the executor alone, for
  * its own request, and is gone once sent.
  */
+import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
 import type { HqWebhookView } from "@t3tools/shared/hqIntake";
 import * as Effect from "effect/Effect";
 import type { HqApi } from "../../zerops/hq/client.ts";
@@ -39,12 +40,21 @@ import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsRead
 export type TaskSourceApi = TaskSourceWrites &
   Pick<
     HqApi,
-    "slack" | "slackManifest" | "discord" | "taskLimits" | "appChannel" | "webhooks" | "schedules"
+    | "slack"
+    | "slackManifest"
+    | "discord"
+    | "taskLimits"
+    | "appChannel"
+    | "webhooks"
+    | "schedules"
+    | "github"
   >;
 
 /** What an HQ that predates these settings is asked. */
 export const TASK_SOURCES_UNSUPPORTED =
   "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
+/** What an HQ that predates the organization's GitHub app is asked. */
+export const GITHUB_UNSUPPORTED = "Update HQ to connect GitHub.";
 
 /** A webhook's answer as a list holds it: never its secret. */
 const withoutSecret = ({ secret: _secret, ...view }: HqWebhookView): HqWebhookView => view;
@@ -74,6 +84,8 @@ export function makeTaskSourceSettings(options: {
           return api.discord?.();
         case "hqTaskLimits":
           return api.taskLimits?.();
+        case "hqGithub":
+          return api.github?.();
         case "hqAppSlack":
           return api.appChannel?.(appId, "slack").then((channel) => ({ channel }));
         case "hqAppDiscord":
@@ -90,7 +102,7 @@ export function makeTaskSourceSettings(options: {
       scope: settingScope(family, key),
       link: settingLink(family, key),
       read: read as SettingRead<TaskSourceSetting>["read"],
-      unsupported: TASK_SOURCES_UNSUPPORTED,
+      unsupported: family === "hqGithub" ? GITHUB_UNSUPPORTED : TASK_SOURCES_UNSUPPORTED,
     };
   }
 
@@ -115,6 +127,8 @@ export function makeTaskSourceSettings(options: {
 
   // ── the writes ────────────────────────────────────────────────────────────────────────────
   const secrets = new Map<string, TypedSecrets>();
+  /** HQ's manifest for the GitHub app, by the request that asked: taken by that request alone. */
+  const manifests = new Map<string, HqGithubManifestView>();
   const operations = makeOperations({
     store,
     makeId: options.makeId,
@@ -135,6 +149,9 @@ export function makeTaskSourceSettings(options: {
             held.epoch === (epochs.get(settingId(held.key)) ?? 0)
           )
             publish(held.key, requestId, view);
+        },
+        manifested: (requestId, view) => {
+          if (!closed) manifests.set(requestId, view);
         },
       }),
     },
@@ -195,7 +212,23 @@ export function makeTaskSourceSettings(options: {
     }
   };
 
+  /**
+   * Asks HQ for the manifest GitHub makes the organization's app from: the answer, for the
+   * screen to post to GitHub, or `null` where HQ refused or did not answer — its words are the
+   * GitHub setting's action.
+   */
+  const githubManifest = async (
+    key: OrgSettingKey,
+    request: HqGithubManifestRequest,
+  ): Promise<HqGithubManifestView | null> => {
+    const requestId = await write(key, { kind: "github-manifest", ...request });
+    const view = manifests.get(requestId) ?? null;
+    manifests.delete(requestId);
+    return view;
+  };
+
   return {
+    githubManifest,
     /** Reads an organization's setting while a screen shows it. */
     demandOrg: (family: OrgSetting, key: OrgSettingKey) => reads.demand(specOf(family, key)),
     /** Reads an application's setting while a screen shows it. */
@@ -223,6 +256,7 @@ export function makeTaskSourceSettings(options: {
       }
       closed = true;
       secrets.clear();
+      manifests.clear();
       revealedFor.clear();
       views.clear();
       epochs.clear();

@@ -11,7 +11,12 @@ import { HqError } from "../../zerops/hq/client.ts";
 import type { TaskSourceSetting } from "../families/hqTaskSources.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { taskSourceSetting } from "../projections/hqTaskSources.ts";
-import { makeTaskSourceSettings, TASK_SOURCES_UNSUPPORTED } from "./hqTaskSources.ts";
+import type { HqGithubManifestView, HqGithubView } from "@t3tools/shared/hqGithub";
+import {
+  GITHUB_UNSUPPORTED,
+  makeTaskSourceSettings,
+  TASK_SOURCES_UNSUPPORTED,
+} from "./hqTaskSources.ts";
 
 const ORG = { orgId: "org" };
 const SHOP = { orgId: "org", appId: "shop" };
@@ -402,6 +407,123 @@ describe("the limits on each task", () => {
       state: "known",
       held: { minutes: 30, costUsd: 5 },
     });
+    release();
+    r.close();
+  });
+});
+
+describe("the organization's GitHub app", () => {
+  const none: HqGithubView = { state: "none" };
+  const app: HqGithubView = {
+    state: "connected",
+    slug: "acme-mate",
+    botLogin: "acme-mate[bot]",
+    owner: "acme",
+    appUrl: "https://github.com/apps/acme-mate",
+    installUrl: "https://github.com/apps/acme-mate/installations/new",
+    installations: [
+      {
+        id: 7,
+        account: "acme",
+        accountType: "Organization",
+        repositorySelection: "selected",
+        repositories: [{ fullName: "acme/tea-shop", private: true, defaultBranch: "main" }],
+        suspended: false,
+        manageUrl: "https://github.com/organizations/acme/settings/installations/7",
+      },
+    ],
+  };
+  // GitHub's one-time state binding its return to this request: built from parts.
+  const STATE = ["state", "tea", "shop", "0042"].join("-");
+  const manifest: HqGithubManifestView = {
+    postUrl: "https://github.com/organizations/acme/settings/apps/new?state=" + STATE,
+    manifest: JSON.stringify({ name: "Acme Mate" }),
+    state: STATE,
+  };
+  const asked = { owner: "acme", name: "Acme Mate", returnTo: "https://mate.example/settings" };
+
+  it("reads where the app is installed, never its key", async () => {
+    const r = rig({ github: async () => app });
+    const read = waitFor(r.store, () => r.read("hqGithub").setting.state === "known");
+    const release = r.host.demandOrg("hqGithub", ORG);
+    await read;
+    expect(r.read("hqGithub").setting).toMatchObject({ state: "known", held: app });
+    release();
+    r.close();
+  });
+
+  it("hands HQ's manifest to the screen that asked, and keeps its one-time state out of every record", async () => {
+    const sent: Array<unknown> = [];
+    const r = rig({
+      github: async () => none,
+      githubManifest: async (request) => {
+        sent.push(request);
+        return manifest;
+      },
+    });
+    const answer = await r.host.githubManifest(ORG, asked);
+    expect(sent).toEqual([asked]);
+    expect(answer).toEqual(manifest);
+    expect(r.records()).not.toContain(STATE);
+    r.close();
+  });
+
+  it("says HQ's refusal of the manifest, and hands nothing to post", async () => {
+    const r = rig({
+      github: async () => none,
+      githubManifest: async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "forbidden",
+          status: 403,
+          message: "Only the organization's Owner and Admins connect GitHub.",
+        });
+      },
+    });
+    expect(await r.host.githubManifest(ORG, asked)).toBeNull();
+    expect(r.read("hqGithub").action).toEqual({
+      kind: "failed",
+      words: "Only the organization's Owner and Admins connect GitHub.",
+    });
+    r.close();
+  });
+
+  it("disconnects, and shows done once a read after HQ's answer says none", async () => {
+    let held: HqGithubView = app;
+    const r = rig({
+      github: async () => held,
+      githubDisconnect: async () => {
+        held = none;
+      },
+    });
+    const read = waitFor(r.store, () => r.read("hqGithub").setting.state === "known");
+    const release = r.host.demandOrg("hqGithub", ORG);
+    await read;
+    const done = waitFor(r.store, () => r.read("hqGithub").action.kind === "done");
+    await r.host.write(ORG, { kind: "github-disconnect" });
+    await done;
+    expect(r.read("hqGithub").setting).toMatchObject({ state: "known", held: none });
+    release();
+    r.close();
+  });
+
+  it.each([
+    {
+      case: "HQ answers that it has no such address",
+      api: {
+        github: async (): Promise<HqGithubView> => {
+          throw new HqError({ kind: "refused", code: "not_found", status: 404, message: "No." });
+        },
+      },
+    },
+    { case: "this client's HQ reads no GitHub app", api: {} },
+  ])("an HQ older than the GitHub app asks for an update: $case", async ({ api }) => {
+    const r = rig(api);
+    const read = waitFor(r.store, () => r.read("hqGithub").setting.state === "unsupported");
+    const release = r.host.demandOrg("hqGithub", ORG);
+    await read;
+    expect(await r.host.githubManifest(ORG, asked)).toBeNull();
+    expect(r.read("hqGithub").action).toEqual({ kind: "failed", words: GITHUB_UNSUPPORTED });
     release();
     r.close();
   });

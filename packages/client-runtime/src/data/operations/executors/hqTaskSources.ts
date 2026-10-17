@@ -5,6 +5,7 @@
  * own request only, and are gone once sent: never retried, never in a refusal's words.
  */
 import * as Effect from "effect/Effect";
+import type { HqGithubManifestView } from "@t3tools/shared/hqGithub";
 import type { HqWebhookView } from "@t3tools/shared/hqIntake";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import type { OperationExecutor } from "../coordinator.ts";
@@ -23,12 +24,15 @@ export type TaskSourceWrites = Pick<
   | "makeSchedule"
   | "deleteSchedule"
   | "setTaskLimits"
+  | "githubManifest"
+  | "githubDisconnect"
 >;
 
 /** The secrets typed for one connection, by their field's name. */
 export type TypedSecrets = Readonly<Record<string, string>>;
 
 const UPDATE_HQ = "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
+const UPDATE_HQ_GITHUB = "Update HQ to connect GitHub.";
 
 export function makeTaskSourceExecutor(options: {
   readonly api: TaskSourceWrites;
@@ -37,6 +41,8 @@ export function makeTaskSourceExecutor(options: {
   readonly takeSecrets: (requestId: string) => TypedSecrets | undefined;
   /** HQ's answer to a webhook made: its URL and its secret, shown this once. */
   readonly revealed: (requestId: string, view: HqWebhookView) => void;
+  /** HQ's manifest for the organization's GitHub app, for the screen that asked for it alone. */
+  readonly manifested: (requestId: string, view: HqGithubManifestView) => void;
 }): OperationExecutor {
   const refused = (message: string) => ({ outcome: "definitive-refusal" as const, message });
   return {
@@ -101,10 +107,31 @@ export function makeTaskSourceExecutor(options: {
               return api.deleteSchedule?.(appId, write.scheduleId) ?? null;
             case "task-limits":
               return api.setTaskLimits?.(write.limits) ?? null;
+            case "github-manifest":
+              return (
+                api
+                  .githubManifest?.({
+                    owner: write.owner,
+                    name: write.name,
+                    returnTo: write.returnTo,
+                  })
+                  .then((view) => {
+                    options.manifested(requestId, view);
+                  }) ?? null
+              );
+            case "github-disconnect":
+              return api.githubDisconnect?.() ?? null;
           }
         };
         const pending = call();
-        if (pending === null) return yield* Effect.fail(refused(UPDATE_HQ));
+        if (pending === null)
+          return yield* Effect.fail(
+            refused(
+              write.kind === "github-manifest" || write.kind === "github-disconnect"
+                ? UPDATE_HQ_GITHUB
+                : UPDATE_HQ,
+            ),
+          );
         const typed = Object.values(secrets ?? {}).filter((value) => value.length > 0);
         yield* Effect.tryPromise({
           try: () => pending,
