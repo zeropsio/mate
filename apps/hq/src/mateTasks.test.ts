@@ -387,6 +387,68 @@ describe("tasks for automated Mates", () => {
     );
 
     it.effect(
+      "an automated Mate takes no new task while its last task's change waits for review, its row reading that task, until the change is merged or closed",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          const watching = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
+          );
+          yield* scopeReset(watching, NAV);
+          const rowTask = (number: number) =>
+            nextScopeValue<HqNavigationProject>(
+              watching,
+              NAV,
+              "project:P_ROBOT",
+              (project) => project.mate?.task?.number === number,
+            );
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "appdev" },
+          });
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+          });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          const change = yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "appdev", title: "Hotter tea" },
+          });
+          const number = (change.body as { change: { number: number } }).change.number;
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "done" },
+          });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          yield* rowTask(1);
+          // Another Mate is free, this one is not: its copy of the code still holds the change.
+          addProject(core.fake, "P_OTHER");
+          const other = yield* mateLinked(core, core.owner, "P_OTHER", { appId: core.appId });
+          yield* other.link.send(attention(0));
+          yield* core.issue(2);
+          yield* core.issue(3);
+          yield* toldTask(other.link, 2);
+          assert.isFalse(
+            (yield* core.robot.link.collected).some(
+              (frame) => frame.type === "task" && (frame["task"] as MateTask).source.number !== 1,
+            ),
+          );
+          const closed = yield* core.call(
+            "POST",
+            `/api/apps/${core.appId}/changes/appdev/${String(number)}/close`,
+            { session: core.owner, body: { expectedHead: null } },
+          );
+          assert.strictEqual(closed.status, 200);
+          yield* toldTask(core.robot.link, 3);
+          yield* rowTask(3);
+          yield* watching.close;
+        }),
+    );
+
+    it.effect(
       "GitHub hears from the Mate by name: it picked the issue up, opened a change for review, couldn't finish",
       () =>
         Effect.gen(function* () {

@@ -309,7 +309,10 @@ export interface MateView {
   readonly keyWider: boolean;
   /** Said only of an automated Mate (`MateState.automated`). */
   readonly automated?: true;
-  /** An automated Mate's task, assigned or worked on, or none; said only of an automated Mate. */
+  /**
+   * An automated Mate's task, assigned or worked on — else the last one whose change still waits
+   * for review, which keeps it from taking more — or none; said only of an automated Mate.
+   */
   readonly task?: HqNavigationMateTask | null;
 }
 
@@ -1058,7 +1061,10 @@ export const structureLayer = (options: {
                        'keyWider', m.key_wider_token_id IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END
                        || CASE WHEN NOT m.automated THEN '{}'::jsonb ELSE jsonb_build_object('automated', true, 'task', (
                          SELECT jsonb_build_object('id', t.id::text, 'repo', t.repo, 'number', t.number, 'title', t.title, 'url', t.url)
-                         FROM hq_task t WHERE t.mate_project_id = m.project_id AND t.state IN ('assigned', 'working'))) END END AS mate
+                         FROM hq_task t WHERE t.mate_project_id = m.project_id AND (t.state IN ('assigned', 'working')
+                           OR EXISTS (SELECT 1 FROM hq_change c WHERE c.app_id = t.app_id AND c.repo = t.change_repo
+                             AND c.number = t.change_number AND c.state = 'open'))
+                         ORDER BY t.state IN ('assigned', 'working') DESC, t.seq DESC LIMIT 1)) END END AS mate
               FROM hq_app_project p FULL OUTER JOIN hq_mate m USING (project_id)
               LEFT JOIN hq_press press ON press.project_id = m.project_id AND press.kind = 'mate'
               ORDER BY p.seq NULLS LAST, m.seq`;

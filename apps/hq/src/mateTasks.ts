@@ -2,8 +2,9 @@
  * Tasks from outside, handed to an application's automated Mates (`hq_task`, `@t3tools/contracts`
  * `MateTask`): the leading Core's dispatcher.
  *
- * - A Mate is free while it is automated, of the application's projects, online, on no task, and
- *   its agents work on nothing (its attention says `working: 0`). The oldest waiting task of an
+ * - A Mate is free while it is automated, of the application's projects, online, on no task, no
+ *   change of its last task waits for review (its copy of the code holds that work), and its agents
+ *   work on nothing (its attention says `working: 0`). The oldest waiting task of an
  *   application goes to a free Mate of it (`assigned`), told over the Mate's link (`task`), and told
  *   again on each link it opens until it takes it. HQ looks again when a task waits, a Mate's link
  *   or attention moves, and a task ends.
@@ -43,6 +44,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
+import type * as Statement from "effect/sql/Statement";
 
 import { Changes } from "./changes.ts";
 import { GithubIssues } from "./githubIssues.ts";
@@ -149,6 +151,28 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const wakes = yield* Queue.sliding<void>(1);
       const wake = Effect.asVoid(Queue.offer(wakes, undefined));
       const leading = Effect.map(leader.status, (status) => status.state === "active");
+
+      /**
+       * Whether the Mate's last task's change still waits for review: its copy of the code holds
+       * that work, so it takes no new task until the change is merged or closed.
+       */
+      const heldBy = (mate: Statement.Fragment) => sql`EXISTS (
+        SELECT 1 FROM hq_task t JOIN hq_change c ON c.app_id = t.app_id
+          AND c.repo = t.change_repo AND c.number = t.change_number
+        WHERE t.mate_project_id = ${mate} AND c.state = 'open')`;
+      /** The Mates held so, as last read: their rows read that task until it is let go. */
+      let held: ReadonlySet<string> = new Set();
+      /** A change moved: every Mate it holds or let go told, and HQ looks again for free Mates. */
+      const changeMoved = Effect.gen(function* () {
+        const rows = yield* sql<{ readonly project_id: string }>`
+          SELECT m.project_id FROM hq_mate m WHERE m.automated AND ${heldBy(sql`m.project_id`)}`;
+        const now = new Set(rows.map((row) => row.project_id));
+        const before = held;
+        held = now;
+        for (const projectId of new Set([...before, ...now]))
+          if (before.has(projectId) !== now.has(projectId)) yield* structure.mateTouched(projectId);
+        yield* wake;
+      });
 
       /** A Mate HQ may hand a task to now, of those its records name free. */
       // A Mate that declined a task is not offered one again until this passes: it said it was busy.
@@ -262,6 +286,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             WHERE p.app_id::text = ${appId} AND p.kind IN ('mate', 'devstage') AND m.automated
               AND NOT EXISTS (SELECT 1 FROM hq_task t
                 WHERE t.mate_project_id = m.project_id AND t.state IN ('assigned', 'working'))
+              AND NOT (${heldBy(sql`m.project_id`)})
             ORDER BY m.seq`;
           const free = yield* freeNow(idle.map((row) => row.project_id));
           if (free.length === 0) continue;
@@ -438,6 +463,9 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           Stream.filter(leader.changes, (status) => status.state === "active"),
           () => wake,
         ),
+      );
+      yield* Effect.forkScoped(
+        Stream.runForEach(changes.changes, () => logged("a change's Mate not told")(changeMoved)),
       );
       // A key kept: the tasks that waited for one go.
       yield* Effect.forkScoped(Stream.runForEach(aiKeys.changes, () => wake));
