@@ -106,6 +106,7 @@ const getHealth = (
                 holdingRepos: (effect) => effect,
                 recorded: Stream.make(0),
                 pushes,
+                moves: Stream.empty,
               }),
             ),
           ),

@@ -43,6 +43,7 @@ import * as Duration from "effect/Duration";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
@@ -66,6 +67,14 @@ export interface PushedChange {
   readonly mateId: string;
   readonly number: number;
 }
+
+/**
+ * A ref the log followed: a change's branch (`change`), or `main` and what moved it — for readers
+ * that act on every move without taking it from another (`githubMirror.ts`).
+ */
+export type GitMove =
+  | ({ readonly kind: "change" } & PushedChange)
+  | { readonly kind: "main"; readonly repo: Repo; readonly by: string };
 
 /** Where git stands on this Core: open, opening (leading, its takeover not through), or closed. */
 export type GitState = "open" | "opening" | "closed";
@@ -132,6 +141,8 @@ export class GitHost extends Context.Service<
      * content (`changes.ts`).
      */
     readonly pushes: Queue.Dequeue<PushedChange>;
+    /** Every ref the log follows from now on, after it followed it; each subscriber sees each. */
+    readonly moves: Stream.Stream<GitMove>;
   }
 >()("@t3tools/hq/gitHost") {}
 
@@ -295,6 +306,7 @@ export const gitHostLayer = (options: {
       const ticks = yield* SubscriptionRef.make(0);
       const tick = SubscriptionRef.update(ticks, (n) => n + 1);
       const pushes = yield* Queue.unbounded<PushedChange>();
+      const moves = yield* PubSub.unbounded<GitMove>();
 
       /** A ref the layer wrote: the change it is the branch of judged, or the repository's main. */
       const record = (git: HqGit, event: GitEvent) =>
@@ -308,11 +320,13 @@ export const gitHostLayer = (options: {
                 pushed(event.repo, change, update.oldSha, update.newSha, verdict, {}),
               );
               yield* Queue.offer(pushes, { repo: event.repo, ...change });
+              yield* PubSub.publish(moves, { kind: "change", repo: event.repo, ...change });
             }
           } else if (event.kind === "main_moved") {
             yield* leader.write(mainMoved(event.repo, event.old, event.new, event.by));
             yield* rollouts.wake;
             yield* rejudge(git, event.repo);
+            yield* PubSub.publish(moves, { kind: "main", repo: event.repo, by: event.by });
           }
           yield* tick;
         });
@@ -605,6 +619,7 @@ export const gitHostLayer = (options: {
         holdingRepos: (effect) => Semaphore.withPermits(holding, 1)(effect),
         recorded: SubscriptionRef.changes(ticks),
         pushes,
+        moves: Stream.fromPubSub(moves),
       });
     }),
   );
