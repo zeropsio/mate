@@ -13,7 +13,7 @@ import type { OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
  * The branch stage follows production on when it is added from an origin ask (the orchestrator's
  * decision): a stage added by hand keeps the sheet's own default.
  */
-export const ORIGIN_STAGE_BRANCH = "mate/stage";
+export const ORIGIN_STAGE_BRANCH = "mate-stage";
 
 /** Where an origin ask stands in the timeline: the run card it was asked in. */
 export interface OriginAskPlace {
