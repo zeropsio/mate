@@ -1033,11 +1033,11 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                           ? {}
                           : { attachmentsByQuestionId }),
                       }
-                    : answer.kind === "secret"
+                    : answer.kind === "secret" || answer.kind === "origin"
                       ? { outcome: answer.outcome }
                       : null,
-              // A secret's record is worded by the engine: the client's words never reach it.
-              summary: answer.kind === "secret" ? "" : input.summary,
+              // A card's record is worded by the engine: the client's words never reach it.
+              summary: answer.kind === "secret" || answer.kind === "origin" ? "" : input.summary,
             };
           },
         );

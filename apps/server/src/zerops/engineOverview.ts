@@ -12,6 +12,7 @@
 import {
   ConversationId,
   DEFAULT_MODEL,
+  isCardAsk,
   MATE_ENGINE_PROTOCOLS,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   ProjectId,
@@ -128,10 +129,10 @@ const sessionOf = (view: ConversationView, run: ViewRun, at: string): Orchestrat
 };
 
 /** The engine conversation as a V1 thread shell, for HQ's overview and the Mate's attention. */
-/** The row waits on a value asked of the person (`rowStateOf`): the one rule for needs you. */
-const waitsOnValue = (view: ConversationView): boolean => {
+/** The row waits on an ask on a card (`rowStateOf`): the one rule for needs you. */
+const waitsOnCard = (view: ConversationView): boolean => {
   const state = rowStateOf(view);
-  return state.kind === "waiting" && state.on === "vault";
+  return state.kind === "waiting" && isCardAsk(state.on);
 };
 
 export const engineShellOf = (view: ConversationView): OrchestrationThreadShell => {
@@ -196,10 +197,10 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
         ? null
         : { role: "user", text: personText, createdAt: iso(person.at) },
     hasPendingApprovals: asked.some((request) => request.ask.kind === "approval"),
-    // A value asked of the person outlives the turn that asked: the row waits on it, and so does
-    // every face and list read off this shell, until the person answers it.
+    // An ask on a card outlives the turn that asked: the row waits on it, and so does every face
+    // and list read off this shell, until the person answers it.
     hasPendingUserInput:
-      asked.some((request) => request.ask.kind !== "approval") || waitsOnValue(view),
+      asked.some((request) => request.ask.kind !== "approval") || waitsOnCard(view),
     hasActionableProposedPlan: false,
     // Nothing on, but the work goes on: its helpers or jobs, or a turn due at once (a finished
     // job's, an answered value's): the row's word, so the attention never counts it at rest

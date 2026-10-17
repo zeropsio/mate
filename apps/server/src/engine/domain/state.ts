@@ -165,15 +165,12 @@ export interface OpenRequest {
   readonly questions?: ReadonlyArray<{ readonly id: string; readonly question: string }>;
   /** A value asked of the person: its key and vault, to word the agent's line on the answer. */
   readonly vault?: Pick<VaultAsk, "key" | "scope">;
+  /** An origin asked of the person: its address and HQ repository, to word the agent's line. */
+  readonly origin?: Pick<OriginAsk, "url" | "repo">;
 }
 
 export type VaultAsk = Extract<RequestAsk, { readonly kind: "vault" }>;
-
-/**
- * A value the agent asked the person for: it outlives the turn that asked, holds no run, no
- * session and no update, and is answered saved or declined, never with the value.
- */
-export const isVaultAsk = (request: OpenRequest): boolean => request.kind === "vault";
+export type OriginAsk = Extract<RequestAsk, { readonly kind: "origin" }>;
 
 export interface ArmedWake {
   readonly id: WakeId;

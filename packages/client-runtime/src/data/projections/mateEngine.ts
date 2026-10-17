@@ -37,6 +37,7 @@ import {
   type RuntimeMode,
   type ThreadCrewOrigin,
   type RunRecord,
+  isCardAsk,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
@@ -1461,7 +1462,7 @@ export function overlayEngineRow(
     },
     hasPendingApprovals: row.state.kind === "waiting" && row.state.on === "approval",
     hasPendingUserInput:
-      row.state.kind === "waiting" && (row.state.on === "question" || row.state.on === "vault"),
+      row.state.kind === "waiting" && (row.state.on === "question" || isCardAsk(row.state.on)),
     pendingAsk: row.state.kind === "waiting" && row.state.on === "vault" ? "key" : null,
     updatedAt: iso(row.at),
   };
