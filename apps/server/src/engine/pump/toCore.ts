@@ -42,6 +42,7 @@ import type {
 import type { ZeropsActivityResult } from "../../zerops/zeropsActivityResult.ts";
 import type { ProviderSignal } from "../domain/command.ts";
 import { AGENT_TURN_DUE_MS } from "../domain/decide.ts";
+import { originAskOfCall } from "./originAsk.ts";
 import { vaultAskOfCall, vaultStoredOfCall } from "./vaultAsk.ts";
 
 /** How long a body's text is in the record; the rest is the item's detail. */
@@ -356,14 +357,14 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
             ...(detail === undefined ? {} : { detail }),
             ...afterEnd,
           });
-          // A call that asked the person for a value opens the ask on its turn: the agent does
-          // not wait on it, and the person answers it on its card.
-          const asked = vaultAskOfCall(body);
+          // A call that asked the person for a value, or to connect an origin, opens the ask on
+          // its turn: the agent does not wait on it, and the person answers it on its card.
+          const asked = vaultAskOfCall(body) ?? originAskOfCall(body);
           if (asked !== null) {
             signals.push({
               kind: "request-opened",
               turn: item.turn,
-              key: `vault:${signal.item}`,
+              key: `${asked.kind}:${signal.item}`,
               ask: asked,
             });
           }

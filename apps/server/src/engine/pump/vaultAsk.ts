@@ -20,16 +20,16 @@ const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const REASON_MAX = 280;
 const LABEL_MAX = 80;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 type VaultScope = Extract<RequestAsk, { kind: "vault" }>["scope"];
 
-/** zcp's answer to a closed `zerops_env` call; `null` for every other call, or one that is not JSON. */
-function answerOfCall(body: ItemBody): Record<string, unknown> | null {
+/** zcp's answer to a closed call of `tool`; `null` for every other call, or one that is not JSON. */
+export function zcpAnswerOfCall(body: ItemBody, tool: string): Record<string, unknown> | null {
   if (body.kind !== "call" || body.state !== "done") return null;
   const result = body.result;
-  if (result?.toolName !== VAULT_REQUEST_TOOL || result.resultText === undefined) return null;
+  if (result?.toolName !== tool || result.resultText === undefined) return null;
   try {
     const answer: unknown = JSON.parse(result.resultText);
     return isRecord(answer) ? answer : null;
@@ -48,7 +48,7 @@ const vaultOf = (scope: unknown, serviceHostname: unknown): VaultScope | null =>
 
 /** The ask a closed call made of the person; `null` for every other call, or a malformed answer. */
 export function vaultAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "vault" }> | null {
-  const requested = answerOfCall(body)?.requested;
+  const requested = zcpAnswerOfCall(body, VAULT_REQUEST_TOOL)?.requested;
   if (!isRecord(requested)) return null;
   const { key, scope, serviceHostname, sensitive, label } = requested;
   // `why`, from a zcp that names the value; `reason`, from one before it.
@@ -75,7 +75,7 @@ export function vaultAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "vau
 export function vaultStoredOfCall(
   body: ItemBody,
 ): { readonly keys: ReadonlyArray<string>; readonly scope: VaultScope } | null {
-  const answer = answerOfCall(body);
+  const answer = zcpAnswerOfCall(body, VAULT_REQUEST_TOOL);
   if (answer === null || answer.requested !== undefined || !Array.isArray(answer.stored)) {
     return null;
   }

@@ -445,7 +445,7 @@ export type EngineStopInput = typeof EngineStopInput.Type;
 /** The person's answer to a request, as its kind takes it. */
 export const EngineAnswer = forwardCompatibleUnion({
   key: "kind",
-  known: ["approval", "input", "secret", "unknown"],
+  known: ["approval", "input", "secret", "origin", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("approval"), decision: ProviderApprovalDecision }),
     Schema.Struct({
@@ -461,6 +461,14 @@ export const EngineAnswer = forwardCompatibleUnion({
     Schema.Struct({
       kind: Schema.Literal("secret"),
       outcome: Schema.Literals(["saved", "declined"]),
+    }),
+    /**
+     * An origin asked of the person (an `origin` request): how it ended, never a token — the
+     * person's client connected it in HQ itself. Nothing else it carries decodes.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("origin"),
+      outcome: Schema.Literals(["connected", "declined"]),
     }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),

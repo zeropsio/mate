@@ -6,11 +6,12 @@
  *
  * @module engine/read/conversationRow
  */
-import type {
-  BackgroundWork,
-  ConversationRow,
-  ConversationRowState,
-  RunEnd,
+import {
+  isCardAsk,
+  type BackgroundWork,
+  type ConversationRow,
+  type ConversationRowState,
+  type RunEnd,
 } from "@t3tools/contracts";
 import { maskSecrets, messagePreviewText } from "@t3tools/shared/messagePreview";
 import { attachmentsLabel, userAskOf, type UserAskSource } from "@t3tools/shared/userAsk";
@@ -82,22 +83,24 @@ const askWords = (request: ViewRequest): string | null => {
     }
     case "vault":
       return rowText(ask.reason ?? ask.key);
+    case "origin":
+      return rowText(ask.reason ?? ask.url);
     default:
       return null;
   }
 };
 
-const WAITS_ON = ["approval", "question", "vault", "plan"] as const;
+const WAITS_ON = ["approval", "question", "vault", "origin", "plan"] as const;
 type WaitsOn = (typeof WAITS_ON)[number];
 const waitsOn = (kind: string): kind is WaitsOn =>
   (WAITS_ON as ReadonlyArray<string>).includes(kind);
 
 /**
- * A value the agent asked the person for: it outlives the turn that asked, so the conversation
- * waits on the person once nothing runs.
+ * Asked of the person on a card (a value, an origin): it outlives the turn that asked, so the
+ * conversation waits on the person once nothing runs.
  */
-const vaultAsk = (view: ConversationView): ViewRequest | undefined =>
-  view.openRequests.find((request) => request.ask.kind === "vault");
+const cardAsk = (view: ConversationView): ViewRequest | undefined =>
+  view.openRequests.find((request) => isCardAsk(request.ask.kind));
 
 /**
  * A helper's ask after the run that started it ended: the only approval or question the agent
@@ -137,7 +140,7 @@ const workOf = (view: ConversationView): BackgroundWork => {
 };
 
 /**
- * The row's state: a question first, then the run on, a value asked of the person, the queue, a
+ * The row's state: a question first, then the run on, an ask on a card, the queue, a
  * pause, a failure, rest.
  */
 export const rowStateOf = (view: ConversationView): ConversationRowState => {
@@ -159,8 +162,10 @@ export const rowStateOf = (view: ConversationView): ConversationRowState => {
       ...stopping,
     };
   }
-  const value = vaultAsk(view);
-  if (value !== undefined) return { kind: "waiting", on: "vault", words: askWords(value) };
+  const card = cardAsk(view);
+  if (card !== undefined && waitsOn(card.ask.kind)) {
+    return { kind: "waiting", on: card.ask.kind, words: askWords(card) };
+  }
   if (view.pausedUntil !== null) {
     return { kind: "paused", resetsAt: view.pausedUntil === "unknown" ? null : view.pausedUntil };
   }
@@ -220,7 +225,7 @@ export const conversationRowOf = (
   const state = rowStateOf(view);
   const asked =
     view.openRequests.find((request) => request.runId === view.activeRun?.id) ??
-    (state.kind === "waiting" && state.on === "vault" ? vaultAsk(view) : undefined);
+    (state.kind === "waiting" && isCardAsk(state.on) ? cardAsk(view) : undefined);
   return {
     conversationId: view.conversationId,
     agent: view.agent,

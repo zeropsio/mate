@@ -399,6 +399,9 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             ...(event.ask.kind === "vault"
               ? { vault: { key: event.ask.key, scope: event.ask.scope } }
               : {}),
+            ...(event.ask.kind === "origin"
+              ? { origin: { url: event.ask.url, repo: event.ask.repo } }
+              : {}),
           },
         },
       };
@@ -437,6 +440,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             ...(answered?.byHelper === true ? { byHelper: true as const } : {}),
             ...(answered?.questions === undefined ? {} : { questions: answered.questions }),
             ...(answered?.vault === undefined ? {} : { vault: answered.vault }),
+            ...(answered?.origin === undefined ? {} : { origin: answered.origin }),
           },
         },
         answering: Object.fromEntries(

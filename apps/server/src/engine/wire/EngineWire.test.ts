@@ -1088,6 +1088,106 @@ describe("a value the Mate asks the person for", () => {
   );
 });
 
+describe("an origin the Mate asks the person to connect", () => {
+  /** A value shaped like a GitHub token, made from parts. */
+  const TOKEN = ["ghp", "_", "Zq".repeat(18)].join("");
+  const URL = "https://github.com/zeropsio/mate";
+
+  /** The agent asks for the origin and ends its turn; the rows the client saw, and the request. */
+  const askOrigin = (w: EngineWorld, wire: Effect.Success<ReturnType<typeof wireOf>>) =>
+    Effect.gen(function* () {
+      const frames: Array<EngineRowsFrame> = [];
+      yield* Stream.runForEach(wire.subscribeRows({ protocol }, ana), (frame) =>
+        Effect.sync(() => frames.push(frame)),
+      ).pipe(Effect.forkScoped);
+      yield* send(wire, "rozjeď vývoj pro https://github.com/zeropsio/mate");
+      yield* w.settle;
+      yield* w.agent((agent, thread) =>
+        agent.zerops(
+          thread,
+          "zerops_origin",
+          { action: "request", url: URL, repo: "appdev", why: "Deliver work back." },
+          "request origin",
+          JSON.stringify({
+            requested: { origin: { url: URL, repo: "appdev", why: "Deliver work back." } },
+            nextActions: "Now waiting on the person.",
+          }),
+        ),
+      );
+      yield* w.agent((agent, thread) => agent.say(thread, "I asked to connect the origin."));
+      yield* w.agent((agent, thread) => agent.finish(thread));
+      const [request] = yield* w.requests;
+      assert.strictEqual(request?.state, "open");
+      const row = () => frames.flatMap((frame) => (frame.type === "row" ? [frame.row] : [])).at(-1);
+      return { frames, request: request!, row };
+    });
+
+  it.effect(
+    "A zerops_origin request opens an origin ask that keeps the thread waiting on the person",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const { row } = yield* askOrigin(w, wire);
+          const [snapshot] = yield* watch(w, wire);
+          if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+          assert.deepStrictEqual(snapshot.requests[0]?.ask, {
+            kind: "origin",
+            url: URL,
+            repo: "appdev",
+            reason: "Deliver work back.",
+          });
+          // The turn that asked has ended: the conversation waits on the person.
+          assert.deepStrictEqual(row()?.state, {
+            kind: "waiting",
+            on: "origin",
+            words: "Deliver work back.",
+          });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect.each([
+    ["connected", "answered", `Origin request for ${URL}: connected as appdev.`],
+    ["declined", "declined", `Origin request for ${URL}: declined.`],
+  ] as const)(
+    "The agent hears connected or declined for its origin ask, never a token (%s)",
+    ([outcome, state, line]) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const { frames, request } = yield* askOrigin(w, wire);
+          // A client that sent the token with its answer: neither the answer nor its words keep it.
+          const result = yield* wire.answer(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("answer-origin"),
+              requestId: RequestId.make(request.request_id),
+              answer: { kind: "origin", outcome, token: TOKEN } as never,
+              summary: TOKEN,
+            },
+            ana,
+          );
+          assert.strictEqual(result._tag, "Accepted");
+          yield* w.advance(0);
+          yield* w.settle;
+          assert.strictEqual((yield* w.requests)[0]?.state, state);
+          assert.isTrue(
+            w.provider.calls.some((call) => call.endsWith(`: ${line}`)),
+            w.provider.calls.join("\n"),
+          );
+          assert.notInclude(w.provider.calls.join("\n"), TOKEN);
+          assert.notInclude(JSON.stringify(frames), TOKEN);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});
+
 describe("a client subscribed to a Mate's conversation rows", () => {
   it.effect("gets each conversation's row with its agent, then the row again as it changes", () =>
     Effect.scoped(
