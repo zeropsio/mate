@@ -115,9 +115,15 @@ export interface ZeropsNewMateFormProps {
   readonly onOpenKeySettings?: (() => void) | undefined;
 }
 
-/** A room that opens and gives itself back in one move: a grid row from 0fr to 1fr. */
+/**
+ * A room that opens and gives itself back in one move: a grid row from 0fr to 1fr. It may shrink
+ * below its content (`min-h-0`, rows `minmax(0, 1fr)`), so a long form scrolls inside the dialog's
+ * panel and its footer — Add — stays in view: an organization with many people pushed Add below
+ * the window, and a press there closed the dialog instead.
+ */
 const ROOM_CLASS =
-  "grid transition-[grid-template-rows] duration-200 ease-(--ease-out-strong) motion-reduce:transition-none";
+  "grid min-h-0 transition-[grid-template-rows] duration-200 ease-(--ease-out-strong) motion-reduce:transition-none";
+const ROOM_OPEN = "minmax(0, 1fr)";
 
 export function ZeropsNewMateForm({
   groupName,
@@ -254,7 +260,7 @@ export function ZeropsNewMateForm({
           gives its own back below, so the dialog's height follows in one move. */}
       <div
         className={ROOM_CLASS}
-        style={{ gridTemplateRows: closed === undefined ? "0fr" : "1fr" }}
+        style={{ gridTemplateRows: closed === undefined ? "0fr" : ROOM_OPEN }}
       >
         <div className="min-h-0 overflow-hidden">
           <div
@@ -274,7 +280,7 @@ export function ZeropsNewMateForm({
           what was typed and picked for a door that opens again. */}
       <div
         className={ROOM_CLASS}
-        style={{ gridTemplateRows: closed === undefined ? "1fr" : "0fr" }}
+        style={{ gridTemplateRows: closed === undefined ? ROOM_OPEN : "0fr" }}
       >
         <div className="min-h-0 overflow-hidden">
           <DialogPanel>
