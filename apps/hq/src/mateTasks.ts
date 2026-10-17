@@ -7,8 +7,12 @@
  *   application goes to a free Mate of it (`assigned`), told over the Mate's link (`task`), and told
  *   again on each link it opens until it takes it. HQ looks again when a task waits, a Mate's link
  *   or attention moves, and a task ends.
+ * - Nothing is handed out while the organization keeps no key for the provider automated Mates run
+ *   on (`orgAiKeys.ts`): tasks wait, counted as waiting.
  * - A Mate that does not take its task within `acceptWithin` (60 s), or goes offline before it
  *   does, gives it back (`queued`, one try more); the third try that runs out fails it, saying why.
+ * - A Mate that turns its task down gives it back with no try against it; once its Mates have
+ *   turned it down for 30 minutes it fails, with the last reason.
  * - The Mate's word moves its task (`task-state`): taken (`working`, in the conversation it names),
  *   then done or failed — its Mate free again. A word of a task not its own is passed by.
  * - A task whose Mate's record went is given back, or failed where the Mate had taken it.
@@ -23,6 +27,7 @@ import type { MateTask, MateTaskReport } from "@t3tools/contracts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import type { MateLinkDown } from "@t3tools/shared/mateLink";
+import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -41,6 +46,7 @@ import { GithubIssues } from "./githubIssues.ts";
 import { remoteIdentity } from "./gitTransport.ts";
 import { Leader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
+import { OrgAiKeys } from "./orgAiKeys.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { Roles } from "./roles.ts";
 import { Structure } from "./structure.ts";
@@ -52,6 +58,17 @@ export const TASK_TRIES = 3;
 export const UNTAKEN = "No automated Mate took it up in time, three times over.";
 /** Why a task failed whose Mate is gone. */
 export const MATE_GONE = "Its Mate is gone.";
+/** How long a task's Mates may turn it down before it fails. */
+export const DECLINED_FOR = Duration.minutes(30);
+/** Why a task failed that its Mates kept turning down, with the last one's reason. */
+const declinedTooLong = (reason: string | undefined) =>
+  `it was turned down for 30 minutes. The last reason: ${reason?.trim() || "none given."}`;
+
+/**
+ * The provider an automated Mate's agents run on with the organization's key, as the Mate's own
+ * (`ZeropsAutomation.ts`): Nebius first. Without its key no task is handed out.
+ */
+const AUTOMATED_PROVIDER = OPENCODE_KEY_PROVIDERS[0]!;
 
 export class MateTasks extends Context.Service<
   MateTasks,
@@ -113,6 +130,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const roles = yield* Roles;
       const remotes = yield* Remotes;
       const github = yield* GithubIssues;
+      const aiKeys = yield* OrgAiKeys;
       const layerScope = yield* Effect.scope;
       // One comment at a time, in the order the task moved: GitHub shows them so.
       const telling = yield* Semaphore.make(1);
@@ -211,9 +229,23 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             `${mate} couldn't finish this: ${(detail ?? "").trim().slice(0, 2000) || "no reason given."}`,
         );
 
-      /** Each application's oldest waiting tasks, to its free Mates, one each. */
+      /** A task no Mate took, failed on GitHub too: no Mate's name, since none took it. */
+      const untaken = (taskId: string) =>
+        tell(
+          taskId,
+          ({ detail }) =>
+            `No automated Mate could take this up: ${(detail ?? "").trim().slice(0, 2000) || "no reason given."}`,
+        );
+
+      /**
+       * Each application's oldest waiting tasks, to its free Mates, one each — none while the
+       * organization keeps no key for their provider: they would only turn them down.
+       */
       const dispatch = Effect.gen(function* () {
         if (!(yield* leading)) return;
+        const keyed = yield* sql`
+          SELECT 1 FROM hq_org_ai_key WHERE provider = ${AUTOMATED_PROVIDER.id}`;
+        if (keyed.length === 0) return;
         const apps = yield* sql<{ readonly app_id: string }>`
           SELECT DISTINCT app_id::text AS app_id FROM hq_task WHERE state = 'queued'`;
         for (const { app_id: appId } of apps) {
@@ -367,6 +399,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           () => wake,
         ),
       );
+      // A key kept: the tasks that waited for one go.
+      yield* Effect.forkScoped(Stream.runForEach(aiKeys.changes, () => wake));
       yield* Effect.forkScoped(
         Stream.runForEach(changes.taskChanges, (taskId) =>
           tell(taskId, ({ mate, change }) =>
@@ -397,11 +431,24 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               state: word.state,
             });
           if (word.state === "declined") {
-            // Not taken: back to wait for a free Mate, no try against it, this one left alone a while.
-            yield* leader.write(sql`
-              UPDATE hq_task SET state = 'queued', mate_project_id = NULL, assigned_at = NULL,
-                updated_at = now()
-              WHERE id::text = ${word.taskId} AND state = 'assigned'`);
+            // Not taken: back to wait for a free Mate, no try against it, this one left alone a
+            // while — failed once its Mates have turned it down for `DECLINED_FOR`.
+            const declinedSecs = Duration.toSeconds(DECLINED_FOR);
+            const [moved] = yield* leader.write(sql<{ readonly state: string }>`
+              UPDATE hq_task SET updated_at = now(), mate_project_id = NULL,
+                declined_since = COALESCE(declined_since, now()),
+                state = CASE WHEN declined_since < now() - make_interval(secs => ${declinedSecs})
+                  THEN 'failed' ELSE 'queued' END,
+                detail = CASE WHEN declined_since < now() - make_interval(secs => ${declinedSecs})
+                  THEN ${declinedTooLong(word.detail)} ELSE detail END,
+                assigned_at = CASE WHEN declined_since < now() - make_interval(secs => ${declinedSecs})
+                  THEN assigned_at END
+              WHERE id::text = ${word.taskId} AND state = 'assigned'
+              RETURNING state`);
+            if (moved?.state === "failed") {
+              yield* untaken(word.taskId);
+              yield* structure.touched;
+            }
             declinedUntil.set(projectId, (yield* Clock.currentTimeMillis) + acceptMs);
             yield* wake;
           } else if (word.state === "accepted" || word.state === "working") {

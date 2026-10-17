@@ -22,16 +22,24 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import { GITHUB_TOKEN } from "../test/harness/automated.ts";
-import { UNTAKEN } from "./mateTasks.ts";
+import { DECLINED_FOR, UNTAKEN } from "./mateTasks.ts";
 
 const NAV = { kind: "navigation" } as const;
+
+/** A fake Nebius key, built from parts so no scanner takes it for one. */
+const NEBIUS_KEY = ["v1", "fake", "nebius", "key", "0123456789"].join(".");
 
 /**
  * A Core whose application `Tea Shop` takes `acme/tea-shop`'s issues labelled `mate`, with its
  * automated Mate `P_ROBOT` linked and resting.
  */
 const withPool = (
-  given: { readonly taskAcceptWithin?: Duration.Duration; readonly busy?: boolean } = {},
+  given: {
+    readonly taskAcceptWithin?: Duration.Duration;
+    readonly busy?: boolean;
+    /** The organization keeps no key for its automated Mates' provider. */
+    readonly keyless?: boolean;
+  } = {},
 ) =>
   Effect.gen(function* () {
     const github = yield* githubFake;
@@ -48,6 +56,9 @@ const withPool = (
       body: { name: "Tea Shop" },
     });
     const appId = (app.body as { readonly id: string }).id;
+    const keyKept = () =>
+      core.call("PUT", "/api/org/ai-keys/nebius", { session: owner, body: { value: NEBIUS_KEY } });
+    if (given.keyless !== true) yield* keyKept();
     yield* connectedRepo(core, appId, "web", "acme/tea-shop");
     const hook = yield* intakeOn(core, github, owner, appId);
     addProject(core.fake, "P_ROBOT");
@@ -61,7 +72,7 @@ const withPool = (
         "SELECT id::text AS id, number, state, mate_project_id, attempts, detail, conversation_id FROM hq_task ORDER BY seq",
         matches,
       );
-    return { ...core, github, owner, appId, hook, robot, issue, tasks };
+    return { ...core, github, owner, appId, hook, robot, issue, tasks, keyKept };
   });
 
 type Link = Effect.Success<ReturnType<typeof withPool>>["robot"]["link"];
@@ -178,6 +189,64 @@ describe("tasks for automated Mates", () => {
           const [again] = yield* core.tasks((rows) => rows[0]?.["state"] === "assigned");
           assert.deepInclude(again, { attempts: 0, mate_project_id: "P_ROBOT" });
         }),
+    );
+
+    it.effect(
+      "while the organization keeps no key for its automated Mates' provider, tasks wait and none is handed out; once it keeps one, they go",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool({ keyless: true });
+          const watching = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
+          );
+          yield* scopeReset(watching, NAV);
+          yield* core.issue(1);
+          yield* nextScopeValue<HqNavigationApp>(
+            watching,
+            NAV,
+            `app:${core.appId}`,
+            (value) => value.intake?.waiting === 1,
+          );
+          const [waiting] = yield* core.tasks((rows) => rows.length === 1);
+          assert.deepInclude(waiting, { state: "queued", attempts: 0, mate_project_id: null });
+          assert.isFalse((yield* core.robot.link.collected).some((frame) => frame.type === "task"));
+          yield* core.keyKept();
+          yield* toldTask(core.robot.link, 1);
+          yield* watching.close;
+        }),
+    );
+
+    it.effect("a task its Mates keep turning down for 30 minutes fails, saying why", () =>
+      Effect.gen(function* () {
+        const core = yield* withPool({ taskAcceptWithin: Duration.millis(200) });
+        yield* core.issue(1);
+        const declined = (taskId: string) =>
+          core.robot.link.send({
+            type: "task-state",
+            report: { taskId, state: "declined", detail: "Still standing up." },
+          });
+        const task = yield* toldTask(core.robot.link, 1);
+        yield* declined(task.id);
+        yield* core.tasks((rows) => rows[0]?.["state"] === "queued");
+        // Turned down first half an hour ago.
+        yield* core.sql`
+          UPDATE hq_task SET declined_since = now() - make_interval(secs => ${Duration.toSeconds(DECLINED_FOR) + 1})`;
+        yield* declined((yield* toldTask(core.robot.link, 1)).id);
+        const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "failed");
+        assert.deepInclude(row, {
+          mate_project_id: null,
+          detail: "it was turned down for 30 minutes. The last reason: Still standing up.",
+        });
+        yield* core.github.seenWhere("the failure's comment", (seen) =>
+          seen.some((request) => request.path.endsWith("/comments")),
+        );
+        assert.deepStrictEqual(yield* core.github.comments, [
+          [
+            "/repos/acme/tea-shop/issues/1/comments",
+            "No automated Mate could take this up: it was turned down for 30 minutes. The last reason: Still standing up.",
+          ],
+        ]);
+      }),
     );
 
     it.effect("a Mate whose link drops before it takes its task gives it back", () =>

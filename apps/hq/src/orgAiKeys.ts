@@ -57,6 +57,8 @@ export class OrgAiKeys extends Context.Service<
      * for an ordinary Mate.
      */
     readonly framesFor: (projectId: string) => Stream.Stream<string, SqlError>;
+    /** Ticks after a key was kept or forgotten, starting with the current tick. */
+    readonly changes: Stream.Stream<number>;
   }
 >()("@t3tools/hq/orgAiKeys") {}
 
@@ -111,6 +113,7 @@ export const orgAiKeysLayer = Layer.effect(
     );
 
     return OrgAiKeys.of({
+      changes: SubscriptionRef.changes(ticks),
       list: Effect.map(rows, (kept) =>
         OPENCODE_KEY_PROVIDERS.map((provider) =>
           viewOf(provider.id, kept.find((row) => row.provider === provider.id)?.set_at ?? null),
