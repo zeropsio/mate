@@ -372,6 +372,8 @@ describe("a change's pull request", () => {
             (project) => project.mate?.task?.pullRequest?.checks === "pending",
           );
           assert.deepStrictEqual(row.mate?.task?.pullRequest, pending);
+          // A live task never says it ended.
+          assert.notProperty(row.mate?.task ?? {}, "ended");
           const app = yield* nextScopeValue<HqNavigationApp>(
             watching,
             NAV,
@@ -383,6 +385,43 @@ describe("a change's pull request", () => {
             Array.isArray(app.changes) ? app.changes[0]?.pullRequest : undefined,
             pending,
           );
+          yield* watching.close;
+        }),
+    );
+
+    it.effect(
+      "a free Mate's row keeps its last task, saying how it ended, with its pull request",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const watching = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
+          );
+          yield* scopeReset(watching, NAV);
+          const task = yield* opened(core);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "done" },
+          });
+          const squash = yield* squashOnMain(core);
+          yield* core.dispatch("pull_request", {
+            action: "closed",
+            pull_request: {
+              number: 2,
+              merged: true,
+              merge_commit_sha: squash,
+              head: { sha: HEAD },
+            },
+          });
+          const row = yield* nextScopeValue<HqNavigationProject>(
+            watching,
+            NAV,
+            "project:P_ROBOT",
+            (project) => project.mate?.task?.ended !== undefined,
+          );
+          assert.strictEqual(row.mate?.task?.id, task.id);
+          assert.strictEqual(row.mate?.task?.ended, "merged");
+          assert.deepInclude(row.mate?.task?.pullRequest ?? {}, { number: 2, state: "merged" });
           yield* watching.close;
         }),
     );

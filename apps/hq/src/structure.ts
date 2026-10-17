@@ -1071,20 +1071,30 @@ export const structureLayer = (options: {
                        || CASE WHEN NOT m.automated THEN '{}'::jsonb ELSE jsonb_build_object('automated', true, 'task',
                          CASE WHEN task.id IS NULL THEN NULL ELSE jsonb_build_object('id', task.id,
                            'source', task.source, 'waiting', task.state = 'waiting')
+                           || CASE WHEN task.ended IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('ended', task.ended) END
                            || CASE WHEN task_pr.pr_number IS NULL THEN '{}'::jsonb ELSE jsonb_build_object(
                              'pullRequest', jsonb_strip_nulls(jsonb_build_object('number', task_pr.pr_number,
                                'url', task_pr.url, 'state', task_pr.state, 'checks', task_pr.checks))) END
                          END) END END AS mate
               FROM hq_app_project p FULL OUTER JOIN hq_mate m USING (project_id)
               LEFT JOIN hq_press press ON press.project_id = m.project_id AND press.kind = 'mate'
+              -- Its live task — on it, or done while its change waits for review — else its most
+              -- recent one of the last 7 days, saying how it ended (its change's fate first).
               LEFT JOIN (SELECT DISTINCT ON (t.mate_project_id) t.mate_project_id, t.id::text AS id,
-                  t.source, t.state, t.app_id, t.change_repo, t.change_number
+                  t.source, t.state, t.app_id, t.change_repo, t.change_number,
+                  CASE WHEN t.state IN ('assigned', 'working', 'waiting') OR tc.state = 'open' THEN NULL
+                    WHEN tc.state IN ('merged', 'closed') THEN tc.state
+                    WHEN t.state = 'dropped' THEN 'stopped'
+                    ELSE t.state END AS ended
                 FROM hq_task t
+                LEFT JOIN hq_change tc ON tc.app_id = t.app_id AND tc.repo = t.change_repo
+                  AND tc.number = t.change_number
                 WHERE t.mate_project_id IS NOT NULL AND (t.state IN ('assigned', 'working', 'waiting')
-                  OR (t.change_number IS NOT NULL AND EXISTS (SELECT 1 FROM hq_change c
-                    WHERE c.app_id = t.app_id AND c.repo = t.change_repo AND c.number = t.change_number
-                      AND c.state = 'open')))
-                ORDER BY t.mate_project_id, (t.state IN ('assigned', 'working', 'waiting')) DESC, t.seq DESC
+                  OR tc.state = 'open'
+                  OR (t.state IN ('done', 'failed', 'stopped', 'dropped')
+                    AND t.updated_at > now() - interval '7 days'))
+                ORDER BY t.mate_project_id,
+                  (t.state IN ('assigned', 'working', 'waiting') OR tc.state = 'open') DESC, t.seq DESC
               ) task ON task.mate_project_id = m.project_id
               LEFT JOIN hq_pull_request task_pr ON task_pr.app_id = task.app_id
                 AND task_pr.repo = task.change_repo AND task_pr.number = task.change_number
@@ -1100,6 +1110,7 @@ export const structureLayer = (options: {
                       readonly source: unknown;
                       readonly waiting: boolean;
                       readonly pullRequest?: HqNavigationMateTask["pullRequest"];
+                      readonly ended?: HqNavigationMateTask["ended"];
                     }
                   | null
                   | undefined;
@@ -1115,6 +1126,7 @@ export const structureLayer = (options: {
                             source,
                             waiting: task.waiting,
                             pullRequest: task.pullRequest,
+                            ended: task.ended,
                           }),
                   };
                 }
