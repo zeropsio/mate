@@ -428,7 +428,7 @@ function IntakeRoom({ children }: { readonly children: ReactNode }) {
         <Label>Repository</Label>
         <Input readOnly size="sm" tabIndex={-1} />
       </div>
-      <div className="col-start-1 row-start-1 self-center">{children}</div>
+      <div className="col-start-1 row-start-1 self-start">{children}</div>
     </div>
   );
 }

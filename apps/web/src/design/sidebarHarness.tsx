@@ -381,11 +381,17 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   }),
   candidate("todo-prod", "Todo - production", TODO.stop("production"), { container: false }),
 
-  // An application's automated Mates: one on a task from GitHub, one waiting for its next.
+  // An application's automated Mates: one at work on a task from GitHub, one whose task's change
+  // waits for review, one waiting for its next.
   candidate(
     "tea-nova",
     "Nova",
     automated("tea-shop", "Tea Shop", { number: 12, title: "Fix the checkout total" }),
+  ),
+  candidate(
+    "tea-rio",
+    "Rio",
+    automated("tea-shop", "Tea Shop", { number: 7, title: "Show the tea's origin" }),
   ),
   candidate("tea-sol", "Sol", automated("tea-shop", "Tea Shop", null)),
   candidate("tea-ida", "Ida", group("tea-shop", "Tea Shop").mate()),
@@ -410,6 +416,17 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
       }),
       liveStep: { words: "Run the checkout tests" },
     },
+  ],
+  [
+    "tea-rio",
+    activity({
+      id: "tea-rio",
+      task: "Work issue #7 in the project, check it, then open a change for review.",
+      subject: "Work issue #7 in the project, check it, then open a change for review.",
+      snippet: "Opened a change for review: Show the tea's origin on its page.",
+      hours: 1,
+      face: "idle",
+    }),
   ],
   [
     "tea-sol",
