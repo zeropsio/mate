@@ -45,7 +45,7 @@ import { githubGateLayer } from "./githubGate.ts";
 import { githubAppLayer } from "./githubApp.ts";
 import { githubAppRoutes } from "./githubAppRoutes.ts";
 import { githubEventsLayer } from "./githubEvents.ts";
-import { githubMirrorAbsentLayer } from "./githubMirror.ts";
+import { githubMirrorLayer } from "./githubMirror.ts";
 import { taskIntakeLayer, taskSourceChannelsLayer } from "./taskIntake.ts";
 import { taskLimitsLayer } from "./taskLimits.ts";
 import { webhooksLayer } from "./webhooks.ts";
@@ -217,7 +217,8 @@ const services = (options: CoreOptions) => {
     taskLimitsLayer,
     sources,
     githubApp,
-    githubMirrorAbsentLayer,
+    // GitHub's default branch upstream for repositories mirrored through the app.
+    githubMirrorLayer().pipe(Layer.provide(githubApp)),
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,
