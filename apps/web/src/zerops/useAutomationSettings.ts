@@ -3,6 +3,7 @@
  * the organization's API keys, and an application's intake. A screen demands what it shows, and an
  * intake's answer — a secret to paste — lives only while the screen that set it stays open.
  */
+import { useInventoryCandidates } from "./inventoryContext";
 import {
   appIntake,
   makeAutomationSettings,
@@ -116,7 +117,15 @@ export function useAutomatedKey(): AutomatedKeyState {
   return automatedKeyState(useProjection(orgAiKeys, key, KEYS_UNREAD).keys);
 }
 
-/** Holds the organization's keys read while the account is signed in (the app's root). */
+/**
+ * Holds the organization's keys read from the app's root once the account lists an automated
+ * Mate, whose row says when no key is set. Never on a load's first frames: HQ's session is in by
+ * the time a Mate is listed, so the read enters no door of its own. New Mate and Settings read the
+ * keys themselves when they open.
+ */
 export function useHoldAutomatedKey(): void {
-  useOrgAiKeys(true);
+  const listsAutomated = useInventoryCandidates().some(
+    (candidate) => candidate.project.hq?.mate?.automated === true,
+  );
+  useOrgAiKeys(listsAutomated);
 }
