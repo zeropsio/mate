@@ -153,5 +153,32 @@ describe("the organization's API keys", () => {
           );
         }),
     );
+
+    it.effect(
+      "an automated Mate's link that cannot read the organization's keys as it opens brings them once HQ can",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* startCore(true);
+          yield* untilHealth(core.call, "active");
+          const owner = yield* sessionFor(core.call, "door-owner");
+          yield* core.call("PUT", "/api/org/ai-keys/nebius", {
+            session: owner,
+            body: { value: KEY },
+          });
+          addProject(core.fake, "P_ROBOT");
+          // The keys' table out of reach while the link opens: its first read fails.
+          yield* core.sql`ALTER TABLE hq_org_ai_key RENAME TO hq_org_ai_key_away`;
+          const robot = yield* mateLinked(core, owner, "P_ROBOT");
+          yield* robot.link.pinged(1);
+          yield* core.sql`ALTER TABLE hq_org_ai_key_away RENAME TO hq_org_ai_key`;
+          yield* robot.link.takeWhere(
+            "the key once HQ reads it",
+            (frame) =>
+              frame.type === "provider-keys" &&
+              JSON.stringify((frame as unknown as { keys: unknown }).keys) ===
+                JSON.stringify([{ env: "NEBIUS_API_KEY", value: KEY }]),
+          );
+        }),
+    );
   });
 });
