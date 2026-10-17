@@ -243,6 +243,28 @@ describe("a change's pull request", () => {
     assert.strictEqual(mateNameIn("Tea Shop - ", "Tea Shop"), "Tea Shop -");
   });
 
+  it("a Mate's description in its pull request closes no issue and pings nobody; HQ's own Fixes line still does", () => {
+    const body = pullSection({
+      mate: "Juno",
+      description:
+        "Fixes #3, closes acme/samovar#4, resolved https://github.com/acme/tea-shop/issues/5. Thanks @nova and @acme/tea.",
+      receipt: null,
+      fixes: 1,
+      taskLink: null,
+      changeLink: "https://mate.zerops.io/change/a/web/1",
+      requester: null,
+    });
+    const description = body.slice(0, body.indexOf("Fixes #1"));
+    assert.notMatch(description, /\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b/iu);
+    assert.notMatch(description, /#\d|@[\w-]/u);
+    // It reads the same once the unseen joiners are taken out.
+    assert.include(
+      description.replaceAll("\u2060", ""),
+      "Fixes #3, closes acme/samovar#4, resolved https://github.com/acme/tea-shop/issues/5. Thanks @nova and @acme/tea.",
+    );
+    assert.include(body, "\nFixes #1\n");
+  });
+
   it("a body links its issue, its task, and who asked, and says how it was checked", () => {
     const body = pullSection({
       mate: "Juno",

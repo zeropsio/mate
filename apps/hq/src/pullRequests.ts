@@ -48,7 +48,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
 import { ChangeRefused, Changes } from "./changes.ts";
-import { HQ_MARK, marked } from "./githubChannel.ts";
+import { HQ_MARK, marked, quieted } from "./githubChannel.ts";
 import { GithubAuth } from "./githubAuth.ts";
 import { type GithubEvent, GithubEvents } from "./githubEvents.ts";
 import { GithubGate } from "./githubGate.ts";
@@ -133,6 +133,21 @@ const previewLines = (receipt: ChangeReceipt | null) =>
       : [],
   );
 
+/**
+ * A Mate's words as a pull request's body shows them: they read the same, but close no issue
+ * (`Fixes #3`, `closes owner/repo#4`, `resolved <issue link>`), link none and ping nobody — a word
+ * joiner, unseen, breaks each closing keyword and reference (`quieted`). Only HQ's own `Fixes #n`
+ * line closes the task's issue.
+ */
+export const inert = (text: string) =>
+  quieted(text).replace(
+    /\b(c)(lose[sd]?)\b|\b(f)(ix(?:e[sd])?)\b|\b(r)(esolve[sd]?)\b/giu,
+    (_word, ...parts: ReadonlyArray<string | undefined>) => {
+      const [c, close, f, fix, r, resolve] = parts;
+      return `${c ?? f ?? r ?? ""}\u2060${close ?? fix ?? resolve ?? ""}`;
+    },
+  );
+
 /** HQ's part of a pull request's body, markers included. */
 export const pullSection = (facts: PullFacts) => {
   const checked = checkedLines(facts.receipt);
@@ -150,7 +165,7 @@ export const pullSection = (facts: PullFacts) => {
     MATE_START,
     "## What it does",
     "",
-    facts.description.trim() === "" ? "_Not described yet._" : facts.description.trim(),
+    facts.description.trim() === "" ? "_Not described yet._" : inert(facts.description.trim()),
     ...(checked.length === 0 ? [] : ["", "## How it was checked", "", ...checked]),
     ...(preview.length === 0 ? [] : ["", "## Try it", "", ...preview]),
     ...(facts.fixes === null ? [] : ["", `Fixes #${String(facts.fixes)}`]),
