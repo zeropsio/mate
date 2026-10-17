@@ -20,6 +20,13 @@ export interface FakeSlackUser {
   readonly email: string | null;
   readonly name: string;
   readonly bot?: boolean;
+  /** Whether Slack confirmed the email; yes unless said otherwise. */
+  readonly emailConfirmed?: boolean;
+  readonly deleted?: boolean;
+  /** A user of a workspace this one shares no channel membership with (Slack Connect). */
+  readonly stranger?: boolean;
+  /** The workspace the user belongs to; the fake's own unless said otherwise. */
+  readonly teamId?: string;
 }
 
 /** A fake bot token, built from parts so no scanner takes it for one. */
@@ -70,9 +77,14 @@ export const slackFake = Effect.gen(function* () {
               ok: true,
               user: {
                 id: params["user"],
+                team_id: user.teamId ?? state.team.id,
                 name: user.name.toLowerCase(),
                 is_bot: user.bot === true,
+                is_email_confirmed: user.emailConfirmed ?? true,
+                deleted: user.deleted === true,
+                ...(user.stranger === true ? { is_stranger: true } : {}),
                 profile: {
+                  team: user.teamId ?? state.team.id,
                   display_name: user.name,
                   real_name: user.name,
                   ...(user.email === null ? {} : { email: user.email }),

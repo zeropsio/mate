@@ -407,6 +407,10 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
           const answer = yield* api.user(link.token, user);
           if (!answer.ok) return { kind: "unchecked" } as const;
           if (answer.value.bot) return { kind: "bot" } as const;
+          // A member's email counts only as Slack confirmed it, on a person of this workspace:
+          // never on a deactivated user or a Slack Connect partner's.
+          if (answer.value.away || !answer.value.teams.includes(link.teamId))
+            return { kind: "stranger" } as const;
           const email = answer.value.email?.toLowerCase();
           if (email === undefined) return { kind: "stranger" } as const;
           const named = (members: ReadonlyArray<ZeropsMember>) =>

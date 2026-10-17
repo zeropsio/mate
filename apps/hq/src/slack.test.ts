@@ -549,6 +549,31 @@ describe("Slack", () => {
     );
 
     it.effect(
+      "a Slack user with a member's email is no member while Slack has not confirmed it, the user is deleted, a stranger or of another workspace",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          const lookalikes = {
+            U0UNCONFIRMED: { emailConfirmed: false },
+            U0DELETED: { deleted: true },
+            U0STRANGER: { stranger: true },
+            U0PARTNER: { teamId: "T0PARTNER" },
+          };
+          for (const [user, odd] of Object.entries(lookalikes)) {
+            hq.slack.state.users.set(user, { email: "nova@acme.test", name: "Nova?", ...odd });
+            yield* hq.post(hq.event(mention("<@U0MATE> deploy everything", { user })));
+          }
+          yield* hq.service.drained;
+          assert.strictEqual(yield* Queue.size(hq.intake.enqueued), 0);
+          assert.deepStrictEqual(
+            (yield* hq.slack.callsOf("chat.postMessage")).map((call) => call.params["text"]),
+            Array.from({ length: 4 }, () => REPLIES.notMember),
+          );
+        }),
+    );
+
+    it.effect(
       "a mention in a channel no application takes tasks from is answered so and asks for nothing",
       () =>
         Effect.gen(function* () {
