@@ -19,6 +19,9 @@ import type { SocketMessage } from "../test/harness/runningCore.ts";
 import { sessionFor, startCore, ticketFor, untilHealth } from "../test/harness/runningCore.ts";
 import { nextScopeValue, scopeReset } from "../test/harness/scopes.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
+import { changeRoutePath } from "@t3tools/shared/hqChanges";
+import { GITHUB_TOKEN } from "../test/harness/automated.ts";
 import { UNTAKEN } from "./mateTasks.ts";
 
 const NAV = { kind: "navigation" } as const;
@@ -241,6 +244,88 @@ describe("tasks for automated Mates", () => {
           change_repo: "appdev",
           change_number: (change.body as { change: { number: number } }).change.number,
         });
+      }),
+    );
+
+    it.effect(
+      "GitHub hears from the Mate by name: it picked the issue up, opened a change for review, couldn't finish",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          const issue = "/repos/acme/tea-shop/issues/1/comments";
+          const commented = (count: number) =>
+            core.github.seenWhere(
+              `${String(count)} comments`,
+              (seen) =>
+                seen.filter((request) => request.path.endsWith("/comments")).length >= count,
+            );
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "appdev" },
+          });
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+          });
+          yield* commented(1);
+          const change = yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "appdev", title: "Hotter tea" },
+          });
+          const number = (change.body as { change: { number: number } }).change.number;
+          yield* commented(2);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "failed", detail: "The kettle would not boil." },
+          });
+          yield* commented(3);
+          assert.deepStrictEqual(yield* core.github.comments, [
+            [issue, "P_ROBOT picked this up."],
+            [
+              issue,
+              `P_ROBOT opened a change for review: ${DEFAULT_HOSTED_APP_URL}${changeRoutePath(core.appId, "appdev", number)}`,
+            ],
+            [issue, "P_ROBOT couldn't finish this: The kettle would not boil."],
+          ]);
+          assert.isTrue(
+            core.github.state.seen
+              .filter((request) => request.path.endsWith("/comments"))
+              .every((request) => request.authorization === `Bearer ${GITHUB_TOKEN}`),
+          );
+        }),
+    );
+
+    it.effect("a comment GitHub refuses is tried once more, and never fails the task", () =>
+      Effect.gen(function* () {
+        const core = yield* withPool();
+        core.github.state.commentStatuses = [502, 502];
+        yield* core.issue(1);
+        const task = yield* toldTask(core.robot.link, 1);
+        yield* core.robot.link.send({
+          type: "task-state",
+          report: { taskId: task.id, state: "accepted" },
+        });
+        yield* core.github.seenWhere(
+          "the comment tried twice",
+          (seen) => seen.filter((request) => request.path.endsWith("/comments")).length === 2,
+        );
+        const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+        assert.strictEqual(row!["state"], "working");
+      }),
+    );
+
+    it.effect("a task no Mate took fails on GitHub too, saying why", () =>
+      Effect.gen(function* () {
+        const core = yield* withPool({ taskAcceptWithin: Duration.millis(200) });
+        yield* core.issue(1);
+        yield* core.github.seenWhere("the failure's comment", (seen) =>
+          seen.some((request) => request.path.endsWith("/comments")),
+        );
+        assert.deepStrictEqual(yield* core.github.comments, [
+          ["/repos/acme/tea-shop/issues/1/comments", `P_ROBOT couldn't finish this: ${UNTAKEN}`],
+        ]);
       }),
     );
 

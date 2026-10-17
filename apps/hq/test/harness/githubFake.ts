@@ -7,7 +7,9 @@
  */
 import * as NodeHttp from "node:http";
 
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Schedule from "effect/Schedule";
 
 export interface GithubRequest {
   readonly method: string;
@@ -66,5 +68,20 @@ export const githubFake = Effect.gen(function* () {
     ({ server }) =>
       Effect.promise(() => new Promise<void>((resolve) => server.close(() => resolve()))),
   );
-  return { url, state };
+  /** What HQ asked of GitHub once `matches` holds of it; fails after ten seconds. */
+  const seenWhere = (what: string, matches: (seen: ReadonlyArray<GithubRequest>) => boolean) =>
+    Effect.suspend(() =>
+      matches(state.seen) ? Effect.succeed([...state.seen]) : Effect.fail(what),
+    ).pipe(
+      Effect.retry(Schedule.spaced(Duration.millis(20))),
+      Effect.timeout(Duration.seconds(10)),
+      Effect.orDie,
+    );
+  /** The comments HQ posted, in order: the issue's path and the words. */
+  const comments = Effect.sync(() =>
+    state.seen
+      .filter((request) => request.path.endsWith("/comments"))
+      .map((request) => [request.path, (request.body as { body: string }).body] as const),
+  );
+  return { url, state, seenWhere, comments };
 });

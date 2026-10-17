@@ -154,7 +154,7 @@ const services = (options: CoreOptions) => {
     mateTasksLayer({
       ...(options.taskAcceptWithin === undefined ? {} : { acceptWithin: options.taskAcceptWithin }),
       ...(options.taskSweepEvery === undefined ? {} : { sweepEvery: options.taskSweepEvery }),
-    }),
+    }).pipe(Layer.provide(remotes), Layer.provide(github)),
     intakeLayer({ hqProjectId: options.hqProjectId }).pipe(
       Layer.provide(remotes),
       Layer.provide(github),

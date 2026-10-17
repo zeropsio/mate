@@ -12,10 +12,16 @@
  * - The Mate's word moves its task (`task-state`): taken (`working`, in the conversation it names),
  *   then done or failed — its Mate free again. A word of a task not its own is passed by.
  * - A task whose Mate's record went is given back, or failed where the Mate had taken it.
+ * - GitHub hears from the Mate by name, on the issue, with the repository's token: once it takes
+ *   the issue up, once it opens its change for review (with the change's address in Mate), and
+ *   once it could not finish, with why. A comment GitHub refuses is tried once more, then logged;
+ *   it never moves the task.
  *
  * @module mateTasks
  */
 import type { MateTask, MateTaskReport } from "@t3tools/contracts";
+import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
+import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import type { MateLinkDown } from "@t3tools/shared/mateLink";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -23,12 +29,18 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
+import { Changes } from "./changes.ts";
+import { GithubIssues } from "./githubIssues.ts";
+import { remoteIdentity } from "./gitTransport.ts";
 import { Leader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
+import { Remotes } from "./repoRemotes.ts";
+import { Roles } from "./roles.ts";
 import { Structure } from "./structure.ts";
 
 /** How many times a task is handed out before it fails untaken. */
@@ -95,6 +107,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const leader = yield* Leader;
       const overviews = yield* MateOverviews;
       const structure = yield* Structure;
+      const changes = yield* Changes;
+      const roles = yield* Roles;
+      const remotes = yield* Remotes;
+      const github = yield* GithubIssues;
+      const layerScope = yield* Effect.scope;
       const acceptMs = Duration.toMillis(options.acceptWithin ?? Duration.seconds(60));
       const told = yield* PubSub.unbounded<{
         readonly projectId: string;
@@ -111,6 +128,77 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             const entry = all.get(projectId);
             return entry?.presence.online === true && entry.attention?.working === 0;
           }),
+        );
+
+      /**
+       * A comment on the task's issue, from its Mate by name, with the repository's token: beside
+       * whatever moved the task, tried once more where GitHub refuses it, never failing anything.
+       */
+      const tell = (
+        taskId: string,
+        words: (task: {
+          readonly mate: string;
+          readonly change: string | null;
+          readonly detail: string | null;
+        }) => string,
+      ) =>
+        Effect.gen(function* () {
+          const [task] = yield* sql<{
+            readonly app_id: string;
+            readonly repo: string;
+            readonly number: number;
+            readonly mate_project_id: string | null;
+            readonly change_repo: string | null;
+            readonly change_number: number | null;
+            readonly detail: string | null;
+          }>`
+            SELECT app_id::text AS app_id, repo, number, mate_project_id, change_repo, change_number,
+              detail FROM hq_task WHERE id::text = ${taskId}`;
+          if (task === undefined) return;
+          const remotesOfApp = yield* sql<{ readonly repo: string; readonly url: string }>`
+            SELECT repo, url FROM hq_repo_remote WHERE app_id::text = ${task.app_id} ORDER BY repo`;
+          const found = remotesOfApp.find((row) => remoteIdentity(row.url)?.path === task.repo);
+          const remote = found === undefined ? undefined : remoteIdentity(found.url);
+          if (found === undefined || remote === undefined)
+            return yield* Effect.logInfo("a task's comment not posted: no remote", { taskId });
+          const name = yield* Effect.orElseSucceed(
+            Effect.map(
+              roles.view,
+              (view) => view.projects.find((project) => project.id === task.mate_project_id)?.name,
+            ),
+            () => undefined,
+          );
+          const body = words({
+            mate: name || "Mate",
+            change:
+              task.change_repo === null || task.change_number === null
+                ? null
+                : `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(task.app_id, task.change_repo, task.change_number)}`,
+            detail: task.detail,
+          });
+          const { token } = yield* remotes.tokenOf({ appId: task.app_id, repo: found.repo });
+          const posted = github.comment(remote, token, task.number, body).pipe(
+            Effect.filterOrFail(
+              (status) => status === 201,
+              (status) => ({ _tag: "CommentRefused", status }) as const,
+            ),
+          );
+          yield* posted.pipe(
+            Effect.retry({ schedule: Schedule.spaced(Duration.seconds(1)), times: 1 }),
+          );
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("a task's comment not posted", { taskId, cause }),
+          ),
+          Effect.forkIn(layerScope),
+          Effect.asVoid,
+        );
+      const pickedUp = (taskId: string) => tell(taskId, ({ mate }) => `${mate} picked this up.`);
+      const couldNotFinish = (taskId: string) =>
+        tell(
+          taskId,
+          ({ mate, detail }) =>
+            `${mate} couldn't finish this: ${(detail ?? "").trim().slice(0, 2000) || "no reason given."}`,
         );
 
       /** Each application's oldest waiting tasks, to its free Mates, one each. */
@@ -171,6 +259,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 ? sql`NOT EXISTS (SELECT 1 FROM hq_mate m WHERE m.project_id = hq_task.mate_project_id)`
                 : sql`mate_project_id = ${which.of}`;
           const moved = yield* leader.write(sql<{
+            readonly id: string;
             readonly mate_project_id: string | null;
             readonly state: string;
           }>`
@@ -183,9 +272,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               mate_project_id = CASE WHEN t.attempts + 1 >= ${TASK_TRIES} THEN t.mate_project_id END,
               assigned_at = CASE WHEN t.attempts + 1 >= ${TASK_TRIES} THEN t.assigned_at END
             FROM back WHERE t.id = back.id
-            RETURNING back.was AS mate_project_id, t.state`);
-          for (const row of moved)
+            RETURNING t.id::text AS id, back.was AS mate_project_id, t.state`);
+          for (const row of moved) {
             if (row.mate_project_id !== null) yield* structure.mateTouched(row.mate_project_id);
+            if (row.state === "failed") yield* couldNotFinish(row.id);
+          }
           if (moved.length > 0) yield* structure.touched;
           return moved.length;
         });
@@ -195,11 +286,12 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         if (!(yield* leading)) return;
         const overdue = yield* giveBack("overdue");
         const orphaned = yield* giveBack("orphaned");
-        const failed = yield* leader.write(sql`
+        const failed = yield* leader.write(sql<{ readonly id: string }>`
           UPDATE hq_task SET state = 'failed', detail = ${MATE_GONE}, updated_at = now()
           WHERE state = 'working'
             AND NOT EXISTS (SELECT 1 FROM hq_mate m WHERE m.project_id = hq_task.mate_project_id)
-          RETURNING 1`);
+          RETURNING id::text AS id`);
+        for (const row of failed) yield* couldNotFinish(row.id);
         if (overdue + orphaned + failed.length > 0) yield* wake;
       });
 
@@ -243,6 +335,15 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           () => wake,
         ),
       );
+      yield* Effect.forkScoped(
+        Stream.runForEach(changes.taskChanges, (taskId) =>
+          tell(taskId, ({ mate, change }) =>
+            change === null
+              ? `${mate} opened a change for review.`
+              : `${mate} opened a change for review: ${change}`,
+          ),
+        ),
+      );
 
       /** The Mate's task, as it stands, where the Mate says it is its own. */
       const ownTask = (projectId: string, taskId: string) =>
@@ -268,12 +369,16 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               UPDATE hq_task SET state = 'working', updated_at = now(),
                 conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id)
               WHERE id::text = ${word.taskId} AND state IN ('assigned', 'working')`);
+            // Taken once: the first word that moves it from handed to worked on.
+            if (task.state === "assigned") yield* pickedUp(word.taskId);
           } else {
-            yield* leader.write(sql`
+            const ended = yield* leader.write(sql`
               UPDATE hq_task SET state = ${word.state}, updated_at = now(),
                 detail = ${word.state === "failed" ? (word.detail ?? null) : null},
                 conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id)
-              WHERE id::text = ${word.taskId} AND state IN ('assigned', 'working')`);
+              WHERE id::text = ${word.taskId} AND state IN ('assigned', 'working')
+              RETURNING 1`);
+            if (ended.length > 0 && word.state === "failed") yield* couldNotFinish(word.taskId);
             yield* wake;
           }
           yield* structure.mateTouched(projectId);
