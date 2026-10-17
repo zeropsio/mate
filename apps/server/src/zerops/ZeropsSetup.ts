@@ -46,7 +46,6 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
-import * as Deferred from "effect/Deferred";
 import * as Semaphore from "effect/Semaphore";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -70,6 +69,7 @@ import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
+import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import { taskIdOfConversation } from "./ZeropsTasks.ts";
 import {
@@ -273,7 +273,8 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const startedAt = yield* nowIso;
     const gitAt = yield* Ref.make<string | undefined>(undefined);
     const signinAt = yield* Ref.make<string | undefined>(undefined);
-    const settled = yield* Deferred.make<void>();
+    // The wait's end, read by the tasks too: an automated Mate takes none before it.
+    const receipt = yield* ZeropsStandUpReceipt;
     const attempts = yield* Semaphore.make(1);
 
     /* ---------------------------------------------------------- the record */
@@ -794,14 +795,14 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       yield* adoptAtFlip;
       // A Mate the new press did not make has no stand-up of the server's, and never polls.
       if (!marked) {
-        yield* Deferred.succeed(settled, undefined);
+        yield* receipt.settle;
         return;
       }
       const since = yield* Clock.currentTimeMillis;
       while (true) {
         const upMs = (yield* Clock.currentTimeMillis) - since;
         if (yield* attempts.withPermit(step()).pipe(Effect.ensuring(polled.complete))) {
-          yield* Deferred.succeed(settled, undefined);
+          yield* receipt.settle;
           return;
         }
         yield* Effect.sleep(standUpPollDelay(upMs, timings));
@@ -815,7 +816,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     } else {
       // No stand-up outside Zerops; a flipped main conversation still moves, once the agents
       // are known.
-      yield* Deferred.succeed(settled, undefined);
+      yield* receipt.settle;
       const worker = yield* Effect.forkScoped(readiness.await.pipe(Effect.andThen(adoptAtFlip)));
       finished = Fiber.join(worker);
     }
@@ -850,7 +851,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       retry,
       finished,
       nextPoll: Effect.suspend(polled.next),
-      awaitStandUp: Deferred.await(settled),
+      awaitStandUp: receipt.await,
     });
   });
 

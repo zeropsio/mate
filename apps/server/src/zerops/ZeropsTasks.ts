@@ -7,9 +7,10 @@
  *   again finds it and re-reports, and never opens a second one; the engine's receipt for the
  *   brief's command id holds the same line underneath.
  * - **Declined** — handed back with why, never a try against it — on a Mate that is not
- *   automated, while no organization key is set for its agents, and while any of its conversations
- *   has a run on or waiting (its stand-up, another task: one task per Mate at a time, so a change
- *   it opens is the task's).
+ *   automated, while no organization key is set for its agents, while its OpenCode is off or not
+ *   ready, until its setup's wait for the stand-up ended (`ZeropsStandUpReceipt`), and while any
+ *   of its conversations has a run on, waiting, due or held by a usage limit (its stand-up, another
+ *   task: one task per Mate at a time, so a change it opens is the task's).
  * - **Taken:** the conversation gets the automated agent (OpenCode on the organization's key,
  *   `AUTOMATED_MODEL_SELECTION`) and its first message, for the task's principal: the brief the agent
  *   works from, its person item carrying the issue as `task`, so every client draws its card.
@@ -38,8 +39,12 @@ import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
+import { isAgentWithoutSignInReady } from "@t3tools/shared/zeropsAgentAuth";
+
 import { MateEngine, type ConversationView, type ViewRun } from "../engine/MateEngine.ts";
+import { ProviderInstances } from "../spi/providerInstances.ts";
 import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.ts";
+import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 
 const TASK_PREFIX = "task-";
 
@@ -85,6 +90,9 @@ export const taskBrief = (task: MateTask): string => {
 const REFUSALS = {
   notAutomated: "This Mate is not automated, so it takes no tasks.",
   noKey: "No organization API key has reached this Mate yet, so its agents cannot run the task.",
+  openCodeOff: "OpenCode is turned off on this Mate, so it takes no tasks.",
+  openCodeNotReady: "This Mate's OpenCode is not ready yet.",
+  settingUp: "This Mate is still setting itself up.",
   busy: "This Mate is still at work on something else.",
 } as const;
 
@@ -112,6 +120,14 @@ const failureOf = (end: RunEnd): string | undefined => {
 /** Whether the conversation holds any run: one whose brief never went out holds none. */
 const hasRuns = (view: ConversationView): boolean =>
   view.activeRun !== null || view.queued.length > 0 || view.lastEnded !== null;
+
+/** Whether a conversation has work on or coming: a run on or queued, one due, or a held queue. */
+const atWork = (view: ConversationView): boolean =>
+  view.activeRun !== null ||
+  view.queued.length > 0 ||
+  view.runDue === true ||
+  view.turnDue === true ||
+  view.pausedUntil !== null;
 
 const isTasks = (run: ViewRun | null | undefined, taskId: string): run is ViewRun =>
   run?.principal.kind === "task" && run.principal.taskId === taskId;
@@ -166,6 +182,8 @@ export class ZeropsTasks extends Context.Service<
 export const make = Effect.gen(function* () {
   const engine = yield* MateEngine;
   const automation = yield* ZeropsAutomation;
+  const instances = yield* ProviderInstances;
+  const standUp = yield* ZeropsStandUpReceipt;
   // One frame at a time: two told at once never both pass the one-task check.
   const taking = yield* Semaphore.make(1);
 
@@ -193,13 +211,18 @@ export const make = Effect.gen(function* () {
         Option.some<MateTaskReport>({ taskId: task.id, state: "declined", detail });
       if (!(yield* automation.automated)) return refused(REFUSALS.notAutomated);
       if (!(yield* automation.keySet)) return refused(REFUSALS.noKey);
-      // One desk: its stand-up, another task or anything else with a run on or waiting.
+      const openCode = (yield* instances.providers).find(
+        (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
+      );
+      if (openCode === undefined || !openCode.enabled) return refused(REFUSALS.openCodeOff);
+      // Ready as its stand-up reads it: probed ready, models listed, the key read as a sign-in.
+      if (!isAgentWithoutSignInReady(openCode)) return refused(REFUSALS.openCodeNotReady);
+      if (!(yield* standUp.settled)) return refused(REFUSALS.settingUp);
+      // One desk: its stand-up, another task or anything else with work on or coming.
       const desk = yield* engine.conversations;
       if (!desk.complete) return Option.none();
       const busy = desk.views.some(
-        (view) =>
-          view.conversationId !== conversationId &&
-          (view.activeRun !== null || view.queued.length > 0),
+        (view) => view.conversationId !== conversationId && atWork(view),
       );
       if (busy) return refused(REFUSALS.busy);
 

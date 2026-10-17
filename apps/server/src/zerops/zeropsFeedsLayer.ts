@@ -54,6 +54,7 @@ import * as ZeropsSetupModule from "./ZeropsSetup.ts";
 import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
 import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsStandUpRelayModule from "./ZeropsStandUpRelay.ts";
+import * as ZeropsStandUpReceiptModule from "./ZeropsStandUpReceipt.ts";
 import * as ZeropsTasksModule from "./ZeropsTasks.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
 import * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
@@ -205,7 +206,7 @@ const ZeropsHqLinkLive = Layer.unwrap(
   Layer.provide(ZeropsMateUpdateLive),
   Layer.provide(ZeropsMateAttentionLive),
   // The tasks HQ hands an automated Mate, worked on the very engine the merge runs.
-  Layer.provide(ZeropsTasksModule.layer),
+  Layer.provide(ZeropsTasksModule.layer.pipe(Layer.provide(providerInstancesLayer))),
   Layer.provide(MateEngineLive),
 );
 
@@ -293,6 +294,8 @@ const liveLayer = Layer.mergeAll(
   // Whether the Mate is automated, as HQ says over the link: one instance, read by the gate, the
   // logins and the tasks.
   Layer.provideMerge(ZeropsAutomationModule.layer),
+  // The setup's wait for the stand-up, settled by the setup and read by the tasks: one instance.
+  Layer.provide(ZeropsStandUpReceiptModule.layer),
 );
 
 export const selectZeropsFeedsLayer = (selector: string | undefined) =>

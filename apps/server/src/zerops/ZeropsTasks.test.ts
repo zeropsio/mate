@@ -1,7 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 import {
   ConversationId,
+  ProviderDriverKind,
+  ProviderInstanceId,
   RunId,
+  type ServerProvider,
   type CommandId,
   type ConversationAgent,
   type MateTask,
@@ -23,7 +26,9 @@ import {
   type ViewRun,
 } from "../engine/MateEngine.ts";
 import { inertMateEngine } from "../engine/testing/inertEngine.ts";
+import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
+import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import * as ZeropsTasksModule from "./ZeropsTasks.ts";
 import { taskConversationId, ZeropsTasks } from "./ZeropsTasks.ts";
 
@@ -38,6 +43,22 @@ const task = (id: string, number = 42): MateTask => ({
     author: "nova",
   },
   body: "Add two teas, reload: the cart is empty.",
+});
+
+/** The default OpenCode instance as its probe reads it: on, signed in to Nebius, models listed. */
+const openCode = (overrides: Partial<ServerProvider> = {}): ServerProvider => ({
+  instanceId: ProviderInstanceId.make("opencode"),
+  driver: ProviderDriverKind.make("opencode"),
+  enabled: true,
+  installed: true,
+  version: "1.0.0",
+  status: "ready",
+  auth: { status: "authenticated" },
+  checkedAt: "2026-10-17T00:00:00.000Z",
+  models: [{ slug: "nebius/zai-org/GLM-5.3", name: "GLM", isCustom: false, capabilities: null }],
+  slashCommands: [],
+  skills: [],
+  ...overrides,
 });
 
 const principalOf = (taskId: string): Principal => ({ kind: "task", taskId });
@@ -100,6 +121,10 @@ const rig = (
     readonly keySet?: boolean;
     /** The brief's delivery could not be recorded: the server went away with it. */
     readonly unrecorded?: boolean;
+    /** The provider instances as their probes read them; a ready OpenCode by default. */
+    readonly providers?: ReadonlyArray<ServerProvider>;
+    /** Whether the setup's wait for the stand-up ended; it has by default. */
+    readonly standUpSettled?: boolean;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -147,8 +172,18 @@ const rig = (
       automated: Effect.succeed(options.automated ?? true),
       keySet: Effect.succeed(options.keySet ?? true),
     });
+    const instances = Layer.mock(ProviderInstances)({
+      providers: Effect.succeed(options.providers ?? [openCode()]),
+    });
+    const standUp = Layer.mock(ZeropsStandUpReceipt)({
+      settled: Effect.succeed(options.standUpSettled ?? true),
+    });
     const tasks = yield* ZeropsTasks.pipe(
-      Effect.provide(ZeropsTasksModule.layer.pipe(Layer.provide(Layer.merge(engine, automation)))),
+      Effect.provide(
+        ZeropsTasksModule.layer.pipe(
+          Layer.provide(Layer.mergeAll(engine, automation, instances, standUp)),
+        ),
+      ),
     );
     const sent: Array<MateTaskReport> = [];
     const link = yield* tasks.open((report) => Effect.sync(() => void sent.push(report)));
@@ -224,6 +259,31 @@ describe("an automated Mate takes a task from outside", () => {
 
   it.effect.each([
     {
+      title: "declines a task while OpenCode is turned off, never failing it",
+      options: { providers: [openCode({ enabled: false })] },
+      detail: "OpenCode is turned off on this Mate, so it takes no tasks.",
+    },
+    {
+      title: "declines a task while this Mate has no OpenCode",
+      options: { providers: [] },
+      detail: "OpenCode is turned off on this Mate, so it takes no tasks.",
+    },
+    {
+      title: "declines a task while OpenCode is not ready yet",
+      options: { providers: [openCode({ status: "warning" })] },
+      detail: "This Mate's OpenCode is not ready yet.",
+    },
+    {
+      title: "declines a task while OpenCode has not read its key yet",
+      options: { providers: [openCode({ auth: { status: "unknown" } })] },
+      detail: "This Mate's OpenCode is not ready yet.",
+    },
+    {
+      title: "declines a task while its stand-up has not gone out yet",
+      options: { standUpSettled: false },
+      detail: "This Mate is still setting itself up.",
+    },
+    {
       title: "refuses a task on a Mate that is not automated",
       options: { automated: false },
       detail: "This Mate is not automated, so it takes no tasks.",
@@ -267,6 +327,27 @@ describe("an automated Mate takes a task from outside", () => {
           activeRun: run(standUp, { kind: "standup", startedBy: "zerops-user:ana" }, "running"),
         }),
       );
+      yield* link.receive(task("task-1"));
+      assert.strictEqual(delivered.length, 0);
+      assert.deepStrictEqual(sent, [
+        {
+          taskId: "task-1",
+          state: "declined",
+          detail: "This Mate is still at work on something else.",
+        },
+      ]);
+    }),
+  );
+
+  it.effect.each([
+    { title: "a run due to start", due: { runDue: true } },
+    { title: "its agent's own turn due", due: { turnDue: true } },
+    { title: "a usage limit holding its queue", due: { pausedUntil: 99 } },
+  ] as const)("declines a task while a conversation has $title", ({ due }) =>
+    Effect.gen(function* () {
+      const { delivered, link, move, sent } = yield* rig();
+      const main = ConversationId.make("main");
+      yield* move(main, { ...view(main, {}), ...due });
       yield* link.receive(task("task-1"));
       assert.strictEqual(delivered.length, 0);
       assert.deepStrictEqual(sent, [

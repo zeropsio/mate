@@ -50,6 +50,7 @@ import {
   zcpProcessGone,
   type ZeropsSetupTimings,
 } from "./ZeropsSetup.ts";
+import * as ZeropsStandUpReceiptModule from "./ZeropsStandUpReceipt.ts";
 import { procStartTime } from "./zeropsSetupSteps.ts";
 import { type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 import { inertMateEngine } from "../engine/testing/inertEngine.ts";
@@ -342,6 +343,7 @@ const FAST: ZeropsSetupTimings = {
 const serverOn = (world: World, database: string, timings: ZeropsSetupTimings = FAST) =>
   Layer.effect(ZeropsSetup, makeZeropsSetup(timings)).pipe(
     Layer.provide(fakes(world)),
+    Layer.provide(ZeropsStandUpReceiptModule.layer),
     Layer.provide(
       ServerConfig.layer({
         cwd: "/var/www",
