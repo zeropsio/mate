@@ -83,7 +83,7 @@ export const questionText = (asker: string, mate: string, question: string) =>
 
 /** What HQ answers in a thread it takes no task from, and why. */
 export const REPLIES = {
-  notMember: "Only members of this Zerops organization can ask Mate here.",
+  notMember: "Only members of this Slack workspace can ask Mate.",
   unchecked: "Mate couldn't check who you are just now. Try again in a minute.",
   unmapped: "This channel isn't connected to an application in Mate.",
   empty: "Say what you need after @Mate.",

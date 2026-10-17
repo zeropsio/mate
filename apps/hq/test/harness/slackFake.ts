@@ -25,6 +25,8 @@ export interface FakeSlackUser {
   readonly deleted?: boolean;
   /** A user of a workspace this one shares no channel membership with (Slack Connect). */
   readonly stranger?: boolean;
+  /** A guest: of several channels (`true`) or of one. */
+  readonly guest?: boolean | "single-channel";
   /** The workspace the user belongs to; the fake's own unless said otherwise. */
   readonly teamId?: string;
 }
@@ -82,6 +84,8 @@ export const slackFake = Effect.gen(function* () {
                 is_bot: user.bot === true,
                 is_email_confirmed: user.emailConfirmed ?? true,
                 deleted: user.deleted === true,
+                is_restricted: user.guest !== undefined && user.guest !== false,
+                is_ultra_restricted: user.guest === "single-channel",
                 ...(user.stranger === true ? { is_stranger: true } : {}),
                 profile: {
                   team: user.teamId ?? state.team.id,
