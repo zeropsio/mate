@@ -23,7 +23,7 @@ import { useMemo, useState, type ReactNode } from "react";
 
 import { automatedKeyState } from "~/zerops/automatedMate.logic";
 import { useAppIntake, useAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
-import { useAppTaskSource, useOrgTaskSource } from "~/zerops/useTaskSourceSettings";
+import { useAppTaskSource, useGithubApp, useOrgTaskSource } from "~/zerops/useTaskSourceSettings";
 import { useNewMateDialog } from "~/zerops/newMate";
 import { useAddMateOffer } from "~/zerops/useHqOffers";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -196,6 +196,11 @@ function AdminAutomation({
   const discord = useAppTaskSource("hqAppDiscord", groupId);
   const webhooks = useAppTaskSource("hqAppWebhooks", groupId);
   const schedules = useAppTaskSource("hqAppSchedules", groupId);
+  const github = useGithubApp();
+  const githubApp =
+    github.read.setting.state === "known" && github.read.setting.held.state === "connected"
+      ? github.read.setting.held.slug
+      : undefined;
   const orgSlack = useOrgTaskSource("hqSlack");
   const orgDiscord = useOrgTaskSource("hqDiscord");
   const navigate = useNavigate();
@@ -278,6 +283,7 @@ function AdminAutomation({
                     <AppIntakeView
                       appId={groupId}
                       choices={choices}
+                      githubApp={githubApp}
                       name={name}
                       onSet={intake.set}
                       onStop={intake.stop}

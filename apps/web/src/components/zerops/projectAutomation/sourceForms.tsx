@@ -61,10 +61,13 @@ export function AppIntakeView({
   onSet,
   onStop,
   onReadAgain,
+  githubApp,
 }: {
   readonly appId: string;
   readonly name: string;
   readonly choices: ReadonlyArray<string>;
+  /** The organization's GitHub app's name, where it is connected and read. */
+  readonly githubApp?: string | undefined;
   readonly reposRead: boolean;
   /** HQ's reason its repositories could not be read: said, with *Read again*. */
   readonly reposFailure?: string | undefined;
@@ -177,7 +180,7 @@ export function AppIntakeView({
           <PublicChoice checked={takesPublic} id={publicId} onChange={setTakesPublic} />
         </form>
       )}
-      {read.answer === null ? null : <IntakeAnswer answer={read.answer} />}
+      {read.answer === null ? null : <IntakeAnswer answer={read.answer} githubApp={githubApp} />}
       {problem === null ? null : (
         <p className="text-xs text-destructive-foreground" role="alert">
           {problem}
@@ -188,10 +191,16 @@ export function AppIntakeView({
 }
 
 /** HQ's answer as the intake was set: the webhook it made, or the URL and secret to paste. */
-function IntakeAnswer({ answer }: { readonly answer: HqIntakeView }) {
+function IntakeAnswer({
+  answer,
+  githubApp,
+}: {
+  readonly answer: HqIntakeView;
+  readonly githubApp: string | undefined;
+}) {
   return (
     <div className="grid gap-1.5" data-zerops-surface="settings-intake-answer">
-      <p className="text-xs text-foreground">{intakeAnswerLine(answer)}</p>
+      <p className="text-xs text-foreground">{intakeAnswerLine(answer, githubApp)}</p>
       {answer.hook.kind === "paste" ? (
         <>
           <CopyLine copy="Copy URL" label="Payload URL" value={answer.webhookUrl} />

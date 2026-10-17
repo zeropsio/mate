@@ -51,9 +51,17 @@ export function intakeLine(intake: Pick<HqNavigationIntake, "repo" | "label" | "
   return intake.public === true ? `${line}, a public repository` : line;
 }
 
-/** What HQ answered as the intake was set: the webhook it made, or what to paste. */
-export function intakeAnswerLine(answer: HqIntakeView): string {
-  return answer.hook.kind === "made"
-    ? `Webhook made on ${answer.repo}`
-    : `Add this webhook to ${answer.repo}, in its settings › Webhooks. The secret is shown once.`;
+/**
+ * What HQ answered as the intake was set: the webhook it made, that the organization's GitHub app
+ * (`app`, its name where read) tells Mate with nothing to paste, or what to paste.
+ */
+export function intakeAnswerLine(answer: HqIntakeView, app?: string): string {
+  switch (answer.hook.kind) {
+    case "made":
+      return `Webhook made on ${answer.repo}`;
+    case "app":
+      return `Takes issues labelled “${answer.label}” from ${answer.repo} — GitHub tells Mate through ${app ?? "your organization's GitHub app"}.`;
+    case "paste":
+      return `Add this webhook to ${answer.repo}, in its settings › Webhooks. The secret is shown once.`;
+  }
 }

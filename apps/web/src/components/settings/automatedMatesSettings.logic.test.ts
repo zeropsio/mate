@@ -73,6 +73,35 @@ describe("where an application's tasks come from", () => {
       }),
     ).toBe(line);
   });
+
+  it.each([
+    [
+      "by its name",
+      "acme-mate",
+      "Takes issues labelled “mate” from acme/tea-shop — GitHub tells Mate through acme-mate.",
+    ],
+    [
+      "not read yet",
+      undefined,
+      "Takes issues labelled “mate” from acme/tea-shop — GitHub tells Mate through your organization's GitHub app.",
+    ],
+  ])(
+    "says GitHub tells Mate through the organization's app, with nothing to paste (%s)",
+    (_case, app, line) => {
+      expect(
+        intakeAnswerLine(
+          {
+            appId: "shop",
+            repo: "acme/tea-shop",
+            label: "mate",
+            webhookUrl: "https://hq.example/hook",
+            hook: { kind: "app" },
+          },
+          app,
+        ),
+      ).toBe(line);
+    },
+  );
 });
 
 describe("the organization's API key", () => {
