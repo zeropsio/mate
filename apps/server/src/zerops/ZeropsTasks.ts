@@ -13,9 +13,10 @@
  * - **Taken:** the conversation gets the automated agent (OpenCode on the organization's key,
  *   `AUTOMATED_MODEL_SELECTION`) and its first message, for the task's principal: the brief the agent
  *   works from, its person item carrying the issue as `task`, so every client draws its card.
- * - **Said:** `accepted` at once, `working` once its run started, `done` or `failed` (with why) once
- *   it ended, as the engine's record shows; each link hears the latest task's report first, so a
- *   report missed while the link was down arrives with the next one.
+ * - **Said:** `accepted` once its brief is recorded, `working` once its run started, `done` or
+ *   `failed` (with why) once it ended, as the engine's record shows; a conversation whose brief was
+ *   never recorded says nothing, so HQ tells the task again. Each link hears the latest task's
+ *   report first, so a report missed while the link was down arrives with the next one.
  *
  * A task whose state cannot be read now goes unanswered: HQ tells it again until the Mate says.
  *
@@ -118,9 +119,13 @@ const isTasks = (run: ViewRun | null | undefined, taskId: string): run is ViewRu
 /**
  * How a task stands in its conversation's record: `working` from its run's start until nothing of
  * it is on or due, then how its last run ended. A person's later message in the conversation
- * changes nothing of the task's: its end stands.
+ * changes nothing of the task's: its end stands. Nothing while no run holds its brief: the
+ * conversation was given its agent, and the brief never recorded.
  */
-export const taskReportOf = (taskId: string, view: ConversationView): MateTaskReport => {
+export const taskReportOf = (
+  taskId: string,
+  view: ConversationView,
+): MateTaskReport | undefined => {
   const base = { taskId, conversationId: view.conversationId };
   const active = view.activeRun;
   if (isTasks(active, taskId) || view.queued.some((queued) => isTasks(queued, taskId))) {
@@ -137,9 +142,7 @@ export const taskReportOf = (taskId: string, view: ConversationView): MateTaskRe
       : { ...base, state: "failed", detail: failure };
   }
   // A person spoke in it after the task's own runs: the task ended before they did.
-  return active !== null || ended !== null
-    ? { ...base, state: "done" }
-    : { ...base, state: "accepted" };
+  return hasRuns(view) ? { ...base, state: "done" } : undefined;
 };
 
 /** One link's side of the tasks: the frames it hears, and the reports it sends while it lives. */
@@ -184,7 +187,8 @@ export const make = Effect.gen(function* () {
       const conversationId = taskConversationId(task.id);
       const held = yield* engine.conversation(conversationId);
       // Taken before: said again. One whose brief never went out is sent on below.
-      if (held !== undefined && hasRuns(held)) return Option.some(taskReportOf(task.id, held));
+      const told = held === undefined ? undefined : taskReportOf(task.id, held);
+      if (told !== undefined) return Option.some(told);
       const refused = (detail: string) =>
         Option.some<MateTaskReport>({ taskId: task.id, state: "declined", detail });
       if (!(yield* automation.automated)) return refused(REFUSALS.notAutomated);
@@ -248,7 +252,8 @@ export const make = Effect.gen(function* () {
     Effect.sync(() => {
       // What this link last said of each task: a report is sent again only once it moved.
       const said = new Map<string, string>();
-      const tell = (report: MateTaskReport, always = false) => {
+      const tell = (report: MateTaskReport | undefined, always = false) => {
+        if (report === undefined) return Effect.void;
         const key = JSON.stringify(report);
         if (!always && said.get(report.taskId) === key) return Effect.void;
         said.set(report.taskId, key);

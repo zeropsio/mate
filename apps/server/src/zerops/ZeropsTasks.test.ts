@@ -16,6 +16,7 @@ import * as Stream from "effect/Stream";
 
 import type { Command } from "../engine/domain/command.ts";
 import {
+  DeliveryUnrecorded,
   MateEngine,
   ViewUnreadable,
   type ConversationView,
@@ -93,7 +94,14 @@ interface Delivered {
 }
 
 /** A Mate's engine as the tasks read it: views by id, and what was given and told to it. */
-const rig = (options: { readonly automated?: boolean; readonly keySet?: boolean } = {}) =>
+const rig = (
+  options: {
+    readonly automated?: boolean;
+    readonly keySet?: boolean;
+    /** The brief's delivery could not be recorded: the server went away with it. */
+    readonly unrecorded?: boolean;
+  } = {},
+) =>
   Effect.gen(function* () {
     const views = new Map<ConversationId, ConversationView>();
     const unreadable = new Set<ConversationId>();
@@ -112,13 +120,18 @@ const rig = (options: { readonly automated?: boolean; readonly keySet?: boolean 
           ? Effect.fail(new ViewUnreadable({ conversationId: id }))
           : Effect.sync(() => views.get(id)),
       changes: Stream.fromPubSub(changes),
+      // Giving the agent writes the conversation's record, as the engine's does: no run in it yet.
       assignAgent: (conversationId, agent) =>
         Effect.sync(() => {
           assigned.push({ conversationId, agent });
+          if (!views.has(conversationId)) views.set(conversationId, view(conversationId, {}));
           return true;
-        }),
+        }).pipe(Effect.tap(() => PubSub.publish(changes, conversationId))),
       deliver: (conversationId, command, commandId, principal) =>
-        Effect.sync(() => {
+        Effect.suspend(() => {
+          if (options.unrecorded === true) {
+            return Effect.fail(new DeliveryUnrecorded({ conversationId, message: "gone" }));
+          }
           delivered.push({ conversationId, command, commandId, principal });
           // The brief's run is queued at once, as the engine queues a sent message.
           views.set(
@@ -127,7 +140,7 @@ const rig = (options: { readonly automated?: boolean; readonly keySet?: boolean 
               activeRun: run(conversationId, principal, "queued"),
             }),
           );
-          return { _tag: "Accepted" as const, seq: 1 };
+          return Effect.succeed({ _tag: "Accepted" as const, seq: 1 });
         }),
     });
     const automation = Layer.mock(ZeropsAutomation)({
@@ -298,6 +311,19 @@ describe("an automated Mate takes a task from outside", () => {
       );
       assert.deepStrictEqual(sent, [{ taskId: "task-1", state: "accepted", conversationId: id }]);
     }),
+  );
+
+  it.effect(
+    "a task whose brief was not recorded says nothing, not even to a link following the record",
+    () =>
+      Effect.gen(function* () {
+        const { link, sent } = yield* rig({ unrecorded: true });
+        yield* Effect.forkScoped(link.run);
+        yield* settle;
+        yield* link.receive(task("task-1"));
+        yield* settle;
+        assert.deepStrictEqual(sent, []);
+      }),
   );
 
   it.effect("a task whose conversation cannot be read now goes unanswered: HQ tells it again", () =>
