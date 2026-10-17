@@ -32,6 +32,11 @@ export interface OpenCodeKeyProvider {
   readonly models: string;
   /** Its OpenAI-compatible API, for an app that calls it with the same key. */
   readonly baseUrl: string;
+  /**
+   * The model an automated Mate's agents run on with the organization's key, as models.dev lists
+   * it under this provider (without the provider's segment): its strongest for coding with tools.
+   */
+  readonly automatedModel: string;
 }
 
 export const OPENCODE_KEY_PROVIDERS: ReadonlyArray<OpenCodeKeyProvider> = [
@@ -41,6 +46,10 @@ export const OPENCODE_KEY_PROVIDERS: ReadonlyArray<OpenCodeKeyProvider> = [
     variable: "NEBIUS_API_KEY",
     models: "open models — Kimi, Qwen, DeepSeek, GLM and more",
     baseUrl: "https://api.tokenfactory.nebius.com/v1",
+    // models.dev: "Flagship GLM model for long-horizon coding, agents, and complex project
+    // delivery" — tool calls and reasoning, a 1M context with no short cap on what one answer
+    // writes (Kimi K3 stops at 8k), a third of Kimi K3's price.
+    automatedModel: "zai-org/GLM-5.3",
   },
 ];
 
@@ -51,6 +60,10 @@ export function openCodeKeyProviderOfModel(
   const providerId = model?.trim().split("/", 1)[0];
   return OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === providerId);
 }
+
+/** The OpenCode model slug (`provider/model`) an automated Mate runs on with the provider's key. */
+export const automatedOpenCodeModel = (provider: OpenCodeKeyProvider): string =>
+  `${provider.id}/${provider.automatedModel}`;
 
 const OPENCODE = ProviderDriverKind.make("opencode");
 
