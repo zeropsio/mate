@@ -1,4 +1,4 @@
-import { tokenExpiryLabel } from "@t3tools/shared/hqChanges";
+import { type HqTokenCiAccess, tokenExpiryLabel } from "@t3tools/shared/hqChanges";
 import { HqGitProbeRefusalReason } from "@t3tools/shared/hqGitTargets";
 /** Read-only capability evidence. User role fields are never token permission proof. */
 import * as Clock from "effect/Clock";
@@ -87,6 +87,12 @@ export class GithubProbes extends Context.Service<
       token: Redacted.Redacted,
       branch?: string,
     ) => Effect.Effect<VerifiedRemote, ProbeRefused>;
+    /** What the token may read of the branch's CI on GitHub; never a refusal of the token. */
+    readonly ciAccess: (
+      remote: RemoteIdentity,
+      token: Redacted.Redacted,
+      branch: string,
+    ) => Effect.Effect<HqTokenCiAccess>;
   }
 >()("@t3tools/hq/githubProbes") {}
 
@@ -121,7 +127,7 @@ const date = (value: string | number | undefined) =>
         ),
       );
 /** 403 is a host wait only with rate evidence. Requirements headers are not the token's grants. */
-const rateEvidence = (reply: HostReply, now: number) => {
+export const rateEvidence = (reply: HostReply, now: number) => {
   const message = Option.getOrUndefined(decodeMessage(reply.body))?.message ?? "";
   if (
     reply.status !== 429 &&
@@ -307,6 +313,43 @@ export const githubProbesLayer = Layer.effect(
         ...(branchRules ? { branchRules } : {}),
       };
     });
-    return GithubProbes.of({ verify });
+    const ciAccess = Effect.fn("GithubProbes.ciAccess")(function* (
+      remote: RemoteIdentity,
+      token: Redacted.Redacted,
+      branch: string,
+    ) {
+      const now = yield* Clock.currentTimeMillis;
+      const ref = encodeURIComponent(branch);
+      // A fine-grained token without the permission gets 403 and a public repository answers
+      // anyway. A branch not pushed yet is GitHub's 422 or "Ref not found", after the permission.
+      const access = (path: string, absent: (reply: HostReply) => boolean) =>
+        transport.read(remote, path, token).pipe(
+          Effect.map((reply) =>
+            reply.status === 200 || absent(reply)
+              ? ("granted" as const)
+              : reply.status === 403 &&
+                  rateEvidence(reply, now) === undefined &&
+                  reply.headers["x-github-sso"] === undefined
+                ? ("missing" as const)
+                : ("unknown" as const),
+          ),
+          Effect.orElseSucceed(() => "unknown" as const),
+        );
+      const [checks, statuses, actions] = yield* Effect.all(
+        [
+          access(`/commits/${ref}/check-runs?per_page=1`, (reply) => reply.status === 422),
+          access(
+            `/commits/${ref}/status?per_page=1`,
+            (reply) =>
+              reply.status === 404 &&
+              Option.getOrUndefined(decodeMessage(reply.body))?.message === "Ref not found",
+          ),
+          access(`/actions/runs?per_page=1&branch=${ref}`, () => false),
+        ],
+        { concurrency: "unbounded" },
+      );
+      return { checks, statuses, actions };
+    });
+    return GithubProbes.of({ verify, ciAccess });
   }),
 );

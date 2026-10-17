@@ -556,6 +556,7 @@ const localPushLayer = (
             Effect.sync(() => {
               invalidations.push(keptAt);
             }),
+          ciAccess: () => Effect.succeed({}),
           connect: () => Effect.die("Not used by the worker"),
           disconnect: () => Effect.die("Not used by the worker"),
           updateAddress: () => Effect.die("Not used by the worker"),

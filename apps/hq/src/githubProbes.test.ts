@@ -11,7 +11,13 @@ import * as Redacted from "effect/Redacted";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { GithubProbes, ProbeRefused, githubProbesLayer } from "./githubProbes.ts";
-import { gitTransportLayer, remoteIdentity } from "./gitTransport.ts";
+import {
+  GitTransport,
+  gitTransportLayer,
+  type HostReply,
+  HostUnreachable,
+  remoteIdentity,
+} from "./gitTransport.ts";
 
 type Reply = { status?: number; headers?: Record<string, string>; body: unknown };
 const metadata = {
@@ -412,5 +418,85 @@ describe("token refusal guidance", () => {
       });
       assert.strictEqual(refusal.message, expected);
     },
+  );
+});
+
+describe("the token test's CI rows", () => {
+  const replies: Record<string, HostReply | "unreachable"> = {
+    "/commits/mate%2Fstage/check-runs?per_page=1": { status: 200, headers: {}, body: "{}" },
+    "/commits/mate%2Fstage/status?per_page=1": {
+      status: 403,
+      headers: {},
+      body: JSON.stringify({ message: "Resource not accessible by personal access token" }),
+    },
+    "/actions/runs?per_page=1&branch=mate%2Fstage": {
+      status: 403,
+      headers: { "x-ratelimit-remaining": "0" },
+      body: JSON.stringify({ message: "API rate limit exceeded" }),
+    },
+  };
+  const transport = (answers: Record<string, HostReply | "unreachable">) =>
+    Layer.succeed(
+      GitTransport,
+      GitTransport.of({
+        metadata: () => Effect.die("not a CI read"),
+        receivePack: () => Effect.die("not a CI read"),
+        rules: () => Effect.die("not a CI read"),
+        read: (_remote, path) => {
+          const answer = answers[path] ?? { status: 409, headers: {}, body: "{}" };
+          return answer === "unreachable"
+            ? Effect.fail(new HostUnreachable({}))
+            : Effect.succeed(answer);
+        },
+      }),
+    );
+  const ciAccess = (answers: Record<string, HostReply | "unreachable">) =>
+    Effect.flatMap(GithubProbes, (probes) =>
+      probes.ciAccess(
+        remoteIdentity("https://github.com/owner/repo")!,
+        Redacted.make("probe-test-secret"),
+        "mate/stage",
+      ),
+    ).pipe(Effect.provide(githubProbesLayer.pipe(Layer.provide(transport(answers)))));
+
+  it.effect(
+    "The token test says which CI reads the token has on the chosen branch; a refused one is missing, anything else unknown.",
+    () =>
+      Effect.gen(function* () {
+        assert.deepStrictEqual(yield* ciAccess(replies), {
+          checks: "granted",
+          statuses: "missing",
+          actions: "unknown",
+        });
+        // A branch not pushed yet is found missing only after GitHub checked the permission.
+        assert.deepStrictEqual(
+          yield* ciAccess({
+            "/commits/mate%2Fstage/check-runs?per_page=1": {
+              status: 422,
+              headers: {},
+              body: JSON.stringify({ message: "No commit found for SHA: mate/stage" }),
+            },
+            "/commits/mate%2Fstage/status?per_page=1": {
+              status: 404,
+              headers: {},
+              body: JSON.stringify({ message: "Ref not found" }),
+            },
+            "/actions/runs?per_page=1&branch=mate%2Fstage": {
+              status: 200,
+              headers: {},
+              body: JSON.stringify({ total_count: 0, workflow_runs: [] }),
+            },
+          }),
+          { checks: "granted", statuses: "granted", actions: "granted" },
+        );
+        // A host that did not answer, or a repository it does not show, proves nothing.
+        assert.deepStrictEqual(
+          yield* ciAccess({
+            "/commits/mate%2Fstage/check-runs?per_page=1": "unreachable",
+            "/commits/mate%2Fstage/status?per_page=1": { status: 404, headers: {}, body: "{}" },
+          }),
+          { checks: "unknown", statuses: "unknown", actions: "unknown" },
+        );
+      }),
   );
 });

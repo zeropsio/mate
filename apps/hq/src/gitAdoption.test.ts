@@ -157,6 +157,7 @@ const fixture = (seed = false) =>
       updateAddress: () => Effect.succeed(state.remote),
       disconnect: () => Effect.void,
       invalidate: () => Effect.void,
+      ciAccess: () => Effect.succeed({}),
       forUse: () =>
         Effect.suspend(() => {
           state.calls++;

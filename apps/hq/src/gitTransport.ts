@@ -87,6 +87,13 @@ export class GitTransport extends Context.Service<
       branch: string,
       token: Redacted.Redacted,
     ) => Effect.Effect<HostReply, HostUnreachable>;
+    /** A REST read under the repository (`path` starts with `/`); an ETag makes it conditional. */
+    readonly read: (
+      remote: RemoteIdentity,
+      path: string,
+      token: Redacted.Redacted,
+      etag?: string,
+    ) => Effect.Effect<HostReply, HostUnreachable>;
   }
 >()("@t3tools/hq/gitTransport") {}
 
@@ -94,7 +101,7 @@ export const gitTransportLayer = Layer.effect(
   GitTransport,
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
-    const request = (url: string, token: Redacted.Redacted, git = false) =>
+    const request = (url: string, token: Redacted.Redacted, git = false, etag?: string) =>
       Effect.scoped(
         Effect.gen(function* () {
           const response = yield* client.execute(
@@ -110,6 +117,9 @@ export const gitTransportLayer = Layer.effect(
                   : "application/vnd.github+json",
               ),
               HttpClientRequest.setHeader("x-github-api-version", "2022-11-28"),
+              etag === undefined
+                ? (request) => request
+                : HttpClientRequest.setHeader("if-none-match", etag),
             ),
           );
           const body = yield* response.text;
@@ -155,6 +165,8 @@ export const gitTransportLayer = Layer.effect(
           `${api(remote)}/repos/${remote.path}/rules/branches/${encodeURIComponent(branch)}`,
           token,
         ),
+      read: (remote, path, token, etag) =>
+        request(`${api(remote)}/repos/${remote.path}${path}`, token, false, etag),
     });
   }),
 );

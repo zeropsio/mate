@@ -84,7 +84,8 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
     });
     const inspect = Effect.fnUntraced(function* (appId: string, repo: string, branch: string) {
       const git = yield* (yield* GitHost).git;
-      const source = yield* (yield* Remotes).forUse({ appId, repo }, branch);
+      const remotes = yield* Remotes;
+      const source = yield* remotes.forUse({ appId, repo }, branch);
       const preview = yield* git.previewAdoption(
         { appId, id: repo },
         { url: source.remote.url, token: source.token, branch },
@@ -98,6 +99,7 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
         changedFiles: preview.changedFiles,
         seed: preview.seed,
         ...(source.branchRules === undefined ? {} : { branchRules: source.branchRules }),
+        ...(yield* remotes.ciAccess(source.remote.url, source.token, branch)),
       };
       return { git, source, preview, review };
     });

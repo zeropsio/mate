@@ -1,4 +1,9 @@
-import { RepoName, type HqGitAdoption, type RepoListEntry } from "@t3tools/shared/hqChanges";
+import {
+  RepoName,
+  type HqGitAdoption,
+  type HqTokenCiAccess,
+  type RepoListEntry,
+} from "@t3tools/shared/hqChanges";
 import { HqGitBranch } from "@t3tools/shared/hqEnvironment";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import * as Schema from "effect/Schema";
@@ -60,6 +65,23 @@ export function gitAdoptionSentence(review: HqGitAdoption): string {
   return review.changedFiles === 0
     ? `The first push changes nothing on ${where}.`
     : `The first push changes ${review.changedFiles} files on ${where}. Mate's copy wins.`;
+}
+
+/** The CI reads the kept token has on the branch; none of them is needed to add the environment. */
+export function gitCiAccessRows(ci: HqTokenCiAccess): ReadonlyArray<string> {
+  return (
+    [
+      ["Checks: Read", ci.checks],
+      ["Commit statuses: Read", ci.statuses],
+      ["Actions: Read", ci.actions],
+    ] as const
+  ).map(([permission, access]) =>
+    access === "granted"
+      ? `${permission}: granted`
+      : access === "missing"
+        ? `${permission}: missing. Add it to the token on GitHub.`
+        : `${permission}: Mate couldn't test it.`,
+  );
 }
 
 /** Explain rejected local input without guessing its host or changing the address. */
