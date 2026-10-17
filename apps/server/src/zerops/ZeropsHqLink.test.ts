@@ -171,7 +171,7 @@ const rig = (
     const relayed: Array<unknown> = [];
     /** What the link handed `ZeropsAutomation`: HQ's word on the Mate, and its keys. */
     const automation: Array<unknown> = [];
-    /** The tasks the link handed on; each is answered `accepted`. */
+    /** The tasks the link handed on; each is answered `accepted`, and the latest is `task-0`. */
     const taken: Array<string> = [];
     const http = HttpClient.make((request) =>
       Effect.sync(() => {
@@ -230,7 +230,7 @@ const rig = (
               Effect.sync(() => void taken.push(task.id)).pipe(
                 Effect.andThen(send({ taskId: task.id, state: "accepted" })),
               ),
-            run: Effect.never,
+            run: send({ taskId: "task-0", state: "done" }).pipe(Effect.andThen(Effect.never)),
           }),
       },
       reconnectDelaysMs: options.reconnectDelaysMs ?? [20],
@@ -432,18 +432,56 @@ describe("ZeropsHqLink", () => {
           },
           body: "",
         };
-        // Before HQ's state the Mate cannot say whether it is automated: HQ tells it again.
+        // Told before HQ's state, it is held until the Mate knows whether it is automated.
         socket.hear({ type: "task", task });
+        // HQ's frames are heard in order: once the ping is answered, the task was heard.
+        socket.hear({ type: "ping" });
+        yield* until(() => socket.sent.find((message) => message.type === "pong"));
+        assert.deepStrictEqual(taken, []);
+        assert.isFalse(socket.sent.some((message) => message.type === "task-state"));
         socket.hear({ type: "state", mate: { ...STATE, automated: true } });
-        socket.hear({ type: "task", task });
-        const report = yield* until(() =>
-          socket.sent.find((message) => message.type === "task-state"),
-        );
-        assert.deepStrictEqual(report, {
-          type: "task-state",
-          report: { taskId: "task-1", state: "accepted" },
+        yield* until(() => (taken.length > 0 ? taken : undefined));
+        const reports = yield* until(() => {
+          const found = socket.sent.filter((message) => message.type === "task-state");
+          return found.length >= 2 ? found : undefined;
         });
+        assert.sameDeepMembers(reports, [
+          { type: "task-state", report: { taskId: "task-0", state: "done" } },
+          { type: "task-state", report: { taskId: "task-1", state: "accepted" } },
+        ]);
         assert.deepStrictEqual(taken, ["task-1"]);
+      }),
+    ),
+  );
+
+  it.live("sends no task report on a link whose HQ never said the Mate is automated", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { enrollment, sockets, until, taken } = yield* rig({ everyMs: 10 });
+        yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
+        const socket = yield* until(() => sockets[0]);
+        socket.emit("open");
+        // An HQ from before automated Mates: its state names no flag, and it never hears of tasks.
+        socket.hear({ type: "state", mate: STATE });
+        socket.hear({
+          type: "task",
+          task: {
+            id: "task-1",
+            source: {
+              kind: "github-issue",
+              repo: "acme/tea-shop",
+              number: 42,
+              url: "https://github.com/acme/tea-shop/issues/42",
+              title: "The cart forgets its teas",
+              author: null,
+            },
+            body: "",
+          },
+        });
+        yield* until(() => (taken.length > 0 ? taken : undefined));
+        socket.hear({ type: "ping" });
+        yield* until(() => socket.sent.find((message) => message.type === "pong"));
+        assert.isFalse(socket.sent.some((message) => message.type === "task-state"));
       }),
     ),
   );

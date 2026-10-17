@@ -21,8 +21,10 @@
  *   (`access`), handed on to `ZeropsProjectAccess` with its age; an automated Mate's keys
  *   (`provider-keys`), handed on to `ZeropsAutomation`, never logged; and the tasks HQ hands an
  *   automated Mate (`task`), worked by `ZeropsTasks`, whose reports go up as `task-state` — the
- *   latest task's first on every link. A task told before HQ's first state on a link waits for
- *   HQ to tell it again: until then the Mate cannot say whether it is automated.
+ *   latest task's first on every link — and only on a link whose HQ said in its state that the
+ *   Mate is automated: an HQ from before automated Mates closes a link on a frame it does not
+ *   know. A task told before HQ's first state on a link is held until it comes
+ *   ({@link HQ_TASK_HOLD}), since until then the Mate cannot say whether it is automated.
  *
  * A link that closes or never opens is tried again after a growing wait. HQ is reached over IPv6
  * where it answers there ({@link HQ_LINK_ADDRESS_ORDER}): the Zerops L7 cuts a WebSocket on a
@@ -318,8 +320,15 @@ export const makeZeropsHqLink = (
         }
 
         const usage = options.usage ? yield* options.usage.open(send) : undefined;
+        // Whether HQ's latest state on this link says the Mate is automated: only then are tasks
+        // reported on it.
+        const automatedHere = yield* Ref.make(false);
         const tasks = options.tasks
-          ? yield* options.tasks.open((report) => send({ type: "task-state", report }))
+          ? yield* options.tasks.open((report) =>
+              Effect.flatMap(Ref.get(automatedHere), (automated) =>
+                automated ? send({ type: "task-state", report }) : Effect.void,
+              ),
+            )
           : undefined;
         let requestSerial = 0;
         const policyRequests = new Map<
@@ -346,6 +355,14 @@ export const makeZeropsHqLink = (
         const openedAt = yield* Clock.currentTimeMillis;
         const family = socket.family?.();
         const answered = yield* Deferred.make<void>();
+        // The tasks' reports, from HQ's first state on, on a link whose HQ does automated Mates.
+        const reporting =
+          tasks === undefined
+            ? Effect.never
+            : Deferred.await(answered).pipe(
+                Effect.andThen(Ref.get(automatedHere)),
+                Effect.flatMap((automated) => (automated ? tasks.run : Effect.never)),
+              );
         const dirty = yield* Ref.make(true);
         // What this link sent of each section, as JSON: a new link starts with nothing sent.
         const sent = new Map<string, string>();
@@ -392,6 +409,7 @@ export const makeZeropsHqLink = (
                 return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
               case "state":
                 return SubscriptionRef.set(state, Option.some(message.value.mate)).pipe(
+                  Effect.andThen(Ref.set(automatedHere, message.value.mate.automated === true)),
                   Effect.andThen(options.automation?.heard(message.value.mate) ?? Effect.void),
                   Effect.andThen(
                     autoUpdatePolicy?.receive(Option.fromUndefinedOr(message.value.autoUpdate)) ??
@@ -405,8 +423,15 @@ export const makeZeropsHqLink = (
               case "task": {
                 if (tasks === undefined) return Effect.void;
                 const task = message.value.task;
-                return Deferred.isDone(answered).pipe(
-                  Effect.flatMap((stated) => (stated ? tasks.receive(task) : Effect.void)),
+                // Held beside the frames that follow, for as long as the link lives, until HQ's
+                // first state; HQ tells it again if that never comes.
+                return Effect.asVoid(
+                  Deferred.await(answered).pipe(
+                    Effect.timeoutOrElse({ duration: HQ_TASK_HOLD, orElse: () => Effect.void }),
+                    Effect.andThen(Deferred.isDone(answered)),
+                    Effect.flatMap((stated) => (stated ? tasks.receive(task) : Effect.void)),
+                    Effect.forkChild,
+                  ),
                 );
               }
               case "access":
@@ -424,14 +449,7 @@ export const makeZeropsHqLink = (
           Effect.raceFirst(
             relay,
             Effect.all(
-              [
-                overviews,
-                heard,
-                attention,
-                health,
-                ...(usage ? [usage.run] : []),
-                ...(tasks ? [tasks.run] : []),
-              ],
+              [overviews, heard, attention, health, ...(usage ? [usage.run] : []), reporting],
               {
                 concurrency: "unbounded",
               },
@@ -522,6 +540,11 @@ export const makeZeropsHqLink = (
 
 /** How long a link must stay up before the next reconnect starts from the shortest wait. */
 const LINK_STABLE_MS = 30_000;
+/**
+ * How long a task told before HQ's first state on a link waits for it; HQ tells a task again
+ * when the Mate has not answered it.
+ */
+export const HQ_TASK_HOLD = Duration.seconds(30);
 /** A missing correlated answer withholds permission; the deadline never substitutes a policy. */
 export const HQ_AUTO_UPDATE_VERIFY_BUDGET = Duration.seconds(5);
 
