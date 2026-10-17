@@ -163,7 +163,11 @@ const decodeIssuesEvent = Schema.decodeUnknownOption(IssuesEvent);
 /** What HQ reads of an `issue_comment` event. */
 const CommentEvent = Schema.Struct({
   action: Schema.String,
-  issue: Issue,
+  /** `pull_request` set: a pull request's conversation, never an issue's (`pullRequests.ts`). */
+  issue: Schema.Struct({
+    ...Issue.fields,
+    pull_request: Schema.optionalKey(Schema.NullOr(Schema.Unknown)),
+  }),
   comment: Schema.Struct({
     id: Schema.Number,
     body: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -469,9 +473,11 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
             const { comment } = read.event;
             const author = comment.user ?? read.event.sender;
             const text = comment.body ?? "";
-            // A bot's, an app's or HQ's own comment is nobody's word to its task.
+            // A bot's, an app's or HQ's own comment is nobody's word to its task, and one on a
+            // pull request is the pull request's.
             if (
               read.event.action !== "created" ||
+              read.event.issue.pull_request != null ||
               author == null ||
               comment.performed_via_github_app != null ||
               text.includes(HQ_MARK) ||
