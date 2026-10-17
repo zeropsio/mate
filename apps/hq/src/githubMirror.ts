@@ -181,34 +181,50 @@ export const githubMirrorLayer = (
           return Semaphore.withPermits(lock, 1)(effect);
         });
 
-      const repositoryOf = (appId: string, repo: string) =>
+      /** The connected GitHub repository: `owner/name`, and its id there as it was connected. */
+      const connectedOf = (appId: string, repo: string) =>
         Effect.map(
-          sql<{ readonly url: string }>`
-            SELECT url FROM hq_repo_remote
+          sql<{ readonly url: string; readonly host_repo_id: string | null }>`
+            SELECT url, host_repo_id FROM hq_repo_remote
             WHERE app_id::text = ${appId} AND repo = ${repo} AND via = 'app'`,
           (rows) => {
             const remote = rows[0] === undefined ? undefined : remoteIdentity(rows[0].url);
-            return remote?.kind === "github" ? remote.path : undefined;
+            return remote?.kind === "github"
+              ? { repository: remote.path, id: rows[0]?.host_repo_id ?? null }
+              : undefined;
           },
         );
+      const repositoryOf = (appId: string, repo: string) =>
+        Effect.map(connectedOf(appId, repo), (connected) => connected?.repository);
 
-      /** GitHub's repository for `repo`, and the app's token for it; not mirrored without both. */
+      /**
+       * GitHub's repository for `repo`, and the app's token for it; not mirrored without both. Only
+       * the repository connected, by its id: one deleted and made again under its name is refused
+       * and never pushed to.
+       */
       const remoteFor = (appId: string, repo: string) =>
         Effect.gen(function* () {
-          const repository = yield* repositoryOf(appId, repo);
-          if (repository === undefined) return yield* unavailable("not_mirrored");
+          const connected = yield* connectedOf(appId, repo);
+          if (connected === undefined) return yield* unavailable("not_mirrored");
+          const notConnected = unavailable(
+            "refused",
+            "the repository on GitHub is not the one connected",
+          );
+          if (connected.id === null) return yield* notConnected;
           const token = yield* auth
-            .tokenFor(repository)
+            .tokenFor(connected.repository, connected.id)
             .pipe(
               Effect.mapError((error) =>
-                unavailable(
-                  error.reason === "unreachable" ? "unreachable" : "refused",
-                  error.reason,
-                ),
+                error.reason === "replaced"
+                  ? notConnected
+                  : unavailable(
+                      error.reason === "unreachable" ? "unreachable" : "refused",
+                      error.reason,
+                    ),
               ),
             );
           if (token === undefined) return yield* unavailable("not_mirrored");
-          return { url: gitUrl(repository), token } satisfies MirrorRemote;
+          return { url: gitUrl(connected.repository), token } satisfies MirrorRemote;
         });
 
       /** The repository's row says how it last followed GitHub (`outcome`, on `branch`). */

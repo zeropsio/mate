@@ -23,7 +23,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { Changes, changesLayer } from "./changes.ts";
-import { GithubAuth } from "./githubAuth.ts";
+import { GithubAuth, GithubAuthUnavailable } from "./githubAuth.ts";
 import { GithubEvents, githubEventsLayer } from "./githubEvents.ts";
 import { GithubMirror, changeBranch, changesToPush, githubMirrorLayer } from "./githubMirror.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
@@ -169,7 +169,9 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
     );
     const github = NodePath.join(root, "github.git");
     native(root, ["init", "--bare", "-b", "main", github]);
-    const auth = { installed: true, asked: [] as Array<string> };
+    // GitHub's repository of that name, by its id: the one connected until it is deleted and made
+    // again under the same name.
+    const auth = { installed: true, asked: [] as Array<string>, id: "501" };
     const told: Array<{ readonly taskId: string; readonly message: unknown }> = [];
     const context = yield* Layer.build(
       githubMirrorLayer({ gitUrl: () => github, sweepEvery }).pipe(
@@ -179,12 +181,14 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
           Layer.succeed(
             GithubAuth,
             GithubAuth.of({
-              tokenFor: (repository) =>
-                Effect.sync(() => {
+              tokenFor: (repository, id) =>
+                Effect.suspend(() => {
                   auth.asked.push(repository);
-                  return auth.installed && repository === REPOSITORY
-                    ? Redacted.make(TOKEN)
-                    : undefined;
+                  if (id !== undefined && id !== auth.id)
+                    return Effect.fail(new GithubAuthUnavailable({ reason: "replaced" }));
+                  return Effect.succeed(
+                    auth.installed && repository === REPOSITORY ? Redacted.make(TOKEN) : undefined,
+                  );
                 }),
               bot: Effect.succeed({ login: "acme-mate[bot]", userId: 1 }),
             }),
@@ -233,9 +237,9 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
     native(hqDir, ["update-ref", "refs/heads/main", main]);
     // Connected only now: what came before is the repository as the app found it.
     yield* sql`
-      INSERT INTO hq_repo_remote (app_id, repo, url, url_key, host, via)
+      INSERT INTO hq_repo_remote (app_id, repo, url, url_key, host, host_repo_id, via)
       VALUES (${appId}::uuid, 'appdev', ${`https://github.com/${REPOSITORY}.git`},
-        ${`github.com/${REPOSITORY}`}, 'github.com', 'app')`;
+        ${`github.com/${REPOSITORY}`}, 'github.com', '501', 'app')`;
 
     // The Mate's side: git's smart HTTP as HQ serves it, to the Mate `nova` of this application.
     const scope = yield* Effect.scope;
@@ -720,6 +724,35 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
             f.auth.installed = true;
             yield* until(() => refIn(f.github, "refs/heads/mate/1-add-a-search-box"), head);
             yield* until(() => refIn(f.github, "refs/heads/main"), f.main);
+          }),
+        ),
+    );
+
+    it.effect(
+      "a GitHub repository made again under the connected one's name is never pushed to",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            f.auth.id = "999";
+            const refused = yield* Effect.flip(f.mirror.sync(f.appId, "appdev"));
+            assert.deepStrictEqual(
+              {
+                tag: refused._tag,
+                reason: "reason" in refused ? refused.reason : undefined,
+                detail: "detail" in refused ? refused.detail : undefined,
+              },
+              {
+                tag: "GithubMirrorUnavailable",
+                reason: "refused",
+                detail: "the repository on GitHub is not the one connected",
+              },
+            );
+            yield* f.openChange("Add a search box");
+            yield* f.push("search.ts");
+            const change = yield* Effect.flip(f.mirror.pushChange(f.appId, "appdev", 1));
+            assert.strictEqual("reason" in change ? change.reason : undefined, "refused");
+            assert.strictEqual(native(f.github, ["for-each-ref"]), "");
           }),
         ),
     );
