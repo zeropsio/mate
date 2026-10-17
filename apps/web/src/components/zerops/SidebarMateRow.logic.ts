@@ -1010,16 +1010,41 @@ export function mateTaskLine(task: {
 const WAITING_FOR_A_TASK = "Waiting for a task";
 const WAITING_FOR_A_KEY = "Waiting for an API key";
 
+/** The pull request a task's change is mirrored to, as a line names it (`HqPullRequest`). */
+export interface MateTaskPullRequest {
+  readonly number: number;
+  readonly state: "open" | "merged" | "closed";
+  readonly checks?: "pending" | "passing" | "failing" | undefined;
+}
+
+/**
+ * What a line says of a task's pull request after its title: at work, that it is open; at rest,
+ * that it waits for review — or that its checks fail, which is its Mate's to fix — merged, or
+ * closed. `null` where it has none.
+ */
+export function pullRequestWords(
+  pullRequest: MateTaskPullRequest | undefined,
+  working: boolean,
+): string | null {
+  if (pullRequest === undefined) return null;
+  const pr = `PR #${String(pullRequest.number)}`;
+  if (pullRequest.state === "merged") return `${pr} merged`;
+  if (pullRequest.state === "closed") return `${pr} closed`;
+  if (working) return `${pr} open`;
+  return pullRequest.checks === "failing" ? `${pr} checks failing` : `${pr} waiting for review`;
+}
+
 /** An automated Mate's input to `mateRowSecond` (`mateAutomation`). */
 export interface MateAutomationLine {
   /**
    * The task it is on; `number` only for a GitHub issue's ("#12 …"); `waiting` while it waits for
-   * a person's answer (HQ's `task.waiting`).
+   * a person's answer (HQ's `task.waiting`); `pullRequest` once its change is one on GitHub.
    */
   readonly task: {
     readonly number?: number | undefined;
     readonly title: string;
     readonly waiting?: true | undefined;
+    readonly pullRequest?: MateTaskPullRequest | undefined;
   } | null;
   /**
    * Whether its organization holds the API key it runs on (`automatedKeyState`): HQ hands no task
@@ -1033,7 +1058,9 @@ export interface MateAutomationLine {
  * on a task it asked a person about, that it waits for them — in ink, the question is theirs to
  * answer where the task came from; at rest on a task — HQ keeps it on its task while the task's
  * change is open, and hands it no other — that task waiting for review; at rest with none, that
- * it waits for one — or for the organization's API key, where it holds none.
+ * it waits for one — or for the organization's API key, where it holds none. A task whose change
+ * is a pull request on GitHub names the pull request (`pullRequestWords`): failing checks in ink,
+ * since they are its Mate's to fix.
  */
 export function mateAutomatedLine(
   automated: MateAutomationLine,
@@ -1046,13 +1073,19 @@ export function mateAutomatedLine(
       text: automated.key === "missing" ? WAITING_FOR_A_KEY : WAITING_FOR_A_TASK,
       on: false,
     };
-  if (state === "working") return { kind: "task", text: mateTaskLine(task), on: true };
-  if (task.waiting === true)
-    return { kind: "task", text: `${mateTaskLine(task)} · waiting for you`, on: true };
+  const working = state === "working";
+  const pullRequest = pullRequestWords(task.pullRequest, working);
+  const line = (words: string | null) =>
+    words === null ? mateTaskLine(task) : `${mateTaskLine(task)} · ${words}`;
+  if (working) return { kind: "task", text: line(pullRequest), on: true };
+  if (task.waiting === true) return { kind: "task", text: line("waiting for you"), on: true };
+  const review = state === "needs" || state === "unread";
+  if (task.pullRequest === undefined)
+    return { kind: "task", text: line("waiting for review"), on: review };
   return {
     kind: "task",
-    text: `${mateTaskLine(task)} · waiting for review`,
-    on: state === "needs" || state === "unread",
+    text: line(pullRequest),
+    on: task.pullRequest.state === "open" && (review || task.pullRequest.checks === "failing"),
   };
 }
 
@@ -1075,6 +1108,7 @@ export function mateAutomation(
               readonly number?: number | undefined;
               readonly title: string;
               readonly waiting?: true | undefined;
+              readonly pullRequest?: MateTaskPullRequest | undefined;
             }
           | null
           | undefined;
@@ -1094,6 +1128,17 @@ export function mateAutomation(
             ...(task.number === undefined ? {} : { number: task.number }),
             title: task.title,
             ...(task.waiting === true ? { waiting: true } : {}),
+            ...(task.pullRequest === undefined
+              ? {}
+              : {
+                  pullRequest: {
+                    number: task.pullRequest.number,
+                    state: task.pullRequest.state,
+                    ...(task.pullRequest.checks === undefined
+                      ? {}
+                      : { checks: task.pullRequest.checks }),
+                  },
+                }),
           },
     ...(key === undefined ? {} : { key }),
   };
