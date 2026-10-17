@@ -62,6 +62,7 @@ import {
   type TaskOnSource,
   TaskSourceChannels,
   type TaskStatus,
+  authorOf,
   cleanTaskText,
   sourceOfRow,
 } from "./taskSources.ts";
@@ -648,8 +649,10 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       // A key kept: the tasks that waited for one go.
       yield* Effect.forkScoped(Stream.runForEach(aiKeys.changes, () => wake));
       /** Something said about the task, kept and told to its Mate where it hears it now. */
-      const messageTask = (taskId: string, message: MateTaskMessage) =>
+      const messageTask = (taskId: string, said: MateTaskMessage) =>
         Effect.gen(function* () {
+          // The Mate takes a named author only: a blank name is nobody's.
+          const message = { ...said, author: authorOf(said.author) };
           const [kept] = yield* leader.write(sql<{
             readonly heard: boolean;
             readonly mate_project_id: string | null;

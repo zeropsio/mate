@@ -186,6 +186,31 @@ describe("HQ's one door for tasks from every source", () => {
         }),
     );
 
+    it.effect("a blank author is nobody, in the task and in what is said of it", () =>
+      Effect.gen(function* () {
+        const core = yield* automatedPool();
+        const key = "webhook:w1/blank";
+        const taskId = queuedId(
+          yield* ask(core, key, "d-1", "Down.", {
+            kind: "webhook",
+            name: "Sentry",
+            url: null,
+            title: "Down",
+            author: "  ",
+          }),
+        );
+        const task = yield* taskFrame(core, taskId);
+        assert.isNull((task.source as { author: string | null }).author);
+        yield* core.robot.link.send({
+          type: "task-state",
+          report: { taskId, state: "accepted", conversationId: "conversation-1" },
+        });
+        yield* core.taskIntake.message(key, { id: "m-1", from: "edit", author: " ", text: "Up." });
+        const message = yield* core.robot.link.take("task-message");
+        assert.isNull((message["message"] as { author: string | null }).author);
+      }),
+    );
+
     it.effect(
       "a source acknowledges its task at once and keeps one status line, edited as the task moves, its place in the queue kept true",
       () =>

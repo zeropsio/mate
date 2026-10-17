@@ -123,6 +123,10 @@ export const cleanTaskText = (text: string, max = MATE_TASK_BODY_MAX) =>
     .replace(INVISIBLE, "")
     .slice(0, max);
 
+/** A person's name as a task carries it: trimmed and cleaned, or nobody where nothing is left. */
+export const authorOf = (name: string | null | undefined): string | null =>
+  cleanTaskText(name ?? "", MATE_TASK_TITLE_MAX).trim() || null;
+
 /** A task's title, cleaned the same way, or `fallback` where nothing is left of it. */
 export const cleanTaskTitle = (title: string, fallback: string) =>
   cleanTaskText(title, MATE_TASK_TITLE_MAX * 4)
