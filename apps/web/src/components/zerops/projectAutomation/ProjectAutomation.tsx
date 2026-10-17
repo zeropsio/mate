@@ -21,7 +21,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
-import { useAutomatedKey, useAppIntake } from "~/zerops/useAutomationSettings";
+import { automatedKeyState } from "~/zerops/automatedMate.logic";
+import { useAppIntake, useAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
 import { useAppTaskSource, useOrgTaskSource } from "~/zerops/useTaskSourceSettings";
 import { useNewMateDialog } from "~/zerops/newMate";
 import { useAddMateOffer } from "~/zerops/useHqOffers";
@@ -87,7 +88,11 @@ export function ProjectAutomation({
 }) {
   const { activeOrganization } = useZeropsSession();
   const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
-  const key = useAutomatedKey();
+  // An Owner or Admin reads the key here, so an HQ older than automated Mates shows no section;
+  // anyone else goes by what the app's root holds.
+  const keys = useOrgAiKeys(admin);
+  const held = useAutomatedKey();
+  const key = admin ? automatedKeyState(keys.read.keys) : held;
   const pool = usePool(groupId);
   const intake = useAppIntake(groupId);
   const addMate = useAddAutomatedMate(groupId);
@@ -505,7 +510,10 @@ function SourceRowView({
 }) {
   const disconnected = (row.kind === "slack" || row.kind === "discord") && row.disconnected;
   return (
-    <li className="flex min-w-0 items-center gap-2 px-2 py-1.5" data-zerops-source={row.kind}>
+    <li
+      className="flex min-h-8 min-w-0 items-center gap-1 px-2 py-0.5"
+      data-zerops-source={row.kind}
+    >
       <span className="grid min-w-0 flex-1">
         <span
           className={
