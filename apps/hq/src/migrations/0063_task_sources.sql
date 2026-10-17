@@ -93,3 +93,19 @@ CREATE TABLE hq_webhook (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX hq_webhook_app ON hq_webhook (app_id, seq);
+
+-- An application's schedules (`HqScheduleView`): its brief becomes a task each time it is due
+-- (`next_at`, computed in its time zone from `rule`, `HqScheduleRule`).
+CREATE TABLE hq_schedule (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  seq bigint GENERATED ALWAYS AS IDENTITY,
+  app_id uuid NOT NULL REFERENCES hq_app (id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+  brief text NOT NULL CHECK (length(brief) BETWEEN 1 AND 16000),
+  rule jsonb NOT NULL,
+  next_at timestamptz,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX hq_schedule_app ON hq_schedule (app_id, seq);
+CREATE INDEX hq_schedule_due ON hq_schedule (next_at) WHERE next_at IS NOT NULL;

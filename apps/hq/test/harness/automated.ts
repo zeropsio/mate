@@ -254,6 +254,7 @@ export const automatedPool = (
     readonly busy?: boolean;
     /** The organization keeps no key for its automated Mates' provider. */
     readonly keyless?: boolean;
+    readonly scheduleEvery?: Duration.Duration;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -265,6 +266,7 @@ export const automatedPool = (
     };
     const core = yield* startCore(true, {
       githubApi: github.url,
+      ...(given.scheduleEvery === undefined ? {} : { scheduleEvery: given.scheduleEvery }),
       ...(Object.keys(times).length === 0
         ? {}
         : { tasks: { sweepEvery: Duration.millis(50), ...times } }),

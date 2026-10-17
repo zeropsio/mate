@@ -39,6 +39,7 @@ import { githubGateLayer } from "./githubGate.ts";
 import { taskIntakeLayer, taskSourceChannelsLayer } from "./taskIntake.ts";
 import { taskLimitsLayer } from "./taskLimits.ts";
 import { webhooksLayer } from "./webhooks.ts";
+import { schedulesLayer } from "./schedules.ts";
 import { proposalDecisionsLayer } from "./proposals.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
@@ -96,6 +97,8 @@ export interface CoreOptions {
   readonly githubApi?: string;
   /** How long a task's steps may take and how often HQ looks at them (`mateTasks.ts`); for tests. */
   readonly tasks?: MateTasksOptions;
+  /** How often the leading Core looks for schedules due (`schedules.ts`); 30 s. */
+  readonly scheduleEvery?: Duration.Duration;
   /** Shorter intervals, for tests. */
   readonly heartbeat?: Duration.Duration;
   readonly retryAfter?: Duration.Duration;
@@ -164,6 +167,9 @@ const services = (options: CoreOptions) => {
     ),
     githubChannelLayer,
     webhooksLayer({ hqProjectId: options.hqProjectId }).pipe(Layer.provide(door)),
+    schedulesLayer(
+      options.scheduleEvery === undefined ? {} : { every: options.scheduleEvery },
+    ).pipe(Layer.provide(door)),
   ).pipe(
     Layer.provide(remotes),
     Layer.provideMerge(github),

@@ -217,6 +217,8 @@ export const startCore = (
     readonly githubApi?: string;
     /** How long a task's steps may take and how often HQ looks at them (`mateTasks.ts`). */
     readonly tasks?: MateTasksOptions;
+    /** How often HQ looks for schedules due; 30 s. */
+    readonly scheduleEvery?: Duration.Duration;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -262,6 +264,7 @@ export const startCore = (
       ...(given.officialRecheck === undefined ? {} : { officialRecheck: given.officialRecheck }),
       githubApi: given.githubApi ?? "http://127.0.0.1:9",
       ...(given.tasks === undefined ? {} : { tasks: given.tasks }),
+      ...(given.scheduleEvery === undefined ? {} : { scheduleEvery: given.scheduleEvery }),
     };
     const scope = yield* Scope.make();
     const platform =
