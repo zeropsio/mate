@@ -141,6 +141,24 @@ export const sealAiKey = (
 export const openAiKey = (secret: KeySecretOk, provider: string, sealed: Sealed) =>
   openWithData(secret, aiKeyRow(provider), sealed);
 
+/** What the organization's Slack app hands HQ (`slack.ts`): its bot token and signing secret. */
+export type SlackSecret = "bot_token" | "signing_secret";
+const slackRow = (what: SlackSecret, publicId: string) =>
+  Buffer.from(`hq_slack:${JSON.stringify([what, publicId])}`, "utf8");
+/** One of the Slack app's secrets, bound to which it is and to its events address. */
+export const sealSlackSecret = (
+  secret: KeySecretOk,
+  what: SlackSecret,
+  publicId: string,
+  value: Redacted.Redacted,
+): Sealed => sealWithData(secret, slackRow(what, publicId), value);
+export const openSlackSecret = (
+  secret: KeySecretOk,
+  what: SlackSecret,
+  publicId: string,
+  sealed: Sealed,
+) => openWithData(secret, slackRow(what, publicId), sealed);
+
 /**
  * The pass over the tokens kept before they were sealed (`0028_sealed_deploy_tokens.sql`), run by
  * the leading Core at its start under the lead's lock (`leader.ts`): each plain one sealed under
@@ -211,6 +229,16 @@ export class DeployKeys extends Context.Service<
     ) => Redacted.Redacted | undefined;
     readonly sealAiKey: (provider: string, value: Redacted.Redacted) => Sealed | undefined;
     readonly openAiKey: (provider: string, sealed: Sealed) => Redacted.Redacted | undefined;
+    readonly sealSlack: (
+      what: SlackSecret,
+      publicId: string,
+      value: Redacted.Redacted,
+    ) => Sealed | undefined;
+    readonly openSlack: (
+      what: SlackSecret,
+      publicId: string,
+      sealed: Sealed,
+    ) => Redacted.Redacted | undefined;
   }
 >()("@t3tools/hq/deployKeys") {}
 
@@ -242,6 +270,9 @@ export const deployKeysLayer = (
                 openIntakeSecret(secret, appId, publicId, sealed),
               sealAiKey: (provider, value) => sealAiKey(secret, provider, value),
               openAiKey: (provider, sealed) => openAiKey(secret, provider, sealed),
+              sealSlack: (what, publicId, value) => sealSlackSecret(secret, what, publicId, value),
+              openSlack: (what, publicId, sealed) =>
+                openSlackSecret(secret, what, publicId, sealed),
             }
           : {
               state: secret.state,
@@ -254,6 +285,8 @@ export const deployKeysLayer = (
               openIntake: () => undefined,
               sealAiKey: () => undefined,
               openAiKey: () => undefined,
+              sealSlack: () => undefined,
+              openSlack: () => undefined,
             },
       );
     }),
