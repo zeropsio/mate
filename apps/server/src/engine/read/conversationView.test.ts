@@ -6,6 +6,7 @@ import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import { CommandId, ConversationId, runId } from "@t3tools/contracts";
+import { USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 
 import { conversationRowOf } from "./conversationRow.ts";
 import { makeEngineWorld, mate } from "../testing/pump/engineWorld.ts";
@@ -66,6 +67,32 @@ describe("a conversation's view", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+
+  it.effect.each([
+    { case: "a compaction", text: "/compact", maintenance: true },
+    { case: "a slash command", text: "/mcp", maintenance: false },
+    { case: "the usage-limit resume", text: USAGE_LIMIT_RESUME_PROMPT, maintenance: false },
+  ])(
+    "keeps the person's last ask and its answer when $case follows them",
+    ({ text, maintenance }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          yield* w.tell({ _tag: "Send", text: "Build the tea catalog" });
+          yield* w.agent((agent, thread) => agent.say(thread, "The catalog is up."));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.tell({ _tag: "Send", text, ...(maintenance ? { maintenance } : {}) });
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const view = yield* viewOf(w);
+          assert.strictEqual(view?.lastPerson?.text, "Build the tea catalog");
+          assert.strictEqual(view?.lastAsked?.text, "Build the tea catalog");
+          const row = conversationRowOf(view!, { environmentId: "env", epoch: 1 });
+          assert.strictEqual(row.subject, "Build the tea catalog");
+          assert.strictEqual(row.snippet, "The catalog is up.");
+          yield* w.shutdown;
+        }),
+      ),
   );
 
   it.effect("names the run on, the call it is on and the request it waits on", () =>
