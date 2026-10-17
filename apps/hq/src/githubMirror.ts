@@ -211,7 +211,33 @@ export const githubMirrorLayer = (
           return { url: gitUrl(repository), token } satisfies MirrorRemote;
         });
 
-      /** What following GitHub found, under the repository's lock; its row says so. */
+      /** The repository's row says how it last followed GitHub (`outcome`, on `branch`). */
+      const recordFollow = (at: Repo, branch: string, outcome: MirrorSync) => {
+        // Where both stand now: GitHub took Mate's main, or Mate's main took GitHub's.
+        const synced =
+          outcome.kind === "imported"
+            ? outcome.to
+            : outcome.kind === "diverged" || outcome.sha === ""
+              ? null
+              : outcome.sha;
+        const diverged = outcome.kind === "diverged";
+        return sql`
+          INSERT INTO hq_repo_mirror (app_id, repo, branch, synced_sha, synced_at, diverged_since)
+          VALUES (${at.appId}::uuid, ${at.id}, ${branch}, ${synced},
+            CASE WHEN ${synced}::text IS NULL THEN NULL ELSE now() END,
+            CASE WHEN ${diverged}::boolean THEN now() END)
+          ON CONFLICT (app_id, repo) DO UPDATE SET branch = excluded.branch,
+            synced_sha = COALESCE(excluded.synced_sha, hq_repo_mirror.synced_sha),
+            synced_at = COALESCE(excluded.synced_at, hq_repo_mirror.synced_at),
+            diverged_since = CASE WHEN excluded.diverged_since IS NULL THEN NULL
+              ELSE COALESCE(hq_repo_mirror.diverged_since, excluded.diverged_since) END`;
+      };
+
+      /**
+       * One try at following GitHub. What it reads and pushes there runs holding nothing; only
+       * moving `main` takes the repository's lock, and its CAS from the `main` read before. A side
+       * that moved meanwhile is `moved`: tried again.
+       */
       const follow = (git: HqGit, at: Repo, remote: MirrorRemote) =>
         Effect.gen(function* () {
           const head = yield* git.remoteHead(at, remote);
@@ -222,49 +248,35 @@ export const githubMirrorLayer = (
             head.sha === null || head.sha === main
               ? head.sha
               : yield* git.fetchTip(at, remote, branch);
-          const outcome: MirrorSync = yield* Effect.gen(function* () {
-            if (tip === main) return { kind: "same", sha: main ?? "" } as const;
-            const behind =
-              tip === null || (main !== null && (yield* git.isAncestor(at, tip, main)));
-            // A repository HQ made and nobody wrote to (its empty root commit) takes GitHub's
-            // history in its place: connecting it to a repository with code loses nothing.
-            const unwritten =
-              !behind && main !== null && tip !== null && (yield* git.holdsNothing(at, main));
-            if (main !== null && behind) {
-              const pushed = yield* git.pushRef(at, remote, branch, main, tip);
-              if (pushed.kind === "rejected")
-                return yield* unavailable("busy", `GitHub's ${branch} moved meanwhile`);
-              return { kind: "pushed", sha: main } as const;
-            }
-            if (
-              tip !== null &&
-              (main === null || unwritten || (yield* git.isAncestor(at, main, tip)))
-            ) {
-              const moved = yield* git.fastForwardMain(at, tip, main);
-              if (moved.kind !== "moved") return yield* unavailable("busy", "main moved meanwhile");
-              return { kind: "imported", from: main ?? "", to: tip } as const;
-            }
-            return { kind: "diverged", mate: main ?? "", github: tip ?? "" } as const;
-          });
-          // Where both stand now: GitHub took Mate's main, or Mate's main took GitHub's.
-          const synced =
-            outcome.kind === "imported"
-              ? outcome.to
-              : outcome.kind === "diverged" || outcome.sha === ""
-                ? null
-                : outcome.sha;
-          const diverged = outcome.kind === "diverged";
-          yield* sql`
-            INSERT INTO hq_repo_mirror (app_id, repo, branch, synced_sha, synced_at, diverged_since)
-            VALUES (${at.appId}::uuid, ${at.id}, ${branch}, ${synced},
-              CASE WHEN ${synced}::text IS NULL THEN NULL ELSE now() END,
-              CASE WHEN ${diverged}::boolean THEN now() END)
-            ON CONFLICT (app_id, repo) DO UPDATE SET branch = excluded.branch,
-              synced_sha = COALESCE(excluded.synced_sha, hq_repo_mirror.synced_sha),
-              synced_at = COALESCE(excluded.synced_at, hq_repo_mirror.synced_at),
-              diverged_since = CASE WHEN excluded.diverged_since IS NULL THEN NULL
-                ELSE COALESCE(hq_repo_mirror.diverged_since, excluded.diverged_since) END`;
-          return outcome;
+          const recorded = (outcome: MirrorSync) =>
+            Effect.as(leader.write(recordFollow(at, branch, outcome)), outcome);
+          if (tip === main) return yield* recorded({ kind: "same", sha: main ?? "" });
+          const behind = tip === null || (main !== null && (yield* git.isAncestor(at, tip, main)));
+          // A repository HQ made and nobody wrote to (its empty root commit) takes GitHub's
+          // history in its place: connecting it to a repository with code loses nothing.
+          const unwritten =
+            !behind && main !== null && tip !== null && (yield* git.holdsNothing(at, main));
+          if (main !== null && behind) {
+            const pushed = yield* git.pushRef(at, remote, branch, main, tip);
+            if (pushed.kind === "rejected") return "moved" as const;
+            return yield* recorded({ kind: "pushed", sha: main });
+          }
+          if (
+            tip !== null &&
+            (main === null || unwritten || (yield* git.isAncestor(at, main, tip)))
+          ) {
+            const outcome = { kind: "imported", from: main ?? "", to: tip } as const;
+            return yield* holdingRepo(
+              at,
+              Effect.gen(function* () {
+                const moved = yield* git.fastForwardMain(at, tip, main);
+                if (moved.kind !== "moved") return "moved" as const;
+                yield* recordFollow(at, branch, outcome);
+                return outcome;
+              }),
+            );
+          }
+          return yield* recorded({ kind: "diverged", mate: main ?? "", github: tip ?? "" });
         });
 
       /**
@@ -300,13 +312,18 @@ export const githubMirrorLayer = (
             const remote = yield* remoteFor(appId, repo);
             const git = yield* gitHost.git.pipe(Effect.mapError(fromGit));
             const at = { appId, id: repo };
-            const outcome = yield* holdingRepo(at, follow(git, at, remote)).pipe(
+            const once = follow(git, at, remote).pipe(
               Effect.catchTags({
                 GitError: (e) => Effect.fail(fromGit(e)),
                 NotLeader: (e) => Effect.fail(fromGit(e)),
               }),
               Effect.provide(services),
             );
+            // A side that moved while it was read is read again, once.
+            const first = yield* once;
+            const outcome = first === "moved" ? yield* once : first;
+            if (outcome === "moved")
+              return yield* unavailable("busy", "GitHub or Mate's main kept moving");
             if (outcome.kind === "imported")
               yield* landContained(git, at, outcome.from, outcome.to).pipe(
                 Effect.catchTags({ GitError: (e) => Effect.fail(fromGit(e)) }),

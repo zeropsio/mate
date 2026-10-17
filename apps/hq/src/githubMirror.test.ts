@@ -8,6 +8,7 @@ import * as NodePath from "node:path";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { assert, describe, it } from "@effect/vitest";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -465,6 +466,38 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
             sha: ahead,
           });
           assert.strictEqual(refIn(f.github, "refs/heads/main"), ahead);
+        }),
+      ),
+    );
+
+    it.effect("following GitHub talks to it without holding the repository's lock", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* mirrored();
+          yield* f.mirror.sync(f.appId, "appdev");
+          const ahead = commitIn(f.hqDir, [f.main], "ahead");
+          native(f.hqDir, ["update-ref", "refs/heads/main", ahead]);
+          // Someone holds the repository's row — a merge, a remote edit — for as long as this test.
+          const held = yield* Deferred.make<void>();
+          const release = yield* Deferred.make<void>();
+          yield* Effect.forkScoped(
+            f.sql.withTransaction(
+              Effect.gen(function* () {
+                yield* f.sql`
+                  SELECT 1 FROM hq_repo WHERE app_id::text = ${f.appId} AND name = 'appdev'
+                  FOR UPDATE`;
+                yield* Deferred.succeed(held, undefined);
+                yield* Deferred.await(release);
+              }),
+            ),
+          );
+          yield* Deferred.await(held);
+          assert.deepStrictEqual(
+            yield* f.mirror.sync(f.appId, "appdev").pipe(Effect.timeout(Duration.seconds(5))),
+            { kind: "pushed", sha: ahead },
+          );
+          assert.strictEqual(refIn(f.github, "refs/heads/main"), ahead);
+          yield* Deferred.succeed(release, undefined);
         }),
       ),
     );
