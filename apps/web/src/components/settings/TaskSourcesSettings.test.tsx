@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { Input } from "../ui/input";
 import { AppIntakeView } from "./AutomatedMatesSettings";
 import {
+  AppChannelView,
   AppSchedulesView,
   AppWebhooksView,
   DiscordSettingsView,
@@ -24,7 +25,6 @@ import {
 const SECRET = ["whsec", "tea", "shop", "0007"].join("_");
 const BOT_TOKEN = ["xoxb", "1111", "teashop"].join("-");
 const SIGNING = ["sign", "tea", "shop"].join("_");
-const APPS = [{ id: "tea-shop", name: "Tea Shop" }];
 
 /** A part's controls over a fixture of what is read: its writes and reads again recorded. */
 function controls(setting: unknown, over: { readonly revealed?: HqWebhookView | null } = {}) {
@@ -85,7 +85,6 @@ describe("Slack in Settings", () => {
   it("walks an organization with no Slack app through making one from HQ's manifest", () => {
     const html = renderToStaticMarkup(
       <SlackSettingsView
-        apps={APPS}
         controls={controls(known(slackOff))}
         manifest={controls(known('{"display_information":{}}'))}
       />,
@@ -100,9 +99,7 @@ describe("Slack in Settings", () => {
 
   it("connects with the bot token and signing secret typed, and clears both fields", () => {
     const slack = controls(known(slackOff));
-    const view = rendered(
-      <SlackSettingsView apps={APPS} controls={slack} manifest={controls(known("{}"))} />,
-    );
+    const view = rendered(<SlackSettingsView controls={slack} manifest={controls(known("{}"))} />);
     const [token, signing] = view.root
       .findAllByType(Input)
       .filter((node) => node.props.type === "password");
@@ -118,15 +115,20 @@ describe("Slack in Settings", () => {
     view.unmount();
   });
 
+  // Settings › Automation says the workspace; each project's page, its channel.
   it("says which workspace it is connected to, and the channel each application takes tasks from", () => {
     const html = renderToStaticMarkup(
-      <SlackSettingsView
-        apps={APPS}
-        channel={() =>
-          controls(known({ channel: { appId: "tea-shop", channelId: "C042", channel: "support" } }))
-        }
-        controls={controls(known({ ...slackOff, connected: true, workspace: "Acme" }))}
-      />,
+      <>
+        <SlackSettingsView
+          controls={controls(known({ ...slackOff, connected: true, workspace: "Acme" }))}
+        />
+        <AppChannelView
+          controls={controls(
+            known({ channel: { appId: "tea-shop", channelId: "C042", channel: "support" } }),
+          )}
+          source="slack"
+        />
+      </>,
     );
     expect(shown(html)).toContain("Connected to Acme");
     expect(shown(html)).toContain("Disconnect");
@@ -134,13 +136,20 @@ describe("Slack in Settings", () => {
     expect(shown(html)).toContain("Stop");
   });
 
-  it("asks an application with no channel for one by its ID", () => {
+  it("says in Settings only the workspace a connected Slack app is in, each project's channel being its page's", () => {
     const html = renderToStaticMarkup(
       <SlackSettingsView
-        apps={APPS}
-        channel={() => controls(known({ channel: null }))}
         controls={controls(known({ ...slackOff, connected: true, workspace: "Acme" }))}
       />,
+    );
+    expect(shown(html)).toContain("Connected to Acme");
+    expect(shown(html)).not.toContain("Takes tasks from");
+    expect(shown(html)).not.toContain("Channel ID");
+  });
+
+  it("asks an application with no channel for one by its ID", () => {
+    const html = renderToStaticMarkup(
+      <AppChannelView controls={controls(known({ channel: null }))} source="slack" />,
     );
     expect(shown(html)).toContain("Channel ID, from the channel&#x27;s details");
     expect(shown(html)).toContain("Take tasks");
@@ -149,7 +158,7 @@ describe("Slack in Settings", () => {
   // The owner's cardinal sin: a part that reads first and answers later must not grow.
   it("holds the form's room while it is read", () => {
     const html = renderToStaticMarkup(
-      <SlackSettingsView apps={APPS} controls={controls({ state: "reading" })} />,
+      <SlackSettingsView controls={controls({ state: "reading" })} />,
     );
     expect(html).toContain("data-zerops-intake-room");
     expect(shown(html)).toContain("Reading…");
@@ -158,12 +167,12 @@ describe("Slack in Settings", () => {
   it.each([
     {
       case: "Slack, as its unconnected steps",
-      part: <SlackSettingsView apps={APPS} controls={controls({ state: "reading" })} />,
+      part: <SlackSettingsView controls={controls({ state: "reading" })} />,
       room: "Create a Slack app from this manifest.",
     },
     {
       case: "Discord, as its unconnected steps",
-      part: <DiscordSettingsView apps={APPS} controls={controls({ state: "reading" })} />,
+      part: <DiscordSettingsView controls={controls({ state: "reading" })} />,
       room: "Make an application in the Discord Developer Portal.",
     },
     {
@@ -193,9 +202,7 @@ describe("Discord in Settings", () => {
   };
 
   it("walks an organization with no Discord application through connecting one, with its endpoint URL", () => {
-    const html = renderToStaticMarkup(
-      <DiscordSettingsView apps={APPS} controls={controls(known(off))} />,
-    );
+    const html = renderToStaticMarkup(<DiscordSettingsView controls={controls(known(off))} />);
     expect(html).toContain('href="https://discord.com/developers/applications"');
     expect(shown(html)).toContain("Application ID");
     expect(shown(html)).toContain("Public key");
@@ -205,10 +212,7 @@ describe("Discord in Settings", () => {
 
   it("says the endpoint address appears once connected, with nothing to copy before HQ names it", () => {
     const html = renderToStaticMarkup(
-      <DiscordSettingsView
-        apps={APPS}
-        controls={controls(known({ ...off, interactionsUrl: "" }))}
-      />,
+      <DiscordSettingsView controls={controls(known({ ...off, interactionsUrl: "" }))} />,
     );
     expect(shown(html)).toContain("the address that appears here once it is connected");
     expect(shown(html)).not.toContain("Copy URL");
@@ -217,8 +221,6 @@ describe("Discord in Settings", () => {
   it("shows a connected application's invite link and who may use it", () => {
     const html = renderToStaticMarkup(
       <DiscordSettingsView
-        apps={APPS}
-        channel={() => controls(known({ channel: null }))}
         controls={controls(
           known({
             ...off,
@@ -236,11 +238,7 @@ describe("Discord in Settings", () => {
 
   it("says nobody may start a task while the allowlist is empty", () => {
     const html = renderToStaticMarkup(
-      <DiscordSettingsView
-        apps={APPS}
-        channel={() => controls(known({ channel: null }))}
-        controls={controls(known({ ...off, connected: true }))}
-      />,
+      <DiscordSettingsView controls={controls(known({ ...off, connected: true }))} />,
     );
     expect(shown(html)).toContain("Nobody may start a task yet");
   });

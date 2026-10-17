@@ -1,63 +1,30 @@
 /**
- * Settings › Zerops › HQ, for the organization's Owner and Admins: what automated Mates run on and
- * take tasks from. The organization's API key — set, replaced or removed here, never shown back —
- * and, per application, the GitHub repository and label its automated Mates take issues from, with
- * what HQ answered as it was set: the webhook it made, or the URL and secret to paste, the secret
- * shown this once.
+ * What automated Mates run on and take tasks from. Settings › Automation's model key — the
+ * organization's API key, set, replaced or removed there, never shown back — and, per application
+ * (its project's page shows it), the GitHub repository and label its automated Mates take issues
+ * from, with what HQ answered as it was set: the webhook it made, or the URL and secret to paste,
+ * the secret shown this once.
  */
 import type { AppIntakeRead, OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import type { HqIntakeView } from "@t3tools/shared/hqIntake";
 import { DEFAULT_INTAKE_LABEL } from "@t3tools/shared/hqIntake";
-import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
-import { useAtomValue } from "@effect/atom-react";
-import { useId, useMemo, useState } from "react";
+import type { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
+import { useId, useState } from "react";
 
-import { hqNavigationAtom } from "~/state/zerops";
-import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
-import { useHqAppDetailHold, useHqAppReleases } from "~/zerops/useHqAppDetail";
-import { automatedKeyState } from "~/zerops/automatedMate.logic";
-import { useAppIntake, useOrgAiKeys } from "~/zerops/useAutomationSettings";
+import { useAppIntake } from "~/zerops/useAutomationSettings";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import {
-  aiKeyLine,
-  intakeAnswerLine,
-  intakeLine,
-  intakeRepoChoices,
-} from "./automatedMatesSettings.logic";
+import { aiKeyLine, intakeAnswerLine, intakeLine } from "./automatedMatesSettings.logic";
 import { tasksWaitingWords } from "../zerops/SidebarMateRow.logic";
 import { SettingsRow } from "./settingsLayout";
+import { searchableSetting } from "./settingsSearch";
 import { CopyLine, IntakeRoom, PublicChoice } from "./automationParts";
-import { TaskSourcesSettings } from "./TaskSourcesSettings";
-
-const NEBIUS = OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === "nebius");
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-
-export function AutomatedMatesSettings() {
-  const { read, setKey, removeKey, again } = useOrgAiKeys(true);
-  // An HQ that keeps no organization keys predates automated Mates: one line, nothing to set.
-  if (automatedKeyState(read.keys) === "unsupported") return <AutomatedMatesUnsupported />;
-  return (
-    <>
-      {NEBIUS === undefined ? null : (
-        <OrganizationKeyView
-          onAgain={again}
-          onRemove={removeKey}
-          onSet={setKey}
-          provider={NEBIUS}
-          read={read}
-        />
-      )}
-      <TasksFromGithub />
-      <TaskSourcesSettings />
-    </>
-  );
-}
 
 /** In the settings' place, where this HQ can't do automated Mates. */
 export function AutomatedMatesUnsupported() {
@@ -138,7 +105,7 @@ export function OrganizationKeyView({
               size="sm"
               variant="ghost"
             >
-              Remove key
+              Remove
             </Button>
           </div>
         ) : (
@@ -150,19 +117,22 @@ export function OrganizationKeyView({
             size="sm"
             variant="secondary"
           >
-            Set key
+            Add key
           </Button>
         )
       }
       data-zerops-surface="settings-org-ai-key"
-      description={`Automated Mates run OpenCode on it: ${provider.models}. HQ keeps it sealed and never shows it again.`}
+      description={`Pays for the open models automated Mates run on OpenCode: ${provider.models}.`}
+      id={searchableSetting("automation-model-key").id}
       status={
         <>
-          <span>{status}</span>
+          <span>
+            {provider.name} · {status}
+          </span>
           {problem === null ? null : <span role="alert"> · {problem}</span>}
         </>
       }
-      title={`Organization API key — ${provider.name}`}
+      title="Model key"
     >
       {editing ? (
         <form
@@ -191,7 +161,8 @@ export function OrganizationKeyView({
           />
           {/* The Mates' agents can reach the key: one made for Mate alone, with a limit. */}
           <p className="text-xs text-muted-foreground" id={`${keyId}-hint`}>
-            Use a key made only for Mate, with a spending limit.
+            Use a key made only for Mate, with a spending limit. HQ keeps it sealed and never shows
+            it again.
           </p>
           <div className="flex justify-end gap-2">
             <Button
@@ -215,64 +186,8 @@ export function OrganizationKeyView({
   );
 }
 
-function TasksFromGithub() {
-  const navigation = useAtomValue(hqNavigationAtom);
-  // HQ's applications once its navigation is read; until then the row says it is reading.
-  const structure = navigation.structure;
-  const apps = useMemo(
-    () =>
-      structure === null ? null : structure.apps.map((app) => ({ id: app.id, name: app.name })),
-    [structure],
-  );
-  return (
-    <SettingsRow
-      data-zerops-surface="settings-tasks-from-github"
-      description="Each application's automated Mates take the issues carrying its label from one of its GitHub repositories, and say on GitHub how each went."
-      title="Tasks from GitHub"
-    >
-      {apps === null ? (
-        // An application's row in its shape, until HQ says which there are.
-        <ul className="grid gap-3 px-3 pb-3 sm:px-4">
-          <li className="grid gap-2">
-            <p className="text-sm font-medium text-muted-foreground">Reading…</p>
-            <IntakeRoom choice>{null}</IntakeRoom>
-          </li>
-        </ul>
-      ) : (
-        <AppIntakes apps={apps} />
-      )}
-    </SettingsRow>
-  );
-}
-
-function AppIntakes({
-  apps,
-}: {
-  readonly apps: ReadonlyArray<{ readonly id: string; readonly name: string }>;
-}) {
-  const appIds = useMemo(() => apps.map((app) => app.id), [apps]);
-  // Each application's repositories, held while the rows are drawn: nothing else may hold them.
-  useHqAppDetailHold(appIds);
-  const { repos, failures } = useHqAppReleases(appIds);
-  const retryDetail = useAccountDataOptional()?.retryDetail;
-  return (
-    <ul className="grid gap-3 px-3 pb-3 sm:px-4">
-      {apps.map((app) => (
-        <AppIntakeRow
-          appId={app.id}
-          choices={intakeRepoChoices(repos.get(app.id))}
-          key={app.id}
-          name={app.name}
-          onReadAgain={() => retryDetail?.({ family: "hqAppDetail", ownerId: app.id })}
-          reposFailure={failures.get(app.id)}
-          reposRead={repos.has(app.id)}
-        />
-      ))}
-    </ul>
-  );
-}
-
-function AppIntakeRow(props: {
+/** One application's intake, read while its row is drawn. */
+export function AppIntakeRow(props: {
   readonly appId: string;
   readonly name: string;
   readonly choices: ReadonlyArray<string>;

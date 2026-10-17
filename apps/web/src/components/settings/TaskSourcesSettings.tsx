@@ -1,10 +1,10 @@
 /**
- * Settings › Zerops › HQ, below Tasks from GitHub, for the organization's Owner and Admins: where
- * automated Mates take tasks from besides GitHub. The organization's Slack app — made from the
- * manifest HQ gives, its tokens pasted here and never shown back — and its Discord application
- * with who may use it; per application, the channel it takes tasks from on each, its signed
- * webhooks (the secret shown once, as it is made) and its schedules; and the limits on each task.
- * An HQ older than these says so in one line, and none of them is drawn.
+ * Where automated Mates take tasks from besides GitHub. In Settings › Automation, for the
+ * organization's Owner and Admins: its Slack app — made from the manifest HQ gives, its tokens
+ * pasted here and never shown back — its Discord application with who may use it, and the limits
+ * on each task. Per application (a project's page shows them): the channel it takes tasks from
+ * on each, its signed webhooks (the secret shown once, as it is made) and its schedules. An HQ
+ * older than these says so in one line, and none of them is drawn.
  *
  * Each part paints in its final shape while it is read (`IntakeRoom`): nothing it reads moves what
  * the person is about to press.
@@ -25,25 +25,23 @@ import type {
   HqTaskLimitsView,
   HqWebhookView,
 } from "@t3tools/shared/hqIntake";
-import { useAtomValue } from "@effect/atom-react";
-import { ArrowUpRightIcon } from "lucide-react";
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import { hqNavigationAtom } from "~/state/zerops";
 import {
   useAppTaskSource,
   useOrgTaskSource,
   type TaskSourceControls,
 } from "~/zerops/useTaskSourceSettings";
 
-import { Button, InlineButton } from "../ui/button";
+import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
-import { CopyLine, HeldRoom, IntakeRoom } from "./automationParts";
+import { CopyLine, HeldRoom, IntakeRoom, OutLink } from "./automationParts";
 import { SettingsRow } from "./settingsLayout";
+import { searchableSetting } from "./settingsSearch";
 import {
   allowlistAfter,
   channelLine,
@@ -82,25 +80,21 @@ interface App {
   readonly name: string;
 }
 
+/**
+ * Settings › Automation's organization-wide sources: its Slack app, its Discord application and
+ * the limits on each task. Which channel, webhooks and schedules feed a project's automated Mates
+ * is set on that project's page.
+ */
 export function TaskSourcesSettings() {
   const limits = useOrgTaskSource("hqTaskLimits");
   const slack = useOrgTaskSource("hqSlack");
   const discord = useOrgTaskSource("hqDiscord");
-  const navigation = useAtomValue(hqNavigationAtom);
-  const structure = navigation.structure;
-  const apps = useMemo(
-    () =>
-      structure === null ? null : structure.apps.map((app) => ({ id: app.id, name: app.name })),
-    [structure],
-  );
   if (taskSourcesUnsupported([limits.read.setting, slack.read.setting, discord.read.setting]))
     return <TaskSourcesUnsupported />;
   return (
     <>
-      <SlackSettingsView apps={apps} controls={slack} />
-      <DiscordSettingsView apps={apps} controls={discord} />
-      <WebhooksSettings apps={apps} />
-      <SchedulesSettings apps={apps} />
+      <SlackSettingsView controls={slack} />
+      <DiscordSettingsView controls={discord} />
       <TaskLimitsView controls={limits} />
     </>
   );
@@ -218,15 +212,6 @@ function Step({ n, children }: { readonly n: number; readonly children: ReactNod
   );
 }
 
-function OutLink({ href, children }: { readonly href: string; readonly children: ReactNode }) {
-  return (
-    <InlineButton render={<a href={href} rel="noreferrer" target="_blank" />}>
-      {children}
-      <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
-    </InlineButton>
-  );
-}
-
 function SecretField({
   label,
   value,
@@ -319,16 +304,11 @@ function AppRows({
 
 export function SlackSettingsView({
   controls,
-  apps,
   manifest,
-  channel,
 }: {
   readonly controls: Controls<"hqSlack">;
-  readonly apps: ReadonlyArray<App> | null;
   /** The manifest's read, where the harness hands it; else read while the steps show. */
   readonly manifest?: Controls<"hqSlackManifest">;
-  /** Each application's channel, where the harness hands it; else read per row. */
-  readonly channel?: (appId: string) => Controls<"hqAppSlack">;
 }) {
   const { read, write, again } = controls;
   const setting = read.setting;
@@ -350,11 +330,12 @@ export function SlackSettingsView({
         ) : undefined
       }
       data-zerops-surface="settings-slack"
-      description="Mention Mate in a channel an application takes tasks from: the thread becomes the task's conversation, and Mate answers there."
+      description="Mention Mate in a channel a project takes tasks from: the thread becomes the task's conversation, and Mate answers there."
+      id={searchableSetting("automation-slack").id}
       status={statusOf(setting, slackLine)}
       title="Slack"
     >
-      <div className="grid gap-3 px-3 pb-3 sm:px-4">
+      <div className="grid gap-3 px-3 pb-3 empty:hidden sm:px-4">
         {view === null ? (
           <NotKnown
             onAgain={again}
@@ -363,17 +344,7 @@ export function SlackSettingsView({
             // An unconnected organization's steps: the shape most land in.
             template={<SlackSteps controls={UNSEEN} manifest={UNSEEN} />}
           />
-        ) : view.connected ? (
-          <AppRows apps={apps}>
-            {(app) =>
-              channel === undefined ? (
-                <AppChannelRow appId={app.id} family="hqAppSlack" source="slack" />
-              ) : (
-                <AppChannelView controls={channel(app.id)} source="slack" />
-              )
-            }
-          </AppRows>
-        ) : manifest === undefined ? (
+        ) : view.connected ? null : manifest === undefined ? (
           <SlackStepsWithManifest controls={controls} />
         ) : (
           <SlackSteps controls={controls} manifest={manifest} />
@@ -458,7 +429,7 @@ function SlackSteps({
 
 // ── an application's channel, on Slack or Discord ───────────────────────────────────────────
 
-function AppChannelRow({
+export function AppChannelRow({
   appId,
   family,
   source,
@@ -539,15 +510,7 @@ export function AppChannelView({
 
 // ── Discord ─────────────────────────────────────────────────────────────────────────────────
 
-export function DiscordSettingsView({
-  controls,
-  apps,
-  channel,
-}: {
-  readonly controls: Controls<"hqDiscord">;
-  readonly apps: ReadonlyArray<App> | null;
-  readonly channel?: (appId: string) => Controls<"hqAppDiscord">;
-}) {
+export function DiscordSettingsView({ controls }: { readonly controls: Controls<"hqDiscord"> }) {
   const { read, write, again } = controls;
   const setting = read.setting;
   const view = setting.state === "known" ? setting.held : null;
@@ -568,7 +531,8 @@ export function DiscordSettingsView({
         ) : undefined
       }
       data-zerops-surface="settings-discord"
-      description="Allowed people type /mate task in a channel an application takes tasks from: Mate opens a thread for it, and /mate reply there steers it."
+      description="Allowed people type /mate task in a channel a project takes tasks from: Mate opens a thread for it, and /mate reply there steers it."
+      id={searchableSetting("automation-discord").id}
       status={statusOf(setting, (known) => (known.connected ? "Connected" : "Not connected"))}
       title="Discord"
     >
@@ -581,18 +545,7 @@ export function DiscordSettingsView({
             template={<DiscordSteps controls={UNSEEN} view={DISCORD_OFF} />}
           />
         ) : view.connected ? (
-          <>
-            <DiscordConnected controls={controls} view={view} />
-            <AppRows apps={apps}>
-              {(app) =>
-                channel === undefined ? (
-                  <AppChannelRow appId={app.id} family="hqAppDiscord" source="discord" />
-                ) : (
-                  <AppChannelView controls={channel(app.id)} source="discord" />
-                )
-              }
-            </AppRows>
-          </>
+          <DiscordConnected controls={controls} view={view} />
         ) : (
           <DiscordSteps controls={controls} view={view} />
         )}
@@ -753,14 +706,6 @@ function DiscordConnected({
 
 // ── webhooks ────────────────────────────────────────────────────────────────────────────────
 
-function WebhooksSettings({ apps }: { readonly apps: ReadonlyArray<App> | null }) {
-  return (
-    <WebhooksSettingsView apps={apps}>
-      {(app) => <AppWebhooksRow appId={app.id} name={app.name} />}
-    </WebhooksSettingsView>
-  );
-}
-
 export function WebhooksSettingsView({
   apps,
   children,
@@ -788,7 +733,7 @@ export function WebhooksSettingsView({
   );
 }
 
-function AppWebhooksRow({ appId, name }: { readonly appId: string; readonly name: string }) {
+export function AppWebhooksRow({ appId, name }: { readonly appId: string; readonly name: string }) {
   const controls = useAppTaskSource("hqAppWebhooks", appId);
   return <AppWebhooksView controls={controls} name={name} />;
 }
@@ -900,14 +845,6 @@ function WebhookLine({
 
 // ── schedules ───────────────────────────────────────────────────────────────────────────────
 
-function SchedulesSettings({ apps }: { readonly apps: ReadonlyArray<App> | null }) {
-  return (
-    <SchedulesSettingsView apps={apps}>
-      {(app) => <AppSchedulesRow appId={app.id} name={app.name} />}
-    </SchedulesSettingsView>
-  );
-}
-
 export function SchedulesSettingsView({
   apps,
   children,
@@ -928,7 +865,13 @@ export function SchedulesSettingsView({
   );
 }
 
-function AppSchedulesRow({ appId, name }: { readonly appId: string; readonly name: string }) {
+export function AppSchedulesRow({
+  appId,
+  name,
+}: {
+  readonly appId: string;
+  readonly name: string;
+}) {
   const controls = useAppTaskSource("hqAppSchedules", appId);
   return <AppSchedulesView controls={controls} name={name} />;
 }
@@ -1207,6 +1150,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
     <SettingsRow
       data-zerops-surface="settings-task-limits"
       description="A task that reaches either stops, and says where it got to."
+      id={searchableSetting("automation-limits").id}
       status={statusOf(setting, limitsLine)}
       title="Limits per task"
     >

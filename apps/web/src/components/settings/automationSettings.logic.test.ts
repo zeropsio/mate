@@ -1,0 +1,189 @@
+// @vitest-environment happy-dom
+import type { HqGithubView } from "@t3tools/shared/hqGithub";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+import {
+  appNameProblem,
+  appOwner,
+  appRepositories,
+  defaultAppName,
+  githubReturnTo,
+  githubSection,
+  githubStatus,
+  postManifest,
+} from "./automationSettings.logic";
+
+const CONNECTED: HqGithubView = {
+  state: "connected",
+  slug: "acme-mate",
+  name: "Acme Mate",
+  botLogin: "acme-mate[bot]",
+  owner: "acme",
+  appUrl: "https://github.com/apps/acme-mate",
+  installUrl: "https://github.com/apps/acme-mate/installations/new",
+  installations: [
+    {
+      id: 1,
+      account: "acme",
+      accountType: "Organization",
+      repositorySelection: "selected",
+      repositories: [
+        { fullName: "acme/tea-shop", private: true, defaultBranch: "main" },
+        { fullName: "acme/api", private: true, defaultBranch: "main" },
+        { fullName: "acme/web", private: false, defaultBranch: "main" },
+      ],
+      suspended: false,
+      manageUrl: "https://github.com/organizations/acme/settings/installations/1",
+    },
+    {
+      id: 2,
+      account: "nova",
+      accountType: "User",
+      repositorySelection: "all",
+      repositories: [{ fullName: "nova/notes", private: true, defaultBranch: "main" }],
+      suspended: false,
+      manageUrl: "https://github.com/settings/installations/2",
+    },
+    {
+      id: 3,
+      account: "juno",
+      accountType: "Organization",
+      repositorySelection: "selected",
+      repositories: [{ fullName: "juno/old", private: true, defaultBranch: "main" }],
+      suspended: true,
+      manageUrl: "https://github.com/organizations/juno/settings/installations/3",
+    },
+  ],
+};
+const known = (held: HqGithubView) => ({ state: "known", held, stale: false }) as const;
+
+describe("Settings › Automation's GitHub section", () => {
+  it.each([
+    {
+      case: "an organization with no app",
+      setting: known({ state: "none" }),
+      admin: true,
+      says: "Not connected",
+    },
+    {
+      case: "a member where no app is connected",
+      setting: known({ state: "none" }),
+      admin: false,
+      says: "Not connected · The organization's Owner and Admins connect it.",
+    },
+    {
+      case: "a connected app",
+      setting: known(CONNECTED),
+      admin: false,
+      says: "Connected as acme-mate[bot]",
+    },
+    {
+      case: "an HQ older than the app",
+      setting: { state: "unsupported" },
+      admin: true,
+      says: "Update HQ to connect GitHub",
+    },
+    {
+      case: "a person HQ shows nothing of it",
+      setting: { state: "withheld" },
+      admin: false,
+      says: "Only the organization's Owner and Admins see this.",
+    },
+    {
+      case: "HQ's failure",
+      setting: { state: "failed", words: "HQ isn't answering." },
+      admin: true,
+      says: "HQ isn't answering.",
+    },
+    { case: "a read under way", setting: { state: "reading" }, admin: true, says: "Reading…" },
+  ] as const)("says $case in one line", ({ setting, admin, says }) => {
+    expect(githubStatus(githubSection(setting, admin))).toBe(says);
+  });
+
+  it("offers making the app only to the organization's Owner and Admins", () => {
+    expect(githubSection(known({ state: "none" }), true)).toEqual({ kind: "none", connect: true });
+    expect(githubSection(known({ state: "none" }), false)).toEqual({
+      kind: "none",
+      connect: false,
+    });
+  });
+
+  it("lists where a connected app is installed, each with its page on GitHub", () => {
+    const section = githubSection(known(CONNECTED), true);
+    expect(section.kind === "connected" ? section.installations : null).toEqual([
+      {
+        id: 1,
+        line: "acme · 3 repositories",
+        manageUrl: "https://github.com/organizations/acme/settings/installations/1",
+      },
+      {
+        id: 2,
+        line: "nova · all repositories",
+        manageUrl: "https://github.com/settings/installations/2",
+      },
+      {
+        id: 3,
+        line: "juno · suspended",
+        manageUrl: "https://github.com/organizations/juno/settings/installations/3",
+      },
+    ]);
+    expect(section).toMatchObject({ manage: true });
+    expect(githubSection(known(CONNECTED), false)).toMatchObject({ manage: false });
+  });
+});
+
+describe("making the organization's GitHub app", () => {
+  it("names it after the organization, within GitHub's 34 characters", () => {
+    expect(defaultAppName("Acme")).toBe("Acme Mate");
+    expect(defaultAppName("Tea Shop International Holdings Group")).toHaveLength(34);
+    expect(defaultAppName("Tea Shop International Holdings Group")).toMatch(/ Mate$/u);
+  });
+
+  it("refuses an empty name or one GitHub would refuse before anything is sent", () => {
+    expect(appNameProblem("  ")).toBe("Name the app.");
+    expect(appNameProblem("x".repeat(35))).toBe("GitHub takes at most 34 characters.");
+    expect(appNameProblem("Acme Mate")).toBeNull();
+  });
+
+  it("makes it for the GitHub organization typed, or the person's own account when none is", () => {
+    expect(appOwner("")).toBeNull();
+    expect(appOwner("acme")).toBe("acme");
+    expect(appOwner("https://github.com/acme/")).toBe("acme");
+    expect(appOwner("@acme")).toBe("acme");
+  });
+
+  it("brings the person back to Settings › Automation, under the bundle's path", () => {
+    expect(githubReturnTo("https://acme.example", "/mate")).toBe(
+      "https://acme.example/mate/settings/automation?github=connected",
+    );
+  });
+
+  it("posts HQ's manifest to GitHub's page as a form's manifest field, in this tab", () => {
+    const submit = vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
+    postManifest(document, {
+      postUrl: "https://github.com/organizations/acme/settings/apps/new?state=s1",
+      manifest: '{"name":"Acme Mate"}',
+    });
+    const form = document.body.querySelector("form")!;
+    expect(form.method.toLowerCase()).toBe("post");
+    expect(form.action).toBe("https://github.com/organizations/acme/settings/apps/new?state=s1");
+    expect(form.target).toBe("");
+    const field = form.querySelector<HTMLInputElement>('input[name="manifest"]')!;
+    expect(field.value).toBe('{"name":"Acme Mate"}');
+    expect(submit).toHaveBeenCalledTimes(1);
+    submit.mockRestore();
+  });
+});
+
+describe("the repositories the app reaches", () => {
+  it("offers each repository of every installation not suspended, once, by name", () => {
+    expect(appRepositories(CONNECTED)).toEqual([
+      "acme/api",
+      "acme/tea-shop",
+      "acme/web",
+      "nova/notes",
+    ]);
+    expect(appRepositories({ state: "none" })).toEqual([]);
+    expect(appRepositories(null)).toEqual([]);
+  });
+});
