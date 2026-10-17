@@ -611,7 +611,9 @@ export {
 } from "./versionName.ts";
 
 export {
+  gitCiLine,
   gitDeliveryOf,
+  type GitCiLine,
   type GitDelivery,
   type GitDeliveryEnvironment,
   type GitDeliveryFacts,

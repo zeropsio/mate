@@ -1,6 +1,6 @@
 /** Git standing has one owner: accepted destinations, frozen entries and confirmed hand-overs. */
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
-import type { HqPushReceipt } from "@t3tools/shared/hqDeploys";
+import type { HqPushCiFailure, HqPushReceipt } from "@t3tools/shared/hqDeploys";
 import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
 import type { HqGitReleasePreflight, Release, ReleaseRollout } from "@t3tools/shared/hqRelease";
 import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
@@ -65,6 +65,41 @@ export interface GitDelivery {
     readonly reason: string | undefined;
     readonly actions: ReadonlyArray<"release" | "cancel" | "replace-token">;
   };
+}
+
+/** What the origin's CI reported for a repository's confirmed push: `words`, then `failed` checks, then `notes`. */
+export interface GitCiLine {
+  readonly words: string;
+  readonly failed: ReadonlyArray<HqPushCiFailure>;
+  readonly notes: ReadonlyArray<string>;
+}
+
+/** HQ's CI record on the confirmed hand-over is the only source; no record, no line. */
+export function gitCiLine(repo: GitRepositoryDelivery): GitCiLine | undefined {
+  const ci = repo.confirmed === undefined ? undefined : repo.job?.evidence?.ci;
+  if (ci === undefined) return undefined;
+  const count = ci.done < ci.total ? [`${ci.done} of ${ci.total} done`] : [];
+  const stopped = ci.watch === "stopped" && ci.reason !== null ? [ci.reason] : [];
+  switch (ci.verdict) {
+    case "unreadable":
+      return {
+        words: `CI unreadable: ${ci.reason ?? "HQ couldn't read it"}`,
+        failed: [],
+        notes: [],
+      };
+    case "none":
+      return {
+        words: ci.watch === "watching" ? "CI not reported yet" : "No CI reported",
+        failed: [],
+        notes: stopped,
+      };
+    case "running":
+      return { words: "CI running", failed: [], notes: [...count, ...stopped] };
+    case "failed":
+      return { words: "CI failed", failed: ci.failed, notes: [...count, ...stopped] };
+    case "passed":
+      return { words: "CI passed", failed: [], notes: [] };
+  }
 }
 
 /** No remote/service/version reads and no receiver inference: a push never proves `live`. */
