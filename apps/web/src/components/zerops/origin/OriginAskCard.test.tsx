@@ -116,7 +116,7 @@ describe("an origin asked of the person", () => {
     );
   });
 
-  it("After production is added from an origin ask the sheet offers stage on mate/stage", async () => {
+  it("After production is added from an origin ask the sheet offers stage on mate-stage", async () => {
     await draw({ application: { name: "Shop", git: { ...git, repos: connected } } });
     await click("Connect");
     await click("Continue");
@@ -133,8 +133,8 @@ describe("an origin asked of the person", () => {
     await draw({ face: "connected" });
     expect(host.textContent).toContain("Connected");
     expect(sheetOpen()).not.toBeNull();
-    expect(field("Branch")?.value).toBe("mate/stage");
-    expect(button("Add stage to Shop")).toBeDefined();
+    expect(field("Branch")?.value).toBe("mate-stage");
+    expect(button("Add stage to Shop")?.disabled).toBe(false);
   });
 
   it("Not now answers declined", async () => {
