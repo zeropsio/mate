@@ -118,7 +118,7 @@ function Automation({
       onPost={nothing}
       organization="Acme"
       returnTo="https://acme.example/mate/settings/automation?github=connected"
-      returned={null}
+      returned={view === "requested" ? "requested" : null}
     />
   );
   return (
@@ -245,6 +245,38 @@ function Dialogs() {
           repos={[repo("appdev", { ...REMOTE, via: "token" })]}
         />
       </DialogFrame>
+      <DialogFrame title="Diverged">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={OFFERS}
+          github={APP}
+          repos={[repo("appdev", { ...REMOTE, via: "app", divergedSince: "2026-10-16T12:00:00Z" })]}
+        />
+      </DialogFrame>
+      <DialogFrame title="Token refused">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={OFFERS}
+          github={APP}
+          repos={[
+            repo("appdev", { ...REMOTE, via: "token", invalidSince: "2026-10-15T08:00:00Z" }),
+          ]}
+        />
+      </DialogFrame>
+      <DialogFrame title="App gone">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={OFFERS}
+          github={{ kind: "none" }}
+          repos={[repo("appdev", { ...REMOTE, via: "app" })]}
+        />
+      </DialogFrame>
     </div>
   );
 }
@@ -266,9 +298,13 @@ if (host) {
           github={
             view === "none" || view === "open"
               ? known({ state: "none" })
-              : view === "older"
-                ? { state: "unsupported" }
-                : known(CONNECTED)
+              : view === "failed"
+                ? { state: "failed", words: "HQ isn't answering right now." }
+                : view === "requested"
+                  ? known({ ...CONNECTED, installations: [] })
+                  : view === "older"
+                    ? { state: "unsupported" }
+                    : known(CONNECTED)
           }
         />
       )}
