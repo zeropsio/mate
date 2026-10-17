@@ -1118,6 +1118,70 @@ describe("HQ immutable usage", () => {
         ),
     );
     it.effect(
+      "a Nebius turn with cache reads is priced from models.dev's cache rate when LiteLLM has none",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { sql, leader, ledger, sender, origin } = yield* setup;
+            const openCodeOrigin = usageOriginId(binding, "opencode");
+            const line = fact("cached", "1000", undefined, "nebius/zai-org/GLM-5.3").models[0]!;
+            yield* ledger.receive(sender, {
+              type: "usage-facts",
+              protocol: 2,
+              batchId: "opencode-cached",
+              origins: [{ ...origin, originId: openCodeOrigin, provider: "opencode" }],
+              facts: [
+                {
+                  ...fact("cached", "1000"),
+                  originId: openCodeOrigin,
+                  provider: "opencode",
+                  models: [
+                    {
+                      ...line,
+                      components: {
+                        uncachedInput: "1000",
+                        cachedInput: "4000",
+                        cacheCreation: "0",
+                        output: "250",
+                        reasoning: "50",
+                        inclusiveTotal: "5250",
+                      },
+                    },
+                  ],
+                },
+              ],
+            });
+            yield* installAutomaticUsageRates(
+              sql,
+              leader,
+              {
+                "nebius/zai-org/GLM-5.3": {
+                  input_cost_per_token: 0.0000014,
+                  output_cost_per_token: 0.0000044,
+                },
+              },
+              {
+                nebius: {
+                  models: {
+                    "zai-org/GLM-5.3": { cost: { input: 1.4, output: 4.4, cache_read: 1.4 } },
+                  },
+                },
+              },
+            );
+            const report = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: baseQuery },
+              access,
+              new Map(),
+            );
+            // 1000 input and 4000 cache reads at $1.40/M, 250 output at $4.40/M.
+            assert.strictEqual(report.pricing.costUsdNanos, "8100000");
+            assert.strictEqual(report.pricing.unpricedModelEntries, "0");
+          }),
+        ),
+    );
+    it.effect(
       "deleted sources persist and only active org readers can see their totals and labels",
       () =>
         database(
