@@ -28,7 +28,7 @@ export type AutomationAction<Verb extends string> =
   | { readonly kind: "unresolved"; readonly words: string }
   | { readonly kind: "done"; readonly verb: Verb };
 
-function actionOf<Verb extends string>(
+export function actionOf<Verb extends string>(
   record: OperationRecord | undefined,
   verbOf: (kind: string) => Verb,
   unresolved: string,
