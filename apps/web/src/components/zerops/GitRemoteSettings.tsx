@@ -20,6 +20,7 @@ import {
 } from "~/components/ui/select";
 import { OutLink } from "../settings/automationParts";
 import { gitRemoteLabel } from "./GitDeliveryStatus";
+import { mirrorLeadLine, mirrorStateLine, type GitMirrorApp } from "./gitMirror.logic";
 
 /** Optional actions are supplied by the account's operations, never a component's host client. */
 export interface GitRemoteActions {
@@ -80,35 +81,7 @@ export function GitRemoteLines({
   );
 }
 
-/**
- * The organization's GitHub app as the mirror dialog reads it: absent where the caller reads none
- * (a token is the only way), `null` while it is read.
- */
-export type GitMirrorApp =
-  | {
-      readonly kind: "connected";
-      /** The app's name: "Acme Mate". */
-      readonly name: string;
-      /** The repositories it reaches, by `owner/name`. */
-      readonly repositories: ReadonlyArray<string>;
-      readonly installUrl: string;
-    }
-  | { readonly kind: "none" };
-
-/** A repository's line under its name: where it mirrors to and how, or that it does not. */
-export function mirrorStateLine(
-  remote: RepoListEntry["remote"],
-  appName: string | null,
-  now: number,
-): string {
-  if (remote == null) return "Not mirrored";
-  const where = `Mirrors to ${gitRemoteLabel(remote.url)}`;
-  if (remote.via === "app")
-    return `${where} · through ${appName ?? "the organization's GitHub app"}`;
-  if (remote.expiresAt == null) return `${where} · with a token`;
-  const expired = Date.parse(remote.expiresAt) <= now;
-  return `${where} · with a token that ${expired ? "expired" : "expires"} ${remote.expiresAt.slice(0, 10)}`;
-}
+export type { GitMirrorApp } from "./gitMirror.logic";
 
 /** `owner/name` of a GitHub address, as the app's repositories name it; null for any other. */
 function githubName(url: string): string | null {
@@ -170,9 +143,7 @@ export function GitRemoteSettings({
       ) : (
         <>
           {listed.every((repo) => repo.remote == null) && dependencies.length === 0 ? (
-            <p className="rv-note">
-              Mirror a repository to GitHub, and Mate's changes to it open there for review.
-            </p>
+            <p className="rv-note">{mirrorLeadLine(github ?? { kind: "unknown" })}</p>
           ) : null}
           {listed.map((repo) => (
             <Remote
@@ -184,7 +155,7 @@ export function GitRemoteSettings({
               actions={actions}
               live={live}
               now={now}
-              github={github ?? { kind: "none" }}
+              github={github ?? { kind: "unknown" }}
               onOpenAutomation={onOpenAutomation}
             />
           ))}
@@ -344,11 +315,8 @@ function Remote({
       <div>
         <p className="rv-words">{repo.name}</p>
         <p className="rv-note" data-zerops-mirror-state="">
-          {saving ? "Saving…" : mirrorStateLine(remote, app?.name ?? null, now)}
+          {saving ? "Saving…" : mirrorStateLine(remote, github, now)}
         </p>
-        {remote?.invalidSince == null ? null : (
-          <p className="rv-note">The remote refused Mate's token. Replace token.</p>
-        )}
       </div>
       {remote == null && viaApp !== undefined && app !== null && !editing ? (
         app.repositories.length === 0 ? (

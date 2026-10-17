@@ -48,7 +48,10 @@ export function GitMirrorDialog({
             repositories: appRepositories(app.held),
             installUrl: app.held.installUrl,
           }
-        : { kind: "none" };
+        : app.state === "known" || app.state === "unsupported"
+          ? { kind: "none" }
+          : // HQ's answer could not be read: nothing is said of an app that may be there.
+            { kind: "unknown" };
   return (
     <Dialog
       onOpenChange={(open) => {

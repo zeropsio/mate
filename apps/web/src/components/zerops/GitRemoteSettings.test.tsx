@@ -138,7 +138,7 @@ describe("Application repositories", () => {
       repos: [{ ...repos[0]!, remote: null }],
       environments: [],
       shows: [
-        "Mirror a repository to GitHub, and Mate&#x27;s changes to it open there for review.",
+        "Mirror a repository to GitHub or GitLab: Mate pushes what lands on its main there.",
         ">Verify and mirror<",
       ],
       hides: ["Mirrors to"],
@@ -730,4 +730,16 @@ describe("mirroring through the organization's GitHub app", () => {
       await view.unmount();
     }
   });
+});
+
+it("a diverged mirror says nothing moves until both mains match, never that it mirrors", () => {
+  const html = renderToStaticMarkup(
+    <GitRemoteSettings
+      appId="shop"
+      appName="Shop"
+      repos={[{ ...repos[0]!, remote: { ...remote, divergedSince: "2026-10-16T12:00:00Z" } }]}
+    />,
+  );
+  expect(html).toContain("differ since 2026-10-16 — nothing moves until they match");
+  expect(html).not.toContain("Mirrors to");
 });
