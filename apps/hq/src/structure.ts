@@ -1,4 +1,4 @@
-import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
+import type { HqNavigationMateTask, HqPushNavigationJob } from "@t3tools/shared/hqStream";
 import { HqLifecycleRecord, HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 // @effect-diagnostics nodeBuiltinImport:off -- opaque deletion handles use the existing HQ key and byte encoding.
 /**
@@ -143,6 +143,8 @@ export interface AttachInput {
     readonly standUp?: boolean;
     /** Its zcp service, where its project holds one already: one Mate per project (audit D2). */
     readonly serviceId?: string;
+    /** An automated Mate, as the birth intent it was born under may say too. */
+    readonly automated?: boolean;
   };
   /** A stage's or a production's environment, named as given; else named from its project. */
   readonly environment?: { readonly name: string };
@@ -274,6 +276,8 @@ export interface MateRecord {
 /** A Mate's record as it is set up: the caller may ask for its stand-up in the same write (B3). */
 export interface NewMateRecord extends MateRecord {
   readonly standUp?: boolean;
+  /** An automated Mate (`MateState.automated`): set with its record, never changed. */
+  readonly automated?: boolean;
   /** Its zcp service, where its project holds one already: one Mate per project (audit D2). */
   readonly serviceId?: string;
 }
@@ -303,6 +307,10 @@ export interface MateView {
    * tells a Core that keeps no such word — older than this field — by its absence.
    */
   readonly keyWider: boolean;
+  /** Said only of an automated Mate (`MateState.automated`). */
+  readonly automated?: true;
+  /** An automated Mate's task, assigned or worked on, or none; said only of an automated Mate. */
+  readonly task?: HqNavigationMateTask | null;
 }
 
 /**
@@ -459,7 +467,12 @@ export class Structure extends Context.Service<
      */
     readonly recordBirth: (
       userId: string,
-      birth: { readonly appId: string; readonly face: string; readonly standUp?: boolean },
+      birth: {
+        readonly appId: string;
+        readonly face: string;
+        readonly standUp?: boolean;
+        readonly automated?: boolean;
+      },
     ) => Effect.Effect<BirthIntent, WriteError>;
     /**
      * Keeps who signed in each login of a Mate as the Mate reports it: a login named here takes
@@ -766,8 +779,10 @@ export const structureLayer = (options: {
             readonly standup_requested_by: string | null;
             readonly closed_off: boolean;
             readonly signers: Readonly<Record<string, string>>;
+            readonly automated: boolean;
           }>`
-            SELECT face, standup_requested_by, closed_off_at IS NOT NULL AS closed_off, signers
+            SELECT face, standup_requested_by, closed_off_at IS NOT NULL AS closed_off, signers,
+              automated
             FROM hq_mate WHERE project_id = ${projectId}`,
           Effect.orElseSucceed(
             Effect.map(
@@ -783,6 +798,8 @@ export const structureLayer = (options: {
               face: row.face,
               standupRequestedBy: row.standup_requested_by,
               closedOff: row.closed_off,
+              // Absent: no automated Mate, as an older HQ says of every one.
+              ...(row.automated ? { automated: true } : {}),
               ...(Object.keys(row.signers).length === 0 ? {} : { signers: row.signers }),
             })),
         );
@@ -1019,7 +1036,10 @@ export const structureLayer = (options: {
                        'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
                        'closedOff', m.closed_off_at IS NOT NULL, 'setupMarker', NULL,
-                       'keyWider', m.key_wider_token_id IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END END AS mate
+                       'keyWider', m.key_wider_token_id IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END
+                       || CASE WHEN NOT m.automated THEN '{}'::jsonb ELSE jsonb_build_object('automated', true, 'task', (
+                         SELECT jsonb_build_object('id', t.id::text, 'repo', t.repo, 'number', t.number, 'title', t.title, 'url', t.url)
+                         FROM hq_task t WHERE t.mate_project_id = m.project_id AND t.state IN ('assigned', 'working'))) END END AS mate
               FROM hq_app_project p FULL OUTER JOIN hq_mate m USING (project_id)
               LEFT JOIN hq_press press ON press.project_id = m.project_id AND press.kind = 'mate'
               ORDER BY p.seq NULLS LAST, m.seq`;
@@ -1808,7 +1828,7 @@ export const structureLayer = (options: {
                     // write (B3). One with no intent carries its own ask.
                     if (input.mate !== undefined) {
                       yield* sql`
-                      INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id, birth_id)
+                      INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id, birth_id, automated)
                       SELECT ${input.projectId}, ${input.mate.face},
                         COALESCE(intent.made_by, ${userId}),
                         CASE
@@ -1816,7 +1836,8 @@ export const structureLayer = (options: {
                             CASE WHEN intent.standup THEN intent.made_by END
                           WHEN ${input.mate.standUp === true} THEN ${userId}
                         END,
-                        ${input.mate.serviceId ?? null}, intent.id
+                        ${input.mate.serviceId ?? null}, intent.id,
+                        COALESCE(intent.automated, false) OR ${input.mate.automated === true}
                       FROM (SELECT 1) AS one
                       LEFT JOIN hq_birth_intent AS intent
                         ON intent.id::text = ${input.birth ?? null} AND intent.app_id::text = ${appId}
@@ -1986,9 +2007,9 @@ export const structureLayer = (options: {
                   DELETE FROM hq_birth_intent
                   WHERE made_by = ${userId} AND project_id IS NULL AND created_at < now() - interval '7 days'`;
                 return yield* sql<{ readonly id: string }>`
-                  INSERT INTO hq_birth_intent (app_id, face, made_by, standup)
+                  INSERT INTO hq_birth_intent (app_id, face, made_by, standup, automated)
                   VALUES (${birth.appId}::uuid, ${birth.face}, ${userId},
-                    ${birth.standUp === true})
+                    ${birth.standUp === true}, ${birth.automated === true})
                   RETURNING id::text AS id`;
               }),
             );
@@ -2056,9 +2077,10 @@ export const structureLayer = (options: {
                     view,
                   );
                   yield* sql`
-                    INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id)
+                    INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id, automated)
                     VALUES (${mate.projectId}, ${mate.face}, ${userId},
-                      ${mate.standUp === true ? userId : null}, ${mate.serviceId ?? null})`;
+                      ${mate.standUp === true ? userId : null}, ${mate.serviceId ?? null},
+                      ${mate.automated === true})`;
                 }),
               ),
               "mate_record_exists",

@@ -202,6 +202,8 @@ const NewMateBody = Schema.Struct({
   face: Schema.String,
   standUp: Schema.optionalKey(Schema.Boolean),
   serviceId: Schema.optionalKey(ServiceId),
+  /** An automated Mate (`MateState.automated`): set with its record, never changed. */
+  automated: Schema.optionalKey(Schema.Boolean),
 });
 const MateBody = Schema.Struct({ face: Schema.String });
 const AttachBody = Schema.Struct({
@@ -212,6 +214,7 @@ const AttachBody = Schema.Struct({
       face: Schema.String,
       standUp: Schema.optionalKey(Schema.Boolean),
       serviceId: Schema.optionalKey(ServiceId),
+      automated: Schema.optionalKey(Schema.Boolean),
     }),
   ),
   environment: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
@@ -231,6 +234,8 @@ const BirthBody = Schema.Struct({
   appId: Schema.String,
   face: Schema.String,
   standUp: Schema.optionalKey(Schema.Boolean),
+  /** The Mate born under it is automated (`MateState.automated`). */
+  automated: Schema.optionalKey(Schema.Boolean),
 });
 /**
  * A Zerops token as the platform spells one, at most 512 characters: one HQ sends on as a bearer
