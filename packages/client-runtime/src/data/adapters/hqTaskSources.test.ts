@@ -322,6 +322,30 @@ describe("an application's sources", () => {
   });
 });
 
+describe("an application HQ no longer holds", () => {
+  it("says the application is gone, never that HQ is too old", async () => {
+    const r = rig({
+      webhooks: async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "app_not_found",
+          reason: "app_not_found",
+          status: 404,
+          message: "This application is gone from HQ.",
+        });
+      },
+    });
+    const release = r.host.demandApp("hqAppWebhooks", SHOP);
+    await waitFor(r.store, () => r.read("hqAppWebhooks", "shop").setting.state === "failed");
+    expect(r.read("hqAppWebhooks", "shop").setting).toEqual({
+      state: "failed",
+      words: "This application is gone from HQ.",
+    });
+    release();
+    r.close();
+  });
+});
+
 describe("the limits on each task", () => {
   it("saves the minutes and the cost, and reads what HQ holds after", async () => {
     let held: HqTaskLimitsView = { minutes: 60, costUsd: null };
