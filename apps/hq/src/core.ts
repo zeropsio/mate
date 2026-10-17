@@ -217,7 +217,15 @@ const services = (options: CoreOptions) => {
         }),
       ),
       Layer.provideMerge(
-        PgClient.layer({ url: options.databaseUrl, applicationName: "hq", maxConnections: 4 }),
+        PgClient.layer({
+          url: options.databaseUrl,
+          applicationName: "hq",
+          maxConnections: 4,
+          // HQ's reads are small and frequent: JIT never pays for itself here, and a read whose
+          // estimate crosses its threshold is compiled on every run (navigation on CI went from
+          // ~20 ms to ~600–1000 ms per tab before its subqueries became joins).
+          startupParameters: { jit: "off" },
+        }),
       ),
     )
     .pipe((base) =>
