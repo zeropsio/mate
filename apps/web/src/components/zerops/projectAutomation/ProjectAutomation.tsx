@@ -323,7 +323,7 @@ const DIALOG_WORDS: Record<SourceKind, { readonly title: string; readonly descri
   },
 };
 
-function SourceDialog({
+export function SourceDialog({
   kind,
   onClose,
   children,
