@@ -452,7 +452,7 @@ describe("Discord as a source of tasks", () => {
     );
 
     it.effect(
-      "/mate reply in a task's thread tells its task, and says so only to who wrote it",
+      "/mate reply in a task's thread tells its task, and everyone in the thread reads what was said",
       () =>
         Effect.gen(function* () {
           const world = yield* withDiscord;
@@ -470,10 +470,10 @@ describe("Discord as a source of tasks", () => {
           });
           const told = yield* world.discord.interact(publicId, yield* signed(reply));
           assert.strictEqual(told.kind, "answer");
-          assert.strictEqual(
-            ephemeralWords(told.kind === "answer" ? told.body : null),
-            "Told the task.",
-          );
+          assert.deepStrictEqual(told.kind === "answer" ? told.body : null, {
+            type: 4,
+            data: { content: "Nova: Oolong, please", allowed_mentions: { parse: [] } },
+          });
           assert.deepStrictEqual(world.asked.messages, [
             [
               task.sourceKey,

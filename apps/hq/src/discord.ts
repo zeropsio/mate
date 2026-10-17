@@ -18,7 +18,7 @@
  * `/mate task` in an application's channel is answered at once (deferred, then "On it: <title>"),
  * a public thread is opened on that answer, and the task is asked of HQ (`TaskIntake.enqueue`)
  * keyed by the thread (`discord:<thread id>`): the thread is its conversation. `/mate reply` in that
- * thread tells the task (`TaskIntake.message`). The task's status is one message of the bot's in
+ * thread tells the task (`TaskIntake.message`), its words answered in the thread for all. The task's status is one message of the bot's in
  * its thread, posted the first time and edited after (`hq_discord_status`); a thread Discord no
  * longer has stops its task — HQ hears of no deletion otherwise, without the gateway.
  *
@@ -153,7 +153,6 @@ const SAY = {
   noText: "Say what to do: /mate task text:<what to do>.",
   server: "Ask Mate in a channel of a server.",
   unknown: "Mate knows /mate task and /mate reply.",
-  told: "Told the task.",
   notTold: "Mate couldn't pass this on now. Try again in a moment.",
   noThread:
     "Mate couldn't open a thread here. An admin gives it Create Public Threads and Send Messages in Threads in this channel.",
@@ -164,6 +163,14 @@ const SAY = {
 const ephemeral = (content: string) => ({
   type: 4,
   data: { content, flags: 64, allowed_mentions: { parse: [] } },
+});
+/** An answer everyone in the channel sees, mentioning nobody. */
+const said = (content: string) => ({
+  type: 4,
+  data: {
+    content: content.length <= MESSAGE_MAX ? content : `${content.slice(0, MESSAGE_MAX - 1)}…`,
+    allowed_mentions: { parse: [] },
+  },
 });
 /** Discord's "Mate is thinking…": the answer's words follow (`editOriginal`). */
 const DEFERRED = { type: 5 };
@@ -573,9 +580,10 @@ export const discordLayer = (options: {
                 text: asked.text.slice(0, MATE_TASK_BODY_MAX),
               })
               .pipe(Effect.timeoutOption(REPLY_WITHIN));
-            return ephemeral(
-              Option.isNone(told) ? SAY.notTold : told.value ? SAY.told : SAY.noTask,
-            );
+            // The thread is the task's conversation: everyone in it reads the follow-up.
+            if (Option.isSome(told) && told.value)
+              return said(`${asker.name ?? "Someone"}: ${asked.text}`);
+            return ephemeral(Option.isNone(told) ? SAY.notTold : SAY.noTask);
           }
           if (asked.name !== "task") return ephemeral(SAY.unknown);
           const [place] = yield* sql<ChannelRow>`
