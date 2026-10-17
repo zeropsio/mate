@@ -54,6 +54,7 @@ import { Roles } from "./roles.ts";
 import { LiveSockets, socketEnding } from "./stream.ts";
 import { Structure } from "./structure.ts";
 import { AutoUpdatePolicy } from "./autoUpdate.ts";
+import { OrgAiKeys } from "./orgAiKeys.ts";
 
 // Identify a corrupt value frame without inventing a second attention contract.
 const readFrameType = Schema.decodeUnknownOption(
@@ -106,6 +107,7 @@ export const serveMateLink = (
       const autoUpdate = yield* AutoUpdatePolicy;
       const chiefs = yield* Chiefs;
       const roles = yield* Roles;
+      const aiKeys = yield* OrgAiKeys;
       const usage = (yield* UsageLane).ledger;
       /** This link's capture lane once it opens; until then, and if it cannot, none. */
       let sender: UsageSender | undefined;
@@ -298,6 +300,12 @@ export const serveMateLink = (
         writer.write(frame),
       ).pipe(Effect.ignore, Effect.andThen(Effect.never));
 
+      // An automated Mate's agents run on the organization's keys: at once, and on each change.
+      // One HQ cannot read now is the next change's to bring; it never ends the link.
+      const providerKeys = Stream.runForEach(aiKeys.framesFor(projectId), (frame) =>
+        writer.write(frame),
+      ).pipe(Effect.ignore, Effect.andThen(Effect.never));
+
       // The lane opens beside the link: a lane that cannot open leaves this link without capture,
       // and the Mate's next link tries again (answer 3). One that opens late re-sends the state.
       const capture =
@@ -315,7 +323,16 @@ export const serveMateLink = (
               Effect.andThen(Effect.never),
             );
 
-      yield* Effect.raceAll([listen, ping, states, recheck, accessFrames, capture, healthRelay]);
+      yield* Effect.raceAll([
+        listen,
+        ping,
+        states,
+        recheck,
+        accessFrames,
+        providerKeys,
+        capture,
+        healthRelay,
+      ]);
       return yield* ending;
     }),
   );

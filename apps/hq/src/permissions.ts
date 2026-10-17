@@ -188,6 +188,10 @@ export interface Targets {
   readonly rename_app: null;
   /** An application deleted: HQ removes only one that holds nothing (`app_not_empty`). */
   readonly delete_app: null;
+  /** Where an application's automated Mates take issues from (`intake.ts`): a structure writer. */
+  readonly keep_intake: null;
+  /** The organization's API key for a provider its automated Mates run on: its owner or admin. */
+  readonly keep_ai_key: null;
   /** An environment's deploy token handed to HQ (SPEC §3.2b): by who may attach the project. */
   readonly keep_deploy_token: { readonly projectId: string };
   readonly attach: AttachTarget;
@@ -427,6 +431,8 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "remove_git_environment":
     case "rename_app":
     case "delete_app":
+    case "keep_intake":
+    case "keep_ai_key":
       return writer ? ALLOW : deny("not_structure_writer");
     // The token is minted by the person who attaches the environment, on their own client (main
     // E03): whoever has Full access on its project, or the structure's writer.

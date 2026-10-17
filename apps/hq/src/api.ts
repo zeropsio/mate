@@ -4,6 +4,7 @@ import { Remotes, RemoteRefused } from "./repoRemotes.ts";
 import { ProbeRefused } from "./githubProbes.ts";
 import { GitEnvironmentRefused } from "./gitEnvironments.ts";
 import { GitRequestRefused } from "./gitTargetReceipts.ts";
+import { AUTOMATION_STATUS, AutomationRefused } from "./automationRefused.ts";
 import { Chiefs } from "./chief.ts";
 import { HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { Observation } from "./observation.ts";
@@ -314,6 +315,7 @@ const isRemoteRefused = Schema.is(RemoteRefused);
 const isProbeRefused = Schema.is(ProbeRefused);
 const isGitEnvironmentRefused = Schema.is(GitEnvironmentRefused);
 const isGitRequestRefused = Schema.is(GitRequestRefused);
+const isAutomationRefused = Schema.is(AutomationRefused);
 
 /**
  * A JSON body of at most `limit` bytes. A declared `Content-Length` above it is refused before a
@@ -377,6 +379,10 @@ export const failure = (error: {
         { code: error.reason === "forbidden" ? "forbidden" : "conflict", reason: error.reason },
         error.reason === "forbidden" ? 403 : 409,
       ),
+    );
+  if (isAutomationRefused(error))
+    return Effect.succeed(
+      json({ code: error.code, reason: error.reason }, AUTOMATION_STATUS[error.code]),
     );
   if (isGitRequestRefused(error))
     return Effect.succeed(json({ code: "conflict", reason: error.reason }, 409));
@@ -554,7 +560,7 @@ const mateHolding = (presented: string | undefined) =>
   });
 
 /** The Mate presenting `Authorization: Mate <credential>`. */
-const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
+export const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
   mateHolding(/^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1]),
 );
 

@@ -29,6 +29,8 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import { apiRoutes } from "./api.ts";
 import { chiefsLayer } from "./chief.ts";
 import { chiefRoutes } from "./chiefApi.ts";
+import { automationRoutes } from "./automationApi.ts";
+import { orgAiKeysLayer } from "./orgAiKeys.ts";
 import { proposalDecisionsLayer } from "./proposals.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
@@ -96,6 +98,7 @@ const routes = (options: CoreOptions) =>
   Layer.mergeAll(
     healthRoute(options.build, options.observeHealth),
     chiefRoutes,
+    automationRoutes,
     apiRoutes({
       build: options.build,
       hqProjectId: options.hqProjectId,
@@ -136,6 +139,7 @@ const services = (options: CoreOptions) => {
   );
   return Layer.mergeAll(
     autoUpdatePolicyLayer,
+    orgAiKeysLayer,
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,
