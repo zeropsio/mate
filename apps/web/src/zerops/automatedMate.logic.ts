@@ -17,9 +17,12 @@ export function automatedMateEntries<E extends { readonly driverKind: string }>(
   return kept.length === entries.length ? entries : kept;
 }
 
-/** What a task is called wherever it is named: "#12 Fix the checkout total". */
-export function taskTitle(task: Pick<MateTaskSource, "number" | "title">): string {
-  return `#${String(task.number)} ${task.title}`;
+/** What a task is called wherever it is named: "#12 Fix the checkout total"; else its title. */
+export function taskTitle(task: {
+  readonly title: string;
+  readonly number?: number | undefined;
+}): string {
+  return task.number === undefined ? task.title : `#${String(task.number)} ${task.title}`;
 }
 
 /** The task a conversation works: the issue its first message brought; null for any other. */

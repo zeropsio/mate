@@ -86,10 +86,14 @@ const toldTask = (link: Link, number: number) =>
     link.takeWhere(
       `the task of issue ${String(number)}`,
       (frame: SocketMessage) =>
-        frame.type === "task" && (frame["task"] as MateTask).source.number === number,
+        frame.type === "task" && issueNumberOf(frame["task"] as MateTask) === number,
     ),
     (frame) => frame["task"] as MateTask,
   );
+
+/** The issue number of a task HQ told: every task here is a GitHub issue's. */
+const issueNumberOf = (task: MateTask) =>
+  task.source.kind === "github-issue" ? task.source.number : undefined;
 
 describe("tasks for automated Mates", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -337,7 +341,7 @@ describe("tasks for automated Mates", () => {
           // Still on it: the next task waits.
           assert.isFalse(
             (yield* core.robot.link.collected).some(
-              (frame) => frame.type === "task" && (frame["task"] as MateTask).source.number === 2,
+              (frame) => frame.type === "task" && issueNumberOf(frame["task"] as MateTask) === 2,
             ),
           );
           yield* core.robot.link.send({
@@ -433,7 +437,7 @@ describe("tasks for automated Mates", () => {
           yield* toldTask(other.link, 2);
           assert.isFalse(
             (yield* core.robot.link.collected).some(
-              (frame) => frame.type === "task" && (frame["task"] as MateTask).source.number !== 1,
+              (frame) => frame.type === "task" && issueNumberOf(frame["task"] as MateTask) !== 1,
             ),
           );
           const closed = yield* core.call(

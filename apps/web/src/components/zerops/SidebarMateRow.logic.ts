@@ -1000,8 +1000,11 @@ export function mateRowHeldLines(input: {
 }
 
 /** What an automated Mate's line calls the task it is on (`HqNavigationMateTask`). */
-export function mateTaskLine(task: { readonly number: number; readonly title: string }): string {
-  return `#${String(task.number)} ${task.title}`;
+export function mateTaskLine(task: {
+  readonly number?: number | undefined;
+  readonly title: string;
+}): string {
+  return task.number === undefined ? task.title : `#${String(task.number)} ${task.title}`;
 }
 
 const WAITING_FOR_A_TASK = "Waiting for a task";
@@ -1009,7 +1012,8 @@ const WAITING_FOR_A_KEY = "Waiting for an API key";
 
 /** An automated Mate's input to `mateRowSecond` (`mateAutomation`). */
 export interface MateAutomationLine {
-  readonly task: { readonly number: number; readonly title: string } | null;
+  /** The task it is on; `number` only for a GitHub issue's ("#12 …"). */
+  readonly task: { readonly number?: number | undefined; readonly title: string } | null;
   /**
    * Whether its organization holds the API key it runs on (`automatedKeyState`): HQ hands no task
    * while it holds none. Absent, or not read: nothing is said of it.
@@ -1056,7 +1060,10 @@ export function mateAutomation(
   mate:
     | {
         readonly automated?: boolean | undefined;
-        readonly task?: { readonly number: number; readonly title: string } | null | undefined;
+        readonly task?:
+          | { readonly number?: number | undefined; readonly title: string }
+          | null
+          | undefined;
       }
     | null
     | undefined,
@@ -1066,7 +1073,10 @@ export function mateAutomation(
   if (mate?.automated !== true) return undefined;
   const task = mate.task ?? null;
   return {
-    task: task === null ? null : { number: task.number, title: task.title },
+    task:
+      task === null
+        ? null
+        : { ...(task.number === undefined ? {} : { number: task.number }), title: task.title },
     ...(key === undefined ? {} : { key }),
   };
 }

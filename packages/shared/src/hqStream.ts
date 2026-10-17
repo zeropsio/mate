@@ -296,10 +296,16 @@ const Decisions = Schema.Record(Schema.String, HqDecision);
 /** The task an automated Mate is on, as its row names it. */
 export const HqNavigationMateTask = Schema.Struct({
   id: Schema.String,
-  repo: Schema.String,
-  number: Schema.Int,
+  /** A GitHub issue's repository and number; absent for a task from elsewhere. */
+  repo: Schema.optionalKey(Schema.String),
+  number: Schema.optionalKey(Schema.Int),
   title: Schema.String,
-  url: Schema.String,
+  /** Where it came from, linked; none for a schedule's. */
+  url: Schema.NullOr(Schema.String),
+  /** Where it came from in people's words ("acme/tea-shop#12", "#support on Slack"). */
+  label: Schema.optionalKey(Schema.String),
+  /** It waits for a person's answer (`MateTaskReport.question`); absent: it works or rests. */
+  waiting: Schema.optionalKey(Schema.Literal(true)),
 });
 export type HqNavigationMateTask = typeof HqNavigationMateTask.Type;
 export const HqNavigationMate = Schema.Struct({
