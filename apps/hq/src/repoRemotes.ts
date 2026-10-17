@@ -395,11 +395,26 @@ export const repoRemotesLayer = Layer.effect(
       changes: SubscriptionRef.changes(ticks),
       listRepos: Effect.fn("Remotes.listRepos")(function* (userId, appId) {
         const repos = yield* changes.listRepos(userId, appId);
+        // A mirror whose histories diverged says since when (`githubMirror.ts`).
+        const diverged = new Map(
+          (yield* sql<{ readonly repo: string; readonly since: string }>`
+            SELECT repo, to_char(diverged_since AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS since
+            FROM hq_repo_mirror WHERE app_id::text=${appId} AND diverged_since IS NOT NULL`).map(
+            (row) => [row.repo, row.since] as const,
+          ),
+        );
         return yield* Effect.forEach(repos, (repo) =>
-          Effect.map(remotes.get({ appId, repo: repo.name }), (remote) => ({
-            ...repo,
-            remote: remote === undefined ? null : remoteForWire(remote),
-          })),
+          Effect.map(remotes.get({ appId, repo: repo.name }), (row) => {
+            const remote = row === undefined ? null : remoteForWire(row);
+            const since = diverged.get(repo.name);
+            return {
+              ...repo,
+              remote:
+                remote === null || since === undefined
+                  ? remote
+                  : { ...remote, divergedSince: since },
+            };
+          }),
         );
       }),
       receipt: (userId, requestId, intent) =>

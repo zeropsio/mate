@@ -1534,3 +1534,118 @@ it.live(
       expect(await native(dir, ["rev-parse", "main"])).toBe(main);
     }),
 );
+
+describe("a mirror on another host", () => {
+  /** An empty bare repository beside HQ's, standing in for GitHub; a token it never asks for. */
+  const mirrorOf = async (dir: string) => {
+    const path = NodePath.join(NodePath.dirname(dir), "github.git");
+    await native(NodePath.dirname(dir), ["init", "--bare", "-b", "main", path]);
+    return { path, remote: { url: path, token: Redacted.make("mirror-fixture") } };
+  };
+  /** A commit made on the mirror itself, after `parent`: a merge there. */
+  const commitThere = async (path: string, parent: string | null, file: string) => {
+    const blob = await native(path, ["hash-object", "-w", "--stdin"], file);
+    const tree = await native(path, ["mktree"], `100644 blob ${blob}\t${file}\n`);
+    return native(path, [
+      "commit-tree",
+      tree,
+      ...(parent === null ? [] : ["-p", parent]),
+      "-m",
+      `Merge ${file}`,
+    ]);
+  };
+
+  it.live("an empty mirror names main and no tip, and takes HQ's main as its first branch", () =>
+    fixture(async (git, dir) => {
+      const main = await write(git, { app: "1" }, null);
+      const { path, remote } = await mirrorOf(dir);
+      expect(await value(git.remoteHead(repo, remote))).toEqual({ branch: "main", sha: null });
+      expect(await value(git.pushRef(repo, remote, "main", main, null))).toEqual({
+        kind: "pushed",
+      });
+      expect(await native(path, ["rev-parse", "refs/heads/main"])).toBe(main);
+      expect(await value(git.remoteHead(repo, remote))).toEqual({ branch: "main", sha: main });
+    }),
+  );
+
+  it.live("a mirror's default branch is the one its HEAD names", () =>
+    fixture(async (git, dir) => {
+      const main = await write(git, { app: "1" }, null);
+      const { path, remote } = await mirrorOf(dir);
+      await value(git.pushRef(repo, remote, "trunk", main, null));
+      await native(path, ["symbolic-ref", "HEAD", "refs/heads/trunk"]);
+      expect(await value(git.remoteHead(repo, remote))).toEqual({ branch: "trunk", sha: main });
+    }),
+  );
+
+  it.live("a mirror's newer tip comes in as objects only, and main fast-forwards to it once", () =>
+    fixture(async (git, dir, events) => {
+      const main = await write(git, { app: "1" }, null);
+      const { path, remote } = await mirrorOf(dir);
+      await value(git.pushRef(repo, remote, "main", main, null));
+      const merged = await commitThere(path, main, "merged");
+      await native(path, ["update-ref", "refs/heads/main", merged]);
+      const refs = await native(dir, ["for-each-ref"]);
+      expect(await value(git.fetchTip(repo, remote, "main"))).toBe(merged);
+      // Nothing names it yet: no ref, tag or FETCH_HEAD.
+      expect(await native(dir, ["for-each-ref"])).toBe(refs);
+      expect(await value(git.isAncestor(repo, main, merged))).toBe(true);
+      expect(await value(git.isAncestor(repo, merged, main))).toBe(false);
+      const before = events.length;
+      expect(await value(git.fastForwardMain(repo, merged, main))).toEqual({ kind: "moved" });
+      expect(await native(dir, ["rev-parse", "main"])).toBe(merged);
+      expect(events.slice(before)).toEqual([
+        { kind: "main_moved", repo, old: main, new: merged, by: "import" },
+      ]);
+      // A second import of the same tip, from the main it read before, moves nothing.
+      expect(await value(git.fastForwardMain(repo, merged, main))).toEqual({ kind: "stale" });
+      expect(events.length).toBe(before + 1);
+    }),
+  );
+
+  it.live("main never moves backwards or sideways to a mirror's tip", () =>
+    fixture(async (git, dir, events) => {
+      const first = await write(git, { app: "1" }, null);
+      const main = await write(git, { app: "2" }, first);
+      const { path, remote } = await mirrorOf(dir);
+      const elsewhere = await commitThere(path, null, "unrelated");
+      await native(path, ["update-ref", "refs/heads/main", elsewhere]);
+      expect(await value(git.fetchTip(repo, remote, "main"))).toBe(elsewhere);
+      const before = events.length;
+      expect(await value(git.fastForwardMain(repo, elsewhere, main))).toEqual({
+        kind: "not_fast_forward",
+      });
+      expect(await value(git.fastForwardMain(repo, first, main))).toEqual({
+        kind: "not_fast_forward",
+      });
+      expect(await native(dir, ["rev-parse", "main"])).toBe(main);
+      expect(events.length).toBe(before);
+    }),
+  );
+
+  it.live("a push to a mirror's branch that moved since, or away from it, changes nothing", () =>
+    fixture(async (git, dir) => {
+      const first = await write(git, { app: "1" }, null);
+      const second = await write(git, { app: "2" }, first);
+      const { path, remote } = await mirrorOf(dir);
+      await value(git.pushRef(repo, remote, "mate/1-add-search", first, null));
+      const theirs = await commitThere(path, first, "reviewer");
+      await native(path, ["update-ref", "refs/heads/mate/1-add-search", theirs]);
+      // Leased on what HQ pushed last: someone else's commit there is never overwritten.
+      expect(await value(git.pushRef(repo, remote, "mate/1-add-search", second, first))).toEqual({
+        kind: "rejected",
+        reason: "stale",
+      });
+      // And never a force push: HQ moves a branch only forward from what it expects there.
+      expect(await value(git.pushRef(repo, remote, "mate/1-add-search", first, second))).toEqual({
+        kind: "rejected",
+        reason: "not_fast_forward",
+      });
+      expect(await native(path, ["rev-parse", "refs/heads/mate/1-add-search"])).toBe(theirs);
+      expect(await value(git.pushRef(repo, remote, "mate/1-add-search", second, null))).toEqual({
+        kind: "rejected",
+        reason: "stale",
+      });
+    }),
+  );
+});

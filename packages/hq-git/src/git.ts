@@ -17,6 +17,14 @@ interface RunOptions {
   readonly acceptExitCodes?: ReadonlyArray<number>;
 }
 const graceMs = 2_000;
+/** git's askpass helper: the user GitHub's tokens take, then the token from the file beside it. */
+const ASKPASS = `#!/bin/sh
+case "$1" in
+  Username*) echo x-access-token ;;
+  Password*) cat "$(dirname "$0")/credential" ;;
+  *) exit 1 ;;
+esac
+`;
 const stopping = new WeakSet<NodeChildProcess.ChildProcess>();
 /**
  * Stops git and the helpers in its process group. EOF comes first: git abandons an incomplete
@@ -117,6 +125,49 @@ export class GitRunner {
         GIT_CONFIG_VALUE_3: "always",
       },
     });
+  }
+
+  /**
+   * Like `remote`, with the token reaching git only through askpass: a private file its helper
+   * prints when git asks — never argv, the environment, config on disk or an error. Only paths
+   * reach git's arguments; a remote that asks nothing (a local fixture) never reads the file.
+   */
+  async remoteAskpass(
+    args: string[],
+    url: string,
+    token: Redacted.Redacted,
+    signal: AbortSignal,
+    acceptExitCodes?: ReadonlyArray<number>,
+  ): Promise<{ readonly stdout: Buffer; readonly code: number }> {
+    const dir = await NodeFSP.mkdtemp(NodePath.join(this.home, "askpass-"));
+    try {
+      await NodeFSP.chmod(dir, 0o700);
+      const askpass = NodePath.join(dir, "askpass.sh");
+      await NodeFSP.writeFile(NodePath.join(dir, "credential"), Redacted.value(token), {
+        mode: 0o600,
+        flag: "wx",
+      });
+      await NodeFSP.writeFile(askpass, ASKPASS, { mode: 0o700, flag: "wx" });
+      const protocol = NodePath.isAbsolute(url) ? "file" : new URL(url).protocol.slice(0, -1);
+      return await this.exec(
+        [
+          "-c",
+          "credential.helper=",
+          "-c",
+          `core.askPass=${askpass}`,
+          "-c",
+          "credential.useHttpPath=true",
+          "-c",
+          "http.followRedirects=false",
+          "-c",
+          `protocol.${protocol}.allow=always`,
+          ...args,
+        ],
+        { signal, env: { GIT_ASKPASS: askpass }, ...(acceptExitCodes ? { acceptExitCodes } : {}) },
+      );
+    } finally {
+      await NodeFSP.rm(dir, { recursive: true, force: true });
+    }
   }
 
   async run(args: string[], options: RunOptions = {}): Promise<Buffer> {

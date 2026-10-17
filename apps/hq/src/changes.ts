@@ -295,6 +295,17 @@ export class Changes extends Context.Service<
       number: number,
       expectedHead: string,
     ) => Effect.Effect<HqChange, ReadError | NotLeader | GitError>;
+    /**
+     * The change merged by a merge made elsewhere — on the GitHub its repository mirrors to — whose
+     * commit `mergedSha` HQ's `main` already holds (`githubMirror.ts` imported it): what a squash
+     * here records, with `main` left as the import moved it. One merged already stays as it is.
+     */
+    readonly landImported: (
+      appId: string,
+      repo: string,
+      number: number,
+      mergedSha: string,
+    ) => Effect.Effect<HqChange, ReadError | NotLeader | GitError>;
     /** The change closed without merging; its branch stays. */
     readonly closeChange: (
       userId: string,
@@ -1480,6 +1491,48 @@ export const changesLayer: Layer.Layer<
           yield* personApp(userId, appId, "merge_change");
           const change = yield* changeIn(appId, repo, number);
           return yield* land(change, expectedHead, { userId }, asItIs);
+        }),
+      landImported: (appId, repo, number, mergedSha) =>
+        Effect.gen(function* () {
+          const git = yield* gitHost.git;
+          const at = { appId, id: repo };
+          return yield* touched(
+            leader.write(
+              Effect.gen(function* () {
+                yield* sql`
+                  SELECT 1 FROM hq_repo WHERE app_id::text = ${appId} AND name = ${repo}
+                  FOR UPDATE`;
+                const [row] = yield* sql<ChangeRow>`
+                  SELECT ${sql.literal(CHANGE_COLUMNS)} FROM hq_change
+                  WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}
+                  FOR UPDATE`;
+                if (row === undefined) return yield* refuse("change_not_found", "change_not_found");
+                if (row.state === "merged") return changeOf(row);
+                if (row.state !== "open") return yield* refuse("conflict", "change_not_open");
+                // Only a merge HQ's main holds: never a commit named by someone else's word alone.
+                if (!(yield* git.onMain(at, mergedSha)))
+                  return yield* refuse("commit_not_found", "commit_not_found");
+                const first = yield* firstCodeMergeOf(sql, { appId, repo, number });
+                const [merged] = yield* sql<ChangeRow>`
+                  UPDATE hq_change
+                  SET state = 'merged', merged_sha = ${mergedSha}, landed_head = head,
+                      merged_at = now(), updated_at = now(),
+                      mergeability = 'already_merged', behind = false,
+                      first_code_merge = ${first}::boolean
+                  WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}
+                  RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
+                yield* addRollout(sql, { cause: "merge", appId, repo, sha: mergedSha });
+                yield* appendEvent(sql, {
+                  kind: "merged",
+                  appId,
+                  repo,
+                  number,
+                  data: { mergedSha, landedHead: row.head, by: "github" },
+                });
+                return changeOf(merged!);
+              }),
+            ),
+          );
         }),
       closeChange: (userId, appId, repo, number, expectedHead) =>
         Effect.andThen(

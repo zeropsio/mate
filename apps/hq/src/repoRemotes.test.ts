@@ -825,6 +825,23 @@ describe("repository credential custody", () => {
           }),
         ),
     );
+    it.effect("A repository whose mirror diverged from GitHub's says since when", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { remotes, sql } = yield* fixture;
+          yield* remotes.connect("custodian", input);
+          const following = yield* remotes.listRepos("custodian", APP);
+          assert.isUndefined(following.find((repo) => repo.name === "web")?.remote?.divergedSince);
+          yield* sql`INSERT INTO hq_repo_mirror(app_id,repo,branch,diverged_since)
+            VALUES (${APP}::uuid,'web','main','2026-10-17T09:30:00Z')`;
+          const diverged = yield* remotes.listRepos("custodian", APP);
+          assert.strictEqual(
+            diverged.find((repo) => repo.name === "web")?.remote?.divergedSince,
+            "2026-10-17T09:30:00.000Z",
+          );
+        }),
+      ),
+    );
     it.effect(
       "Decision L2b: disconnect refuses stage or production dependencies and deletes only HQ's seal and metadata, never host refs or tokens.",
       () =>

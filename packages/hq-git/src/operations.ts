@@ -34,6 +34,15 @@ const error = (message: string) =>
   new GitError({ operation: "operations", reason: "invalid_config", message });
 const pathError = (message: string) =>
   new GitError({ operation: "operations", reason: "invalid_path", message });
+/** A timed-out remote operation as the error every caller already reads. */
+const timedOut = (operation: string) => (cause: unknown) =>
+  isGitError(cause)
+    ? cause
+    : new GitError({
+        operation,
+        reason: "git_failed",
+        message: "The remote did not answer in time",
+      });
 const validSha = (sha: string) => /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha);
 const checkedSnapshot = (snapshot: ChangeSnapshot | undefined) => {
   if (
@@ -511,6 +520,166 @@ export const makeOperations = (
             }),
       ),
     );
+  /** A mirror's remote as git may be handed it: HTTPS, or a local fixture's absolute path. */
+  const mirrorUrl = (url: string) => {
+    if (!url || url.startsWith("-") || url.includes("\0")) throw error("Invalid remote");
+    if (NodePath.isAbsolute(url)) return url;
+    const parsed = new URL(url);
+    if (
+      (parsed.protocol !== "https:" &&
+        !(parsed.protocol === "http:" && parsed.hostname === "127.0.0.1")) ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash
+    )
+      throw error("Invalid remote");
+    return url;
+  };
+  const branchRef = async (dir: string, branch: string, signal: AbortSignal) => {
+    const ref = `refs/heads/${branch}`;
+    await run(dir, ["check-ref-format", ref], signal).catch(() => {
+      throw error("Invalid branch");
+    });
+    return ref;
+  };
+  /** The remote's tip of `ref`, read with ls-remote; none while it does not exist. */
+  const remoteTip = async (
+    dir: string,
+    remote: Parameters<HqGit["fetchTip"]>[1],
+    ref: string,
+    signal: AbortSignal,
+  ) => {
+    const url = mirrorUrl(remote.url);
+    const lines = (
+      await git.remoteAskpass(
+        ["-C", dir, "ls-remote", "--refs", url, ref],
+        url,
+        remote.token,
+        signal,
+      )
+    ).stdout
+      .toString()
+      .trim()
+      .split("\n")
+      .filter((line) => line !== "");
+    const found = lines.find((line) => line.split("\t")[1] === ref)?.split("\t")[0];
+    if (found !== undefined && !validSha(found)) throw error("Invalid remote tip");
+    return found ?? null;
+  };
+  const ancestorIn = async (
+    dir: string,
+    ancestor: string,
+    descendant: string,
+    signal: AbortSignal,
+  ) =>
+    (
+      await git.exec(["-C", dir, "merge-base", "--is-ancestor", ancestor, descendant], {
+        signal,
+        acceptExitCodes: [1, 128],
+      })
+    ).code === 0;
+  const remoteHead: HqGit["remoteHead"] = (repo, remote) =>
+    inRepo("remoteHead", repo, async (dir, signal) => {
+      const url = mirrorUrl(remote.url);
+      const lines = (
+        await git.remoteAskpass(
+          ["-C", dir, "ls-remote", "--symref", url, "HEAD"],
+          url,
+          remote.token,
+          signal,
+        )
+      ).stdout
+        .toString()
+        .split("\n");
+      const symref = lines.find((line) => /^ref: refs\/heads\/[^\t]+\tHEAD$/u.test(line));
+      const branch = symref?.slice("ref: refs/heads/".length, -"\tHEAD".length) ?? "main";
+      await branchRef(dir, branch, signal);
+      const sha = lines
+        .find((line) => line.endsWith("\tHEAD") && !line.startsWith("ref: "))
+        ?.split("\t")[0];
+      if (sha !== undefined && !validSha(sha)) throw error("Invalid remote tip");
+      return { branch, sha: sha ?? null };
+    }).pipe(Effect.timeout(Duration.seconds(30)), Effect.mapError(timedOut("remoteHead")));
+  const fetchTip: HqGit["fetchTip"] = (repo, remote, branch) =>
+    inRepo("fetchTip", repo, async (dir, signal) => {
+      const url = mirrorUrl(remote.url);
+      const tip = await remoteTip(dir, remote, await branchRef(dir, branch, signal), signal);
+      if (tip === null) return null;
+      await git.remoteAskpass(
+        [
+          "-C",
+          dir,
+          "fetch",
+          "--no-tags",
+          "--no-write-fetch-head",
+          "--no-recurse-submodules",
+          url,
+          tip,
+        ],
+        url,
+        remote.token,
+        signal,
+      );
+      await resolve(dir, tip, signal);
+      return tip;
+    }).pipe(Effect.timeout(Duration.seconds(60)), Effect.mapError(timedOut("fetchTip")));
+  const isAncestor: HqGit["isAncestor"] = (repo, ancestor, descendant) =>
+    inRepo("isAncestor", repo, async (dir, signal) => {
+      if (!validSha(ancestor) || !validSha(descendant)) throw error("Invalid commit");
+      return ancestorIn(dir, ancestor, descendant, signal);
+    });
+  const fastForwardMain: HqGit["fastForwardMain"] = (repo, sha, expected) =>
+    inRepo("fastForwardMain", repo, async (dir, signal) => {
+      if (!validSha(sha) || (expected !== null && !validSha(expected)))
+        throw error("Invalid commit");
+      await resolve(dir, sha, signal);
+      const main = await refHead(dir, "refs/heads/main", signal);
+      if (main !== expected) return { kind: "stale" } as const;
+      if (main === sha) return { kind: "moved" } as const;
+      if (main !== null && !(await ancestorIn(dir, main, sha, signal)))
+        return { kind: "not_fast_forward" } as const;
+      if (!(await cas(dir, "refs/heads/main", sha, main, signal)))
+        return { kind: "stale" } as const;
+      emit({ kind: "main_moved", repo, old: main, new: sha, by: "import" });
+      return { kind: "moved" } as const;
+    });
+  const pushRef: HqGit["pushRef"] = (repo, remote, branch, sha, expected) =>
+    inRepo("pushRef", repo, async (dir, signal) => {
+      if (!validSha(sha) || (expected !== null && !validSha(expected)))
+        throw error("Invalid commit");
+      const url = mirrorUrl(remote.url);
+      const ref = await branchRef(dir, branch, signal);
+      await resolve(dir, sha, signal);
+      if (expected !== null && expected !== sha && !(await ancestorIn(dir, expected, sha, signal)))
+        return { kind: "rejected", reason: "not_fast_forward" } as const;
+      const pushed = await git.remoteAskpass(
+        [
+          "-C",
+          dir,
+          "push",
+          "--porcelain",
+          "--no-verify",
+          `--force-with-lease=${ref}:${expected ?? ""}`,
+          url,
+          `${sha}:${ref}`,
+        ],
+        url,
+        remote.token,
+        signal,
+        [1],
+      );
+      if (pushed.code === 0) return { kind: "pushed" } as const;
+      const line = pushed.stdout
+        .toString()
+        .split("\n")
+        .find((entry) => entry.startsWith("!\t"));
+      if (line === undefined) throw error("Push failed");
+      return {
+        kind: "rejected",
+        reason: /stale info|fetch first|non-fast-forward/u.test(line) ? "stale" : "refused",
+      } as const;
+    }).pipe(Effect.timeout(Duration.seconds(60)), Effect.mapError(timedOut("pushRef")));
   const changeHead: HqGit["changeHead"] = (repo, mateId, number) =>
     inRepo("changeHead", repo, (dir, signal) => refHead(dir, changeRef(mateId, number), signal));
   const mergeability: HqGit["mergeability"] = (repo, mateId, number, captured) =>
@@ -1247,6 +1416,11 @@ export const makeOperations = (
     commitFiles,
     previewAdoption,
     acceptAdoption,
+    remoteHead,
+    fetchTip,
+    isAncestor,
+    fastForwardMain,
+    pushRef,
     createTag,
     branches,
     tree,
