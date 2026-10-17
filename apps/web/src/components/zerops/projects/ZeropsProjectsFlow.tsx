@@ -33,6 +33,14 @@ import type { PlaceLine } from "./projectCard.logic";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
+/** A stage being added, as its card's Stage line says it. */
+export interface StageSettingUp {
+  /** The step under way, in words; `undefined` before its plan is known. */
+  readonly step: string | undefined;
+  /** When the adding began; `null` before its first step started. */
+  readonly startedAtMs: number | null;
+}
+
 export interface ProjectsFlowGroup<T> {
   readonly group: Omit<ZeropsGroup, "environments" | "production"> & {
     readonly environments: ReadonlyArray<{ readonly role: ZeropsEnvironmentRole | undefined }>;
@@ -156,6 +164,10 @@ export interface ZeropsProjectsFlowProps<T> {
         readonly stageChips?: ReadonlyMap<string, ProductionChip | undefined> | undefined;
         readonly since?: string | undefined;
         readonly down?: ReadonlyMap<string, ReadonlyArray<string>> | undefined;
+        /** Whether each stage serves a port its address would open (`placeLines`). */
+        readonly addressOffered?: ReadonlyMap<string, boolean> | undefined;
+        /** The release on its way rolls production back to this one (`placeLines`). */
+        readonly rollsBackTo?: string | undefined;
         /** The stage runs every change a release would carry; `undefined` while unread. */
         readonly releaseOnStage?: boolean | undefined;
       })
@@ -182,6 +194,14 @@ export interface ZeropsProjectsFlowProps<T> {
    */
   readonly setUpStage?:
     | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
+    | undefined;
+  /**
+   * A stage this page is adding to a project, while it is: the step under way and when the adding
+   * began (`creationNow`), said on the card's Stage line, where the stage stands — never in a card
+   * of its own at the page's foot.
+   */
+  readonly stageSettingUp?:
+    | ((entry: ProjectsFlowGroup<T>) => StageSettingUp | undefined)
     | undefined;
   /**
    * *Add a Mate* at the foot of a card's Mates, where the person may add one — and why it stands

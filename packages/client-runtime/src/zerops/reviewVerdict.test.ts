@@ -799,13 +799,14 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "tagged, on its way",
       {
         press: { kind: "done" },
-        outcome: { kind: "releasing", progress: "Putting v0.1.58 live · 40s" },
+        outcome: { kind: "releasing", progress: "Putting v0.1.58 live · 40s", clock: "40s" },
       },
       {
+        // The run's roll back read "Putting v0.1.58 live": its clock alone, under the title.
         state: "rolling-back",
         tone: "busy",
         title: "Rolling back to v0.1.55",
-        why: "Putting v0.1.58 live · 40s",
+        why: "40s",
       },
       "You can close this. Production's line on the project's card follows it.",
     ],

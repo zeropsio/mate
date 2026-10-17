@@ -55,7 +55,7 @@ function LoadingCensus() {
           "apps/web/src/components/settings/SourceControlSettings.tsx:487, :532",
           "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx:964, :1076, :1214",
           "apps/web/src/components/settings/ProviderInstanceCard.tsx:750 (loader glyph)",
-          "apps/web/src/components/settings/ProviderSettingsPanel.tsx:1002 (loader glyph)",
+          "apps/web/src/components/settings/ProviderSettingsPanel.tsx:1067 (loader glyph)",
           "apps/web/src/components/settings/SettingsPanels.tsx:2672 (loader glyph)",
           "apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx:181 (loader glyph)",
           "apps/web/src/components/files/FilePreviewPanel.tsx:166, :996 (loader glyph)",

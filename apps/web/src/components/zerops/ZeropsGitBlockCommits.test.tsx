@@ -67,4 +67,22 @@ describe("ZeropsGitBlockCommits", () => {
     expect(html(undefined)).toBe("");
     expect(detail.asked).toEqual([null]);
   });
+
+  it("offers each commit to open only where its changes have somewhere to open", () => {
+    detail.readout = read([
+      { sha: "a".repeat(40), subject: "Answer /status", at: "2026-10-02T11:00:00Z" },
+    ]);
+    const change = { number: 12, head: "c".repeat(40) };
+    const openable = renderToStaticMarkup(
+      <ZeropsGitBlockCommits
+        appId="g1"
+        change={change}
+        main="m1"
+        onOpenCommit={() => {}}
+        repository="api"
+      />,
+    );
+    expect(openable).toMatch(/<button[^>]*>.*Answer \/status.*<\/button>/);
+    expect(html(change)).not.toContain("<button");
+  });
 });

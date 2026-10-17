@@ -5,6 +5,9 @@
  * A child per block because a hook cannot be called in a loop, and each read then lives and dies
  * with the block it belongs to. Nothing to say is nothing drawn: a "Reading…" line under every
  * block on every open would be four words of chrome for a list that is usually short.
+ *
+ * A row opens that commit's changes (`onOpenCommit`); without a conversation to open them beside,
+ * rows are only read.
  */
 import { historyAge } from "@t3tools/client-runtime/zerops";
 
@@ -16,6 +19,7 @@ export function ZeropsGitBlockCommits({
   repository,
   change,
   main,
+  onOpenCommit,
 }: {
   /** The Mate's application, which is its group. */
   readonly appId: string | undefined;
@@ -24,6 +28,9 @@ export function ZeropsGitBlockCommits({
   readonly change: { readonly number: number; readonly head: string } | undefined;
   /** What `main` was as the flow last told it: the newest landed change's commit. */
   readonly main: string | undefined;
+  readonly onOpenCommit?:
+    | ((commit: { readonly sha: string; readonly subject: string }) => void)
+    | undefined;
 }) {
   const now = useNowMs();
   const detail = useZeropsChangeDetail(
@@ -40,18 +47,29 @@ export function ZeropsGitBlockCommits({
       <ul className="flex min-w-0 flex-col">
         {commits.map((commit) => {
           const age = historyAge(commit.at, now);
-          return (
-            <li
-              className="flex min-w-0 items-baseline gap-2 py-1 text-xs"
-              data-zerops-surface="git-commit"
-              key={commit.sha}
-            >
+          const line = (
+            <>
               <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                 {commit.sha.slice(0, 7)}
               </span>
               <span className="min-w-0 flex-1 truncate text-foreground">{commit.subject}</span>
               {age === undefined ? null : (
                 <span className="shrink-0 tabular-nums text-muted-foreground">{age}</span>
+              )}
+            </>
+          );
+          return (
+            <li className="flex min-w-0 text-xs" data-zerops-surface="git-commit" key={commit.sha}>
+              {onOpenCommit === undefined ? (
+                <div className="flex min-w-0 flex-1 items-baseline gap-2 py-1">{line}</div>
+              ) : (
+                <button
+                  className="-mx-1.5 flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-1.5 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+                  onClick={() => onOpenCommit({ sha: commit.sha, subject: commit.subject })}
+                  type="button"
+                >
+                  {line}
+                </button>
               )}
             </li>
           );

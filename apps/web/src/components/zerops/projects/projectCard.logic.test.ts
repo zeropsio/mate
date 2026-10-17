@@ -21,7 +21,6 @@ import {
   cardSecondWords,
   cardPeople,
   cardReady,
-  cardReleasing,
   foldMates,
   foldWords,
   mateChangeForReview,
@@ -31,11 +30,11 @@ import {
   putLiveHasChange,
   readyLine,
   readyTitle,
-  releasingTitle,
   rollBackTarget,
   siteOf,
   sinceWords,
   soleSite,
+  releaseLineOpens,
 } from "./projectCard.logic";
 
 const NOW = Date.parse("2026-10-10T12:00:00Z");
@@ -322,17 +321,44 @@ describe("a card's places", () => {
   });
 
   // The onboarding run: "Running · main" stood two seconds with nowhere to go before the stage's
-  // address came. HQ brings a stage up until its address is on (`EnvironmentBirth`).
+  // address came. HQ brings a stage up until its address is on (`EnvironmentBirth`) — and marks it
+  // up as its first deploy ends, the address coming ~0.8 s later in the platform's next read: a
+  // stage that serves a port its address opens still turns it on. One serving none runs as is.
   it.each([
     {
       case: "while HQ still brings it up",
       birth: { ended: false },
+      offered: undefined,
       words: "Turning its address on…",
     },
-    { case: "once HQ has brought it up", birth: { ended: true }, words: "Running" },
-    { case: "where HQ did not bring it up", birth: undefined, words: "Running" },
-  ])("says a stage runs only with its address, $case", ({ birth, words: said }) => {
+    {
+      case: "once HQ has brought it up",
+      birth: { ended: true },
+      offered: undefined,
+      words: "Running",
+    },
+    {
+      case: "once HQ has brought it up, while the address its app serves is still being turned on",
+      birth: { ended: true },
+      offered: true,
+      words: "Turning its address on…",
+    },
+    {
+      case: "once HQ has brought it up, serving nothing an address would open",
+      birth: { ended: true },
+      offered: false,
+      words: "Running",
+    },
+    {
+      case: "while HQ still brings it up, serving nothing an address would open",
+      birth: { ended: false },
+      offered: false,
+      words: "Running",
+    },
+    { case: "where HQ did not bring it up", birth: undefined, offered: true, words: "Running" },
+  ])("says a stage runs only with its address, $case", ({ birth, offered, words: said }) => {
     const lines = placeLines({
+      ...(offered === undefined ? {} : { addressOffered: new Map([["stage", offered]]) }),
       flow: {
         production: { kind: "absent" },
         stages: [
@@ -483,20 +509,80 @@ describe("a release ready to go", () => {
   });
 });
 
-// The onboarding run: pressing Release took the release's block away and the card jumped 125 px,
-// and its end put it back for a beat.
+// The run's card said a release on its way twice: "Releasing v0.1.0" on production's line and
+// "Putting v0.1.0 live" in a block of its own (the owner, 2026-10-16: one place per fact).
 describe("a release on its way", () => {
   const main = { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false };
   it.each([
     {
-      case: "stands where the ready one stood, putting it live",
+      case: "is said once, on production's line, and offers no release beside it",
       production: { kind: "releasing", stop: stop(), line: "", tag: "v2.4.0" },
-      title: "Putting v2.4.0 live",
+      words: ["Releasing v2.4.0"],
     },
-    { case: "is absent while none is on its way", production: LIVE, title: undefined },
-  ] as const)("$case", ({ production, title }) => {
-    const tag = cardReleasing({ production, stages: [], main });
-    expect(tag === undefined ? undefined : releasingTitle(tag)).toBe(title);
+    {
+      // The run's roll back read as a release of a tag nobody asked for.
+      case: "is said as the roll back it is, by the release it goes back to",
+      production: { kind: "releasing", stop: stop(), line: "", tag: "v2.4.1" },
+      rollsBackTo: "v2.3.0",
+      words: ["Rolling back to v2.3.0"],
+    },
+    {
+      case: "is absent while none is on its way",
+      production: LIVE,
+      words: ["Running", "v2.3.1"],
+    },
+  ] as const)("$case", ({ production, words, ...rest }) => {
+    const flow = { production, stages: [], main };
+    const rollsBackTo = "rollsBackTo" in rest ? rest.rollsBackTo : undefined;
+    const [line] = placeLines({ flow, rollsBackTo, nowMs: 0 });
+    // The menu's chip says it the same way.
+    const [chipped] = placeLines({
+      flow,
+      rollsBackTo,
+      chip: chip(
+        production.kind === "releasing"
+          ? { state: "releasing", next: production.tag }
+          : { state: "releasing" },
+      ),
+      nowMs: 0,
+    });
+    if (production.kind === "releasing") expect(chipped?.words).toEqual(words);
+    expect(line?.words).toEqual(words);
+    expect(cardReady(flow)).toBeUndefined();
+  });
+});
+
+// With the "Putting v2.4.0 live" block gone, nothing on the card opened a release on its way:
+// production's line that says it now opens it, as the block's door did.
+describe("production's line while a release is on its way", () => {
+  const main = { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false };
+  const releasing = { kind: "releasing", stop: stop(), line: "", tag: "v2.4.1" } as const;
+  it.each([
+    { case: "opens the release's review", production: releasing, opens: { kind: "release" } },
+    {
+      case: "opens a roll back's review by the release it goes back to",
+      production: releasing,
+      rollsBackTo: "v2.3.0",
+      opens: { kind: "rollback", tag: "v2.3.0" },
+    },
+    { case: "opens nothing while none is on its way", production: LIVE, opens: undefined },
+    {
+      case: "opens nothing while production is down: its trouble is said, and its fix",
+      production: releasing,
+      chip: chip({ state: "down", next: "v2.4.1" }),
+      opens: undefined,
+    },
+  ] as const)("$case", ({ production, opens, ...rest }) => {
+    const rollsBackTo = "rollsBackTo" in rest ? rest.rollsBackTo : undefined;
+    const flow = { production, stages: [], main };
+    const [line] = placeLines({
+      flow,
+      rollsBackTo,
+      ...("chip" in rest ? { chip: rest.chip } : {}),
+      nowMs: 0,
+    });
+    if (line === undefined) throw new Error("production has a line");
+    expect(releaseLineOpens(line, production, rollsBackTo)).toEqual(opens);
   });
 });
 

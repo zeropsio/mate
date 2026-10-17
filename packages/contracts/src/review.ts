@@ -3,9 +3,18 @@ import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { GitCommandError, GitRefName } from "./git.ts";
 import { VcsError } from "./vcs.ts";
 
+/** One commit by its object name, abbreviated or whole: never a ref git could resolve elsewhere. */
+export const ReviewCommitName = TrimmedNonEmptyString.check(Schema.isPattern(/^[0-9a-f]{7,64}$/));
+
 export const ReviewDiffPreviewInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   baseRef: Schema.optional(GitRefName),
+  /**
+   * One commit's own changes, against its first parent, instead of the working tree and the
+   * branch: the answer is a single source whose `id` is `"commit"` and whose `headRef` is the
+   * commit's full name. A server that predates it answers without that source.
+   */
+  commit: Schema.optionalKey(ReviewCommitName),
   ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
   file: Schema.optionalKey(
     Schema.Struct({

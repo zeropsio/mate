@@ -13,6 +13,8 @@ import {
   firstDeploy,
   firstDeployLine,
   firstDeployTone,
+  addressComing,
+  addressOffered,
   listedStopComing,
   stopComing,
   stopDeployed,
@@ -217,6 +219,28 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       over: { birth: { ended: false }, routes: 0 },
       coming: { kind: "coming", step: "address" },
     },
+    // HQ ends its bringing up as the first deploy ends, and the platform turns the address on in
+    // its next read, about 0.8 s later: the menu's heading read Running with nowhere to open.
+    {
+      case: "a stage HQ brought up serving a port its address would open: turning its address on until it is there",
+      over: { birth: { ended: true }, routes: 0, addressOffered: true },
+      coming: { kind: "coming", step: "address" },
+    },
+    {
+      case: "a stage HQ brought up serving no port its address would open: running as it is",
+      over: { birth: { ended: false }, routes: 0, addressOffered: false },
+      coming: undefined,
+    },
+    {
+      case: "a stage HQ brought up, its database stopped since: what it lacks, never its address",
+      over: {
+        birth: { ended: true },
+        services: [db("STOPPED"), app("ACTIVE")],
+        routes: 0,
+        addressOffered: true,
+      },
+      coming: undefined,
+    },
     {
       case: "a service being added to one HQ did not bring up: what the platform says it makes",
       over: { birth: null, services: [db("ACTIVE"), app("CREATING")], routes: 0 },
@@ -249,6 +273,45 @@ describe("stopComing — where a stage or a production coming up has got", () =>
     },
   ])("$case", ({ over, coming }) => {
     expect(stopComing({ ...base, ...over })).toEqual(coming);
+  });
+});
+
+describe("addressComing — a place HQ brought up turns its address on, the card's and the menu's one rule", () => {
+  it.each([
+    { case: "brought up, a port to open, no address yet", over: {}, coming: true },
+    { case: "brought up, its address there", over: { addresses: 1 }, coming: false },
+    { case: "brought up, no port its address would open", over: { offered: false }, coming: false },
+    {
+      case: "its ports unread while HQ still brings it up: still coming",
+      over: { offered: undefined, birth: { ended: false } },
+      coming: true,
+    },
+    {
+      case: "its ports unread once HQ is done bringing it up: HQ's word, done",
+      over: { offered: undefined },
+      coming: false,
+    },
+    { case: "one HQ did not bring up", over: { birth: null }, coming: false },
+  ])("$case", ({ over, coming }) => {
+    expect(
+      addressComing({
+        birth: { ended: true } as EnvironmentBirth | null,
+        addresses: 0,
+        offered: true as boolean | undefined,
+        ...over,
+      }),
+    ).toBe(coming);
+  });
+});
+
+describe("addressOffered — whether a place serves a port its address would open", () => {
+  it.each([
+    { case: "its services unread", listing: {}, offered: undefined },
+    { case: "a port to open", listing: { routeOffers: [{}], routes: [] }, offered: true },
+    { case: "its address already on", listing: { routeOffers: [], routes: [{}] }, offered: true },
+    { case: "nothing to open", listing: { routeOffers: [], routes: [] }, offered: false },
+  ])("$case", ({ listing, offered }) => {
+    expect(addressOffered(listing)).toBe(offered);
   });
 });
 
@@ -488,6 +551,25 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
     },
   ])("$case", ({ deployment, released, coming }) => {
     expect(comingOf(deployment, released)).toEqual(coming);
+  });
+});
+
+describe("listedStopComing — a stage, read the way the menu reads it", () => {
+  // The menu's heading read "Running" for the beat between HQ's bringing up ending and the
+  // platform turning the address on, as the card's line did before.
+  it("keeps a stage HQ brought up turning its address on until it is there, as its card does", () => {
+    const listed = (routes: number, offered: boolean | undefined) =>
+      listedStopComing("stage", {
+        stop: { state: "deployed", version: { label: "v1" }, birth: { ended: true } },
+        projectStatus: "ACTIVE",
+        services: [db("ACTIVE"), app("ACTIVE")],
+        building: false,
+        routes,
+        addressOffered: offered,
+      });
+    expect(listed(0, true)).toEqual({ kind: "coming", step: "address" });
+    expect(listed(1, true)).toBeUndefined();
+    expect(listed(0, false)).toBeUndefined();
   });
 });
 

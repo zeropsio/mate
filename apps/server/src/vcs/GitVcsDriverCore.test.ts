@@ -1405,6 +1405,79 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect(
+      "a commit's changes are that commit's alone, against its parent, whatever came after it",
+      () =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          yield* initRepoWithCommit(cwd);
+          const parent = yield* git(cwd, ["rev-parse", "HEAD"]);
+          yield* writeTextFile(cwd, "menu.txt", "tea\n");
+          yield* git(cwd, ["add", "."]);
+          yield* git(cwd, ["commit", "-m", "Add the menu"]);
+          const commit = yield* git(cwd, ["rev-parse", "HEAD"]);
+          yield* writeTextFile(cwd, "later.txt", "later\n");
+          yield* git(cwd, ["add", "."]);
+          yield* git(cwd, ["commit", "-m", "Later work"]);
+          yield* writeTextFile(cwd, "README.md", "# dirty\n");
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+
+          const preview = yield* driver.getReviewDiffPreview({ cwd, commit: commit.slice(0, 7) });
+
+          assert.equal(preview.sources.length, 1);
+          const [source] = preview.sources;
+          assert.equal(source?.id, "commit");
+          assert.equal(source?.headRef, commit);
+          assert.equal(source?.baseRef, parent);
+          assert.deepStrictEqual(source?.files, [
+            { path: "menu.txt", previousPath: null, additions: 1, deletions: 0 },
+          ]);
+          assert.include(source?.diff, "+tea");
+          assert.notInclude(source?.diff, "later");
+          assert.notInclude(source?.diff, "dirty");
+          const contents = yield* driver.getReviewDiffFileContents(
+            makeReviewDiffFileContentsInput(cwd, {
+              sourceKind: source!.kind,
+              changeType: "new",
+              baseRef: source!.baseRef,
+              headRef: source!.headRef,
+              oldPath: "menu.txt",
+              newPath: "menu.txt",
+            }),
+          );
+          assert.equal(contents.newContents, "tea\n");
+        }),
+    );
+
+    it.effect("a first commit's changes are everything it added", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const root = yield* git(cwd, ["rev-parse", "HEAD"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, commit: root });
+
+        assert.equal(preview.sources[0]?.headRef, root);
+        assert.equal(preview.sources[0]?.baseRef, null);
+        assert.deepStrictEqual(preview.sources[0]?.files, [
+          { path: "README.md", previousPath: null, additions: 1, deletions: 0 },
+        ]);
+      }),
+    );
+
+    it.effect("a commit the checkout does not hold answers with no changes to show", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, commit: "0123456789abcdef" });
+
+        assert.deepStrictEqual(preview.sources, []);
+      }),
+    );
+
     it.effect("reads complete tracked and untracked manifests beyond 1 MB", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

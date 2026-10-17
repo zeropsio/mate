@@ -19,6 +19,7 @@ import {
   type SyntheticEvent,
 } from "react";
 
+import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
 import { useOpenReview } from "~/zerops/review";
 import { gatedPortal } from "../ui/portal-gate";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -265,7 +266,7 @@ function ReviewTag({
           }
         >
           <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
-          <span className="menu-tag-word">Review work</span>
+          <span className="menu-tag-word">{REVIEW_LABEL}</span>
           <TagCount count={many ? items.length : undefined} />
         </TooltipTrigger>
         {only === undefined ? null : <TooltipPopup side="bottom">{only.title}</TooltipPopup>}

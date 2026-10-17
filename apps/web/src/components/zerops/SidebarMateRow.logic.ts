@@ -577,6 +577,9 @@ export function mateFinishingView(view: MateRowView): MateRowView {
   return { ...view, ask: view.reply === undefined ? undefined : view.ask, reply: undefined };
 }
 
+/** A Mate's row's one line while its update restarts it (`mateRowReading`). */
+export const MATE_UPDATING_LINE = "Updating to the new version";
+
 /**
  * A row's one reading of its Mate: the face and the words both from the activity it draws, so
  * the two never disagree (the owner, 2026-09-29: a new Mate at work read "Working on a reply"
@@ -611,9 +614,32 @@ export function mateRowReading(input: {
   readonly mine: boolean;
   /** Where it is in its life (`mateFaceFor`): waking while it comes up and arrives. */
   readonly pose?: MatePoseFacts | undefined;
+  /** Its update is restarting it, as its link says (`mateUpdating`). */
+  readonly updating?: boolean | undefined;
 }): MateRowView {
-  // Away for less than its grace — an update's restart, a blink — its row says no outage yet: its
-  // last words, at rest, without "isn't answering" or what was last known.
+  // Its update restarting it: its row says so, from the moment its link says it until it answers
+  // again — never its last words held as if nothing happened, nor that it isn't answering.
+  if (input.updating === true) {
+    const activity = withoutLastKnown(input.activity);
+    return {
+      ...mateRowView(
+        activity,
+        mateFaceOf({
+          connected: input.connected,
+          activity,
+          reviewWaits: input.reviewWaits === true,
+          mine: input.mine,
+          pose: input.pose,
+        }),
+        input.name,
+        undefined,
+        input.timestampFormat,
+      ),
+      reply: { kind: "words", text: MATE_UPDATING_LINE, tone: "muted" },
+    };
+  }
+  // Away for less than its grace — a blink, a restart nobody announced — its row says no outage
+  // yet: its last words, at rest, without "isn't answering" or what was last known.
   const settling =
     input.offlineSince !== undefined && mateAwaySettling(input.offlineSince, input.nowMs);
   const activity = settling ? withoutLastKnown(input.activity) : input.activity;

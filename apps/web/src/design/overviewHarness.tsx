@@ -40,6 +40,7 @@ import {
 import {
   cardMateReading,
   cardPeople,
+  releaseLineOpens,
   type CardChange,
 } from "~/components/zerops/projects/projectCard.logic";
 import {
@@ -569,6 +570,9 @@ const OTHERS: ReadonlyArray<Project> = [
   }),
 ];
 
+/** When Guides' stage began to be added: 41 s before the page opened. */
+const STAGE_ADDING_SINCE = Date.now() - 41_000;
+
 const byId = new Map([...PROJECTS, ...OTHERS].map((entry) => [entry.entry.group.groupId, entry]));
 const mineOf = (entry: Mate) => entry.owner === ADA;
 
@@ -722,11 +726,22 @@ function HarnessPage() {
                     </Button>
                   ))}
                   model={{ ...found.panel, line }}
+                  onOpenLine={
+                    releaseLineOpens(line, entry.flow.production, undefined) === undefined
+                      ? undefined
+                      : () => acted.push(`open-release:${entry.group.groupId}`)
+                  }
                 />,
               );
             }}
             renderReleaseVerb={() => <Button>Review release</Button>}
             setUpStage={() => () => acted.push("add-stage")}
+            // Guides is having its stage added: how far it has got stands on its Stage line.
+            stageSettingUp={(entry) =>
+              entry.group.groupId === "guides"
+                ? { step: "Starting the stage's services", startedAtMs: STAGE_ADDING_SINCE }
+                : undefined
+            }
             addMate={(entry) => ({
               onAdd: () => acted.push(`add-mate:${entry.group.groupId}`),
               why: null,

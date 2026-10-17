@@ -83,6 +83,7 @@ export function PlacePanel({
   model,
   groupId,
   actions,
+  onOpenLine,
   roomy = false,
 }: {
   readonly model: PlacePanelModel;
@@ -90,6 +91,12 @@ export function PlacePanel({
   readonly groupId: string;
   /** The page's buttons for it: sm secondary Buttons. */
   readonly actions: ReactNode;
+  /**
+   * What its line opens, where it says something under way that has a review — production's
+   * "Releasing v0.1.0" opens that release's (`releaseLineOpens`). The line keeps its words and
+   * its place: it only becomes a door.
+   */
+  readonly onOpenLine?: ((from: HTMLElement) => void) | undefined;
   /**
    * Drawn at a project page's width: both doors into the sheet. On a card one door is enough, and
    * only production's — *Put it on your domain* while it has none of its own (the sheet it opens
@@ -158,10 +165,25 @@ export function PlacePanel({
           </span>
         )}
       </div>
-      <p className="ov-panel-state">
-        <PlaceDot dot={line.dot} />
-        <PlaceWords line={line} />
-      </p>
+      {onOpenLine === undefined ? (
+        <p className="ov-panel-state">
+          <PlaceDot dot={line.dot} />
+          <PlaceWords line={line} />
+        </p>
+      ) : (
+        <button
+          aria-haspopup="dialog"
+          className="ov-panel-state"
+          data-zerops-place-door=""
+          onClick={(event) => {
+            onOpenLine(event.currentTarget);
+          }}
+          type="button"
+        >
+          <PlaceDot dot={line.dot} />
+          <PlaceWords line={line} />
+        </button>
+      )}
       {model.services.length === 0 ? (
         // A stage always has services: their line is held while they are read, so it does not
         // grow the card when they come (the run's new stage pushed the card 24 px a minute in).

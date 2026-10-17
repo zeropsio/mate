@@ -864,7 +864,12 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
 
 export type ReleaseOutcome =
   | { readonly kind: "offered" }
-  | { readonly kind: "releasing"; readonly progress?: string | undefined }
+  | {
+      readonly kind: "releasing";
+      readonly progress?: string | undefined;
+      /** How long it has been on its way, and that it takes longer than usual past that. */
+      readonly clock?: string | undefined;
+    }
   | { readonly kind: "released"; readonly at: string | undefined }
   /** HQ ended its follow without confirming the deploy's outcome. */
   | { readonly kind: "stalled"; readonly at: string | undefined }
@@ -1380,8 +1385,10 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
     };
   }
   switch (outcome.kind) {
+    // Its title says it rolls back: under it, how long — never "Putting v0.1.58 live", a tag the
+    // person never asked for (the run's roll back).
     case "releasing":
-      return onItsWay(outcome.progress ?? `Putting ${nextTag} live`);
+      return onItsWay(outcome.clock ?? `Preparing ${nextTag}`);
     case "released": {
       const age =
         outcome.at === undefined ? undefined : reviewAge(outcome.at, input.now)?.toLowerCase();
@@ -1424,7 +1431,7 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
     case "offered":
       break;
   }
-  if (press.kind === "done") return onItsWay(`Putting ${nextTag} live`);
+  if (press.kind === "done") return onItsWay(`Preparing ${nextTag}`);
   if (permission?.allowed === false) {
     return {
       verdict: {

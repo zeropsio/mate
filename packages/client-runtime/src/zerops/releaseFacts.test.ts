@@ -12,6 +12,7 @@ import {
   releaseOutcomeOf,
   releaseStageMarks,
   releaseStep,
+  rollbackOnItsWay,
   type ReleaseFacts,
 } from "./releaseFacts.ts";
 import {
@@ -729,6 +730,70 @@ describe("a release opened on its way follows its own tag to the end", () => {
   });
 });
 
+// With the card's "Putting v0.1.2 live" block gone, production's "Rolling back to v0.1.0" line
+// opens the roll back's review: one opened on its way, where nothing was pressed, follows it.
+describe("a roll back's review opened on its way follows the roll back to its end", () => {
+  const rolling = row("v0.1.2", undefined, { rollbackOf: "v0.1.0" });
+  it.each([
+    {
+      name: "a roll back to it on its way",
+      inFlight: "v0.1.2",
+      releases: [rolling],
+      follows: "v0.1.2",
+    },
+    {
+      name: "a release on its way, no roll back",
+      inFlight: "v0.1.2",
+      releases: [row("v0.1.2", undefined)],
+      follows: undefined,
+    },
+    {
+      name: "a roll back to another release",
+      inFlight: "v0.1.2",
+      releases: [row("v0.1.2", undefined, { rollbackOf: "v0.0.9" })],
+      follows: undefined,
+    },
+    { name: "nothing on its way", inFlight: undefined, releases: [rolling], follows: undefined },
+  ])("$name", ({ inFlight, releases, follows }) => {
+    expect(rollbackOnItsWay({ inFlight, releases, tag: "v0.1.0" })).toBe(follows);
+  });
+
+  it("says it on its way, offering no second roll back, then that it rolled back", () => {
+    const shown = (releases: ReadonlyArray<FlowReleaseRow>, inFlight: string | undefined) => {
+      const follows = releaseFollows({
+        made: undefined,
+        held: { tag: "v0.1.2" },
+        press: { kind: "idle" },
+        inFlight,
+        stalled: undefined,
+        suggestion: "v0.1.3",
+        releases,
+      });
+      return rollbackReview({
+        comparisons: { leaving: "known", comingBack: "known" },
+        tag: "v0.1.0",
+        nextTag: follows.tag,
+        live: "v0.1.1",
+        services: ["app"],
+        permission: { allowed: true },
+        press: { kind: "idle" },
+        outcome: releaseOutcomeOf({
+          tagged: follows.tagged,
+          releasing: follows.releasing,
+          pressing: false,
+          tag: follows.tag,
+          clockMs: NOW,
+        }),
+        now: NOW,
+      });
+    };
+    const onItsWay = shown([rolling], "v0.1.2");
+    expect(onItsWay.primary).toBeUndefined();
+    expect(onItsWay.verdict.state).toBe("rolling-back");
+    expect(shown([{ ...rolling, standing: "live" }], undefined).verdict.state).toBe("rolled-back");
+  });
+});
+
 describe("holdReleaseFacts", () => {
   const before = current("v0.1.1", { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" });
   const after = current("v0.1.1", { live: "v0.1.1", contents: [], production: HEAD });
@@ -827,14 +892,25 @@ describe("a release is released once its deploys have ended", () => {
 // and the conversation count "42s", "7m 05s".
 describe("a release on its way says how long", () => {
   it.each([
-    { name: "in the conversation's units", since: 40_000, progress: "Putting v0.1.0 live · 40s" },
-    { name: "minutes and seconds", since: 98_000, progress: "Putting v0.1.0 live · 1m 38s" },
+    {
+      name: "in the conversation's units",
+      since: 40_000,
+      progress: "Putting v0.1.0 live · 40s",
+      clock: "40s",
+    },
+    {
+      name: "minutes and seconds",
+      since: 98_000,
+      progress: "Putting v0.1.0 live · 1m 38s",
+      clock: "1m 38s",
+    },
     {
       name: "and that it takes longer than usual once past the minute or two it promised",
       since: 130_000,
       progress: "Putting v0.1.0 live · 2m 10s · taking longer than usual",
+      clock: "2m 10s · taking longer than usual",
     },
-  ])("$name", ({ since, progress }) => {
+  ])("$name", ({ since, progress, clock }) => {
     expect(
       releaseOutcomeOf({
         tagged: row("v0.1.0", undefined, { taggedAt: new Date(NOW - since).toISOString() }),
@@ -843,6 +919,6 @@ describe("a release on its way says how long", () => {
         tag: "v0.1.0",
         clockMs: NOW,
       }),
-    ).toEqual({ kind: "releasing", progress });
+    ).toEqual({ kind: "releasing", progress, clock });
   });
 });

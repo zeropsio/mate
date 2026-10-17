@@ -9,6 +9,8 @@
  * `&picker=1` the project picker open). `?page=invite` the invitation, empty (`&from=g-snap` as
  * opened from Snap's ···); `&step=details` an address typed and Snap picked, a guest
  * (`&role=developer` a Developer); Invite answers after a moment, as Zerops would. The team's invitation is named as its inviter typed it.
+ * `?resend=1` the team after two Send agains: Iva's sent again, the long address's withdrawn and
+ * not sent (`&resend=sending` both under way).
  * Fixtures only: no route imports this module.
  */
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
@@ -172,6 +174,43 @@ function Page() {
         organizationName="Acme"
         projects={INVITABLE}
         viewerRole={viewerRole}
+      />
+    );
+  }
+  const resend = params.get("resend");
+  if (resend !== null) {
+    const sending = resend === "sending";
+    const byAddress = Object.fromEntries(
+      (VIEW.kind === "people" ? VIEW.people : []).flatMap((person) =>
+        person.pending && person.email !== null ? [[person.email, person]] : [],
+      ),
+    );
+    const iva = byAddress["iva.mala@example.com"]!;
+    const nova = byAddress["nova.storefront-operations@teashop-example.com"]!;
+    const view = teamPeople({
+      ...INPUT,
+      members: { ...INPUT.members, list: MEMBERS.filter(({ id }) => id !== "cu-nova") },
+    });
+    return (
+      <TeamList
+        onSendAgain={() => {}}
+        resends={{
+          [iva.email!]: { person: iva, state: sending ? "sending" : "sent" },
+          [nova.email!]: sending
+            ? { person: nova, state: "sending" }
+            : {
+                person: nova,
+                state: "failed",
+                trouble:
+                  "Their earlier invitation is withdrawn, but Zerops didn't send the new one: Too many invitations today.",
+                invitation: {
+                  email: nova.email!,
+                  membership: nova.membership,
+                  grants: [],
+                },
+              },
+        }}
+        view={view}
       />
     );
   }

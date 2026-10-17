@@ -4,34 +4,69 @@
  * guest's projects under it, an invitation not joined yet saying it waits for them to join — by
  * the name its inviter typed where Zerops knows only the address. A card opens that person's own
  * page. The heading carries the count, a search by name or e-mail and, for an organization owner or
- * admin, *Invite*.
+ * admin, *Invite* — and on each invitation they may change, *Send again*.
  */
 import { Link, useRouter } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PersonAvatar } from "../zerops/primitives";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { forgetInvitationSent, invitationSentTo } from "./invitationSent";
+import type { ResentInvitation } from "@t3tools/client-runtime/data";
 import {
   arrivingRow,
-  INVITED_LINE,
   reachWords,
+  resendCards,
   sentInvitation,
   shownTeam,
   teamSearchShown,
   type TeamPerson,
+  type TeamResend,
+  type TeamResendCard,
   type TeamView,
 } from "./teamSettings.logic";
 import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
 
+/** The name an invitation was typed with, as Zerops takes it: first word, then the rest. */
+const typedNames = (person: TeamPerson) => {
+  if (person.name === person.email) return undefined;
+  const [firstName = "", ...rest] = person.name.trim().split(/\s+/u);
+  return { firstName, lastName: rest.join(" ") };
+};
+
 /** Settings → Team. */
 export function TeamSettings() {
-  const { view } = useTeam();
+  const { view, resend } = useTeam();
+  // Each Send again by the address it went to, while the page is open.
+  const [resends, setResends] = useState<Readonly<Record<string, TeamResend>>>({});
+  const sendAgain = (person: TeamPerson, invitation?: ResentInvitation) => {
+    const address = person.email?.toLocaleLowerCase();
+    if (address === undefined) return;
+    const names = typedNames(person);
+    setResends((held) => ({ ...held, [address]: { person, state: "sending" } }));
+    void resend({
+      clientUserId: person.key,
+      ...(names === undefined ? {} : { names }),
+      ...(invitation === undefined ? {} : { invitation }),
+    }).then((answer) =>
+      setResends((held) => ({
+        ...held,
+        [address]: answer.sent
+          ? { person, state: "sent" }
+          : {
+              person,
+              state: "failed",
+              trouble: answer.trouble,
+              ...(answer.invitation === undefined ? {} : { invitation: answer.invitation }),
+            },
+      })),
+    );
+  };
   // Taken once on arrival: the visit keeps it, nothing after it sees it again.
   const [sent] = useState(invitationSentTo);
   useEffect(forgetInvitationSent, []);
@@ -42,29 +77,53 @@ export function TeamSettings() {
   }, [router]);
   return (
     <SettingsPageContainer width="wide">
-      <TeamList sent={sent} view={view} />
+      <TeamList onSendAgain={sendAgain} resends={resends} sent={sent} view={view} />
     </SettingsPageContainer>
   );
 }
 
 const NOTHING_SENT: ReadonlyArray<string> = [];
+const NO_RESENDS: Readonly<Record<string, TeamResend>> = {};
 
 /** The team as drawn from what is known of it. */
 export function TeamList({
   view,
   initialQuery = "",
   sent = NOTHING_SENT,
+  resends = NO_RESENDS,
+  onSendAgain,
 }: {
   readonly view: TeamView;
   /** What the search starts with; a harness shows a search under way. */
   readonly initialQuery?: string;
   /** The addresses invitations were just sent to, on the way back from Invite. */
   readonly sent?: ReadonlyArray<string>;
+  /** Each Send again, by the address it went to. */
+  readonly resends?: Readonly<Record<string, TeamResend>>;
+  /** Sends an invitation again; with what a failed one handed back, only invites. Absent: none. */
+  readonly onSendAgain?: (person: TeamPerson, invitation?: ResentInvitation) => void;
 }) {
   const [query, setQuery] = useState(initialQuery);
+  const cards = useMemo(
+    () =>
+      new Map(
+        resendCards(view.kind === "people" ? view.people : [], resends).map((card) => [
+          card.person.key,
+          card,
+        ]),
+      ),
+    [resends, view],
+  );
   const shown = useMemo(
-    () => (view.kind === "people" ? shownTeam(view.people, query) : []),
-    [query, view],
+    () =>
+      shownTeam(
+        [...cards.values()].map(({ person }) => person),
+        query,
+      ).flatMap((person) => {
+        const card = cards.get(person.key);
+        return card === undefined ? [] : [card];
+      }),
+    [cards, query],
   );
   const confirmed =
     sent.length === 0 ? null : sentInvitation(view.kind === "people" ? view.people : [], sent);
@@ -147,20 +206,24 @@ export function TeamList({
         ) : (
           <>
             <ul aria-label="People" className="tm-cards">
-              {shown.map((person) => (
+              {shown.map((card) => (
                 <li
                   className="grid"
-                  data-arrived={arriving.includes(person.key) || undefined}
-                  key={person.key}
+                  data-arrived={arriving.includes(card.person.key) || undefined}
+                  key={card.person.key}
                   onAnimationEnd={
-                    arriving.includes(person.key)
+                    arriving.includes(card.person.key)
                       ? () => {
                           setArrivalPlayed(true);
                         }
                       : undefined
                   }
                 >
-                  <PersonCard person={person} />
+                  <PersonCard
+                    card={card}
+                    {...(onSendAgain === undefined ? {} : { onSendAgain })}
+                    resend={resends[card.person.email?.toLocaleLowerCase() ?? ""]}
+                  />
                 </li>
               ))}
             </ul>
@@ -176,17 +239,25 @@ export function TeamList({
   );
 }
 
-/** One person: their face, name, role, e-mail — and what a developer or guest reaches. */
-function PersonCard({ person }: { readonly person: TeamPerson }) {
+/**
+ * One person: their face, name, role, e-mail — and what a developer or guest reaches. The card
+ * opens their page; an invitation's *Send again* sits under it, outside that link.
+ */
+function PersonCard({
+  card,
+  resend,
+  onSendAgain,
+}: {
+  readonly card: TeamResendCard;
+  readonly resend: TeamResend | undefined;
+  readonly onSendAgain?: (person: TeamPerson, invitation?: ResentInvitation) => void;
+}) {
+  const { person } = card;
   const reach =
     person.reach === null || person.reach.kind === "everything" ? null : reachWords(person.reach);
-  return (
-    <Link
-      className="tm-card"
-      data-pending={person.pending || undefined}
-      params={{ clientUserId: person.key }}
-      to="/settings/team/$clientUserId"
-    >
+  const offer = onSendAgain === undefined ? null : card.offer;
+  const content = (
+    <>
       <span className="tm-card-face">
         <PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />
       </span>
@@ -216,11 +287,11 @@ function PersonCard({ person }: { readonly person: TeamPerson }) {
           </span>
         ) : null}
       </span>
-      {person.pending ? (
+      {card.invited === null ? null : (
         <span className="tm-card-mail" data-part="pending">
-          {INVITED_LINE}
+          {card.invited}
         </span>
-      ) : null}
+      )}
       {person.email === null || person.email === person.name ? null : (
         <span className="tm-card-mail" data-part="email">
           <Address address={person.email} />
@@ -231,7 +302,48 @@ function PersonCard({ person }: { readonly person: TeamPerson }) {
           {reach.charAt(0).toUpperCase() + reach.slice(1)}
         </span>
       )}
-    </Link>
+    </>
+  );
+  const foot =
+    offer === null && card.trouble === null && !card.busy ? null : (
+      <span className="tm-card-foot">
+        {card.trouble === null ? null : (
+          <span className="tm-card-trouble" role="alert">
+            {card.trouble}
+          </span>
+        )}
+        {offer === null && !card.busy ? null : (
+          <InlineButton
+            aria-busy={card.busy || undefined}
+            disabled={card.busy}
+            onClick={() =>
+              onSendAgain?.(person, offer === "invite-again" ? resend?.invitation : undefined)
+            }
+          >
+            {card.busy
+              ? "Sending again…"
+              : offer === "invite-again"
+                ? "Invite again"
+                : "Send again"}
+          </InlineButton>
+        )}
+      </span>
+    );
+  return (
+    <div className="tm-card" data-pending={person.pending || undefined}>
+      {card.listed ? (
+        <Link
+          className="tm-card-body"
+          params={{ clientUserId: person.key }}
+          to="/settings/team/$clientUserId"
+        >
+          {content}
+        </Link>
+      ) : (
+        <div className="tm-card-body">{content}</div>
+      )}
+      {foot}
+    </div>
   );
 }
 

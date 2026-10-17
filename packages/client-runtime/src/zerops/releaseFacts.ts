@@ -175,6 +175,24 @@ function stalledAt(tagged: FlowReleaseRow | undefined, stalled: string | undefin
   return tagged.tag === stalled;
 }
 
+/**
+ * The roll back to `tag` on its way, by the release HQ made of it — the one a review of it follows
+ * where nothing was pressed: opened from production's "Rolling back to v0.1.0" line, another
+ * window, a reload. `undefined` where what is on its way is a release, or a roll back to another.
+ */
+export function rollbackOnItsWay(input: {
+  /** The release tag on its way to production (`releaseInFlight`). */
+  readonly inFlight: string | undefined;
+  readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "rollbackOf">>;
+  /** The earlier release the review rolls production back to. */
+  readonly tag: string;
+}): string | undefined {
+  const { inFlight } = input;
+  if (inFlight === undefined) return undefined;
+  const made = input.releases.find((entry) => entry.tag === inFlight);
+  return made?.rollbackOf === input.tag ? inFlight : undefined;
+}
+
 /** Where the tag it made stands: on its way, live, or failed — `offered` before it was made. */
 export function releaseOutcomeOf(input: {
   readonly tagged: FlowReleaseRow | undefined;
@@ -226,7 +244,11 @@ export function releaseOutcomeOf(input: {
   const elapsedMs = input.clockMs - since;
   const clock = formatRunClock(elapsedMs);
   const late = elapsedMs >= RELEASE_ESTIMATE_MS ? " · taking longer than usual" : "";
-  return { kind: "releasing", progress: `Putting ${input.tag} live · ${clock}${late}` };
+  return {
+    kind: "releasing",
+    progress: `Putting ${input.tag} live · ${clock}${late}`,
+    clock: `${clock}${late}`,
+  };
 }
 
 /**

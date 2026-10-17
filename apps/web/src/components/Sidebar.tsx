@@ -210,7 +210,7 @@ import {
   type SidebarProjectFlow,
   type SidebarZeropsTreeProps,
 } from "./zerops/SidebarZeropsTree";
-import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
+import { releaseFailureOf, rollbacksOf } from "./zerops/SidebarProductionChip.logic";
 import { useMatesActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
@@ -1358,6 +1358,8 @@ export default function Sidebar() {
           releases: flow.releases,
           environmentInputs: flow.environmentInputs,
         }),
+        // HQ's roll backs: production's chip says one on its way by what it goes back to.
+        releaseRollbacks: rollbacksOf(flow.releases),
         // What the project menu's *Add stage* and *Put it live* are offered from.
         recipeRead: flow.recipeRead,
         recipeTiers: flow.recipeTiers,

@@ -91,22 +91,27 @@ function ServiceStatus({
   service,
   tone,
   label,
+  needsWord,
 }: {
   service: ZeropsTopologyService;
   tone: ZeropsServiceTone;
   label: string;
+  needsWord: boolean;
 }) {
-  return (
-    <Badge
-      className="shrink-0"
-      dot
-      data-zerops-service-tone={tone}
-      data-zerops-service-transient={service.transient ? "true" : undefined}
-      pulse={service.transient}
-      tone={STATUS_BADGE_TONE[STATUS_TONE[tone]]}
-    >
+  const shared = {
+    className: "shrink-0",
+    "data-zerops-service-tone": tone,
+    "data-zerops-service-transient": service.transient ? "true" : undefined,
+    pulse: service.transient,
+    tone: STATUS_BADGE_TONE[STATUS_TONE[tone]],
+  } as const;
+  // A running service's green dot says it; the word stays its accessible name.
+  return needsWord ? (
+    <Badge dot {...shared}>
       {label}
     </Badge>
+  ) : (
+    <Badge dot aria-label={label} {...shared} />
   );
 }
 
@@ -168,6 +173,7 @@ function ServiceHeader({
   service,
   tone,
   statusLabel,
+  statusNeedsWord,
   title,
   portLabel,
   aside,
@@ -177,6 +183,7 @@ function ServiceHeader({
   service: ZeropsTopologyService;
   tone: ZeropsServiceTone;
   statusLabel: string;
+  statusNeedsWord: boolean;
   title: string;
   portLabel: string | undefined;
   aside: string | undefined;
@@ -193,7 +200,12 @@ function ServiceHeader({
   return (
     <div className="flex min-w-0 max-w-full items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
-        <ServiceStatus label={statusLabel} service={service} tone={tone} />
+        <ServiceStatus
+          label={statusLabel}
+          needsWord={statusNeedsWord}
+          service={service}
+          tone={tone}
+        />
         {/* The name is one line of its own: never squeezed to wrap, cut only where the
             card is narrower — the hover pop names it whole. */}
         <span className="mt-0.5 block min-w-0 truncate text-sm leading-snug font-semibold tracking-tight">
@@ -643,6 +655,7 @@ function StageLine({
   stage,
   tone,
   label,
+  needsWord,
   metrics,
   trends,
   portLabel,
@@ -655,6 +668,7 @@ function StageLine({
   folded: boolean;
   tone: ZeropsServiceTone;
   label: string;
+  needsWord: boolean;
   metrics: ReadonlyArray<ZeropsServiceMetric>;
   trends: ZeropsServiceTrends | undefined;
   portLabel: string | undefined;
@@ -669,6 +683,7 @@ function StageLine({
         routes={routes}
         service={stage}
         statusLabel={label}
+        statusNeedsWord={needsWord}
         title={stage.hostname}
         tone={tone}
       />
@@ -720,6 +735,7 @@ function ServiceCardBody({
         routes={row.routes}
         service={row.service}
         statusLabel={row.statusLabel}
+        statusNeedsWord={row.statusNeedsWord}
         title={row.title}
         tone={row.tone}
       />
@@ -730,6 +746,7 @@ function ServiceCardBody({
       row.stageStatusLabel === undefined ? null : (
         <StageLine
           label={row.stageStatusLabel}
+          needsWord={row.stageStatusNeedsWord ?? true}
           metrics={row.stageMetrics ?? []}
           portLabel={row.stagePortLabel}
           folded={row.stageRoutesFolded ?? false}

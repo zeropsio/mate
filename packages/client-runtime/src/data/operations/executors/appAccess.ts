@@ -17,6 +17,9 @@ import * as Result from "effect/Result";
 import { planAppGrants, type ProjectGrantEntry } from "../../../zerops/appAccess.ts";
 import { planMemberProjectGrants } from "../../../zerops/projectAccess.ts";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
+import { membershipOf } from "../../../zerops/teamRoles.ts";
+import { ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
+import type { ResentInvitation } from "../appAccess.ts";
 import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OwnerUnobservable, UncertainAcceptance } from "../coordinator.ts";
@@ -68,6 +71,9 @@ function inWords(fault: Fault, cause: { readonly forbidden: string }): Fault {
 }
 
 const INVITE = { forbidden: "Only an organization owner or admin can invite." };
+
+const refuse = (message: string) =>
+  Effect.fail<StreamFault>({ outcome: "definitive-refusal", message });
 const CHANGE = { forbidden: "Only an organization owner or admin can change who has access." };
 const NEW_PROJECT = { forbidden: "Only the project's owner or an admin can give its access." };
 
@@ -252,6 +258,127 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
       return receiptOf(requestId, intent.orgId, result);
     });
 
+  /**
+   * Send again, in two steps: the invitation standing now withdrawn, then the same address invited
+   * again with the same membership and grants. A second step that fails hands back what it would
+   * have sent, so the person is offered the invitation again rather than left uninvited.
+   */
+  const resend = (requestId: string, intent: IntentOf<"resend-invitation">) =>
+    Effect.gen(function* () {
+      const { orgId } = intent;
+      let invitation: ResentInvitation | undefined = intent.invitation;
+      if (invitation === undefined) {
+        const members = yield* Effect.mapError(
+          verb(() => platform.listOrganizationMembers(orgId)),
+          (fault) => inWords(fault, INVITE),
+        );
+        const member = members.find((one) => one.id === intent.clientUserId);
+        if (member === undefined) return yield* refuse("They're no longer in this organization.");
+        if ((member.status ?? ZEROPS_ACTIVE_MEMBER_STATUS) === ZEROPS_ACTIVE_MEMBER_STATUS)
+          return yield* refuse("They've joined already.");
+        const email = member.user?.email?.trim();
+        if (email === undefined || email === "")
+          return yield* refuse("Zerops doesn't name the address this invitation went to.");
+        const grants = yield* Effect.mapError(
+          verb(() => platform.readMemberProjectRoles(member.id)),
+          (fault) => inWords(fault, INVITE),
+        );
+        invitation = { email, membership: membershipOf(member), grants };
+        const removed = yield* Effect.result(
+          verb(() => platform.removeOrganizationMember(member.id)),
+        );
+        if (Result.isFailure(removed)) {
+          if (removed.failure.outcome !== "uncertain-acceptance")
+            return yield* Effect.fail(inWords(removed.failure, INVITE));
+          const listed = yield* Effect.result(verb(() => platform.listOrganizationMembers(orgId)));
+          if (!Result.isSuccess(listed) || listed.success.some((one) => one.id === member.id)) {
+            yield* Effect.promise(() => readBack(orgId, [], [member.id]));
+            return unobservable("Check the organization's members in Zerops");
+          }
+        }
+      }
+      const sending = invitation;
+      const places = sending.grants.map(({ projectId }) => projectId);
+      const notSent = (message: string) => {
+        const unsent = `Their earlier invitation is withdrawn, but Zerops didn't send the new one: ${message}`;
+        return Effect.as(
+          Effect.promise(() => readBack(orgId, places)),
+          receiptOf(
+            requestId,
+            orgId,
+            { clientUserId: null, invitation: sending, unsent },
+            { kind: "failed", evidence: unsent },
+          ),
+        );
+      };
+      const known = yield* Effect.result(
+        Effect.mapError(
+          verb(() => platform.validateOrganizationUser(orgId, sending.email)),
+          (fault) => inWords(fault, INVITE),
+        ),
+      );
+      if (Result.isFailure(known)) return yield* notSent(known.failure.message);
+      const { names } = intent;
+      if (known.success.kind === "new" && names === undefined)
+        return yield* notSent("Zerops has no account for this address; invite them from Invite.");
+      const sent = yield* Effect.result(
+        Effect.mapError(
+          verb(() =>
+            known.success.kind === "existing"
+              ? platform.connectOrganizationUser(orgId, {
+                  ...sending.membership,
+                  userId: known.success.userId,
+                })
+              : platform.inviteOrganizationUser(orgId, {
+                  ...sending.membership,
+                  email: sending.email,
+                  firstName: names?.firstName ?? "",
+                  lastName: names?.lastName ?? "",
+                }),
+          ),
+          (fault) => inWords(fault, INVITE),
+        ),
+      );
+      if (Result.isFailure(sent) && sent.failure.outcome !== "uncertain-acceptance")
+        return yield* notSent(sent.failure.message);
+      const found = yield* Effect.result(memberByAddress(orgId, sending.email));
+      const member = Result.isSuccess(found) ? found.success : undefined;
+      if (member === undefined) {
+        yield* Effect.promise(() => readBack(orgId, places));
+        return {
+          ...unobservable(
+            "Check the organization's members in Zerops, then invite them again",
+            "Their earlier invitation is withdrawn; whether Zerops sent the new one, it didn't say.",
+          ),
+          receipt: {
+            ...receiptOf(requestId, orgId, { clientUserId: null, invitation: sending }),
+            outcome: { kind: "pending" },
+          },
+        } satisfies OwnerUnobservable;
+      }
+      const granted = yield* Effect.result(
+        writeGrants(member.id, (current) => ({
+          list: sending.grants,
+          changed: !sameList(current, sending.grants),
+        })),
+      );
+      yield* Effect.promise(() => readBack(orgId, places, [member.id]));
+      const result = { clientUserId: member.id, invitation: sending };
+      if (Result.isFailure(granted))
+        return receiptOf(requestId, orgId, result, {
+          kind: "failed",
+          evidence: `They're invited again, but Zerops didn't take their access here: ${
+            inWords(granted.failure, CHANGE).message
+          }`,
+        });
+      if (!granted.success.written)
+        return {
+          ...unobservable("Check their access, then choose again"),
+          receipt: { ...receiptOf(requestId, orgId, result), outcome: { kind: "pending" } },
+        } satisfies OwnerUnobservable;
+      return receiptOf(requestId, orgId, result);
+    });
+
   const setAccess = (requestId: string, intent: IntentOf<"set-app-access">) =>
     Effect.gen(function* () {
       const members = yield* verb(() => platform.listOrganizationMembers(intent.orgId));
@@ -391,5 +518,5 @@ export function appAccessExecutor(platform: AppAccessPlatform, readBack: AppAcce
       } satisfies OperationReceipt;
     });
 
-  return { check, invite, setAccess, setProjectAccess, grantNewProject };
+  return { check, invite, resend, setAccess, setProjectAccess, grantNewProject };
 }

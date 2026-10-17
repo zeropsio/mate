@@ -284,7 +284,7 @@ describe("reduceZeropsOperations — a bootstrap's steps", () => {
       },
     ]);
     expect(operations[0]!.steps.map((step) => step.label)).toEqual([
-      "Plan the services",
+      "Look at the project",
       "Create the services",
       "Finish the setup",
     ]);

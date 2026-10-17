@@ -5,6 +5,8 @@ import {
   type EnvironmentId,
 } from "@t3tools/contracts";
 
+import type { ZeropsMateAt, ZeropsMateDirectory } from "../../zerops/mateIdentities";
+
 export interface ProviderEnvironmentOptionLike {
   readonly environmentId: EnvironmentId;
   readonly label: string;
@@ -170,4 +172,53 @@ export function providerEditorEmpty(input: {
 }): "reading" | "missing" | "none" {
   if (!input.providersRead) return "reading";
   return input.targetInstanceMissing ? "missing" : "none";
+}
+
+/**
+ * What a device's tab is called: a Mate's name with its project beside it, never its server's
+ * address. A device no Mate lives in, or one not named yet, keeps its own label.
+ */
+export function namedProviderEnvironment<T extends ProviderEnvironmentOptionLike>(
+  environment: T,
+  at: ZeropsMateAt,
+): T & { readonly project: string | undefined } {
+  return at.kind === "mate"
+    ? { ...environment, label: at.mate.name, project: at.mate.project }
+    : { ...environment, project: undefined };
+}
+
+export interface OpenableMate {
+  readonly projectId: string;
+  readonly name: string;
+  readonly project: string | undefined;
+}
+
+/** What Providers says while no Mate is open: a coding agent is set up on its Mate. */
+export type ProvidersWithoutOpenMate =
+  | { readonly kind: "finding" }
+  | { readonly kind: "connecting" }
+  | { readonly kind: "open"; readonly mates: ReadonlyArray<OpenableMate> };
+
+export function providersWithoutOpenMate(input: {
+  readonly isReady: boolean;
+  readonly phases: ReadonlyArray<EnvironmentConnectionPhase>;
+  readonly directory: ZeropsMateDirectory;
+}): ProvidersWithoutOpenMate {
+  if (!input.isReady) return { kind: "finding" };
+  if (input.phases.some((phase) => phase === "connecting" || phase === "reconnecting")) {
+    return { kind: "connecting" };
+  }
+  const mates = new Map<string, OpenableMate>();
+  for (const mate of input.directory.values()) {
+    if (mate === null || mate.projectId === undefined || mates.has(mate.projectId)) continue;
+    mates.set(mate.projectId, {
+      projectId: mate.projectId,
+      name: mate.name,
+      project: mate.project,
+    });
+  }
+  return {
+    kind: "open",
+    mates: [...mates.values()].toSorted((left, right) => left.name.localeCompare(right.name)),
+  };
 }

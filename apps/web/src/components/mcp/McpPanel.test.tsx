@@ -21,8 +21,6 @@ const serverNames = (html: string) =>
 describe("McpPanelBody — what the MCP tab shows", () => {
   it("draws a row per server, Zerops' own first, and the add form", () => {
     const html = render({ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE });
-    expect(html).toContain(MCP_WORDS.title);
-    expect(html).toContain(MCP_WORDS.line("this Mate"));
     expect(serverNames(html)).toEqual([
       "zerops",
       "playwright",

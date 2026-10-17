@@ -51,7 +51,6 @@ describe("C: the built-in MCP server", () => {
         }}
       />,
     );
-    expect(html).toContain("MCP servers");
     expect(html).toContain("zcp serve");
     if (report.state === "connected") {
       expect(html).toContain("zerops_discover");

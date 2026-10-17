@@ -22,6 +22,7 @@ import { putLiveRunsIn, usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zer
 import {
   putLiveCreation,
   putLiveDeadline,
+  putLiveLandedAt,
   putLiveMergeGate,
   putLiveNext,
   putLiveSettle,
@@ -346,7 +347,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
       return;
     }
     if (next.kind === "live") {
-      step(groupId, { kind: "live", at: Date.now() });
+      step(groupId, { kind: "live", at: putLiveLandedAt(run, factsOf(flow), Date.now()) });
       return;
     }
     send(

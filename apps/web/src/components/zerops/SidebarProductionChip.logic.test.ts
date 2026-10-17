@@ -335,6 +335,51 @@ describe("productionChip — production's chip: the word, its tone, its state in
     ).toBe("down");
   });
 
+  // A roll back to v0.1.40 is HQ's new release v0.1.45 of v0.1.40's commits: the run's menu read
+  // "Releasing v0.1.45", a tag nobody asked for, while the card read "Rolling back to v0.1.40".
+  const ROLLING_BACK: ReleasesAnswer = {
+    kind: "answered",
+    failure: undefined,
+    rollbacks: new Map([["v0.1.45", "v0.1.40"]]),
+  };
+  it.each([
+    {
+      name: "rolling back",
+      given: input({
+        production: { kind: "releasing", stop: stop(), line: "v0.1.44", tag: "v0.1.45" },
+        releases: ROLLING_BACK,
+      }),
+      chip: {
+        label: "prod",
+        state: "releasing",
+        version: "v0.1.44",
+        next: "v0.1.45",
+        rollsBackTo: "v0.1.40",
+      },
+      words: "Production v0.1.44, rolling back to v0.1.40",
+    },
+    {
+      name: "down, rolling back",
+      given: input({
+        production: { kind: "releasing", stop: stop(), line: "v0.1.44", tag: "v0.1.45" },
+        releases: ROLLING_BACK,
+        serving: { kind: "down", services: ["app"] },
+      }),
+      chip: {
+        label: "prod",
+        state: "down",
+        version: "v0.1.44",
+        next: "v0.1.45",
+        rollsBackTo: "v0.1.40",
+      },
+      words: "Production is down, rolling back to v0.1.40",
+    },
+  ])("says a roll back by what it goes back to while $name", ({ given, chip: expected, words }) => {
+    const drawn = chip(productionChip(given));
+    expect(drawn).toEqual(expected);
+    expect(chipFace(drawn!).words).toBe(words);
+  });
+
   // What a service runs that no comparison can start from is not known to be healthy: the chip
   // says so in its words, as the stop's verdict does, whatever else it says.
   it.each([
@@ -1123,6 +1168,20 @@ describe("productionMenu — what production's menu says, per state", () => {
 
   it("says nothing more where nothing is wrong", () => {
     expect(menu({}).stops[0]?.note).toBeUndefined();
+  });
+
+  it("says a roll back on its way by what it goes back to, never the tag it makes", () => {
+    const rolling = {
+      label: "prod",
+      state: "releasing",
+      version: "v0.1.44",
+      next: "v0.1.45",
+      rollsBackTo: "v0.1.40",
+    } as const;
+    expect(menu({ chip: rolling }).stops[0]?.word).toBe("Rolling back to v0.1.40");
+    expect(menu({ chip: { ...rolling, state: "stopped" } }).stops[0]?.note).toBe(
+      "Rolling back to v0.1.40.",
+    );
   });
 });
 

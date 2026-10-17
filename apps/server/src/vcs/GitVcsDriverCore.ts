@@ -2576,9 +2576,106 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return env;
   });
 
+  /**
+   * One commit's own changes against its first parent (a first commit's against nothing), as a
+   * single source that expands like a branch range: the merge base of a commit and its parent
+   * is the parent. A name the checkout does not hold is no changes to show, never an error a
+   * person cannot act on.
+   */
+  const getReviewCommitDiff = Effect.fn("getReviewCommitDiff")(function* (
+    input: ReviewDiffPreviewInput,
+    commitName: string,
+  ) {
+    const cwd = input.cwd;
+    const generatedAt = yield* DateTime.now;
+    // Name and parents in one round trip: on a Zerops service each git call is an ssh session.
+    const named = yield* executeGit(
+      "GitVcsDriver.getReviewDiffPreview.commit",
+      cwd,
+      ["log", "-1", "--no-walk", "--format=%H %P", `${commitName}^{commit}`, "--"],
+      { allowNonZeroExit: true, maxOutputBytes: REVIEW_METADATA_MAX_OUTPUT_BYTES },
+    );
+    const [commit, parent] = named.exitCode === 0 ? named.stdout.trim().split(" ") : [];
+    if (commit === undefined || commit.length === 0) return { cwd, generatedAt, sources: [] };
+    const base =
+      parent ??
+      (yield* runGitStdout("GitVcsDriver.getReviewDiffPreview.emptyTree", cwd, [
+        "hash-object",
+        "-t",
+        "tree",
+        (yield* HostProcessPlatform) === "win32" ? "NUL" : "/dev/null",
+      ])).trim();
+    const pathArgs = input.file
+      ? [input.file.path, ...(input.file.previousPath ? [input.file.previousPath] : [])].map(
+          (path) => `:(top,literal)${path}`,
+        )
+      : [];
+    const diffArgs = [
+      "diff",
+      "--find-renames",
+      "--no-color",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--minimal",
+      ...PATCH_RENDER_PREFIX_ARGS,
+      ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
+    ];
+    const [stat, patch] = yield* Effect.all(
+      [
+        runGitStdoutWithOptions(
+          "GitVcsDriver.getReviewDiffPreview.commitStat",
+          cwd,
+          [...diffArgs, "--numstat", "-z", base, commit, "--", ...pathArgs],
+          { maxOutputBytes: REVIEW_METADATA_MAX_OUTPUT_BYTES },
+        ),
+        executeGit(
+          "GitVcsDriver.getReviewDiffPreview.commitPatch",
+          cwd,
+          [...diffArgs, "--patch", base, commit, "--", ...pathArgs],
+          {
+            maxOutputBytes: input.file
+              ? REVIEW_DIFF_FILE_MAX_OUTPUT_BYTES
+              : REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
+            appendTruncationMarker: true,
+          },
+        ),
+      ],
+      { concurrency: 2 },
+    );
+    const files = parseReviewNumstat(stat);
+    const diffHash = yield* crypto
+      .digest("SHA-256", new TextEncoder().encode(`${stat}\0${patch.stdout}`))
+      .pipe(
+        Effect.map(Hex.encode),
+        Effect.mapError(
+          (cause) =>
+            new GitCommandError({
+              operation: "GitVcsDriver.getReviewDiffPreview.hash",
+              command: "crypto.digest SHA-256",
+              cwd,
+              detail: "Failed to hash review diff.",
+              cause,
+            }),
+        ),
+      );
+    const source: ReviewDiffPreviewSource = {
+      id: "commit",
+      kind: "branch-range",
+      title: `Commit ${commit.slice(0, 7)}`,
+      baseRef: parent ?? null,
+      headRef: commit,
+      diff: patch.stdout,
+      files,
+      diffHash,
+      truncated: patch.stdoutTruncated,
+    };
+    return { cwd, generatedAt, sources: [source] };
+  });
+
   const getReviewDiffPreview = Effect.fn("getReviewDiffPreview")(function* (
     input: ReviewDiffPreviewInput,
   ) {
+    if (input.commit !== undefined) return yield* getReviewCommitDiff(input, input.commit);
     const pathArgs = input.file
       ? [input.file.path, ...(input.file.previousPath ? [input.file.previousPath] : [])].map(
           (path) => `:(top,literal)${path}`,
@@ -3776,9 +3873,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     pullCurrentBranch: (cwd) => withListRefsInvalidation(cwd, pullCurrentBranch(cwd)),
     readRangeContext,
     getReviewDiffPreview: (input) =>
-      refuseOptionLikeNames("GitVcsDriver.getReviewDiffPreview", input.cwd, [input.baseRef]).pipe(
-        Effect.andThen(getReviewDiffPreview(input)),
-      ),
+      refuseOptionLikeNames("GitVcsDriver.getReviewDiffPreview", input.cwd, [
+        input.baseRef,
+        input.commit,
+      ]).pipe(Effect.andThen(getReviewDiffPreview(input))),
     getReviewDiffFileContents: (input) =>
       refuseOptionLikeNames("GitVcsDriver.getReviewDiffFileContents", input.cwd, [
         input.baseRef,

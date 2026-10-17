@@ -443,6 +443,171 @@ describe("inviting someone from the Team page, project by project", () => {
   );
 });
 
+describe("sending an invitation again", () => {
+  /** An invitation not joined yet: a developer on one project, who may start their own. */
+  const invited = (email = "known@example.com"): ZeropsOrganizationMember => ({
+    id: "cu-invited",
+    status: "WAITING_AUTHORIZATION",
+    roleCode: "NO_ACCESS",
+    canCreateProjects: true,
+    canViewFinances: false,
+    canEditFinances: false,
+    user: { id: "u-invited", email },
+  });
+  const ON_SHOP = [{ projectId: "prod", roleCode: "BASIC_USER" }];
+  const resend = (
+    org: ReturnType<typeof organization>,
+    names?: { firstName: string; lastName: string },
+  ) =>
+    org.executor.resend("r1", {
+      kind: "resend-invitation",
+      orgId: ORG,
+      clientUserId: "cu-invited",
+      ...(names === undefined ? {} : { names }),
+    });
+
+  it.effect(
+    "Send again withdraws the invitation and invites the same address with the same role and projects",
+    () =>
+      Effect.gen(function* () {
+        const org = organization([member("cu-owner", "OWNER"), invited()], {
+          "cu-invited": [...ON_SHOP],
+        });
+        const receipt = yield* resend(org);
+        expect(org.calls.indexOf("removeOrganizationMember")).toBeLessThan(
+          org.calls.indexOf("connectOrganizationUser"),
+        );
+        expect(org.members.map(({ id }) => id)).toEqual(["cu-owner", "cu-known"]);
+        expect(org.members.at(-1)).toMatchObject({ roleCode: "NO_ACCESS" });
+        expect(org.grants["cu-known"]).toEqual(ON_SHOP);
+        expect(org.readBackMembers.at(-1)).toEqual(["cu-known"]);
+        expect(receipt).toMatchObject({
+          acceptance: {
+            kind: "accepted",
+            result: {
+              clientUserId: "cu-known",
+              invitation: {
+                email: "known@example.com",
+                membership: {
+                  roleCode: "NO_ACCESS",
+                  canCreateProjects: true,
+                  canViewFinances: false,
+                  canEditFinances: false,
+                },
+                grants: ON_SHOP,
+              },
+            },
+          },
+          outcome: { kind: "succeeded" },
+        });
+      }),
+  );
+
+  it.effect(
+    "An address with no Zerops account is invited again by the name its inviter typed",
+    () =>
+      Effect.gen(function* () {
+        const org = organization([invited("eva@example.com")], { "cu-invited": [...ON_SHOP] });
+        const receipt = yield* resend(org, { firstName: "Eva", lastName: "Dvořáková" });
+        expect(org.calls).toContain("inviteOrganizationUser");
+        expect(org.grants["cu-new"]).toEqual(ON_SHOP);
+        expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+      }),
+  );
+
+  it.effect("A withdrawal Zerops refuses leaves the invitation standing and sends nothing", () =>
+    Effect.gen(function* () {
+      const org = organization([invited()], {}, { removeOrganizationMember: forbidden });
+      const failure = yield* Effect.flip(resend(org));
+      expect(failure).toMatchObject({
+        outcome: "definitive-refusal",
+        message: "Only an organization owner or admin can invite.",
+      });
+      expect(org.members.map(({ id }) => id)).toEqual(["cu-invited"]);
+      expect(org.calls).not.toContain("connectOrganizationUser");
+      expect(org.calls).not.toContain("inviteOrganizationUser");
+    }),
+  );
+
+  it.effect(
+    "A withdrawal whose answer was lost goes on once the member list no longer shows it",
+    () =>
+      Effect.gen(function* () {
+        const org = organization([invited()], {}, { removeOrganizationMember: "landed" });
+        const receipt = yield* resend(org);
+        expect(org.members.map(({ id }) => id)).toEqual(["cu-known"]);
+        expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+      }),
+  );
+
+  it.effect(
+    "An invitation Zerops refuses after the withdrawal says so and hands back what to invite again",
+    () =>
+      Effect.gen(function* () {
+        const org = organization(
+          [invited()],
+          { "cu-invited": [...ON_SHOP] },
+          {
+            connectOrganizationUser: () =>
+              Promise.reject(new ZeropsApiError("Too many invitations.", "invalid-input", 400)),
+          },
+        );
+        const receipt = yield* resend(org);
+        expect(org.members).toEqual([]);
+        expect(receipt).toMatchObject({
+          acceptance: {
+            kind: "accepted",
+            result: {
+              clientUserId: null,
+              invitation: { email: "known@example.com", grants: ON_SHOP },
+              unsent:
+                "Their earlier invitation is withdrawn, but Zerops didn't send the new one: Too many invitations.",
+            },
+          },
+          outcome: {
+            kind: "failed",
+            evidence:
+              "Their earlier invitation is withdrawn, but Zerops didn't send the new one: Too many invitations.",
+          },
+        });
+      }),
+  );
+
+  it.effect("Inviting again from what a failed Send again handed back withdraws nothing", () =>
+    Effect.gen(function* () {
+      const org = organization([]);
+      const receipt = yield* org.executor.resend("r2", {
+        kind: "resend-invitation",
+        orgId: ORG,
+        clientUserId: "cu-invited",
+        invitation: {
+          email: "known@example.com",
+          membership: presetMembership("developer"),
+          grants: ON_SHOP,
+        },
+      });
+      expect(org.calls).not.toContain("removeOrganizationMember");
+      expect(org.grants["cu-known"]).toEqual(ON_SHOP);
+      expect(receipt).toMatchObject({
+        acceptance: { kind: "accepted", result: { clientUserId: "cu-known" } },
+        outcome: { kind: "succeeded" },
+      });
+    }),
+  );
+
+  it.effect("Someone who has joined since is sent nothing", () =>
+    Effect.gen(function* () {
+      const org = organization([{ ...invited(), status: "ACTIVE" }]);
+      const failure = yield* Effect.flip(resend(org));
+      expect(failure).toMatchObject({
+        outcome: "definitive-refusal",
+        message: "They've joined already.",
+      });
+      expect(org.calls).toEqual(["listOrganizationMembers"]);
+    }),
+  );
+});
+
 describe("changing a member's access to an app", () => {
   const set = (
     org: ReturnType<typeof organization>,

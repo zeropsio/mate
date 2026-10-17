@@ -18,6 +18,11 @@
  * x.y.z* armed a question nobody could see (the owner, 2026-09-26). A check
  * that finds a newer version asks the same question at once — whoever asked
  * "is there an update?" is one answer away from it.
+ *
+ * The update installs the newest version there is, so pressing Update checks
+ * first and the question names what the check found (run 2: "Update Wren to
+ * 0.15.145?" installed 0.15.146, the version an hour-old check knew); where
+ * no check can say, it asks about the newest version.
  */
 import { useCallback, type ReactNode } from "react";
 
@@ -29,6 +34,7 @@ import {
   mateUpdateLine,
   mateUpdateQuestion,
   mateUpdateStatusBeside,
+  NEWEST_MATE_VERSION,
 } from "../../zerops/mateUpdate";
 import { useMateUpdate } from "../../zerops/useMateUpdate";
 import { MateUpdateLine, MateUpdateStatusText } from "./MateUpdateLine";
@@ -57,24 +63,39 @@ export function ZeropsMateUpdateControl({
   const { check, update } = mateUpdate;
   const capable = environment?.capabilities.mateUpdate === true;
 
+  const canCheck = environment?.capabilities.mateUpdateCheck === true;
+
   const ask = useCallback(
-    (latest: string) => {
+    (latest: string | null) => {
       void requestConfirmDialog(mateUpdateQuestion(mateName, latest))?.then((yes) => {
-        if (yes) update(latest);
+        if (yes) update(latest ?? NEWEST_MATE_VERSION);
       });
     },
     [mateName, update],
   );
-  const checkThenAsk = useCallback(() => {
-    void check().then((answer) => {
-      if (
-        capable &&
-        answer?.available === true &&
-        !["staging", "draining", "switching", "verifying"].includes(answer.automatic?.phase ?? "")
-      )
-        ask(answer.latest);
-    });
-  }, [ask, capable, check]);
+  // Check for updates asks only where the check found a newer version; Update, pressed, asks
+  // about the newest version where the check could not answer.
+  const checkThenAsk = useCallback(
+    (pressed: "check" | "update") => {
+      void check().then((answer) => {
+        if (!capable) return;
+        if (answer === undefined) {
+          if (pressed === "update") ask(null);
+          return;
+        }
+        if (
+          answer?.available === true &&
+          !["staging", "draining", "switching", "verifying"].includes(answer.automatic?.phase ?? "")
+        )
+          ask(answer.latest);
+      });
+    },
+    [ask, capable, check],
+  );
+  const pressUpdate = useCallback(() => {
+    if (canCheck) checkThenAsk("update");
+    else ask(null);
+  }, [ask, canCheck, checkThenAsk]);
 
   if (environment === undefined) return children({ line: null, menuActions: [] });
   // The RPC's on-demand answer, once one has run; otherwise the descriptor's
@@ -92,17 +113,16 @@ export function ZeropsMateUpdateControl({
   // The check has its own capability: a server that offers `mateUpdate` but
   // predates `zerops.mate.checkUpdate` would answer the check with an
   // unknown-request defect — exactly the skew this control is here to name.
-  const checkActions: ReadonlyArray<ZeropsMenuAction> =
-    environment.capabilities.mateUpdateCheck === true
-      ? [
-          {
-            id: "check-for-updates",
-            label: state.phase === "checking" ? "Checking…" : "Check for updates",
-            onSelect: checkThenAsk,
-            disabled: running,
-          },
-        ]
-      : [];
+  const checkActions: ReadonlyArray<ZeropsMenuAction> = canCheck
+    ? [
+        {
+          id: "check-for-updates",
+          label: state.phase === "checking" ? "Checking…" : "Check for updates",
+          onSelect: () => checkThenAsk("check"),
+          disabled: running,
+        },
+      ]
+    : [];
 
   if (!capable) {
     return children({ line: <MateUpdateLine line={line} />, menuActions: [] });
@@ -116,12 +136,12 @@ export function ZeropsMateUpdateControl({
     status !== null && state.phase !== "failed" ? (
       <MateUpdateStatusText className="text-muted-foreground" status={status} />
     ) : latest === null || automaticBusy ? undefined : (
-      <ZeropsMateVerb label="Update" onClick={() => ask(latest)} />
+      <ZeropsMateVerb label="Update" onClick={pressUpdate} />
     );
   const updateAction: ZeropsMenuAction | null =
     latest === null || running
       ? null
-      : { id: "update", label: `Update to ${latest}`, onSelect: () => ask(latest) };
+      : { id: "update", label: `Update to ${latest}`, onSelect: pressUpdate };
 
   return children({
     line: (

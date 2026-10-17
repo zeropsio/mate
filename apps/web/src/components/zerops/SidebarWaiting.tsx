@@ -22,6 +22,7 @@ import {
 import { buildPlanImplementationPrompt } from "~/proposedPlan";
 import { findLatestProposedPlan } from "~/session-logic";
 import type { FixProblem } from "~/zerops/fixRequest";
+import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
 import { useOpenReview } from "~/zerops/review";
 import { useMateWrite } from "~/zerops/useMateWrite";
 
@@ -314,7 +315,7 @@ function WaitingEntry({
               <OpenButton mate={item.mate} onClose={onClose} verbs={verbs} />
             ) : (
               <ReviewButton
-                label="Review change"
+                label={REVIEW_LABEL}
                 onClose={onClose}
                 target={{
                   kind: "change",

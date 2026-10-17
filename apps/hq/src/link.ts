@@ -168,7 +168,7 @@ export const serveMateLink = (
         Stream.mergeAll(
           [
             Stream.filter(structure.mateChanges, (changed) => changed === projectId),
-            // Its owner moves with its signers (its record) and with the org's roles: every view
+            // Its record (its signers) and the org's roles, which alone move its owner: every view
             // Zerops answers, at least the official check's each minute.
             Stream.map(roles.views, () => projectId),
             Stream.map(changes.changes, () => projectId),

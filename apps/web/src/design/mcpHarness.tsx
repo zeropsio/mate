@@ -18,6 +18,7 @@ import { ProviderDriverKind, type McpServerEntry, type McpServersList } from "@t
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { RightPanelPage } from "~/components/RightPanelPage";
 import { McpPanelBody } from "~/components/mcp/McpPanel";
 import { MCP_TAB_START, type McpTabState } from "~/components/mcp/McpServers.logic";
 import { MCP_SERVERS_FIXTURE } from "~/components/mcp/mcpServersFixture";
@@ -110,7 +111,11 @@ function Tab() {
     }));
     return { ok: true };
   };
-  return <McpPanelBody act={act} driver={AGENT} mateName="Nova" onRetry={noop} state={state} />;
+  return (
+    <RightPanelPage kind="mcp" mate="Nova">
+      <McpPanelBody act={act} driver={AGENT} onRetry={noop} state={state} />
+    </RightPanelPage>
+  );
 }
 
 function Harness() {

@@ -7,6 +7,7 @@ import {
   buildZeropsServiceMap,
   formatAmount,
   formatRange,
+  serviceStatusNeedsWord,
   serviceStatusTone,
   zeropsPortLabel,
   zeropsRouteChoices,
@@ -495,6 +496,25 @@ describe("buildZeropsServiceMap — the row's identity", () => {
       "disk",
     ]);
   });
+});
+
+describe("serviceStatusNeedsWord", () => {
+  it.each([
+    { status: "ACTIVE", transient: false, needsWord: false },
+    { status: "SERVICE_ACTIVE", transient: false, needsWord: false },
+    { status: "ACTIVE", transient: true, needsWord: true },
+    { status: "STOPPED", transient: false, needsWord: true },
+    { status: "READY_TO_DEPLOY", transient: false, needsWord: true },
+    { status: "CONTAINER_FAILED", transient: false, needsWord: true },
+    { status: "SOME_NEW_THING", transient: false, needsWord: true },
+  ])(
+    "a running service leaves its state to the dot; any other says it: $status (busy $transient) → $needsWord",
+    ({ status, transient, needsWord }) => {
+      expect(serviceStatusNeedsWord(service({ hostname: "app", status, transient }))).toBe(
+        needsWord,
+      );
+    },
+  );
 });
 
 describe("zeropsStatusWord", () => {

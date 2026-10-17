@@ -67,6 +67,14 @@ export interface RightPanelKindMeta {
     readonly shortcut: string | null;
     readonly unavailableHint: string;
   } | null;
+  /**
+   * The page's head (`RightPanelPage`): its title and one line saying what it shows, `mate` the
+   * Mate's name or "this Mate". `null` where the page wears a head of its own.
+   */
+  readonly page: {
+    readonly title: string;
+    readonly line: (mate: string) => string;
+  } | null;
   readonly availability: (input: RightPanelAvailabilityInput) => RightPanelAvailability;
 }
 
@@ -82,6 +90,7 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: "O",
       unavailableHint: "Available in your Chief's conversation.",
     },
+    page: null,
     availability: (input) => (input.chief === true ? "available" : "hidden"),
   },
   browser: {
@@ -90,6 +99,10 @@ export const RIGHT_PANEL_KIND_META = {
       description: "Watch this Mate's browser live.",
       shortcut: "B",
       unavailableHint: "Available in a Zerops project.",
+    },
+    page: {
+      title: "Browser",
+      line: (mate) => `Your app's sites, and what ${mate} opens in its browser.`,
     },
     availability: (input) => input.zeropsPanel,
   },
@@ -101,6 +114,7 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: null,
       unavailableHint: "Available in a Zerops project.",
     },
+    page: { title: "Mac", line: (mate) => `The app ${mate} opened on your paired Mac.` },
     availability: (input) => input.zeropsPanel,
   },
   diff: {
@@ -112,6 +126,7 @@ export const RIGHT_PANEL_KIND_META = {
     },
     // A Mate's workspace is no repository of its own, but each turn keeps a
     // diff of the services' checkouts below it (`resolveDiffSelection`).
+    page: { title: "Diff", line: (mate) => `What ${mate} changed in the code, turn by turn.` },
     availability: (input) =>
       !input.serverThread
         ? "unavailable"
@@ -128,6 +143,7 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: "Z",
       unavailableHint: "Available in a Zerops project.",
     },
+    page: { title: "Zerops", line: () => "The project's services and what each one uses." },
     availability: (input) => input.zeropsPanel,
   },
   agents: {
@@ -137,6 +153,7 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: "H",
       unavailableHint: "Available from a chat.",
     },
+    page: { title: "Helpers", line: (mate) => `The helpers ${mate} starts, and their work.` },
     availability: () => "available",
   },
   crew: {
@@ -146,6 +163,7 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: "C",
       unavailableHint: "Available in a Zerops project with crew mode on.",
     },
+    page: { title: "Crew", line: (mate) => `Crewmates who build a job's parts beside ${mate}.` },
     availability: (input) =>
       input.zeropsPanel === "available" &&
       (input.crewStatus === "none" || input.crewStatus === "applied")
@@ -159,10 +177,12 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: "F",
       unavailableHint: "Available when a project is open.",
     },
+    page: { title: "Files", line: (mate) => `The files ${mate} works on.` },
     availability: projectAvailability,
   },
   file: {
     launcher: null,
+    page: null,
     availability: projectAvailability,
   },
   git: {
@@ -171,6 +191,10 @@ export const RIGHT_PANEL_KIND_META = {
       description: "Follow branches and where they go.",
       shortcut: "G",
       unavailableHint: "Available in a Zerops project.",
+    },
+    page: {
+      title: "Git",
+      line: (mate) => `Where ${mate}'s code goes: branches, commits and changes.`,
     },
     availability: (input) => input.zeropsPanel,
   },
@@ -182,6 +206,7 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: null,
       unavailableHint: "Available in a Zerops project.",
     },
+    page: { title: "Data", line: () => "The project's databases and storage." },
     availability: (input) => input.zeropsPanel,
   },
   vault: {
@@ -191,6 +216,7 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: "V",
       unavailableHint: "Available in a Zerops project.",
     },
+    page: { title: "Vault", line: () => "Settings and secrets your apps read." },
     availability: (input) => input.zeropsPanel,
   },
   terminal: {
@@ -200,6 +226,7 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: "T",
       unavailableHint: "Available when a project is open.",
     },
+    page: { title: "Terminal", line: (mate) => `A shell on ${mate}'s computer.` },
     availability: projectAvailability,
   },
   mcp: {
@@ -210,9 +237,22 @@ export const RIGHT_PANEL_KIND_META = {
       unavailableHint: "Available from a conversation.",
     },
     // Every Mate's agents take MCP servers; the tab asks the Mate, not Zerops.
+    page: {
+      title: "MCP servers",
+      line: (mate) => `Tools ${mate} can use, with each of its coding agents.`,
+    },
     availability: () => "available",
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
+
+/** The head a side-panel page opens with; `mate` is the Mate's name while it is known. */
+export function rightPanelPageHead(
+  kind: RightPanelKind,
+  mate: string | undefined,
+): { readonly title: string; readonly line: string } | null {
+  const page = RIGHT_PANEL_KIND_META[kind].page;
+  return page === null ? null : { title: page.title, line: page.line(mate ?? "this Mate") };
+}
 
 export const DROPPED_RIGHT_PANEL_KINDS = ["plan", "pull-request", "preview"] as const;
 

@@ -95,9 +95,11 @@ function drawn(
   viewer?: TeamInput["viewer"],
   viewerUserId?: string,
   list: TeamInput["members"]["list"] = TEAM,
+  onSendAgain?: () => void,
 ) {
   const markup = renderToStaticMarkup(
     <TeamList
+      {...(onSendAgain === undefined ? {} : { onSendAgain })}
       view={teamPeople({
         ...input(viewer, viewerUserId),
         members: { known: true, status: "ready", refused: false, list },
@@ -109,13 +111,17 @@ function drawn(
     card.querySelector(`[data-part="${name}"]`)?.textContent ?? null;
   return {
     heading: body.querySelector("h2")?.parentElement?.textContent,
-    cards: [...body.querySelectorAll("ul[aria-label=People] > li > a")].map((card) => ({
+    cards: [...body.querySelectorAll("ul[aria-label=People] > li > *")].map((card) => ({
       name: part(card, "name"),
       role: part(card, "role"),
       email: part(card, "email"),
       pending: card.hasAttribute("data-pending"),
       waiting: part(card, "pending"),
-      href: card.getAttribute("href"),
+      href: card.querySelector("a")?.getAttribute("href") ?? null,
+      // A press of its own, outside the link that opens their page.
+      sendAgain:
+        [...card.querySelectorAll("button")].find((button) => button.closest("a") === null)
+          ?.textContent ?? null,
     })),
     invite: body.querySelector('[data-zerops-surface="invite-team"]') !== null,
     alone: body.querySelector('[data-part="alone"]')?.textContent ?? null,
@@ -170,6 +176,20 @@ describe("the organization's team", () => {
       "/settings/team/cu-al",
       "/settings/team/cu-bob",
       "/settings/team/cu-iva",
+    ]);
+  });
+
+  it("An invitation an owner may change offers Send again on its card, beside its page's link", () => {
+    const owner = { roleCode: "OWNER", membershipId: "cu-ada" };
+    expect(
+      drawn(owner, "ada", TEAM, () => undefined).cards.map(({ sendAgain }) => sendAgain),
+    ).toEqual([null, null, null, "Send again"]);
+    // Nothing to send it with, nothing offered.
+    expect(drawn(owner, "ada").cards.map(({ sendAgain }) => sendAgain)).toEqual([
+      null,
+      null,
+      null,
+      null,
     ]);
   });
 

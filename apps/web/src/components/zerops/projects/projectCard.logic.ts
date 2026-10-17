@@ -11,6 +11,7 @@
  */
 import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/data";
 import {
+  addressComing,
   changeState,
   placeAddresses,
   PRODUCTION_DEPLOYING,
@@ -56,6 +57,8 @@ export interface PlaceLine {
   readonly trouble: boolean;
   /** Its public addresses, one per service it serves, opened beside the page; none where none. */
   readonly addresses: ReadonlyArray<GroupFlowAddress>;
+  /** A wait it is in, whose clock counts from here (wall ms). */
+  readonly clock?: { readonly since: number } | undefined;
 }
 
 const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -84,10 +87,34 @@ const joined = (names: ReadonlyArray<string>): string =>
     ? (names[0] ?? "")
     : `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`;
 
+/** A release on its way, as production's line says it: a roll back by the release it goes back to. */
+function releasingWords(tag: string, rollsBackTo: string | undefined): string {
+  return rollsBackTo === undefined ? `Releasing ${tag}` : `Rolling back to ${rollsBackTo}`;
+}
+
+/**
+ * What production's line opens while it says a release on its way: that release's review, or a
+ * roll back's by the release it goes back to — the door the card's "Putting v2.4.0 live" block
+ * had. Nothing while none is on its way, or while the line says production's trouble instead.
+ */
+export function releaseLineOpens(
+  line: PlaceLine,
+  production: GroupFlowProduction,
+  rollsBackTo: string | undefined,
+): { readonly kind: "release" } | { readonly kind: "rollback"; readonly tag: string } | undefined {
+  if (line.kind !== "production" || line.dot !== "releasing" || production.kind !== "releasing")
+    return undefined;
+  return rollsBackTo === undefined ? { kind: "release" } : { kind: "rollback", tag: rollsBackTo };
+}
+
 /** What production's line says from its chip, the menu's reading of it. */
 function chipLine(
   chip: ProductionChip,
-  facts: { readonly since: string | undefined; readonly down: ReadonlyArray<string> },
+  facts: {
+    readonly since: string | undefined;
+    readonly down: ReadonlyArray<string>;
+    readonly rollsBackTo?: string | undefined;
+  },
 ): Pick<PlaceLine, "dot" | "words" | "trouble"> {
   const runs = chip.version;
   switch (chip.state) {
@@ -103,7 +130,9 @@ function chipLine(
     case "releasing":
       return {
         dot: "releasing",
-        words: [chip.next === undefined ? "Deploying…" : `Releasing ${chip.next}`],
+        words: [
+          chip.next === undefined ? "Deploying…" : releasingWords(chip.next, facts.rollsBackTo),
+        ],
         trouble: false,
       };
     case "failed":
@@ -141,6 +170,7 @@ function chipLine(
 function flowLine(
   production: Exclude<GroupFlowProduction, { readonly kind: "absent" }>,
   since: string | undefined,
+  rollsBackTo: string | undefined,
 ): Pick<PlaceLine, "dot" | "words" | "trouble"> {
   switch (production.kind) {
     case "creating":
@@ -158,7 +188,11 @@ function flowLine(
     case "deploying":
       return { dot: "releasing", words: ["Deploying…"], trouble: false };
     case "releasing":
-      return { dot: "releasing", words: [`Releasing ${production.tag}`], trouble: false };
+      return {
+        dot: "releasing",
+        words: [releasingWords(production.tag, rollsBackTo)],
+        trouble: false,
+      };
     case "deploy-failed": {
       const runs = production.stop.version?.label;
       return {
@@ -190,6 +224,8 @@ function stageLine(
   stop: GroupFlowStop,
   chip: ProductionChip | undefined,
   down: ReadonlyArray<string>,
+  /** It serves a port its public address would open; `undefined` while its services are unread. */
+  offered: boolean | undefined,
 ): PlaceLine {
   const base = {
     projectId: stop.projectId,
@@ -219,8 +255,16 @@ function stageLine(
     ),
   };
   // HQ brings a stage up until its first deploy's address is on (`EnvironmentBirth`): running
-  // with nowhere to open is still coming up, as the menu's heading says (`stopComing`).
-  if (said.dot === "running" && stop.addresses.length === 0 && stop.birth?.ended === false)
+  // with nowhere to open is still coming up, as the menu's heading says (`stopComing`). HQ ends
+  // its bringing up as that deploy ends, and the address comes in the platform's next read: one
+  // it brought up that serves a port its address opens runs once that address is there, and one
+  // serving none runs as it is.
+  const turningOn = addressComing({
+    birth: stop.birth,
+    addresses: stop.addresses.length,
+    offered,
+  });
+  if (said.dot === "running" && turningOn)
     return { ...base, dot: "unknown", words: ["Turning its address on…"], trouble: false };
   return { ...base, ...said };
 }
@@ -265,13 +309,25 @@ export function placeLines(input: {
   readonly since?: string | undefined;
   /** The services the platform marks failed, by place. */
   readonly down?: ReadonlyMap<string, ReadonlyArray<string>> | undefined;
+  /**
+   * Whether each stage serves a port its public address would open (`derivePublicRouteOffers`),
+   * by its project; absent while its services are unread.
+   */
+  readonly addressOffered?: ReadonlyMap<string, boolean> | undefined;
+  /** The release on its way to production rolls it back to this one (`FlowRelease.rollbackOf`). */
+  readonly rollsBackTo?: string | undefined;
   readonly nowMs: number;
 }): ReadonlyArray<PlaceLine> {
   const { production, stages } = input.flow;
   const downOf = (projectId: string | undefined) =>
     (projectId === undefined ? undefined : input.down?.get(projectId)) ?? [];
   const staged = stages.map((stop) =>
-    stageLine(stop, input.stageChips?.get(stop.projectId), downOf(stop.projectId)),
+    stageLine(
+      stop,
+      input.stageChips?.get(stop.projectId),
+      downOf(stop.projectId),
+      input.addressOffered?.get(stop.projectId),
+    ),
   );
   const prod = { kind: "production" as const, name: "prod" };
   if (production.kind === "absent")
@@ -308,8 +364,12 @@ export function placeLines(input: {
   const since = sinceWords(input.since, input.nowMs);
   const said =
     input.chip === undefined
-      ? flowLine(production, since)
-      : chipLine(input.chip, { since, down: downOf(stop?.projectId) });
+      ? flowLine(production, since, input.rollsBackTo)
+      : chipLine(input.chip, {
+          since,
+          down: downOf(stop?.projectId),
+          rollsBackTo: input.rollsBackTo,
+        });
   return [
     ...staged,
     { ...prod, projectId: stop?.projectId, addresses: stop?.addresses ?? [], ...said },
@@ -359,14 +419,6 @@ export function cardReady(flow: Pick<GroupFlow, "production" | "stages" | "main"
 }
 
 /**
- * The release on its way, by its tag, where the ready one stood: its block stays, so pressing
- * Release moves nothing on the card (the onboarding run's card jumped 125 px at the press).
- */
-export function cardReleasing(flow: Pick<GroupFlow, "production" | "stages" | "main">) {
-  return flow.production.kind === "releasing" ? flow.production.tag : undefined;
-}
-
-/**
  * Whether production's panel offers its history: once production runs a release. Before, there is
  * no history to open, and a first release on its way gets it with the rest of its result — it came
  * 6 s into the run's first release and pushed the domain's door 72 px aside.
@@ -376,11 +428,6 @@ export function historyOffered(input: {
   readonly runs: boolean;
 }): boolean {
   return input.releases > 0 && input.runs;
-}
-
-/** "Putting v2.4.0 live" — the glossary's words for a release under way. */
-export function releasingTitle(tag: string): string {
-  return `Putting ${tag} live`;
 }
 
 /**
@@ -434,7 +481,7 @@ export type MateLift =
   | { readonly kind: "question" }
   /** Ask <Mate> to fix it */
   | { readonly kind: "fix" }
-  /** Review change */
+  /** Review */
   | { readonly kind: "review"; readonly pull: FlowPullRequest };
 
 /** A Mate nobody has asked anything, its conversations read: the menu row's words for it. */

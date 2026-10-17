@@ -175,8 +175,8 @@ describe("ZeropsServiceMap — the card", () => {
     expect(html).toContain("Zerops Control Plane");
     expect(html).toContain("kanbandev");
     // The platform's token is read as a word, never shown raw.
-    expect(html).toContain(">Active<");
-    expect(html).not.toContain(">ACTIVE<");
+    expect(html).toContain('aria-label="Active"');
+    expect(html).not.toContain("ACTIVE");
     expect(html).not.toContain("data-zerops-service-transient");
   });
 
@@ -207,7 +207,7 @@ describe("ZeropsServiceMap — the card", () => {
 
     expect(html).toContain(">:3000</span>");
     // The status word sits above the name, the type beside it — as the dashboard's card reads.
-    expect(html.indexOf(">Active<")).toBeLessThan(html.indexOf(">app<"));
+    expect(html.indexOf('aria-label="Active"')).toBeLessThan(html.indexOf(">app<"));
     expect(html).toContain(">Node.js 22</span>");
     expect(html).toContain("data-zerops-service-resources");
     expect(html.match(/data-zerops-service-graph="live"/gu)).toHaveLength(3);
@@ -265,6 +265,21 @@ describe("ZeropsServiceMap — the card", () => {
 
     expect(html).not.toContain("data-zerops-service-resources");
     expect(html).not.toContain("<svg");
+  });
+
+  it("a running service's card leaves its state to the dot; a stopped or failed one says it", () => {
+    const html = render(
+      topology([
+        service({ hostname: "app" }),
+        service({ hostname: "worker", status: "STOPPED" }),
+        service({ hostname: "api", status: "CONTAINER_FAILED" }),
+      ]),
+    );
+
+    expect(html).not.toContain(">Active<");
+    expect(html).toContain('aria-label="Active"');
+    expect(html).toContain(">Stopped<");
+    expect(html).toContain(">Container failed<");
   });
 
   it("keeps a long name on one line, cut only where the card is narrower, without hiding status", () => {

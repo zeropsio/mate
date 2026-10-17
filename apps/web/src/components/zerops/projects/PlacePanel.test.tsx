@@ -202,3 +202,53 @@ describe("a place's addresses on its panel", () => {
     expect(container.textContent).toContain("shop.acme.com · Waiting for your DNS");
   });
 });
+
+// With the card's "Putting v0.1.0 live" block gone, nothing on it opened a release on its way.
+describe("a place's line that opens what it says", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  const releasing: PlacePanelModel = {
+    ...modelOf([]),
+    line: { ...modelOf([]).line, dot: "releasing", words: ["Releasing v0.1.0"] },
+  };
+
+  it("opens a release on its way from production's line, which says it as it did", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const opened: HTMLElement[] = [];
+    await act(async () => {
+      root.render(
+        <PlacePanel
+          actions={null}
+          groupId="shop"
+          model={releasing}
+          onOpenLine={(from) => {
+            opened.push(from);
+          }}
+        />,
+      );
+    });
+    const line = [...container.querySelectorAll("button")].find(
+      (each) => each.textContent === "Releasing v0.1.0",
+    );
+    await act(async () => {
+      line?.click();
+    });
+    expect(opened).toEqual([line]);
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("is words alone where it opens nothing", () => {
+    const html = renderToStaticMarkup(
+      <PlacePanel actions={null} groupId="shop" model={releasing} />,
+    );
+    expect(html).toContain("Releasing v0.1.0");
+    expect(html).not.toContain("<button");
+  });
+});

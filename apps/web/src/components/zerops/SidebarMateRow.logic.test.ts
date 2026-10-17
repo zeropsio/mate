@@ -2089,3 +2089,54 @@ describe("a Mate's row waits half a minute before it says the Mate isn't answeri
     );
   });
 });
+
+// Parts-7 of the run 2 follow-up: an automatic update held a Mate's last words on its row for half
+// a minute, as if nothing happened, then said it wasn't answering. The update is a fact the app
+// holds (its link's verdict), so the row says it.
+describe("a Mate's row says it is updating while its update restarts it", () => {
+  const OFF = "2026-10-16T10:00:00.000Z";
+  const offMs = Date.parse(OFF);
+  const told: ZeropsAgentActivity = {
+    threadId: ThreadId.make("thread-1"),
+    kind: "done",
+    status: null,
+    face: "done",
+    subject: "Speed up the photo gallery",
+    at: OFF,
+    snippet: "Thumbnails load lazily now.",
+    unread: false,
+    pausedUntil: undefined,
+    threadKey: "env:thread-1",
+    task: "Speed up the photo gallery",
+  };
+  const row = (input: { nowMs: number; updating: boolean; connected: boolean }) =>
+    mateRowReading({
+      name: "Nova",
+      connected: input.connected,
+      activity: input.connected ? told : restingActivity(told),
+      offlineSince: input.connected ? undefined : OFF,
+      nowMs: input.nowMs,
+      updating: input.updating,
+      mine: true,
+    }).reply;
+
+  it.each([1_000, 45_000])("%i ms into its update: that it is updating, nothing else", (after) => {
+    expect(row({ nowMs: offMs + after, updating: true, connected: false })).toEqual({
+      kind: "words",
+      text: "Updating to the new version",
+      tone: "muted",
+    });
+  });
+
+  it("once it answers again: its own words", () => {
+    expect(row({ nowMs: offMs + 60_000, updating: false, connected: true })).toMatchObject({
+      kind: "words",
+      text: "Thumbnails load lazily now.",
+    });
+  });
+
+  it("away without an update, past half a minute: it isn't answering, as before", () => {
+    const reply = row({ nowMs: offMs + 45_000, updating: false, connected: false });
+    expect(reply?.kind === "words" ? reply.text : "").toMatch(/^Nova isn't answering since /);
+  });
+});

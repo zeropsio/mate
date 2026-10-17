@@ -7,6 +7,7 @@
  * Pure: the member list, each developer's and guest's grants and where each project belongs
  * arrive read.
  */
+import type { ResentInvitation } from "@t3tools/client-runtime/data";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrantEntry } from "@t3tools/client-runtime/zerops/appAccess";
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -145,6 +146,9 @@ export const CUSTOM_ROLE = "Custom role";
 
 /** An invitation not joined yet, as its row says it. */
 export const INVITED_LINE = "Invited · waiting for them to join";
+
+/** An invitation Send again sent, as its row says it. */
+export const SENT_AGAIN_LINE = "Sent again · not joined yet";
 
 const ROLE_WORDS = {
   OWNER: "Owner",
@@ -359,4 +363,74 @@ export function arrivingRow(input: {
   readonly played: boolean;
 }): ReadonlyArray<string> {
   return input.played ? [] : input.arrivedKeys;
+}
+
+/** A Send again, kept by the address it went to while the page is open. */
+export interface TeamResend {
+  /** The card as it stood when Send again was pressed. */
+  readonly person: TeamPerson;
+  readonly state: "sending" | "sent" | "failed";
+  /** What stopped it, in the person's words. */
+  readonly trouble?: string;
+  /**
+   * What its second step would have sent, where Zerops withdrew the earlier invitation and sent no
+   * new one: the card offers it again.
+   */
+  readonly invitation?: ResentInvitation;
+}
+
+/** One card as it stands with its Send again. */
+export interface TeamResendCard {
+  readonly person: TeamPerson;
+  /** Zerops lists them: the card opens their page. */
+  readonly listed: boolean;
+  /** The invitation's line; `null` where no invitation stands. */
+  readonly invited: string | null;
+  /** Send again on a standing invitation; Invite again on one withdrawn and not sent again. */
+  readonly offer: "send-again" | "invite-again" | null;
+  readonly busy: boolean;
+  readonly trouble: string | null;
+}
+
+const addressOf = (person: TeamPerson) => person.email?.toLocaleLowerCase() ?? null;
+
+/**
+ * The team's cards with each Send again on them. Zerops resends nothing, so Send again withdraws
+ * the invitation and invites the address again: while it does, and where the second step failed,
+ * the card stays as it stood — never saying it waits for them once nothing does — until Zerops
+ * lists the address again. Only whoever may change the person is offered it.
+ */
+export function resendCards(
+  people: ReadonlyArray<TeamPerson>,
+  resends: Readonly<Record<string, TeamResend>>,
+): ReadonlyArray<TeamResendCard> {
+  const listedAddresses = new Set(people.map(addressOf));
+  const standIns = Object.entries(resends).flatMap(([address, resend]) =>
+    listedAddresses.has(address) ||
+    !(resend.state === "sending" || (resend.state === "failed" && resend.invitation !== undefined))
+      ? []
+      : [resend],
+  );
+  return [
+    ...people.map((person): TeamResendCard => {
+      const address = addressOf(person);
+      const resend = address === null || !person.pending ? undefined : resends[address];
+      return {
+        person,
+        listed: true,
+        invited: !person.pending ? null : resend?.state === "sent" ? SENT_AGAIN_LINE : INVITED_LINE,
+        offer: person.pending && person.change !== null ? "send-again" : null,
+        busy: resend?.state === "sending",
+        trouble: resend?.state === "failed" ? (resend.trouble ?? null) : null,
+      };
+    }),
+    ...standIns.map((resend): TeamResendCard => ({
+      person: resend.person,
+      listed: false,
+      invited: resend.state === "sending" ? INVITED_LINE : null,
+      offer: resend.state === "failed" ? "invite-again" : null,
+      busy: resend.state === "sending",
+      trouble: resend.trouble ?? null,
+    })),
+  ];
 }

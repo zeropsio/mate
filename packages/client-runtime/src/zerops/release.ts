@@ -350,6 +350,7 @@ export function flowReleaseOf(release: Release): FlowRelease {
     line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
     entries,
     taggedAt: release.at,
+    ...(release.rollbackOf === null ? {} : { rollbackOf: release.rollbackOf }),
   };
 }
 
@@ -365,6 +366,8 @@ export interface FlowRelease {
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /** When HQ made it. */
   readonly taggedAt: string;
+  /** The release it rolls production back to, where it is a roll back. */
+  readonly rollbackOf?: string | undefined;
 }
 
 export interface FlowReleaseRow extends FlowRelease {

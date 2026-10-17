@@ -42,3 +42,16 @@ describe("review refs that git would read as an option", () => {
     });
   });
 });
+
+describe("a commit's changes are asked for by the commit's own name", () => {
+  it.each(["0123456", "0123456789abcdef0123456789abcdef01234567"])("accepts %s", (commit) => {
+    expect(decodePreviewInput({ cwd: "/repo", commit })).toMatchObject({ commit });
+  });
+
+  it.each(["main", "HEAD~1", "--output=/tmp/x", "abc", "0123456 && rm"])(
+    "refuses %s, which names no single commit",
+    (commit) => {
+      expect(() => decodePreviewInput({ cwd: "/repo", commit })).toThrow();
+    },
+  );
+});
