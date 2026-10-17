@@ -49,7 +49,7 @@ import {
   type PressStepView,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ProcessSteps, type ProcessStep } from "./primitives";
-import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
+import { ZeropsNewMateForm, type ZeropsNewMateFormProps } from "./ZeropsNewMateForm";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import type { DraftPeople } from "./projects/accessDraft.logic";
 
@@ -114,7 +114,7 @@ export interface ZeropsEnvironmentCreationFormProps {
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
   /** A Mate's Automated choice, and whether its organization holds the key (`ZeropsNewMateForm`). */
-  readonly automation?: { readonly key: "set" | "missing" | "unknown" } | undefined;
+  readonly automation?: ZeropsNewMateFormProps["automation"];
   /** Leaves the dialog for where the organization's API key is set. */
   readonly onOpenKeySettings?: (() => void) | undefined;
   readonly git?:

@@ -19,7 +19,7 @@
  * to, so a press made while it was being read can be watched going through.
  *
  * `&automated=set` offers the Automated choice, `&automated=missing` with the organization holding
- * no API key for it yet.
+ * no API key for it yet (`&admin=no`: to one who can't set it).
  *
  * Fixtures only. Nothing here ships — `design-newmate.html` is not
  * `index.html`, and no route imports this module.
@@ -46,7 +46,7 @@ const NAME = params.get("name") ?? "Quinn";
 const AUTOMATED = params.get("automated");
 const AUTOMATION =
   AUTOMATED === "set" || AUTOMATED === "missing"
-    ? { key: AUTOMATED as "set" | "missing" }
+    ? { key: AUTOMATED as "set" | "missing", admin: params.get("admin") !== "no" }
     : undefined;
 /** What the repo holds once read: its recipe, or none. */
 const RESOLVES = STATE === "none" || params.get("resolves") === "none" ? "none" : "recipe";

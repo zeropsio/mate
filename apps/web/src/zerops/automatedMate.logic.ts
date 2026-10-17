@@ -54,3 +54,20 @@ export function automatedAgentsLine(name: string, key: AutomatedKeyState): strin
     ? `${name} waits for your organization's API key. Nobody signs in to it.`
     : `${name} runs on your organization's API key. Nobody signs in to it.`;
 }
+
+/**
+ * What New Mate says under its Automated choice of the key it runs on: that the organization has
+ * none yet — with the way to Settings for one who can set it (`canSet`: an Owner or Admin), else
+ * who sets it — or, where this HQ turned out older than automated Mates, that it needs updating.
+ * Nothing while the key is set or not read.
+ */
+export type NewMateKeyNote =
+  | { readonly kind: "missing"; readonly canSet: boolean }
+  | { readonly kind: "update" }
+  | null;
+
+export function newMateKeyNote(key: AutomatedKeyState, admin: boolean): NewMateKeyNote {
+  if (key === "missing") return { kind: "missing", canSet: admin };
+  if (key === "unsupported") return { kind: "update" };
+  return null;
+}

@@ -574,7 +574,7 @@ describe("the New Mate dialog's Automated choice", () => {
 
   it("makes an automated Mate once chosen: nobody signs it in, its tasks come from GitHub", () => {
     const onCreate = vi.fn<(choice: EnvironmentCreationChoice) => void>();
-    const tree = mount(form({ automation: { key: "set" }, onCreate }));
+    const tree = mount(form({ automation: { key: "set", admin: true }, onCreate }));
     expect(spoken(tree.root)).toContain(
       "Takes tasks from your GitHub issues and works them on your organization's API key. Nobody signs in to it.",
     );
@@ -594,7 +594,7 @@ describe("the New Mate dialog's Automated choice", () => {
 
   it("makes an ordinary Mate unless chosen", () => {
     const onCreate = vi.fn<(choice: EnvironmentCreationChoice) => void>();
-    const tree = mount(form({ automation: { key: "set" }, onCreate }));
+    const tree = mount(form({ automation: { key: "set", admin: true }, onCreate }));
     press(tree);
     expect(onCreate.mock.calls[0]?.[0]).not.toHaveProperty("automated");
   });
@@ -605,13 +605,22 @@ describe("the New Mate dialog's Automated choice", () => {
     ["not known yet: nothing more", "unknown", false],
   ] as const)("%s", (_case, key, says) => {
     const onOpenKeySettings = vi.fn();
-    const tree = mount(form({ automation: { key }, onOpenKeySettings }));
+    const tree = mount(form({ automation: { key, admin: true }, onOpenKeySettings }));
     expect(spoken(tree.root).includes("Your organization has no API key for it yet.")).toBe(says);
     if (!says) return;
     act(() => {
       button(tree, "Set it in Settings › Zerops").props.onClick();
     });
     expect(onOpenKeySettings).toHaveBeenCalledOnce();
+  });
+
+  it("tells one who can't set the key who sets it, and sends them nowhere", () => {
+    const onOpenKeySettings = vi.fn();
+    const tree = mount(form({ automation: { key: "missing", admin: false }, onOpenKeySettings }));
+    expect(spoken(tree.root)).toContain(
+      "Your organization has no API key for it yet. An Owner or Admin of your organization sets it.",
+    );
+    expect(buttons(tree)).not.toContain("Set it in Settings › Zerops");
   });
 
   it("offers no Automated choice where the dialog was given none", () => {

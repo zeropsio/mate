@@ -36,6 +36,7 @@ import {
 import { Label } from "../ui/label";
 import { Switch } from "../ui/switch";
 import { cn } from "~/lib/utils";
+import { newMateKeyNote } from "~/zerops/automatedMate.logic";
 import {
   faceName,
   newMateDoorTitle,
@@ -70,6 +71,8 @@ export const NEW_MATE_AUTOMATED_LINE =
   "Takes tasks from your GitHub issues and works them on your organization's API key. Nobody signs in to it.";
 /** Beside the choice, where the organization holds no API key for automated Mates yet. */
 export const NEW_MATE_NO_KEY_LINE = "Your organization has no API key for it yet.";
+/** After it, for one who can't set the key: who does. */
+const NEW_MATE_KEY_SETTER_LINE = "An Owner or Admin of your organization sets it.";
 
 export interface ZeropsNewMateFormProps {
   readonly groupName: string;
@@ -98,10 +101,13 @@ export interface ZeropsNewMateFormProps {
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
   /**
-   * The Automated choice, and whether the organization holds the API key it runs on: `missing`
-   * says so beside the choice, with the way to where it is set. Absent: no choice offered.
+   * The Automated choice, whether the organization holds the API key it runs on, and whether the
+   * viewer may set it (an Owner or Admin): `missing` says so beside the choice — with the way to
+   * where it is set for one who can, else who sets it. Absent: no choice offered.
    */
-  readonly automation?: { readonly key: "set" | "missing" | "unknown" } | undefined;
+  readonly automation?:
+    | { readonly key: "set" | "missing" | "unknown"; readonly admin: boolean }
+    | undefined;
   /** Leaves the dialog for where the organization's API key is set (Settings › Zerops). */
   readonly onOpenKeySettings?: (() => void) | undefined;
 }
@@ -130,6 +136,8 @@ export function ZeropsNewMateForm({
 }: ZeropsNewMateFormProps) {
   const id = useId();
   const [automated, setAutomated] = useState(false);
+  const keyNote =
+    automation === undefined ? null : newMateKeyNote(automation.key, automation.admin);
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
   const [botName, setBotName] = useState(defaultBotName);
   // The last name typed: a blank field keeps the face it had rather than flashing another.
@@ -304,10 +312,12 @@ export function ZeropsNewMateForm({
                     <p className="text-sm text-muted-foreground" id={`${id}-automated-line`}>
                       {NEW_MATE_AUTOMATED_LINE}
                     </p>
-                    {automation.key === "missing" ? (
+                    {keyNote?.kind === "missing" ? (
                       <p className="text-sm text-muted-foreground" data-zerops-new-mate-no-key="">
                         {NEW_MATE_NO_KEY_LINE}{" "}
-                        {onOpenKeySettings === undefined ? (
+                        {!keyNote.canSet ? (
+                          NEW_MATE_KEY_SETTER_LINE
+                        ) : onOpenKeySettings === undefined ? (
                           "Set it in Settings › Zerops."
                         ) : (
                           <InlineButton onClick={onOpenKeySettings} type="button">
