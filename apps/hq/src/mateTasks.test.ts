@@ -109,6 +109,42 @@ describe("tasks for automated Mates", () => {
         }),
     );
 
+    it.effect(
+      "every task carries what it may spend: the organization's limits, sixty minutes and no cost limit until an owner or admin sets them",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          yield* core.issue(1);
+          const first = yield* toldTask(core.robot.link, 1);
+          assert.deepStrictEqual(first.limits, { minutes: 60, costUsd: null });
+          const developer = yield* sessionFor(core.call, "door-dev");
+          const refused = yield* core.call("PUT", "/api/org/task-limits", {
+            session: developer,
+            body: { minutes: 30, costUsd: 5 },
+          });
+          assert.strictEqual(refused.status, 403);
+          const invalid = yield* core.call("PUT", "/api/org/task-limits", {
+            session: core.owner,
+            body: { minutes: 0, costUsd: null },
+          });
+          assert.strictEqual(invalid.status, 400);
+          const kept = yield* core.call("PUT", "/api/org/task-limits", {
+            session: core.owner,
+            body: { minutes: 30, costUsd: 5 },
+          });
+          assert.deepStrictEqual(kept.body, { minutes: 30, costUsd: 5 });
+          const read = yield* core.call("GET", "/api/org/task-limits", { session: developer });
+          assert.deepStrictEqual(read.body, { minutes: 30, costUsd: 5 });
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: first.id, state: "failed", detail: "No kettle." },
+          });
+          yield* core.issue(2);
+          const second = yield* toldTask(core.robot.link, 2);
+          assert.deepStrictEqual(second.limits, { minutes: 30, costUsd: 5 });
+        }),
+    );
+
     it.effect("a Mate whose agents are working gets a task only once they rest", () =>
       Effect.gen(function* () {
         const core = yield* withPool({ busy: true });

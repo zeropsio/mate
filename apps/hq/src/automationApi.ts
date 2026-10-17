@@ -12,6 +12,8 @@
  *   address. Past 1 MiB `413`; no intake there `404`; a signature that does not hold `401
  *   unauthorized`, whatever was wrong with it; `ping` `200`; anything else read `202`; one HQ could
  *   not check or take in now `503`, for GitHub to deliver again.
+ * - `GET /api/org/task-limits` → `HqTaskLimitsView`: what each task may spend; `PUT` it, by an owner
+ *   or admin of the organization.
  * - `POST /api/mate/ai-key` `{ provider? }` with `Authorization: Mate <credential>` → `HqMateAiKey`:
  *   the organization's key, for the Mate's zcp to put in its project's vault; `404 no_key` while
  *   none is kept.
@@ -32,6 +34,7 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import { BODY_LIMIT, TooLarge, handle, json, jsonBody, knock, mate, principal } from "./api.ts";
 import { INTAKE_WEBHOOK_PATH, Intake } from "./intake.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
+import { TaskLimits } from "./taskLimits.ts";
 import { Writes } from "./writes.ts";
 
 const MateAiKeyBody = Schema.Struct({ provider: Schema.optionalKey(Schema.String) });
@@ -56,7 +59,37 @@ const deliveryBytes = Effect.gen(function* () {
 /** No cache keeps an answer that carries a key. */
 const NO_STORE = { "cache-control": "no-store" };
 
+const TaskLimitsBody = Schema.Struct({
+  minutes: Schema.Int,
+  costUsd: Schema.NullOr(Schema.Number),
+});
+
 export const automationRoutes = Layer.mergeAll(
+  HttpRouter.add(
+    "GET",
+    "/api/org/task-limits",
+    handle(
+      Effect.gen(function* () {
+        yield* principal;
+        return json(yield* (yield* TaskLimits).view, 200);
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "PUT",
+    "/api/org/task-limits",
+    handle(
+      Effect.gen(function* () {
+        const limits = yield* jsonBody(TaskLimitsBody, BODY_LIMIT);
+        return yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            return json(yield* (yield* TaskLimits).keep(userId, limits), 200);
+          }),
+        );
+      }),
+    ),
+  ),
   HttpRouter.add(
     "GET",
     "/api/org/ai-keys",

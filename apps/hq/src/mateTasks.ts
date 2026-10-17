@@ -33,7 +33,7 @@
  *
  * @module mateTasks
  */
-import type { MateTask, MateTaskMessage, MateTaskReport } from "@t3tools/contracts";
+import type { MateTask, MateTaskLimits, MateTaskMessage, MateTaskReport } from "@t3tools/contracts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import type { MateLinkDown } from "@t3tools/shared/mateLink";
@@ -57,6 +57,7 @@ import { MateOverviews } from "./mateOverviews.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
 import { Roles } from "./roles.ts";
 import { Structure } from "./structure.ts";
+import { DEFAULT_TASK_LIMITS, readTaskLimits } from "./taskLimits.ts";
 import {
   type TaskOnSource,
   TaskSourceChannels,
@@ -142,14 +143,14 @@ const TASK_COLUMNS = "id::text AS id, app_id::text AS app_id, source, body";
 
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
 
-/** A task as its Mate is told it; none where its row's source does not read. */
-const taskOf = (row: TaskRow): MateTask | undefined => {
+/** A task as its Mate is told it, with what it may spend; none where its source does not read. */
+const taskOf = (row: TaskRow, limits: MateTaskLimits): MateTask | undefined => {
   const source = sourceOfRow(row.source);
-  return source === undefined ? undefined : { id: row.id, source, body: row.body };
+  return source === undefined ? undefined : { id: row.id, source, body: row.body, limits };
 };
 /** Its `task` frame, or none (`taskOf`). */
-const taskFrame = (row: TaskRow) => {
-  const task = taskOf(row);
+const taskFrame = (row: TaskRow, limits: MateTaskLimits) => {
+  const task = taskOf(row, limits);
   return task === undefined ? undefined : encodeDown({ type: "task", task });
 };
 
@@ -207,6 +208,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const wakes = yield* Queue.sliding<void>(1);
       const wake = Effect.asVoid(Queue.offer(wakes, undefined));
       const leading = Effect.map(leader.status, (status) => status.state === "active");
+      /** What each task may spend, as the organization says now (`taskLimits.ts`). */
+      const limitsNow = Effect.provideService(readTaskLimits, SqlClient.SqlClient, sql);
 
       /**
        * Whether the Mate's last task's change still waits for review: its copy of the code holds
@@ -425,6 +428,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 OR EXISTS (SELECT 1 FROM hq_intake i WHERE i.app_id = t.app_id AND i.repo = t.repo))
             ORDER BY seq LIMIT ${free.length}`;
           let handedAny = false;
+          const limits = yield* limitsNow;
           for (const [index, task] of waiting.entries()) {
             const projectId = free[index]!;
             const handed = yield* leader
@@ -445,7 +449,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               );
             if (handed.length === 0) continue;
             handedAny = true;
-            const frame = taskFrame(task);
+            const frame = taskFrame(task, limits);
             if (frame !== undefined) yield* tellMate(projectId, frame);
             yield* structure.mateTouched(projectId);
           }
@@ -954,6 +958,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               const handed = yield* sql<TaskRow>`
                 SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task
                 WHERE mate_project_id = ${projectId} AND state = 'assigned'`;
+              const limits = handed.length === 0 ? DEFAULT_TASK_LIMITS : yield* limitsNow;
               // On it, or its change waiting for review: what was said of it, and whether people
               // stopped it.
               const on = yield* sql<{ readonly id: string; readonly stop_reason: string | null }>`
@@ -967,7 +972,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               );
               return Stream.concat(
                 Stream.fromIterable([
-                  ...handed.flatMap((row) => taskFrame(row) ?? []),
+                  ...handed.flatMap((row) => taskFrame(row, limits) ?? []),
                   ...said,
                   ...stops,
                 ]),

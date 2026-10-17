@@ -69,3 +69,12 @@ CREATE TABLE hq_task_message (
 
 -- A public repository's issues are taken only where its intake says so: anyone may open one.
 ALTER TABLE hq_intake ADD COLUMN public boolean NOT NULL DEFAULT false;
+
+-- The organization's limits on each task (`HqTaskLimitsView`): one row, absent for the defaults.
+CREATE TABLE hq_task_limits (
+  id boolean PRIMARY KEY DEFAULT true CHECK (id),
+  minutes integer NOT NULL CHECK (minutes BETWEEN 1 AND 1440),
+  cost_usd double precision CHECK (cost_usd > 0),
+  set_by text NOT NULL,
+  set_at timestamptz NOT NULL DEFAULT now()
+);

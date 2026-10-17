@@ -37,6 +37,7 @@ import { githubIssuesLayer } from "./githubIssues.ts";
 import { githubChannelLayer } from "./githubChannel.ts";
 import { githubGateLayer } from "./githubGate.ts";
 import { taskIntakeLayer, taskSourceChannelsLayer } from "./taskIntake.ts";
+import { taskLimitsLayer } from "./taskLimits.ts";
 import { proposalDecisionsLayer } from "./proposals.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
@@ -169,6 +170,7 @@ const services = (options: CoreOptions) => {
   return Layer.mergeAll(
     autoUpdatePolicyLayer,
     orgAiKeysLayer,
+    taskLimitsLayer,
     sources,
     sessionsLayer,
     observationLayer,
