@@ -579,6 +579,18 @@ export const makeOperations = (
         acceptExitCodes: [1, 128],
       })
     ).code === 0;
+  /** Every commit of `sha`'s history has the empty tree; false past the history ceiling. */
+  const emptyHistory = async (dir: string, sha: string, signal: AbortSignal) => {
+    const empty = await text(dir, ["hash-object", "-t", "tree", "--stdin"], signal);
+    const trees = (
+      await text(
+        dir,
+        ["log", `--max-count=${String(readLimits.history + 1)}`, "--format=%T", sha, "--"],
+        signal,
+      )
+    ).split("\n");
+    return trees.length <= readLimits.history && trees.every((tree) => tree === empty);
+  };
   const remoteHead: HqGit["remoteHead"] = (repo, remote) =>
     inRepo("remoteHead", repo, async (dir, signal) => {
       const url = mirrorUrl(remote.url);
@@ -637,11 +649,33 @@ export const makeOperations = (
       const main = await refHead(dir, "refs/heads/main", signal);
       if (main !== expected) return { kind: "stale" } as const;
       if (main === sha) return { kind: "moved" } as const;
-      if (main !== null && !(await ancestorIn(dir, main, sha, signal)))
+      if (
+        main !== null &&
+        !(await ancestorIn(dir, main, sha, signal)) &&
+        !(await emptyHistory(dir, main, signal))
+      )
         return { kind: "not_fast_forward" } as const;
       if (!(await cas(dir, "refs/heads/main", sha, main, signal)))
         return { kind: "stale" } as const;
       emit({ kind: "main_moved", repo, old: main, new: sha, by: "import" });
+      return { kind: "moved" } as const;
+    });
+  const holdsNothing: HqGit["holdsNothing"] = (repo, sha) =>
+    inRepo("holdsNothing", repo, async (dir, signal) => {
+      if (!validSha(sha)) throw error("Invalid commit");
+      return emptyHistory(dir, sha, signal);
+    });
+  const fastForwardChange: HqGit["fastForwardChange"] = (repo, mateId, number, sha, expected) =>
+    inRepo("fastForwardChange", repo, async (dir, signal) => {
+      if (!validSha(sha) || !validSha(expected)) throw error("Invalid commit");
+      const ref = changeRef(mateId, number);
+      await resolve(dir, sha, signal);
+      const head = await refHead(dir, ref, signal);
+      if (head !== expected) return { kind: "stale" } as const;
+      if (head === sha) return { kind: "moved" } as const;
+      if (!(await ancestorIn(dir, head, sha, signal))) return { kind: "not_fast_forward" } as const;
+      if (!(await cas(dir, ref, sha, head, signal))) return { kind: "stale" } as const;
+      emit({ kind: "pushed", repo, updates: [{ ref, oldSha: head, newSha: sha }] });
       return { kind: "moved" } as const;
     });
   const pushRef: HqGit["pushRef"] = (repo, remote, branch, sha, expected) =>
@@ -1420,6 +1454,8 @@ export const makeOperations = (
     fetchTip,
     isAncestor,
     fastForwardMain,
+    holdsNothing,
+    fastForwardChange,
     pushRef,
     createTag,
     branches,

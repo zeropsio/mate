@@ -159,8 +159,6 @@ const services = (options: CoreOptions) => {
     hqProjectId: options.hqProjectId,
     ...(options.githubApi === undefined ? {} : { api: options.githubApi }),
   }).pipe(Layer.provide(NodeHttpClient.layerNodeHttp), Layer.provideMerge(githubEventsLayer));
-  // GitHub's default branch upstream for repositories mirrored through the app: one, as the app.
-  const mirror = options.githubMirror ?? githubMirrorLayer().pipe(Layer.provide(githubApp));
   const remotes = repoRemotesLayer.pipe(
     Layer.provide(
       githubProbesLayer.pipe(
@@ -191,8 +189,16 @@ const services = (options: CoreOptions) => {
   );
   // Tasks from every source come in through one door (`taskIntake.ts`); each source's channel
   // registers itself (`githubChannel.ts`), and `mateTasks.ts` says through it how a task moves.
-  const tasks = mateTasksLayer(options.tasks).pipe(Layer.provide(orgAiKeysLayer));
+  const tasks = mateTasksLayer(options.tasks).pipe(
+    Layer.provide(orgAiKeysLayer),
+    Layer.provide(taskSourceChannelsLayer),
+  );
   const door = taskIntakeLayer.pipe(Layer.provideMerge(tasks));
+  // GitHub's default branch upstream for repositories mirrored through the app: one, as the app;
+  // it tells a task's Mate what people added to its change on GitHub.
+  const mirror =
+    options.githubMirror ??
+    githubMirrorLayer().pipe(Layer.provide(githubApp), Layer.provide(tasks));
   const sources = Layer.mergeAll(
     door,
     intakeLayer({ hqProjectId: options.hqProjectId }).pipe(

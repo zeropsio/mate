@@ -316,13 +316,32 @@ export interface HqGit {
     descendant: string,
   ) => Effect.Effect<boolean, GitError>;
   /**
+   * Whether no commit of `sha`'s history ever held a file: a repository HQ made and nobody wrote
+   * to yet (its empty root commit), which another's history may replace without losing anything.
+   * Past the history ceiling it answers false.
+   */
+  readonly holdsNothing: (repo: Repo, sha: string) => Effect.Effect<boolean, GitError>;
+  /**
    * `main` moved forward to `sha` by CAS from `expected` (null: unborn), emitting `main_moved` by
-   * `import`; never backwards or sideways.
+   * `import`; never backwards or sideways — but for a `main` that holds nothing
+   * ({@link HqGit.holdsNothing}), which the commit's history replaces.
    */
   readonly fastForwardMain: (
     repo: Repo,
     sha: string,
     expected: string | null,
+  ) => Effect.Effect<FastForward, GitError>;
+  /**
+   * The change's branch moved forward to `sha` by CAS from `expected` — commits added on top of it
+   * elsewhere (its pull request's branch on GitHub), fetched already — emitting `pushed` as a push
+   * of it does; never backwards or sideways.
+   */
+  readonly fastForwardChange: (
+    repo: Repo,
+    mateId: string,
+    number: number,
+    sha: string,
+    expected: string,
   ) => Effect.Effect<FastForward, GitError>;
   /**
    * `sha` pushed to the remote's `refs/heads/<branch>`, leased against `expected` (null: the branch
