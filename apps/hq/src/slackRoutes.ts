@@ -5,7 +5,7 @@
  * - `GET /api/org/slack` → `HqSlackView`, to any member; `PUT` `HqSlackConnectRequest` →
  *   `HqSlackView` and `DELETE` → `204`, by an owner or admin of the organization; never the token
  *   or the secret back. `GET /api/org/slack/manifest` → the Slack app's manifest, by the same.
- * - `GET /api/apps/:appId/slack` → `HqChannelView` (`404` while none); `PUT` `HqChannelRequest` →
+ * - `GET /api/apps/:appId/slack` → `HqChannelView` (`null` while none); `PUT` `HqChannelRequest` →
  *   `HqChannelView` and `DELETE` → `204`, by a structure writer.
  * - `POST /api/intake/slack/:publicId`: Slack's event, limited per address. Past 1 MiB `413`; no
  *   connection there `404`; a signature that does not hold `401 unauthorized`, whatever was wrong
@@ -140,7 +140,7 @@ export const slackRoutes = Layer.mergeAll(
     handle(
       Effect.gen(function* () {
         yield* principal;
-        return json(yield* (yield* Slack).channelOf(yield* appParam), 200);
+        return json((yield* (yield* Slack).channelOf(yield* appParam)) ?? null, 200);
       }),
     ),
   ),

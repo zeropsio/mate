@@ -5,7 +5,7 @@
  * - `GET /api/org/discord` → `HqDiscordView`; `PUT` `HqDiscordConnectRequest` → `HqDiscordView`,
  *   `DELETE` → `204`, by an owner or admin of the organization; `PUT /api/org/discord/allow`
  *   `HqDiscordAllowRequest` → `HqDiscordView`, who may ask Mate there.
- * - `GET /api/apps/:appId/discord` → `HqChannelView` (`404 not_found` while none is set); `PUT`
+ * - `GET /api/apps/:appId/discord` → `HqChannelView` (`null` while none is set); `PUT`
  *   `HqChannelRequest` → `HqChannelView`, `DELETE` → `204`, by a structure writer: the channel the
  *   application takes tasks from.
  * - `POST /api/intake/discord/:publicId`: Discord's interaction, limited per address. Past 64 KiB
@@ -105,7 +105,7 @@ export const discordRoutes = Layer.mergeAll(
       Effect.gen(function* () {
         yield* principal;
         const channel = yield* (yield* Discord).channelOf(yield* appParam);
-        return channel === undefined ? json({ code: "not_found" }, 404) : json(channel, 200);
+        return json(channel ?? null, 200);
       }),
     ),
   ),

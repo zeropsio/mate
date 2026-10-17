@@ -160,9 +160,7 @@ export class Slack extends Context.Service<
     ) => Effect.Effect<HqSlackView, SlackError>;
     readonly disconnect: (userId: string) => Effect.Effect<void, SlackError>;
     /** The channel the application takes tasks from. */
-    readonly channelOf: (
-      appId: string,
-    ) => Effect.Effect<HqChannelView, AutomationRefused | SqlError>;
+    readonly channelOf: (appId: string) => Effect.Effect<HqChannelView | undefined, SqlError>;
     readonly mapChannel: (
       userId: string,
       appId: string,
@@ -690,7 +688,7 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
         channelOf: (appId) =>
           Effect.gen(function* () {
             const row = yield* channelRow(appId);
-            if (row === undefined) return yield* refuse("not_found", "no_channel");
+            if (row === undefined) return undefined;
             return { appId, channelId: row.channel_id, channel: row.channel_name };
           }),
         mapChannel: (userId, appId, channelId) =>

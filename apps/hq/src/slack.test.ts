@@ -406,8 +406,7 @@ describe("Slack", () => {
           const taken = yield* Effect.flip(hq.service.mapChannel("owner", other, "C0SUPPORT"));
           assert.deepInclude(taken, { code: "conflict", reason: "channel_taken" });
           yield* hq.service.unmapChannel("owner", hq.appId);
-          const none = yield* Effect.flip(hq.service.channelOf(hq.appId));
-          assert.deepInclude(none, { code: "not_found" });
+          assert.isUndefined(yield* hq.service.channelOf(hq.appId));
         }),
     );
 
