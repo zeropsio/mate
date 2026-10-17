@@ -10,6 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import { gitClient } from "../test/harness/gitClient.ts";
@@ -28,6 +29,8 @@ import {
   untilHealth,
 } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import type { HqPushCi } from "@t3tools/shared/hqDeploys";
+import { MateState } from "@t3tools/shared/mateLink";
 
 /** A PNG's signature and a little more: what HQ checks a picture by. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
@@ -43,6 +46,74 @@ const RASTERS = [
     new Uint8Array([0, 0, 0, 24, ...ascii("ftypavif"), 0, 0, 0, 0, ...ascii("mif1avif")]),
   ],
 ] as const;
+
+/** A direct Git environment of the application, as a person adds one. */
+const gitEnvironment = (
+  url: string,
+  appId: string,
+  name: string,
+  tier: "stage" | "production",
+  branch: string,
+) =>
+  rowsWhere(
+    url,
+    `INSERT INTO hq_environment (id,app_id,target,tier,name,sources,branch,delivery,created_by,release_floor)
+     VALUES ('${name}','${appId}'::uuid,'git','${tier}','${name}','{appdev}'::text[],'${branch}','direct','owner',now())
+     RETURNING 1`,
+    () => true,
+  );
+
+/** The origin's CI for a commit as HQ records it once every check completed. */
+const ciRecord = (sha: string, ci: Partial<HqPushCi> = {}): HqPushCi => ({
+  sha,
+  verdict: "passed",
+  done: 1,
+  total: 1,
+  failed: [],
+  required: null,
+  reason: null,
+  watch: "finished",
+  readAt: "2026-10-17T10:00:10.000Z",
+  until: "2026-10-17T11:00:00.000Z",
+  ...ci,
+});
+
+/** A push of `appdev` to a Git environment, ended as `state`, with the CI HQ read for it. */
+const pushJob = (
+  url: string,
+  appId: string,
+  environment: string,
+  sha: string,
+  state: "pushed" | "refused",
+  ci?: HqPushCi,
+) => {
+  const evidence = {
+    phase: "closed",
+    processes: [],
+    version: null,
+    nextActor: "none",
+    nextAction: "Operation ended",
+    remote: "https://github.com/acme/app",
+    identity: "42",
+    ref: "refs/heads/main",
+    sha,
+    keptAt: "2026-10-17T00:00:00Z",
+    before: null,
+    writerDrained: true,
+    ...(state === "pushed" ? { after: sha, via: "answer", at: "2026-10-17T10:00:00.000Z" } : {}),
+    ...(ci === undefined ? {} : { ci }),
+  };
+  return rowsWhere(
+    url,
+    `WITH rollout AS (
+       INSERT INTO hq_rollout (app_id,cause,environment_id,planned_at)
+       VALUES ('${appId}'::uuid,'import','${environment}',now()) RETURNING id)
+     INSERT INTO hq_deploy_job (rollout_id,kind,environment_id,repo,sha,label,state,submitted_at,ended_at,evidence)
+     SELECT id,'push','${environment}','appdev','${sha}','main','${state}',now(),now(),'${JSON.stringify(evidence)}'::jsonb
+     FROM rollout RETURNING 1`,
+    () => true,
+  );
+};
 
 describe("a Mate's changes in HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -762,6 +833,7 @@ describe("a Mate's changes in HQ", () => {
             appId,
             appName: "Shop",
             changes: [change(1, "open")],
+            gitPushes: [],
           });
 
           const git = yield* gitClient;
@@ -815,8 +887,94 @@ describe("a Mate's changes in HQ", () => {
             appId: null,
             appName: null,
             changes: [],
+            gitPushes: [],
           });
         }),
+    );
+
+    it.effect(
+      "a Mate reads each Git environment's latest confirmed push with the origin's CI in its own state",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, auth } = yield* mateWithChange(call, fake, owner);
+          const gitPushes = Effect.map(
+            call("GET", "/api/mate/self", { headers: auth }),
+            (answer) => (answer.body as { readonly gitPushes: unknown }).gitPushes,
+          );
+          assert.deepStrictEqual(yield* gitPushes, []);
+
+          yield* gitEnvironment(url, appId, "git-stage", "stage", "main");
+          yield* gitEnvironment(url, appId, "git-prod", "production", "release");
+          const failed = ciRecord("c".repeat(40), {
+            verdict: "failed",
+            done: 2,
+            total: 2,
+            failed: [{ name: "unit", url: "https://github.com/acme/app/actions/runs/7/job/9" }],
+          });
+          yield* pushJob(
+            url,
+            appId,
+            "git-stage",
+            "b".repeat(40),
+            "pushed",
+            ciRecord("b".repeat(40)),
+          );
+          yield* pushJob(url, appId, "git-stage", "c".repeat(40), "pushed", failed);
+          // A newer push the origin refused is no confirmed push: the last one HQ confirmed stays.
+          yield* pushJob(url, appId, "git-stage", "d".repeat(40), "refused");
+          // A push HQ read no CI for carries none.
+          yield* pushJob(url, appId, "git-prod", "e".repeat(40), "pushed");
+
+          assert.deepStrictEqual(yield* gitPushes, [
+            {
+              environment: "git-stage",
+              tier: "stage",
+              branch: "main",
+              repo: "appdev",
+              sha: "c".repeat(40),
+              ci: failed,
+            },
+            {
+              environment: "git-prod",
+              tier: "production",
+              branch: "release",
+              repo: "appdev",
+              sha: "e".repeat(40),
+            },
+          ]);
+          // The answer is the Mate's state on the wire, pushes included.
+          const answer = (yield* call("GET", "/api/mate/self", { headers: auth })).body;
+          assert.deepStrictEqual(
+            (yield* Schema.decodeUnknownEffect(MateState)(answer)).gitPushes,
+            (answer as { readonly gitPushes: unknown }).gitPushes,
+          );
+        }),
+    );
+
+    it.effect("a Mate never sees another application's Git environments", () =>
+      Effect.gen(function* () {
+        const { call, fake, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const shop = yield* mateWithChange(call, fake, owner);
+        addProject(fake, "P_OTHER");
+        const other = yield* mateInApp(call, fake, owner, "P_OTHER", "Other");
+        yield* gitEnvironment(url, shop.appId, "shop-stage", "stage", "main");
+        yield* gitEnvironment(url, other.appId, "other-stage", "stage", "main");
+        yield* pushJob(url, shop.appId, "shop-stage", "a".repeat(40), "pushed");
+        yield* pushJob(url, other.appId, "other-stage", "f".repeat(40), "pushed");
+        const seen = (auth: Record<string, string>) =>
+          Effect.map(call("GET", "/api/mate/self", { headers: auth }), (answer) =>
+            (
+              answer.body as { readonly gitPushes: ReadonlyArray<{ readonly sha: string }> }
+            ).gitPushes.map((push) => push.sha),
+          );
+        assert.deepStrictEqual(yield* seen(shop.auth), ["a".repeat(40)]);
+        assert.deepStrictEqual(yield* seen(other.auth), ["f".repeat(40)]);
+      }),
     );
 
     it.effect(
