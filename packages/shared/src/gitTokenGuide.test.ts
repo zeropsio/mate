@@ -12,7 +12,7 @@ describe("direct token instructions", () => {
       repository: "acme/widgets",
       permission: "Contents: Read and write",
       tokenUrl:
-        "https://github.com/settings/personal-access-tokens/new?name=Mate+Shop+%26+Tools&target_name=acme&expires_in=366&contents=write&workflows=write",
+        "https://github.com/settings/personal-access-tokens/new?name=Mate+Shop+%26+Tools&target_name=acme&expires_in=366&contents=write&workflows=write&checks=read&statuses=read&actions=read",
     });
   });
   it.each(["&".repeat(60), "😀".repeat(60)])(
