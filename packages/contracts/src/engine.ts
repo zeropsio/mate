@@ -169,11 +169,16 @@ export const CREW_OWNER_ID: ConversationId = ConversationId.make("crew/main");
 /** Whose authority a run or an answer carries (D6). */
 export const Principal = forwardCompatibleUnion({
   key: "kind",
-  known: ["person", "crew", "standup", "engine", "unknown"],
+  known: ["person", "crew", "standup", "task", "engine", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("person"), subject: Schema.String }),
     Schema.Struct({ kind: Schema.Literal("crew"), startedBy: Schema.String }),
     Schema.Struct({ kind: Schema.Literal("standup"), startedBy: Schema.String }),
+    /**
+     * A task from outside an automated Mate took (`MateTask`, by HQ's id): nobody is at the
+     * keyboard, and its runs go on the organization's key, never on a person's sign-in.
+     */
+    Schema.Struct({ kind: Schema.Literal("task"), taskId: Schema.String }),
     Schema.Struct({ kind: Schema.Literal("engine") }),
   ],
   fallback: unknownKind,

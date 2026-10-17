@@ -25,6 +25,7 @@ import type {
   ItemActor,
   ItemBody,
   KnownEngineEvent,
+  MateTaskSource,
   Principal,
   RecordedCrewSeam,
   ProviderInteractionMode,
@@ -199,6 +200,8 @@ export type Command =
       readonly context?: ReadonlyArray<string>;
       /** A press on a page sent it for the person: never the conversation's subject. */
       readonly fromPanel?: true;
+      /** A task's brief: the issue it brings, drawn as its card (the person item's `task`). */
+      readonly task?: MateTaskSource;
     }
   | { readonly _tag: "Stop"; readonly runId?: RunId }
   /** The person asks the work a usage limit holds to try the provider now. */
