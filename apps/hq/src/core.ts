@@ -30,6 +30,9 @@ import { apiRoutes } from "./api.ts";
 import { chiefsLayer } from "./chief.ts";
 import { chiefRoutes } from "./chiefApi.ts";
 import { automationRoutes } from "./automationApi.ts";
+import { discordLayer } from "./discord.ts";
+import { discordApiLayer } from "./discordApi.ts";
+import { discordRoutes } from "./discordRoutes.ts";
 import { orgAiKeysLayer } from "./orgAiKeys.ts";
 import { intakeLayer } from "./intake.ts";
 import { mateTasksLayer } from "./mateTasks.ts";
@@ -89,6 +92,8 @@ export interface CoreOptions {
   readonly drainFor?: Duration.Duration;
   /** GitHub's REST API for issues and webhooks, for tests; GitHub's own by default. */
   readonly githubApi?: string;
+  /** Discord's REST API, for tests; Discord's own by default. */
+  readonly discordApi?: string;
   /**
    * How long a Mate has to take a task, how often HQ looks, and how long a working task's Mate
    * may be offline (`mateTasks.ts`); for tests.
@@ -111,6 +116,7 @@ const routes = (options: CoreOptions) =>
     healthRoute(options.build, options.observeHealth),
     chiefRoutes,
     automationRoutes,
+    discordRoutes,
     apiRoutes({
       build: options.build,
       hqProjectId: options.hqProjectId,
@@ -163,6 +169,11 @@ const services = (options: CoreOptions) => {
     intakeLayer({ hqProjectId: options.hqProjectId }).pipe(
       Layer.provide(remotes),
       Layer.provide(github),
+    ),
+    discordLayer({ hqProjectId: options.hqProjectId, keySecret }).pipe(
+      Layer.provide(
+        discordApiLayer(options.discordApi).pipe(Layer.provide(NodeHttpClient.layerNodeHttp)),
+      ),
     ),
     sessionsLayer,
     observationLayer,
