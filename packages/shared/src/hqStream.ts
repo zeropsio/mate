@@ -471,6 +471,8 @@ export const HqNavigationIntake = Schema.Struct({
   repo: Schema.String,
   label: Schema.String,
   waiting: Schema.Int,
+  /** It takes a public repository's issues (`HqIntakeRequest.public`); absent: it does not. */
+  public: Schema.optionalKey(Schema.Literal(true)),
 });
 export type HqNavigationIntake = typeof HqNavigationIntake.Type;
 

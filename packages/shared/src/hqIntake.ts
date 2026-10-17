@@ -33,6 +33,8 @@ export const HqIntakeView = Schema.Struct({
   appId: Schema.String,
   repo: Schema.String,
   label: Schema.String,
+  /** It takes a public repository's issues (`HqIntakeRequest.public`); absent from an older HQ. */
+  public: Schema.optionalKey(Schema.Boolean),
   webhookUrl: Schema.String,
   hook: Schema.Union([
     /** HQ made the webhook on the repository with its token. */

@@ -581,6 +581,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               yield* authorized(userId, appId);
               const repo = request.repo.toLowerCase();
               const label = request.label.trim();
+              const takesPublic = request.public === true;
               if (!GITHUB_REPO.test(repo)) return yield* refuse("invalid", "repo");
               if (!LABEL.test(label)) return yield* refuse("invalid", "label");
               const { hqRepo, remote } = yield* remoteFor(appId, repo);
@@ -607,7 +608,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                     INSERT INTO hq_intake (app_id, repo, hq_repo, label, public_id, sealed, key_id, hook_id,
                       created_by, public)
                     VALUES (${appId}::uuid, ${repo}, ${hqRepo}, ${label}, ${publicId}, ${sealed.sealed},
-                      ${sealed.keyId}, ${heldHook}::bigint, ${userId}, ${request.public === true})
+                      ${sealed.keyId}, ${heldHook}::bigint, ${userId}, ${takesPublic})
                     ON CONFLICT (app_id) DO UPDATE SET repo = EXCLUDED.repo, hq_repo = EXCLUDED.hq_repo,
                       label = EXCLUDED.label, public_id = EXCLUDED.public_id, sealed = EXCLUDED.sealed,
                       key_id = EXCLUDED.key_id, hook_id = EXCLUDED.hook_id, public = EXCLUDED.public,
@@ -638,19 +639,34 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                     Effect.logInfo("intake webhook not refreshed", { appId, why: error._tag }),
                   ),
                 );
-                return { appId, repo, label, webhookUrl: url, hook: { kind: "made" } } as const;
+                return {
+                  appId,
+                  repo,
+                  label,
+                  public: takesPublic,
+                  webhookUrl: url,
+                  hook: { kind: "made" },
+                } as const;
               }
               const hook = yield* makeHook(appId, hqRepo, remote, url, secret);
               if ("id" in hook) {
                 yield* leader.write(sql`
                   UPDATE hq_intake SET hook_id = ${hook.id} WHERE app_id::text = ${appId}
                     AND public_id = ${publicId}`);
-                return { appId, repo, label, webhookUrl: url, hook: { kind: "made" } } as const;
+                return {
+                  appId,
+                  repo,
+                  label,
+                  public: takesPublic,
+                  webhookUrl: url,
+                  hook: { kind: "made" },
+                } as const;
               }
               return {
                 appId,
                 repo,
                 label,
+                public: takesPublic,
                 webhookUrl: url,
                 hook: { kind: "paste", secret: Redacted.value(secret), why: hook.why },
               } as const;

@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { MateTask } from "@t3tools/contracts";
+import type { HqNavigationApp } from "@t3tools/shared/hqStream";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
@@ -12,11 +13,15 @@ import {
   issueEvent,
 } from "../test/harness/automated.ts";
 import { rowsWhere } from "../test/harness/mates.ts";
+import { ticketFor } from "../test/harness/runningCore.ts";
+import { nextScopeValue, scopeReset } from "../test/harness/scopes.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { HQ_MARK } from "./githubChannel.ts";
 import { notWriter } from "./githubGate.ts";
 import { PUBLIC_REFUSED } from "./intake.ts";
 import { NO_ANSWER } from "./mateTasks.ts";
+
+const NAV = { kind: "navigation" } as const;
 
 type Pool = Effect.Success<ReturnType<typeof automatedPool>>;
 
@@ -138,11 +143,25 @@ describe("who may hand an issue to automated Mates, and steer its task", () => {
             seen.some((request) => request.path === "/repos/acme/tea-shop/issues/1/comments"),
           );
           assert.deepStrictEqual(yield* refusals(core, 1), [PUBLIC_REFUSED]);
+          const watching = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
+          );
+          yield* scopeReset(watching, NAV);
           const kept = yield* core.call("PUT", `/api/apps/${core.appId}/intake`, {
             session: core.owner,
             body: { repo: "acme/tea-shop", label: "mate", public: true },
           });
           assert.strictEqual(kept.status, 200);
+          // The intake says so, where its settings read it and on the application's menu.
+          assert.deepInclude(kept.body as object, { public: true });
+          const app = yield* nextScopeValue<HqNavigationApp>(
+            watching,
+            NAV,
+            `app:${core.appId}`,
+            (value) => value.intake?.public === true,
+          );
+          assert.deepInclude(app.intake as object, { repo: "acme/tea-shop", public: true });
+          yield* watching.close;
           yield* labelled(core, 2, { public: true });
           const [row] = yield* taskRows(core, (rows) => rows.length === 1);
           assert.deepInclude(row, { number: 2, state: "queued" });
