@@ -91,7 +91,7 @@ describe("owner-reported layout regressions", () => {
             ),
           );
           const at = (yield* Effect.promise(() => place.jsonValue())) as AddPlace;
-          const trace = JSON.stringify(at);
+          const trace = `Add at ${String(at.top)}–${String(at.bottom)}, dialog ends at ${String(at.dialogBottom)}, window ${String(at.windowHeight)}, press lands on it: ${String(at.pressLandsOnIt)}`;
           expect(at.bottom, `Add is inside the window: ${trace}`).toBeLessThanOrEqual(
             at.windowHeight,
           );
