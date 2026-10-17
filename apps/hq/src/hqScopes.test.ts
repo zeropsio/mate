@@ -2166,6 +2166,7 @@ describe("revisioned HQ values", () => {
                   remote: remote === undefined ? null : remoteForWire(remote),
                 },
               ]),
+            mateRepos: unused,
             write: unused,
             receipt: unused,
             connect: unused,

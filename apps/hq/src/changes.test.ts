@@ -115,6 +115,19 @@ const pushJob = (
   );
 };
 
+/** A token HQ keeps sealed for `repo`'s origin at `remote`, as connecting it records. */
+const connectedOrigin = (url: string, appId: string, repo: string, remote: string) => {
+  const key = remote.replace("https://", "");
+  return rowsWhere(
+    url,
+    `INSERT INTO hq_repo_remote (app_id,repo,url,url_key,host,host_repo_id,sealed,key_id,kept_by,kept_at)
+     VALUES ('${appId}'::uuid,'${repo}','${remote}','${key}','github.com','${key}',
+             convert_to('ghp_kept_token','UTF8'),'seal-key-1','owner',now())
+     RETURNING 1`,
+    () => true,
+  );
+};
+
 describe("a Mate's changes in HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
@@ -834,6 +847,7 @@ describe("a Mate's changes in HQ", () => {
             appName: "Shop",
             changes: [change(1, "open")],
             gitPushes: [],
+            repos: [{ name: "appdev" }, { name: "group" }],
           });
 
           const git = yield* gitClient;
@@ -888,6 +902,7 @@ describe("a Mate's changes in HQ", () => {
             appName: null,
             changes: [],
             gitPushes: [],
+            repos: [],
           });
         }),
     );
@@ -974,6 +989,71 @@ describe("a Mate's changes in HQ", () => {
           );
         assert.deepStrictEqual(yield* seen(shop.auth), ["a".repeat(40)]);
         assert.deepStrictEqual(yield* seen(other.auth), ["f".repeat(40)]);
+      }),
+    );
+
+    it.effect("a Mate reads its repositories' connected origin address, never the token", () =>
+      Effect.gen(function* () {
+        const { call, fake, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, auth } = yield* mateWithChange(call, fake, owner);
+        yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "web" } });
+        const self = Effect.map(
+          call("GET", "/api/mate/self", { headers: auth }),
+          (answer) => answer.body,
+        );
+        const repos = Effect.map(self, (body) => (body as { readonly repos: unknown }).repos);
+        // The application's recipe repository is one of them, never connected to an origin.
+        assert.deepStrictEqual(yield* repos, [
+          { name: "appdev" },
+          { name: "group" },
+          { name: "web" },
+        ]);
+
+        // Connected before anything was pushed there: the address, never the kept token.
+        yield* connectedOrigin(url, appId, "appdev", "https://github.com/acme/app");
+        const answer = yield* self;
+        assert.deepStrictEqual((answer as { readonly repos: unknown }).repos, [
+          { name: "appdev", origin: { url: "https://github.com/acme/app" } },
+          { name: "group" },
+          { name: "web" },
+        ]);
+        assert.deepStrictEqual((answer as { readonly gitPushes: unknown }).gitPushes, []);
+        const wire = JSON.stringify(answer);
+        assert.notInclude(wire, "ghp_kept_token");
+        assert.notInclude(wire, "seal-key-1");
+        assert.deepStrictEqual(
+          (yield* Schema.decodeUnknownEffect(MateState)(answer)).repos,
+          (answer as { readonly repos: unknown }).repos,
+        );
+      }),
+    );
+
+    it.effect("a Mate never sees another application's origin", () =>
+      Effect.gen(function* () {
+        const { call, fake, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const shop = yield* mateWithChange(call, fake, owner);
+        addProject(fake, "P_OTHER");
+        const other = yield* mateInApp(call, fake, owner, "P_OTHER", "Other");
+        yield* call("POST", "/api/mate/repos", { headers: other.auth, body: { name: "appdev" } });
+        yield* connectedOrigin(url, shop.appId, "appdev", "https://github.com/acme/shop");
+        yield* connectedOrigin(url, other.appId, "appdev", "https://github.com/acme/other");
+        const seen = (auth: Record<string, string>) =>
+          Effect.map(
+            call("GET", "/api/mate/self", { headers: auth }),
+            (answer) => answer.body as Record<string, unknown>,
+          );
+        assert.deepStrictEqual((yield* seen(shop.auth))["repos"], [
+          { name: "appdev", origin: { url: "https://github.com/acme/shop" } },
+          { name: "group" },
+        ]);
+        assert.deepStrictEqual((yield* seen(other.auth))["repos"], [
+          { name: "appdev", origin: { url: "https://github.com/acme/other" } },
+          { name: "group" },
+        ]);
       }),
     );
 

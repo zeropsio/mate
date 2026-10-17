@@ -507,6 +507,7 @@ const localPushLayer = (
         Remotes.of({
           changes: Stream.empty,
           listRepos: () => Effect.die("Repository reads are outside this fixture"),
+          mateRepos: () => Effect.die("Repository reads are outside this fixture"),
           write: () => Effect.die("Remote writes are outside this fixture"),
           receipt: () => Effect.succeed(null),
           get: ({ appId, repo }) =>

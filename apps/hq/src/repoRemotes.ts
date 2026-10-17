@@ -6,6 +6,7 @@ import {
   RepoName,
   tokenExpiryLabel,
   type HqRepoRemote,
+  type MateRepo,
   type HqRemoteProbe,
   type HqTokenCiAccess,
 } from "@t3tools/shared/hqChanges";
@@ -98,6 +99,8 @@ export class Remotes extends Context.Service<
       requestId: string,
       intent: HqGitTargetIntent,
     ) => Effect.Effect<HqGitOperationReceipt | null, RemoteRequestError>;
+    /** The application's repositories with their connected origins' addresses, for its Mate. */
+    readonly mateRepos: (appId: string) => Effect.Effect<ReadonlyArray<MateRepo>, SqlError>;
     /** Internal readers still apply their own application read gate before presenting these facts. */
     readonly get: (ref: RemoteRef) => Effect.Effect<RemoteRecord | undefined, SqlError>;
     readonly connect: (
@@ -490,6 +493,17 @@ export const repoRemotesLayer = Layer.effect(
             return receipt;
           }),
         ),
+      mateRepos: Effect.fn("Remotes.mateRepos")(function* (appId: string) {
+        const repos = yield* sql<{
+          readonly name: string;
+        }>`SELECT name FROM hq_repo WHERE app_id::text=${appId} ORDER BY name`;
+        return yield* Effect.forEach(repos, ({ name }) =>
+          Effect.map(remotes.get({ appId, repo: name }), (row) => {
+            const remote = row === undefined ? null : remoteForWire(row);
+            return remote === null ? { name } : { name, origin: { url: remote.url } };
+          }),
+        );
+      }),
       get: (ref) => Effect.map(lookup(ref), (row) => (row === undefined ? undefined : record(row))),
       connect: (userId, input) => keep(userId, input, false),
       updateAddress: (userId, input) => keep(userId, input, true),
