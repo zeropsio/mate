@@ -78,6 +78,7 @@ import {
 } from "./offers.ts";
 import { type OrgView, Roles, confirmingRefusal, decidedFresh } from "./roles.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
+import { navigationTaskOf, sourceOfRow } from "./taskSources.ts";
 import { ZeropsApi, type ZeropsError } from "./zerops/api.ts";
 
 const encodeLifecycleIntent = Schema.encodeSync(Schema.fromJsonString(HqLifecycleIntent));
@@ -1041,7 +1042,9 @@ export const structureLayer = (options: {
               }>`
               SELECT a.id::text AS id, a.name, a.created_by, NOT (${appHeld}) AS empty,
                 CASE WHEN i.app_id IS NULL THEN NULL ELSE jsonb_build_object('repo', i.repo,
-                  'label', i.label, 'waiting', COALESCE(w.waiting, 0)) END AS intake
+                  'label', i.label, 'waiting', COALESCE(w.waiting, 0))
+                  || CASE WHEN i.public THEN jsonb_build_object('public', true) ELSE '{}'::jsonb END
+                END AS intake
               FROM hq_app a LEFT JOIN hq_intake i ON i.app_id = a.id
               LEFT JOIN (SELECT app_id, count(*) AS waiting FROM hq_task WHERE state = 'queued'
                 GROUP BY app_id) w ON w.app_id = a.id
@@ -1066,24 +1069,39 @@ export const structureLayer = (options: {
                        'closedOff', m.closed_off_at IS NOT NULL, 'setupMarker', NULL,
                        'keyWider', m.key_wider_token_id IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END
                        || CASE WHEN NOT m.automated THEN '{}'::jsonb ELSE jsonb_build_object('automated', true, 'task',
-                         CASE WHEN task.id IS NULL THEN NULL ELSE jsonb_build_object('id', task.id, 'repo', task.repo,
-                           'number', task.number, 'title', task.title, 'url', task.url) END) END END AS mate
+                         CASE WHEN task.id IS NULL THEN NULL ELSE jsonb_build_object('id', task.id,
+                           'source', task.source, 'waiting', task.state = 'waiting') END) END END AS mate
               FROM hq_app_project p FULL OUTER JOIN hq_mate m USING (project_id)
               LEFT JOIN hq_press press ON press.project_id = m.project_id AND press.kind = 'mate'
               LEFT JOIN (SELECT DISTINCT ON (t.mate_project_id) t.mate_project_id, t.id::text AS id,
-                  t.repo, t.number, t.title, t.url
+                  t.source, t.state
                 FROM hq_task t
-                WHERE t.mate_project_id IS NOT NULL AND (t.state IN ('assigned', 'working')
+                WHERE t.mate_project_id IS NOT NULL AND (t.state IN ('assigned', 'working', 'waiting')
                   OR (t.change_number IS NOT NULL AND EXISTS (SELECT 1 FROM hq_change c
                     WHERE c.app_id = t.app_id AND c.repo = t.change_repo AND c.number = t.change_number
                       AND c.state = 'open')))
-                ORDER BY t.mate_project_id, (t.state IN ('assigned', 'working')) DESC, t.seq DESC
+                ORDER BY t.mate_project_id, (t.state IN ('assigned', 'working', 'waiting')) DESC, t.seq DESC
               ) task ON task.mate_project_id = m.project_id
               ORDER BY p.seq NULLS LAST, m.seq`;
               setupMarkers.retain(
                 new Set(membership.filter((row) => row.mate !== null).map((row) => row.project_id)),
               );
               for (const row of membership) {
+                // A task's row is read as its source names it: its label, its link, whether it waits.
+                const task = row.mate?.task as
+                  | { readonly id: string; readonly source: unknown; readonly waiting: boolean }
+                  | null
+                  | undefined;
+                if (row.mate != null && task != null) {
+                  const source = sourceOfRow(task.source);
+                  row.mate = {
+                    ...row.mate,
+                    task:
+                      source === undefined
+                        ? null
+                        : navigationTaskOf({ id: task.id, source, waiting: task.waiting }),
+                  };
+                }
                 if (row.mate === null || row.mate.closedOff || row.record === null) continue;
                 const setupMarker = yield* setupMarkers.read({
                   orgId: view.orgId,

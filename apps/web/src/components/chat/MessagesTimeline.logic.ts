@@ -20,6 +20,7 @@ import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import {
   type CallResultPage,
   type CrewSeam,
+  type MateTaskMessage,
   type MateTaskSource,
   type MessageId,
   type OrchestrationLatestTurn,
@@ -691,6 +692,8 @@ type MessagesTimelineRowBody =
   | { kind: "crew-card"; id: string; createdAt: string; task: CrewCard }
   /** A task's first message on an automated Mate: the issue it brings, never the brief. */
   | { kind: "task-card"; id: string; createdAt: string; task: MateTaskSource }
+  /** Something said about the task after its Mate took it: its author's, never the viewer's. */
+  | { kind: "task-message"; id: string; createdAt: string; message: MateTaskMessage }
   /** A line the crew engine drew across a crewmate's chat (`crew.seam`), `words` its words. */
   | { kind: "crew-seam"; id: string; createdAt: string; seam: CrewSeam; words: string }
   | {
@@ -1106,6 +1109,7 @@ function opensRun(row: MessagesTimelineRow): boolean {
     (row.kind === "background" && row.id.startsWith("woke:")) ||
     row.kind === "crew-card" ||
     row.kind === "task-card" ||
+    row.kind === "task-message" ||
     (row.kind === "event" && (row.event.type === "command" || row.event.type === "resumed"))
   );
 }
@@ -2640,6 +2644,10 @@ export function deriveMessagesTimelineRows(input: {
     const issue = entry.message.task;
     if (issue !== undefined) {
       return { kind: "task-card", id: entry.id, createdAt: entry.createdAt, task: issue };
+    }
+    const heard = entry.message.taskMessage;
+    if (heard !== undefined) {
+      return { kind: "task-message", id: entry.id, createdAt: entry.createdAt, message: heard };
     }
     const task = crewCardOf(entry.message);
     if (task !== null) {

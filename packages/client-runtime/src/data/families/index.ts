@@ -17,6 +17,18 @@ import { mateArchiveFamily } from "./mateArchive.ts";
 import { mateVcsFamily } from "./mateVcs.ts";
 import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
 import { hqAiKeyRequestFamily, hqAiKeysFamily, hqIntakeRevealFamily } from "./hqAutomation.ts";
+import {
+  hqAppDiscordFamily,
+  hqAppSchedulesFamily,
+  hqAppSlackFamily,
+  hqAppWebhooksFamily,
+  hqDiscordFamily,
+  hqSlackFamily,
+  hqSlackManifestFamily,
+  hqTaskLimitsFamily,
+  hqTaskSourceRequestFamily,
+  hqWebhookRevealFamily,
+} from "./hqTaskSources.ts";
 import { mateAssetUrlFamily } from "./mateAssetUrl.ts";
 import { mateFilesystemFamily } from "./mateFilesystem.ts";
 import { matePullRequestFamily } from "./matePullRequest.ts";
@@ -131,6 +143,16 @@ export const FAMILIES = defineFamilies([
   hqAiKeysFamily,
   hqAiKeyRequestFamily,
   hqIntakeRevealFamily,
+  hqSlackFamily,
+  hqSlackManifestFamily,
+  hqDiscordFamily,
+  hqTaskLimitsFamily,
+  hqAppSlackFamily,
+  hqAppDiscordFamily,
+  hqAppWebhooksFamily,
+  hqAppSchedulesFamily,
+  hqTaskSourceRequestFamily,
+  hqWebhookRevealFamily,
   mateAssetUrlFamily,
   mateFilesystemFamily,
   matePullRequestFamily,

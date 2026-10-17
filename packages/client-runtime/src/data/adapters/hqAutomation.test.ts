@@ -195,6 +195,22 @@ describe("an application's intake", () => {
     r.close();
   });
 
+  it.each([
+    { case: "a public repository's issues", takesPublic: true, sent: { public: true } },
+    { case: "only a private repository's issues", takesPublic: false, sent: {} },
+  ])("an intake set to take $case says so to HQ", async ({ takesPublic, sent }) => {
+    const asked: Array<unknown> = [];
+    const r = rig({
+      setIntake: async (_appId, request) => {
+        asked.push(request);
+        return paste;
+      },
+    });
+    await r.host.setIntake(SHOP, "acme/tea-shop", "mate", takesPublic);
+    expect(asked).toEqual([{ repo: "acme/tea-shop", label: "mate", ...sent }]);
+    r.close();
+  });
+
   it("never shows a secret whose answer came after its screen closed", async () => {
     let answer: (view: HqIntakeView) => void = () => {};
     const r = rig({

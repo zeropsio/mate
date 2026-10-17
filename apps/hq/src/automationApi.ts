@@ -10,14 +10,31 @@
  *   to paste is answered only where HQ could not make the webhook (no-store).
  * - `POST /api/intake/github/:publicId`: GitHub's delivery to an intake's webhook, limited per
  *   address. Past 1 MiB `413`; no intake there `404`; a signature that does not hold `401
- *   unauthorized`, whatever was wrong with it; `ping` `200`; anything else read `202`.
+ *   unauthorized`, whatever was wrong with it; `ping` `200`; anything else read `202`; one HQ could
+ *   not check or take in now `503`, for GitHub to deliver again.
+ * - `POST /api/apps/:appId/webhooks` `HqWebhookRequest` → `201 HqWebhookView` (its secret this once,
+ *   no-store), `GET` → `{ webhooks }`, `DELETE …/:id` → `204`: the application's signed webhooks
+ *   (`webhooks.ts`), by a structure writer.
+ * - `POST /api/intake/webhook/:publicId`: a call on one, limited per address. Past 1 MiB `413`; no
+ *   webhook there `404`; a signature that does not hold `401`; no JSON with a title `400`; taken
+ *   `202 { status: "queued", position } | { status: "told" | "duplicate" }`.
+ * - `POST /api/apps/:appId/schedules` `HqScheduleRequest` → `201 HqScheduleView`, `GET` →
+ *   `{ schedules }`, `DELETE …/:id` → `204`: the application's schedules (`schedules.ts`), by a
+ *   structure writer.
+ * - `GET /api/org/task-limits` → `HqTaskLimitsView`: what each task may spend; `PUT` it, by an owner
+ *   or admin of the organization.
  * - `POST /api/mate/ai-key` `{ provider? }` with `Authorization: Mate <credential>` → `HqMateAiKey`:
  *   the organization's key, for the Mate's zcp to put in its project's vault; `404 no_key` while
  *   none is kept.
  *
  * @module automationApi
  */
-import { HqAiKeyRequest, HqIntakeRequest } from "@t3tools/shared/hqIntake";
+import {
+  HqAiKeyRequest,
+  HqIntakeRequest,
+  HqScheduleRequest,
+  HqWebhookRequest,
+} from "@t3tools/shared/hqIntake";
 import * as ByteSize from "effect/ByteSize";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -30,8 +47,11 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import { BODY_LIMIT, TooLarge, handle, json, jsonBody, knock, mate, principal } from "./api.ts";
 import { INTAKE_WEBHOOK_PATH, Intake } from "./intake.ts";
-import { MateTasks } from "./mateTasks.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
+import { Schedules } from "./schedules.ts";
+import { TaskLimits } from "./taskLimits.ts";
+import type { TaskEnqueued } from "./taskSources.ts";
+import { WEBHOOK_PATH, Webhooks } from "./webhooks.ts";
 import { Writes } from "./writes.ts";
 
 const MateAiKeyBody = Schema.Struct({ provider: Schema.optionalKey(Schema.String) });
@@ -56,7 +76,167 @@ const deliveryBytes = Effect.gen(function* () {
 /** No cache keeps an answer that carries a key. */
 const NO_STORE = { "cache-control": "no-store" };
 
+const TaskLimitsBody = Schema.Struct({
+  minutes: Schema.Int,
+  costUsd: Schema.NullOr(Schema.Number),
+});
+
+const webhookParam = Effect.map(HttpRouter.params, (params) => params["id"] ?? "");
+
+/** What a webhook's caller hears of its call: taken as a task, said to one, or seen before. */
+const takenAnswer = (enqueued: TaskEnqueued) =>
+  enqueued.kind === "queued"
+    ? { status: "queued", position: enqueued.position }
+    : { status: enqueued.kind };
+
+const webhookRoutes = Layer.mergeAll(
+  HttpRouter.add(
+    "POST",
+    "/api/apps/:appId/webhooks",
+    handle(
+      Effect.gen(function* () {
+        const request = yield* jsonBody(HqWebhookRequest, BODY_LIMIT);
+        return yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            const view = yield* (yield* Webhooks).make(userId, yield* appParam, request);
+            return HttpServerResponse.jsonUnsafe(view, { status: 201, headers: NO_STORE });
+          }),
+        );
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "GET",
+    "/api/apps/:appId/webhooks",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        return json({ webhooks: yield* (yield* Webhooks).list(userId, yield* appParam) }, 200);
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "DELETE",
+    "/api/apps/:appId/webhooks/:id",
+    handle(
+      Effect.gen(function* () {
+        return yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            yield* (yield* Webhooks).remove(userId, yield* appParam, yield* webhookParam);
+            return HttpServerResponse.empty({ status: 204 });
+          }),
+        );
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "POST",
+    `${WEBHOOK_PATH}/:publicId`,
+    handle(
+      Effect.gen(function* () {
+        yield* knock("intake");
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const body = yield* deliveryBytes;
+        const publicId = (yield* HttpRouter.params)["publicId"] ?? "";
+        const received = yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            return yield* (yield* Webhooks).receive(publicId, {
+              signature: request.headers["x-mate-signature"],
+              delivery: request.headers["x-mate-delivery"],
+              body,
+            });
+          }),
+        );
+        switch (received.kind) {
+          case "unknown":
+            return json({ code: "not_found" }, 404);
+          case "refused":
+            return json({ code: "unauthorized" }, 401);
+          case "invalid":
+            return json({ code: "invalid" }, 400);
+          case "taken":
+            return json(takenAnswer(received.enqueued), 202);
+        }
+      }),
+    ),
+  ),
+);
+
+const scheduleParam = Effect.map(HttpRouter.params, (params) => params["id"] ?? "");
+
+const scheduleRoutes = Layer.mergeAll(
+  HttpRouter.add(
+    "POST",
+    "/api/apps/:appId/schedules",
+    handle(
+      Effect.gen(function* () {
+        const request = yield* jsonBody(HqScheduleRequest, BODY_LIMIT);
+        return yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            return json(yield* (yield* Schedules).make(userId, yield* appParam, request), 201);
+          }),
+        );
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "GET",
+    "/api/apps/:appId/schedules",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        return json({ schedules: yield* (yield* Schedules).list(userId, yield* appParam) }, 200);
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "DELETE",
+    "/api/apps/:appId/schedules/:id",
+    handle(
+      Effect.gen(function* () {
+        return yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            yield* (yield* Schedules).remove(userId, yield* appParam, yield* scheduleParam);
+            return HttpServerResponse.empty({ status: 204 });
+          }),
+        );
+      }),
+    ),
+  ),
+);
+
 export const automationRoutes = Layer.mergeAll(
+  webhookRoutes,
+  scheduleRoutes,
+  HttpRouter.add(
+    "GET",
+    "/api/org/task-limits",
+    handle(
+      Effect.gen(function* () {
+        yield* principal;
+        return json(yield* (yield* TaskLimits).view, 200);
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "PUT",
+    "/api/org/task-limits",
+    handle(
+      Effect.gen(function* () {
+        const limits = yield* jsonBody(TaskLimitsBody, BODY_LIMIT);
+        return yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            return json(yield* (yield* TaskLimits).keep(userId, limits), 200);
+          }),
+        );
+      }),
+    ),
+  ),
   HttpRouter.add(
     "GET",
     "/api/org/ai-keys",
@@ -139,13 +319,18 @@ export const automationRoutes = Layer.mergeAll(
         const request = yield* HttpServerRequest.HttpServerRequest;
         const body = yield* deliveryBytes;
         const publicId = (yield* HttpRouter.params)["publicId"] ?? "";
-        const received = yield* (yield* Intake).receive(publicId, {
-          event: request.headers["x-github-event"],
-          contentType: request.headers["content-type"],
-          id: request.headers["x-github-delivery"],
-          signature: request.headers["x-hub-signature-256"],
-          body,
-        });
+        // Read once whole, then carried through even where GitHub stops waiting for the answer.
+        const received = yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            return yield* (yield* Intake).receive(publicId, {
+              event: request.headers["x-github-event"],
+              contentType: request.headers["content-type"],
+              id: request.headers["x-github-delivery"],
+              signature: request.headers["x-hub-signature-256"],
+              body,
+            });
+          }),
+        );
         switch (received.kind) {
           case "unknown":
             return json({ code: "not_found" }, 404);
@@ -156,7 +341,6 @@ export const automationRoutes = Layer.mergeAll(
           case "ping":
             return json({}, 200);
           case "taken":
-            if (received.moved) yield* (yield* MateTasks).wake;
             return json({}, 202);
         }
       }),

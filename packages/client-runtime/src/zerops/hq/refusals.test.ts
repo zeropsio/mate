@@ -4,7 +4,12 @@ import { RELEASE_REFUSALS } from "@t3tools/shared/hqRelease";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { REASONS } from "@t3tools/shared/zeropsPermissions";
 
-import { enrollmentRefusalWords, hqOfferWords, hqRefusalWords } from "./refusals.ts";
+import {
+  AUTOMATION_REFUSALS,
+  enrollmentRefusalWords,
+  hqOfferWords,
+  hqRefusalWords,
+} from "./refusals.ts";
 
 describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
   it.each([
@@ -21,6 +26,23 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     const words = hqRefusalWords({ code: "forbidden", reason });
     expect(words).not.toContain(reason);
     expect(words).toMatch(/^[A-Z].*\.$/u);
+  });
+
+  // Automated Mates' sources (`apps/hq/src/{intake,slack,discord,webhooks,schedules,taskLimits}.ts`).
+  it.each([...AUTOMATION_REFUSALS])(
+    "says why HQ refused a task source's setting (%s) in words of its own, never the code",
+    (reason) => {
+      const words = hqRefusalWords({ code: "invalid", reason });
+      expect(words).not.toContain(`(${reason})`);
+      expect(words).not.toContain("_");
+      expect(words).toMatch(/^[A-Z@].*\.$/u);
+    },
+  );
+
+  it("tells a person to invite Mate to a Slack channel it is not in", () => {
+    expect(hqRefusalWords({ code: "conflict", reason: "not_in_channel" })).toBe(
+      "Invite @Mate to the channel first, then try again.",
+    );
   });
 
   it("offers no remedy for a kind it does not know that reloading cannot give: the kind is HQ's", () => {

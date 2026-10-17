@@ -9,13 +9,17 @@ import * as NodeCrypto from "node:crypto";
 
 import { assert } from "@effect/vitest";
 import type { HqIntakeView } from "@t3tools/shared/hqIntake";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
 import { sealRemoteToken } from "../../src/deployKeys.ts";
+import { type MateTasksOptions, TASK_SOURCES_SINCE } from "../../src/mateTasks.ts";
 import { testKey } from "./deployKeys.ts";
-import type { githubFake } from "./githubFake.ts";
-import { enrollMate, type startCore } from "./runningCore.ts";
+import { githubFake } from "./githubFake.ts";
+import { addProject, rowsWhere } from "./mates.ts";
+import { overviewOf } from "./overviews.ts";
+import { enrollMate, sessionFor, startCore, untilHealth } from "./runningCore.ts";
 
 type Core = Effect.Success<ReturnType<typeof startCore>>;
 
@@ -147,6 +151,38 @@ export const deliver = (
   });
 };
 
+/** Who acts on GitHub in an event: `nova`, a person, unless the test says otherwise. */
+export interface Acting {
+  readonly sender?: string;
+  readonly bot?: boolean;
+  /** The repository is public. */
+  readonly public?: boolean;
+}
+
+const issueOf = (
+  action: string,
+  issue: {
+    readonly number: number;
+    readonly title?: string;
+    readonly body?: string | null;
+    readonly labels?: ReadonlyArray<string>;
+    readonly state?: "open" | "closed";
+  },
+) => ({
+  number: issue.number,
+  title: issue.title ?? `Issue ${String(issue.number)}`,
+  body: issue.body === undefined ? "Make the tea hotter." : issue.body,
+  html_url: `https://github.com/acme/tea-shop/issues/${String(issue.number)}`,
+  state: issue.state ?? (action === "closed" ? "closed" : "open"),
+  user: { login: "nova", type: "User" },
+  labels: (issue.labels ?? []).map((name) => ({ name })),
+});
+
+const actingOf = (acting: Acting) => ({
+  repository: { full_name: "acme/tea-shop", private: acting.public !== true },
+  sender: { login: acting.sender ?? "nova", type: acting.bot === true ? "Bot" : "User" },
+});
+
 /** An `issues` event's payload as GitHub sends it, of `acme/tea-shop`. */
 export const issueEvent = (
   action: string,
@@ -159,19 +195,38 @@ export const issueEvent = (
     readonly state?: "open" | "closed";
   },
   label?: string,
+  acting: Acting = {},
 ) => ({
   action,
-  issue: {
-    number: issue.number,
-    title: issue.title ?? `Issue ${String(issue.number)}`,
-    body: issue.body === undefined ? "Make the tea hotter." : issue.body,
-    html_url: `https://github.com/acme/tea-shop/issues/${String(issue.number)}`,
-    state: issue.state ?? (action === "closed" ? "closed" : "open"),
-    user: { login: "nova" },
-    labels: (issue.labels ?? []).map((name) => ({ name })),
-  },
+  issue: issueOf(action, issue),
   ...(label === undefined ? {} : { label: { name: label } }),
-  repository: { full_name: "acme/tea-shop" },
+  ...actingOf(acting),
+});
+
+let comments = 0;
+
+/** An `issue_comment` event's payload: `body` said on the open issue `number`. */
+export const commentEvent = (
+  number: number,
+  body: string,
+  acting: Acting & { readonly app?: boolean } = {},
+) => ({
+  action: "created",
+  issue: issueOf("created", { number, labels: ["mate"] }),
+  comment: {
+    id: (comments += 1),
+    body,
+    user: { login: acting.sender ?? "nova", type: acting.bot === true ? "Bot" : "User" },
+    performed_via_github_app: acting.app === true ? { id: 1 } : null,
+  },
+  ...actingOf(acting),
+});
+
+/** The Mate's overview as its link brings it, saying the version it runs. */
+export const overviewAt = (serverVersion: string) => ({
+  type: "overview",
+  full: true,
+  overview: overviewOf({ identity: { ...overviewOf().identity, serverVersion } }),
 });
 
 let revisions = 0;
@@ -190,3 +245,65 @@ export const attention = (working: number) => ({
     truncated: false,
   },
 });
+
+/** A fake Nebius key, built from parts so no scanner takes it for one. */
+const NEBIUS_KEY = ["v1", "fake", "nebius", "key", "0123456789"].join(".");
+
+/**
+ * A Core whose application `Tea Shop` takes `acme/tea-shop`'s issues labelled `mate`, with its
+ * automated Mate `P_ROBOT` linked and resting.
+ */
+export const automatedPool = (
+  given: {
+    readonly taskAcceptWithin?: Duration.Duration;
+    readonly taskGoneAfter?: Duration.Duration;
+    /** HQ's other task times (`MateTasksOptions`): any given, HQ looks at its tasks every 50 ms. */
+    readonly tasks?: MateTasksOptions;
+    readonly busy?: boolean;
+    /** The organization keeps no key for its automated Mates' provider. */
+    readonly keyless?: boolean;
+    readonly scheduleEvery?: Duration.Duration;
+    /** The robot's version, as its overview says; one that reads tasks from every source. */
+    readonly version?: string;
+  } = {},
+) =>
+  Effect.gen(function* () {
+    const github = yield* githubFake;
+    const times: MateTasksOptions = {
+      ...given.tasks,
+      ...(given.taskAcceptWithin === undefined ? {} : { acceptWithin: given.taskAcceptWithin }),
+      ...(given.taskGoneAfter === undefined ? {} : { goneAfter: given.taskGoneAfter }),
+    };
+    const core = yield* startCore(true, {
+      githubApi: github.url,
+      ...(given.scheduleEvery === undefined ? {} : { scheduleEvery: given.scheduleEvery }),
+      ...(Object.keys(times).length === 0
+        ? {}
+        : { tasks: { sweepEvery: Duration.millis(50), ...times } }),
+    });
+    yield* untilHealth(core.call, "active");
+    const owner = yield* sessionFor(core.call, "door-owner");
+    const app = yield* core.call("POST", "/api/apps", {
+      session: owner,
+      body: { name: "Tea Shop" },
+    });
+    const appId = (app.body as { readonly id: string }).id;
+    const keyKept = () =>
+      core.call("PUT", "/api/org/ai-keys/nebius", { session: owner, body: { value: NEBIUS_KEY } });
+    if (given.keyless !== true) yield* keyKept();
+    yield* connectedRepo(core, appId, "web", "acme/tea-shop");
+    const hook = yield* intakeOn(core, github, owner, appId);
+    addProject(core.fake, "P_ROBOT");
+    const robot = yield* mateLinked(core, owner, "P_ROBOT", { appId });
+    yield* robot.link.send(overviewAt(given.version ?? TASK_SOURCES_SINCE));
+    yield* robot.link.send(attention(given.busy === true ? 1 : 0));
+    const issue = (number: number) =>
+      deliver(core, hook, "issues", issueEvent("opened", { number, labels: ["mate"] }));
+    const tasks = (matches: (rows: ReadonlyArray<Record<string, unknown>>) => boolean) =>
+      rowsWhere(
+        core.url,
+        "SELECT id::text AS id, number, state, mate_project_id, attempts, detail, conversation_id FROM hq_task ORDER BY seq",
+        matches,
+      );
+    return { ...core, github, owner, appId, hook, robot, issue, tasks, keyKept };
+  });
