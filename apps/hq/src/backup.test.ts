@@ -347,9 +347,9 @@ describe("a backup set, taken", () => {
 
     it.effect("makes room in a full store, the oldest kept set first, and tells it", () =>
       Effect.gen(function* () {
-        // 210 000 bytes (room for one 60 000-byte set beside an empty HQ's ~120 000), and two
-        // sets of the months before, each kept as its month's newest.
-        const a = yield* startCore(true, { quotaGb: 0.00021 });
+        // 230 000 bytes (90% of it room for one 60 000-byte set beside an empty HQ's ~131 000, not
+        // for two), and two sets of the months before, each kept as its month's newest.
+        const a = yield* startCore(true, { quotaGb: 0.00023 });
         const [older, old] = yield* storedBefore(a.storeDir, [3, 2], 60_000);
         yield* leading(a);
         const manifest = yield* a.backup.take;
@@ -365,7 +365,7 @@ describe("a backup set, taken", () => {
             set: manifest.id,
             usedBytes: bytesOf(NodePath.join(a.storeDir, "sets", old ?? "")),
             neededBytes: bytesOf(NodePath.join(a.storeDir, "sets", manifest.id)),
-            quotaBytes: 210_000,
+            quotaBytes: 230_000,
           },
         ]);
       }),
