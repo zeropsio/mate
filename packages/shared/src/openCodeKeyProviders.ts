@@ -17,6 +17,8 @@ export interface OpenCodeKeyProvider {
   readonly variable: string;
   /** What its key runs, in people's words: "Runs OpenCode on <models>". */
   readonly models: string;
+  /** Its OpenAI-compatible API, for an app that calls it with the same key. */
+  readonly baseUrl: string;
 }
 
 export const OPENCODE_KEY_PROVIDERS: ReadonlyArray<OpenCodeKeyProvider> = [
@@ -25,6 +27,7 @@ export const OPENCODE_KEY_PROVIDERS: ReadonlyArray<OpenCodeKeyProvider> = [
     name: "Nebius Token Factory",
     variable: "NEBIUS_API_KEY",
     models: "open models — Kimi, Qwen, DeepSeek, GLM and more",
+    baseUrl: "https://api.tokenfactory.nebius.com/v1",
   },
 ];
 

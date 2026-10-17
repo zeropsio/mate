@@ -32,6 +32,7 @@ import {
 import { ToolPresentation } from "./providerRuntime.ts";
 import { callFields } from "./engineCall.ts";
 import { CrewSeam, CrewTaskId } from "./zeropsCrew.ts";
+import { MateTaskSource } from "./mateTask.ts";
 import { CREW_SESSION_REASONS, CrewHandle } from "./zeropsCrewStates.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
@@ -487,6 +488,11 @@ const itemBodyFields = {
      * is never the conversation's subject. Absent: typed.
      */
     fromPanel: Schema.optionalKey(Schema.Literal(true)),
+    /**
+     * Sent for a task from outside (`MateTask`) on an automated Mate: the issue it brings, drawn as
+     * a card. Its words are the brief the agent got, never the person's; absent: not a task's.
+     */
+    task: Schema.optionalKey(MateTaskSource),
     delivery: Schema.Struct({
       /** `unknown`: a restart cut its send mid-flight; it may or may not have arrived. */
       state: forwardCompatibleLiterals(["queued", "delivered", "steered", "refused", "unknown"]),

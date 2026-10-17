@@ -111,6 +111,10 @@
       "types": "./src/mateLink.ts",
       "import": "./src/mateLink.ts"
     },
+    "./hqIntake": {
+      "types": "./src/hqIntake.ts",
+      "import": "./src/hqIntake.ts"
+    },
     "./hqMates": {
       "types": "./src/hqMates.ts",
       "import": "./src/hqMates.ts"

@@ -39,6 +39,8 @@ import {
   IsoDateTime,
   MateAttention,
   MateHealth,
+  MateTask,
+  MateTaskReport,
   OrchestrationLatestTurn,
   OrchestrationSessionStatus,
   ProviderInteractionMode,
@@ -94,6 +96,11 @@ export const MateState = Schema.Struct({
    * reads along. Absent from an HQ older than it, and where HQ could not read its org yet.
    */
   ownerUserId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /**
+   * An automated Mate: it takes tasks from outside (`MateTask`) and runs only on the
+   * organization's API keys, never on a person's subscription. Absent from an older HQ: not one.
+   */
+  automated: Schema.optionalKey(Schema.Boolean),
   ...MateChanges.fields,
   /**
    * Each Git environment of its application, its latest confirmed push per repository with the
@@ -347,6 +354,8 @@ export const MateLinkUp = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("health"), health: MateHealth }),
   Schema.Struct({ type: Schema.Literal("attention"), attention: MateAttention }),
+  /** How a task HQ handed it stands (`MateTaskReport`): once taken, then on each move. */
+  Schema.Struct({ type: Schema.Literal("task-state"), report: MateTaskReport }),
 ]);
 export type MateLinkUp = typeof MateLinkUp.Type;
 
@@ -379,6 +388,17 @@ export const MateLinkDown = Schema.Union([
     members: Schema.Array(MateAccessMember),
     /** Explicitly null for an ordinary Mate; absent only on older HQs. */
     chief: Schema.optionalKey(Schema.NullOr(ChiefMateOwner)),
+  }),
+  /** A task for an automated Mate to work: told again until the Mate says it took it. */
+  Schema.Struct({ type: Schema.Literal("task"), task: MateTask }),
+  /**
+   * The organization's API keys an automated Mate's agents run on, by the variable its provider
+   * reads (`NEBIUS_API_KEY`, `OPENCODE_KEY_PROVIDERS`); sent on each link to an automated Mate only,
+   * and again when one changes. An empty list: none set.
+   */
+  Schema.Struct({
+    type: Schema.Literal("provider-keys"),
+    keys: Schema.Array(Schema.Struct({ env: TrimmedNonEmptyString, value: Schema.String })),
   }),
 ]);
 export type MateLinkDown = typeof MateLinkDown.Type;
