@@ -588,7 +588,7 @@ export const make = Effect.gen(function* () {
         } else {
           const result = yield* engine.deliver(
             conversationId,
-            { _tag: "Send", ...followUpOf(message) },
+            { _tag: "Send", ...followUpOf(message), taskMessage: message },
             CommandId.make(`task-message:${message.id}`),
             principalOf(taskId),
           );
