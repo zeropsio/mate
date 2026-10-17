@@ -439,7 +439,9 @@ describe("HQ scoped socket", () => {
           const seenQueries = queries.filter((query) => /\bhq_attention_seen\b/.test(query));
           const navigationCalls = core.fake.calls.slice(coldCalls);
           const memberReads = navigationCalls.filter((call) => call === "members:hq").length;
-          const structureQueries = queries.filter((query) => /FROM hq_app a ORDER BY/.test(query));
+          const structureQueries = queries.filter((query) =>
+            /FROM hq_app a (?:LEFT JOIN hq_intake i ON i\.app_id = a\.id )?ORDER BY/.test(query),
+          );
           // The app's emptiness subquery also mentions hq_change; count it with structure.
           const changeQueries = queries.filter(
             (query) => /\bhq_change\b/.test(query) && !structureQueries.includes(query),
